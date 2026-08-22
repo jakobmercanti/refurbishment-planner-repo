@@ -575,7 +575,13 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
             role="img"
             aria-label="Interactive bathroom floor-plan polygon"
             onPointerDown={(event) => {
-              if (mode !== "DRAW" || event.target !== event.currentTarget) return;
+              if (event.target !== event.currentTarget) return;
+              if (mode === "SELECT") {
+                setSelectedVertex(null);
+                setSelectedWall(null);
+                setWallLengthInput("");
+                return;
+              }
               const point = fromPointer(event);
               commitVertices([...vertices, point]);
               setSelectedVertex(vertices.length);
