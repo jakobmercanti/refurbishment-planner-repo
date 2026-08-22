@@ -95,6 +95,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   const [hingeSide, setHingeSide] = useState<"START" | "END">("START");
   const [opensInward, setOpensInward] = useState(true);
   const [openingError, setOpeningError] = useState<string | null>(null);
+  const [editingOpeningId, setEditingOpeningId] = useState<string | null>(null);
   const [coordinateInput, setCoordinateInput] = useState(() => coordinateText(room.vertices));
   const [coordinateError, setCoordinateError] = useState<string | null>(null);
   const [validation, setValidation] = useState<RoomValidationResponse | null>(null);
@@ -246,7 +247,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     setWallLengthInput("");
   };
 
-  const addOpening = () => {
+  const saveOpening = () => {
     setOpeningError(null);
     const wallIndex = Number(openingWallId.split("-")[1]) - 1;
     const start = vertices[wallIndex];
@@ -264,6 +265,16 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
       setOpeningError(`The opening ends at ${openingOffset + openingWidth} mm, beyond this ${wallLength.toFixed(0)} mm wall.`);
       return;
     }
+    const overlapsExisting = openings.some((opening) => (
+      opening.id !== editingOpeningId
+      && opening.parent_wall_id === openingWallId
+      && openingOffset < opening.offset_mm + opening.width.value
+      && openingOffset + openingWidth > opening.offset_mm
+    ));
+    if (overlapsExisting) {
+      setOpeningError("This opening overlaps another door or window on the selected wall.");
+      return;
+    }
     if (openingKind === "WINDOW" && (!Number.isFinite(windowSill) || windowSill < 0)) {
       setOpeningError("Window sill height must be zero or greater.");
       return;
@@ -275,7 +286,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
       source_type: "USER_MEASURED",
     });
     const opening: Opening = {
-      id: `${openingKind === "DOOR" ? "door" : "window"}-${crypto.randomUUID().slice(0, 8)}`,
+      id: editingOpeningId ?? `${openingKind === "DOOR" ? "door" : "window"}-${crypto.randomUUID().slice(0, 8)}`,
       kind: openingKind,
       parent_wall_id: openingWallId,
       offset_mm: openingOffset,
@@ -290,13 +301,39 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
         opens_inward: opensInward,
       } : {}),
     };
-    setOpenings((current) => [...current, opening]);
+    setOpenings((current) => editingOpeningId
+      ? current.map((item) => item.id === editingOpeningId ? opening : item)
+      : [...current, opening]);
+    setEditingOpeningId(null);
     setClearDependents(false);
     markChanged();
   };
 
+  const editOpening = (opening: Opening) => {
+    setEditingOpeningId(opening.id);
+    setOpeningKind(opening.kind === "WINDOW" ? "WINDOW" : "DOOR");
+    setDoorType(opening.door_type === "DOUBLE" ? "DOUBLE" : "SINGLE");
+    setOpeningWallId(opening.parent_wall_id);
+    setOpeningOffset(opening.offset_mm);
+    setOpeningWidth(opening.width.value);
+    setOpeningHeight(opening.height.value);
+    setWindowSill(opening.sill_height_mm);
+    setHingeSide(opening.hinge_side === "END" ? "END" : "START");
+    setOpensInward(opening.opens_inward !== false);
+    setOpeningError(null);
+    const wallIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
+    setSelectedWall(wallIndex);
+    setSelectedVertex(null);
+  };
+
+  const cancelOpeningEdit = () => {
+    setEditingOpeningId(null);
+    setOpeningError(null);
+  };
+
   const removeOpening = (openingId: string) => {
     setOpenings((current) => current.filter((opening) => opening.id !== openingId));
+    if (editingOpeningId === openingId) cancelOpeningEdit();
     markChanged();
   };
 
@@ -400,7 +437,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
           </section>
 
           <section className="tool-section opening-section">
-            <div className="tool-heading"><span>+</span><h2>Add doors & windows</h2></div>
+            <div className="tool-heading"><span>{editingOpeningId ? "↻" : "+"}</span><h2>{editingOpeningId ? "Update opening" : "Add doors & windows"}</h2></div>
+            {editingOpeningId && <p className="editing-notice">Editing <code>{editingOpeningId}</code>. Change any parameter and apply the update.</p>}
             <div className="mode-switch" role="group" aria-label="Opening type">
               <button className={openingKind === "DOOR" ? "active" : ""} onClick={() => { setOpeningKind("DOOR"); setOpeningHeight(2040); }}>Door</button>
               <button className={openingKind === "WINDOW" ? "active" : ""} onClick={() => { setOpeningKind("WINDOW"); setOpeningHeight(900); }}>Window</button>
@@ -426,10 +464,13 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               </>
             )}
             {openingError && <p className="inline-error">{openingError}</p>}
-            <button className="primary-small" onClick={addOpening}>Add {openingKind === "DOOR" ? doorType === "DOUBLE" ? "double door" : "single door" : "window"}</button>
+            <div className="opening-form-actions">
+              {editingOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}
+              <button className="primary-small" onClick={saveOpening}>{editingOpeningId ? "Update" : "Add"} {openingKind === "DOOR" ? doorType === "DOUBLE" ? "double door" : "single door" : "window"}</button>
+            </div>
             {openings.length > 0 && (
               <div className="opening-list">
-                {openings.map((opening) => <div key={opening.id}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind === "DOOR" ? opening.door_type === "DOUBLE" ? "DOUBLE DOOR" : "DOOR" : "WINDOW"}</span><p>{opening.parent_wall_id.replace("wall-", "W")} · {opening.width.value.toFixed(0)} mm</p><button onClick={() => removeOpening(opening.id)} aria-label={`Remove ${opening.id}`}>×</button></div>)}
+                {openings.map((opening) => <div key={opening.id} className={editingOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind === "DOOR" ? opening.door_type === "DOUBLE" ? "DOUBLE DOOR" : "DOOR" : "WINDOW"}</span><p>{opening.parent_wall_id.replace("wall-", "W")} · {opening.width.value.toFixed(0)} mm</p><button className="edit-opening" onClick={() => editOpening(opening)}>Edit</button><button className="remove-opening" onClick={() => removeOpening(opening.id)} aria-label={`Remove ${opening.id}`}>×</button></div>)}
               </div>
             )}
           </section>
@@ -592,7 +633,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
 
           <section className="tool-section validation-section">
             <div className="tool-heading"><span>4</span><h2>Validate & save</h2></div>
-            <label className="check-row"><input type="checkbox" checked={clearDependents} onChange={(event) => { const checked = event.target.checked; setClearDependents(checked); if (checked) setOpenings([]); markChanged(); }} /><span>Start as a clean room: remove current doors, windows and obstacles</span></label>
+            <label className="check-row"><input type="checkbox" checked={clearDependents} onChange={(event) => { const checked = event.target.checked; setClearDependents(checked); if (checked) { setOpenings([]); cancelOpeningEdit(); } markChanged(); }} /><span>Start as a clean room: remove current doors, windows and obstacles</span></label>
             <button className="validate-button" onClick={validate}>Validate geometry</button>
             {validationError && <div className="validation-fail"><strong>INVALID</strong><p>{validationError}</p></div>}
             {validation && (

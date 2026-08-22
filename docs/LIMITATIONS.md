@@ -4,8 +4,8 @@
   PostgreSQL persistence boundary, but a repository/session adapter is not wired yet.
 - The room editor supports arbitrary simple polygons, vertex dragging, coordinate entry, templates,
   wall-length edits, single/double doors, windows, and server validation. Existing openings can be
-  removed and recreated at measured offsets; direct drag-to-reposition for openings and graphical
-  obstacle editing remain future increments.
+  edited through their measured wall parameters; direct drag-to-reposition for openings and
+  graphical obstacle editing remain future increments.
 - The fit kernel uses deterministic 2.5D footprints and explicit Z intervals. Curved or freeform
   solids are deferred until a product requires them.
 - Cylinders use a 32-segment Shapely approximation for footprint predicates.
