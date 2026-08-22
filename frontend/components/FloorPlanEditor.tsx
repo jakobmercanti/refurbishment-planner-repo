@@ -178,6 +178,25 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     markChanged();
   };
 
+  const finishDragging = () => {
+    const startVertices = dragStart.current;
+    if (draggingVertex.current !== null && startVertices) {
+      setHistory((current) => [...current.slice(-29), cloneVertices(startVertices)]);
+    }
+    draggingVertex.current = null;
+    dragStart.current = null;
+  };
+
+  const cancelDragging = () => {
+    const startVertices = dragStart.current;
+    if (startVertices) {
+      setVertices(cloneVertices(startVertices));
+      setCoordinateInput(coordinateText(startVertices));
+    }
+    draggingVertex.current = null;
+    dragStart.current = null;
+  };
+
   const applyTemplate = (template: keyof typeof TEMPLATES) => {
     commitVertices(cloneVertices(TEMPLATES[template]));
     setSelectedVertex(0);
@@ -517,13 +536,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               if (index === null) return;
               updateVertex(index, fromPointer(event), false);
             }}
-            onPointerUp={() => {
-              if (draggingVertex.current !== null && dragStart.current) {
-                setHistory((current) => [...current.slice(-29), dragStart.current as Point2D[]]);
-              }
-              draggingVertex.current = null;
-              dragStart.current = null;
-            }}
+            onPointerUp={finishDragging}
+            onPointerCancel={cancelDragging}
           >
             <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="canvas-background" />
             <g className="plan-grid" aria-hidden>
