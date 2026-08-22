@@ -147,10 +147,52 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
 
   const bounds = useMemo(() => {
     const safeVertices = vertices.length ? vertices : [{ x: 0, y: 0 }];
-    const minX = Math.min(...safeVertices.map((vertex) => vertex.x)) - PADDING_MM;
-    const maxX = Math.max(...safeVertices.map((vertex) => vertex.x)) + PADDING_MM;
-    const minY = Math.min(...safeVertices.map((vertex) => vertex.y)) - PADDING_MM;
-    const maxY = Math.max(...safeVertices.map((vertex) => vertex.y)) + PADDING_MM;
+    const visiblePoints = cloneVertices(safeVertices);
+
+    openings.forEach((opening) => {
+      if (opening.kind !== "DOOR" || opening.opens_inward !== false || vertices.length < 2) return;
+      const wallIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
+      const wallStart = vertices[wallIndex];
+      const wallEnd = vertices[(wallIndex + 1) % vertices.length];
+      if (!wallStart || !wallEnd) return;
+
+      const dx = wallEnd.x - wallStart.x;
+      const dy = wallEnd.y - wallStart.y;
+      const wallLength = Math.hypot(dx, dy);
+      if (wallLength === 0) return;
+
+      const unitX = dx / wallLength;
+      const unitY = dy / wallLength;
+      const outwardNormal = { x: unitY, y: -unitX };
+      const openingStart = {
+        x: wallStart.x + unitX * opening.offset_mm,
+        y: wallStart.y + unitY * opening.offset_mm,
+      };
+      const openingEnd = {
+        x: openingStart.x + unitX * opening.width.value,
+        y: openingStart.y + unitY * opening.width.value,
+      };
+
+      if (opening.door_type === "DOUBLE") {
+        const leafLength = opening.width.value / 2;
+        visiblePoints.push(
+          { x: openingStart.x + outwardNormal.x * leafLength, y: openingStart.y + outwardNormal.y * leafLength },
+          { x: openingEnd.x + outwardNormal.x * leafLength, y: openingEnd.y + outwardNormal.y * leafLength },
+        );
+        return;
+      }
+
+      const hinge = opening.hinge_side === "END" ? openingEnd : openingStart;
+      visiblePoints.push({
+        x: hinge.x + outwardNormal.x * opening.width.value,
+        y: hinge.y + outwardNormal.y * opening.width.value,
+      });
+    });
+
+    const minX = Math.min(...visiblePoints.map((point) => point.x)) - PADDING_MM;
+    const maxX = Math.max(...visiblePoints.map((point) => point.x)) + PADDING_MM;
+    const minY = Math.min(...visiblePoints.map((point) => point.y)) - PADDING_MM;
+    const maxY = Math.max(...visiblePoints.map((point) => point.y)) + PADDING_MM;
     const width = Math.max(maxX - minX, 1000);
     const height = Math.max(maxY - minY, 1000);
     const scale = Math.min(CANVAS_WIDTH / width, CANVAS_HEIGHT / height);
@@ -163,7 +205,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
       offsetX: (CANVAS_WIDTH - drawnWidth) / 2,
       offsetY: (CANVAS_HEIGHT - drawnHeight) / 2,
     };
-  }, [vertices]);
+  }, [vertices, openings]);
 
   const [dragBounds, setDragBounds] = useState<typeof bounds | null>(null);
   const activeBounds = dragBounds ?? bounds;
