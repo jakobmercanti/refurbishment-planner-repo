@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.main import app
 from geometry.fixtures import build_l_shaped_fixture
-from geometry.models import Point2D
+from geometry.models import DoorType, OpeningKind, Point2D
 
 client = TestClient(app)
 
@@ -110,3 +110,40 @@ def test_room_save_accepts_valid_generic_rectangle() -> None:
     assert response.status_code == 200
     assert len(response.json()["vertices"]) == 4
     assert response.json()["version"] == 2
+
+
+def test_room_validation_accepts_double_door_and_rejects_opening_beyond_wall() -> None:
+    fixture = build_l_shaped_fixture()
+    door = next(opening for opening in fixture.room.openings if opening.kind is OpeningKind.DOOR)
+    double_door = door.model_copy(
+        update={"door_type": DoorType.DOUBLE, "width": door.width.model_copy(update={"value": 1600.0})}
+    )
+    valid_room = fixture.room.model_copy(update={"openings": [double_door]})
+    response = client.post("/rooms/validate", json=valid_room.model_dump(mode="json"))
+    assert response.status_code == 200
+    assert response.json()["invalidations"][0]["entity_id"] == "door-001"
+
+    invalid_door = double_door.model_copy(update={"offset_mm": 2000.0})
+    invalid_room = fixture.room.model_copy(update={"openings": [invalid_door]})
+    response = client.post("/rooms/validate", json=invalid_room.model_dump(mode="json"))
+    assert response.status_code == 422
+    assert "beyond the 3200.0 mm wall" in response.json()["detail"]
+
+
+def test_double_door_requires_door_fields() -> None:
+    fixture = build_l_shaped_fixture()
+    door = next(opening for opening in fixture.room.openings if opening.kind is OpeningKind.DOOR)
+    payload = door.model_dump(mode="json")
+    payload.update({"door_type": "DOUBLE", "hinge_side": None})
+    response = client.post(f"/rooms/{fixture.room.id}/openings", json=payload)
+    assert response.status_code == 422
+
+
+def test_room_validation_rejects_overlapping_openings_on_one_wall() -> None:
+    fixture = build_l_shaped_fixture()
+    door = next(opening for opening in fixture.room.openings if opening.kind is OpeningKind.DOOR)
+    second = door.model_copy(update={"id": "door-002", "offset_mm": 500.0})
+    room = fixture.room.model_copy(update={"openings": [door, second]})
+    response = client.post("/rooms/validate", json=room.model_dump(mode="json"))
+    assert response.status_code == 422
+    assert "overlap on wall-001" in response.json()["detail"]

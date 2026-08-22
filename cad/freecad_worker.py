@@ -67,27 +67,63 @@ def opening_cut_shape(
     return face_from_points([p1, p2, p3, p4]).extrude(App.Vector(0, 0, height))
 
 
-def door_swing_shape(start: dict[str, float], end: dict[str, float], opening: dict[str, object]) -> object:
-    ux, uy, _, _, _ = edge_geometry(start, end)
-    offset = float(opening["offset_mm"])
-    width = float(opening["width"]["value"])
-    hinge_at_start = opening.get("hinge_side") == "START"
-    if hinge_at_start:
-        hinge_x = float(start["x"]) + ux * offset
-        hinge_y = float(start["y"]) + uy * offset
-        initial = math.atan2(uy, ux)
-        direction = 1.0 if opening.get("opens_inward") else -1.0
-    else:
-        hinge_x = float(start["x"]) + ux * (offset + width)
-        hinge_y = float(start["y"]) + uy * (offset + width)
-        initial = math.atan2(-uy, -ux)
-        direction = -1.0 if opening.get("opens_inward") else 1.0
-    sweep = math.radians(float(opening.get("swing_angle_deg", 90.0))) * direction
+def door_leaf_swing_shape(
+    hinge_x: float,
+    hinge_y: float,
+    initial: float,
+    direction: float,
+    width: float,
+    swing_angle: float,
+) -> object:
+    sweep = math.radians(swing_angle) * direction
     points = [App.Vector(hinge_x, hinge_y, 0)]
     for step in range(49):
         angle = initial + sweep * step / 48.0
         points.append(App.Vector(hinge_x + width * math.cos(angle), hinge_y + width * math.sin(angle), 0))
     return face_from_points(points).extrude(App.Vector(0, 0, 10.0))
+
+
+def door_swing_shape(start: dict[str, float], end: dict[str, float], opening: dict[str, object]) -> object:
+    ux, uy, _, _, _ = edge_geometry(start, end)
+    offset = float(opening["offset_mm"])
+    width = float(opening["width"]["value"])
+    swing_angle = float(opening.get("swing_angle_deg", 90.0))
+    inward = bool(opening.get("opens_inward"))
+    start_x = float(start["x"]) + ux * offset
+    start_y = float(start["y"]) + uy * offset
+    end_x = start_x + ux * width
+    end_y = start_y + uy * width
+    if opening.get("door_type") == "DOUBLE":
+        half_width = width / 2.0
+        first = door_leaf_swing_shape(
+            start_x,
+            start_y,
+            math.atan2(uy, ux),
+            1.0 if inward else -1.0,
+            half_width,
+            swing_angle,
+        )
+        second = door_leaf_swing_shape(
+            end_x,
+            end_y,
+            math.atan2(-uy, -ux),
+            -1.0 if inward else 1.0,
+            half_width,
+            swing_angle,
+        )
+        return Part.makeCompound([first, second])
+    hinge_at_start = opening.get("hinge_side") == "START"
+    if hinge_at_start:
+        hinge_x = start_x
+        hinge_y = start_y
+        initial = math.atan2(uy, ux)
+        direction = 1.0 if inward else -1.0
+    else:
+        hinge_x = end_x
+        hinge_y = end_y
+        initial = math.atan2(-uy, -ux)
+        direction = -1.0 if inward else 1.0
+    return door_leaf_swing_shape(hinge_x, hinge_y, initial, direction, width, swing_angle)
 
 
 def rotated_box(center: dict[str, float], dimensions: dict[str, object], base_z: float, rotation: float) -> object:

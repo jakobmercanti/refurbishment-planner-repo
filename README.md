@@ -4,7 +4,8 @@ Renovation Fit is an engineering-first platform that determines whether a real p
 inside a measured room. The authoritative path is deterministic: verified measurements,
 manufacturer specifications, explicit uncertainty intervals, geometry, fit rules, and only then
 CAD/browser visualisation. The browser app includes an interactive millimetre floor-plan editor
-for drawing, dragging, or entering arbitrary bathroom polygons before validation.
+for drawing, dragging, or entering arbitrary bathroom polygons before validation. Doors and
+windows attach to measured wall offsets, including single- and double-leaf doors.
 
 Milestone 1 uses an L-shaped bathroom, an inward-opening door, a window, a vanity obstacle, and a
 parametric shower enclosure. It produces reproducible `FIT`, `VERIFY`, and `FAIL` results with

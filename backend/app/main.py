@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -84,18 +85,29 @@ def validate_room_draft(room: RoomDefinition) -> RoomValidationResponse:
     walls = derive_walls(room)
     wall_lookup = {wall.id: wall for wall in walls}
     invalidations: list[GeometryInvalidation] = []
+    openings_by_wall: dict[str, list[GenericOpening]] = {}
     for opening in room.openings:
         wall = wall_lookup.get(opening.parent_wall_id)
         if wall is None:
-            reason = f"Parent wall {opening.parent_wall_id} no longer exists."
-        elif opening.offset_mm + opening.width.value > wall.length_mm:
-            reason = (
-                f"Opening ends at {opening.offset_mm + opening.width.value:.1f} mm, beyond "
-                f"the revised {wall.length_mm:.1f} mm wall."
+            raise PolygonValidationError(f"opening {opening.id} references missing {opening.parent_wall_id}")
+        if opening.offset_mm + opening.width.value > wall.length_mm:
+            raise PolygonValidationError(
+                f"opening {opening.id} ends at {opening.offset_mm + opening.width.value:.1f} mm, "
+                f"beyond the {wall.length_mm:.1f} mm wall"
             )
-        else:
-            reason = "Wall geometry changed; re-confirm the opening offset and width before fit analysis."
+        if opening.sill_height_mm + opening.height.value > room.wall_height.value:
+            raise PolygonValidationError(
+                f"opening {opening.id} top is {opening.sill_height_mm + opening.height.value:.1f} mm, "
+                f"above the {room.wall_height.value:.1f} mm wall"
+            )
+        openings_by_wall.setdefault(opening.parent_wall_id, []).append(opening)
+        reason = "Wall geometry changed; re-confirm the opening offset and width before fit analysis."
         invalidations.append(GeometryInvalidation(entity_id=opening.id, entity_type="OPENING", reason=reason))
+    for wall_id, wall_openings in openings_by_wall.items():
+        ordered = sorted(wall_openings, key=lambda item: item.offset_mm)
+        for first, second in pairwise(ordered):
+            if first.offset_mm + first.width.value > second.offset_mm:
+                raise PolygonValidationError(f"openings {first.id} and {second.id} overlap on {wall_id}")
     for obstacle in room.obstacles:
         reason = (
             "Obstacle is partly outside the revised internal room polygon."
@@ -167,7 +179,7 @@ def add_opening(room_id: UUID, opening: GenericOpening) -> RoomDefinition:
             "updated_at": datetime.now(UTC),
         }
     )
-    derive_walls(updated)
+    validate_room_draft(updated)
     rooms[room_id] = updated
     return updated
 

@@ -6,9 +6,12 @@ import math
 
 from shapely import affinity
 from shapely.geometry import LineString, Point, Polygon, box
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
 
 from geometry.constants import DOOR_SWING_SEGMENTS, GEOMETRY_EPSILON_MM
 from geometry.models import (
+    DoorType,
     GenericOpening,
     HingeSide,
     ObstacleDefinition,
@@ -73,11 +76,38 @@ def opening_line(room: RoomDefinition, opening: GenericOpening) -> LineString:
     return LineString([(start.x, start.y), (end.x, end.y)])
 
 
-def door_swing_envelope(room: RoomDefinition, door: GenericOpening) -> Polygon:
+def _door_leaf_sweep(
+    hinge: Point,
+    closed_angle: float,
+    radius: float,
+    direction: float,
+    swing_angle_deg: float,
+) -> Polygon:
+    sweep_radians = math.radians(swing_angle_deg) * direction
+    arc_points = []
+    for step in range(DOOR_SWING_SEGMENTS + 1):
+        angle = closed_angle + sweep_radians * step / DOOR_SWING_SEGMENTS
+        arc_points.append((hinge.x + radius * math.cos(angle), hinge.y + radius * math.sin(angle)))
+    return Polygon([(hinge.x, hinge.y), *arc_points, (hinge.x, hinge.y)])
+
+
+def door_swing_envelope(room: RoomDefinition, door: GenericOpening) -> BaseGeometry:
     if door.kind is not OpeningKind.DOOR:
         raise ValueError("door_swing_envelope requires a door opening")
     wall = wall_by_id(room, door.parent_wall_id)
     start, end = opening_endpoints(door, wall)
+    swing_angle = door.swing_angle_deg or 90.0
+    if door.door_type is DoorType.DOUBLE:
+        leaf_width = door.width.value / 2.0
+        start_angle = math.atan2(end.y - start.y, end.x - start.x)
+        end_angle = math.atan2(start.y - end.y, start.x - end.x)
+        inward = bool(door.opens_inward)
+        return unary_union(
+            [
+                _door_leaf_sweep(start, start_angle, leaf_width, 1.0 if inward else -1.0, swing_angle),
+                _door_leaf_sweep(end, end_angle, leaf_width, -1.0 if inward else 1.0, swing_angle),
+            ]
+        )
     if door.hinge_side is HingeSide.START:
         hinge = start
         closed_angle = math.atan2(end.y - start.y, end.x - start.x)
@@ -86,13 +116,7 @@ def door_swing_envelope(room: RoomDefinition, door: GenericOpening) -> Polygon:
         hinge = end
         closed_angle = math.atan2(start.y - end.y, start.x - end.x)
         direction = -1.0 if door.opens_inward else 1.0
-    sweep_radians = math.radians(door.swing_angle_deg or 90.0) * direction
-    radius = door.width.value
-    arc_points = []
-    for step in range(DOOR_SWING_SEGMENTS + 1):
-        angle = closed_angle + sweep_radians * step / DOOR_SWING_SEGMENTS
-        arc_points.append((hinge.x + radius * math.cos(angle), hinge.y + radius * math.sin(angle)))
-    return Polygon([(hinge.x, hinge.y), *arc_points, (hinge.x, hinge.y)])
+    return _door_leaf_sweep(hinge, closed_angle, door.width.value, direction, swing_angle)
 
 
 def z_intervals_overlap(base_a: float, height_a: float, base_b: float, height_b: float) -> bool:

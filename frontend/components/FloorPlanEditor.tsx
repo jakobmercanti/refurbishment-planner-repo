@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import type {
+  Opening,
   Point2D,
   Room,
   RoomValidationResponse,
@@ -83,6 +84,17 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [wallHeight, setWallHeight] = useState(room.wall_height.value);
   const [wallThickness, setWallThickness] = useState(room.wall_thickness.value);
+  const [openings, setOpenings] = useState<Opening[]>(() => room.openings.map((opening) => ({ ...opening })));
+  const [openingKind, setOpeningKind] = useState<"DOOR" | "WINDOW">("DOOR");
+  const [doorType, setDoorType] = useState<"SINGLE" | "DOUBLE">("SINGLE");
+  const [openingWallId, setOpeningWallId] = useState("wall-001");
+  const [openingOffset, setOpeningOffset] = useState(200);
+  const [openingWidth, setOpeningWidth] = useState(800);
+  const [openingHeight, setOpeningHeight] = useState(2040);
+  const [windowSill, setWindowSill] = useState(900);
+  const [hingeSide, setHingeSide] = useState<"START" | "END">("START");
+  const [opensInward, setOpensInward] = useState(true);
+  const [openingError, setOpeningError] = useState<string | null>(null);
   const [coordinateInput, setCoordinateInput] = useState(() => coordinateText(room.vertices));
   const [coordinateError, setCoordinateError] = useState<string | null>(null);
   const [validation, setValidation] = useState<RoomValidationResponse | null>(null);
@@ -234,6 +246,60 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     setWallLengthInput("");
   };
 
+  const addOpening = () => {
+    setOpeningError(null);
+    const wallIndex = Number(openingWallId.split("-")[1]) - 1;
+    const start = vertices[wallIndex];
+    const end = vertices[(wallIndex + 1) % vertices.length];
+    if (!start || !end) {
+      setOpeningError("Choose a wall from the current room outline.");
+      return;
+    }
+    const wallLength = Math.hypot(end.x - start.x, end.y - start.y);
+    if (![openingOffset, openingWidth, openingHeight].every(Number.isFinite) || openingOffset < 0 || openingWidth <= 0 || openingHeight <= 0) {
+      setOpeningError("Offset, width, and height must be valid positive millimetre values.");
+      return;
+    }
+    if (openingOffset + openingWidth > wallLength) {
+      setOpeningError(`The opening ends at ${openingOffset + openingWidth} mm, beyond this ${wallLength.toFixed(0)} mm wall.`);
+      return;
+    }
+    if (openingKind === "WINDOW" && (!Number.isFinite(windowSill) || windowSill < 0)) {
+      setOpeningError("Window sill height must be zero or greater.");
+      return;
+    }
+    const measurement = (value: number) => ({
+      value,
+      uncertainty_mm: 5,
+      verified: false,
+      source_type: "USER_MEASURED",
+    });
+    const opening: Opening = {
+      id: `${openingKind === "DOOR" ? "door" : "window"}-${crypto.randomUUID().slice(0, 8)}`,
+      kind: openingKind,
+      parent_wall_id: openingWallId,
+      offset_mm: openingOffset,
+      width: measurement(openingWidth),
+      height: measurement(openingHeight),
+      sill_height_mm: openingKind === "WINDOW" ? windowSill : 0,
+      reveal_depth_mm: wallThickness,
+      ...(openingKind === "DOOR" ? {
+        hinge_side: hingeSide,
+        door_type: doorType,
+        swing_angle_deg: 90,
+        opens_inward: opensInward,
+      } : {}),
+    };
+    setOpenings((current) => [...current, opening]);
+    setClearDependents(false);
+    markChanged();
+  };
+
+  const removeOpening = (openingId: string) => {
+    setOpenings((current) => current.filter((opening) => opening.id !== openingId));
+    markChanged();
+  };
+
   const makeDraft = (): Room => ({
     ...room,
     version: room.version + (dirty ? 1 : 0),
@@ -250,7 +316,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
       verified: wallThickness === room.wall_thickness.value && room.wall_thickness.verified,
       source_type: "USER_MEASURED",
     },
-    openings: clearDependents ? [] : room.openings,
+    openings: clearDependents ? [] : openings,
     obstacles: clearDependents ? [] : room.obstacles,
   });
 
@@ -333,6 +399,41 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
             <label className="field"><span>Wall thickness <small>mm</small></span><input type="number" min="1" max="2000" value={wallThickness} onChange={(event) => { setWallThickness(Number(event.target.value)); markChanged(); }} /></label>
           </section>
 
+          <section className="tool-section opening-section">
+            <div className="tool-heading"><span>+</span><h2>Add doors & windows</h2></div>
+            <div className="mode-switch" role="group" aria-label="Opening type">
+              <button className={openingKind === "DOOR" ? "active" : ""} onClick={() => { setOpeningKind("DOOR"); setOpeningHeight(2040); }}>Door</button>
+              <button className={openingKind === "WINDOW" ? "active" : ""} onClick={() => { setOpeningKind("WINDOW"); setOpeningHeight(900); }}>Window</button>
+            </div>
+            <label className="field"><span>Parent wall</span>
+              <select value={openingWallId} onChange={(event) => setOpeningWallId(event.target.value)}>
+                {vertices.map((_, index) => <option key={`opening-wall-${index}`} value={`wall-${String(index + 1).padStart(3, "0")}`}>Wall {index + 1}</option>)}
+              </select>
+            </label>
+            <div className="coordinate-fields">
+              <label className="field"><span>Offset <small>mm</small></span><input type="number" min="0" value={openingOffset} onChange={(event) => setOpeningOffset(Number(event.target.value))} /></label>
+              <label className="field"><span>Width <small>mm</small></span><input type="number" min="1" value={openingWidth} onChange={(event) => setOpeningWidth(Number(event.target.value))} /></label>
+              <label className="field"><span>Height <small>mm</small></span><input type="number" min="1" value={openingHeight} onChange={(event) => setOpeningHeight(Number(event.target.value))} /></label>
+              {openingKind === "WINDOW" && <label className="field"><span>Sill height <small>mm</small></span><input type="number" min="0" value={windowSill} onChange={(event) => setWindowSill(Number(event.target.value))} /></label>}
+            </div>
+            {openingKind === "DOOR" && (
+              <>
+                <label className="check-row double-door-choice"><input type="checkbox" checked={doorType === "DOUBLE"} onChange={(event) => { const isDouble = event.target.checked; setDoorType(isDouble ? "DOUBLE" : "SINGLE"); if (isDouble && openingWidth < 1200) setOpeningWidth(1600); }} /><span><strong>Double door</strong> — two leaves meeting at the centre</span></label>
+                <div className="coordinate-fields">
+                  <label className="field"><span>Hinge side</span><select value={hingeSide} onChange={(event) => setHingeSide(event.target.value as "START" | "END")} disabled={doorType === "DOUBLE"}><option value="START">Wall start</option><option value="END">Wall end</option></select></label>
+                  <label className="field"><span>Opening direction</span><select value={opensInward ? "INWARD" : "OUTWARD"} onChange={(event) => setOpensInward(event.target.value === "INWARD")}><option value="INWARD">Into room</option><option value="OUTWARD">Out of room</option></select></label>
+                </div>
+              </>
+            )}
+            {openingError && <p className="inline-error">{openingError}</p>}
+            <button className="primary-small" onClick={addOpening}>Add {openingKind === "DOOR" ? doorType === "DOUBLE" ? "double door" : "single door" : "window"}</button>
+            {openings.length > 0 && (
+              <div className="opening-list">
+                {openings.map((opening) => <div key={opening.id}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind === "DOOR" ? opening.door_type === "DOUBLE" ? "DOUBLE DOOR" : "DOOR" : "WINDOW"}</span><p>{opening.parent_wall_id.replace("wall-", "W")} · {opening.width.value.toFixed(0)} mm</p><button onClick={() => removeOpening(opening.id)} aria-label={`Remove ${opening.id}`}>×</button></div>)}
+              </div>
+            )}
+          </section>
+
           {selectedVertex !== null && vertices[selectedVertex] && (
             <section className="tool-section selected-properties">
               <div className="tool-heading"><span>V{selectedVertex + 1}</span><h2>Selected corner</h2></div>
@@ -397,7 +498,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 <g key={`wall-${index}`}>
                   {vertices.length > 1 && (
                     <>
-                      <line className={selectedWall === index ? "wall-line selected" : "wall-line"} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onPointerDown={(event) => { event.stopPropagation(); setSelectedWall(index); setSelectedVertex(null); setMode("SELECT"); }} />
+                      <line className={selectedWall === index ? "wall-line selected" : "wall-line"} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onPointerDown={(event) => { event.stopPropagation(); setSelectedWall(index); setSelectedVertex(null); setOpeningWallId(`wall-${String(index + 1).padStart(3, "0")}`); setMode("SELECT"); }} />
                       <text className="wall-label" x={(start.x + end.x) / 2} y={(start.y + end.y) / 2 - 8}>{length.toFixed(0)} mm</text>
                     </>
                   )}
@@ -420,6 +521,62 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 </g>
               );
             })}
+            {openings.map((opening) => {
+              const wallIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
+              const wallStart = vertices[wallIndex];
+              const wallEnd = vertices[(wallIndex + 1) % vertices.length];
+              if (!wallStart || !wallEnd) return null;
+              const dx = wallEnd.x - wallStart.x;
+              const dy = wallEnd.y - wallStart.y;
+              const wallLength = Math.hypot(dx, dy);
+              if (wallLength === 0) return null;
+              const unitX = dx / wallLength;
+              const unitY = dy / wallLength;
+              const openingStartModel = { x: wallStart.x + unitX * opening.offset_mm, y: wallStart.y + unitY * opening.offset_mm };
+              const openingEndModel = { x: openingStartModel.x + unitX * opening.width.value, y: openingStartModel.y + unitY * opening.width.value };
+              const openingStart = toScreen(openingStartModel);
+              const openingEnd = toScreen(openingEndModel);
+              const centre = { x: (openingStart.x + openingEnd.x) / 2, y: (openingStart.y + openingEnd.y) / 2 };
+              if (opening.kind === "WINDOW") {
+                return (
+                  <g key={opening.id} className="opening-symbol window-symbol">
+                    <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                    <line className="window-frame" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                    <line className="window-core" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                    <text className="opening-label" x={centre.x} y={centre.y - 15}>WINDOW</text>
+                  </g>
+                );
+              }
+              const inwardSign = opening.opens_inward === false ? -1 : 1;
+              const normal = { x: -unitY * inwardSign, y: unitX * inwardSign };
+              if (opening.door_type === "DOUBLE") {
+                const halfWidth = opening.width.value / 2;
+                const firstLeafEnd = toScreen({ x: openingStartModel.x + normal.x * halfWidth, y: openingStartModel.y + normal.y * halfWidth });
+                const secondLeafEnd = toScreen({ x: openingEndModel.x + normal.x * halfWidth, y: openingEndModel.y + normal.y * halfWidth });
+                return (
+                  <g key={opening.id} className="opening-symbol double-door-symbol">
+                    <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                    <line className="double-door-box" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                    <line className="double-door-divider" x1={centre.x - normal.x * 7} y1={centre.y + normal.y * 7} x2={centre.x + normal.x * 7} y2={centre.y - normal.y * 7} />
+                    <line className="door-leaf" x1={openingStart.x} y1={openingStart.y} x2={firstLeafEnd.x} y2={firstLeafEnd.y} />
+                    <line className="door-leaf" x1={openingEnd.x} y1={openingEnd.y} x2={secondLeafEnd.x} y2={secondLeafEnd.y} />
+                    <text className="opening-label" x={centre.x} y={centre.y - 17}>DOUBLE DOOR</text>
+                  </g>
+                );
+              }
+              const hingeAtStart = opening.hinge_side !== "END";
+              const hinge = hingeAtStart ? openingStartModel : openingEndModel;
+              const leafEnd = toScreen({ x: hinge.x + normal.x * opening.width.value, y: hinge.y + normal.y * opening.width.value });
+              const hingeScreen = hingeAtStart ? openingStart : openingEnd;
+              return (
+                <g key={opening.id} className="opening-symbol door-symbol">
+                  <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                  <line className="door-threshold" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                  <line className="door-leaf" x1={hingeScreen.x} y1={hingeScreen.y} x2={leafEnd.x} y2={leafEnd.y} />
+                  <text className="opening-label" x={centre.x} y={centre.y - 15}>DOOR</text>
+                </g>
+              );
+            })}
           </svg>
           <div className="drawing-scale"><span>Coordinates and dimensions are authoritative millimetres</span><span>Grid display auto-fits the current polygon</span></div>
         </div>
@@ -435,7 +592,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
 
           <section className="tool-section validation-section">
             <div className="tool-heading"><span>4</span><h2>Validate & save</h2></div>
-            <label className="check-row"><input type="checkbox" checked={clearDependents} onChange={(event) => { setClearDependents(event.target.checked); markChanged(); }} /><span>Start as a clean room: remove current doors, windows and obstacles</span></label>
+            <label className="check-row"><input type="checkbox" checked={clearDependents} onChange={(event) => { const checked = event.target.checked; setClearDependents(checked); if (checked) setOpenings([]); markChanged(); }} /><span>Start as a clean room: remove current doors, windows and obstacles</span></label>
             <button className="validate-button" onClick={validate}>Validate geometry</button>
             {validationError && <div className="validation-fail"><strong>INVALID</strong><p>{validationError}</p></div>}
             {validation && (

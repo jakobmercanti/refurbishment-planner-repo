@@ -196,26 +196,24 @@ function ClearanceMesh({ product, placement }: { product: Product; placement: Pl
   );
 }
 
-function DoorSwing({ room, door }: { room: Room; door: Opening }) {
-  const wallIndex = Number(door.parent_wall_id.split("-")[1]) - 1;
-  const start = room.vertices[wallIndex];
-  const end = room.vertices[(wallIndex + 1) % room.vertices.length];
-  const vector = wallVector(start, end);
-  const startX = start.x + vector.dx * door.offset_mm;
-  const startY = start.y + vector.dy * door.offset_mm;
-  const endX = startX + vector.dx * door.width.value;
-  const endY = startY + vector.dy * door.width.value;
-  const hingeStart = door.hinge_side === "START";
-  const hinge = hingeStart ? { x: startX, y: startY } : { x: endX, y: endY };
-  const initial = Math.atan2(hingeStart ? vector.dy : -vector.dy, hingeStart ? vector.dx : -vector.dx);
-  const direction = hingeStart ? 1 : -1;
+function DoorSwingLeaf({
+  hinge,
+  initial,
+  direction,
+  radius,
+}: {
+  hinge: Point2D;
+  initial: number;
+  direction: number;
+  radius: number;
+}) {
   const shape = new THREE.Shape();
   shape.moveTo(hinge.x * SCALE, hinge.y * SCALE);
   for (let step = 0; step <= 32; step += 1) {
     const angle = initial + direction * Math.PI / 2 * step / 32;
     shape.lineTo(
-      (hinge.x + door.width.value * Math.cos(angle)) * SCALE,
-      (hinge.y + door.width.value * Math.sin(angle)) * SCALE,
+      (hinge.x + radius * Math.cos(angle)) * SCALE,
+      (hinge.y + radius * Math.sin(angle)) * SCALE,
     );
   }
   shape.closePath();
@@ -225,6 +223,31 @@ function DoorSwing({ room, door }: { room: Room; door: Opening }) {
       <meshStandardMaterial color="#e5a51b" transparent opacity={0.28} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   );
+}
+
+function DoorSwing({ room, door }: { room: Room; door: Opening }) {
+  const wallIndex = Number(door.parent_wall_id.split("-")[1]) - 1;
+  const start = room.vertices[wallIndex];
+  const end = room.vertices[(wallIndex + 1) % room.vertices.length];
+  const vector = wallVector(start, end);
+  const startX = start.x + vector.dx * door.offset_mm;
+  const startY = start.y + vector.dy * door.offset_mm;
+  const endX = startX + vector.dx * door.width.value;
+  const endY = startY + vector.dy * door.width.value;
+  const inward = door.opens_inward !== false;
+  if (door.door_type === "DOUBLE") {
+    return (
+      <>
+        <DoorSwingLeaf hinge={{ x: startX, y: startY }} initial={vector.angle} direction={inward ? 1 : -1} radius={door.width.value / 2} />
+        <DoorSwingLeaf hinge={{ x: endX, y: endY }} initial={vector.angle + Math.PI} direction={inward ? -1 : 1} radius={door.width.value / 2} />
+      </>
+    );
+  }
+  const hingeStart = door.hinge_side === "START";
+  const hinge = hingeStart ? { x: startX, y: startY } : { x: endX, y: endY };
+  const initial = Math.atan2(hingeStart ? vector.dy : -vector.dy, hingeStart ? vector.dx : -vector.dx);
+  const direction = hingeStart ? (inward ? 1 : -1) : (inward ? -1 : 1);
+  return <DoorSwingLeaf hinge={hinge} initial={initial} direction={direction} radius={door.width.value} />;
 }
 
 function CameraPreset({ preset }: { preset: "perspective" | "top" }) {
@@ -322,4 +345,3 @@ export function EngineeringViewer(props: ViewerProps) {
     </div>
   );
 }
-

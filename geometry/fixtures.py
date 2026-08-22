@@ -6,6 +6,7 @@ from uuid import UUID
 
 from geometry.models import (
     Dimensions3D,
+    DoorType,
     FixtureBundle,
     GenericOpening,
     HingeSide,
@@ -51,6 +52,7 @@ def build_l_shaped_fixture() -> FixtureBundle:
         width=measured(800.0, 2.0),
         height=measured(2040.0, 2.0),
         hinge_side=HingeSide.START,
+        door_type=DoorType.SINGLE,
         swing_angle_deg=90.0,
         opens_inward=True,
     )

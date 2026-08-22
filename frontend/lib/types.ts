@@ -27,9 +27,12 @@ export interface Opening {
   width: Measurement;
   height: Measurement;
   sill_height_mm: number;
+  reveal_depth_mm?: number;
   hinge_side?: "START" | "END";
+  door_type?: "SINGLE" | "DOUBLE";
   swing_angle_deg?: number;
   opens_inward?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Obstacle {

@@ -55,6 +55,11 @@ class HingeSide(StrEnum):
     END = "END"
 
 
+class DoorType(StrEnum):
+    SINGLE = "SINGLE"
+    DOUBLE = "DOUBLE"
+
+
 class FitStatus(StrEnum):
     FIT = "FIT"
     VERIFY = "VERIFY"
@@ -164,6 +169,7 @@ class GenericOpening(BaseModel):
     sill_height_mm: float = Field(default=0.0, ge=0.0)
     reveal_depth_mm: float = Field(default=0.0, ge=0.0)
     hinge_side: HingeSide | None = None
+    door_type: DoorType | None = None
     swing_angle_deg: float | None = Field(default=None, gt=0.0, le=180.0)
     opens_inward: bool | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -178,8 +184,12 @@ class GenericOpening(BaseModel):
         if self.kind is OpeningKind.DOOR:
             if self.hinge_side is None or self.swing_angle_deg is None or self.opens_inward is None:
                 raise ValueError("doors require hinge_side, swing_angle_deg, and opens_inward")
+            if self.door_type is None:
+                self.door_type = DoorType.SINGLE
             if self.sill_height_mm != 0:
                 raise ValueError("milestone-1 doors must start at finished floor level")
+        elif self.door_type is not None:
+            raise ValueError("door_type is only valid for door openings")
         return self
 
 

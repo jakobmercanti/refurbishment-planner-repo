@@ -107,8 +107,8 @@ button { font: inherit; }
 .selected-properties { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--line); display: grid; gap: 9px; }
 .selected-properties h3 { margin: 0; font-size: 12px; }
 .field { display: grid; gap: 5px; color: var(--muted); font: 600 9px var(--font-mono); }
-.field input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: #fcfdfb; color: var(--ink); font: 500 11px var(--font-mono); }
-.field input:focus, textarea:focus { outline: 2px solid rgba(24,61,52,.18); border-color: var(--deep); }
+.field input, .field select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: #fcfdfb; color: var(--ink); font: 500 11px var(--font-mono); }
+.field input:focus, .field select:focus, textarea:focus { outline: 2px solid rgba(24,61,52,.18); border-color: var(--deep); }
 .coordinate-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .primary-small, .validate-button { width: 100%; border-color: var(--deep); background: var(--deep); color: white; }
 .danger-button { width: 100%; color: var(--fail); border-color: #efc5c1; background: var(--fail-soft); }
@@ -127,6 +127,15 @@ button { font: inherit; }
 .vertex-handle:active { cursor: grabbing; }
 .vertex-handle.selected { fill: #ffcb71; stroke: #8d5700; }
 .vertex-label { fill: var(--ink); font: 700 8px var(--font-mono); text-anchor: middle; }
+.opening-symbol { pointer-events: none; }
+.opening-gap { stroke: white; stroke-width: 15; }
+.door-threshold { stroke: #cb851a; stroke-width: 6; stroke-linecap: square; }
+.door-leaf { stroke: #cb851a; stroke-width: 4; stroke-linecap: round; }
+.double-door-box { stroke: #c97912; stroke-width: 13; stroke-linecap: square; }
+.double-door-divider { stroke: white; stroke-width: 3; }
+.window-frame { stroke: #287fb8; stroke-width: 11; stroke-linecap: square; }
+.window-core { stroke: white; stroke-width: 3; }
+.opening-label { fill: #52615b; font: 750 8px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: white; stroke-width: 4px; }
 .drawing-scale { display: flex; justify-content: space-between; gap: 12px; padding: 8px 11px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; background: white; color: var(--muted); font: 500 8px var(--font-mono); }
 textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .validation-section { border-color: #b8c7c0; }
@@ -142,6 +151,16 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .save-actions .save-button { border-color: var(--deep); background: var(--deep); color: white; }
 .save-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .inline-error { margin: 7px 0; color: var(--fail); font-size: 10px; line-height: 1.4; }
+.opening-section .mode-switch { margin-top: 2px; }
+.double-door-choice { padding: 9px; border: 1px solid #ecc98b; border-radius: 7px; background: #fff8e9; color: #664512; }
+.double-door-choice input { width: 17px; height: 17px; }
+.opening-list { display: grid; gap: 6px; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--line); }
+.opening-list > div { display: grid; grid-template-columns: auto 1fr auto; gap: 7px; align-items: center; padding: 7px; border: 1px solid var(--line); border-radius: 7px; }
+.opening-list p { margin: 0; color: var(--muted); font: 500 9px var(--font-mono); }
+.opening-list button { width: 24px; height: 24px; border: 0; border-radius: 5px; background: var(--fail-soft); color: var(--fail); cursor: pointer; }
+.opening-chip { padding: 4px 6px; border-radius: 4px; font: 750 7px var(--font-mono); }
+.opening-chip.door { background: var(--verify-soft); color: var(--verify); }
+.opening-chip.window { background: #e5f1fa; color: #24668f; }
 .stale-analysis { margin: 14px 0; padding: 15px; border: 1px solid #e4bd79; border-radius: 10px; background: var(--verify-soft); }
 .stale-analysis strong { font: 750 11px var(--font-mono); color: var(--verify); }
 .stale-analysis p { margin: 7px 0 10px; font-size: 11px; line-height: 1.45; }
