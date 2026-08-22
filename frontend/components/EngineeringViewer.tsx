@@ -28,6 +28,34 @@ function wallVector(start: Point2D, end: Point2D) {
   return { dx: dx / length, dy: dy / length, length, angle: Math.atan2(dy, dx) };
 }
 
+function cross(a: Point2D, b: Point2D) {
+  return a.x * b.y - a.y * b.x;
+}
+
+function exteriorCorner(vertices: Point2D[], index: number, thickness: number): Point2D {
+  const vertex = vertices[index];
+  const previous = vertices[(index - 1 + vertices.length) % vertices.length];
+  const next = vertices[(index + 1) % vertices.length];
+  const incoming = wallVector(previous, vertex);
+  const outgoing = wallVector(vertex, next);
+  const previousOffset = { x: vertex.x + incoming.dy * thickness, y: vertex.y - incoming.dx * thickness };
+  const nextOffset = { x: vertex.x + outgoing.dy * thickness, y: vertex.y - outgoing.dx * thickness };
+  const denominator = cross({ x: incoming.dx, y: incoming.dy }, { x: outgoing.dx, y: outgoing.dy });
+  if (Math.abs(denominator) < 1e-9) {
+    return { x: (previousOffset.x + nextOffset.x) / 2, y: (previousOffset.y + nextOffset.y) / 2 };
+  }
+  const between = { x: nextOffset.x - previousOffset.x, y: nextOffset.y - previousOffset.y };
+  const distance = cross(between, { x: outgoing.dx, y: outgoing.dy }) / denominator;
+  const corner = {
+    x: previousOffset.x + incoming.dx * distance,
+    y: previousOffset.y + incoming.dy * distance,
+  };
+  if (Math.hypot(corner.x - vertex.x, corner.y - vertex.y) > thickness * 4) {
+    return { x: (previousOffset.x + nextOffset.x) / 2, y: (previousOffset.y + nextOffset.y) / 2 };
+  }
+  return corner;
+}
+
 function WallPiece({
   start,
   end,
@@ -36,6 +64,9 @@ function WallPiece({
   base,
   height,
   thickness,
+  outerStart,
+  outerEnd,
+  wallLength,
 }: {
   start: Point2D;
   end: Point2D;
@@ -44,23 +75,40 @@ function WallPiece({
   base: number;
   height: number;
   thickness: number;
+  outerStart: Point2D;
+  outerEnd: Point2D;
+  wallLength: number;
 }) {
   if (length <= 0 || height <= 0) return null;
   const vector = wallVector(start, end);
-  const midpoint = from + length / 2;
   const exteriorX = vector.dy;
   const exteriorY = -vector.dx;
-  const centerX = start.x + vector.dx * midpoint + exteriorX * thickness / 2;
-  const centerY = start.y + vector.dy * midpoint + exteriorY * thickness / 2;
+  const to = from + length;
+  const innerFrom = { x: start.x + vector.dx * from, y: start.y + vector.dy * from };
+  const innerTo = { x: start.x + vector.dx * to, y: start.y + vector.dy * to };
+  const offsetAt = (distance: number, corner: Point2D, atCorner: boolean) => atCorner
+    ? corner
+    : {
+        x: start.x + vector.dx * distance + exteriorX * thickness,
+        y: start.y + vector.dy * distance + exteriorY * thickness,
+      };
+  const outsideFrom = offsetAt(from, outerStart, Math.abs(from) < 1e-6);
+  const outsideTo = offsetAt(to, outerEnd, Math.abs(to - wallLength) < 1e-6);
+  const shape = new THREE.Shape();
+  shape.moveTo(innerFrom.x * SCALE, innerFrom.y * SCALE);
+  shape.lineTo(innerTo.x * SCALE, innerTo.y * SCALE);
+  shape.lineTo(outsideTo.x * SCALE, outsideTo.y * SCALE);
+  shape.lineTo(outsideFrom.x * SCALE, outsideFrom.y * SCALE);
+  shape.closePath();
   return (
     <mesh
-      position={[centerX * SCALE, (base + height / 2) * SCALE, -centerY * SCALE]}
-      rotation={[0, vector.angle, 0]}
+      position={[0, base * SCALE, 0]}
+      rotation={[-Math.PI / 2, 0, 0]}
       castShadow
       receiveShadow
     >
-      <boxGeometry args={[length * SCALE, height * SCALE, thickness * SCALE]} />
-      <meshStandardMaterial color="#d9d4c8" roughness={0.82} />
+      <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
+      <meshStandardMaterial color="#d9d4c8" roughness={0.82} side={THREE.DoubleSide} />
     </mesh>
   );
 }
@@ -77,6 +125,8 @@ function WallWithOpenings({
   end: Point2D;
 }) {
   const vector = wallVector(start, end);
+  const outerStart = exteriorCorner(room.vertices, index, room.wall_thickness.value);
+  const outerEnd = exteriorCorner(room.vertices, (index + 1) % room.vertices.length, room.wall_thickness.value);
   const wallId = `wall-${String(index + 1).padStart(3, "0")}`;
   const openings = room.openings
     .filter((opening) => opening.parent_wall_id === wallId)
@@ -94,6 +144,9 @@ function WallWithOpenings({
         base={0}
         height={room.wall_height.value}
         thickness={room.wall_thickness.value}
+        outerStart={outerStart}
+        outerEnd={outerEnd}
+        wallLength={vector.length}
       />,
     );
     if (opening.sill_height_mm > 0) {
@@ -107,6 +160,9 @@ function WallWithOpenings({
           base={0}
           height={opening.sill_height_mm}
           thickness={room.wall_thickness.value}
+          outerStart={outerStart}
+          outerEnd={outerEnd}
+          wallLength={vector.length}
         />,
       );
     }
@@ -121,6 +177,9 @@ function WallWithOpenings({
         base={top}
         height={room.wall_height.value - top}
         thickness={room.wall_thickness.value}
+        outerStart={outerStart}
+        outerEnd={outerEnd}
+        wallLength={vector.length}
       />,
     );
     cursor = opening.offset_mm + opening.width.value;
@@ -135,6 +194,9 @@ function WallWithOpenings({
       base={0}
       height={room.wall_height.value}
       thickness={room.wall_thickness.value}
+      outerStart={outerStart}
+      outerEnd={outerEnd}
+      wallLength={vector.length}
     />,
   );
   return <>{pieces}</>;
