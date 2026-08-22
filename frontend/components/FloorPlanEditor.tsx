@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type InputHTMLAttributes,
   type PointerEvent as ReactPointerEvent,
   useMemo,
   useRef,
@@ -73,6 +74,40 @@ function parseCoordinateText(value: string): Point2D[] {
 
 function snap(value: number, enabled: boolean): number {
   return enabled ? Math.round(value / SNAP_MM) * SNAP_MM : Math.round(value * 10) / 10;
+}
+
+interface EditableNumberInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "type" | "value"> {
+  value: number;
+  onValueChange: (value: number) => void;
+}
+
+function EditableNumberInput({ value, onValueChange, onBlur, ...props }: EditableNumberInputProps) {
+  const [draft, setDraft] = useState(String(value));
+  const [lastValue, setLastValue] = useState(value);
+
+  if (value !== lastValue) {
+    setLastValue(value);
+    setDraft(String(value));
+  }
+
+  return (
+    <input
+      {...props}
+      type="number"
+      value={draft}
+      onChange={(event) => {
+        const next = event.target.value;
+        setDraft(next);
+        if (next === "") return;
+        const parsed = event.target.valueAsNumber;
+        if (Number.isFinite(parsed)) onValueChange(parsed);
+      }}
+      onBlur={(event) => {
+        if (draft === "") setDraft(String(value));
+        onBlur?.(event);
+      }}
+    />
+  );
 }
 
 export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEditorProps) {
@@ -465,8 +500,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
 
           <section className="tool-section">
             <div className="tool-heading"><span>2</span><h2>Room properties</h2></div>
-            <label className="field"><span>Wall height <small>mm</small></span><input type="number" min="1" max="100000" value={wallHeight} onChange={(event) => { setWallHeight(Number(event.target.value)); markChanged(); }} /></label>
-            <label className="field"><span>Wall thickness <small>mm</small></span><input type="number" min="1" max="2000" value={wallThickness} onChange={(event) => { setWallThickness(Number(event.target.value)); markChanged(); }} /></label>
+            <label className="field"><span>Wall height <small>mm</small></span><EditableNumberInput min="1" max="100000" value={wallHeight} onValueChange={(value) => { setWallHeight(value); markChanged(); }} /></label>
+            <label className="field"><span>Wall thickness <small>mm</small></span><EditableNumberInput min="1" max="2000" value={wallThickness} onValueChange={(value) => { setWallThickness(value); markChanged(); }} /></label>
           </section>
 
           <section className="tool-section opening-section">
@@ -482,10 +517,10 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               </select>
             </label>
             <div className="coordinate-fields">
-              <label className="field"><span>Offset <small>mm</small></span><input type="number" min="0" value={openingOffset} onChange={(event) => setOpeningOffset(Number(event.target.value))} /></label>
-              <label className="field"><span>Width <small>mm</small></span><input type="number" min="1" value={openingWidth} onChange={(event) => setOpeningWidth(Number(event.target.value))} /></label>
-              <label className="field"><span>Height <small>mm</small></span><input type="number" min="1" value={openingHeight} onChange={(event) => setOpeningHeight(Number(event.target.value))} /></label>
-              {openingKind === "WINDOW" && <label className="field"><span>Sill height <small>mm</small></span><input type="number" min="0" value={windowSill} onChange={(event) => setWindowSill(Number(event.target.value))} /></label>}
+              <label className="field"><span>Offset <small>mm</small></span><EditableNumberInput min="0" value={openingOffset} onValueChange={setOpeningOffset} /></label>
+              <label className="field"><span>Width <small>mm</small></span><EditableNumberInput min="1" value={openingWidth} onValueChange={setOpeningWidth} /></label>
+              <label className="field"><span>Height <small>mm</small></span><EditableNumberInput min="1" value={openingHeight} onValueChange={setOpeningHeight} /></label>
+              {openingKind === "WINDOW" && <label className="field"><span>Sill height <small>mm</small></span><EditableNumberInput min="0" value={windowSill} onValueChange={setWindowSill} /></label>}
             </div>
             {openingKind === "DOOR" && (
               <>
@@ -512,8 +547,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
             <section className="tool-section selected-properties">
               <div className="tool-heading"><span>V{selectedVertex + 1}</span><h2>Selected corner</h2></div>
               <div className="coordinate-fields">
-                <label className="field"><span>X <small>mm</small></span><input type="number" value={vertices[selectedVertex].x} onChange={(event) => updateVertex(selectedVertex, { ...vertices[selectedVertex], x: Number(event.target.value) })} /></label>
-                <label className="field"><span>Y <small>mm</small></span><input type="number" value={vertices[selectedVertex].y} onChange={(event) => updateVertex(selectedVertex, { ...vertices[selectedVertex], y: Number(event.target.value) })} /></label>
+                <label className="field"><span>X <small>mm</small></span><EditableNumberInput value={vertices[selectedVertex].x} onValueChange={(value) => updateVertex(selectedVertex, { ...vertices[selectedVertex], x: value })} /></label>
+                <label className="field"><span>Y <small>mm</small></span><EditableNumberInput value={vertices[selectedVertex].y} onValueChange={(value) => updateVertex(selectedVertex, { ...vertices[selectedVertex], y: value })} /></label>
               </div>
               <div className="button-grid"><button onClick={addAfterSelected}>Add corner after</button><button className="danger-button" onClick={deleteSelected} disabled={vertices.length <= 3}>Delete corner</button></div>
             </section>
