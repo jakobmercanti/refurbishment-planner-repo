@@ -327,6 +327,17 @@ class FitResult(BaseModel):
     analysed_at: datetime = Field(default_factory=utc_now)
 
 
+class LayoutResult(BaseModel):
+    status: FitStatus
+    summary: str
+    checks: list[FitCheck]
+    collision_ids: list[str]
+    engine_version: str
+    room_id: UUID
+    room_version: int
+    analysed_at: datetime = Field(default_factory=utc_now)
+
+
 class FixtureBundle(BaseModel):
     room: RoomDefinition
     product: ProductDefinition

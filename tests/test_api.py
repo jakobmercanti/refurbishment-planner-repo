@@ -41,6 +41,28 @@ def test_fit_endpoint_uses_domain_engine() -> None:
     assert "1207.0 ± 12.0 mm" in payload["summary"]
 
 
+def test_layout_endpoint_checks_only_placed_elements() -> None:
+    fixture = build_l_shaped_fixture()
+    room = fixture.room.model_copy(update={"openings": [], "obstacles": []})
+    response = client.post("/layout-checks", json=room.model_dump(mode="json"))
+    assert response.status_code == 201
+    assert response.json()["status"] == "VERIFY"
+    assert response.json()["collision_ids"] == []
+
+
+def test_layout_endpoint_detects_element_overlap() -> None:
+    fixture = build_l_shaped_fixture()
+    first = fixture.room.obstacles[0]
+    second = first.model_copy(update={"id": "cabinet-002", "name": "Storage cabinet"})
+    room = fixture.room.model_copy(update={"openings": [], "obstacles": [first, second]})
+    response = client.post("/layout-checks", json=room.model_dump(mode="json"))
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "FAIL"
+    assert payload["collision_ids"] == ["cabinet-002", "vanity-001"]
+    assert any(check["check_id"].startswith("item-collision:") for check in payload["checks"])
+
+
 def test_invalid_room_topology_is_rejected() -> None:
     fixture = build_l_shaped_fixture()
     payload = fixture.room.model_dump(mode="json")

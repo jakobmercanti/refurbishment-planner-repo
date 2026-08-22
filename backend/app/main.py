@@ -24,8 +24,9 @@ from backend.app.schemas import (
 )
 from cad.generator import generate_cad
 from geometry.engine import check_fit
+from geometry.layout_engine import analyse_layout
 from geometry.fixtures import build_l_shaped_fixture
-from geometry.models import FitResult, GenericOpening, ObstacleDefinition, Placement, RoomDefinition
+from geometry.models import FitResult, GenericOpening, LayoutResult, ObstacleDefinition, Placement, RoomDefinition
 from geometry.shapes import obstacle_footprint
 from geometry.walls import PolygonValidationError, derive_walls, room_polygon
 
@@ -209,6 +210,11 @@ def run_fit_check(payload: FitRequest) -> FitResult:
     analysis_id = uuid4()
     fit_results[analysis_id] = result
     return result
+
+
+@app.post("/layout-checks", response_model=LayoutResult, status_code=201)
+def run_layout_check(room: RoomDefinition) -> LayoutResult:
+    return analyse_layout(room)
 
 
 @app.get("/fit-checks/{analysis_id}", response_model=FitResult)

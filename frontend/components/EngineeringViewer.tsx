@@ -5,23 +5,19 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
-import type { Obstacle, Opening, Placement, Point2D, Product, Room, Status } from "@/lib/types";
+import type { Obstacle, Opening, Point2D, Room } from "@/lib/types";
 
 const SCALE = 0.001;
 
 interface Toggles {
   walls: boolean;
-  product: boolean;
-  obstacles: boolean;
-  clearances: boolean;
+  elements: boolean;
+  doorSwings: boolean;
   collisions: boolean;
 }
 
 interface ViewerProps {
   room: Room;
-  product: Product;
-  placement: Placement;
-  status: Status;
   collisionIds: string[];
 }
 
@@ -164,39 +160,6 @@ function Floor({ vertices }: { vertices: Point2D[] }) {
   );
 }
 
-function ProductMesh({ product, placement, status }: Omit<ViewerProps, "room" | "collisionIds">) {
-  const { width, depth, height } = product.nominal_dimensions;
-  const color = status === "FIT" ? "#1f9d68" : status === "VERIFY" ? "#e5a51b" : "#d84a4a";
-  return (
-    <mesh
-      position={[
-        placement.center.x * SCALE,
-        (placement.base_z_mm + height.value / 2) * SCALE,
-        -placement.center.y * SCALE,
-      ]}
-      rotation={[0, THREE.MathUtils.degToRad(placement.rotation_deg), 0]}
-      castShadow
-    >
-      <boxGeometry args={[width.value * SCALE, height.value * SCALE, depth.value * SCALE]} />
-      <meshStandardMaterial color={color} transparent opacity={0.7} roughness={0.4} />
-    </mesh>
-  );
-}
-
-function ClearanceMesh({ product, placement }: { product: Product; placement: Placement }) {
-  const clearance = product.installation_clearance_mm;
-  const { width, depth } = product.nominal_dimensions;
-  return (
-    <mesh
-      position={[placement.center.x * SCALE, 0.012, -placement.center.y * SCALE]}
-      rotation={[0, THREE.MathUtils.degToRad(placement.rotation_deg), 0]}
-    >
-      <boxGeometry args={[(width.value + 2 * clearance) * SCALE, 0.024, (depth.value + 2 * clearance) * SCALE]} />
-      <meshStandardMaterial color="#287fb8" transparent opacity={0.2} depthWrite={false} />
-    </mesh>
-  );
-}
-
 function FixtureMesh({ obstacle }: { obstacle: Obstacle }) {
   const fixtureKind = fixtureKindForObstacle(obstacle);
   const width = obstacle.dimensions.width.value * SCALE;
@@ -254,6 +217,28 @@ function FixtureMesh({ obstacle }: { obstacle: Obstacle }) {
           <boxGeometry args={[width * 0.82, height * 0.56, depth * 0.3]} />
           <meshStandardMaterial color="#f7f7f3" roughness={0.32} />
         </mesh>
+      </group>
+    );
+  }
+
+  if (fixtureKind === "FURNITURE") {
+    const isBench = obstacle.model_id?.includes("bench");
+    return (
+      <group position={position} rotation={rotation}>
+        <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[width, height, depth]} />
+          <meshStandardMaterial color={isBench ? "#a88762" : "#b99b77"} roughness={0.72} />
+        </mesh>
+        {!isBench && <>
+          <mesh position={[0, height * 0.55, depth / 2 + 0.004]}>
+            <boxGeometry args={[width * 0.88, height * 0.78, 0.012]} />
+            <meshStandardMaterial color="#ceb798" roughness={0.66} />
+          </mesh>
+          <mesh position={[width * 0.34, height * 0.55, depth / 2 + 0.014]}>
+            <sphereGeometry args={[0.018, 16, 12]} />
+            <meshStandardMaterial color="#4e5755" metalness={0.55} roughness={0.3} />
+          </mesh>
+        </>}
       </group>
     );
   }
@@ -335,7 +320,7 @@ function CameraPreset({ preset }: { preset: "perspective" | "top" }) {
   return null;
 }
 
-function Scene({ room, product, placement, status, collisionIds, toggles, preset }: ViewerProps & { toggles: Toggles; preset: "perspective" | "top" }) {
+function Scene({ room, collisionIds, toggles, preset }: ViewerProps & { toggles: Toggles; preset: "perspective" | "top" }) {
   return (
     <>
       <CameraPreset preset={preset} />
@@ -351,10 +336,8 @@ function Scene({ room, product, placement, status, collisionIds, toggles, preset
           end={room.vertices[(index + 1) % room.vertices.length]}
         />
       ))}
-      {toggles.obstacles && room.obstacles.map((obstacle) => <FixtureMesh key={obstacle.id} obstacle={obstacle} />)}
-      {toggles.product && <ProductMesh product={product} placement={placement} status={status} />}
-      {toggles.clearances && <ClearanceMesh product={product} placement={placement} />}
-      {toggles.clearances && room.openings.filter((item) => item.kind === "DOOR").map((door) => (
+      {toggles.elements && room.obstacles.map((obstacle) => <FixtureMesh key={obstacle.id} obstacle={obstacle} />)}
+      {toggles.doorSwings && room.openings.filter((item) => item.kind === "DOOR").map((door) => (
         <DoorSwing key={door.id} room={room} door={door} />
       ))}
       {toggles.collisions && room.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
@@ -373,9 +356,8 @@ export function EngineeringViewer(props: ViewerProps) {
   const [preset, setPreset] = useState<"perspective" | "top">("perspective");
   const [toggles, setToggles] = useState<Toggles>({
     walls: true,
-    product: true,
-    obstacles: true,
-    clearances: true,
+    elements: true,
+    doorSwings: true,
     collisions: true,
   });
   const flip = (key: keyof Toggles) => setToggles((current) => ({ ...current, [key]: !current[key] }));
@@ -389,7 +371,7 @@ export function EngineeringViewer(props: ViewerProps) {
         <div className="toggle-row">
           {(Object.keys(toggles) as Array<keyof Toggles>).map((key) => (
             <button key={key} className={toggles[key] ? "active" : ""} onClick={() => flip(key)} aria-pressed={toggles[key]}>
-              {key === "obstacles" ? "fixtures" : key}
+              {key === "doorSwings" ? "door swings" : key}
             </button>
           ))}
         </div>

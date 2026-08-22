@@ -135,16 +135,16 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
   }
 
   return (
-    <section className="fixture-editor" aria-label="Bathroom fixture editor">
+    <section className="fixture-editor" aria-label="Bathroom element editor">
       <div className="fixture-heading">
-        <div><span className="eyebrow">Bathroom elements</span><h2>{editingId ? "Update fixture" : "Add fixture"}</h2></div>
+        <div><span className="eyebrow">Bathroom elements</span><h2>{editingId ? "Update element" : "Add element"}</h2></div>
         <span>{fixtures.length} placed</span>
       </div>
 
       {editingId && <p className="editing-notice">Editing the selected item. Update its model, position, rotation or dimensions below.</p>}
 
       <div className="fixture-selectors">
-        <label className="field"><span>Element</span><select value={kind} onChange={(event) => changeKind(event.target.value as FixtureKind)}><option value="SHOWER">Shower enclosure</option><option value="BASIN">Basin</option><option value="TOILET">Toilet</option></select></label>
+        <label className="field"><span>Element</span><select value={kind} onChange={(event) => changeKind(event.target.value as FixtureKind)}><option value="SHOWER">Shower enclosure</option><option value="BASIN">Basin</option><option value="TOILET">Toilet</option><option value="FURNITURE">Furniture</option></select></label>
         <label className="field"><span>Model</span><select value={modelId} onChange={(event) => { const model = availableModels.find((item) => item.id === event.target.value); if (model) applyModel(model); }}>{availableModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
       </div>
 
@@ -169,7 +169,7 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
       {error && <p className="inline-error">{error}</p>}
       <div className="fixture-form-actions">
         {editingId && <button onClick={resetForm}>Cancel edit</button>}
-        <button className="fixture-save" onClick={saveFixture}>{editingId ? "Update fixture" : "Add fixture"}</button>
+        <button className="fixture-save" onClick={saveFixture}>{editingId ? "Update element" : "Add element"}</button>
       </div>
 
       {fixtures.length > 0 && (

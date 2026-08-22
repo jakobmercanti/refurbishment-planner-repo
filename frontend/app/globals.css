@@ -51,6 +51,7 @@ button { font: inherit; }
 .fixture-shower { background: #dff2f6; color: #226d7b; }
 .fixture-basin { background: #ecece7; color: #5f625b; }
 .fixture-toilet { background: #e8edf4; color: #4d6179; }
+.fixture-furniture { background: #f0e8dc; color: #74583c; }
 .fixture-list button { height: 27px; border: 0; border-radius: 5px; cursor: pointer; font: 650 8px var(--font-mono); }
 .fixture-list .edit-fixture { padding: 0 8px; background: #e7efeb; color: var(--deep); }
 .fixture-list .remove-fixture { width: 27px; background: var(--fail-soft); color: var(--fail); }

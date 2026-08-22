@@ -45,7 +45,7 @@ export interface Obstacle {
   rotation_deg: number;
   source_type?: string;
   verified: boolean;
-  fixture_kind?: "SHOWER" | "BASIN" | "TOILET";
+  fixture_kind?: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE";
   model_id?: string;
 }
 
@@ -94,6 +94,16 @@ export interface FitResult {
   collisions: Array<{ object_id: string; collision_type: string }>;
   manual_measurements_required: string[];
   engine_version: string;
+}
+
+export interface LayoutResult {
+  status: Status;
+  summary: string;
+  checks: FitCheck[];
+  collision_ids: string[];
+  engine_version: string;
+  room_id: string;
+  room_version: number;
 }
 
 export interface DemoResponse {

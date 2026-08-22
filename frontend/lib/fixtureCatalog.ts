@@ -1,6 +1,6 @@
 import type { Obstacle } from "@/lib/types";
 
-export type FixtureKind = "SHOWER" | "BASIN" | "TOILET";
+export type FixtureKind = "SHOWER" | "BASIN" | "TOILET" | "FURNITURE";
 
 export interface FixtureModel {
   id: string;
@@ -21,6 +21,9 @@ export const FIXTURE_MODELS: FixtureModel[] = [
   { id: "toilet-wall-hung", kind: "TOILET", name: "Wall-hung toilet 360 × 540", width: 360, depth: 540, height: 400 },
   { id: "toilet-compact", kind: "TOILET", name: "Compact toilet 365 × 600", width: 365, depth: 600, height: 780 },
   { id: "toilet-close-coupled", kind: "TOILET", name: "Close-coupled toilet 380 × 650", width: 380, depth: 650, height: 800 },
+  { id: "furniture-base-cabinet-600", kind: "FURNITURE", name: "Base cabinet 600 × 450", width: 600, depth: 450, height: 850 },
+  { id: "furniture-tall-storage-400", kind: "FURNITURE", name: "Tall storage unit 400 × 350", width: 400, depth: 350, height: 1800 },
+  { id: "furniture-bench-800", kind: "FURNITURE", name: "Bathroom bench 800 × 350", width: 800, depth: 350, height: 450 },
 ];
 
 export function fixtureKindForObstacle(obstacle: Obstacle): FixtureKind | "FIXED" {
@@ -29,6 +32,7 @@ export function fixtureKindForObstacle(obstacle: Obstacle): FixtureKind | "FIXED
   if (name.includes("shower") || name.includes("enclosure")) return "SHOWER";
   if (name.includes("basin") || name.includes("vanity")) return "BASIN";
   if (name.includes("toilet") || name.includes("wc")) return "TOILET";
+  if (name.includes("cabinet") || name.includes("storage") || name.includes("bench") || name.includes("furniture")) return "FURNITURE";
   return "FIXED";
 }
 
