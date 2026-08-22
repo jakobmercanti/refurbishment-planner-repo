@@ -121,7 +121,8 @@ button { font: inherit; }
 .canvas-background, .plan-grid, .room-polygon, .wall-label, .vertex-label { pointer-events: none; }
 .plan-grid line { stroke: #d9dfda; stroke-width: 1; }
 .room-polygon { fill: rgba(255,255,255,.82); stroke: none; }
-.wall-line { stroke: var(--deep); stroke-width: 6; stroke-linecap: round; cursor: pointer; }
+.wall-line { stroke: var(--deep); stroke-width: 6; stroke-linecap: round; cursor: grab; }
+.wall-line:active { cursor: grabbing; }
 .wall-line:hover, .wall-line.selected { stroke: #d28718; stroke-width: 8; }
 .wall-label { fill: #44514b; font: 650 10px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: white; stroke-width: 4px; }
 .vertex-handle { fill: white; stroke: var(--deep); stroke-width: 4; cursor: grab; }

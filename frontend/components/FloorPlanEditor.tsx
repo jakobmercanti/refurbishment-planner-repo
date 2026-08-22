@@ -107,6 +107,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   const [wallLengthInput, setWallLengthInput] = useState("");
   const dragStart = useRef<Point2D[] | null>(null);
   const draggingVertex = useRef<number | null>(null);
+  const draggingWall = useRef<number | null>(null);
+  const dragPointerStart = useRef<Point2D | null>(null);
 
   const bounds = useMemo(() => {
     const safeVertices = vertices.length ? vertices : [{ x: 0, y: 0 }];
@@ -128,20 +130,26 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     };
   }, [vertices]);
 
+  const [dragBounds, setDragBounds] = useState<typeof bounds | null>(null);
+  const activeBounds = dragBounds ?? bounds;
+
   const toScreen = (point: Point2D) => ({
-    x: bounds.offsetX + (point.x - bounds.minX) * bounds.scale,
-    y: bounds.offsetY + (bounds.maxY - point.y) * bounds.scale,
+    x: activeBounds.offsetX + (point.x - activeBounds.minX) * activeBounds.scale,
+    y: activeBounds.offsetY + (activeBounds.maxY - point.y) * activeBounds.scale,
   });
 
-  const fromPointer = (event: ReactPointerEvent<SVGSVGElement>): Point2D => {
-    const rectangle = event.currentTarget.getBoundingClientRect();
-    const screenX = (event.clientX - rectangle.left) * CANVAS_WIDTH / rectangle.width;
-    const screenY = (event.clientY - rectangle.top) * CANVAS_HEIGHT / rectangle.height;
+  const fromClientPoint = (clientX: number, clientY: number, svg: SVGSVGElement, applySnap = true): Point2D => {
+    const rectangle = svg.getBoundingClientRect();
+    const screenX = (clientX - rectangle.left) * CANVAS_WIDTH / rectangle.width;
+    const screenY = (clientY - rectangle.top) * CANVAS_HEIGHT / rectangle.height;
     return {
-      x: snap(bounds.minX + (screenX - bounds.offsetX) / bounds.scale, snapEnabled),
-      y: snap(bounds.maxY - (screenY - bounds.offsetY) / bounds.scale, snapEnabled),
+      x: snap(activeBounds.minX + (screenX - activeBounds.offsetX) / activeBounds.scale, applySnap && snapEnabled),
+      y: snap(activeBounds.maxY - (screenY - activeBounds.offsetY) / activeBounds.scale, applySnap && snapEnabled),
     };
   };
+
+  const fromPointer = (event: ReactPointerEvent<SVGSVGElement>): Point2D =>
+    fromClientPoint(event.clientX, event.clientY, event.currentTarget);
 
   const markChanged = () => {
     setDirty(true);
@@ -180,11 +188,14 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
 
   const finishDragging = () => {
     const startVertices = dragStart.current;
-    if (draggingVertex.current !== null && startVertices) {
+    if ((draggingVertex.current !== null || draggingWall.current !== null) && startVertices) {
       setHistory((current) => [...current.slice(-29), cloneVertices(startVertices)]);
     }
     draggingVertex.current = null;
+    draggingWall.current = null;
     dragStart.current = null;
+    dragPointerStart.current = null;
+    setDragBounds(null);
   };
 
   const cancelDragging = () => {
@@ -194,7 +205,10 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
       setCoordinateInput(coordinateText(startVertices));
     }
     draggingVertex.current = null;
+    draggingWall.current = null;
     dragStart.current = null;
+    dragPointerStart.current = null;
+    setDragBounds(null);
   };
 
   const applyTemplate = (template: keyof typeof TEMPLATES) => {
@@ -508,7 +522,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
           {selectedWall !== null && vertices.length >= 2 && (
             <section className="tool-section selected-properties">
               <div className="tool-heading"><span>W{selectedWall + 1}</span><h2>Selected wall</h2></div>
-              <p className="tool-note">Changing length keeps the wall direction and moves its endpoint. The adjoining wall changes explicitly.</p>
+              <p className="tool-note">Drag the wall to move it parallel, or enter a new length to move its endpoint. Adjoining walls update automatically.</p>
               <label className="field"><span>New length <small>mm</small></span><input type="number" min="1" value={wallLengthInput} placeholder={Math.hypot(vertices[(selectedWall + 1) % vertices.length].x - vertices[selectedWall].x, vertices[(selectedWall + 1) % vertices.length].y - vertices[selectedWall].y).toFixed(1)} onChange={(event) => setWallLengthInput(event.target.value)} /></label>
               <button className="primary-small" onClick={setSelectedWallLength}>Apply wall length</button>
             </section>
@@ -517,7 +531,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
 
         <div className="drawing-column">
           <div className="drawing-toolbar">
-            <span>{mode === "DRAW" ? "Click the grid to add corners in counter-clockwise order." : "Drag a numbered corner or click a wall to inspect it."}</span>
+            <span>{mode === "DRAW" ? "Click the grid to add corners in counter-clockwise order." : "Drag a numbered corner or wall to reshape the room."}</span>
             <strong>{vertices.length} vertices</strong>
           </div>
           <svg
@@ -532,9 +546,42 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               setSelectedVertex(vertices.length);
             }}
             onPointerMove={(event) => {
-              const index = draggingVertex.current;
-              if (index === null) return;
-              updateVertex(index, fromPointer(event), false);
+              const vertexIndex = draggingVertex.current;
+              if (vertexIndex !== null) {
+                updateVertex(vertexIndex, fromPointer(event), false);
+                return;
+              }
+
+              const wallIndex = draggingWall.current;
+              const startVertices = dragStart.current;
+              const pointerStart = dragPointerStart.current;
+              if (wallIndex === null || !startVertices || !pointerStart) return;
+
+              const wallStart = startVertices[wallIndex];
+              const wallEnd = startVertices[(wallIndex + 1) % startVertices.length];
+              const dx = wallEnd.x - wallStart.x;
+              const dy = wallEnd.y - wallStart.y;
+              const length = Math.hypot(dx, dy);
+              if (length === 0) return;
+
+              const pointer = fromClientPoint(event.clientX, event.clientY, event.currentTarget, false);
+              const normalX = -dy / length;
+              const normalY = dx / length;
+              const rawDistance = (pointer.x - pointerStart.x) * normalX + (pointer.y - pointerStart.y) * normalY;
+              const distance = snap(rawDistance, snapEnabled);
+              const updated = cloneVertices(startVertices);
+              updated[wallIndex] = {
+                x: wallStart.x + normalX * distance,
+                y: wallStart.y + normalY * distance,
+              };
+              const endIndex = (wallIndex + 1) % startVertices.length;
+              updated[endIndex] = {
+                x: wallEnd.x + normalX * distance,
+                y: wallEnd.y + normalY * distance,
+              };
+              setVertices(updated);
+              setCoordinateInput(coordinateText(updated));
+              markChanged();
             }}
             onPointerUp={finishDragging}
             onPointerCancel={cancelDragging}
@@ -553,7 +600,28 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 <g key={`wall-${index}`}>
                   {vertices.length > 1 && (
                     <>
-                      <line className={selectedWall === index ? "wall-line selected" : "wall-line"} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onPointerDown={(event) => { event.stopPropagation(); setSelectedWall(index); setSelectedVertex(null); setOpeningWallId(`wall-${String(index + 1).padStart(3, "0")}`); setMode("SELECT"); }} />
+                      <line
+                        className={selectedWall === index ? "wall-line selected" : "wall-line"}
+                        x1={start.x}
+                        y1={start.y}
+                        x2={end.x}
+                        y2={end.y}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          const svg = event.currentTarget.ownerSVGElement;
+                          if (!svg) return;
+                          setSelectedWall(index);
+                          setSelectedVertex(null);
+                          setOpeningWallId(`wall-${String(index + 1).padStart(3, "0")}`);
+                          setMode("SELECT");
+                          dragStart.current = cloneVertices(vertices);
+                          setDragBounds(bounds);
+                          dragPointerStart.current = fromClientPoint(event.clientX, event.clientY, svg, false);
+                          draggingVertex.current = null;
+                          draggingWall.current = index;
+                          event.currentTarget.setPointerCapture(event.pointerId);
+                        }}
+                      />
                       <text className="wall-label" x={(start.x + end.x) / 2} y={(start.y + end.y) / 2 - 8}>{length.toFixed(0)} mm</text>
                     </>
                   )}
@@ -568,7 +636,9 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                       setSelectedWall(null);
                       setMode("SELECT");
                       dragStart.current = cloneVertices(vertices);
+                      setDragBounds(bounds);
                       draggingVertex.current = index;
+                      draggingWall.current = null;
                       event.currentTarget.setPointerCapture(event.pointerId);
                     }}
                   />
