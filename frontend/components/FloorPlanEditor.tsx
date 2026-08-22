@@ -1,12 +1,12 @@
 "use client";
 
 import {
-  type InputHTMLAttributes,
   type PointerEvent as ReactPointerEvent,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { EditableNumberInput } from "@/components/EditableNumberInput";
 import type {
   Opening,
   Point2D,
@@ -74,40 +74,6 @@ function parseCoordinateText(value: string): Point2D[] {
 
 function snap(value: number, enabled: boolean): number {
   return enabled ? Math.round(value / SNAP_MM) * SNAP_MM : Math.round(value * 10) / 10;
-}
-
-interface EditableNumberInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "type" | "value"> {
-  value: number;
-  onValueChange: (value: number) => void;
-}
-
-function EditableNumberInput({ value, onValueChange, onBlur, ...props }: EditableNumberInputProps) {
-  const [draft, setDraft] = useState(String(value));
-  const [lastValue, setLastValue] = useState(value);
-
-  if (value !== lastValue) {
-    setLastValue(value);
-    setDraft(String(value));
-  }
-
-  return (
-    <input
-      {...props}
-      type="number"
-      value={draft}
-      onChange={(event) => {
-        const next = event.target.value;
-        setDraft(next);
-        if (next === "") return;
-        const parsed = event.target.valueAsNumber;
-        if (Number.isFinite(parsed)) onValueChange(parsed);
-      }}
-      onBlur={(event) => {
-        if (draft === "") setDraft(String(value));
-        onBlur?.(event);
-      }}
-    />
-  );
 }
 
 export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEditorProps) {

@@ -38,11 +38,15 @@ export interface Opening {
 export interface Obstacle {
   id: string;
   name: string;
+  kind?: "BOX" | "CYLINDER";
   center: Point2D;
   dimensions: Dimensions3D;
   base_z_mm: number;
   rotation_deg: number;
+  source_type?: string;
   verified: boolean;
+  fixture_kind?: "SHOWER" | "BASIN" | "TOILET";
+  model_id?: string;
 }
 
 export interface Room {

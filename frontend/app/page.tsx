@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { EngineeringViewer } from "@/components/EngineeringViewer";
+import { FixtureEditor } from "@/components/FixtureEditor";
 import { FloorPlanEditor } from "@/components/FloorPlanEditor";
-import type { DemoResponse, FitResult, Room, Status } from "@/lib/types";
+import type { DemoResponse, FitResult, Obstacle, Room, Status } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const statusOrder: Status[] = ["FIT", "VERIFY", "FAIL"];
@@ -38,6 +39,15 @@ export default function Home() {
     setAnalysedVersions({ FIT: 0, VERIFY: 0, FAIL: 0 });
     setSelected("FIT");
     setMode("ANALYSIS");
+  }
+
+  function applyObstacles(obstacles: Obstacle[]) {
+    setDemo((current) => current ? {
+      ...current,
+      room: { ...current.room, obstacles, version: current.room.version + 1 },
+    } : current);
+    setAnalysedVersions({ FIT: 0, VERIFY: 0, FAIL: 0 });
+    setAnalysisError(null);
   }
 
   async function runAnalysis() {
@@ -88,8 +98,10 @@ export default function Home() {
         <section className="workspace">
           <aside className="evidence-panel">
             <div className="eyebrow">Engineering analysis</div>
-            <h1>Will this enclosure fit?</h1>
+            <h1>Plan fixtures and check fit</h1>
             <p className="product-name">{demo.product.manufacturer} · {demo.product.sku}</p>
+
+            <FixtureEditor room={demo.room} onChange={applyObstacles} />
 
             <div className="scenario-tabs" role="tablist" aria-label="Placement scenarios">
               {statusOrder.map((status) => (

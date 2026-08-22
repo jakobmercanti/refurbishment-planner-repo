@@ -4,7 +4,8 @@ import { Grid, OrbitControls } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
-import type { Opening, Placement, Point2D, Product, Room, Status } from "@/lib/types";
+import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
+import type { Obstacle, Opening, Placement, Point2D, Product, Room, Status } from "@/lib/types";
 
 const SCALE = 0.001;
 
@@ -196,6 +197,79 @@ function ClearanceMesh({ product, placement }: { product: Product; placement: Pl
   );
 }
 
+function FixtureMesh({ obstacle }: { obstacle: Obstacle }) {
+  const fixtureKind = fixtureKindForObstacle(obstacle);
+  const width = obstacle.dimensions.width.value * SCALE;
+  const depth = obstacle.dimensions.depth.value * SCALE;
+  const height = obstacle.dimensions.height.value * SCALE;
+  const position: [number, number, number] = [
+    obstacle.center.x * SCALE,
+    obstacle.base_z_mm * SCALE,
+    -obstacle.center.y * SCALE,
+  ];
+  const rotation: [number, number, number] = [0, THREE.MathUtils.degToRad(obstacle.rotation_deg), 0];
+
+  if (fixtureKind === "SHOWER") {
+    return (
+      <group position={position} rotation={rotation}>
+        <mesh position={[0, 0.025, 0]} castShadow receiveShadow>
+          <boxGeometry args={[width, 0.05, depth]} />
+          <meshStandardMaterial color="#f7f8f6" roughness={0.65} />
+        </mesh>
+        <mesh position={[0, height / 2, 0]} castShadow>
+          <boxGeometry args={[width, height, depth]} />
+          <meshStandardMaterial color="#73bdd0" transparent opacity={0.2} roughness={0.12} metalness={0.08} depthWrite={false} />
+        </mesh>
+        <mesh position={[0, height - 0.018, 0]}>
+          <boxGeometry args={[width + 0.025, 0.036, depth + 0.025]} />
+          <meshStandardMaterial color="#496a70" metalness={0.65} roughness={0.28} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (fixtureKind === "BASIN") {
+    return (
+      <group position={position} rotation={rotation}>
+        <mesh position={[0, height * 0.42, 0]} castShadow>
+          <boxGeometry args={[width * 0.72, height * 0.82, depth * 0.62]} />
+          <meshStandardMaterial color="#d8d4ca" roughness={0.68} />
+        </mesh>
+        <mesh position={[0, height * 0.92, 0.02]} scale={[width, height * 0.16, depth]} castShadow>
+          <sphereGeometry args={[0.5, 32, 16]} />
+          <meshStandardMaterial color="#fbfbf8" roughness={0.25} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (fixtureKind === "TOILET") {
+    return (
+      <group position={position} rotation={rotation}>
+        <mesh position={[0, height * 0.34, depth * 0.1]} scale={[width, height * 0.5, depth * 0.72]} castShadow>
+          <sphereGeometry args={[0.5, 32, 18]} />
+          <meshStandardMaterial color="#f7f7f3" roughness={0.3} />
+        </mesh>
+        <mesh position={[0, height * 0.7, -depth * 0.34]} castShadow>
+          <boxGeometry args={[width * 0.82, height * 0.56, depth * 0.3]} />
+          <meshStandardMaterial color="#f7f7f3" roughness={0.32} />
+        </mesh>
+      </group>
+    );
+  }
+
+  return (
+    <mesh
+      position={[position[0], position[1] + height / 2, position[2]]}
+      rotation={rotation}
+      castShadow
+    >
+      <boxGeometry args={[width, height, depth]} />
+      <meshStandardMaterial color="#8a7765" roughness={0.72} />
+    </mesh>
+  );
+}
+
 function DoorSwingLeaf({
   hinge,
   initial,
@@ -277,25 +351,7 @@ function Scene({ room, product, placement, status, collisionIds, toggles, preset
           end={room.vertices[(index + 1) % room.vertices.length]}
         />
       ))}
-      {toggles.obstacles && room.obstacles.map((obstacle) => (
-        <mesh
-          key={obstacle.id}
-          position={[
-            obstacle.center.x * SCALE,
-            (obstacle.base_z_mm + obstacle.dimensions.height.value / 2) * SCALE,
-            -obstacle.center.y * SCALE,
-          ]}
-          rotation={[0, THREE.MathUtils.degToRad(obstacle.rotation_deg), 0]}
-          castShadow
-        >
-          <boxGeometry args={[
-            obstacle.dimensions.width.value * SCALE,
-            obstacle.dimensions.height.value * SCALE,
-            obstacle.dimensions.depth.value * SCALE,
-          ]} />
-          <meshStandardMaterial color="#8a7765" roughness={0.72} />
-        </mesh>
-      ))}
+      {toggles.obstacles && room.obstacles.map((obstacle) => <FixtureMesh key={obstacle.id} obstacle={obstacle} />)}
       {toggles.product && <ProductMesh product={product} placement={placement} status={status} />}
       {toggles.clearances && <ClearanceMesh product={product} placement={placement} />}
       {toggles.clearances && room.openings.filter((item) => item.kind === "DOOR").map((door) => (
@@ -333,7 +389,7 @@ export function EngineeringViewer(props: ViewerProps) {
         <div className="toggle-row">
           {(Object.keys(toggles) as Array<keyof Toggles>).map((key) => (
             <button key={key} className={toggles[key] ? "active" : ""} onClick={() => flip(key)} aria-pressed={toggles[key]}>
-              {key}
+              {key === "obstacles" ? "fixtures" : key}
             </button>
           ))}
         </div>
