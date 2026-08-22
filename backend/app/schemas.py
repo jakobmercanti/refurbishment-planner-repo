@@ -23,6 +23,29 @@ class PolygonUpdate(BaseModel):
     vertices: list[Point2D] = Field(min_length=3)
 
 
+class WallSummary(BaseModel):
+    id: str
+    start: Point2D
+    end: Point2D
+    length_mm: float
+
+
+class GeometryInvalidation(BaseModel):
+    entity_id: str
+    entity_type: str
+    reason: str
+
+
+class RoomValidationResponse(BaseModel):
+    valid: bool = True
+    area_mm2: float
+    perimeter_mm: float
+    orientation: str = "CCW"
+    walls: list[WallSummary]
+    invalidations: list[GeometryInvalidation]
+    warnings: list[str]
+
+
 class FitRequest(BaseModel):
     room: RoomDefinition
     product: ProductDefinition

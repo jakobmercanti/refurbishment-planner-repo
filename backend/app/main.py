@@ -14,14 +14,18 @@ from backend.app.schemas import (
     CADResponse,
     DemoResponse,
     FitRequest,
+    GeometryInvalidation,
     PolygonUpdate,
     ProjectCreate,
     ProjectResponse,
+    RoomValidationResponse,
+    WallSummary,
 )
 from cad.generator import generate_cad
 from geometry.engine import check_fit
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.models import FitResult, GenericOpening, ObstacleDefinition, Placement, RoomDefinition
+from geometry.shapes import obstacle_footprint
 from geometry.walls import PolygonValidationError, derive_walls, room_polygon
 
 app = FastAPI(
@@ -73,6 +77,65 @@ def create_room(room: RoomDefinition) -> RoomDefinition:
     derive_walls(room)
     rooms[room.id] = room
     return room
+
+
+def validate_room_draft(room: RoomDefinition) -> RoomValidationResponse:
+    polygon = room_polygon(room)
+    walls = derive_walls(room)
+    wall_lookup = {wall.id: wall for wall in walls}
+    invalidations: list[GeometryInvalidation] = []
+    for opening in room.openings:
+        wall = wall_lookup.get(opening.parent_wall_id)
+        if wall is None:
+            reason = f"Parent wall {opening.parent_wall_id} no longer exists."
+        elif opening.offset_mm + opening.width.value > wall.length_mm:
+            reason = (
+                f"Opening ends at {opening.offset_mm + opening.width.value:.1f} mm, beyond "
+                f"the revised {wall.length_mm:.1f} mm wall."
+            )
+        else:
+            reason = "Wall geometry changed; re-confirm the opening offset and width before fit analysis."
+        invalidations.append(GeometryInvalidation(entity_id=opening.id, entity_type="OPENING", reason=reason))
+    for obstacle in room.obstacles:
+        reason = (
+            "Obstacle is partly outside the revised internal room polygon."
+            if not polygon.covers(obstacle_footprint(obstacle))
+            else "Room geometry changed; re-confirm the obstacle position before fit analysis."
+        )
+        invalidations.append(
+            GeometryInvalidation(
+                entity_id=obstacle.id,
+                entity_type="OBSTACLE",
+                reason=reason,
+            )
+        )
+    warnings = ["Every saved polygon revision invalidates previous product placements and fit analyses."]
+    if room.openings:
+        warnings.append("Door and window wall associations require explicit re-verification.")
+    return RoomValidationResponse(
+        area_mm2=polygon.area,
+        perimeter_mm=polygon.length,
+        walls=[WallSummary(id=wall.id, start=wall.start, end=wall.end, length_mm=wall.length_mm) for wall in walls],
+        invalidations=invalidations,
+        warnings=warnings,
+    )
+
+
+@app.post("/rooms/validate", response_model=RoomValidationResponse)
+def validate_room(room: RoomDefinition) -> RoomValidationResponse:
+    return validate_room_draft(room)
+
+
+@app.put("/rooms/{room_id}", response_model=RoomDefinition)
+def save_room(room_id: UUID, room: RoomDefinition) -> RoomDefinition:
+    if room.id != room_id:
+        raise HTTPException(status_code=409, detail="room ID does not match request path")
+    validate_room_draft(room)
+    previous = rooms.get(room_id)
+    next_version = max(room.version, previous.version + 1 if previous else room.version)
+    saved = room.model_copy(update={"version": next_version, "updated_at": datetime.now(UTC)})
+    rooms[room_id] = saved
+    return saved
 
 
 @app.get("/rooms/{room_id}", response_model=RoomDefinition)

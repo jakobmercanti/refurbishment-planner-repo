@@ -96,3 +96,25 @@ export interface DemoResponse {
   results: Record<Status, FitResult>;
 }
 
+export interface WallSummary {
+  id: string;
+  start: Point2D;
+  end: Point2D;
+  length_mm: number;
+}
+
+export interface GeometryInvalidation {
+  entity_id: string;
+  entity_type: string;
+  reason: string;
+}
+
+export interface RoomValidationResponse {
+  valid: boolean;
+  area_mm2: number;
+  perimeter_mm: number;
+  orientation: "CCW";
+  walls: WallSummary[];
+  invalidations: GeometryInvalidation[];
+  warnings: string[];
+}
