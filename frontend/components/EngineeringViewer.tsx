@@ -109,7 +109,91 @@ const TILE_PALETTES: Partial<Record<TilePattern, TilePalette[]>> = {
   ],
 };
 
-const TILE_TEXTURE_CACHE = new Map<string, THREE.Texture>();
+const TILE_PATTERN_INDEX: Record<TilePattern, number> = {
+  NONE: 0,
+  SQUARE_300: 1,
+  SQUARE_600: 1,
+  CHECKERBOARD: 2,
+  HERRINGBONE: 3,
+  DIAMOND: 4,
+  KITKAT: 5,
+  TERRAZZO: 6,
+  HEXAGON: 7,
+  MARBLE: 8,
+};
+
+const FLOOR_VERTEX_SHADER = `
+  varying vec2 vTileUv;
+
+  void main() {
+    vTileUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const FLOOR_FRAGMENT_SHADER = `
+  uniform vec3 baseColour;
+  uniform vec3 accentColour;
+  uniform vec3 groutColour;
+  uniform vec3 selectionColour;
+  uniform float selectedAmount;
+  uniform float patternIndex;
+  varying vec2 vTileUv;
+
+  float random2d(vec2 point) {
+    return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  void main() {
+    vec2 tile = floor(vTileUv);
+    vec2 local = fract(vTileUv);
+    vec3 colour = baseColour;
+    float grout = step(local.x, 0.035) + step(local.y, 0.035);
+
+    if (patternIndex < 1.5) {
+      float variation = random2d(tile) * 0.12;
+      colour = mix(baseColour, accentColour, variation);
+    } else if (patternIndex < 2.5) {
+      float alternate = mod(tile.x + tile.y, 2.0);
+      colour = mix(baseColour, accentColour, alternate);
+    } else if (patternIndex < 3.5) {
+      vec2 brick = fract(vTileUv * vec2(2.0, 4.0));
+      float row = floor(vTileUv.y * 4.0);
+      float diagonal = fract(brick.x + brick.y + mod(row, 2.0) * 0.5);
+      grout += step(diagonal, 0.07) + step(brick.y, 0.06);
+      colour = mix(baseColour, accentColour, mod(floor(vTileUv.x * 2.0) + row, 2.0));
+    } else if (patternIndex < 4.5) {
+      float distanceToCentre = abs(local.x - 0.5) + abs(local.y - 0.5);
+      colour = distanceToCentre < 0.48 ? accentColour : baseColour;
+      grout += 1.0 - step(0.045, abs(distanceToCentre - 0.48));
+    } else if (patternIndex < 5.5) {
+      vec2 strip = fract(vTileUv * vec2(5.0, 1.0));
+      grout += step(strip.x, 0.09);
+      float alternate = mod(floor(vTileUv.x * 5.0), 2.0);
+      colour = mix(baseColour, accentColour, alternate * 0.55);
+    } else if (patternIndex < 6.5) {
+      vec2 speckleCell = floor(vTileUv * 14.0);
+      float speckle = random2d(speckleCell);
+      colour = speckle > 0.91 ? accentColour : (speckle < 0.055 ? groutColour : baseColour);
+    } else if (patternIndex < 7.5) {
+      vec2 hexUv = vTileUv * vec2(1.0, 1.1547);
+      vec2 hexCell = floor(hexUv);
+      vec2 hexLocal = fract(hexUv) - 0.5;
+      hexLocal.x += mod(hexCell.y, 2.0) * 0.5;
+      hexLocal.x = fract(hexLocal.x + 0.5) - 0.5;
+      float hexEdge = max(abs(hexLocal.x) * 0.866025 + abs(hexLocal.y) * 0.5, abs(hexLocal.y));
+      colour = mix(baseColour, accentColour, mod(hexCell.x + hexCell.y, 2.0) * 0.55);
+      grout += smoothstep(0.43, 0.48, hexEdge);
+    } else {
+      float vein = abs(sin(vTileUv.x * 5.3 + vTileUv.y * 2.1) + sin(vTileUv.y * 8.7) * 0.35);
+      colour = mix(baseColour, accentColour, smoothstep(1.02, 1.18, vein));
+    }
+
+    colour = mix(colour, groutColour, clamp(grout, 0.0, 1.0));
+    colour = mix(colour, selectionColour, selectedAmount);
+    gl_FragColor = vec4(colour, 1.0);
+  }
+`;
 
 function wallVector(start: Point2D, end: Point2D) {
   const dx = end.x - start.x;
@@ -341,78 +425,6 @@ function WallWithOpenings({
   return <>{pieces}</>;
 }
 
-function tileTexture(style: TileStyle) {
-  const cacheKey = [style.pattern, style.base, style.accent, style.grout, style.tileSize].join(":");
-  const cached = TILE_TEXTURE_CACHE.get(cacheKey);
-  if (cached) return cached;
-  if (typeof document === "undefined") return null;
-  const size = 128;
-  const base = new THREE.Color(style.base);
-  const accent = new THREE.Color(style.accent);
-  const grout = new THREE.Color(style.grout);
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      let source = base;
-      const gridLine = x < 2 || y < 2;
-      if (style.pattern === "CHECKERBOARD") source = (Math.floor(x / 32) + Math.floor(y / 32)) % 2 ? accent : base;
-      else if (style.pattern === "HERRINGBONE") {
-        const line = ((x + y) % 32 < 3) || ((x - y + size) % 32 < 3);
-        source = line ? grout : ((Math.floor((x + y) / 32) % 2) ? accent : base);
-      } else if (style.pattern === "DIAMOND") {
-        const diamond = (Math.abs((x % 64) - 32) + Math.abs((y % 64) - 32)) < 22;
-        const edge = Math.abs((Math.abs((x % 64) - 32) + Math.abs((y % 64) - 32)) - 22) < 2;
-        source = edge ? grout : diamond ? accent : base;
-      } else if (style.pattern === "KITKAT") {
-        const line = x % 16 < 2 || y % 64 < 2;
-        source = line ? grout : Math.floor(x / 16) % 2 ? accent : base;
-      } else if (style.pattern === "TERRAZZO") {
-        const hash = (x * 37 + y * 61 + x * y * 3) % 211;
-        source = hash < 5 ? accent : hash > 203 ? grout : base;
-      } else if (style.pattern === "HEXAGON") {
-        const row = Math.floor(y / 28);
-        const shiftedX = (x + (row % 2) * 20) % 40;
-        const localY = y % 28;
-        const edge = localY < 2 || Math.abs(shiftedX - 20) + localY < 4 || Math.abs(shiftedX - 20) + (28 - localY) < 4;
-        source = edge ? grout : ((Math.floor(x / 40) + row) % 2 ? accent : base);
-      } else if (style.pattern === "MARBLE") {
-        const vein = Math.abs(Math.sin((x + y * 0.37) / 11) + Math.sin(y / 23) * 0.35) > 1.18;
-        source = vein ? accent : gridLine ? grout : base;
-      } else source = gridLine ? grout : base;
-      const offset = (y * size + x) * 4;
-      data[offset] = Math.round(source.r * 255);
-      data[offset + 1] = Math.round(source.g * 255);
-      data[offset + 2] = Math.round(source.b * 255);
-      data[offset + 3] = 255;
-    }
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const context = canvas.getContext("2d");
-  if (!context) return null;
-  const image = context.createImageData(size, size);
-  image.data.set(data);
-  context.putImageData(image, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.NearestFilter;
-  texture.generateMipmaps = true;
-  texture.needsUpdate = true;
-  if (TILE_TEXTURE_CACHE.size >= 64) {
-    const oldestKey = TILE_TEXTURE_CACHE.keys().next().value as string | undefined;
-    if (oldestKey) {
-      TILE_TEXTURE_CACHE.get(oldestKey)?.dispose();
-      TILE_TEXTURE_CACHE.delete(oldestKey);
-    }
-  }
-  TILE_TEXTURE_CACHE.set(cacheKey, texture);
-  return texture;
-}
-
 function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; onSelect: () => void }) {
   const vertices = room.vertices;
   const shape = useMemo(() => {
@@ -433,7 +445,6 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   const tile = selectedTile ?? legacyTile;
   const savedColours = tile ? room.finishes?.floor_tile_colours?.[tile.id] : undefined;
   const renderedTile = useMemo(() => tile ? { ...tile, ...savedColours } : null, [savedColours, tile]);
-  const texture = useMemo(() => renderedTile ? tileTexture(renderedTile) : null, [renderedTile]);
   const floorGeometry = useMemo(() => {
     const geometry = new THREE.ShapeGeometry(shape);
     const position = geometry.getAttribute("position");
@@ -445,6 +456,14 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
     uv.needsUpdate = true;
     return geometry;
   }, [renderedTile?.tileSize, shape]);
+  const tileUniforms = useMemo(() => ({
+    baseColour: { value: new THREE.Color(renderedTile?.base ?? colour) },
+    accentColour: { value: new THREE.Color(renderedTile?.accent ?? colour) },
+    groutColour: { value: new THREE.Color(renderedTile?.grout ?? colour) },
+    selectionColour: { value: new THREE.Color("#b76d16") },
+    selectedAmount: { value: selected ? 0.12 : 0 },
+    patternIndex: { value: renderedTile ? TILE_PATTERN_INDEX[renderedTile.pattern] : 0 },
+  }), [colour, renderedTile, selected]);
   return (
     <group>
       <mesh position={[0, -0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -452,7 +471,19 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
         <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
-        <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.78} side={THREE.DoubleSide} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
+        {renderedTile ? (
+          <shaderMaterial
+            uniforms={tileUniforms}
+            vertexShader={FLOOR_VERTEX_SHADER}
+            fragmentShader={FLOOR_FRAGMENT_SHADER}
+            side={THREE.DoubleSide}
+            polygonOffset
+            polygonOffsetFactor={-4}
+            polygonOffsetUnits={-4}
+          />
+        ) : (
+          <meshStandardMaterial color={colour} roughness={0.78} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
+        )}
       </mesh>
     </group>
   );
