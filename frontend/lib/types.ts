@@ -50,6 +50,22 @@ export interface Obstacle {
   wall_lock?: boolean;
 }
 
+export type PersonPosture = "STANDING" | "SEATED" | "CROUCHING";
+
+export interface PersonMockup {
+  id: string;
+  enabled: boolean;
+  center: Point2D;
+  rotation_deg: number;
+  posture: PersonPosture;
+  height_mm: number;
+  shoulder_width_mm: number;
+  body_depth_mm: number;
+  eye_height_mm: number;
+  movement_clearance_mm: number;
+  include_in_analysis: boolean;
+}
+
 export type TilePattern = "NONE" | "SQUARE_300" | "SQUARE_600" | "HERRINGBONE" | "CHECKERBOARD" | "DIAMOND" | "KITKAT" | "TERRAZZO" | "HEXAGON" | "MARBLE";
 
 export interface RoomFinishes {
@@ -68,6 +84,7 @@ export interface Room {
   wall_thickness: Measurement;
   openings: Opening[];
   obstacles: Obstacle[];
+  person_mockup?: PersonMockup | null;
   finishes?: RoomFinishes;
 }
 

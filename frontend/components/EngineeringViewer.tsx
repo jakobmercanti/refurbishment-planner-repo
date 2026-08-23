@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
-import type { Obstacle, Opening, Point2D, Room, RoomFinishes, TilePattern } from "@/lib/types";
+import type { Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern } from "@/lib/types";
 
 const SCALE = 0.001;
 
@@ -15,7 +15,11 @@ interface Toggles {
   elements: boolean;
   doorSwings: boolean;
   collisions: boolean;
+  person: boolean;
+  clearance: boolean;
 }
+
+type CameraView = "perspective" | "top" | "eye";
 
 interface ViewerProps {
   room: Room;
@@ -542,20 +546,81 @@ function DoorSwing({ room, door }: { room: Room; door: Opening }) {
   return <DoorSwingLeaf hinge={hinge} initial={initial} direction={direction} radius={door.width.value} />;
 }
 
-function CameraPreset({ preset }: { preset: "perspective" | "top" }) {
+function PersonMesh({ person, showClearance, collision }: { person: PersonMockup; showClearance: boolean; collision: boolean }) {
+  const height = person.height_mm * SCALE;
+  const width = person.shoulder_width_mm * SCALE;
+  const depth = person.body_depth_mm * SCALE;
+  const eye = person.eye_height_mm * SCALE;
+  const clearance = person.movement_clearance_mm * SCALE;
+  const headRadius = Math.min(width * 0.22, height * 0.075);
+  const torsoHeight = person.posture === "STANDING" ? height * 0.36 : height * 0.3;
+  const torsoY = person.posture === "STANDING" ? height * 0.58 : Math.max(eye - headRadius * 2.7, height * 0.38);
+  const hipY = person.posture === "STANDING" ? height * 0.39 : height * 0.27;
+  const skin = "#d8a17c";
+  const clothing = collision ? "#a92d2d" : "#315f78";
+  const limbRadius = Math.max(width * 0.07, 0.035);
+
+  return (
+    <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]}>
+      {showClearance && person.include_in_analysis && <RoundedBox args={[width + clearance * 2, 0.012, depth + clearance * 2]} radius={Math.min(clearance, 0.16)} smoothness={4} position={[0, 0.008, 0]}>
+        <meshStandardMaterial color={collision ? "#e04545" : "#e2a73a"} transparent opacity={0.2} depthWrite={false} />
+      </RoundedBox>}
+      <RoundedBox args={[width * 0.76, torsoHeight, depth * 0.82]} radius={Math.min(width, depth) * 0.16} smoothness={4} position={[0, torsoY, 0]} castShadow>
+        <meshStandardMaterial color={clothing} roughness={0.72} />
+      </RoundedBox>
+      <mesh position={[0, Math.min(eye + headRadius * 0.18, height - headRadius), 0]} castShadow><sphereGeometry args={[headRadius, 24, 20]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
+      <mesh position={[0, eye, headRadius * 0.92]} castShadow><sphereGeometry args={[headRadius * 0.16, 12, 10]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
+      {[-1, 1].map((side) => <mesh key={`arm-${side}`} position={[side * width * 0.43, torsoY - torsoHeight * 0.03, depth * 0.04]} rotation={[0, 0, side * 0.13]} castShadow><cylinderGeometry args={[limbRadius, limbRadius * 0.88, torsoHeight * 0.9, 14]} /><meshStandardMaterial color={skin} roughness={0.68} /></mesh>)}
+      {person.posture === "STANDING" && [-1, 1].map((side) => <mesh key={`leg-${side}`} position={[side * width * 0.19, hipY * 0.48, 0]} castShadow><cylinderGeometry args={[limbRadius * 1.05, limbRadius * 0.88, hipY * 0.96, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh>)}
+      {person.posture === "SEATED" && [-1, 1].map((side) => <group key={`seated-leg-${side}`}><mesh position={[side * width * 0.19, hipY, depth * 0.52]} rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[limbRadius, limbRadius, depth * 1.25, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh><mesh position={[side * width * 0.19, hipY * 0.48, depth]} castShadow><cylinderGeometry args={[limbRadius, limbRadius * 0.86, hipY * 0.92, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh></group>)}
+      {person.posture === "CROUCHING" && [-1, 1].map((side) => <group key={`crouch-leg-${side}`}><mesh position={[side * width * 0.19, hipY * 0.72, depth * 0.24]} rotation={[0.78, 0, 0]} castShadow><cylinderGeometry args={[limbRadius, limbRadius, hipY * 0.92, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh><mesh position={[side * width * 0.19, hipY * 0.3, depth * 0.48]} rotation={[-0.65, 0, 0]} castShadow><cylinderGeometry args={[limbRadius, limbRadius * 0.86, hipY * 0.8, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh></group>)}
+      <mesh position={[0, 0.02, depth * 0.62]} rotation={[-Math.PI / 2, 0, 0]}><coneGeometry args={[0.07, 0.2, 3]} /><meshStandardMaterial color="#e2a73a" emissive="#e2a73a" emissiveIntensity={0.25} /></mesh>
+    </group>
+  );
+}
+
+function eyeTarget(person: PersonMockup) {
+  const angle = THREE.MathUtils.degToRad(person.rotation_deg);
+  return new THREE.Vector3(person.center.x * SCALE + Math.sin(angle) * 2, person.eye_height_mm * SCALE, -person.center.y * SCALE + Math.cos(angle) * 2);
+}
+
+function CameraPreset({ preset, person }: { preset: CameraView; person?: PersonMockup | null }) {
   const { camera } = useThree();
   useEffect(() => {
-    if (preset === "top") camera.position.set(1.6, 6.4, -1.4);
-    else camera.position.set(4.6, 4.1, 4.8);
-    camera.lookAt(1.6, 0, -1.4);
+    if (preset === "eye" && person?.enabled) {
+      camera.position.set(person.center.x * SCALE, person.eye_height_mm * SCALE, -person.center.y * SCALE);
+      camera.lookAt(eyeTarget(person));
+    } else {
+      if (preset === "top") camera.position.set(1.6, 6.4, -1.4);
+      else camera.position.set(4.6, 4.1, 4.8);
+      camera.lookAt(1.6, 0, -1.4);
+    }
     camera.updateProjectionMatrix();
-  }, [camera, preset]);
+  }, [camera, person, preset]);
+  return null;
+}
+
+function CaptureController({ request }: { request: number }) {
+  const { camera, gl, scene } = useThree();
+  useEffect(() => {
+    if (request === 0) return;
+    gl.render(scene, camera);
+    gl.domElement.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `bathroom-eye-view-${request}.png`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }, [camera, gl, request, scene]);
   return null;
 }
 
 function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selection, onSelectionChange }: ViewerProps & {
   toggles: Toggles;
-  preset: "perspective" | "top";
+  preset: CameraView;
   selection: Selection;
   onSelectionChange: (selection: Selection) => void;
 }) {
@@ -563,6 +628,9 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
   const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
+  const orbitTarget: [number, number, number] = preset === "eye" && room.person_mockup?.enabled
+    ? eyeTarget(room.person_mockup).toArray()
+    : [1.6, 0, -1.4];
 
   function floorPoint(event: ThreeEvent<PointerEvent>) {
     const point = event.ray.intersectPlane(dragPlane, new THREE.Vector3());
@@ -601,7 +669,7 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
 
   return (
     <>
-      <CameraPreset preset={preset} />
+      <CameraPreset preset={preset} person={room.person_mockup} />
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
       <Floor room={room} selected={selection?.type === "FLOOR"} onSelect={() => onSelectionChange({ type: "FLOOR" })} />
@@ -629,6 +697,7 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
       {toggles.doorSwings && room.openings.filter((item) => item.kind === "DOOR").map((door) => (
         <DoorSwing key={door.id} room={room} door={door} />
       ))}
+      {toggles.person && room.person_mockup?.enabled && <PersonMesh person={room.person_mockup} showClearance={toggles.clearance} collision={collisionIds.includes(room.person_mockup.id)} />}
       {toggles.collisions && room.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
         <mesh key={`collision-${obstacle.id}`} position={[obstacle.center.x * SCALE, 0.9, -obstacle.center.y * SCALE]}>
           <sphereGeometry args={[0.11, 24, 24]} />
@@ -636,7 +705,7 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
         </mesh>
       ))}
       <Grid position={[1.6, -0.002, -1.4]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />
-      <OrbitControls makeDefault enableDamping enabled={!dragging} />
+      <OrbitControls makeDefault enableDamping enabled={!dragging} target={orbitTarget} />
     </>
   );
 }
@@ -697,13 +766,16 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
 }
 
 export function EngineeringViewer(props: ViewerProps) {
-  const [preset, setPreset] = useState<"perspective" | "top">("perspective");
+  const [preset, setPreset] = useState<CameraView>("perspective");
+  const [captureRequest, setCaptureRequest] = useState(0);
   const [selection, setSelection] = useState<Selection>(null);
   const [toggles, setToggles] = useState<Toggles>({
     walls: true,
     elements: true,
     doorSwings: true,
     collisions: true,
+    person: true,
+    clearance: true,
   });
   const flip = (key: keyof Toggles) => setToggles((current) => ({ ...current, [key]: !current[key] }));
   return (
@@ -712,6 +784,8 @@ export function EngineeringViewer(props: ViewerProps) {
         <div className="segmented">
           <button className={preset === "perspective" ? "active" : ""} onClick={() => setPreset("perspective")}>Perspective</button>
           <button className={preset === "top" ? "active" : ""} onClick={() => setPreset("top")}>Top</button>
+          {props.room.person_mockup?.enabled && <button className={preset === "eye" ? "active" : ""} onClick={() => setPreset("eye")}>Eye level</button>}
+          {props.room.person_mockup?.enabled && preset === "eye" && <button onClick={() => setCaptureRequest(Date.now())}>Save PNG</button>}
         </div>
         <div className="toggle-row">
           {(Object.keys(toggles) as Array<keyof Toggles>).map((key) => (
@@ -722,8 +796,9 @@ export function EngineeringViewer(props: ViewerProps) {
         </div>
       </div>
       <ContextControls room={props.room} selection={selection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} />
-      <Canvas shadows camera={{ position: [4.6, 4.1, 4.8], fov: 38, near: 0.01, far: 100 }} onPointerMissed={() => setSelection(null)}>
+      <Canvas shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, near: 0.01, far: 100 }} onPointerMissed={() => setSelection(null)}>
         <Scene {...props} toggles={toggles} preset={preset} selection={selection} onSelectionChange={setSelection} />
+        <CaptureController request={captureRequest} />
       </Canvas>
       <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
     </div>

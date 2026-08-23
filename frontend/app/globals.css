@@ -29,6 +29,24 @@ button { font: inherit; }
 .evidence-panel h1 { margin: 9px 0 5px; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.045em; line-height: 1.05; }
 .product-name { margin: 0 0 25px; color: var(--muted); font-size: 13px; }
 .fixture-editor { padding: 15px; border: 1px solid var(--line); border-radius: 11px; background: #f8faf7; }
+.person-editor { margin-top: 12px; padding: 15px; border: 1px solid #cdd8d3; border-radius: 11px; background: #f4f8f6; }
+.person-editor-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
+.person-editor-heading h2 { margin: 4px 0 0; font-size: 15px; }
+.person-editor-heading > small { color: var(--muted); font: 600 8px var(--font-mono); text-transform: uppercase; }
+.person-enable-choice { display: flex; align-items: center; gap: 9px; margin-top: 12px; color: var(--ink); font: 650 10px var(--font-mono); cursor: pointer; }
+.person-enable-choice input { width: 18px; height: 18px; margin: 0; accent-color: var(--deep); }
+.person-enable-choice.compact { align-items: flex-start; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: white; font-size: 8px; line-height: 1.4; }
+.person-menu { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.person-menu > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.person-menu fieldset { margin: 0; padding: 9px 0 0; border: 0; border-top: 1px solid var(--line); }
+.person-menu legend { padding: 0 7px 0 0; color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
+.person-field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.person-field-grid.two-columns { grid-template-columns: 1fr 1fr; }
+.person-field { display: grid; gap: 5px; color: var(--muted); font: 600 8px var(--font-mono); }
+.person-field small { font-size: 7px; }
+.person-field input, .person-field select { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: white; color: var(--ink); font: 550 10px var(--font-mono); }
+.person-posture { margin-bottom: 1px; }
+.person-update { width: 100%; min-height: 38px; border: 1px solid var(--deep); border-radius: 7px; background: var(--deep); color: white; font: 650 9px var(--font-mono); cursor: pointer; }
 .fixture-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .fixture-heading h2 { margin: 4px 0 0; font-size: 15px; }
 .fixture-heading > span { color: var(--muted); font: 600 9px var(--font-mono); white-space: nowrap; }

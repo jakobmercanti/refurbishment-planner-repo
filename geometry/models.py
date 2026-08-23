@@ -50,6 +50,12 @@ class ObstacleKind(StrEnum):
     CYLINDER = "CYLINDER"
 
 
+class PersonPosture(StrEnum):
+    STANDING = "STANDING"
+    SEATED = "SEATED"
+    CROUCHING = "CROUCHING"
+
+
 class HingeSide(StrEnum):
     START = "START"
     END = "END"
@@ -213,6 +219,38 @@ class ObstacleDefinition(BaseModel):
         return _finite(value, info.field_name)
 
 
+class PersonMockup(BaseModel):
+    id: str = "person-001"
+    enabled: bool = True
+    center: Point2D
+    rotation_deg: float = 0.0
+    posture: PersonPosture = PersonPosture.STANDING
+    height_mm: float = Field(default=1750.0, gt=500.0, le=2500.0)
+    shoulder_width_mm: float = Field(default=460.0, gt=200.0, le=1000.0)
+    body_depth_mm: float = Field(default=280.0, gt=100.0, le=1000.0)
+    eye_height_mm: float = Field(default=1630.0, gt=300.0, le=2400.0)
+    movement_clearance_mm: float = Field(default=150.0, ge=0.0, le=2000.0)
+    include_in_analysis: bool = True
+
+    @field_validator(
+        "rotation_deg",
+        "height_mm",
+        "shoulder_width_mm",
+        "body_depth_mm",
+        "eye_height_mm",
+        "movement_clearance_mm",
+    )
+    @classmethod
+    def finite_values(cls, value: float, info: Any) -> float:
+        return _finite(value, info.field_name)
+
+    @model_validator(mode="after")
+    def validate_eye_height(self) -> PersonMockup:
+        if self.eye_height_mm > self.height_mm:
+            raise ValueError("eye_height_mm cannot exceed person height_mm")
+        return self
+
+
 class RoomDefinition(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     project_id: UUID = Field(default_factory=uuid4)
@@ -223,6 +261,7 @@ class RoomDefinition(BaseModel):
     wall_thickness: Measurement
     openings: list[GenericOpening] = Field(default_factory=list)
     obstacles: list[ObstacleDefinition] = Field(default_factory=list)
+    person_mockup: PersonMockup | None = None
     finishes: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)

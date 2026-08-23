@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.main import app
 from geometry.fixtures import build_l_shaped_fixture
-from geometry.models import DoorType, OpeningKind, Point2D
+from geometry.models import DoorType, OpeningKind, PersonMockup, Point2D
 
 client = TestClient(app)
 
@@ -61,6 +61,37 @@ def test_layout_endpoint_detects_element_overlap() -> None:
     assert payload["status"] == "FAIL"
     assert payload["collision_ids"] == ["cabinet-002", "vanity-001"]
     assert any(check["check_id"].startswith("item-collision:") for check in payload["checks"])
+
+
+def test_layout_endpoint_detects_person_element_collision() -> None:
+    fixture = build_l_shaped_fixture()
+    obstacle = fixture.room.obstacles[0]
+    person = PersonMockup(center=obstacle.center, movement_clearance_mm=0)
+    room = fixture.room.model_copy(update={"openings": [], "person_mockup": person})
+    response = client.post("/layout-checks", json=room.model_dump(mode="json"))
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "FAIL"
+    assert "person-001" in payload["collision_ids"]
+    assert obstacle.id in payload["collision_ids"]
+    assert any(check["check_id"].startswith("person-collision:") for check in payload["checks"])
+
+
+def test_layout_endpoint_marks_restricted_person_movement_for_verification() -> None:
+    fixture = build_l_shaped_fixture()
+    person = PersonMockup(
+        center=Point2D(x=250.0, y=250.0),
+        shoulder_width_mm=300.0,
+        body_depth_mm=200.0,
+        movement_clearance_mm=300.0,
+    )
+    room = fixture.room.model_copy(update={"openings": [], "obstacles": [], "person_mockup": person})
+    response = client.post("/layout-checks", json=room.model_dump(mode="json"))
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "VERIFY"
+    assert payload["collision_ids"] == []
+    assert any(check["check_id"].startswith("person-movement-boundary:") for check in payload["checks"])
 
 
 def test_invalid_room_topology_is_rejected() -> None:

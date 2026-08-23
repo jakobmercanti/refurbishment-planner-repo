@@ -7,7 +7,7 @@ from itertools import combinations
 
 from geometry.constants import ENGINE_VERSION, GEOMETRY_EPSILON_MM
 from geometry.models import CheckStatus, FitCheck, FitStatus, LayoutResult, OpeningKind, RoomDefinition
-from geometry.shapes import door_swing_envelope, obstacle_footprint, z_intervals_overlap
+from geometry.shapes import door_swing_envelope, obstacle_footprint, oriented_box, z_intervals_overlap
 from geometry.walls import room_polygon
 
 
@@ -22,7 +22,7 @@ def _check(check_id: str, status: CheckStatus, explanation: str, references: lis
 
 
 def analyse_layout(room: RoomDefinition) -> LayoutResult:
-    """Check only the fixtures and furniture present in ``room.obstacles``."""
+    """Check placed elements and the optional human usability envelope."""
 
     room_shape = room_polygon(room)
     checks: list[FitCheck] = []
@@ -104,16 +104,132 @@ def analyse_layout(room: RoomDefinition) -> LayoutResult:
                     -math.sqrt(overlap),
                 ))
 
+    person = room.person_mockup
+    person_is_checked = bool(person and person.enabled and person.include_in_analysis)
+    if person_is_checked and person is not None:
+        body = oriented_box(
+            person.center.x,
+            person.center.y,
+            person.shoulder_width_mm,
+            person.body_depth_mm,
+            person.rotation_deg,
+        )
+        movement = body.buffer(person.movement_clearance_mm, join_style="round")
+        outside_area = body.difference(room_shape).area
+        if outside_area > GEOMETRY_EPSILON_MM**2:
+            collision_ids.add(person.id)
+            checks.append(_check(
+                f"person-boundary:{person.id}",
+                CheckStatus.FAIL,
+                f"The human body envelope extends {outside_area:.1f} mm² beyond the room boundary.",
+                [person.id, str(room.id)],
+                -math.sqrt(outside_area),
+            ))
+        else:
+            clearance = body.distance(room_shape.boundary)
+            checks.append(_check(
+                f"person-boundary:{person.id}",
+                CheckStatus.PASS,
+                f"The human body envelope is inside the room with {clearance:.1f} mm boundary clearance.",
+                [person.id, str(room.id)],
+                clearance,
+            ))
+
+        height_margin = room.wall_height.value - person.height_mm
+        height_status = CheckStatus.PASS if height_margin >= -GEOMETRY_EPSILON_MM else CheckStatus.FAIL
+        if height_status is CheckStatus.FAIL:
+            collision_ids.add(person.id)
+        checks.append(_check(
+            f"person-height:{person.id}",
+            height_status,
+            (
+                f"The configured person has {max(height_margin, 0):.1f} mm headroom."
+                if height_status is CheckStatus.PASS
+                else f"The configured person exceeds the room height by {-height_margin:.1f} mm."
+            ),
+            [person.id, str(room.id)],
+            height_margin,
+        ))
+
+        movement_outside = movement.difference(room_shape).area
+        if movement_outside > GEOMETRY_EPSILON_MM**2:
+            checks.append(_check(
+                f"person-movement-boundary:{person.id}",
+                CheckStatus.VERIFY,
+                "The requested movement clearance is restricted by a wall; verify usability at this position.",
+                [person.id, str(room.id)],
+                -math.sqrt(movement_outside),
+            ))
+        else:
+            checks.append(_check(
+                f"person-movement-boundary:{person.id}",
+                CheckStatus.PASS,
+                "The requested movement clearance remains inside the room.",
+                [person.id, str(room.id)],
+                movement.distance(room_shape.boundary),
+            ))
+
+        for item in room.obstacles:
+            if item.base_z_mm >= person.height_mm - GEOMETRY_EPSILON_MM:
+                continue
+            footprint = obstacle_footprint(item)
+            overlap = body.intersection(footprint).area
+            if overlap > GEOMETRY_EPSILON_MM**2:
+                collision_ids.update((person.id, item.id))
+                checks.append(_check(
+                    f"person-collision:{person.id}:{item.id}",
+                    CheckStatus.FAIL,
+                    f"The human body envelope overlaps {item.name} by {overlap:.1f} mm².",
+                    [person.id, item.id],
+                    -math.sqrt(overlap),
+                ))
+            elif movement.intersects(footprint):
+                checks.append(_check(
+                    f"person-movement:{person.id}:{item.id}",
+                    CheckStatus.VERIFY,
+                    f"{item.name} enters the requested movement clearance; verify the intended activity.",
+                    [person.id, item.id],
+                    body.distance(footprint) - person.movement_clearance_mm,
+                ))
+
+        for door in (opening for opening in room.openings if opening.kind is OpeningKind.DOOR):
+            if door.height.value <= 0:
+                continue
+            swing = door_swing_envelope(room, door)
+            overlap = body.intersection(swing).area
+            if overlap > GEOMETRY_EPSILON_MM**2:
+                collision_ids.add(person.id)
+                checks.append(_check(
+                    f"person-door-swing:{person.id}:{door.id}",
+                    CheckStatus.FAIL,
+                    "The human body envelope obstructs the door sweep.",
+                    [person.id, door.id],
+                    -math.sqrt(overlap),
+                ))
+            elif movement.intersects(swing):
+                checks.append(_check(
+                    f"person-door-clearance:{person.id}:{door.id}",
+                    CheckStatus.VERIFY,
+                    "The door sweep enters the requested movement clearance; verify simultaneous use.",
+                    [person.id, door.id],
+                    body.distance(swing) - person.movement_clearance_mm,
+                ))
+
     failures = sum(check.status is CheckStatus.FAIL for check in checks)
-    if not room.obstacles:
+    verifications = sum(check.status is CheckStatus.VERIFY for check in checks)
+    checked_items = len(room.obstacles) + (1 if person_is_checked else 0)
+    if checked_items == 0:
         status = FitStatus.VERIFY
-        summary = "VERIFY — Add fixtures or furniture before running a complete layout check."
+        summary = "VERIFY — Add fixtures, furniture or a person before running a complete layout check."
     elif failures:
         status = FitStatus.FAIL
         summary = f"FAIL — {failures} layout conflict{'s' if failures != 1 else ''} require attention."
+    elif verifications:
+        status = FitStatus.VERIFY
+        summary = f"VERIFY — {verifications} usability clearance check{'s' if verifications != 1 else ''} require review."
     else:
         status = FitStatus.FIT
-        summary = f"FIT — All {len(room.obstacles)} placed element{'s' if len(room.obstacles) != 1 else ''} fit the checked room geometry."
+        summary = f"FIT — All {checked_items} placed model{'s' if checked_items != 1 else ''} fit the checked room geometry."
 
     return LayoutResult(
         status=status,

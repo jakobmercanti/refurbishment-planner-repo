@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { EngineeringViewer } from "@/components/EngineeringViewer";
 import { FixtureEditor } from "@/components/FixtureEditor";
 import { FloorPlanEditor } from "@/components/FloorPlanEditor";
-import type { DemoResponse, LayoutResult, Obstacle, Room, RoomFinishes } from "@/lib/types";
+import { PersonEditor } from "@/components/PersonEditor";
+import type { DemoResponse, LayoutResult, Obstacle, PersonMockup, Room, RoomFinishes } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -46,6 +47,11 @@ export default function Home() {
 
   function applyFinishes(finishes: RoomFinishes) {
     setDemo((current) => current ? { ...current, room: { ...current.room, finishes } } : current);
+  }
+
+  function applyPerson(person: PersonMockup | null) {
+    setDemo((current) => current ? { ...current, room: { ...current.room, person_mockup: person, version: current.room.version + 1 } } : current);
+    invalidateAnalysis();
   }
 
   async function runAnalysis() {
@@ -92,11 +98,12 @@ export default function Home() {
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
             <FixtureEditor room={demo.room} onChange={applyObstacles} />
+            <PersonEditor room={demo.room} onChange={applyPerson} />
 
             {(!layoutResult || analysisIsStale) && (
               <div className="stale-analysis">
                 <strong>{analysisIsStale ? "Room layout changed" : "Layout ready for analysis"}</strong>
-                <p>Check every placed element against the room boundary, ceiling, other elements and door swings.</p>
+                <p>Check placed elements and the optional person against the room, clearances and door swings.</p>
                 <button onClick={runAnalysis} disabled={runningAnalysis}>{runningAnalysis ? "Running checks…" : "Run layout analysis"}</button>
                 {analysisError && <span>{analysisError}</span>}
               </div>
