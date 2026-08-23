@@ -1,11 +1,11 @@
 "use client";
 
-import { Grid, OrbitControls } from "@react-three/drei";
+import { Grid, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
-import { snapObstacleToNearestWall } from "@/lib/layoutInteraction";
+import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
 import type { Obstacle, Opening, Point2D, Room, RoomFinishes, TilePattern } from "@/lib/types";
 
 const SCALE = 0.001;
@@ -26,7 +26,32 @@ interface ViewerProps {
 
 type Selection = { type: "ELEMENT"; id: string } | { type: "WALL"; id: string } | { type: "FLOOR" } | null;
 
-const FINISH_COLOURS = ["#f1eee6", "#d8d4c8", "#c9d8d0", "#b8c9d8", "#d8c3b3", "#4c5b55"];
+const WALL_COLOURS = [
+  "#f6f3eb", "#e8e1d5", "#d4cabd", "#f0d7c8", "#d8b8a8", "#e1d2a6",
+  "#c9d8c6", "#9db7a7", "#c3d5df", "#8eabc0", "#bbb2c9", "#5c6862",
+];
+
+interface TileStyle {
+  id: string;
+  name: string;
+  pattern: TilePattern;
+  base: string;
+  accent: string;
+  grout: string;
+  tileSize: number;
+  preview: string;
+}
+
+const TILE_COLLECTION: TileStyle[] = [
+  { id: "white-marble", name: "White marble", pattern: "MARBLE", base: "#eeeae2", accent: "#aeb5b3", grout: "#d0cdc7", tileSize: 600, preview: "linear-gradient(120deg,#f4f1ea 0 45%,#aeb5b3 47%,#f4f1ea 49% 100%)" },
+  { id: "checker-black-white", name: "Black & white checker", pattern: "CHECKERBOARD", base: "#f2f0e9", accent: "#202523", grout: "#b9b7b0", tileSize: 400, preview: "conic-gradient(#202523 25%,#f2f0e9 0 50%,#202523 0 75%,#f2f0e9 0) 0/24px 24px" },
+  { id: "terracotta-herringbone", name: "Terracotta herringbone", pattern: "HERRINGBONE", base: "#b96f4f", accent: "#8e4d39", grout: "#e2cbbd", tileSize: 260, preview: "repeating-linear-gradient(45deg,#b96f4f 0 8px,#e2cbbd 8px 10px,#8e4d39 10px 18px,#e2cbbd 18px 20px)" },
+  { id: "blue-encaustic", name: "Blue encaustic", pattern: "DIAMOND", base: "#e8e5dc", accent: "#315f78", grout: "#c8c5bd", tileSize: 300, preview: "conic-gradient(from 45deg,#315f78 25%,#e8e5dc 0 50%,#315f78 0 75%,#e8e5dc 0) 0/28px 28px" },
+  { id: "sage-kitkat", name: "Sage kit-kat", pattern: "KITKAT", base: "#789786", accent: "#5d796b", grout: "#d8d4ca", tileSize: 180, preview: "repeating-linear-gradient(90deg,#789786 0 7px,#d8d4ca 7px 9px,#5d796b 9px 16px,#d8d4ca 16px 18px)" },
+  { id: "charcoal-slate", name: "Charcoal slate", pattern: "SQUARE_600", base: "#343c3b", accent: "#252b2a", grout: "#79817e", tileSize: 600, preview: "linear-gradient(#79817e 2px,transparent 2px),linear-gradient(90deg,#79817e 2px,#343c3b 2px) 0/26px 26px" },
+  { id: "cream-terrazzo", name: "Cream terrazzo", pattern: "TERRAZZO", base: "#e6ddcc", accent: "#9d7867", grout: "#d5cbb9", tileSize: 500, preview: "radial-gradient(circle at 20% 30%,#9d7867 0 2px,transparent 3px),radial-gradient(circle at 70% 60%,#6d8580 0 2px,transparent 3px),#e6ddcc" },
+  { id: "white-hexagon", name: "White hexagon", pattern: "HEXAGON", base: "#f3f1eb", accent: "#d3d0c9", grout: "#aaa9a5", tileSize: 220, preview: "conic-gradient(from 30deg,#d3d0c9 60deg,#f3f1eb 0 120deg,#d3d0c9 0 180deg,#f3f1eb 0 240deg,#d3d0c9 0 300deg,#f3f1eb 0)" },
+];
 
 function wallVector(start: Point2D, end: Point2D) {
   const dx = end.x - start.x;
@@ -233,18 +258,40 @@ function WallWithOpenings({
   return <>{pieces}</>;
 }
 
-function tileTexture(colour: string, pattern: TilePattern, vertices: Point2D[]) {
-  if (pattern === "NONE") return null;
+function tileTexture(style: TileStyle, vertices: Point2D[]) {
   const size = 128;
-  const colourValue = new THREE.Color(colour);
-  const grout = new THREE.Color(colour).multiplyScalar(0.72);
+  const base = new THREE.Color(style.base);
+  const accent = new THREE.Color(style.accent);
+  const grout = new THREE.Color(style.grout);
   const data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      const squareLine = x < 2 || y < 2;
-      const herringboneLine = ((x + y) % 32 < 2) || ((x - y + size) % 32 < 2);
-      const line = pattern === "HERRINGBONE" ? herringboneLine : squareLine;
-      const source = line ? grout : colourValue;
+      let source = base;
+      const gridLine = x < 2 || y < 2;
+      if (style.pattern === "CHECKERBOARD") source = (Math.floor(x / 32) + Math.floor(y / 32)) % 2 ? accent : base;
+      else if (style.pattern === "HERRINGBONE") {
+        const line = ((x + y) % 32 < 3) || ((x - y + size) % 32 < 3);
+        source = line ? grout : ((Math.floor((x + y) / 32) % 2) ? accent : base);
+      } else if (style.pattern === "DIAMOND") {
+        const diamond = (Math.abs((x % 64) - 32) + Math.abs((y % 64) - 32)) < 22;
+        const edge = Math.abs((Math.abs((x % 64) - 32) + Math.abs((y % 64) - 32)) - 22) < 2;
+        source = edge ? grout : diamond ? accent : base;
+      } else if (style.pattern === "KITKAT") {
+        const line = x % 16 < 2 || y % 64 < 2;
+        source = line ? grout : Math.floor(x / 16) % 2 ? accent : base;
+      } else if (style.pattern === "TERRAZZO") {
+        const hash = (x * 37 + y * 61 + x * y * 3) % 211;
+        source = hash < 5 ? accent : hash > 203 ? grout : base;
+      } else if (style.pattern === "HEXAGON") {
+        const row = Math.floor(y / 28);
+        const shiftedX = (x + (row % 2) * 20) % 40;
+        const localY = y % 28;
+        const edge = localY < 2 || Math.abs(shiftedX - 20) + localY < 4 || Math.abs(shiftedX - 20) + (28 - localY) < 4;
+        source = edge ? grout : ((Math.floor(x / 40) + row) % 2 ? accent : base);
+      } else if (style.pattern === "MARBLE") {
+        const vein = Math.abs(Math.sin((x + y * 0.37) / 11) + Math.sin(y / 23) * 0.35) > 1.18;
+        source = vein ? accent : gridLine ? grout : base;
+      } else source = gridLine ? grout : base;
       const offset = (y * size + x) * 4;
       data[offset] = Math.round(source.r * 255);
       data[offset + 1] = Math.round(source.g * 255);
@@ -257,8 +304,7 @@ function tileTexture(colour: string, pattern: TilePattern, vertices: Point2D[]) 
   texture.wrapT = THREE.RepeatWrapping;
   const width = Math.max(...vertices.map((item) => item.x)) - Math.min(...vertices.map((item) => item.x));
   const depth = Math.max(...vertices.map((item) => item.y)) - Math.min(...vertices.map((item) => item.y));
-  const tileSize = pattern === "SQUARE_600" ? 600 : 300;
-  texture.repeat.set(Math.max(width / tileSize, 1), Math.max(depth / tileSize, 1));
+  texture.repeat.set(Math.max(width / style.tileSize, 1), Math.max(depth / style.tileSize, 1));
   texture.needsUpdate = true;
   return texture;
 }
@@ -278,12 +324,15 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   }, [vertices]);
   const colour = room.finishes?.floor_color ?? "#ece9e1";
   const pattern = room.finishes?.floor_pattern ?? "NONE";
-  const texture = useMemo(() => tileTexture(colour, pattern, vertices), [colour, pattern, vertices]);
+  const selectedTile = useMemo(() => TILE_COLLECTION.find((item) => item.id === room.finishes?.floor_tile_id), [room.finishes?.floor_tile_id]);
+  const legacyTile = useMemo<TileStyle | null>(() => pattern === "NONE" ? null : ({ id: "legacy", name: "Custom tile", pattern, base: colour, accent: colour, grout: "#a8aaa5", tileSize: pattern === "SQUARE_600" ? 600 : 300, preview: colour }), [colour, pattern]);
+  const tile = selectedTile ?? legacyTile;
+  const texture = useMemo(() => tile ? tileTexture(tile, vertices) : null, [tile, vertices]);
   useEffect(() => () => texture?.dispose(), [texture]);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
       <shapeGeometry args={[shape]} />
-      <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.84} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
+      <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.78} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
     </mesh>
   );
 }
@@ -348,24 +397,39 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
   }
 
   if (fixtureKind === "BASIN") {
+    const isVanity = obstacle.name.toLowerCase().includes("vanity") || obstacle.model_id?.includes("vanity") || width >= 0.55;
     return (
       <group position={position} rotation={rotation} {...interactionProps}>
         {selectionRing}
-        <mesh position={[0, height * 0.43, -depth * 0.08]} castShadow>
-          <boxGeometry args={[width * 0.82, height * 0.84, depth * 0.72]} />
-          <meshStandardMaterial color="#c8b49b" roughness={0.62} />
+        {isVanity ? <>
+          <RoundedBox args={[width * 0.9, height * 0.72, depth * 0.82]} radius={0.025} smoothness={4} position={[0, height * 0.4, -depth * 0.06]} castShadow>
+            <meshStandardMaterial color="#9d8067" roughness={0.58} />
+          </RoundedBox>
+          <mesh position={[0, height * 0.075, -depth * 0.02]} castShadow><boxGeometry args={[width * 0.82, height * 0.1, depth * 0.74]} /><meshStandardMaterial color="#705a49" roughness={0.7} /></mesh>
+          {[-0.225, 0.225].map((side) => <group key={side} position={[width * side, height * 0.42, depth * 0.365]}>
+            <RoundedBox args={[width * 0.42, height * 0.58, 0.025]} radius={0.012} smoothness={3} castShadow><meshStandardMaterial color="#b29479" roughness={0.52} /></RoundedBox>
+            <mesh position={[side < 0 ? width * 0.14 : -width * 0.14, height * 0.08, 0.022]}><boxGeometry args={[0.055, 0.012, 0.012]} /><meshStandardMaterial color="#3f4b49" metalness={0.72} roughness={0.24} /></mesh>
+          </group>)}
+          <RoundedBox args={[width, height * 0.075, depth]} radius={0.025} smoothness={4} position={[0, height * 0.8, 0]} castShadow>
+            <meshStandardMaterial color="#f0eee8" roughness={0.26} />
+          </RoundedBox>
+        </> : <>
+          <mesh position={[0, height * 0.37, -depth * 0.08]} castShadow><cylinderGeometry args={[width * 0.18, width * 0.28, height * 0.72, 24]} /><meshStandardMaterial color="#f1f0eb" roughness={0.3} /></mesh>
+          <RoundedBox args={[width, height * 0.07, depth]} radius={0.025} smoothness={4} position={[0, height * 0.78, 0]} castShadow><meshStandardMaterial color="#f0eee8" roughness={0.26} /></RoundedBox>
+        </>}
+        <mesh position={[0, height * 0.865, depth * 0.04]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.62, depth * 0.62, 1]} castShadow>
+          <torusGeometry args={[0.5, 0.095, 18, 48]} />
+          <meshStandardMaterial color="#fbfaf6" roughness={0.2} />
         </mesh>
-        <mesh position={[0, height * 0.86, 0]} castShadow>
-          <boxGeometry args={[width, height * 0.055, depth]} />
-          <meshStandardMaterial color="#f4f1ea" roughness={0.32} />
+        <mesh position={[0, height * 0.845, depth * 0.04]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.53, depth * 0.51, 1]}>
+          <circleGeometry args={[0.5, 48]} />
+          <meshStandardMaterial color="#dfe5e3" roughness={0.18} />
         </mesh>
-        <mesh position={[0, height * 0.91, depth * 0.08]} scale={[width * 0.82, height * 0.16, depth * 0.72]} castShadow>
-          <sphereGeometry args={[0.5, 32, 16]} />
-          <meshStandardMaterial color="#fbfbf8" roughness={0.25} />
-        </mesh>
-        <mesh position={[0, height * 0.96, -depth * 0.17]}><cylinderGeometry args={[0.018, 0.018, height * 0.18, 16]} /><meshStandardMaterial color="#6f7a78" metalness={0.8} roughness={0.2} /></mesh>
-        <mesh position={[0, height * 1.04, -depth * 0.1]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.075, 0.014, 10, 20, Math.PI]} /><meshStandardMaterial color="#6f7a78" metalness={0.8} roughness={0.2} /></mesh>
-        <mesh position={[0, height * 0.98, depth * 0.1]} rotation={[-Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.025, 0.025, 0.01, 20]} /><meshStandardMaterial color="#8b9391" metalness={0.65} roughness={0.3} /></mesh>
+        <mesh position={[0, height * 0.858, depth * 0.04]}><cylinderGeometry args={[0.022, 0.022, 0.012, 24]} /><meshStandardMaterial color="#65716f" metalness={0.75} roughness={0.22} /></mesh>
+        <mesh position={[0, height * 0.94, -depth * 0.25]}><cylinderGeometry args={[0.018, 0.02, height * 0.22, 18]} /><meshStandardMaterial color="#52605e" metalness={0.82} roughness={0.18} /></mesh>
+        <mesh position={[0, height * 1.02, -depth * 0.18]} rotation={[0, 0, Math.PI]}><torusGeometry args={[0.075, 0.015, 12, 24, Math.PI]} /><meshStandardMaterial color="#52605e" metalness={0.82} roughness={0.18} /></mesh>
+        <mesh position={[0, height * 1.02, -depth * 0.105]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.015, 0.015, 0.09, 16]} /><meshStandardMaterial color="#52605e" metalness={0.82} roughness={0.18} /></mesh>
+        {[-0.055, 0.055].map((xValue) => <mesh key={xValue} position={[xValue, height * 0.86, -depth * 0.2]}><cylinderGeometry args={[0.012, 0.014, 0.035, 14]} /><meshStandardMaterial color="#687371" metalness={0.7} roughness={0.25} /></mesh>)}
       </group>
     );
   }
@@ -496,11 +560,9 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
   onSelectionChange: (selection: Selection) => void;
 }) {
   const [dragging, setDragging] = useState<{ id: string; offset: Point2D } | null>(null);
-  const [previewCenters, setPreviewCenters] = useState<Record<string, Point2D>>({});
+  const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
-  const displayedObstacles = room.obstacles.map((obstacle) => previewCenters[obstacle.id]
-    ? { ...obstacle, center: previewCenters[obstacle.id] }
-    : obstacle);
+  const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
 
   function floorPoint(event: ThreeEvent<PointerEvent>) {
     const point = event.ray.intersectPlane(dragPlane, new THREE.Vector3());
@@ -522,16 +584,18 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
     const point = floorPoint(event);
     if (!point) return;
     const requested = { x: point.x + dragging.offset.x, y: point.y + dragging.offset.y };
-    const center = obstacle.wall_lock ? snapObstacleToNearestWall(obstacle, room.vertices, requested) : requested;
-    setPreviewCenters((current) => ({ ...current, [obstacle.id]: center }));
+    const preview = obstacle.wall_lock
+      ? alignObstacleToNearestWall(obstacle, room.vertices, requested)
+      : { ...obstacle, center: requested };
+    setPreviewObstacles((current) => ({ ...current, [obstacle.id]: preview }));
   }
 
   function endDrag(event: ThreeEvent<PointerEvent>, obstacle: Obstacle) {
     if (dragging?.id !== obstacle.id) return;
     event.stopPropagation();
-    const center = previewCenters[obstacle.id] ?? obstacle.center;
-    onObstaclesChange(room.obstacles.map((item) => item.id === obstacle.id ? { ...item, center } : item));
-    setPreviewCenters({});
+    const updated = previewObstacles[obstacle.id] ?? obstacle;
+    onObstaclesChange(room.obstacles.map((item) => item.id === obstacle.id ? updated : item));
+    setPreviewObstacles({});
     setDragging(null);
   }
 
@@ -578,6 +642,7 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
 }
 
 function ContextControls({ room, selection, onObstaclesChange, onFinishesChange }: Pick<ViewerProps, "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection }) {
+  const [applyToAllWalls, setApplyToAllWalls] = useState(false);
   if (!selection) return null;
   const finishes = room.finishes ?? {};
   const selectedElement = selection.type === "ELEMENT" ? room.obstacles.find((item) => item.id === selection.id) : undefined;
@@ -585,23 +650,25 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
   function setWallColour(colour?: string) {
     if (selection?.type !== "WALL") return;
     const wallColors = { ...(finishes.wall_colors ?? {}) };
-    if (colour) wallColors[selection.id] = colour;
-    else delete wallColors[selection.id];
+    const wallIds = applyToAllWalls
+      ? room.vertices.map((_item, index) => `wall-${String(index + 1).padStart(3, "0")}`)
+      : [selection.id];
+    wallIds.forEach((wallId) => {
+      if (colour) wallColors[wallId] = colour;
+      else delete wallColors[wallId];
+    });
     onFinishesChange({ ...finishes, wall_colors: wallColors });
   }
 
-  function setFloorColour(colour?: string) {
-    onFinishesChange({ ...finishes, floor_color: colour });
-  }
-
-  function setFloorPattern(pattern: TilePattern) {
-    onFinishesChange({ ...finishes, floor_pattern: pattern });
+  function setFloorTile(tileId?: string) {
+    onFinishesChange({ ...finishes, floor_tile_id: tileId, floor_color: undefined, floor_pattern: "NONE" });
   }
 
   function setWallLock(locked: boolean) {
     if (!selectedElement) return;
-    const center = locked ? snapObstacleToNearestWall(selectedElement, room.vertices, selectedElement.center) : selectedElement.center;
-    onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? { ...item, wall_lock: locked, center } : item));
+    const unlocked = { ...selectedElement, wall_lock: locked };
+    const updated = locked ? alignObstacleToNearestWall(unlocked, room.vertices, unlocked.center) : unlocked;
+    onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? updated : item));
   }
 
   return (
@@ -615,15 +682,15 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
       {selection.type === "WALL" && <>
         <span className="eyebrow">Selected internal wall</span>
         <strong>{selection.id.replace("wall-", "Wall ")}</strong>
-        <div className="finish-palette">{FINISH_COLOURS.map((colour) => <button key={colour} type="button" aria-label={`Set wall colour ${colour}`} className={finishes.wall_colors?.[selection.id] === colour ? "selected" : ""} style={{ background: colour }} onClick={() => setWallColour(colour)} />)}</div>
+        <label className="paint-all-choice"><input type="checkbox" checked={applyToAllWalls} onChange={(event) => setApplyToAllWalls(event.target.checked)} /><span>Paint all walls together</span></label>
+        <div className="finish-palette wall-palette">{WALL_COLOURS.map((colour) => <button key={colour} type="button" aria-label={`Set wall colour ${colour}`} className={finishes.wall_colors?.[selection.id] === colour ? "selected" : ""} style={{ background: colour }} onClick={() => setWallColour(colour)} />)}</div>
         <button className="remove-finish" type="button" onClick={() => setWallColour()}>Remove colour</button>
       </>}
       {selection.type === "FLOOR" && <>
         <span className="eyebrow">Selected floor</span>
-        <strong>Floor finish</strong>
-        <div className="finish-palette">{FINISH_COLOURS.map((colour) => <button key={colour} type="button" aria-label={`Set floor colour ${colour}`} className={finishes.floor_color === colour ? "selected" : ""} style={{ background: colour }} onClick={() => setFloorColour(colour)} />)}</div>
-        <label className="finish-pattern"><span>Tile pattern</span><select value={finishes.floor_pattern ?? "NONE"} onChange={(event) => setFloorPattern(event.target.value as TilePattern)}><option value="NONE">Plain finish</option><option value="SQUARE_300">Square tile · 300 mm</option><option value="SQUARE_600">Square tile · 600 mm</option><option value="HERRINGBONE">Herringbone</option></select></label>
-        <button className="remove-finish" type="button" onClick={() => setFloorColour()}>Remove colour</button>
+        <strong>Floor tile collection</strong>
+        <div className="tile-collection">{TILE_COLLECTION.map((tile) => <button key={tile.id} type="button" className={finishes.floor_tile_id === tile.id ? "selected" : ""} onClick={() => setFloorTile(tile.id)}><span className="tile-swatch" style={{ background: tile.preview }} /><small>{tile.name}</small></button>)}</div>
+        <button className="remove-finish" type="button" onClick={() => setFloorTile()}>Remove floor finish</button>
       </>}
     </aside>
   );

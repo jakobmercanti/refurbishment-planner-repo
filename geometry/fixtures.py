@@ -77,6 +77,10 @@ def build_l_shaped_fixture() -> FixtureBundle:
         ),
         source_type=SourceType.USER_MEASURED,
         verified=True,
+        rotation_deg=180.0,
+        fixture_kind="BASIN",
+        model_id="basin-vanity-600",
+        wall_lock=True,
     )
     room = RoomDefinition(
         id=UUID("00000000-0000-0000-0000-000000000101"),

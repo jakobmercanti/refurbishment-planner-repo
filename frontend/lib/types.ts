@@ -50,12 +50,13 @@ export interface Obstacle {
   wall_lock?: boolean;
 }
 
-export type TilePattern = "NONE" | "SQUARE_300" | "SQUARE_600" | "HERRINGBONE";
+export type TilePattern = "NONE" | "SQUARE_300" | "SQUARE_600" | "HERRINGBONE" | "CHECKERBOARD" | "DIAMOND" | "KITKAT" | "TERRAZZO" | "HEXAGON" | "MARBLE";
 
 export interface RoomFinishes {
   wall_colors?: Record<string, string>;
   floor_color?: string;
   floor_pattern?: TilePattern;
+  floor_tile_id?: string;
 }
 
 export interface Room {

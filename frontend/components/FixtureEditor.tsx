@@ -9,7 +9,7 @@ import {
   type FixtureKind,
   type FixtureModel,
 } from "@/lib/fixtureCatalog";
-import { snapObstacleToNearestWall } from "@/lib/layoutInteraction";
+import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
 import type { Measurement, Obstacle, Room } from "@/lib/types";
 
 interface FixtureEditorProps {
@@ -128,7 +128,7 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
       model_id: modelId,
       wall_lock: wallLock,
     };
-    const positionedFixture = wallLock ? { ...fixture, center: snapObstacleToNearestWall(fixture, room.vertices, fixture.center) } : fixture;
+    const positionedFixture = wallLock ? alignObstacleToNearestWall(fixture, room.vertices, fixture.center) : fixture;
     onChange(editingId
       ? room.obstacles.map((obstacle) => obstacle.id === editingId ? positionedFixture : obstacle)
       : [...room.obstacles, positionedFixture]);

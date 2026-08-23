@@ -1,7 +1,13 @@
 import type { Obstacle, Point2D } from "@/lib/types";
 
-export function snapObstacleToNearestWall(obstacle: Obstacle, vertices: Point2D[], requested: Point2D): Point2D {
-  let best: { distance: number; point: Point2D; inward: Point2D } | null = null;
+interface NearestWall {
+  point: Point2D;
+  inward: Point2D;
+  angleDeg: number;
+}
+
+function nearestWall(vertices: Point2D[], requested: Point2D): NearestWall | null {
+  let best: (NearestWall & { distance: number }) | null = null;
   for (let index = 0; index < vertices.length; index += 1) {
     const start = vertices[index];
     const end = vertices[(index + 1) % vertices.length];
@@ -14,21 +20,32 @@ export function snapObstacleToNearestWall(obstacle: Obstacle, vertices: Point2D[
     const projected = { x: start.x + direction.x * along, y: start.y + direction.y * along };
     const distance = Math.hypot(requested.x - projected.x, requested.y - projected.y);
     if (!best || distance < best.distance) {
-      best = { distance, point: projected, inward: { x: -direction.y, y: direction.x } };
+      best = {
+        distance,
+        point: projected,
+        inward: { x: -direction.y, y: direction.x },
+        angleDeg: Math.atan2(direction.y, direction.x) * 180 / Math.PI,
+      };
     }
   }
-  if (!best) return requested;
-  const nearest = best as { distance: number; point: Point2D; inward: Point2D };
+  return best;
+}
 
-  const rotation = obstacle.rotation_deg * Math.PI / 180;
-  const localWidth = { x: Math.cos(rotation), y: Math.sin(rotation) };
-  const localDepth = { x: -Math.sin(rotation), y: Math.cos(rotation) };
-  const halfWidth = obstacle.dimensions.width.value / 2;
-  const halfDepth = obstacle.dimensions.depth.value / 2;
-  const support = Math.abs(nearest.inward.x * localWidth.x + nearest.inward.y * localWidth.y) * halfWidth
-    + Math.abs(nearest.inward.x * localDepth.x + nearest.inward.y * localDepth.y) * halfDepth;
+export function alignObstacleToNearestWall(obstacle: Obstacle, vertices: Point2D[], requested: Point2D): Obstacle {
+  const wall = nearestWall(vertices, requested);
+  if (!wall) return { ...obstacle, center: requested };
+  const rotationDeg = (wall.angleDeg + 180 + 360) % 360;
+  const support = obstacle.dimensions.depth.value / 2;
   return {
-    x: nearest.point.x + nearest.inward.x * support,
-    y: nearest.point.y + nearest.inward.y * support,
+    ...obstacle,
+    center: {
+      x: wall.point.x + wall.inward.x * support,
+      y: wall.point.y + wall.inward.y * support,
+    },
+    rotation_deg: rotationDeg,
   };
+}
+
+export function snapObstacleToNearestWall(obstacle: Obstacle, vertices: Point2D[], requested: Point2D): Point2D {
+  return alignObstacleToNearestWall(obstacle, vertices, requested).center;
 }
