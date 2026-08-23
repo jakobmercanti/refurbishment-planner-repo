@@ -142,7 +142,7 @@ export default function Home() {
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
             <FixtureEditor room={demo.room} onChange={applyObstacles} />
-            {personPanelVisible && <PersonEditor room={demo.room} onChange={applyPerson} />}
+            {personPanelVisible && <PersonEditor key={`person-editor-${demo.room.version}`} room={demo.room} onChange={applyPerson} />}
 
             {(!layoutResult || analysisIsStale) && (
               <div className="stale-analysis">
@@ -181,7 +181,7 @@ export default function Home() {
 
           <section className="visual-panel">
             <div className="visual-heading"><div><span className="eyebrow">Authoritative geometry snapshot</span><h2>{demo.room.name}</h2></div><span className="version-chip">Room v{demo.room.version} · {demo.room.obstacles.length} elements</span></div>
-            <EngineeringViewer room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} />
+            <EngineeringViewer room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} />
             <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
           </section>
         </section>

@@ -115,6 +115,7 @@ button { font: inherit; }
 .person-enable-choice.compact { align-items: flex-start; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: white; font-size: 8px; line-height: 1.4; }
 .person-menu { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .person-menu > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.person-menu > .person-clearance-note { margin-top: -3px; padding: 8px 9px; border-left: 3px solid var(--verify); border-radius: 0 6px 6px 0; background: var(--verify-soft); color: #6c4b18; font-size: 9px; }
 .person-menu fieldset { margin: 0; padding: 9px 0 0; border: 0; border-top: 1px solid var(--line); }
 .person-menu legend { padding: 0 7px 0 0; color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
 .person-field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }

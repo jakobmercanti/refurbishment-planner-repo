@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid, OrbitControls, RoundedBox } from "@react-three/drei";
+import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
@@ -26,9 +26,10 @@ interface ViewerProps {
   collisionIds: string[];
   onObstaclesChange: (obstacles: Obstacle[]) => void;
   onFinishesChange: (finishes: RoomFinishes) => void;
+  onPersonChange: (person: PersonMockup | null) => void;
 }
 
-type Selection = { type: "ELEMENT"; id: string } | { type: "WALL"; id: string } | { type: "FLOOR" } | null;
+type Selection = { type: "ELEMENT"; id: string } | { type: "PERSON" } | { type: "WALL"; id: string } | { type: "FLOOR" } | null;
 
 const WALL_COLOURS = [
   "#f6f3eb", "#e8e1d5", "#d4cabd", "#f0d7c8", "#d8b8a8", "#e1d2a6",
@@ -262,7 +263,7 @@ function WallWithOpenings({
   return <>{pieces}</>;
 }
 
-function tileTexture(style: TileStyle, vertices: Point2D[]) {
+function tileTexture(style: TileStyle) {
   const size = 128;
   const base = new THREE.Color(style.base);
   const accent = new THREE.Color(style.accent);
@@ -306,9 +307,10 @@ function tileTexture(style: TileStyle, vertices: Point2D[]) {
   const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  const width = Math.max(...vertices.map((item) => item.x)) - Math.min(...vertices.map((item) => item.x));
-  const depth = Math.max(...vertices.map((item) => item.y)) - Math.min(...vertices.map((item) => item.y));
-  texture.repeat.set(Math.max(width / style.tileSize, 1), Math.max(depth / style.tileSize, 1));
+  const repeatsPerMetre = 1000 / style.tileSize;
+  texture.repeat.set(repeatsPerMetre, repeatsPerMetre);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
   texture.needsUpdate = true;
   return texture;
 }
@@ -331,7 +333,7 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   const selectedTile = useMemo(() => TILE_COLLECTION.find((item) => item.id === room.finishes?.floor_tile_id), [room.finishes?.floor_tile_id]);
   const legacyTile = useMemo<TileStyle | null>(() => pattern === "NONE" ? null : ({ id: "legacy", name: "Custom tile", pattern, base: colour, accent: colour, grout: "#a8aaa5", tileSize: pattern === "SQUARE_600" ? 600 : 300, preview: colour }), [colour, pattern]);
   const tile = selectedTile ?? legacyTile;
-  const texture = useMemo(() => tile ? tileTexture(tile, vertices) : null, [tile, vertices]);
+  const texture = useMemo(() => tile ? tileTexture(tile) : null, [tile]);
   useEffect(() => () => texture?.dispose(), [texture]);
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
@@ -339,6 +341,28 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
       <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.78} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
     </mesh>
   );
+}
+
+function TapAssembly({ height, depth }: { height: number; depth: number }) {
+  const baseY = height * 0.86;
+  const baseZ = -depth * 0.24;
+  const curve = useMemo(() => new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, baseY, baseZ),
+    new THREE.Vector3(0, baseY + 0.1, baseZ),
+    new THREE.Vector3(0, baseY + 0.16, baseZ + 0.04),
+    new THREE.Vector3(0, baseY + 0.15, baseZ + 0.12),
+    new THREE.Vector3(0, baseY + 0.11, baseZ + 0.16),
+  ]), [baseY, baseZ]);
+  const chrome = <meshStandardMaterial color="#c8d0ce" metalness={0.9} roughness={0.14} />;
+  return <group>
+    <mesh position={[0, baseY + 0.005, baseZ]} castShadow><cylinderGeometry args={[0.034, 0.042, 0.02, 24]} />{chrome}</mesh>
+    <mesh castShadow><tubeGeometry args={[curve, 36, 0.015, 12, false]} />{chrome}</mesh>
+    <mesh position={[0, baseY + 0.106, baseZ + 0.166]} rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[0.016, 0.016, 0.055, 16]} />{chrome}</mesh>
+    <group position={[0.052, baseY + 0.035, baseZ]} rotation={[0, 0, -0.22]}>
+      <mesh castShadow><cylinderGeometry args={[0.012, 0.014, 0.065, 14]} />{chrome}</mesh>
+      <mesh position={[0, 0.045, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><cylinderGeometry args={[0.009, 0.009, 0.055, 12]} />{chrome}</mesh>
+    </group>
+  </group>;
 }
 
 function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPointerUp }: {
@@ -403,38 +427,39 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
 
   if (fixtureKind === "BASIN") {
     const isVanity = obstacle.name.toLowerCase().includes("vanity") || obstacle.model_id?.includes("vanity") || width >= 0.55;
+    const cabinetColour = customColour ?? "#9d8067";
     return (
       <group position={position} rotation={rotation} {...interactionProps}>
         {selectionRing}
         {isVanity ? <>
-          <RoundedBox args={[width * 0.9, height * 0.72, depth * 0.82]} radius={0.025} smoothness={4} position={[0, height * 0.4, -depth * 0.06]} castShadow>
-            <meshStandardMaterial color={customColour ?? "#9d8067"} roughness={0.58} />
+          <RoundedBox args={[width * 0.92, height * 0.68, depth * 0.84]} radius={0.022} smoothness={4} position={[0, height * 0.42, -depth * 0.06]} castShadow>
+            <meshStandardMaterial color={cabinetColour} roughness={0.58} />
           </RoundedBox>
-          <mesh position={[0, height * 0.075, -depth * 0.02]} castShadow><boxGeometry args={[width * 0.82, height * 0.1, depth * 0.74]} /><meshStandardMaterial color="#705a49" roughness={0.7} /></mesh>
-          {[-0.225, 0.225].map((side) => <group key={side} position={[width * side, height * 0.42, depth * 0.365]}>
-            <RoundedBox args={[width * 0.42, height * 0.58, 0.025]} radius={0.012} smoothness={3} castShadow><meshStandardMaterial color="#b29479" roughness={0.52} /></RoundedBox>
-            <mesh position={[side < 0 ? width * 0.14 : -width * 0.14, height * 0.08, 0.022]}><boxGeometry args={[0.055, 0.012, 0.012]} /><meshStandardMaterial color="#3f4b49" metalness={0.72} roughness={0.24} /></mesh>
+          <mesh position={[0, height * 0.095, depth * 0.02]} castShadow><boxGeometry args={[width * 0.8, height * 0.13, depth * 0.68]} /><meshStandardMaterial color="#594b40" roughness={0.78} /></mesh>
+          <mesh position={[0, height * 0.18, depth * 0.385]}><boxGeometry args={[width * 0.78, height * 0.12, 0.018]} /><meshStandardMaterial color="#3f3832" roughness={0.72} /></mesh>
+          {[-0.235, 0.235].map((side) => <group key={side} position={[width * side, height * 0.45, depth * 0.372]}>
+            <RoundedBox args={[width * 0.43, height * 0.49, 0.025]} radius={0.009} smoothness={3} castShadow><meshStandardMaterial color={cabinetColour} roughness={0.5} /></RoundedBox>
+            <mesh position={[side < 0 ? width * 0.14 : -width * 0.14, height * 0.04, 0.022]}><boxGeometry args={[0.07, 0.011, 0.012]} /><meshStandardMaterial color="#c3cbc9" metalness={0.82} roughness={0.18} /></mesh>
           </group>)}
-          <RoundedBox args={[width, height * 0.075, depth]} radius={0.025} smoothness={4} position={[0, height * 0.8, 0]} castShadow>
-            <meshStandardMaterial color="#f0eee8" roughness={0.26} />
+          <RoundedBox args={[width, height * 0.065, depth]} radius={0.018} smoothness={4} position={[0, height * 0.805, 0]} castShadow>
+            <meshStandardMaterial color="#eeeae2" roughness={0.22} />
           </RoundedBox>
+          <mesh position={[0, height * 0.84, -depth * 0.47]} castShadow><boxGeometry args={[width, height * 0.12, 0.025]} /><meshStandardMaterial color="#ece8df" roughness={0.26} /></mesh>
         </> : <>
           <mesh position={[0, height * 0.37, -depth * 0.08]} castShadow><cylinderGeometry args={[width * 0.18, width * 0.28, height * 0.72, 24]} /><meshStandardMaterial color={customColour ?? "#f1f0eb"} roughness={0.3} /></mesh>
           <RoundedBox args={[width, height * 0.07, depth]} radius={0.025} smoothness={4} position={[0, height * 0.78, 0]} castShadow><meshStandardMaterial color="#f0eee8" roughness={0.26} /></RoundedBox>
         </>}
-        <mesh position={[0, height * 0.865, depth * 0.04]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.62, depth * 0.62, 1]} castShadow>
-          <torusGeometry args={[0.5, 0.095, 18, 48]} />
+        <mesh position={[0, height * 0.86, depth * 0.035]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.64, depth * 0.6, 1]} castShadow>
+          <torusGeometry args={[0.5, 0.075, 18, 56]} />
           <meshStandardMaterial color="#fbfaf6" roughness={0.2} />
         </mesh>
-        <mesh position={[0, height * 0.845, depth * 0.04]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.53, depth * 0.51, 1]}>
+        <mesh position={[0, height * 0.847, depth * 0.035]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.54, depth * 0.49, 1]}>
           <circleGeometry args={[0.5, 48]} />
           <meshStandardMaterial color="#dfe5e3" roughness={0.18} />
         </mesh>
-        <mesh position={[0, height * 0.858, depth * 0.04]}><cylinderGeometry args={[0.022, 0.022, 0.012, 24]} /><meshStandardMaterial color="#65716f" metalness={0.75} roughness={0.22} /></mesh>
-        <mesh position={[0, height * 0.94, -depth * 0.25]}><cylinderGeometry args={[0.018, 0.02, height * 0.22, 18]} /><meshStandardMaterial color="#52605e" metalness={0.82} roughness={0.18} /></mesh>
-        <mesh position={[0, height * 1.02, -depth * 0.18]} rotation={[0, 0, Math.PI]}><torusGeometry args={[0.075, 0.015, 12, 24, Math.PI]} /><meshStandardMaterial color="#52605e" metalness={0.82} roughness={0.18} /></mesh>
-        <mesh position={[0, height * 1.02, -depth * 0.105]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.015, 0.015, 0.09, 16]} /><meshStandardMaterial color="#52605e" metalness={0.82} roughness={0.18} /></mesh>
-        {[-0.055, 0.055].map((xValue) => <mesh key={xValue} position={[xValue, height * 0.86, -depth * 0.2]}><cylinderGeometry args={[0.012, 0.014, 0.035, 14]} /><meshStandardMaterial color="#687371" metalness={0.7} roughness={0.25} /></mesh>)}
+        <mesh position={[0, height * 0.855, depth * 0.035]}><cylinderGeometry args={[0.024, 0.024, 0.012, 24]} /><meshStandardMaterial color="#87908e" metalness={0.8} roughness={0.18} /></mesh>
+        <mesh position={[0, height * 0.89, -depth * 0.01]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.011, 0.011, 0.008, 16]} /><meshStandardMaterial color="#9ca5a2" metalness={0.72} roughness={0.2} /></mesh>
+        <TapAssembly height={height} depth={depth} />
       </group>
     );
   }
@@ -547,35 +572,95 @@ function DoorSwing({ room, door }: { room: Room; door: Opening }) {
   return <DoorSwingLeaf hinge={hinge} initial={initial} direction={direction} radius={door.width.value} />;
 }
 
-function PersonMesh({ person, showClearance, collision }: { person: PersonMockup; showClearance: boolean; collision: boolean }) {
+type VectorTuple = [number, number, number];
+
+function Limb({ from, to, radius, colour }: { from: VectorTuple; to: VectorTuple; radius: number; colour: string }) {
+  const start = new THREE.Vector3(...from);
+  const end = new THREE.Vector3(...to);
+  const direction = end.clone().sub(start);
+  const length = direction.length();
+  const midpoint = start.clone().add(end).multiplyScalar(0.5);
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  return <mesh position={midpoint.toArray()} quaternion={quaternion} castShadow><cylinderGeometry args={[radius * 0.88, radius, length, 16]} /><meshStandardMaterial color={colour} roughness={0.68} /></mesh>;
+}
+
+function PersonMesh({ person, showClearance, collision, selected, onPointerDown, onPointerMove, onPointerUp }: {
+  person: PersonMockup;
+  showClearance: boolean;
+  collision: boolean;
+  selected: boolean;
+  onPointerDown: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerMove: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerUp: (event: ThreeEvent<PointerEvent>) => void;
+}) {
   const height = person.height_mm * SCALE;
   const width = person.shoulder_width_mm * SCALE;
   const depth = person.body_depth_mm * SCALE;
   const eye = person.eye_height_mm * SCALE;
   const clearance = person.movement_clearance_mm * SCALE;
-  const headRadius = Math.min(width * 0.22, height * 0.075);
-  const torsoHeight = person.posture === "STANDING" ? height * 0.36 : height * 0.3;
-  const torsoY = person.posture === "STANDING" ? height * 0.58 : Math.max(eye - headRadius * 2.7, height * 0.38);
-  const hipY = person.posture === "STANDING" ? height * 0.39 : height * 0.27;
+  const headRadius = Math.min(width * 0.22, height * 0.07);
   const skin = "#d8a17c";
   const clothing = collision ? "#a92d2d" : "#315f78";
-  const limbRadius = Math.max(width * 0.07, 0.035);
+  const trousers = "#293a47";
+  const shoe = "#303432";
+  const limbRadius = Math.max(width * 0.06, 0.03);
+  const standing = person.posture === "STANDING";
+  const seated = person.posture === "SEATED";
+  const headY = standing ? height * 0.91 : Math.min(eye + headRadius * 0.18, height - headRadius);
+  const shoulderY = standing ? height * 0.73 : headY - headRadius * 1.75;
+  const hipY = standing ? height * 0.48 : seated ? height * 0.35 : height * 0.31;
+  const shoulderZ = person.posture === "CROUCHING" ? depth * 0.38 : 0;
+  const hipZ = person.posture === "CROUCHING" ? -depth * 0.08 : 0;
+  const torsoHeight = Math.max(shoulderY - hipY, height * 0.2);
+  const torsoY = (shoulderY + hipY) / 2;
+  const torsoZ = (shoulderZ + hipZ) / 2;
+  const torsoTilt = person.posture === "CROUCHING" ? -0.34 : seated ? -0.06 : 0;
+  const shoulderLeft: VectorTuple = [-width * 0.36, shoulderY, shoulderZ];
+  const shoulderRight: VectorTuple = [width * 0.36, shoulderY, shoulderZ];
+  const hipLeft: VectorTuple = [-width * 0.2, hipY, hipZ];
+  const hipRight: VectorTuple = [width * 0.2, hipY, hipZ];
+  const kneeLeft: VectorTuple = standing ? [-width * 0.18, height * 0.26, 0] : seated ? [-width * 0.2, height * 0.33, depth * 1.12] : [-width * 0.34, height * 0.14, depth * 0.92];
+  const kneeRight: VectorTuple = standing ? [width * 0.18, height * 0.26, 0] : seated ? [width * 0.2, height * 0.33, depth * 1.12] : [width * 0.34, height * 0.14, depth * 0.92];
+  const ankleLeft: VectorTuple = standing ? [-width * 0.18, height * 0.055, 0] : seated ? [-width * 0.2, height * 0.055, depth * 1.12] : [-width * 0.27, height * 0.045, depth * 0.12];
+  const ankleRight: VectorTuple = standing ? [width * 0.18, height * 0.055, 0] : seated ? [width * 0.2, height * 0.055, depth * 1.12] : [width * 0.27, height * 0.045, depth * 0.12];
+  const elbowY = standing ? height * 0.56 : seated ? height * 0.47 : height * 0.32;
+  const handY = standing ? height * 0.39 : seated ? height * 0.34 : height * 0.12;
+  const elbowZ = person.posture === "CROUCHING" ? depth * 0.78 : depth * 0.08;
+  const handZ = person.posture === "CROUCHING" ? depth * 1.08 : depth * 0.12;
+  const clearanceWidth = width + clearance * 2;
+  const clearanceDepth = depth + clearance * 2;
+  const clearancePoints: VectorTuple[] = [[-clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, -clearanceDepth / 2]];
 
   return (
-    <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]}>
-      {showClearance && person.include_in_analysis && <RoundedBox args={[width + clearance * 2, 0.012, depth + clearance * 2]} radius={Math.min(clearance, 0.16)} smoothness={4} position={[0, 0.008, 0]}>
-        <meshStandardMaterial color={collision ? "#e04545" : "#e2a73a"} transparent opacity={0.2} depthWrite={false} />
-      </RoundedBox>}
-      <RoundedBox args={[width * 0.76, torsoHeight, depth * 0.82]} radius={Math.min(width, depth) * 0.16} smoothness={4} position={[0, torsoY, 0]} castShadow>
+    <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+      {showClearance && <>
+        <RoundedBox args={[clearanceWidth, 0.012, clearanceDepth]} radius={Math.min(clearance, 0.18)} smoothness={4} position={[0, 0.009, 0]}>
+          <meshBasicMaterial color={collision ? "#e04545" : "#e2a73a"} transparent opacity={0.18} depthWrite={false} />
+        </RoundedBox>
+        <Line points={clearancePoints} color={collision ? "#d63737" : "#bd7611"} lineWidth={1.6} dashed dashSize={0.07} gapSize={0.04} />
+      </>}
+      {selected && <Line points={clearancePoints.map(([x, y, z]) => [x, y + 0.012, z] as VectorTuple)} color="#0d6b59" lineWidth={3} />}
+      <RoundedBox args={[width * 0.72, torsoHeight, depth * 0.76]} radius={Math.min(width, depth) * 0.22} smoothness={5} position={[0, torsoY, torsoZ]} rotation={[torsoTilt, 0, 0]} castShadow>
         <meshStandardMaterial color={clothing} roughness={0.72} />
       </RoundedBox>
-      <mesh position={[0, Math.min(eye + headRadius * 0.18, height - headRadius), 0]} castShadow><sphereGeometry args={[headRadius, 24, 20]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
-      <mesh position={[0, eye, headRadius * 0.92]} castShadow><sphereGeometry args={[headRadius * 0.16, 12, 10]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
-      {[-1, 1].map((side) => <mesh key={`arm-${side}`} position={[side * width * 0.43, torsoY - torsoHeight * 0.03, depth * 0.04]} rotation={[0, 0, side * 0.13]} castShadow><cylinderGeometry args={[limbRadius, limbRadius * 0.88, torsoHeight * 0.9, 14]} /><meshStandardMaterial color={skin} roughness={0.68} /></mesh>)}
-      {person.posture === "STANDING" && [-1, 1].map((side) => <mesh key={`leg-${side}`} position={[side * width * 0.19, hipY * 0.48, 0]} castShadow><cylinderGeometry args={[limbRadius * 1.05, limbRadius * 0.88, hipY * 0.96, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh>)}
-      {person.posture === "SEATED" && [-1, 1].map((side) => <group key={`seated-leg-${side}`}><mesh position={[side * width * 0.19, hipY, depth * 0.52]} rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[limbRadius, limbRadius, depth * 1.25, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh><mesh position={[side * width * 0.19, hipY * 0.48, depth]} castShadow><cylinderGeometry args={[limbRadius, limbRadius * 0.86, hipY * 0.92, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh></group>)}
-      {person.posture === "CROUCHING" && [-1, 1].map((side) => <group key={`crouch-leg-${side}`}><mesh position={[side * width * 0.19, hipY * 0.72, depth * 0.24]} rotation={[0.78, 0, 0]} castShadow><cylinderGeometry args={[limbRadius, limbRadius, hipY * 0.92, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh><mesh position={[side * width * 0.19, hipY * 0.3, depth * 0.48]} rotation={[-0.65, 0, 0]} castShadow><cylinderGeometry args={[limbRadius, limbRadius * 0.86, hipY * 0.8, 14]} /><meshStandardMaterial color="#293a47" roughness={0.78} /></mesh></group>)}
-      <mesh position={[0, 0.02, depth * 0.62]} rotation={[-Math.PI / 2, 0, 0]}><coneGeometry args={[0.07, 0.2, 3]} /><meshStandardMaterial color="#e2a73a" emissive="#e2a73a" emissiveIntensity={0.25} /></mesh>
+      <RoundedBox args={[width * 0.5, height * 0.11, depth * 0.72]} radius={Math.min(width, depth) * 0.18} smoothness={4} position={[0, hipY, hipZ]} castShadow><meshStandardMaterial color={trousers} roughness={0.76} /></RoundedBox>
+      <mesh position={[0, headY - headRadius * 1.18, shoulderZ * 0.9]} castShadow><cylinderGeometry args={[headRadius * 0.42, headRadius * 0.48, headRadius * 0.7, 18]} /><meshStandardMaterial color={skin} roughness={0.64} /></mesh>
+      <mesh position={[0, headY, shoulderZ]} scale={[0.92, 1.08, 0.96]} castShadow><sphereGeometry args={[headRadius, 28, 22]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
+      <mesh position={[0, headY + headRadius * 0.45, shoulderZ - headRadius * 0.15]} scale={[0.94, 0.48, 0.96]} castShadow><sphereGeometry args={[headRadius, 24, 16]} /><meshStandardMaterial color="#4b3429" roughness={0.88} /></mesh>
+      <mesh position={[0, headY - headRadius * 0.04, shoulderZ + headRadius * 0.94]} castShadow><sphereGeometry args={[headRadius * 0.13, 12, 10]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
+      {[-1, 1].map((side) => <mesh key={`ear-${side}`} position={[side * headRadius * 0.94, headY, shoulderZ]}><sphereGeometry args={[headRadius * 0.18, 12, 10]} /><meshStandardMaterial color={skin} roughness={0.68} /></mesh>)}
+      {[-1, 1].map((side) => <mesh key={`eye-${side}`} position={[side * headRadius * 0.33, headY + headRadius * 0.15, shoulderZ + headRadius * 0.88]}><sphereGeometry args={[headRadius * 0.045, 8, 8]} /><meshStandardMaterial color="#242a27" roughness={0.5} /></mesh>)}
+      <Limb from={shoulderLeft} to={[-width * 0.44, elbowY, elbowZ]} radius={limbRadius} colour={skin} />
+      <Limb from={[-width * 0.44, elbowY, elbowZ]} to={[-width * 0.4, handY, handZ]} radius={limbRadius * 0.88} colour={skin} />
+      <Limb from={shoulderRight} to={[width * 0.44, elbowY, elbowZ]} radius={limbRadius} colour={skin} />
+      <Limb from={[width * 0.44, elbowY, elbowZ]} to={[width * 0.4, handY, handZ]} radius={limbRadius * 0.88} colour={skin} />
+      {[-1, 1].map((side) => <mesh key={`hand-${side}`} position={[side * width * 0.4, handY, handZ]} scale={[0.75, 1.15, 0.55]}><sphereGeometry args={[limbRadius, 14, 10]} /><meshStandardMaterial color={skin} roughness={0.65} /></mesh>)}
+      <Limb from={hipLeft} to={kneeLeft} radius={limbRadius * 1.25} colour={trousers} />
+      <Limb from={kneeLeft} to={ankleLeft} radius={limbRadius * 1.05} colour={trousers} />
+      <Limb from={hipRight} to={kneeRight} radius={limbRadius * 1.25} colour={trousers} />
+      <Limb from={kneeRight} to={ankleRight} radius={limbRadius * 1.05} colour={trousers} />
+      {[ankleLeft, ankleRight].map((ankle, index) => <RoundedBox key={`foot-${index}`} args={[width * 0.22, height * 0.045, depth * 0.72]} radius={0.025} smoothness={3} position={[ankle[0], height * 0.025, ankle[2] + depth * 0.25]} castShadow><meshStandardMaterial color={shoe} roughness={0.82} /></RoundedBox>)}
+      <mesh position={[0, 0.023, depth * 0.7]} rotation={[-Math.PI / 2, 0, 0]}><coneGeometry args={[0.06, 0.16, 3]} /><meshStandardMaterial color="#e2a73a" emissive="#e2a73a" emissiveIntensity={0.25} /></mesh>
     </group>
   );
 }
@@ -619,16 +704,19 @@ function CaptureController({ request }: { request: number }) {
   return null;
 }
 
-function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selection, onSelectionChange }: ViewerProps & {
+function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, toggles, preset, selection, onSelectionChange }: ViewerProps & {
   toggles: Toggles;
   preset: CameraView;
   selection: Selection;
   onSelectionChange: (selection: Selection) => void;
 }) {
   const [dragging, setDragging] = useState<{ id: string; offset: Point2D } | null>(null);
+  const [personDragging, setPersonDragging] = useState<{ offset: Point2D } | null>(null);
   const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
+  const [previewPerson, setPreviewPerson] = useState<PersonMockup | null>(null);
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
+  const displayedPerson = previewPerson ?? room.person_mockup;
   const orbitTarget: [number, number, number] = preset === "eye" && room.person_mockup?.enabled
     ? eyeTarget(room.person_mockup).toArray()
     : [1.6, 0, -1.4];
@@ -668,6 +756,31 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
     setDragging(null);
   }
 
+  function startPersonDrag(event: ThreeEvent<PointerEvent>, person: PersonMockup) {
+    event.stopPropagation();
+    onSelectionChange({ type: "PERSON" });
+    const point = floorPoint(event);
+    if (!point) return;
+    (event.target as EventTarget & { setPointerCapture(pointerId: number): void }).setPointerCapture(event.pointerId);
+    setPersonDragging({ offset: { x: person.center.x - point.x, y: person.center.y - point.y } });
+  }
+
+  function movePersonDrag(event: ThreeEvent<PointerEvent>, person: PersonMockup) {
+    if (!personDragging) return;
+    event.stopPropagation();
+    const point = floorPoint(event);
+    if (!point) return;
+    setPreviewPerson({ ...person, center: { x: point.x + personDragging.offset.x, y: point.y + personDragging.offset.y } });
+  }
+
+  function endPersonDrag(event: ThreeEvent<PointerEvent>, person: PersonMockup) {
+    if (!personDragging) return;
+    event.stopPropagation();
+    onPersonChange(previewPerson ?? person);
+    setPreviewPerson(null);
+    setPersonDragging(null);
+  }
+
   return (
     <>
       <CameraPreset preset={preset} person={room.person_mockup} />
@@ -698,7 +811,7 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
       {toggles.doorSwings && room.openings.filter((item) => item.kind === "DOOR").map((door) => (
         <DoorSwing key={door.id} room={room} door={door} />
       ))}
-      {toggles.person && room.person_mockup?.enabled && <PersonMesh person={room.person_mockup} showClearance={toggles.clearance} collision={collisionIds.includes(room.person_mockup.id)} />}
+      {toggles.person && displayedPerson?.enabled && <PersonMesh person={displayedPerson} showClearance={toggles.clearance} collision={collisionIds.includes(displayedPerson.id)} selected={selection?.type === "PERSON"} onPointerDown={(event) => startPersonDrag(event, displayedPerson)} onPointerMove={(event) => movePersonDrag(event, displayedPerson)} onPointerUp={(event) => endPersonDrag(event, displayedPerson)} />}
       {toggles.collisions && room.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
         <mesh key={`collision-${obstacle.id}`} position={[obstacle.center.x * SCALE, 0.9, -obstacle.center.y * SCALE]}>
           <sphereGeometry args={[0.11, 24, 24]} />
@@ -706,7 +819,7 @@ function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selecti
         </mesh>
       ))}
       <Grid position={[1.6, -0.002, -1.4]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />
-      <OrbitControls makeDefault enableDamping enabled={!dragging} target={orbitTarget} />
+      <OrbitControls makeDefault enableDamping enabled={!dragging && !personDragging} target={orbitTarget} />
     </>
   );
 }
@@ -748,6 +861,11 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
         <strong>{selectedElement.name}</strong>
         <p>Drag the selected element across the floor to reposition it.</p>
         <label className="viewer-lock-choice"><input type="checkbox" checked={selectedElement.wall_lock ?? false} onChange={(event) => setWallLock(event.target.checked)} /><span>Keep adjacent to nearest wall</span></label>
+      </>}
+      {selection.type === "PERSON" && <>
+        <span className="eyebrow">Selected human mock-up</span>
+        <strong>Person usability model</strong>
+        <p>Drag the body across the floor to reposition it. Use Tools → Human mock-up panel for rotation, posture and clearance settings.</p>
       </>}
       {selection.type === "WALL" && <>
         <span className="eyebrow">Selected internal wall</span>

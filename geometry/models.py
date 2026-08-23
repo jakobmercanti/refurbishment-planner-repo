@@ -230,7 +230,7 @@ class PersonMockup(BaseModel):
     shoulder_width_mm: float = Field(default=460.0, gt=200.0, le=1000.0)
     body_depth_mm: float = Field(default=280.0, gt=100.0, le=1000.0)
     eye_height_mm: float = Field(default=1630.0, gt=300.0, le=2400.0)
-    movement_clearance_mm: float = Field(default=150.0, ge=0.0, le=2000.0)
+    movement_clearance_mm: float = Field(default=300.0, ge=0.0, le=2000.0)
     include_in_analysis: bool = True
 
     @field_validator(

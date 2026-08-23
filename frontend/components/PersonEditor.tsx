@@ -33,7 +33,7 @@ function defaultPerson(room: Room): PersonMockup {
     shoulder_width_mm: 460,
     body_depth_mm: 280,
     eye_height_mm: 1630,
-    movement_clearance_mm: 150,
+    movement_clearance_mm: 300,
     include_in_analysis: true,
   };
 }
@@ -90,8 +90,9 @@ export function PersonEditor({ room, onChange }: PersonEditorProps) {
         </div></fieldset>
         <fieldset><legend>Usability</legend><div className="person-field-grid two-columns">
           <label className="person-field"><span>Eye height <small>mm</small></span><EditableNumberInput min={301} max={Math.min(2400, draft.height_mm)} value={draft.eye_height_mm} onValueChange={(value) => set("eye_height_mm", value)} /></label>
-          <label className="person-field"><span>Movement clearance <small>mm</small></span><EditableNumberInput min={0} max={2000} value={draft.movement_clearance_mm} onValueChange={(value) => set("movement_clearance_mm", value)} /></label>
+          <label className="person-field"><span>Clear space around body <small>mm</small></span><EditableNumberInput min={0} max={2000} value={draft.movement_clearance_mm} onValueChange={(value) => set("movement_clearance_mm", value)} /></label>
         </div></fieldset>
+        <p className="person-clearance-note">Initial planning allowance: 300 mm around the body. Increase it where accessibility or a specific activity requires a larger clear floor zone.</p>
         <label className="person-enable-choice compact"><input type="checkbox" checked={draft.include_in_analysis} onChange={(event) => set("include_in_analysis", event.target.checked)} /><span>Include body and movement space in layout analysis</span></label>
         <button className="person-update" type="button" onClick={() => onChange({ ...draft, enabled: true })}>Update person</button>
       </div>}

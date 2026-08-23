@@ -6,7 +6,7 @@ import math
 from itertools import combinations
 
 from geometry.constants import ENGINE_VERSION, GEOMETRY_EPSILON_MM
-from geometry.models import CheckStatus, FitCheck, FitStatus, LayoutResult, OpeningKind, RoomDefinition
+from geometry.models import CheckStatus, FitCheck, FitStatus, LayoutResult, OpeningKind, PersonPosture, RoomDefinition
 from geometry.shapes import door_swing_envelope, obstacle_footprint, oriented_box, z_intervals_overlap
 from geometry.walls import room_polygon
 
@@ -113,6 +113,11 @@ def analyse_layout(room: RoomDefinition) -> LayoutResult:
     person = room.person_mockup
     person_is_checked = bool(person and person.enabled and person.include_in_analysis)
     if person_is_checked and person is not None:
+        effective_height = (
+            person.height_mm
+            if person.posture is PersonPosture.STANDING
+            else min(person.height_mm, person.eye_height_mm + person.height_mm * 0.08)
+        )
         body = oriented_box(
             person.center.x,
             person.center.y,
@@ -141,7 +146,7 @@ def analyse_layout(room: RoomDefinition) -> LayoutResult:
                 clearance,
             ))
 
-        height_margin = room.wall_height.value - person.height_mm
+        height_margin = room.wall_height.value - effective_height
         height_status = CheckStatus.PASS if height_margin >= -GEOMETRY_EPSILON_MM else CheckStatus.FAIL
         if height_status is CheckStatus.FAIL:
             collision_ids.add(person.id)
@@ -176,7 +181,7 @@ def analyse_layout(room: RoomDefinition) -> LayoutResult:
             ))
 
         for item in room.obstacles:
-            if item.base_z_mm >= person.height_mm - GEOMETRY_EPSILON_MM:
+            if item.base_z_mm >= effective_height - GEOMETRY_EPSILON_MM:
                 continue
             footprint = obstacle_footprint(item)
             overlap = body.intersection(footprint).area

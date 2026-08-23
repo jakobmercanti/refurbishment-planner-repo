@@ -98,6 +98,24 @@ def test_layout_endpoint_marks_restricted_person_movement_for_verification() -> 
     assert any(check["check_id"].startswith("person-movement-boundary:") for check in payload["checks"])
 
 
+def test_crouching_posture_uses_reduced_effective_height() -> None:
+    fixture = build_l_shaped_fixture()
+    person = PersonMockup(
+        center=Point2D(x=1200.0, y=1200.0),
+        posture="CROUCHING",
+        height_mm=2500.0,
+        eye_height_mm=900.0,
+        movement_clearance_mm=0.0,
+    )
+    room = fixture.room.model_copy(update={"openings": [], "obstacles": [], "person_mockup": person})
+    response = client.post("/layout-checks", json=room.model_dump(mode="json"))
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "FIT"
+    height_check = next(check for check in payload["checks"] if check["check_id"].startswith("person-height:"))
+    assert height_check["status"] == "PASS"
+
+
 def test_invalid_room_topology_is_rejected() -> None:
     fixture = build_l_shaped_fixture()
     payload = fixture.room.model_dump(mode="json")
