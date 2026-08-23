@@ -62,6 +62,14 @@ export default function Home() {
     invalidateAnalysis();
   }
 
+  function togglePersonPanel() {
+    const nextVisible = !personPanelVisible;
+    if (!nextVisible && demo?.room.person_mockup?.enabled) {
+      applyPerson({ ...demo.room.person_mockup, enabled: false });
+    }
+    setPersonPanelVisible(nextVisible);
+  }
+
   async function openRoomFile(room: Room) {
     if (!Array.isArray(room.vertices) || !room.wall_height || !room.wall_thickness) throw new Error("This file is not a Renovation Fit room.");
     if (preferences.confirmBeforeOpen && !window.confirm("Replace the current working room with the selected file?")) return;
@@ -127,7 +135,7 @@ export default function Home() {
   return (
     <main className={preferences.density === "COMPACT" ? "density-compact" : ""}>
       <header className="topbar">
-        <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} wallMode={wallMode} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={() => setPersonPanelVisible((current) => !current)} onWallModeChange={setWallMode} onOpenSettings={() => setSettingsOpen(true)} /></div>
+        <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} wallMode={wallMode} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={togglePersonPanel} onWallModeChange={setWallMode} onOpenSettings={() => setSettingsOpen(true)} /></div>
         <nav className="app-nav" aria-label="Project workflow">
           <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>1 · Floor plan</button>
           <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>2 · Fit analysis</button>

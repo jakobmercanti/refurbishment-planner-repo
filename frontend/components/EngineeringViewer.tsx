@@ -196,26 +196,34 @@ function WallPiece({
   shape.lineTo(outsideTo.x * SCALE, outsideTo.y * SCALE);
   shape.lineTo(outsideFrom.x * SCALE, outsideFrom.y * SCALE);
   shape.closePath();
+  const innerCentre = { x: (innerFrom.x + innerTo.x) / 2, y: (innerFrom.y + innerTo.y) / 2 };
+  const paintOffset = 0.0015;
   return (
-    <mesh
-      position={[0, base * SCALE, 0]}
-      rotation={[-Math.PI / 2, 0, 0]}
-      castShadow
-      receiveShadow
-      onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}
-    >
-      <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
-      <meshStandardMaterial
-        color={colour}
-        roughness={0.76}
-        side={THREE.DoubleSide}
-        transparent={wallMode === "TRANSPARENT"}
-        opacity={wallMode === "TRANSPARENT" ? 0.24 : 1}
-        depthWrite={wallMode !== "TRANSPARENT"}
-        emissive={selected ? "#b76d16" : "#000000"}
-        emissiveIntensity={selected ? 0.18 : 0}
-      />
-    </mesh>
+    <>
+      <mesh
+        position={[0, base * SCALE, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        castShadow
+        receiveShadow
+        onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}
+      >
+        <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
+        <meshStandardMaterial color="#d9d4c8" roughness={0.76} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
+      </mesh>
+      <mesh
+        position={[
+          innerCentre.x * SCALE - vector.dy * paintOffset,
+          (base + height / 2) * SCALE,
+          -innerCentre.y * SCALE - vector.dx * paintOffset,
+        ]}
+        rotation={[0, vector.angle, 0]}
+        receiveShadow
+        onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}
+      >
+        <planeGeometry args={[length * SCALE, height * SCALE]} />
+        <meshStandardMaterial color={colour} roughness={0.72} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.18 : 0} />
+      </mesh>
+    </>
   );
 }
 
@@ -407,13 +415,13 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   useEffect(() => () => texture?.dispose(), [texture]);
   return (
     <group>
-      <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[0, -0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <extrudeGeometry args={[shape, { depth: 0.01, bevelEnabled: false }]} />
         <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
       </mesh>
-      <mesh position={[0, 0.0005, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
+      <mesh position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
         <shapeGeometry args={[shape]} />
-        <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.78} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
+        <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.78} side={THREE.DoubleSide} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
       </mesh>
     </group>
   );
@@ -790,22 +798,29 @@ function eyeTarget(person: PersonMockup) {
   return new THREE.Vector3(person.center.x * SCALE + Math.sin(angle) * 2, person.eye_height_mm * SCALE, -person.center.y * SCALE + Math.cos(angle) * 2);
 }
 
-function CameraPreset({ preset, person }: { preset: CameraView; person?: PersonMockup | null }) {
+function CameraPreset({ preset, person, target }: { preset: CameraView; person?: PersonMockup | null; target: VectorTuple }) {
   const { camera } = useThree();
-  const previousPreset = useRef<CameraView | null>(null);
+  const previousView = useRef<string | null>(null);
   useEffect(() => {
-    if (previousPreset.current === preset) return;
-    previousPreset.current = preset;
+    const viewKey = `${preset}:${target.join(":")}`;
+    if (previousView.current === viewKey) return;
+    previousView.current = viewKey;
     if (preset === "eye" && person?.enabled) {
+      camera.up.set(0, 1, 0);
       camera.position.set(person.center.x * SCALE, person.eye_height_mm * SCALE, -person.center.y * SCALE);
       camera.lookAt(eyeTarget(person));
     } else {
-      if (preset === "top") camera.position.set(1.6, 6.4, -1.4);
-      else camera.position.set(4.6, 4.1, 4.8);
-      camera.lookAt(1.6, 0, -1.4);
+      if (preset === "top") {
+        camera.up.set(0, 0, -1);
+        camera.position.set(target[0], 6.4, target[2]);
+      } else {
+        camera.up.set(0, 1, 0);
+        camera.position.set(target[0] + 3, 4.1, target[2] + 3.4);
+      }
+      camera.lookAt(...target);
     }
     camera.updateProjectionMatrix();
-  }, [camera, person, preset]);
+  }, [camera, person, preset, target]);
   return null;
 }
 
@@ -840,9 +855,16 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
+  const roomTarget = useMemo<VectorTuple>(() => {
+    const minX = Math.min(...room.vertices.map((point) => point.x));
+    const maxX = Math.max(...room.vertices.map((point) => point.x));
+    const minY = Math.min(...room.vertices.map((point) => point.y));
+    const maxY = Math.max(...room.vertices.map((point) => point.y));
+    return [(minX + maxX) * SCALE / 2, 0, -(minY + maxY) * SCALE / 2];
+  }, [room.vertices]);
   const orbitTarget: [number, number, number] = preset === "eye" && room.person_mockup?.enabled
     ? eyeTarget(room.person_mockup).toArray()
-    : [1.6, 0, -1.4];
+    : roomTarget;
 
   function floorPoint(event: ThreeEvent<PointerEvent>) {
     const point = event.ray.intersectPlane(dragPlane, new THREE.Vector3());
@@ -908,7 +930,7 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
 
   return (
     <>
-      <CameraPreset preset={preset} person={room.person_mockup} />
+      <CameraPreset preset={preset} person={room.person_mockup} target={roomTarget} />
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
       <Floor room={room} selected={selection?.type === "FLOOR"} onSelect={() => onSelectionChange({ type: "FLOOR" })} />
@@ -945,7 +967,7 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
         </mesh>
       ))}
       <Grid position={[1.6, -0.002, -1.4]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />
-      <OrbitControls makeDefault enableDamping enabled={!dragging && !personDragging} target={orbitTarget} />
+      <OrbitControls makeDefault enableDamping enableRotate={preset !== "top"} enabled={!dragging && !personDragging} target={orbitTarget} />
     </>
   );
 }
