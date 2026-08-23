@@ -109,7 +109,7 @@ const TILE_PALETTES: Partial<Record<TilePattern, TilePalette[]>> = {
   ],
 };
 
-const TILE_TEXTURE_CACHE = new Map<string, THREE.DataTexture>();
+const TILE_TEXTURE_CACHE = new Map<string, THREE.Texture>();
 
 function wallVector(start: Point2D, end: Point2D) {
   const dx = end.x - start.x;
@@ -345,6 +345,7 @@ function tileTexture(style: TileStyle) {
   const cacheKey = [style.pattern, style.base, style.accent, style.grout, style.tileSize].join(":");
   const cached = TILE_TEXTURE_CACHE.get(cacheKey);
   if (cached) return cached;
+  if (typeof document === "undefined") return null;
   const size = 128;
   const base = new THREE.Color(style.base);
   const accent = new THREE.Color(style.accent);
@@ -385,13 +386,21 @@ function tileTexture(style: TileStyle) {
       data[offset + 3] = 255;
     }
   }
-  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  const image = context.createImageData(size, size);
+  image.data.set(data);
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  const repeatsPerMetre = 1000 / style.tileSize;
-  texture.repeat.set(repeatsPerMetre, repeatsPerMetre);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.NearestFilter;
+  texture.generateMipmaps = true;
   texture.needsUpdate = true;
   if (TILE_TEXTURE_CACHE.size >= 64) {
     const oldestKey = TILE_TEXTURE_CACHE.keys().next().value as string | undefined;
@@ -425,14 +434,24 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   const savedColours = tile ? room.finishes?.floor_tile_colours?.[tile.id] : undefined;
   const renderedTile = useMemo(() => tile ? { ...tile, ...savedColours } : null, [savedColours, tile]);
   const texture = useMemo(() => renderedTile ? tileTexture(renderedTile) : null, [renderedTile]);
+  const floorGeometry = useMemo(() => {
+    const geometry = new THREE.ShapeGeometry(shape);
+    const position = geometry.getAttribute("position");
+    const uv = geometry.getAttribute("uv");
+    const tileSizeMetres = (renderedTile?.tileSize ?? 500) * SCALE;
+    for (let index = 0; index < position.count; index += 1) {
+      uv.setXY(index, position.getX(index) / tileSizeMetres, position.getY(index) / tileSizeMetres);
+    }
+    uv.needsUpdate = true;
+    return geometry;
+  }, [renderedTile?.tileSize, shape]);
   return (
     <group>
       <mesh position={[0, -0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <extrudeGeometry args={[shape, { depth: 0.01, bevelEnabled: false }]} />
         <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
       </mesh>
-      <mesh position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
-        <shapeGeometry args={[shape]} />
+      <mesh geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
         <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.78} side={THREE.DoubleSide} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
       </mesh>
     </group>
@@ -744,7 +763,7 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   const standing = person.posture === "STANDING";
   const seated = person.posture === "SEATED";
   const headY = standing ? height * 0.91 : Math.min(eye + headRadius * 0.18, height - headRadius);
-  const shoulderY = standing ? height * 0.82 : headY - headRadius * 1.35;
+  const shoulderY = standing ? height * 0.84 : headY - headRadius * 1.15;
   const hipY = standing ? height * 0.48 : seated ? height * 0.35 : height * 0.31;
   const shoulderZ = person.posture === "CROUCHING" ? depth * 0.38 : 0;
   const hipZ = person.posture === "CROUCHING" ? -depth * 0.08 : 0;
@@ -767,9 +786,9 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   const clearanceWidth = width + clearance * 2;
   const clearanceDepth = depth + clearance * 2;
   const clearancePoints: VectorTuple[] = [[-clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, -clearanceDepth / 2]];
-  const neckBottom = shoulderY - headRadius * 0.03;
-  const neckTop = headY - headRadius * 0.88;
-  const neckHeight = Math.max(neckTop - neckBottom, headRadius * 0.45);
+  const neckBottom = shoulderY - headRadius * 0.04;
+  const neckTop = headY - headRadius * 0.92;
+  const neckHeight = Math.max(neckTop - neckBottom, headRadius * 0.34);
 
   return (
     <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
