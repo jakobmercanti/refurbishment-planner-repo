@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from database.catalog import SessionLocal
+from database.models import FurnitureItemRecord
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.models import DoorType, OpeningKind, PersonMockup, Point2D
 
@@ -190,6 +194,47 @@ def test_double_door_requires_door_fields() -> None:
     payload.update({"door_type": "DOUBLE", "hinge_side": None})
     response = client.post(f"/rooms/{fixture.room.id}/openings", json=payload)
     assert response.status_code == 422
+
+
+def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
+    categories = client.get("/catalog/categories")
+    assert categories.status_code == 200
+    assert {category["id"] for category in categories.json()} == {"showers", "basins", "toilets", "storage"}
+
+    suffix = uuid4().hex[:8]
+    payload = {
+        "category_id": "storage",
+        "fixture_kind": "FURNITURE",
+        "name": "Supplier test cabinet",
+        "supplier": f"Test Supplier {suffix}",
+        "sku": f"CAB-{suffix}",
+        "width_mm": 610,
+        "depth_mm": 420,
+        "height_mm": 880,
+        "color_hex": "#446688",
+        "description": "Test-only supplier catalogue record.",
+    }
+    created = client.post("/catalog/items", json=payload)
+    assert created.status_code == 201
+    item_id = created.json()["id"]
+    try:
+        assert created.json()["category_name"] == "Storage & furniture"
+        assert created.json()["color_hex"] == "#446688"
+        updated = client.put(
+            f"/catalog/items/{item_id}",
+            json={**payload, "name": "Updated supplier cabinet", "color_hex": "#884466"},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "Updated supplier cabinet"
+        assert updated.json()["color_hex"] == "#884466"
+    finally:
+        archived = client.delete(f"/catalog/items/{item_id}")
+        assert archived.status_code == 204
+        with SessionLocal() as session:
+            test_record = session.get(FurnitureItemRecord, item_id)
+            if test_record is not None and test_record.supplier.startswith("Test Supplier "):
+                session.delete(test_record)
+                session.commit()
 
 
 def test_room_validation_rejects_overlapping_openings_on_one_wall() -> None:

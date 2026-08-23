@@ -11,7 +11,13 @@ from geometry.shapes import door_swing_envelope, obstacle_footprint, oriented_bo
 from geometry.walls import room_polygon
 
 
-def _check(check_id: str, status: CheckStatus, explanation: str, references: list[str], margin: float | None = None) -> FitCheck:
+def _check(
+    check_id: str,
+    status: CheckStatus,
+    explanation: str,
+    references: list[str],
+    margin: float | None = None,
+) -> FitCheck:
     return FitCheck(
         check_id=check_id,
         status=status,
@@ -226,10 +232,12 @@ def analyse_layout(room: RoomDefinition) -> LayoutResult:
         summary = f"FAIL — {failures} layout conflict{'s' if failures != 1 else ''} require attention."
     elif verifications:
         status = FitStatus.VERIFY
-        summary = f"VERIFY — {verifications} usability clearance check{'s' if verifications != 1 else ''} require review."
+        suffix = "s" if verifications != 1 else ""
+        summary = f"VERIFY — {verifications} usability clearance check{suffix} require review."
     else:
         status = FitStatus.FIT
-        summary = f"FIT — All {checked_items} placed model{'s' if checked_items != 1 else ''} fit the checked room geometry."
+        suffix = "s" if checked_items != 1 else ""
+        summary = f"FIT — All {checked_items} placed model{suffix} fit the checked room geometry."
 
     return LayoutResult(
         status=status,

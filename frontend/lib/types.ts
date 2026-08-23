@@ -47,8 +47,37 @@ export interface Obstacle {
   verified: boolean;
   fixture_kind?: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE";
   model_id?: string;
+  color_hex?: string;
   wall_lock?: boolean;
 }
+
+export interface CatalogueCategory {
+  id: string;
+  name: string;
+  description: string;
+  item_count: number;
+}
+
+export interface CatalogueItem {
+  id: string;
+  category_id: string;
+  category_name: string;
+  fixture_kind: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE";
+  name: string;
+  supplier: string;
+  sku: string;
+  width_mm: number;
+  depth_mm: number;
+  height_mm: number;
+  color_hex: string;
+  description: string;
+  supplier_editable: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CatalogueItemInput = Omit<CatalogueItem, "id" | "category_name" | "supplier_editable" | "active" | "created_at" | "updated_at">;
 
 export type PersonPosture = "STANDING" | "SEATED" | "CROUCHING";
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -78,3 +78,38 @@ class ArtifactRecord(Base):
     location: Mapped[str] = mapped_column(Text)
     evidence_label: Mapped[str] = mapped_column(String(100), default="visualisation, not dimensional evidence")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class FurnitureCategoryRecord(Base):
+    __tablename__ = "furniture_categories"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    items: Mapped[list[FurnitureItemRecord]] = relationship(back_populates="category")
+
+
+class FurnitureItemRecord(Base):
+    __tablename__ = "furniture_items"
+    __table_args__ = (
+        UniqueConstraint("supplier", "sku", name="uq_furniture_supplier_sku"),
+        Index("idx_furniture_category_active", "category_id", "active"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    category_id: Mapped[str] = mapped_column(ForeignKey("furniture_categories.id"))
+    fixture_kind: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(String(200))
+    supplier: Mapped[str] = mapped_column(String(200))
+    sku: Mapped[str] = mapped_column(String(120))
+    width_mm: Mapped[float] = mapped_column(Float)
+    depth_mm: Mapped[float] = mapped_column(Float)
+    height_mm: Mapped[float] = mapped_column(Float)
+    color_hex: Mapped[str] = mapped_column(String(7), default="#b99b77")
+    description: Mapped[str] = mapped_column(Text, default="")
+    supplier_editable: Mapped[bool] = mapped_column(Boolean, default=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    category: Mapped[FurnitureCategoryRecord] = relationship(back_populates="items")

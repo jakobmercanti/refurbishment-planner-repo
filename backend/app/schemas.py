@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -63,3 +64,32 @@ class CADResponse(BaseModel):
     artifact_id: UUID
     path: Path
     evidence_label: str = "visualisation, not dimensional evidence"
+
+
+class CatalogueCategoryResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    item_count: int
+
+
+class CatalogueItemInput(BaseModel):
+    category_id: str = Field(min_length=1, max_length=50)
+    fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE"]
+    name: str = Field(min_length=1, max_length=200)
+    supplier: str = Field(min_length=1, max_length=200)
+    sku: str = Field(min_length=1, max_length=120)
+    width_mm: float = Field(gt=0, le=20_000)
+    depth_mm: float = Field(gt=0, le=20_000)
+    height_mm: float = Field(gt=0, le=20_000)
+    color_hex: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    description: str = Field(default="", max_length=2000)
+
+
+class CatalogueItemResponse(CatalogueItemInput):
+    id: str
+    category_name: str
+    supplier_editable: bool
+    active: bool
+    created_at: datetime
+    updated_at: datetime

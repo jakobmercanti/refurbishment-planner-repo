@@ -363,6 +363,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
     onPointerMove,
     onPointerUp,
   };
+  const customColour = obstacle.color_hex;
   const selectionRing = selected ? (
     <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[Math.max(width, depth) * 0.62, Math.max(width, depth) * 0.68, 48]} />
@@ -376,7 +377,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
         {selectionRing}
         <mesh position={[0, 0.035, 0]} castShadow receiveShadow>
           <boxGeometry args={[width, 0.07, depth]} />
-          <meshStandardMaterial color="#f7f8f6" roughness={0.65} />
+          <meshStandardMaterial color={customColour ?? "#f7f8f6"} roughness={0.65} />
         </mesh>
         <mesh position={[0, height * 0.52, -depth / 2]} castShadow>
           <boxGeometry args={[width, height * 0.96, 0.012]} />
@@ -407,7 +408,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
         {selectionRing}
         {isVanity ? <>
           <RoundedBox args={[width * 0.9, height * 0.72, depth * 0.82]} radius={0.025} smoothness={4} position={[0, height * 0.4, -depth * 0.06]} castShadow>
-            <meshStandardMaterial color="#9d8067" roughness={0.58} />
+            <meshStandardMaterial color={customColour ?? "#9d8067"} roughness={0.58} />
           </RoundedBox>
           <mesh position={[0, height * 0.075, -depth * 0.02]} castShadow><boxGeometry args={[width * 0.82, height * 0.1, depth * 0.74]} /><meshStandardMaterial color="#705a49" roughness={0.7} /></mesh>
           {[-0.225, 0.225].map((side) => <group key={side} position={[width * side, height * 0.42, depth * 0.365]}>
@@ -418,7 +419,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
             <meshStandardMaterial color="#f0eee8" roughness={0.26} />
           </RoundedBox>
         </> : <>
-          <mesh position={[0, height * 0.37, -depth * 0.08]} castShadow><cylinderGeometry args={[width * 0.18, width * 0.28, height * 0.72, 24]} /><meshStandardMaterial color="#f1f0eb" roughness={0.3} /></mesh>
+          <mesh position={[0, height * 0.37, -depth * 0.08]} castShadow><cylinderGeometry args={[width * 0.18, width * 0.28, height * 0.72, 24]} /><meshStandardMaterial color={customColour ?? "#f1f0eb"} roughness={0.3} /></mesh>
           <RoundedBox args={[width, height * 0.07, depth]} radius={0.025} smoothness={4} position={[0, height * 0.78, 0]} castShadow><meshStandardMaterial color="#f0eee8" roughness={0.26} /></RoundedBox>
         </>}
         <mesh position={[0, height * 0.865, depth * 0.04]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.62, depth * 0.62, 1]} castShadow>
@@ -444,7 +445,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
         {selectionRing}
         <mesh position={[0, height * 0.3, depth * 0.08]} scale={[width * 0.9, height * 0.48, depth * 0.72]} castShadow>
           <sphereGeometry args={[0.5, 32, 18]} />
-          <meshStandardMaterial color="#f7f7f3" roughness={0.3} />
+          <meshStandardMaterial color={customColour ?? "#f7f7f3"} roughness={0.3} />
         </mesh>
         <mesh position={[0, height * 0.7, -depth * 0.35]} castShadow>
           <boxGeometry args={[width * 0.82, height * 0.56, depth * 0.3]} />
@@ -463,7 +464,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
         {selectionRing}
         <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
           <boxGeometry args={[width, height, depth]} />
-          <meshStandardMaterial color={isBench ? "#a88762" : "#b99b77"} roughness={0.72} />
+          <meshStandardMaterial color={customColour ?? (isBench ? "#a88762" : "#b99b77")} roughness={0.72} />
         </mesh>
         {!isBench && <>
           <mesh position={[0, height * 0.55, depth / 2 + 0.004]}>

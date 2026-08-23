@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { EngineeringViewer } from "@/components/EngineeringViewer";
+import { ApplicationMenuBar } from "@/components/ApplicationMenuBar";
+import { CatalogueBrowser } from "@/components/CatalogueBrowser";
 import { FixtureEditor } from "@/components/FixtureEditor";
 import { FloorPlanEditor } from "@/components/FloorPlanEditor";
 import { PersonEditor } from "@/components/PersonEditor";
-import type { DemoResponse, LayoutResult, Obstacle, PersonMockup, Room, RoomFinishes } from "@/lib/types";
+import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
+import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -16,6 +19,10 @@ export default function Home() {
   const [runningAnalysis, setRunningAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [catalogueOpen, setCatalogueOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [personPanelVisible, setPersonPanelVisible] = useState(false);
+  const [preferences, setPreferences] = useState<AppPreferences>({ density: "COMFORTABLE", confirmBeforeOpen: true });
 
   useEffect(() => {
     fetch(`${API_URL}/demo`)
@@ -54,6 +61,43 @@ export default function Home() {
     invalidateAnalysis();
   }
 
+  async function openRoomFile(room: Room) {
+    if (!Array.isArray(room.vertices) || !room.wall_height || !room.wall_thickness) throw new Error("This file is not a Renovation Fit room.");
+    if (preferences.confirmBeforeOpen && !window.confirm("Replace the current working room with the selected file?")) return;
+    const response = await fetch(`${API_URL}/rooms/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(room) });
+    if (!response.ok) {
+      const payload = await response.json() as { detail?: string };
+      throw new Error(payload.detail ?? "The room geometry is invalid.");
+    }
+    setDemo((current) => current ? { ...current, room } : current);
+    invalidateAnalysis();
+  }
+
+  function insertCatalogueItem(item: CatalogueItem) {
+    const minX = Math.min(...demo!.room.vertices.map((point) => point.x));
+    const maxX = Math.max(...demo!.room.vertices.map((point) => point.x));
+    const minY = Math.min(...demo!.room.vertices.map((point) => point.y));
+    const maxY = Math.max(...demo!.room.vertices.map((point) => point.y));
+    const measured = (value: number): Measurement => ({ value, uncertainty_mm: 5, verified: false, source_type: "MANUFACTURER_DATASHEET" });
+    const obstacle: Obstacle = {
+      id: `fixture-${crypto.randomUUID().slice(0, 8)}`,
+      name: item.name,
+      kind: "BOX",
+      center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+      dimensions: { width: measured(item.width_mm), depth: measured(item.depth_mm), height: measured(item.height_mm) },
+      base_z_mm: 0,
+      rotation_deg: 0,
+      source_type: "MANUFACTURER_DATASHEET",
+      verified: false,
+      fixture_kind: item.fixture_kind,
+      model_id: item.id,
+      color_hex: item.color_hex,
+      wall_lock: false,
+    };
+    applyObstacles([...demo!.room.obstacles, obstacle]);
+    setMode("ANALYSIS");
+  }
+
   async function runAnalysis() {
     if (!demo) return;
     setRunningAnalysis(true);
@@ -78,9 +122,9 @@ export default function Home() {
   }
 
   return (
-    <main>
+    <main className={preferences.density === "COMPACT" ? "density-compact" : ""}>
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div>
+        <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={() => setPersonPanelVisible((current) => !current)} onOpenSettings={() => setSettingsOpen(true)} /></div>
         <nav className="app-nav" aria-label="Project workflow">
           <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>1 · Floor plan</button>
           <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>2 · Fit analysis</button>
@@ -98,7 +142,7 @@ export default function Home() {
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
             <FixtureEditor room={demo.room} onChange={applyObstacles} />
-            <PersonEditor room={demo.room} onChange={applyPerson} />
+            {personPanelVisible && <PersonEditor room={demo.room} onChange={applyPerson} />}
 
             {(!layoutResult || analysisIsStale) && (
               <div className="stale-analysis">
@@ -142,6 +186,8 @@ export default function Home() {
           </section>
         </section>
       )}
+      <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
+      <SettingsDialog open={settingsOpen} preferences={preferences} onChange={setPreferences} onClose={() => setSettingsOpen(false)} />
     </main>
   );
 }

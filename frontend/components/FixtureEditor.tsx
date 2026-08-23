@@ -85,7 +85,7 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
     const model = modelForObstacle(obstacle) ?? modelsForKind(inferredKind)[0];
     setEditingId(obstacle.id);
     setKind(inferredKind);
-    setModelId(model.id);
+    setModelId(obstacle.model_id ?? model.id);
     setName(obstacle.name);
     setX(obstacle.center.x);
     setY(obstacle.center.y);
@@ -151,7 +151,7 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
 
       <div className="fixture-selectors">
         <label className="field"><span>Element</span><select value={kind} onChange={(event) => changeKind(event.target.value as FixtureKind)}><option value="SHOWER">Shower enclosure</option><option value="BASIN">Basin</option><option value="TOILET">Toilet</option><option value="FURNITURE">Furniture</option></select></label>
-        <label className="field"><span>Model</span><select value={modelId} onChange={(event) => { const model = availableModels.find((item) => item.id === event.target.value); if (model) applyModel(model); }}>{availableModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
+        <label className="field"><span>Model</span><select value={modelId} onChange={(event) => { const model = availableModels.find((item) => item.id === event.target.value); if (model) applyModel(model); }}>{!availableModels.some((model) => model.id === modelId) && <option value={modelId}>{name} · catalogue</option>}{availableModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
       </div>
 
       <div className="fixture-field-group">

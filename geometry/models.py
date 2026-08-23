@@ -211,6 +211,7 @@ class ObstacleDefinition(BaseModel):
     verified: bool = False
     fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE"] | None = None
     model_id: str | None = None
+    color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     wall_lock: bool = False
 
     @field_validator("base_z_mm", "rotation_deg")

@@ -5,14 +5,21 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
+from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from backend.app.schemas import (
     CADResponse,
+    CatalogueCategoryResponse,
+    CatalogueItemInput,
+    CatalogueItemResponse,
     DemoResponse,
     FitRequest,
     GeometryInvalidation,
@@ -23,9 +30,11 @@ from backend.app.schemas import (
     WallSummary,
 )
 from cad.generator import generate_cad
+from database.catalog import catalogue_session, initialise_catalogue
+from database.models import FurnitureCategoryRecord, FurnitureItemRecord
 from geometry.engine import check_fit
-from geometry.layout_engine import analyse_layout
 from geometry.fixtures import build_l_shaped_fixture
+from geometry.layout_engine import analyse_layout
 from geometry.models import FitResult, GenericOpening, LayoutResult, ObstacleDefinition, Placement, RoomDefinition
 from geometry.shapes import obstacle_footprint
 from geometry.walls import PolygonValidationError, derive_walls, room_polygon
@@ -39,13 +48,54 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "PATCH"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Content-Type"],
 )
+initialise_catalogue()
 
 projects: dict[UUID, ProjectResponse] = {}
 rooms: dict[UUID, RoomDefinition] = {}
 fit_results: dict[UUID, FitResult] = {}
+
+CATEGORY_KINDS = {
+    "showers": "SHOWER",
+    "basins": "BASIN",
+    "toilets": "TOILET",
+    "storage": "FURNITURE",
+}
+CatalogueSession = Annotated[Session, Depends(catalogue_session)]
+CatalogueSearch = Annotated[str | None, Query(max_length=100)]
+
+
+def catalogue_item_response(item: FurnitureItemRecord) -> CatalogueItemResponse:
+    return CatalogueItemResponse(
+        id=item.id,
+        category_id=item.category_id,
+        category_name=item.category.name,
+        fixture_kind=item.fixture_kind,
+        name=item.name,
+        supplier=item.supplier,
+        sku=item.sku,
+        width_mm=item.width_mm,
+        depth_mm=item.depth_mm,
+        height_mm=item.height_mm,
+        color_hex=item.color_hex,
+        description=item.description,
+        supplier_editable=item.supplier_editable,
+        active=item.active,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+def validate_catalogue_category(session: Session, payload: CatalogueItemInput) -> FurnitureCategoryRecord:
+    category = session.get(FurnitureCategoryRecord, payload.category_id)
+    if category is None:
+        raise HTTPException(status_code=422, detail="catalogue category not found")
+    expected_kind = CATEGORY_KINDS.get(category.id)
+    if expected_kind != payload.fixture_kind:
+        raise HTTPException(status_code=422, detail=f"{category.name} entries must use fixture_kind {expected_kind}")
+    return category
 
 
 @app.exception_handler(PolygonValidationError)
@@ -223,6 +273,107 @@ def get_fit_check(analysis_id: UUID) -> FitResult:
         return fit_results[analysis_id]
     except KeyError as error:
         raise HTTPException(status_code=404, detail="fit analysis not found") from error
+
+
+@app.get("/catalog/categories", response_model=list[CatalogueCategoryResponse])
+def list_catalogue_categories(session: CatalogueSession) -> list[CatalogueCategoryResponse]:
+    rows = session.execute(
+        select(FurnitureCategoryRecord, func.count(FurnitureItemRecord.id))
+        .outerjoin(
+            FurnitureItemRecord,
+            (FurnitureItemRecord.category_id == FurnitureCategoryRecord.id) & FurnitureItemRecord.active,
+        )
+        .group_by(FurnitureCategoryRecord.id)
+        .order_by(FurnitureCategoryRecord.sort_order)
+    ).all()
+    return [
+        CatalogueCategoryResponse(
+            id=category.id,
+            name=category.name,
+            description=category.description,
+            item_count=count,
+        )
+        for category, count in rows
+    ]
+
+
+@app.get("/catalog/items", response_model=list[CatalogueItemResponse])
+def list_catalogue_items(
+    session: CatalogueSession,
+    category_id: str | None = None,
+    search: CatalogueSearch = None,
+) -> list[CatalogueItemResponse]:
+    statement = select(FurnitureItemRecord).where(FurnitureItemRecord.active).order_by(FurnitureItemRecord.name)
+    if category_id:
+        statement = statement.where(FurnitureItemRecord.category_id == category_id)
+    if search:
+        term = f"%{search.strip()}%"
+        statement = statement.where(or_(
+            FurnitureItemRecord.name.ilike(term),
+            FurnitureItemRecord.supplier.ilike(term),
+            FurnitureItemRecord.sku.ilike(term),
+        ))
+    return [catalogue_item_response(item) for item in session.scalars(statement).all()]
+
+
+@app.get("/catalog/items/{item_id}", response_model=CatalogueItemResponse)
+def get_catalogue_item(item_id: str, session: CatalogueSession) -> CatalogueItemResponse:
+    item = session.get(FurnitureItemRecord, item_id)
+    if item is None or not item.active:
+        raise HTTPException(status_code=404, detail="catalogue item not found")
+    return catalogue_item_response(item)
+
+
+@app.post("/catalog/items", response_model=CatalogueItemResponse, status_code=201)
+def create_catalogue_item(
+    payload: CatalogueItemInput,
+    session: CatalogueSession,
+) -> CatalogueItemResponse:
+    validate_catalogue_category(session, payload)
+    item = FurnitureItemRecord(**payload.model_dump(), supplier_editable=True)
+    session.add(item)
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="this supplier SKU already exists") from error
+    session.refresh(item)
+    return catalogue_item_response(item)
+
+
+@app.put("/catalog/items/{item_id}", response_model=CatalogueItemResponse)
+def update_catalogue_item(
+    item_id: str,
+    payload: CatalogueItemInput,
+    session: CatalogueSession,
+) -> CatalogueItemResponse:
+    item = session.get(FurnitureItemRecord, item_id)
+    if item is None or not item.active:
+        raise HTTPException(status_code=404, detail="catalogue item not found")
+    if not item.supplier_editable:
+        raise HTTPException(status_code=403, detail="catalogue item is read-only")
+    validate_catalogue_category(session, payload)
+    for field, value in payload.model_dump().items():
+        setattr(item, field, value)
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="this supplier SKU already exists") from error
+    session.refresh(item)
+    return catalogue_item_response(item)
+
+
+@app.delete("/catalog/items/{item_id}", status_code=204)
+def archive_catalogue_item(item_id: str, session: CatalogueSession) -> Response:
+    item = session.get(FurnitureItemRecord, item_id)
+    if item is None or not item.active:
+        raise HTTPException(status_code=404, detail="catalogue item not found")
+    if not item.supplier_editable:
+        raise HTTPException(status_code=403, detail="catalogue item is read-only")
+    item.active = False
+    session.commit()
+    return Response(status_code=204)
 
 
 @app.get("/products")
