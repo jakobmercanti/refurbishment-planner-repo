@@ -6,12 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
-import type { Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern } from "@/lib/types";
+import type { Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 
 const SCALE = 0.001;
 
 interface Toggles {
-  walls: boolean;
   elements: boolean;
   doorSwings: boolean;
   collisions: boolean;
@@ -27,6 +26,7 @@ interface ViewerProps {
   onObstaclesChange: (obstacles: Obstacle[]) => void;
   onFinishesChange: (finishes: RoomFinishes) => void;
   onPersonChange: (person: PersonMockup | null) => void;
+  wallMode: WallViewMode;
 }
 
 type Selection = { type: "ELEMENT"; id: string } | { type: "PERSON" } | { type: "WALL"; id: string } | { type: "FLOOR" } | null;
@@ -105,6 +105,7 @@ function WallPiece({
   outerEnd,
   wallLength,
   colour,
+  wallMode,
   selected,
   onSelect,
 }: {
@@ -119,6 +120,7 @@ function WallPiece({
   outerEnd: Point2D;
   wallLength: number;
   colour: string;
+  wallMode: WallViewMode;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -152,7 +154,16 @@ function WallPiece({
       onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}
     >
       <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
-      <meshStandardMaterial color={colour} roughness={0.76} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.18 : 0} />
+      <meshStandardMaterial
+        color={colour}
+        roughness={0.76}
+        side={THREE.DoubleSide}
+        transparent={wallMode === "TRANSPARENT"}
+        opacity={wallMode === "TRANSPARENT" ? 0.24 : 1}
+        depthWrite={wallMode !== "TRANSPARENT"}
+        emissive={selected ? "#b76d16" : "#000000"}
+        emissiveIntensity={selected ? 0.18 : 0}
+      />
     </mesh>
   );
 }
@@ -162,6 +173,7 @@ function WallWithOpenings({
   room,
   start,
   end,
+  wallMode,
   selected,
   onSelect,
 }: {
@@ -169,6 +181,7 @@ function WallWithOpenings({
   room: Room;
   start: Point2D;
   end: Point2D;
+  wallMode: WallViewMode;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -197,6 +210,7 @@ function WallWithOpenings({
         outerEnd={outerEnd}
         wallLength={vector.length}
         colour={colour}
+        wallMode={wallMode}
         selected={selected}
         onSelect={onSelect}
       />,
@@ -216,6 +230,7 @@ function WallWithOpenings({
           outerEnd={outerEnd}
           wallLength={vector.length}
           colour={colour}
+          wallMode={wallMode}
           selected={selected}
           onSelect={onSelect}
         />,
@@ -236,6 +251,7 @@ function WallWithOpenings({
         outerEnd={outerEnd}
         wallLength={vector.length}
         colour={colour}
+        wallMode={wallMode}
         selected={selected}
         onSelect={onSelect}
       />,
@@ -256,6 +272,7 @@ function WallWithOpenings({
       outerEnd={outerEnd}
       wallLength={vector.length}
       colour={colour}
+      wallMode={wallMode}
       selected={selected}
       onSelect={onSelect}
     />,
@@ -336,10 +353,16 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   const texture = useMemo(() => tile ? tileTexture(tile) : null, [tile]);
   useEffect(() => () => texture?.dispose(), [texture]);
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
-      <shapeGeometry args={[shape]} />
-      <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.78} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
-    </mesh>
+    <group>
+      <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <extrudeGeometry args={[shape, { depth: 0.01, bevelEnabled: false }]} />
+        <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, 0.0005, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
+        <shapeGeometry args={[shape]} />
+        <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.78} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
+      </mesh>
+    </group>
   );
 }
 
@@ -704,7 +727,7 @@ function CaptureController({ request }: { request: number }) {
   return null;
 }
 
-function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, toggles, preset, selection, onSelectionChange }: ViewerProps & {
+function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, selection, onSelectionChange }: ViewerProps & {
   toggles: Toggles;
   preset: CameraView;
   selection: Selection;
@@ -787,13 +810,14 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, toggles,
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
       <Floor room={room} selected={selection?.type === "FLOOR"} onSelect={() => onSelectionChange({ type: "FLOOR" })} />
-      {toggles.walls && room.vertices.map((start, index) => (
+      {room.vertices.map((start, index) => wallMode !== "INVISIBLE" && (
         <WallWithOpenings
           key={`wall-${index}`}
           index={index}
           room={room}
           start={start}
           end={room.vertices[(index + 1) % room.vertices.length]}
+          wallMode={wallMode}
           selected={selection?.type === "WALL" && selection.id === `wall-${String(index + 1).padStart(3, "0")}`}
           onSelect={() => onSelectionChange({ type: "WALL", id: `wall-${String(index + 1).padStart(3, "0")}` })}
         />
@@ -889,7 +913,6 @@ export function EngineeringViewer(props: ViewerProps) {
   const [captureRequest, setCaptureRequest] = useState(0);
   const [selection, setSelection] = useState<Selection>(null);
   const [toggles, setToggles] = useState<Toggles>({
-    walls: true,
     elements: true,
     doorSwings: true,
     collisions: true,

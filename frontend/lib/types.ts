@@ -1,5 +1,6 @@
 export type Status = "FIT" | "VERIFY" | "FAIL";
 export type CheckStatus = "PASS" | "VERIFY" | "FAIL" | "NOT_APPLICABLE";
+export type WallViewMode = "SOLID" | "TRANSPARENT" | "INVISIBLE";
 
 export interface Point2D {
   x: number;

@@ -8,7 +8,7 @@ import { FixtureEditor } from "@/components/FixtureEditor";
 import { FloorPlanEditor } from "@/components/FloorPlanEditor";
 import { PersonEditor } from "@/components/PersonEditor";
 import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
-import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes } from "@/lib/types";
+import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes, WallViewMode } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -22,6 +22,7 @@ export default function Home() {
   const [catalogueOpen, setCatalogueOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [personPanelVisible, setPersonPanelVisible] = useState(false);
+  const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
   const [preferences, setPreferences] = useState<AppPreferences>({ density: "COMFORTABLE", confirmBeforeOpen: true });
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export default function Home() {
   return (
     <main className={preferences.density === "COMPACT" ? "density-compact" : ""}>
       <header className="topbar">
-        <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={() => setPersonPanelVisible((current) => !current)} onOpenSettings={() => setSettingsOpen(true)} /></div>
+        <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} wallMode={wallMode} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={() => setPersonPanelVisible((current) => !current)} onWallModeChange={setWallMode} onOpenSettings={() => setSettingsOpen(true)} /></div>
         <nav className="app-nav" aria-label="Project workflow">
           <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>1 · Floor plan</button>
           <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>2 · Fit analysis</button>
@@ -180,8 +181,7 @@ export default function Home() {
           </aside>
 
           <section className="visual-panel">
-            <div className="visual-heading"><div><span className="eyebrow">Authoritative geometry snapshot</span><h2>{demo.room.name}</h2></div><span className="version-chip">Room v{demo.room.version} · {demo.room.obstacles.length} elements</span></div>
-            <EngineeringViewer room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} />
+            <EngineeringViewer room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} />
             <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
           </section>
         </section>
