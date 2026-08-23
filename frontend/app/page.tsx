@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { EngineeringViewer } from "@/components/EngineeringViewer";
 import { FixtureEditor } from "@/components/FixtureEditor";
 import { FloorPlanEditor } from "@/components/FloorPlanEditor";
-import type { DemoResponse, LayoutResult, Obstacle, Room } from "@/lib/types";
+import type { DemoResponse, LayoutResult, Obstacle, Room, RoomFinishes } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -42,6 +42,10 @@ export default function Home() {
   function applyObstacles(obstacles: Obstacle[]) {
     setDemo((current) => current ? { ...current, room: { ...current.room, obstacles, version: current.room.version + 1 } } : current);
     invalidateAnalysis();
+  }
+
+  function applyFinishes(finishes: RoomFinishes) {
+    setDemo((current) => current ? { ...current, room: { ...current.room, finishes } } : current);
   }
 
   async function runAnalysis() {
@@ -126,7 +130,7 @@ export default function Home() {
 
           <section className="visual-panel">
             <div className="visual-heading"><div><span className="eyebrow">Authoritative geometry snapshot</span><h2>{demo.room.name}</h2></div><span className="version-chip">Room v{demo.room.version} · {demo.room.obstacles.length} elements</span></div>
-            <EngineeringViewer room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} />
+            <EngineeringViewer room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} />
             <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
           </section>
         </section>

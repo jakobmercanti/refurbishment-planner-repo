@@ -47,6 +47,15 @@ export interface Obstacle {
   verified: boolean;
   fixture_kind?: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE";
   model_id?: string;
+  wall_lock?: boolean;
+}
+
+export type TilePattern = "NONE" | "SQUARE_300" | "SQUARE_600" | "HERRINGBONE";
+
+export interface RoomFinishes {
+  wall_colors?: Record<string, string>;
+  floor_color?: string;
+  floor_pattern?: TilePattern;
 }
 
 export interface Room {
@@ -58,6 +67,7 @@ export interface Room {
   wall_thickness: Measurement;
   openings: Opening[];
   obstacles: Obstacle[];
+  finishes?: RoomFinishes;
 }
 
 export interface Product {

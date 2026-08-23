@@ -9,6 +9,7 @@ import {
   type FixtureKind,
   type FixtureModel,
 } from "@/lib/fixtureCatalog";
+import { snapObstacleToNearestWall } from "@/lib/layoutInteraction";
 import type { Measurement, Obstacle, Room } from "@/lib/types";
 
 interface FixtureEditorProps {
@@ -47,6 +48,7 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
   const [width, setWidth] = useState(initialModel.width);
   const [depth, setDepth] = useState(initialModel.depth);
   const [height, setHeight] = useState(initialModel.height);
+  const [wallLock, setWallLock] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const availableModels = modelsForKind(kind);
@@ -73,6 +75,7 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
     setX(centre.x);
     setY(centre.y);
     setRotation(0);
+    setWallLock(false);
     setError(null);
   }
 
@@ -90,6 +93,7 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
     setWidth(obstacle.dimensions.width.value);
     setDepth(obstacle.dimensions.depth.value);
     setHeight(obstacle.dimensions.height.value);
+    setWallLock(obstacle.wall_lock ?? false);
     setError(null);
   }
 
@@ -122,10 +126,12 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
       verified: false,
       fixture_kind: kind,
       model_id: modelId,
+      wall_lock: wallLock,
     };
+    const positionedFixture = wallLock ? { ...fixture, center: snapObstacleToNearestWall(fixture, room.vertices, fixture.center) } : fixture;
     onChange(editingId
-      ? room.obstacles.map((obstacle) => obstacle.id === editingId ? fixture : obstacle)
-      : [...room.obstacles, fixture]);
+      ? room.obstacles.map((obstacle) => obstacle.id === editingId ? positionedFixture : obstacle)
+      : [...room.obstacles, positionedFixture]);
     resetForm();
   }
 
@@ -157,6 +163,8 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
         </div>
       </div>
 
+      <label className="fixture-lock-choice"><input type="checkbox" checked={wallLock} onChange={(event) => setWallLock(event.target.checked)} /><span><strong>Keep adjacent to nearest wall</strong><small>Dragging keeps this element touching the closest wall.</small></span></label>
+
       <div className="fixture-field-group">
         <span>Dimensions</span>
         <div className="fixture-fields three-columns">
@@ -179,7 +187,7 @@ export function FixtureEditor({ room, onChange }: FixtureEditorProps) {
             return (
               <article key={fixture.id} className={editingId === fixture.id ? "editing" : ""}>
                 <span className={`fixture-kind fixture-${fixtureKind.toLowerCase()}`}>{fixtureKind}</span>
-                <div><strong>{fixture.name}</strong><p>{fixture.dimensions.width.value.toFixed(0)} × {fixture.dimensions.depth.value.toFixed(0)} mm · X {fixture.center.x.toFixed(0)}, Y {fixture.center.y.toFixed(0)}</p></div>
+                <div><strong>{fixture.name}</strong><p>{fixture.dimensions.width.value.toFixed(0)} × {fixture.dimensions.depth.value.toFixed(0)} mm · X {fixture.center.x.toFixed(0)}, Y {fixture.center.y.toFixed(0)}{fixture.wall_lock ? " · Wall locked" : ""}</p></div>
                 <button className="edit-fixture" onClick={() => editFixture(fixture)}>Edit</button>
                 <button className="remove-fixture" onClick={() => removeFixture(fixture.id)} aria-label={`Remove ${fixture.name}`}>×</button>
               </article>

@@ -1,11 +1,12 @@
 "use client";
 
 import { Grid, OrbitControls } from "@react-three/drei";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, type ThreeEvent, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
-import type { Obstacle, Opening, Point2D, Room } from "@/lib/types";
+import { snapObstacleToNearestWall } from "@/lib/layoutInteraction";
+import type { Obstacle, Opening, Point2D, Room, RoomFinishes, TilePattern } from "@/lib/types";
 
 const SCALE = 0.001;
 
@@ -19,7 +20,13 @@ interface Toggles {
 interface ViewerProps {
   room: Room;
   collisionIds: string[];
+  onObstaclesChange: (obstacles: Obstacle[]) => void;
+  onFinishesChange: (finishes: RoomFinishes) => void;
 }
+
+type Selection = { type: "ELEMENT"; id: string } | { type: "WALL"; id: string } | { type: "FLOOR" } | null;
+
+const FINISH_COLOURS = ["#f1eee6", "#d8d4c8", "#c9d8d0", "#b8c9d8", "#d8c3b3", "#4c5b55"];
 
 function wallVector(start: Point2D, end: Point2D) {
   const dx = end.x - start.x;
@@ -67,6 +74,9 @@ function WallPiece({
   outerStart,
   outerEnd,
   wallLength,
+  colour,
+  selected,
+  onSelect,
 }: {
   start: Point2D;
   end: Point2D;
@@ -78,6 +88,9 @@ function WallPiece({
   outerStart: Point2D;
   outerEnd: Point2D;
   wallLength: number;
+  colour: string;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   if (length <= 0 || height <= 0) return null;
   const vector = wallVector(start, end);
@@ -106,9 +119,10 @@ function WallPiece({
       rotation={[-Math.PI / 2, 0, 0]}
       castShadow
       receiveShadow
+      onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}
     >
       <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
-      <meshStandardMaterial color="#d9d4c8" roughness={0.82} side={THREE.DoubleSide} />
+      <meshStandardMaterial color={colour} roughness={0.76} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.18 : 0} />
     </mesh>
   );
 }
@@ -118,16 +132,21 @@ function WallWithOpenings({
   room,
   start,
   end,
+  selected,
+  onSelect,
 }: {
   index: number;
   room: Room;
   start: Point2D;
   end: Point2D;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const vector = wallVector(start, end);
   const outerStart = exteriorCorner(room.vertices, index, room.wall_thickness.value);
   const outerEnd = exteriorCorner(room.vertices, (index + 1) % room.vertices.length, room.wall_thickness.value);
   const wallId = `wall-${String(index + 1).padStart(3, "0")}`;
+  const colour = room.finishes?.wall_colors?.[wallId] ?? "#d9d4c8";
   const openings = room.openings
     .filter((opening) => opening.parent_wall_id === wallId)
     .sort((a, b) => a.offset_mm - b.offset_mm);
@@ -147,6 +166,9 @@ function WallWithOpenings({
         outerStart={outerStart}
         outerEnd={outerEnd}
         wallLength={vector.length}
+        colour={colour}
+        selected={selected}
+        onSelect={onSelect}
       />,
     );
     if (opening.sill_height_mm > 0) {
@@ -163,6 +185,9 @@ function WallWithOpenings({
           outerStart={outerStart}
           outerEnd={outerEnd}
           wallLength={vector.length}
+          colour={colour}
+          selected={selected}
+          onSelect={onSelect}
         />,
       );
     }
@@ -180,6 +205,9 @@ function WallWithOpenings({
         outerStart={outerStart}
         outerEnd={outerEnd}
         wallLength={vector.length}
+        colour={colour}
+        selected={selected}
+        onSelect={onSelect}
       />,
     );
     cursor = opening.offset_mm + opening.width.value;
@@ -197,12 +225,46 @@ function WallWithOpenings({
       outerStart={outerStart}
       outerEnd={outerEnd}
       wallLength={vector.length}
+      colour={colour}
+      selected={selected}
+      onSelect={onSelect}
     />,
   );
   return <>{pieces}</>;
 }
 
-function Floor({ vertices }: { vertices: Point2D[] }) {
+function tileTexture(colour: string, pattern: TilePattern, vertices: Point2D[]) {
+  if (pattern === "NONE") return null;
+  const size = 128;
+  const colourValue = new THREE.Color(colour);
+  const grout = new THREE.Color(colour).multiplyScalar(0.72);
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const squareLine = x < 2 || y < 2;
+      const herringboneLine = ((x + y) % 32 < 2) || ((x - y + size) % 32 < 2);
+      const line = pattern === "HERRINGBONE" ? herringboneLine : squareLine;
+      const source = line ? grout : colourValue;
+      const offset = (y * size + x) * 4;
+      data[offset] = Math.round(source.r * 255);
+      data[offset + 1] = Math.round(source.g * 255);
+      data[offset + 2] = Math.round(source.b * 255);
+      data[offset + 3] = 255;
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  const width = Math.max(...vertices.map((item) => item.x)) - Math.min(...vertices.map((item) => item.x));
+  const depth = Math.max(...vertices.map((item) => item.y)) - Math.min(...vertices.map((item) => item.y));
+  const tileSize = pattern === "SQUARE_600" ? 600 : 300;
+  texture.repeat.set(Math.max(width / tileSize, 1), Math.max(depth / tileSize, 1));
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; onSelect: () => void }) {
+  const vertices = room.vertices;
   const shape = useMemo(() => {
     const next = new THREE.Shape();
     vertices.forEach((vertex, index) => {
@@ -214,15 +276,25 @@ function Floor({ vertices }: { vertices: Point2D[] }) {
     next.closePath();
     return next;
   }, [vertices]);
+  const colour = room.finishes?.floor_color ?? "#ece9e1";
+  const pattern = room.finishes?.floor_pattern ?? "NONE";
+  const texture = useMemo(() => tileTexture(colour, pattern, vertices), [colour, pattern, vertices]);
+  useEffect(() => () => texture?.dispose(), [texture]);
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
       <shapeGeometry args={[shape]} />
-      <meshStandardMaterial color="#ece9e1" roughness={0.94} side={THREE.DoubleSide} />
+      <meshStandardMaterial color={texture ? "#ffffff" : colour} map={texture} roughness={0.84} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
     </mesh>
   );
 }
 
-function FixtureMesh({ obstacle }: { obstacle: Obstacle }) {
+function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPointerUp }: {
+  obstacle: Obstacle;
+  selected: boolean;
+  onPointerDown: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerMove: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerUp: (event: ThreeEvent<PointerEvent>) => void;
+}) {
   const fixtureKind = fixtureKindForObstacle(obstacle);
   const width = obstacle.dimensions.width.value * SCALE;
   const depth = obstacle.dimensions.depth.value * SCALE;
@@ -233,52 +305,85 @@ function FixtureMesh({ obstacle }: { obstacle: Obstacle }) {
     -obstacle.center.y * SCALE,
   ];
   const rotation: [number, number, number] = [0, THREE.MathUtils.degToRad(obstacle.rotation_deg), 0];
+  const interactionProps = {
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+  };
+  const selectionRing = selected ? (
+    <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[Math.max(width, depth) * 0.62, Math.max(width, depth) * 0.68, 48]} />
+      <meshBasicMaterial color="#d88416" transparent opacity={0.9} side={THREE.DoubleSide} />
+    </mesh>
+  ) : null;
 
   if (fixtureKind === "SHOWER") {
     return (
-      <group position={position} rotation={rotation}>
-        <mesh position={[0, 0.025, 0]} castShadow receiveShadow>
-          <boxGeometry args={[width, 0.05, depth]} />
+      <group position={position} rotation={rotation} {...interactionProps}>
+        {selectionRing}
+        <mesh position={[0, 0.035, 0]} castShadow receiveShadow>
+          <boxGeometry args={[width, 0.07, depth]} />
           <meshStandardMaterial color="#f7f8f6" roughness={0.65} />
         </mesh>
-        <mesh position={[0, height / 2, 0]} castShadow>
-          <boxGeometry args={[width, height, depth]} />
-          <meshStandardMaterial color="#73bdd0" transparent opacity={0.2} roughness={0.12} metalness={0.08} depthWrite={false} />
+        <mesh position={[0, height * 0.52, -depth / 2]} castShadow>
+          <boxGeometry args={[width, height * 0.96, 0.012]} />
+          <meshPhysicalMaterial color="#b9e1e8" transparent opacity={0.28} roughness={0.08} transmission={0.35} depthWrite={false} />
         </mesh>
-        <mesh position={[0, height - 0.018, 0]}>
-          <boxGeometry args={[width + 0.025, 0.036, depth + 0.025]} />
+        <mesh position={[-width / 2, height * 0.52, 0]} castShadow>
+          <boxGeometry args={[0.012, height * 0.96, depth]} />
+          <meshPhysicalMaterial color="#b9e1e8" transparent opacity={0.28} roughness={0.08} transmission={0.35} depthWrite={false} />
+        </mesh>
+        <mesh position={[width * 0.23, height * 0.52, depth / 2]} castShadow>
+          <boxGeometry args={[width * 0.54, height * 0.96, 0.012]} />
+          <meshPhysicalMaterial color="#c6e7ec" transparent opacity={0.22} roughness={0.06} transmission={0.42} depthWrite={false} />
+        </mesh>
+        <mesh position={[0, height - 0.018, -depth / 2]}>
+          <boxGeometry args={[width + 0.025, 0.03, 0.025]} />
           <meshStandardMaterial color="#496a70" metalness={0.65} roughness={0.28} />
         </mesh>
+        {[-width / 2, width / 2].map((xValue) => <mesh key={xValue} position={[xValue, height / 2, -depth / 2]}><cylinderGeometry args={[0.014, 0.014, height, 12]} /><meshStandardMaterial color="#52696c" metalness={0.75} roughness={0.22} /></mesh>)}
+        <mesh position={[0, 0.074, 0]} rotation={[-Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.045, 0.045, 0.008, 24]} /><meshStandardMaterial color="#667878" metalness={0.7} roughness={0.25} /></mesh>
       </group>
     );
   }
 
   if (fixtureKind === "BASIN") {
     return (
-      <group position={position} rotation={rotation}>
-        <mesh position={[0, height * 0.42, 0]} castShadow>
-          <boxGeometry args={[width * 0.72, height * 0.82, depth * 0.62]} />
-          <meshStandardMaterial color="#d8d4ca" roughness={0.68} />
+      <group position={position} rotation={rotation} {...interactionProps}>
+        {selectionRing}
+        <mesh position={[0, height * 0.43, -depth * 0.08]} castShadow>
+          <boxGeometry args={[width * 0.82, height * 0.84, depth * 0.72]} />
+          <meshStandardMaterial color="#c8b49b" roughness={0.62} />
         </mesh>
-        <mesh position={[0, height * 0.92, 0.02]} scale={[width, height * 0.16, depth]} castShadow>
+        <mesh position={[0, height * 0.86, 0]} castShadow>
+          <boxGeometry args={[width, height * 0.055, depth]} />
+          <meshStandardMaterial color="#f4f1ea" roughness={0.32} />
+        </mesh>
+        <mesh position={[0, height * 0.91, depth * 0.08]} scale={[width * 0.82, height * 0.16, depth * 0.72]} castShadow>
           <sphereGeometry args={[0.5, 32, 16]} />
           <meshStandardMaterial color="#fbfbf8" roughness={0.25} />
         </mesh>
+        <mesh position={[0, height * 0.96, -depth * 0.17]}><cylinderGeometry args={[0.018, 0.018, height * 0.18, 16]} /><meshStandardMaterial color="#6f7a78" metalness={0.8} roughness={0.2} /></mesh>
+        <mesh position={[0, height * 1.04, -depth * 0.1]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.075, 0.014, 10, 20, Math.PI]} /><meshStandardMaterial color="#6f7a78" metalness={0.8} roughness={0.2} /></mesh>
+        <mesh position={[0, height * 0.98, depth * 0.1]} rotation={[-Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.025, 0.025, 0.01, 20]} /><meshStandardMaterial color="#8b9391" metalness={0.65} roughness={0.3} /></mesh>
       </group>
     );
   }
 
   if (fixtureKind === "TOILET") {
     return (
-      <group position={position} rotation={rotation}>
-        <mesh position={[0, height * 0.34, depth * 0.1]} scale={[width, height * 0.5, depth * 0.72]} castShadow>
+      <group position={position} rotation={rotation} {...interactionProps}>
+        {selectionRing}
+        <mesh position={[0, height * 0.3, depth * 0.08]} scale={[width * 0.9, height * 0.48, depth * 0.72]} castShadow>
           <sphereGeometry args={[0.5, 32, 18]} />
           <meshStandardMaterial color="#f7f7f3" roughness={0.3} />
         </mesh>
-        <mesh position={[0, height * 0.7, -depth * 0.34]} castShadow>
+        <mesh position={[0, height * 0.7, -depth * 0.35]} castShadow>
           <boxGeometry args={[width * 0.82, height * 0.56, depth * 0.3]} />
           <meshStandardMaterial color="#f7f7f3" roughness={0.32} />
         </mesh>
+        <mesh position={[0, height * 0.49, depth * 0.12]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.42, depth * 0.36, 1]}><torusGeometry args={[0.5, 0.075, 14, 36]} /><meshStandardMaterial color="#fafaf6" roughness={0.25} /></mesh>
+        <mesh position={[0, height * 0.985, -depth * 0.35]} rotation={[-Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.035, 0.035, 0.01, 20]} /><meshStandardMaterial color="#8b9391" metalness={0.55} roughness={0.3} /></mesh>
       </group>
     );
   }
@@ -286,7 +391,8 @@ function FixtureMesh({ obstacle }: { obstacle: Obstacle }) {
   if (fixtureKind === "FURNITURE") {
     const isBench = obstacle.model_id?.includes("bench");
     return (
-      <group position={position} rotation={rotation}>
+      <group position={position} rotation={rotation} {...interactionProps}>
+        {selectionRing}
         <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
           <boxGeometry args={[width, height, depth]} />
           <meshStandardMaterial color={isBench ? "#a88762" : "#b99b77"} roughness={0.72} />
@@ -310,6 +416,7 @@ function FixtureMesh({ obstacle }: { obstacle: Obstacle }) {
       position={[position[0], position[1] + height / 2, position[2]]}
       rotation={rotation}
       castShadow
+      {...interactionProps}
     >
       <boxGeometry args={[width, height, depth]} />
       <meshStandardMaterial color="#8a7765" roughness={0.72} />
@@ -382,13 +489,58 @@ function CameraPreset({ preset }: { preset: "perspective" | "top" }) {
   return null;
 }
 
-function Scene({ room, collisionIds, toggles, preset }: ViewerProps & { toggles: Toggles; preset: "perspective" | "top" }) {
+function Scene({ room, collisionIds, onObstaclesChange, toggles, preset, selection, onSelectionChange }: ViewerProps & {
+  toggles: Toggles;
+  preset: "perspective" | "top";
+  selection: Selection;
+  onSelectionChange: (selection: Selection) => void;
+}) {
+  const [dragging, setDragging] = useState<{ id: string; offset: Point2D } | null>(null);
+  const [previewCenters, setPreviewCenters] = useState<Record<string, Point2D>>({});
+  const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const displayedObstacles = room.obstacles.map((obstacle) => previewCenters[obstacle.id]
+    ? { ...obstacle, center: previewCenters[obstacle.id] }
+    : obstacle);
+
+  function floorPoint(event: ThreeEvent<PointerEvent>) {
+    const point = event.ray.intersectPlane(dragPlane, new THREE.Vector3());
+    return point ? { x: point.x / SCALE, y: -point.z / SCALE } : null;
+  }
+
+  function startDrag(event: ThreeEvent<PointerEvent>, obstacle: Obstacle) {
+    event.stopPropagation();
+    onSelectionChange({ type: "ELEMENT", id: obstacle.id });
+    const point = floorPoint(event);
+    if (!point) return;
+    (event.target as EventTarget & { setPointerCapture(pointerId: number): void }).setPointerCapture(event.pointerId);
+    setDragging({ id: obstacle.id, offset: { x: obstacle.center.x - point.x, y: obstacle.center.y - point.y } });
+  }
+
+  function moveDrag(event: ThreeEvent<PointerEvent>, obstacle: Obstacle) {
+    if (dragging?.id !== obstacle.id) return;
+    event.stopPropagation();
+    const point = floorPoint(event);
+    if (!point) return;
+    const requested = { x: point.x + dragging.offset.x, y: point.y + dragging.offset.y };
+    const center = obstacle.wall_lock ? snapObstacleToNearestWall(obstacle, room.vertices, requested) : requested;
+    setPreviewCenters((current) => ({ ...current, [obstacle.id]: center }));
+  }
+
+  function endDrag(event: ThreeEvent<PointerEvent>, obstacle: Obstacle) {
+    if (dragging?.id !== obstacle.id) return;
+    event.stopPropagation();
+    const center = previewCenters[obstacle.id] ?? obstacle.center;
+    onObstaclesChange(room.obstacles.map((item) => item.id === obstacle.id ? { ...item, center } : item));
+    setPreviewCenters({});
+    setDragging(null);
+  }
+
   return (
     <>
       <CameraPreset preset={preset} />
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
-      <Floor vertices={room.vertices} />
+      <Floor room={room} selected={selection?.type === "FLOOR"} onSelect={() => onSelectionChange({ type: "FLOOR" })} />
       {toggles.walls && room.vertices.map((start, index) => (
         <WallWithOpenings
           key={`wall-${index}`}
@@ -396,9 +548,20 @@ function Scene({ room, collisionIds, toggles, preset }: ViewerProps & { toggles:
           room={room}
           start={start}
           end={room.vertices[(index + 1) % room.vertices.length]}
+          selected={selection?.type === "WALL" && selection.id === `wall-${String(index + 1).padStart(3, "0")}`}
+          onSelect={() => onSelectionChange({ type: "WALL", id: `wall-${String(index + 1).padStart(3, "0")}` })}
         />
       ))}
-      {toggles.elements && room.obstacles.map((obstacle) => <FixtureMesh key={obstacle.id} obstacle={obstacle} />)}
+      {toggles.elements && displayedObstacles.map((obstacle) => (
+        <FixtureMesh
+          key={obstacle.id}
+          obstacle={obstacle}
+          selected={selection?.type === "ELEMENT" && selection.id === obstacle.id}
+          onPointerDown={(event) => startDrag(event, obstacle)}
+          onPointerMove={(event) => moveDrag(event, obstacle)}
+          onPointerUp={(event) => endDrag(event, obstacle)}
+        />
+      ))}
       {toggles.doorSwings && room.openings.filter((item) => item.kind === "DOOR").map((door) => (
         <DoorSwing key={door.id} room={room} door={door} />
       ))}
@@ -409,13 +572,66 @@ function Scene({ room, collisionIds, toggles, preset }: ViewerProps & { toggles:
         </mesh>
       ))}
       <Grid position={[1.6, -0.002, -1.4]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />
-      <OrbitControls makeDefault enableDamping />
+      <OrbitControls makeDefault enableDamping enabled={!dragging} />
     </>
+  );
+}
+
+function ContextControls({ room, selection, onObstaclesChange, onFinishesChange }: Pick<ViewerProps, "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection }) {
+  if (!selection) return null;
+  const finishes = room.finishes ?? {};
+  const selectedElement = selection.type === "ELEMENT" ? room.obstacles.find((item) => item.id === selection.id) : undefined;
+
+  function setWallColour(colour?: string) {
+    if (selection?.type !== "WALL") return;
+    const wallColors = { ...(finishes.wall_colors ?? {}) };
+    if (colour) wallColors[selection.id] = colour;
+    else delete wallColors[selection.id];
+    onFinishesChange({ ...finishes, wall_colors: wallColors });
+  }
+
+  function setFloorColour(colour?: string) {
+    onFinishesChange({ ...finishes, floor_color: colour });
+  }
+
+  function setFloorPattern(pattern: TilePattern) {
+    onFinishesChange({ ...finishes, floor_pattern: pattern });
+  }
+
+  function setWallLock(locked: boolean) {
+    if (!selectedElement) return;
+    const center = locked ? snapObstacleToNearestWall(selectedElement, room.vertices, selectedElement.center) : selectedElement.center;
+    onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? { ...item, wall_lock: locked, center } : item));
+  }
+
+  return (
+    <aside className="context-controls" aria-label="Selected object controls">
+      {selection.type === "ELEMENT" && selectedElement && <>
+        <span className="eyebrow">Selected element</span>
+        <strong>{selectedElement.name}</strong>
+        <p>Drag the selected element across the floor to reposition it.</p>
+        <label className="viewer-lock-choice"><input type="checkbox" checked={selectedElement.wall_lock ?? false} onChange={(event) => setWallLock(event.target.checked)} /><span>Keep adjacent to nearest wall</span></label>
+      </>}
+      {selection.type === "WALL" && <>
+        <span className="eyebrow">Selected internal wall</span>
+        <strong>{selection.id.replace("wall-", "Wall ")}</strong>
+        <div className="finish-palette">{FINISH_COLOURS.map((colour) => <button key={colour} type="button" aria-label={`Set wall colour ${colour}`} className={finishes.wall_colors?.[selection.id] === colour ? "selected" : ""} style={{ background: colour }} onClick={() => setWallColour(colour)} />)}</div>
+        <button className="remove-finish" type="button" onClick={() => setWallColour()}>Remove colour</button>
+      </>}
+      {selection.type === "FLOOR" && <>
+        <span className="eyebrow">Selected floor</span>
+        <strong>Floor finish</strong>
+        <div className="finish-palette">{FINISH_COLOURS.map((colour) => <button key={colour} type="button" aria-label={`Set floor colour ${colour}`} className={finishes.floor_color === colour ? "selected" : ""} style={{ background: colour }} onClick={() => setFloorColour(colour)} />)}</div>
+        <label className="finish-pattern"><span>Tile pattern</span><select value={finishes.floor_pattern ?? "NONE"} onChange={(event) => setFloorPattern(event.target.value as TilePattern)}><option value="NONE">Plain finish</option><option value="SQUARE_300">Square tile · 300 mm</option><option value="SQUARE_600">Square tile · 600 mm</option><option value="HERRINGBONE">Herringbone</option></select></label>
+        <button className="remove-finish" type="button" onClick={() => setFloorColour()}>Remove colour</button>
+      </>}
+    </aside>
   );
 }
 
 export function EngineeringViewer(props: ViewerProps) {
   const [preset, setPreset] = useState<"perspective" | "top">("perspective");
+  const [selection, setSelection] = useState<Selection>(null);
   const [toggles, setToggles] = useState<Toggles>({
     walls: true,
     elements: true,
@@ -438,10 +654,11 @@ export function EngineeringViewer(props: ViewerProps) {
           ))}
         </div>
       </div>
-      <Canvas shadows camera={{ position: [4.6, 4.1, 4.8], fov: 38, near: 0.01, far: 100 }}>
-        <Scene {...props} toggles={toggles} preset={preset} />
+      <ContextControls room={props.room} selection={selection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} />
+      <Canvas shadows camera={{ position: [4.6, 4.1, 4.8], fov: 38, near: 0.01, far: 100 }} onPointerMissed={() => setSelection(null)}>
+        <Scene {...props} toggles={toggles} preset={preset} selection={selection} onSelectionChange={setSelection} />
       </Canvas>
-      <div className="viewer-legend"><span>1 scene unit = 1000 mm</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
+      <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
     </div>
   );
 }

@@ -203,6 +203,9 @@ class ObstacleDefinition(BaseModel):
     rotation_deg: float = 0.0
     source_type: SourceType
     verified: bool = False
+    fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE"] | None = None
+    model_id: str | None = None
+    wall_lock: bool = False
 
     @field_validator("base_z_mm", "rotation_deg")
     @classmethod
@@ -220,6 +223,7 @@ class RoomDefinition(BaseModel):
     wall_thickness: Measurement
     openings: list[GenericOpening] = Field(default_factory=list)
     obstacles: list[ObstacleDefinition] = Field(default_factory=list)
+    finishes: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
