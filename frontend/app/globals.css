@@ -37,6 +37,18 @@ button { font: inherit; }
 .software-dropdown p { margin: 5px; color: var(--fail); font-size: 9px; line-height: 1.4; }
 .modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(18,29,25,.48); backdrop-filter: blur(4px); }
 .modal-close { width: 34px; height: 34px; flex: none; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--muted); font-size: 20px; cursor: pointer; }
+.save-as-backdrop { z-index: 80; }
+.save-as-dialog { width: min(470px, 94vw); padding: 21px; border: 1px solid #b9c6bf; border-radius: 14px; background: white; box-shadow: 0 28px 80px rgba(12,24,19,.3); }
+.save-as-dialog header { display: flex; justify-content: space-between; align-items: start; }
+.save-as-dialog h2 { margin: 5px 0 0; font-size: 23px; }
+.save-as-dialog > label { display: grid; gap: 7px; margin-top: 20px; color: var(--muted); font: 650 9px var(--font-mono); }
+.save-as-dialog > label > div { display: grid; grid-template-columns: 1fr auto; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfa; }
+.save-as-dialog input { min-width: 0; padding: 11px; border: 0; outline: 0; background: transparent; color: var(--ink); font: 550 12px var(--font-mono); }
+.save-as-dialog label strong { align-self: stretch; display: grid; place-items: center; padding: 0 11px; border-left: 1px solid var(--line); background: #eef2ef; color: var(--deep); }
+.save-as-dialog label small { font: 500 9px var(--font-sans); }
+.save-as-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.save-as-dialog footer button { min-width: 105px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font: 650 9px var(--font-mono); cursor: pointer; }
+.save-as-dialog footer .primary { border-color: var(--deep); background: var(--deep); color: white; }
 .catalogue-modal { position: relative; width: min(1180px, 96vw); height: min(780px, 92vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #bcc8c2; border-radius: 15px; background: #f7f8f5; box-shadow: 0 28px 80px rgba(12,24,19,.28); }
 .catalogue-header { display: flex; justify-content: space-between; gap: 20px; padding: 21px 23px 16px; border-bottom: 1px solid var(--line); background: white; }
 .catalogue-header h2 { margin: 5px 0 3px; font-size: 23px; letter-spacing: -.03em; }
@@ -56,10 +68,12 @@ button { font: inherit; }
 .catalogue-result-heading span { color: var(--muted); font: 550 8px var(--font-mono); }
 .catalogue-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .catalogue-grid article { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: white; }
-.catalogue-object-preview { height: 75px; display: grid; place-items: end center; padding: 12px; background: linear-gradient(145deg,#eef2ef,#e2e8e3); }
+.catalogue-object-preview { position: relative; height: 75px; display: grid; place-items: end center; padding: 12px; background: linear-gradient(145deg,#eef2ef,#e2e8e3); }
 .catalogue-object-preview span { width: 54%; height: 42px; display: block; border-radius: 5px 5px 2px 2px; background: var(--object-colour); box-shadow: inset 0 -8px 0 rgba(0,0,0,.08), 0 8px 16px rgba(21,34,28,.16); }
+.catalogue-object-preview b { position: absolute; top: 7px; right: 7px; padding: 3px 5px; border-radius: 4px; background: var(--deep); color: white; font: 700 7px var(--font-mono); }
 .catalogue-object-body { padding: 11px; }
 .catalogue-category-label { color: var(--deep); font: 700 7px var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+.catalogue-default-badge { float: right; padding: 3px 5px; border: 1px solid #bdcfc6; border-radius: 99px; background: #edf5f1; color: var(--deep); font: 700 6px var(--font-mono); text-transform: uppercase; }
 .catalogue-object-body h3 { margin: 5px 0 4px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; white-space: nowrap; }
 .catalogue-object-body p { margin: 0 0 6px; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .catalogue-object-body code { color: #4f5e57; font: 550 8px var(--font-mono); }
@@ -77,6 +91,11 @@ button { font: inherit; }
 .catalogue-form-grid .span-two { grid-column: 1 / -1; }
 .catalogue-form-grid textarea { min-height: 70px; }
 .catalogue-form-grid input[type="color"] { height: 37px; padding: 4px; }
+.stl-import-field > div { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #f8faf8; }
+.stl-import-field button { padding: 7px 9px; border: 1px solid var(--deep); border-radius: 6px; background: white; color: var(--deep); font: 650 8px var(--font-mono); cursor: pointer; }
+.stl-import-field strong { min-width: 0; flex: 1; overflow: hidden; color: var(--ink); font: 550 9px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.stl-import-field .remove-stl { border-color: #e2c0bc; color: var(--fail); }
+.stl-import-field > small { color: var(--muted); font: 500 8px var(--font-sans); }
 .catalogue-form-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 13px; }
 .catalogue-form-actions button { min-width: 110px; }
 .catalogue-form-actions .catalogue-archive { margin-right: auto; border-color: #e2c0bc; background: var(--fail-soft); color: var(--fail); }
@@ -89,6 +108,7 @@ button { font: inherit; }
 .settings-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .settings-choice button { padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--muted); font: 600 9px var(--font-mono); cursor: pointer; }
 .settings-choice button.active { border-color: var(--deep); background: #eaf1ed; color: var(--deep); }
+.unit-choice { grid-template-columns: 1fr 1fr; }
 .settings-check { display: flex; gap: 9px; cursor: pointer; }
 .settings-check input { width: 17px; height: 17px; margin: 0; accent-color: var(--deep); }
 .settings-check span { display: grid; gap: 3px; }
@@ -220,6 +240,13 @@ button { font: inherit; }
 .tile-collection button.selected { border-color: var(--deep); box-shadow: inset 0 0 0 1px var(--deep); background: #f2f7f4; }
 .tile-swatch { width: 42px; height: 38px; border: 1px solid rgba(70,78,74,.18); border-radius: 5px; background-size: 24px 24px !important; }
 .tile-collection small { overflow: hidden; font: 600 8px/1.3 var(--font-mono); }
+.tile-colour-editor { margin: 0 0 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #f7f9f6; }
+.tile-colour-editor > strong { font-size: 10px; }
+.tile-palette-presets { display: flex; gap: 6px; margin-top: 8px; }
+.tile-palette-presets button { width: 36px; height: 28px; border: 2px solid white; border-radius: 6px; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.tile-custom-colours { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 9px; }
+.tile-custom-colours label { display: grid; gap: 4px; color: var(--muted); font: 600 7px var(--font-mono); }
+.tile-custom-colours input { width: 100%; height: 29px; padding: 2px; border: 1px solid var(--line); border-radius: 5px; background: white; }
 .remove-finish { width: 100%; border: 1px solid #dfc3bf; border-radius: 7px; padding: 8px; background: var(--fail-soft); color: var(--fail); font: 650 9px var(--font-mono); cursor: pointer; }
 .viewer-legend { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; justify-content: space-between; color: #52615b; font: 500 9px var(--font-mono); pointer-events: none; }
 .viewer-warning { display: flex; gap: 10px; margin-top: 10px; color: var(--muted); font-size: 10px; }
@@ -275,7 +302,10 @@ button { font: inherit; }
 .vertex-handle:active { cursor: grabbing; }
 .vertex-handle.selected { fill: #ffcb71; stroke: #8d5700; }
 .vertex-label { fill: var(--ink); font: 700 8px var(--font-mono); text-anchor: middle; }
-.opening-symbol { pointer-events: none; }
+.opening-symbol { pointer-events: auto; }
+.pickable-opening { cursor: grab; }
+.pickable-opening:active { cursor: grabbing; }
+.pickable-opening:hover .opening-label { fill: #b86e08; }
 .opening-gap { stroke: white; stroke-width: 15; }
 .door-threshold { stroke: #cb851a; stroke-width: 6; stroke-linecap: square; }
 .door-leaf { stroke: #cb851a; stroke-width: 4; stroke-linecap: round; }

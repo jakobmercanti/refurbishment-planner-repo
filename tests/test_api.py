@@ -231,6 +231,8 @@ def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
         "height_mm": 880,
         "color_hex": "#446688",
         "description": "Test-only supplier catalogue record.",
+        "stl_filename": "cabinet.stl",
+        "stl_base64": "data:model/stl;base64,U09MSUQ=",
     }
     created = client.post("/catalog/items", json=payload)
     assert created.status_code == 201
@@ -238,6 +240,9 @@ def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
     try:
         assert created.json()["category_name"] == "Storage & furniture"
         assert created.json()["color_hex"] == "#446688"
+        assert created.json()["is_default"] is False
+        assert created.json()["stl_filename"] == "cabinet.stl"
+        assert created.json()["stl_base64"].endswith("U09MSUQ=")
         updated = client.put(
             f"/catalog/items/{item_id}",
             json={**payload, "name": "Updated supplier cabinet", "color_hex": "#884466"},
@@ -253,6 +258,17 @@ def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
             if test_record is not None and test_record.supplier.startswith("Test Supplier "):
                 session.delete(test_record)
                 session.commit()
+
+
+def test_catalogue_highlights_and_preserves_builtin_defaults() -> None:
+    response = client.get("/catalog/items?category_id=basins")
+    assert response.status_code == 200
+    defaults = [item for item in response.json() if item["is_default"]]
+    assert defaults
+    assert all(item["supplier_editable"] for item in defaults)
+    archived = client.delete(f"/catalog/items/{defaults[0]['id']}")
+    assert archived.status_code == 403
+    assert "modified but not archived" in archived.json()["detail"]
 
 
 def test_room_validation_rejects_overlapping_openings_on_one_wall() -> None:

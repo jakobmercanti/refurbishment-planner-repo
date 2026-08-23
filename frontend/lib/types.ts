@@ -50,6 +50,8 @@ export interface Obstacle {
   model_id?: string;
   color_hex?: string;
   wall_lock?: boolean;
+  stl_filename?: string;
+  stl_base64?: string;
 }
 
 export interface CatalogueCategory {
@@ -72,13 +74,16 @@ export interface CatalogueItem {
   height_mm: number;
   color_hex: string;
   description: string;
+  is_default: boolean;
+  stl_filename?: string | null;
+  stl_base64?: string | null;
   supplier_editable: boolean;
   active: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export type CatalogueItemInput = Omit<CatalogueItem, "id" | "category_name" | "supplier_editable" | "active" | "created_at" | "updated_at">;
+export type CatalogueItemInput = Omit<CatalogueItem, "id" | "category_name" | "is_default" | "supplier_editable" | "active" | "created_at" | "updated_at">;
 
 export type PersonPosture = "STANDING" | "SEATED" | "CROUCHING";
 
@@ -103,6 +108,7 @@ export interface RoomFinishes {
   floor_color?: string;
   floor_pattern?: TilePattern;
   floor_tile_id?: string;
+  floor_tile_colours?: Record<string, { base: string; accent: string; grout: string }>;
 }
 
 export interface Room {

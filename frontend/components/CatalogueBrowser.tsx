@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditableNumberInput } from "@/components/EditableNumberInput";
 import type { CatalogueCategory, CatalogueItem, CatalogueItemInput } from "@/lib/types";
 
@@ -30,6 +30,8 @@ function blankEntry(): CatalogueItemInput {
     height_mm: 850,
     color_hex: "#b99b77",
     description: "",
+    stl_filename: null,
+    stl_base64: null,
   };
 }
 
@@ -42,6 +44,7 @@ export function CatalogueBrowser({ apiUrl, open, onClose, onInsert }: CatalogueB
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const stlInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -87,10 +90,31 @@ export function CatalogueBrowser({ apiUrl, open, onClose, onInsert }: CatalogueB
       height_mm: item.height_mm,
       color_hex: item.color_hex,
       description: item.description,
+      stl_filename: item.stl_filename,
+      stl_base64: item.stl_base64,
     });
     setEditingId(item.id);
     setShowForm(true);
     setError(null);
+  }
+
+  function importStl(file?: File) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".stl")) {
+      setError("Choose an STL file.");
+      return;
+    }
+    if (file.size > 20_000_000) {
+      setError("The STL must be smaller than 20 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((current) => ({ ...current, stl_filename: file.name, stl_base64: String(reader.result) }));
+      setError(null);
+    };
+    reader.onerror = () => setError("The STL file could not be read.");
+    reader.readAsDataURL(file);
   }
 
   async function saveEntry() {
@@ -132,13 +156,13 @@ export function CatalogueBrowser({ apiUrl, open, onClose, onInsert }: CatalogueB
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="catalogue-modal" role="dialog" aria-modal="true" aria-labelledby="catalogue-title">
-        <header className="catalogue-header"><div><span className="eyebrow">Persistent SQLite library</span><h2 id="catalogue-title">Bathroom object catalogue</h2><p>Explore products or maintain supplier-specific entries.</p></div><button className="modal-close" onClick={onClose} aria-label="Close catalogue">×</button></header>
+        <header className="catalogue-header"><div><h2 id="catalogue-title">Bathroom object catalogue</h2><p>Built-in defaults remain available and editable; suppliers can add their own objects and STL models.</p></div><button className="modal-close" onClick={onClose} aria-label="Close catalogue">×</button></header>
         <div className="catalogue-toolbar"><label><span>Search catalogue</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, supplier or SKU" /></label><button onClick={beginCreate}>+ Add supplier entry</button></div>
         <div className="catalogue-layout">
           <nav className="catalogue-categories" aria-label="Catalogue categories"><button className={!categoryId ? "active" : ""} onClick={() => setCategoryId("")}><span>All objects</span><small>{categories.reduce((total, item) => total + item.item_count, 0)}</small></button>{categories.map((category) => <button key={category.id} className={categoryId === category.id ? "active" : ""} onClick={() => setCategoryId(category.id)} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>)}</nav>
           <div className="catalogue-results">
             <div className="catalogue-result-heading"><strong>{categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects"}</strong><span>{items.length} result{items.length === 1 ? "" : "s"}</span></div>
-            {items.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{items.map((item) => <article key={item.id}><div className="catalogue-object-preview" style={{ "--object-colour": item.color_hex } as React.CSSProperties}><span /></div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name}</span><h3>{item.name}</h3><p>{item.supplier} · {item.sku}</p><code>{item.width_mm.toFixed(0)} × {item.depth_mm.toFixed(0)} × {item.height_mm.toFixed(0)} mm</code><div className="catalogue-card-actions"><button onClick={() => beginEdit(item)}>Edit entry</button><button className="catalogue-insert" onClick={() => { onInsert(item); onClose(); }}>Add to room</button></div></div></article>)}</div>}
+            {items.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{items.map((item) => <article key={item.id}><div className="catalogue-object-preview" style={{ "--object-colour": item.color_hex } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3><p>{item.supplier} · {item.sku}</p><code>{item.width_mm.toFixed(0)} × {item.depth_mm.toFixed(0)} × {item.height_mm.toFixed(0)} mm</code><div className="catalogue-card-actions"><button onClick={() => beginEdit(item)}>Edit entry</button><button className="catalogue-insert" onClick={() => { onInsert(item); onClose(); }}>Add to room</button></div></div></article>)}</div>}
           </div>
         </div>
 
@@ -151,8 +175,9 @@ export function CatalogueBrowser({ apiUrl, open, onClose, onInsert }: CatalogueB
           <label className="field"><span>Width mm</span><EditableNumberInput min={1} value={form.width_mm} onValueChange={(value) => setField("width_mm", value)} /></label>
           <label className="field"><span>Depth mm</span><EditableNumberInput min={1} value={form.depth_mm} onValueChange={(value) => setField("depth_mm", value)} /></label>
           <label className="field"><span>Height mm</span><EditableNumberInput min={1} value={form.height_mm} onValueChange={(value) => setField("height_mm", value)} /></label>
+          <div className="field span-two stl-import-field"><span>Optional 3D model</span><div><button type="button" onClick={() => stlInput.current?.click()}>{form.stl_filename ? "Replace STL" : "Import STL"}</button>{form.stl_filename && <><strong>{form.stl_filename}</strong><button type="button" className="remove-stl" onClick={() => setForm((current) => ({ ...current, stl_filename: null, stl_base64: null }))}>Remove</button></>}</div><small>The model is scaled to the width, depth and height entered above. Maximum 20 MB.</small><input ref={stlInput} hidden type="file" accept=".stl,model/stl,application/sla" onChange={(event) => { importStl(event.target.files?.[0]); event.target.value = ""; }} /></div>
           <label className="field span-two"><span>Description</span><textarea value={form.description} onChange={(event) => setField("description", event.target.value)} /></label>
-        </div>{error && <p className="inline-error">{error}</p>}<div className="catalogue-form-actions">{editingId && <button className="catalogue-archive" type="button" onClick={() => void archiveEntry()}>Archive</button>}<button type="button" onClick={() => setShowForm(false)}>Cancel</button><button className="catalogue-insert" type="submit">{editingId ? "Save changes" : "Create entry"}</button></div></form></div>}
+        </div>{error && <p className="inline-error">{error}</p>}<div className="catalogue-form-actions">{editingId && !items.find((item) => item.id === editingId)?.is_default && <button className="catalogue-archive" type="button" onClick={() => void archiveEntry()}>Archive</button>}<button type="button" onClick={() => setShowForm(false)}>Cancel</button><button className="catalogue-insert" type="submit">{editingId ? "Save changes" : "Create entry"}</button></div></form></div>}
         {error && !showForm && <p className="catalogue-error">{error}</p>}
       </section>
     </div>

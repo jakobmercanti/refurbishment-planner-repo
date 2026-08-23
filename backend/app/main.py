@@ -81,6 +81,9 @@ def catalogue_item_response(item: FurnitureItemRecord) -> CatalogueItemResponse:
         height_mm=item.height_mm,
         color_hex=item.color_hex,
         description=item.description,
+        is_default=item.is_default,
+        stl_filename=item.stl_filename,
+        stl_base64=item.stl_base64,
         supplier_editable=item.supplier_editable,
         active=item.active,
         created_at=item.created_at,
@@ -371,6 +374,8 @@ def archive_catalogue_item(item_id: str, session: CatalogueSession) -> Response:
         raise HTTPException(status_code=404, detail="catalogue item not found")
     if not item.supplier_editable:
         raise HTTPException(status_code=403, detail="catalogue item is read-only")
+    if item.is_default:
+        raise HTTPException(status_code=403, detail="default catalogue objects can be modified but not archived")
     item.active = False
     session.commit()
     return Response(status_code=204)

@@ -23,7 +23,7 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [personPanelVisible, setPersonPanelVisible] = useState(false);
   const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
-  const [preferences, setPreferences] = useState<AppPreferences>({ density: "COMFORTABLE", confirmBeforeOpen: true });
+  const [preferences, setPreferences] = useState<AppPreferences>({ density: "COMFORTABLE", confirmBeforeOpen: true, units: "MM" });
 
   useEffect(() => {
     fetch(`${API_URL}/demo`)
@@ -94,6 +94,8 @@ export default function Home() {
       model_id: item.id,
       color_hex: item.color_hex,
       wall_lock: false,
+      stl_filename: item.stl_filename ?? undefined,
+      stl_base64: item.stl_base64 ?? undefined,
     };
     applyObstacles([...demo!.room.obstacles, obstacle]);
     setMode("ANALYSIS");
@@ -125,12 +127,12 @@ export default function Home() {
   return (
     <main className={preferences.density === "COMPACT" ? "density-compact" : ""}>
       <header className="topbar">
-        <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} wallMode={wallMode} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={() => setPersonPanelVisible((current) => !current)} onWallModeChange={setWallMode} onOpenSettings={() => setSettingsOpen(true)} /></div>
+        <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} wallMode={wallMode} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={() => setPersonPanelVisible((current) => !current)} onWallModeChange={setWallMode} onOpenSettings={() => setSettingsOpen(true)} /></div>
         <nav className="app-nav" aria-label="Project workflow">
           <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>1 · Floor plan</button>
           <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>2 · Fit analysis</button>
         </nav>
-        <div className="truth-badge"><span className="truth-dot" />Deterministic engine · mm</div>
+        <div className="truth-badge"><span className="truth-dot" />Deterministic engine · {{ MM: "mm", CM: "cm", INCHES: "in", FEET_INCHES: "ft + in" }[preferences.units]}</div>
       </header>
 
       {mode === "EDITOR" ? (

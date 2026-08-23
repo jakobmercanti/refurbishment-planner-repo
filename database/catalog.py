@@ -62,6 +62,18 @@ SEED_ITEMS = [
 def initialise_catalogue() -> None:
     Base.metadata.create_all(ENGINE)
     with ENGINE.begin() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(furniture_items)").fetchall()
+        }
+        if "is_default" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT 0")
+        if "default_key" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN default_key VARCHAR(120)")
+            connection.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_furniture_items_default_key ON furniture_items (default_key)")
+        if "stl_filename" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN stl_filename VARCHAR(255)")
+        if "stl_base64" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN stl_base64 TEXT")
         for obsolete_index in (
             "ix_furniture_items_category_id",
             "ix_furniture_items_fixture_kind",
@@ -77,15 +89,30 @@ def initialise_catalogue() -> None:
                 for item in CATEGORIES
             )
             session.flush()
-        if session.scalar(select(FurnitureItemRecord.id).limit(1)) is None:
-            session.add_all(
-                FurnitureItemRecord(
+        for item in SEED_ITEMS:
+            default_key = item[4]
+            existing = session.scalar(
+                select(FurnitureItemRecord).where(FurnitureItemRecord.default_key == default_key)
+            )
+            if existing is None:
+                existing = session.scalar(
+                    select(FurnitureItemRecord).where(
+                        FurnitureItemRecord.supplier == item[3],
+                        FurnitureItemRecord.sku == item[4],
+                    )
+                )
+            if existing is None:
+                session.add(FurnitureItemRecord(
                     category_id=item[0], fixture_kind=item[1], name=item[2], supplier=item[3], sku=item[4],
                     width_mm=item[5], depth_mm=item[6], height_mm=item[7], color_hex=item[8],
-                    description="Seeded bathroom catalogue object.", supplier_editable=True,
-                )
-                for item in SEED_ITEMS
-            )
+                    description="Built-in bathroom catalogue object. Dimensions and appearance can be modified.",
+                    is_default=True, default_key=default_key, supplier_editable=True,
+                ))
+            else:
+                existing.is_default = True
+                existing.default_key = default_key
+                existing.active = True
+                existing.supplier_editable = True
         session.commit()
         session.execute(select(FurnitureItemRecord.id).limit(1)).all()
         session.connection().exec_driver_sql("PRAGMA optimize")

@@ -7,6 +7,7 @@ interface ApplicationMenuBarProps {
   room: Room;
   personPanelVisible: boolean;
   wallMode: WallViewMode;
+  displayUnits: "MM" | "CM" | "INCHES" | "FEET_INCHES";
   onOpenRoom: (room: Room) => Promise<void>;
   onOpenCatalogue: () => void;
   onTogglePersonPanel: () => void;
@@ -21,14 +22,17 @@ function downloadRoom(room: Room, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename.toLowerCase().endsWith(".json") ? filename : `${filename}.json`;
+  const stem = filename.trim().replace(/\.json$/i, "").replace(/[\\/:*?"<>|]+/g, "-") || "bathroom-plan";
+  link.download = `${stem}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
 
-export function ApplicationMenuBar({ room, personPanelVisible, wallMode, onOpenRoom, onOpenCatalogue, onTogglePersonPanel, onWallModeChange, onOpenSettings }: ApplicationMenuBarProps) {
+export function ApplicationMenuBar({ room, personPanelVisible, wallMode, displayUnits, onOpenRoom, onOpenCatalogue, onTogglePersonPanel, onWallModeChange, onOpenSettings }: ApplicationMenuBarProps) {
   const [menu, setMenu] = useState<MenuName>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [saveName, setSaveName] = useState("bathroom-plan");
   const fileInput = useRef<HTMLInputElement>(null);
 
   function toggle(next: Exclude<MenuName, null>) {
@@ -52,11 +56,14 @@ export function ApplicationMenuBar({ room, personPanelVisible, wallMode, onOpenR
     setMenu(null);
   }
 
-  return <nav className="software-menu" aria-label="Application menu">
-    <div className="software-menu-item"><button className={menu === "FILE" ? "active" : ""} onClick={() => toggle("FILE")}>File</button>{menu === "FILE" && <div className="software-dropdown"><button onClick={() => fileInput.current?.click()}><span>Open…</span><kbd>Ctrl+O</kbd></button><button onClick={() => { downloadRoom(room, "renovation-fit-room.json"); setMenu(null); }}><span>Save</span><kbd>Ctrl+S</kbd></button><button onClick={() => { const name = window.prompt("Save room as", "bathroom-plan.json"); if (name) downloadRoom(room, name); setMenu(null); }}><span>Save as…</span></button>{error && <p>{error}</p>}</div>}</div>
+  return <>
+  <nav className="software-menu" aria-label="Application menu">
+    <div className="software-menu-item"><button className={menu === "FILE" ? "active" : ""} onClick={() => toggle("FILE")}>File</button>{menu === "FILE" && <div className="software-dropdown"><button onClick={() => fileInput.current?.click()}><span>Open…</span><kbd>Ctrl+O</kbd></button><button onClick={() => { downloadRoom(room, "renovation-fit-room"); setMenu(null); }}><span>Save</span><kbd>Ctrl+S</kbd></button><button onClick={() => { setSaveName("bathroom-plan"); setSaveAsOpen(true); setMenu(null); }}><span>Save as…</span></button>{error && <p>{error}</p>}</div>}</div>
     <div className="software-menu-item"><button className={menu === "TOOLS" ? "active" : ""} onClick={() => toggle("TOOLS")}>Tools</button>{menu === "TOOLS" && <div className="software-dropdown"><button onClick={() => { onOpenCatalogue(); setMenu(null); }}><span>Object catalogue…</span></button><button onClick={() => { onTogglePersonPanel(); setMenu(null); }}><span>{personPanelVisible ? "✓ " : ""}Human mock-up panel</span></button></div>}</div>
     <div className="software-menu-item"><button className={menu === "VIEW" ? "active" : ""} onClick={() => toggle("VIEW")}>View</button>{menu === "VIEW" && <div className="software-dropdown" role="menu" aria-label="Wall display"><button aria-pressed={wallMode === "SOLID"} onClick={() => setWallMode("SOLID")}><span>{wallMode === "SOLID" ? "✓ " : ""}Solid walls</span></button><button aria-pressed={wallMode === "TRANSPARENT"} onClick={() => setWallMode("TRANSPARENT")}><span>{wallMode === "TRANSPARENT" ? "✓ " : ""}Transparent walls</span></button><button aria-pressed={wallMode === "INVISIBLE"} onClick={() => setWallMode("INVISIBLE")}><span>{wallMode === "INVISIBLE" ? "✓ " : ""}Invisible walls</span></button></div>}</div>
-    <div className="software-menu-item"><button className={menu === "SETTINGS" ? "active" : ""} onClick={() => toggle("SETTINGS")}>Settings</button>{menu === "SETTINGS" && <div className="software-dropdown"><button onClick={() => { onOpenSettings(); setMenu(null); }}><span>Preferences…</span></button><button disabled><span>Engineering units</span><kbd>mm</kbd></button></div>}</div>
+    <div className="software-menu-item"><button className={menu === "SETTINGS" ? "active" : ""} onClick={() => toggle("SETTINGS")}>Settings</button>{menu === "SETTINGS" && <div className="software-dropdown"><button onClick={() => { onOpenSettings(); setMenu(null); }}><span>Preferences…</span></button><button disabled><span>Display units</span><kbd>{{ MM: "mm", CM: "cm", INCHES: "in", FEET_INCHES: "ft + in" }[displayUnits]}</kbd></button></div>}</div>
     <input ref={fileInput} hidden type="file" accept="application/json,.json" onChange={(event) => { void openFile(event.target.files?.[0]); event.target.value = ""; }} />
-  </nav>;
+  </nav>
+  {saveAsOpen && <div className="modal-backdrop save-as-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSaveAsOpen(false); }}><form className="save-as-dialog" role="dialog" aria-modal="true" aria-labelledby="save-as-title" onSubmit={(event) => { event.preventDefault(); downloadRoom(room, saveName); setSaveAsOpen(false); }}><header><div><span className="eyebrow">Save project file</span><h2 id="save-as-title">Save room as</h2></div><button type="button" className="modal-close" onClick={() => setSaveAsOpen(false)}>×</button></header><label><span>File name</span><div><input autoFocus value={saveName} onChange={(event) => setSaveName(event.target.value.replace(/\.json$/i, ""))} aria-label="Room file name" /><strong>.json</strong></div><small>The extension is added automatically.</small></label><footer><button type="button" onClick={() => setSaveAsOpen(false)}>Cancel</button><button className="primary" type="submit">Save file</button></footer></form></div>}
+  </>;
 }

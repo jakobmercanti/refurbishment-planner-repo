@@ -213,6 +213,8 @@ class ObstacleDefinition(BaseModel):
     model_id: str | None = None
     color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     wall_lock: bool = False
+    stl_filename: str | None = None
+    stl_base64: str | None = None
 
     @field_validator("base_z_mm", "rotation_deg")
     @classmethod

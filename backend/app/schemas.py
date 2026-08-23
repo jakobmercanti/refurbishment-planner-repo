@@ -84,11 +84,14 @@ class CatalogueItemInput(BaseModel):
     height_mm: float = Field(gt=0, le=20_000)
     color_hex: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     description: str = Field(default="", max_length=2000)
+    stl_filename: str | None = Field(default=None, max_length=255)
+    stl_base64: str | None = Field(default=None, max_length=30_000_000)
 
 
 class CatalogueItemResponse(CatalogueItemInput):
     id: str
     category_name: str
+    is_default: bool
     supplier_editable: bool
     active: bool
     created_at: datetime

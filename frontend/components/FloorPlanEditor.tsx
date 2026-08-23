@@ -109,6 +109,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   const dragStart = useRef<Point2D[] | null>(null);
   const draggingVertex = useRef<number | null>(null);
   const draggingWall = useRef<number | null>(null);
+  const draggingOpening = useRef<string | null>(null);
+  const openingDragStart = useRef<Opening[] | null>(null);
   const dragPointerStart = useRef<Point2D | null>(null);
 
   const bounds = useMemo(() => {
@@ -230,6 +232,12 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   };
 
   const finishDragging = () => {
+    if (draggingOpening.current !== null) {
+      draggingOpening.current = null;
+      openingDragStart.current = null;
+      setDragBounds(null);
+      return;
+    }
     const startVertices = dragStart.current;
     if ((draggingVertex.current !== null || draggingWall.current !== null) && startVertices) {
       setHistory((current) => [...current.slice(-29), cloneVertices(startVertices)]);
@@ -242,6 +250,13 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   };
 
   const cancelDragging = () => {
+    if (draggingOpening.current !== null) {
+      if (openingDragStart.current) setOpenings(openingDragStart.current.map((opening) => ({ ...opening })));
+      draggingOpening.current = null;
+      openingDragStart.current = null;
+      setDragBounds(null);
+      return;
+    }
     const startVertices = dragStart.current;
     if (startVertices) {
       setVertices(cloneVertices(startVertices));
@@ -385,7 +400,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     markChanged();
   };
 
-  const editOpening = (opening: Opening) => {
+  const editOpening = (opening: Opening, selectParentWall = true) => {
     setEditingOpeningId(opening.id);
     setOpeningKind(opening.kind === "WINDOW" ? "WINDOW" : "DOOR");
     setDoorType(opening.door_type === "DOUBLE" ? "DOUBLE" : "SINGLE");
@@ -398,8 +413,49 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     setOpensInward(opening.opens_inward !== false);
     setOpeningError(null);
     const wallIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
-    setSelectedWall(wallIndex);
+    setSelectedWall(selectParentWall ? wallIndex : null);
     setSelectedVertex(null);
+  };
+
+  const startOpeningDrag = (event: ReactPointerEvent<SVGGElement>, opening: Opening) => {
+    event.stopPropagation();
+    editOpening(opening, false);
+    setMode("SELECT");
+    openingDragStart.current = openings.map((item) => ({ ...item }));
+    draggingOpening.current = opening.id;
+    draggingVertex.current = null;
+    draggingWall.current = null;
+    setDragBounds(bounds);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveOpeningDrag = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const openingId = draggingOpening.current;
+    if (!openingId) return false;
+    const opening = openings.find((item) => item.id === openingId);
+    if (!opening) return true;
+    const wallIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
+    const wallStart = vertices[wallIndex];
+    const wallEnd = vertices[(wallIndex + 1) % vertices.length];
+    if (!wallStart || !wallEnd) return true;
+    const dx = wallEnd.x - wallStart.x;
+    const dy = wallEnd.y - wallStart.y;
+    const wallLength = Math.hypot(dx, dy);
+    if (wallLength <= opening.width.value) return true;
+    const unitX = dx / wallLength;
+    const unitY = dy / wallLength;
+    const pointer = fromClientPoint(event.clientX, event.clientY, event.currentTarget, false);
+    const requested = snap((pointer.x - wallStart.x) * unitX + (pointer.y - wallStart.y) * unitY - opening.width.value / 2, snapEnabled);
+    const maximum = wallLength - opening.width.value;
+    const blockers = openings.filter((item) => item.id !== opening.id && item.parent_wall_id === opening.parent_wall_id);
+    const candidates = [Math.max(0, Math.min(maximum, requested)), 0, maximum, ...blockers.flatMap((item) => [item.offset_mm + item.width.value, item.offset_mm - opening.width.value])]
+      .filter((value) => value >= 0 && value <= maximum)
+      .filter((value) => blockers.every((item) => value + opening.width.value <= item.offset_mm || value >= item.offset_mm + item.width.value));
+    const nextOffset = (candidates.length ? candidates : [opening.offset_mm]).sort((first, second) => Math.abs(first - requested) - Math.abs(second - requested))[0];
+    setOpenings((current) => current.map((item) => item.id === opening.id ? { ...item, offset_mm: nextOffset } : item));
+    setOpeningOffset(nextOffset);
+    markChanged();
+    return true;
   };
 
   const cancelOpeningEdit = () => {
@@ -595,6 +651,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               setSelectedVertex(vertices.length);
             }}
             onPointerMove={(event) => {
+              if (moveOpeningDrag(event)) return;
               const vertexIndex = draggingVertex.current;
               if (vertexIndex !== null) {
                 updateVertex(vertexIndex, fromPointer(event), false);
@@ -713,7 +770,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               const centre = { x: (openingStart.x + openingEnd.x) / 2, y: (openingStart.y + openingEnd.y) / 2 };
               if (opening.kind === "WINDOW") {
                 return (
-                  <g key={opening.id} className="opening-symbol window-symbol">
+                  <g key={opening.id} className="opening-symbol window-symbol pickable-opening" onPointerDown={(event) => startOpeningDrag(event, opening)}>
                     <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="window-frame" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="window-core" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
@@ -728,7 +785,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 const firstLeafEnd = toScreen({ x: openingStartModel.x + normal.x * halfWidth, y: openingStartModel.y + normal.y * halfWidth });
                 const secondLeafEnd = toScreen({ x: openingEndModel.x + normal.x * halfWidth, y: openingEndModel.y + normal.y * halfWidth });
                 return (
-                  <g key={opening.id} className="opening-symbol double-door-symbol">
+                  <g key={opening.id} className="opening-symbol double-door-symbol pickable-opening" onPointerDown={(event) => startOpeningDrag(event, opening)}>
                     <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="double-door-box" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="double-door-divider" x1={centre.x - normal.x * 7} y1={centre.y + normal.y * 7} x2={centre.x + normal.x * 7} y2={centre.y - normal.y * 7} />
@@ -743,7 +800,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               const leafEnd = toScreen({ x: hinge.x + normal.x * opening.width.value, y: hinge.y + normal.y * opening.width.value });
               const hingeScreen = hingeAtStart ? openingStart : openingEnd;
               return (
-                <g key={opening.id} className="opening-symbol door-symbol">
+                <g key={opening.id} className="opening-symbol door-symbol pickable-opening" onPointerDown={(event) => startOpeningDrag(event, opening)}>
                   <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                   <line className="door-threshold" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                   <line className="door-leaf" x1={hingeScreen.x} y1={hingeScreen.y} x2={leafEnd.x} y2={leafEnd.y} />

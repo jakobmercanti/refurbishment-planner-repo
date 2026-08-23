@@ -2,10 +2,11 @@
 
 import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
-import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
+import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutInteraction";
 import type { Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 
 const SCALE = 0.001;
@@ -57,6 +58,56 @@ const TILE_COLLECTION: TileStyle[] = [
   { id: "cream-terrazzo", name: "Cream terrazzo", pattern: "TERRAZZO", base: "#e6ddcc", accent: "#9d7867", grout: "#d5cbb9", tileSize: 500, preview: "radial-gradient(circle at 20% 30%,#9d7867 0 2px,transparent 3px),radial-gradient(circle at 70% 60%,#6d8580 0 2px,transparent 3px),#e6ddcc" },
   { id: "white-hexagon", name: "White hexagon", pattern: "HEXAGON", base: "#f3f1eb", accent: "#d3d0c9", grout: "#aaa9a5", tileSize: 220, preview: "conic-gradient(from 30deg,#d3d0c9 60deg,#f3f1eb 0 120deg,#d3d0c9 0 180deg,#f3f1eb 0 240deg,#d3d0c9 0 300deg,#f3f1eb 0)" },
 ];
+
+interface TilePalette {
+  name: string;
+  base: string;
+  accent: string;
+  grout: string;
+}
+
+const TILE_PALETTES: Partial<Record<TilePattern, TilePalette[]>> = {
+  MARBLE: [
+    { name: "Carrara", base: "#eeeae2", accent: "#aeb5b3", grout: "#d0cdc7" },
+    { name: "Nero", base: "#202321", accent: "#d9d7ce", grout: "#777a75" },
+    { name: "Rose", base: "#ead8d2", accent: "#a36f70", grout: "#cbb9b3" },
+  ],
+  CHECKERBOARD: [
+    { name: "Black + white", base: "#f2f0e9", accent: "#202523", grout: "#b9b7b0" },
+    { name: "Navy + cream", base: "#efe5cf", accent: "#263e58", grout: "#c9bda8" },
+    { name: "Sage + chalk", base: "#e8e8df", accent: "#668071", grout: "#bfc4b9" },
+  ],
+  HERRINGBONE: [
+    { name: "Terracotta", base: "#b96f4f", accent: "#8e4d39", grout: "#e2cbbd" },
+    { name: "Forest", base: "#42685b", accent: "#28483f", grout: "#c4cdc6" },
+    { name: "Sand", base: "#d8c19b", accent: "#aa8d65", grout: "#eee2ce" },
+  ],
+  DIAMOND: [
+    { name: "Blue", base: "#e8e5dc", accent: "#315f78", grout: "#c8c5bd" },
+    { name: "Burgundy", base: "#eee3d8", accent: "#7c3843", grout: "#cbbeb3" },
+    { name: "Ochre", base: "#f0e5c9", accent: "#b67b27", grout: "#cabf9f" },
+  ],
+  KITKAT: [
+    { name: "Sage", base: "#789786", accent: "#5d796b", grout: "#d8d4ca" },
+    { name: "Ocean", base: "#4e7f8b", accent: "#315c68", grout: "#d4dcda" },
+    { name: "Blush", base: "#c98f86", accent: "#a66d68", grout: "#ead8d3" },
+  ],
+  SQUARE_600: [
+    { name: "Charcoal", base: "#343c3b", accent: "#252b2a", grout: "#79817e" },
+    { name: "Limestone", base: "#c9c0ae", accent: "#a99d88", grout: "#e2ddd3" },
+    { name: "Concrete", base: "#8d9290", accent: "#6f7472", grout: "#c4c7c4" },
+  ],
+  TERRAZZO: [
+    { name: "Cream", base: "#e6ddcc", accent: "#9d7867", grout: "#d5cbb9" },
+    { name: "Confetti", base: "#ece8dd", accent: "#315f78", grout: "#b96f4f" },
+    { name: "Night", base: "#343938", accent: "#d2a45b", grout: "#7f8e89" },
+  ],
+  HEXAGON: [
+    { name: "White", base: "#f3f1eb", accent: "#d3d0c9", grout: "#aaa9a5" },
+    { name: "Graphite", base: "#4a504e", accent: "#2f3433", grout: "#858b88" },
+    { name: "Sea glass", base: "#b7d0c8", accent: "#759c91", grout: "#e0e7e3" },
+  ],
+};
 
 function wallVector(start: Point2D, end: Point2D) {
   const dx = end.x - start.x;
@@ -350,7 +401,9 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   const selectedTile = useMemo(() => TILE_COLLECTION.find((item) => item.id === room.finishes?.floor_tile_id), [room.finishes?.floor_tile_id]);
   const legacyTile = useMemo<TileStyle | null>(() => pattern === "NONE" ? null : ({ id: "legacy", name: "Custom tile", pattern, base: colour, accent: colour, grout: "#a8aaa5", tileSize: pattern === "SQUARE_600" ? 600 : 300, preview: colour }), [colour, pattern]);
   const tile = selectedTile ?? legacyTile;
-  const texture = useMemo(() => tile ? tileTexture(tile) : null, [tile]);
+  const savedColours = tile ? room.finishes?.floor_tile_colours?.[tile.id] : undefined;
+  const renderedTile = useMemo(() => tile ? { ...tile, ...savedColours } : null, [savedColours, tile]);
+  const texture = useMemo(() => renderedTile ? tileTexture(renderedTile) : null, [renderedTile]);
   useEffect(() => () => texture?.dispose(), [texture]);
   return (
     <group>
@@ -367,25 +420,62 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
 }
 
 function TapAssembly({ height, depth }: { height: number; depth: number }) {
-  const baseY = height * 0.86;
-  const baseZ = -depth * 0.24;
+  const baseY = height * 0.865;
+  const baseZ = -depth * 0.27;
   const curve = useMemo(() => new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, baseY, baseZ),
-    new THREE.Vector3(0, baseY + 0.1, baseZ),
-    new THREE.Vector3(0, baseY + 0.16, baseZ + 0.04),
-    new THREE.Vector3(0, baseY + 0.15, baseZ + 0.12),
-    new THREE.Vector3(0, baseY + 0.11, baseZ + 0.16),
+    new THREE.Vector3(0, baseY + 0.055, baseZ),
+    new THREE.Vector3(0, baseY + 0.14, baseZ),
+    new THREE.Vector3(0, baseY + 0.19, baseZ + 0.045),
+    new THREE.Vector3(0, baseY + 0.185, baseZ + 0.12),
+    new THREE.Vector3(0, baseY + 0.145, baseZ + 0.175),
   ]), [baseY, baseZ]);
-  const chrome = <meshStandardMaterial color="#c8d0ce" metalness={0.9} roughness={0.14} />;
   return <group>
-    <mesh position={[0, baseY + 0.005, baseZ]} castShadow><cylinderGeometry args={[0.034, 0.042, 0.02, 24]} />{chrome}</mesh>
-    <mesh castShadow><tubeGeometry args={[curve, 36, 0.015, 12, false]} />{chrome}</mesh>
-    <mesh position={[0, baseY + 0.106, baseZ + 0.166]} rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[0.016, 0.016, 0.055, 16]} />{chrome}</mesh>
-    <group position={[0.052, baseY + 0.035, baseZ]} rotation={[0, 0, -0.22]}>
-      <mesh castShadow><cylinderGeometry args={[0.012, 0.014, 0.065, 14]} />{chrome}</mesh>
-      <mesh position={[0, 0.045, 0]} rotation={[0, 0, Math.PI / 2]} castShadow><cylinderGeometry args={[0.009, 0.009, 0.055, 12]} />{chrome}</mesh>
+    <mesh position={[0, baseY + 0.006, baseZ]} castShadow><cylinderGeometry args={[0.038, 0.046, 0.012, 32]} /><meshPhysicalMaterial color="#e4e9e8" metalness={0.96} roughness={0.11} clearcoat={0.8} /></mesh>
+    <mesh position={[0, baseY + 0.047, baseZ]} castShadow><cylinderGeometry args={[0.025, 0.032, 0.082, 28]} /><meshPhysicalMaterial color="#dce3e1" metalness={0.96} roughness={0.1} clearcoat={0.9} /></mesh>
+    <mesh castShadow><tubeGeometry args={[curve, 48, 0.012, 18, false]} /><meshPhysicalMaterial color="#e5eae9" metalness={0.98} roughness={0.09} clearcoat={1} /></mesh>
+    <mesh position={[0, baseY + 0.126, baseZ + 0.176]} castShadow><cylinderGeometry args={[0.014, 0.012, 0.044, 20]} /><meshPhysicalMaterial color="#d7dedc" metalness={0.95} roughness={0.12} /></mesh>
+    <mesh position={[0, baseY + 0.103, baseZ + 0.176]} castShadow><cylinderGeometry args={[0.013, 0.013, 0.004, 20]} /><meshStandardMaterial color="#596563" metalness={0.7} roughness={0.25} /></mesh>
+    <group position={[0.041, baseY + 0.055, baseZ]} rotation={[0, 0, -0.28]}>
+      <mesh castShadow><sphereGeometry args={[0.018, 18, 14]} /><meshPhysicalMaterial color="#dce3e1" metalness={0.96} roughness={0.1} /></mesh>
+      <mesh position={[0, 0.04, 0]} castShadow><cylinderGeometry args={[0.008, 0.011, 0.075, 16]} /><meshPhysicalMaterial color="#e5eae9" metalness={0.98} roughness={0.09} /></mesh>
+      <RoundedBox args={[0.022, 0.012, 0.052]} radius={0.005} smoothness={3} position={[0, 0.08, 0.008]} rotation={[Math.PI / 2, 0, 0]} castShadow><meshPhysicalMaterial color="#e3e8e7" metalness={0.97} roughness={0.1} /></RoundedBox>
     </group>
   </group>;
+}
+
+function StlFixture({ obstacle, width, depth, height, colour }: { obstacle: Obstacle; width: number; depth: number; height: number; colour: string }) {
+  const geometry = useMemo(() => {
+    if (!obstacle.stl_base64) return null;
+    try {
+      const encoded = obstacle.stl_base64.includes(",") ? obstacle.stl_base64.split(",", 2)[1] : obstacle.stl_base64;
+      const binary = window.atob(encoded);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+      const parsed = new STLLoader().parse(bytes.buffer);
+      parsed.computeVertexNormals();
+      parsed.computeBoundingBox();
+      let box = parsed.boundingBox;
+      if (!box) return null;
+      const originalSize = box.getSize(new THREE.Vector3());
+      if (originalSize.z > originalSize.y * 1.15 && height > Math.max(width, depth) * 1.1) {
+        parsed.rotateX(-Math.PI / 2);
+        parsed.computeBoundingBox();
+        box = parsed.boundingBox;
+        if (!box) return null;
+      }
+      const size = box.getSize(new THREE.Vector3());
+      const centre = box.getCenter(new THREE.Vector3());
+      parsed.translate(-centre.x, -box.min.y, -centre.z);
+      parsed.scale(width / Math.max(size.x, 1e-6), height / Math.max(size.y, 1e-6), depth / Math.max(size.z, 1e-6));
+      parsed.computeBoundingSphere();
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, [depth, height, obstacle.stl_base64, width]);
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  if (!geometry) return null;
+  return <mesh geometry={geometry} castShadow receiveShadow><meshStandardMaterial color={colour} roughness={0.56} metalness={0.04} /></mesh>;
 }
 
 function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPointerUp }: {
@@ -417,6 +507,10 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
       <meshBasicMaterial color="#d88416" transparent opacity={0.9} side={THREE.DoubleSide} />
     </mesh>
   ) : null;
+
+  if (obstacle.stl_base64) {
+    return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={customColour ?? "#b99b77"} /></group>;
+  }
 
   if (fixtureKind === "SHOWER") {
     return (
@@ -653,6 +747,9 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   const clearanceWidth = width + clearance * 2;
   const clearanceDepth = depth + clearance * 2;
   const clearancePoints: VectorTuple[] = [[-clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, -clearanceDepth / 2]];
+  const neckBottom = shoulderY - headRadius * 0.05;
+  const neckTop = headY - headRadius * 0.82;
+  const neckHeight = Math.max(neckTop - neckBottom, headRadius * 0.72);
 
   return (
     <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
@@ -667,7 +764,7 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
         <meshStandardMaterial color={clothing} roughness={0.72} />
       </RoundedBox>
       <RoundedBox args={[width * 0.5, height * 0.11, depth * 0.72]} radius={Math.min(width, depth) * 0.18} smoothness={4} position={[0, hipY, hipZ]} castShadow><meshStandardMaterial color={trousers} roughness={0.76} /></RoundedBox>
-      <mesh position={[0, headY - headRadius * 1.18, shoulderZ * 0.9]} castShadow><cylinderGeometry args={[headRadius * 0.42, headRadius * 0.48, headRadius * 0.7, 18]} /><meshStandardMaterial color={skin} roughness={0.64} /></mesh>
+      <mesh position={[0, neckBottom + neckHeight / 2, shoulderZ * 0.9]} castShadow><cylinderGeometry args={[headRadius * 0.43, headRadius * 0.5, neckHeight, 18]} /><meshStandardMaterial color={skin} roughness={0.64} /></mesh>
       <mesh position={[0, headY, shoulderZ]} scale={[0.92, 1.08, 0.96]} castShadow><sphereGeometry args={[headRadius, 28, 22]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
       <mesh position={[0, headY + headRadius * 0.45, shoulderZ - headRadius * 0.15]} scale={[0.94, 0.48, 0.96]} castShadow><sphereGeometry args={[headRadius, 24, 16]} /><meshStandardMaterial color="#4b3429" roughness={0.88} /></mesh>
       <mesh position={[0, headY - headRadius * 0.04, shoulderZ + headRadius * 0.94]} castShadow><sphereGeometry args={[headRadius * 0.13, 12, 10]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
@@ -682,7 +779,7 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
       <Limb from={kneeLeft} to={ankleLeft} radius={limbRadius * 1.05} colour={trousers} />
       <Limb from={hipRight} to={kneeRight} radius={limbRadius * 1.25} colour={trousers} />
       <Limb from={kneeRight} to={ankleRight} radius={limbRadius * 1.05} colour={trousers} />
-      {[ankleLeft, ankleRight].map((ankle, index) => <RoundedBox key={`foot-${index}`} args={[width * 0.22, height * 0.045, depth * 0.72]} radius={0.025} smoothness={3} position={[ankle[0], height * 0.025, ankle[2] + depth * 0.25]} castShadow><meshStandardMaterial color={shoe} roughness={0.82} /></RoundedBox>)}
+      {[ankleLeft, ankleRight].map((ankle, index) => <RoundedBox key={`foot-${index}`} args={[width * 0.23, height * 0.07, depth * 0.76]} radius={0.025} smoothness={3} position={[ankle[0], height * 0.034, ankle[2] + depth * 0.24]} castShadow><meshStandardMaterial color={shoe} roughness={0.82} /></RoundedBox>)}
       <mesh position={[0, 0.023, depth * 0.7]} rotation={[-Math.PI / 2, 0, 0]}><coneGeometry args={[0.06, 0.16, 3]} /><meshStandardMaterial color="#e2a73a" emissive="#e2a73a" emissiveIntensity={0.25} /></mesh>
     </group>
   );
@@ -695,7 +792,10 @@ function eyeTarget(person: PersonMockup) {
 
 function CameraPreset({ preset, person }: { preset: CameraView; person?: PersonMockup | null }) {
   const { camera } = useThree();
+  const previousPreset = useRef<CameraView | null>(null);
   useEffect(() => {
+    if (previousPreset.current === preset) return;
+    previousPreset.current = preset;
     if (preset === "eye" && person?.enabled) {
       camera.position.set(person.center.x * SCALE, person.eye_height_mm * SCALE, -person.center.y * SCALE);
       camera.lookAt(eyeTarget(person));
@@ -793,7 +893,9 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
     event.stopPropagation();
     const point = floorPoint(event);
     if (!point) return;
-    setPreviewPerson({ ...person, center: { x: point.x + personDragging.offset.x, y: point.y + personDragging.offset.y } });
+    const requested = { x: point.x + personDragging.offset.x, y: point.y + personDragging.offset.y };
+    const previous = previewPerson?.center ?? person.center;
+    setPreviewPerson({ ...person, center: constrainPersonToRoom(person, room.vertices, requested, previous) });
   }
 
   function endPersonDrag(event: ThreeEvent<PointerEvent>, person: PersonMockup) {
@@ -871,6 +973,13 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
     onFinishesChange({ ...finishes, floor_tile_id: tileId, floor_color: undefined, floor_pattern: "NONE" });
   }
 
+  function setFloorColours(tileId: string, colours: { base: string; accent: string; grout: string }) {
+    onFinishesChange({
+      ...finishes,
+      floor_tile_colours: { ...(finishes.floor_tile_colours ?? {}), [tileId]: colours },
+    });
+  }
+
   function setWallLock(locked: boolean) {
     if (!selectedElement) return;
     const unlocked = { ...selectedElement, wall_lock: locked };
@@ -902,6 +1011,12 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
         <span className="eyebrow">Selected floor</span>
         <strong>Floor tile collection</strong>
         <div className="tile-collection">{TILE_COLLECTION.map((tile) => <button key={tile.id} type="button" className={finishes.floor_tile_id === tile.id ? "selected" : ""} onClick={() => setFloorTile(tile.id)}><span className="tile-swatch" style={{ background: tile.preview }} /><small>{tile.name}</small></button>)}</div>
+        {(() => {
+          const selectedTile = TILE_COLLECTION.find((tile) => tile.id === finishes.floor_tile_id);
+          if (!selectedTile) return null;
+          const current = finishes.floor_tile_colours?.[selectedTile.id] ?? { base: selectedTile.base, accent: selectedTile.accent, grout: selectedTile.grout };
+          return <div className="tile-colour-editor"><strong>{selectedTile.name} colours</strong><div className="tile-palette-presets">{(TILE_PALETTES[selectedTile.pattern] ?? []).map((palette) => <button key={palette.name} type="button" title={palette.name} aria-label={`Use ${palette.name} colours`} style={{ background: `linear-gradient(135deg, ${palette.base} 0 45%, ${palette.grout} 45% 55%, ${palette.accent} 55% 100%)` }} onClick={() => setFloorColours(selectedTile.id, palette)} />)}</div><div className="tile-custom-colours"><label><span>Primary</span><input type="color" value={current.base} onChange={(event) => setFloorColours(selectedTile.id, { ...current, base: event.target.value })} /></label><label><span>Accent</span><input type="color" value={current.accent} onChange={(event) => setFloorColours(selectedTile.id, { ...current, accent: event.target.value })} /></label><label><span>Grout</span><input type="color" value={current.grout} onChange={(event) => setFloorColours(selectedTile.id, { ...current, grout: event.target.value })} /></label></div></div>;
+        })()}
         <button className="remove-finish" type="button" onClick={() => setFloorTile()}>Remove floor finish</button>
       </>}
     </aside>
