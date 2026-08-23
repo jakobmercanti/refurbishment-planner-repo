@@ -109,6 +109,8 @@ const TILE_PALETTES: Partial<Record<TilePattern, TilePalette[]>> = {
   ],
 };
 
+const TILE_TEXTURE_CACHE = new Map<string, THREE.DataTexture>();
+
 function wallVector(start: Point2D, end: Point2D) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -340,6 +342,9 @@ function WallWithOpenings({
 }
 
 function tileTexture(style: TileStyle) {
+  const cacheKey = [style.pattern, style.base, style.accent, style.grout, style.tileSize].join(":");
+  const cached = TILE_TEXTURE_CACHE.get(cacheKey);
+  if (cached) return cached;
   const size = 128;
   const base = new THREE.Color(style.base);
   const accent = new THREE.Color(style.accent);
@@ -388,6 +393,14 @@ function tileTexture(style: TileStyle) {
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;
   texture.needsUpdate = true;
+  if (TILE_TEXTURE_CACHE.size >= 64) {
+    const oldestKey = TILE_TEXTURE_CACHE.keys().next().value as string | undefined;
+    if (oldestKey) {
+      TILE_TEXTURE_CACHE.get(oldestKey)?.dispose();
+      TILE_TEXTURE_CACHE.delete(oldestKey);
+    }
+  }
+  TILE_TEXTURE_CACHE.set(cacheKey, texture);
   return texture;
 }
 
@@ -412,7 +425,6 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   const savedColours = tile ? room.finishes?.floor_tile_colours?.[tile.id] : undefined;
   const renderedTile = useMemo(() => tile ? { ...tile, ...savedColours } : null, [savedColours, tile]);
   const texture = useMemo(() => renderedTile ? tileTexture(renderedTile) : null, [renderedTile]);
-  useEffect(() => () => texture?.dispose(), [texture]);
   return (
     <group>
       <mesh position={[0, -0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -732,7 +744,7 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   const standing = person.posture === "STANDING";
   const seated = person.posture === "SEATED";
   const headY = standing ? height * 0.91 : Math.min(eye + headRadius * 0.18, height - headRadius);
-  const shoulderY = standing ? height * 0.73 : headY - headRadius * 1.75;
+  const shoulderY = standing ? height * 0.82 : headY - headRadius * 1.35;
   const hipY = standing ? height * 0.48 : seated ? height * 0.35 : height * 0.31;
   const shoulderZ = person.posture === "CROUCHING" ? depth * 0.38 : 0;
   const hipZ = person.posture === "CROUCHING" ? -depth * 0.08 : 0;
@@ -755,9 +767,9 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   const clearanceWidth = width + clearance * 2;
   const clearanceDepth = depth + clearance * 2;
   const clearancePoints: VectorTuple[] = [[-clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, -clearanceDepth / 2]];
-  const neckBottom = shoulderY - headRadius * 0.05;
-  const neckTop = headY - headRadius * 0.82;
-  const neckHeight = Math.max(neckTop - neckBottom, headRadius * 0.72);
+  const neckBottom = shoulderY - headRadius * 0.03;
+  const neckTop = headY - headRadius * 0.88;
+  const neckHeight = Math.max(neckTop - neckBottom, headRadius * 0.45);
 
   return (
     <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
@@ -772,7 +784,7 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
         <meshStandardMaterial color={clothing} roughness={0.72} />
       </RoundedBox>
       <RoundedBox args={[width * 0.5, height * 0.11, depth * 0.72]} radius={Math.min(width, depth) * 0.18} smoothness={4} position={[0, hipY, hipZ]} castShadow><meshStandardMaterial color={trousers} roughness={0.76} /></RoundedBox>
-      <mesh position={[0, neckBottom + neckHeight / 2, shoulderZ * 0.9]} castShadow><cylinderGeometry args={[headRadius * 0.43, headRadius * 0.5, neckHeight, 18]} /><meshStandardMaterial color={skin} roughness={0.64} /></mesh>
+      <mesh position={[0, neckBottom + neckHeight / 2, shoulderZ * 0.9]} castShadow><cylinderGeometry args={[headRadius * 0.34, headRadius * 0.42, neckHeight, 18]} /><meshStandardMaterial color={skin} roughness={0.64} /></mesh>
       <mesh position={[0, headY, shoulderZ]} scale={[0.92, 1.08, 0.96]} castShadow><sphereGeometry args={[headRadius, 28, 22]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
       <mesh position={[0, headY + headRadius * 0.45, shoulderZ - headRadius * 0.15]} scale={[0.94, 0.48, 0.96]} castShadow><sphereGeometry args={[headRadius, 24, 16]} /><meshStandardMaterial color="#4b3429" roughness={0.88} /></mesh>
       <mesh position={[0, headY - headRadius * 0.04, shoulderZ + headRadius * 0.94]} castShadow><sphereGeometry args={[headRadius * 0.13, 12, 10]} /><meshStandardMaterial color={skin} roughness={0.62} /></mesh>
