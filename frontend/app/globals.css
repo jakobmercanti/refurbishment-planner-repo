@@ -328,6 +328,7 @@ button { font: inherit; }
 .pickable-opening { cursor: grab; }
 .pickable-opening:active { cursor: grabbing; }
 .opening-hit { stroke: transparent; stroke-width: 25; pointer-events: stroke; }
+.opening-swing-hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; }
 .opening-gap { stroke: white; stroke-width: 14; pointer-events: none; }
 .opening-jamb { stroke: #233e37; stroke-width: 2.5; stroke-linecap: square; pointer-events: none; }
 .door-closed-line { stroke: #8e9a95; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }

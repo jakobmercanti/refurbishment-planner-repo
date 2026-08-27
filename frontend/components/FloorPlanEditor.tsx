@@ -713,7 +713,11 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1;
               const screenTangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength };
               const outward = { x: -screenTangent.y, y: screenTangent.x };
-              const dimensionOffset = 22;
+              const wallId = `wall-${String(index + 1).padStart(3, "0")}`;
+              const outwardDoorDepth = openings
+                .filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR" && opening.opens_inward === false)
+                .reduce((maximum, opening) => Math.max(maximum, opening.door_type === "DOUBLE" ? opening.width.value / 2 : opening.width.value), 0);
+              const dimensionOffset = 22 + outwardDoorDepth * activeBounds.scale;
               const dimensionStart = { x: start.x + outward.x * dimensionOffset, y: start.y + outward.y * dimensionOffset };
               const dimensionEnd = { x: end.x + outward.x * dimensionOffset, y: end.y + outward.y * dimensionOffset };
               const dimensionLabel = {
@@ -756,24 +760,6 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                       </g>
                     </>
                   )}
-                  <circle
-                    className={selectedVertex === index ? "vertex-handle selected" : "vertex-handle"}
-                    cx={start.x}
-                    cy={start.y}
-                    r={selectedVertex === index ? 12 : 10}
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                      setSelectedVertex(index);
-                      setSelectedWall(null);
-                      setMode("SELECT");
-                      dragStart.current = cloneVertices(vertices);
-                      setDragBounds(bounds);
-                      draggingVertex.current = index;
-                      draggingWall.current = null;
-                      event.currentTarget.setPointerCapture(event.pointerId);
-                    }}
-                  />
-                  <text className="vertex-label" x={start.x} y={start.y + 3}>{index + 1}</text>
                 </g>
               );
             })}
@@ -823,6 +809,10 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                   <g key={opening.id} className={`opening-symbol double-door-symbol pickable-opening${openingClass}`} onPointerDown={(event) => startOpeningDrag(event, opening)}>
                     <title>{`Double door ${opening.width.value.toFixed(0)} mm — drag along wall`}</title>
                     <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                    <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={firstLeafEnd.x} y2={firstLeafEnd.y} />
+                    <line className="opening-hit" x1={openingEnd.x} y1={openingEnd.y} x2={secondLeafEnd.x} y2={secondLeafEnd.y} />
+                    <path className="opening-swing-hit" d={swingArcPath(openingStart, centre, firstLeafEnd)} />
+                    <path className="opening-swing-hit" d={swingArcPath(openingEnd, centre, secondLeafEnd)} />
                     <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="door-closed-line" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="opening-jamb" x1={openingStart.x - openingPerpendicular.x * jambHalf} y1={openingStart.y - openingPerpendicular.y * jambHalf} x2={openingStart.x + openingPerpendicular.x * jambHalf} y2={openingStart.y + openingPerpendicular.y * jambHalf} />
@@ -843,6 +833,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 <g key={opening.id} className={`opening-symbol door-symbol pickable-opening${openingClass}`} onPointerDown={(event) => startOpeningDrag(event, opening)}>
                   <title>{`Door ${opening.width.value.toFixed(0)} mm — drag along wall`}</title>
                   <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                  <line className="opening-hit" x1={hingeScreen.x} y1={hingeScreen.y} x2={leafEnd.x} y2={leafEnd.y} />
+                  <path className="opening-swing-hit" d={swingArcPath(hingeScreen, closedLeafEnd, leafEnd)} />
                   <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                   <line className="door-closed-line" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                   <line className="opening-jamb" x1={openingStart.x - openingPerpendicular.x * jambHalf} y1={openingStart.y - openingPerpendicular.y * jambHalf} x2={openingStart.x + openingPerpendicular.x * jambHalf} y2={openingStart.y + openingPerpendicular.y * jambHalf} />
@@ -852,6 +844,31 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 </g>
               );
             })}
+            <g className="vertex-layer">
+              {vertices.map((vertex, index) => {
+                const point = toScreen(vertex);
+                return <g key={`vertex-${index}`}>
+                  <circle
+                    className={selectedVertex === index ? "vertex-handle selected" : "vertex-handle"}
+                    cx={point.x}
+                    cy={point.y}
+                    r={selectedVertex === index ? 12 : 10}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      setSelectedVertex(index);
+                      setSelectedWall(null);
+                      setMode("SELECT");
+                      dragStart.current = cloneVertices(vertices);
+                      setDragBounds(bounds);
+                      draggingVertex.current = index;
+                      draggingWall.current = null;
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                  />
+                  <text className="vertex-label" x={point.x} y={point.y + 3}>{index + 1}</text>
+                </g>;
+              })}
+            </g>
           </svg>
           <div className="drawing-scale"><span>Coordinates and dimensions are authoritative millimetres</span><span>Grid display auto-fits the current polygon</span></div>
         </div>
