@@ -1067,7 +1067,7 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
   );
 }
 
-function ContextControls({ room, selection, onObstaclesChange, onFinishesChange }: Pick<ViewerProps, "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection }) {
+function ContextControls({ room, selection, onObstaclesChange, onFinishesChange, onSelectionChange }: Pick<ViewerProps, "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection; onSelectionChange: (selection: Selection) => void }) {
   const [applyToAllWalls, setApplyToAllWalls] = useState(false);
   const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
   const [paintSearch, setPaintSearch] = useState("");
@@ -1100,6 +1100,7 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
       }
     });
     onFinishesChange({ ...finishes, wall_colors: wallColors, wall_color_codes: wallColorCodes });
+    onSelectionChange(null);
   }
 
   function setFloorTile(tileId?: string) {
@@ -1235,7 +1236,7 @@ export function EngineeringViewer(props: ViewerProps) {
           ))}
         </div>
       </div>
-      <ContextControls room={props.room} selection={selection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} />
+      <ContextControls room={props.room} selection={selection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onSelectionChange={setSelection} />
       <Canvas shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, near: 0.01, far: 100 }} onPointerMissed={() => setSelection(null)}>
         <Scene {...props} toggles={toggles} preset={preset} selection={selection} onSelectionChange={setSelection} />
         <CaptureController request={captureRequest} />
