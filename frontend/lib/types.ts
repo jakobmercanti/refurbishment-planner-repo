@@ -1,6 +1,6 @@
 export type Status = "FIT" | "VERIFY" | "FAIL";
 export type CheckStatus = "PASS" | "VERIFY" | "FAIL" | "NOT_APPLICABLE";
-export type WallViewMode = "SOLID" | "TRANSPARENT" | "INVISIBLE";
+export type WallViewMode = "SOLID" | "TRANSPARENT" | "CUTAWAY_2D" | "INVISIBLE";
 
 export interface Point2D {
   x: number;
@@ -105,6 +105,7 @@ export type TilePattern = "NONE" | "SQUARE_300" | "SQUARE_600" | "HERRINGBONE" |
 
 export interface RoomFinishes {
   wall_colors?: Record<string, string>;
+  wall_color_codes?: Record<string, string>;
   floor_color?: string;
   floor_pattern?: TilePattern;
   floor_tile_id?: string;

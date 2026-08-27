@@ -1,7 +1,7 @@
 "use client";
 
 import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
-import { Canvas, type ThreeEvent, useThree } from "@react-three/fiber";
+import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -30,11 +30,76 @@ interface ViewerProps {
   wallMode: WallViewMode;
 }
 
-type Selection = { type: "ELEMENT"; id: string } | { type: "PERSON" } | { type: "WALL"; id: string } | { type: "FLOOR" } | null;
+type Selection = { type: "ELEMENT"; id: string } | { type: "PERSON" } | { type: "WALL"; id: string; ids: string[] } | { type: "FLOOR" } | null;
 
-const WALL_COLOURS = [
-  "#f6f3eb", "#e8e1d5", "#d4cabd", "#f0d7c8", "#d8b8a8", "#e1d2a6",
-  "#c9d8c6", "#9db7a7", "#c3d5df", "#8eabc0", "#bbb2c9", "#5c6862",
+interface PaintShade {
+  name: string;
+  code: string;
+  colour: string;
+}
+
+interface PaintFamily {
+  id: string;
+  name: string;
+  colour: string;
+  shades: PaintShade[];
+}
+
+const PAINT_FAMILIES: PaintFamily[] = [
+  { id: "NEUTRAL", name: "Neutrals", colour: "#d8d4c9", shades: [
+    { name: "Traffic white", code: "RAL 9016", colour: "#f1f0ea" },
+    { name: "Cream", code: "RAL 9001", colour: "#e9e0d2" },
+    { name: "Oyster white", code: "RAL 1013", colour: "#eae6d8" },
+    { name: "Silk grey", code: "RAL 7044", colour: "#cac4b8" },
+    { name: "Pebble grey", code: "RAL 7032", colour: "#b8b799" },
+  ] },
+  { id: "YELLOW", name: "Yellows", colour: "#edc829", shades: [
+    { name: "Green beige", code: "RAL 1000", colour: "#cdbb8a" },
+    { name: "Beige", code: "RAL 1001", colour: "#d0b084" },
+    { name: "Ivory", code: "RAL 1014", colour: "#ddc49a" },
+    { name: "Light ivory", code: "RAL 1015", colour: "#e6d2b5" },
+    { name: "Sulfur yellow", code: "RAL 1016", colour: "#f1dd38" },
+    { name: "Rape yellow", code: "RAL 1021", colour: "#f6b600" },
+  ] },
+  { id: "RED", name: "Reds & pinks", colour: "#b84f58", shades: [
+    { name: "Beige red", code: "RAL 3012", colour: "#c1876b" },
+    { name: "Light pink", code: "RAL 3015", colour: "#d8a0a6" },
+    { name: "Antique pink", code: "RAL 3014", colour: "#d36e70" },
+    { name: "Coral red", code: "RAL 3016", colour: "#a94c3f" },
+    { name: "Purple red", code: "RAL 3004", colour: "#701f29" },
+  ] },
+  { id: "GREEN", name: "Greens", colour: "#5f8869", shades: [
+    { name: "Pastel green", code: "RAL 6019", colour: "#b7d9b1" },
+    { name: "Pale green", code: "RAL 6021", colour: "#8a9977" },
+    { name: "Pastel turquoise", code: "RAL 6034", colour: "#7fb0b2" },
+    { name: "Fern green", code: "RAL 6025", colour: "#286230" },
+    { name: "Moss green", code: "RAL 6005", colour: "#0f4336" },
+  ] },
+  { id: "BLUE", name: "Blues", colour: "#4f79a3", shades: [
+    { name: "Pastel blue", code: "RAL 5024", colour: "#6c9ac3" },
+    { name: "Pigeon blue", code: "RAL 5014", colour: "#637d96" },
+    { name: "Azure blue", code: "RAL 5009", colour: "#225f78" },
+    { name: "Distant blue", code: "RAL 5023", colour: "#42698c" },
+    { name: "Sapphire blue", code: "RAL 5003", colour: "#1d1e33" },
+  ] },
+  { id: "ORANGE", name: "Oranges", colour: "#dc7b28", shades: [
+    { name: "Pastel orange", code: "RAL 2003", colour: "#f67828" },
+    { name: "Pure orange", code: "RAL 2004", colour: "#e25303" },
+    { name: "Salmon orange", code: "RAL 2012", colour: "#d5654d" },
+    { name: "Deep orange", code: "RAL 2011", colour: "#e26e0e" },
+  ] },
+  { id: "BROWN", name: "Browns", colour: "#86654f", shades: [
+    { name: "Green brown", code: "RAL 8000", colour: "#89693e" },
+    { name: "Ochre brown", code: "RAL 8001", colour: "#9d622b" },
+    { name: "Beige brown", code: "RAL 8024", colour: "#79553c" },
+    { name: "Terra brown", code: "RAL 8028", colour: "#4e3b31" },
+  ] },
+  { id: "VIOLET", name: "Violets", colour: "#73527d", shades: [
+    { name: "Pastel violet", code: "RAL 4009", colour: "#9d8692" },
+    { name: "Heather violet", code: "RAL 4003", colour: "#c0638c" },
+    { name: "Blue lilac", code: "RAL 4005", colour: "#76689a" },
+    { name: "Traffic purple", code: "RAL 4006", colour: "#903373" },
+  ] },
 ];
 
 interface TileStyle {
@@ -259,10 +324,28 @@ function WallPiece({
   colour: string;
   wallMode: WallViewMode;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (additive: boolean) => void;
 }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const fullLength = Math.hypot(end.x - start.x, end.y - start.y);
+  const vector = fullLength > 0 ? wallVector(start, end) : { dx: 1, dy: 0, length: 0, angle: 0 };
+  useFrame(({ camera }) => {
+    if (!groupRef.current) return;
+    if (wallMode !== "CUTAWAY_2D") {
+      groupRef.current.visible = true;
+      return;
+    }
+    const centre = new THREE.Vector3((start.x + end.x) * SCALE / 2, 0, -(start.y + end.y) * SCALE / 2);
+    const toCamera = camera.position.clone().sub(centre).setY(0);
+    if (toCamera.lengthSq() < 1e-6) {
+      groupRef.current.visible = true;
+      return;
+    }
+    toCamera.normalize();
+    const outward = new THREE.Vector3(vector.dy, 0, vector.dx);
+    groupRef.current.visible = outward.dot(toCamera) <= 0.05;
+  });
   if (length <= 0 || height <= 0) return null;
-  const vector = wallVector(start, end);
   const exteriorX = vector.dy;
   const exteriorY = -vector.dx;
   const to = from + length;
@@ -285,17 +368,17 @@ function WallPiece({
   const innerCentre = { x: (innerFrom.x + innerTo.x) / 2, y: (innerFrom.y + innerTo.y) / 2 };
   const paintOffset = 0.0015;
   return (
-    <>
-      <mesh
+    <group ref={groupRef}>
+      {wallMode !== "CUTAWAY_2D" && <mesh
         position={[0, base * SCALE, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         castShadow
         receiveShadow
-        onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}
+        onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
       >
         <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
         <meshStandardMaterial color="#d9d4c8" roughness={0.76} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
-      </mesh>
+      </mesh>}
       <mesh
         position={[
           innerCentre.x * SCALE - vector.dy * paintOffset,
@@ -304,12 +387,12 @@ function WallPiece({
         ]}
         rotation={[0, vector.angle, 0]}
         receiveShadow
-        onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}
+        onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
       >
         <planeGeometry args={[length * SCALE, height * SCALE]} />
         <meshStandardMaterial color={colour} roughness={0.72} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.18 : 0} />
       </mesh>
-    </>
+    </group>
   );
 }
 
@@ -328,7 +411,7 @@ function WallWithOpenings({
   end: Point2D;
   wallMode: WallViewMode;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (additive: boolean) => void;
 }) {
   const vector = wallVector(start, end);
   const outerStart = exteriorCorner(room.vertices, index, room.wall_thickness.value);
@@ -990,6 +1073,17 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
     setPersonDragging(null);
   }
 
+  function selectWall(wallId: string, additive: boolean) {
+    if (!additive || selection?.type !== "WALL") {
+      onSelectionChange({ type: "WALL", id: wallId, ids: [wallId] });
+      return;
+    }
+    const ids = selection.ids.includes(wallId)
+      ? selection.ids.filter((id) => id !== wallId)
+      : [...selection.ids, wallId];
+    onSelectionChange(ids.length ? { type: "WALL", id: ids.at(-1) ?? wallId, ids } : null);
+  }
+
   return (
     <>
       <CameraPreset preset={preset} person={room.person_mockup} target={roomTarget} />
@@ -1004,8 +1098,8 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
           start={start}
           end={room.vertices[(index + 1) % room.vertices.length]}
           wallMode={wallMode}
-          selected={selection?.type === "WALL" && selection.id === `wall-${String(index + 1).padStart(3, "0")}`}
-          onSelect={() => onSelectionChange({ type: "WALL", id: `wall-${String(index + 1).padStart(3, "0")}` })}
+          selected={selection?.type === "WALL" && selection.ids.includes(`wall-${String(index + 1).padStart(3, "0")}`)}
+          onSelect={(additive) => selectWall(`wall-${String(index + 1).padStart(3, "0")}`, additive)}
         />
       ))}
       {toggles.elements && displayedObstacles.map((obstacle) => (
@@ -1036,21 +1130,29 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
 
 function ContextControls({ room, selection, onObstaclesChange, onFinishesChange }: Pick<ViewerProps, "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection }) {
   const [applyToAllWalls, setApplyToAllWalls] = useState(false);
+  const [paintFamilyId, setPaintFamilyId] = useState("NEUTRAL");
   if (!selection) return null;
   const finishes = room.finishes ?? {};
   const selectedElement = selection.type === "ELEMENT" ? room.obstacles.find((item) => item.id === selection.id) : undefined;
+  const paintFamily = PAINT_FAMILIES.find((family) => family.id === paintFamilyId) ?? PAINT_FAMILIES[0];
 
-  function setWallColour(colour?: string) {
+  function setWallColour(shade?: PaintShade) {
     if (selection?.type !== "WALL") return;
     const wallColors = { ...(finishes.wall_colors ?? {}) };
+    const wallColorCodes = { ...(finishes.wall_color_codes ?? {}) };
     const wallIds = applyToAllWalls
       ? room.vertices.map((_item, index) => `wall-${String(index + 1).padStart(3, "0")}`)
-      : [selection.id];
+      : selection.ids;
     wallIds.forEach((wallId) => {
-      if (colour) wallColors[wallId] = colour;
-      else delete wallColors[wallId];
+      if (shade) {
+        wallColors[wallId] = shade.colour;
+        wallColorCodes[wallId] = shade.code;
+      } else {
+        delete wallColors[wallId];
+        delete wallColorCodes[wallId];
+      }
     });
-    onFinishesChange({ ...finishes, wall_colors: wallColors });
+    onFinishesChange({ ...finishes, wall_colors: wallColors, wall_color_codes: wallColorCodes });
   }
 
   function setFloorTile(tileId?: string) {
@@ -1085,10 +1187,19 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
         <p>Drag the body across the floor to reposition it. Use Tools → Human mock-up panel for rotation, posture and clearance settings.</p>
       </>}
       {selection.type === "WALL" && <>
-        <span className="eyebrow">Selected internal wall</span>
-        <strong>{selection.id.replace("wall-", "Wall ")}</strong>
+        <span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span>
+        <strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong>
+        {!applyToAllWalls && <p className="wall-selection-hint">Hold Ctrl and click walls to add or remove them from this paint set.</p>}
         <label className="paint-all-choice"><input type="checkbox" checked={applyToAllWalls} onChange={(event) => setApplyToAllWalls(event.target.checked)} /><span>Paint all walls together</span></label>
-        <div className="finish-palette wall-palette">{WALL_COLOURS.map((colour) => <button key={colour} type="button" aria-label={`Set wall colour ${colour}`} className={finishes.wall_colors?.[selection.id] === colour ? "selected" : ""} style={{ background: colour }} onClick={() => setWallColour(colour)} />)}</div>
+        <div className="paint-family-picker" role="tablist" aria-label="Paint colour families">{PAINT_FAMILIES.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => setPaintFamilyId(family.id)}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
+        <div className="paint-shade-panel">
+          <div className="paint-shade-heading"><strong>{paintFamily.name}</strong><small>RAL Classic references</small></div>
+          <div className="paint-shades">{paintFamily.shades.map((shade) => {
+            const active = selection.ids.every((wallId) => finishes.wall_colors?.[wallId] === shade.colour);
+            return <button key={shade.code} type="button" aria-label={`Paint selected walls ${shade.name}, ${shade.code}`} className={active ? "selected" : ""} onClick={() => setWallColour(shade)}><span className="paint-shade-swatch" style={{ background: shade.colour }} /><strong>{shade.name}</strong><code>{shade.code}</code></button>;
+          })}</div>
+          <p className="paint-code-note">Use the RAL code when ordering paint. Screen colours are visual approximations; confirm with a physical sample.</p>
+        </div>
         <button className="remove-finish" type="button" onClick={() => setWallColour()}>Remove colour</button>
       </>}
       {selection.type === "FLOOR" && <>
