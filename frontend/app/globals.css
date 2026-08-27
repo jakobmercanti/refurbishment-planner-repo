@@ -230,7 +230,6 @@ button { font: inherit; }
 .viewer-lock-choice { display: flex; align-items: center; gap: 8px; color: var(--ink); font: 600 9px var(--font-mono); cursor: pointer; }
 .paint-all-choice { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; padding: 8px; border: 1px solid #c9d7d0; border-radius: 7px; background: #f2f7f4; color: var(--ink); font: 650 9px var(--font-mono); cursor: pointer; }
 .paint-all-choice input { width: 17px; height: 17px; margin: 0; accent-color: var(--deep); }
-.wall-selection-hint { padding: 7px 8px; border-left: 3px solid #9fb6aa; background: #f4f7f5; }
 .paint-family-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 10px 0; }
 .paint-family-picker button { display: grid; justify-items: center; gap: 4px; min-width: 0; padding: 6px 3px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
 .paint-family-picker button:hover, .paint-family-picker button.selected { border-color: #b8c8c0; background: #f0f5f2; color: var(--ink); }
@@ -241,13 +240,18 @@ button { font: inherit; }
 .paint-shade-heading { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 8px; }
 .paint-shade-heading strong { font-size: 10px; }
 .paint-shade-heading small { color: var(--muted); font: 550 7px var(--font-mono); }
-.paint-shades { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.paint-search { display: grid; gap: 4px; margin-bottom: 8px; color: var(--muted); font: 600 8px var(--font-mono); }
+.paint-search input { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); font: 500 9px var(--font-mono); }
+.paint-search input:focus { outline: 2px solid rgba(24,73,61,.2); border-color: var(--deep); }
+.paint-shades { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 280px; padding-right: 3px; overflow-y: auto; }
 .paint-shades button { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; gap: 1px 7px; align-items: center; min-width: 0; padding: 5px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); text-align: left; cursor: pointer; }
 .paint-shades button:hover, .paint-shades button.selected { border-color: var(--deep); box-shadow: inset 0 0 0 1px var(--deep); background: #f1f6f3; }
 .paint-shade-swatch { grid-row: 1 / 3; width: 34px; height: 38px; border: 1px solid rgba(40,55,49,.15); border-radius: 5px; }
 .paint-shades strong { overflow: hidden; font: 600 7px/1.25 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .paint-shades code { color: #42534b; font: 750 8px var(--font-mono); }
+.paint-empty { margin: 8px 0; color: var(--muted); font-size: 9px; text-align: center; }
 .paint-code-note { margin: 8px 0 0; color: var(--muted); font-size: 8px; line-height: 1.4; }
+.paint-code-note a { color: var(--deep); font-weight: 700; }
 .finish-palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 10px 0; }
 .finish-palette button { aspect-ratio: 1; min-width: 0; border: 2px solid white; border-radius: 6px; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
 .finish-palette button.selected { box-shadow: 0 0 0 2px var(--deep); }

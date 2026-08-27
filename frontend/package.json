@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "sync:dulux-colours": "node scripts/sync-dulux-colours.mjs"
   },
   "dependencies": {
     "@react-three/drei": "latest",
@@ -23,6 +24,7 @@
     "@types/three": "latest",
     "eslint": "9.39.5",
     "eslint-config-next": "latest",
+    "ral-colors": "1.0.1",
     "typescript": "6.0.3"
   },
   "packageManager": "pnpm@11.19.0"

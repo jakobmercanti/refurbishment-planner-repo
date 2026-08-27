@@ -5,6 +5,7 @@ import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber"
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { DULUX_PAINT_FAMILIES, DULUX_PALETTE_SOURCE, type DuluxPaintShade } from "@/lib/duluxPalette";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutInteraction";
 import type { Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
@@ -32,76 +33,6 @@ interface ViewerProps {
 }
 
 type Selection = { type: "ELEMENT"; id: string } | { type: "PERSON" } | { type: "WALL"; id: string; ids: string[] } | { type: "FLOOR" } | null;
-
-interface PaintShade {
-  name: string;
-  code: string;
-  colour: string;
-}
-
-interface PaintFamily {
-  id: string;
-  name: string;
-  colour: string;
-  shades: PaintShade[];
-}
-
-const PAINT_FAMILIES: PaintFamily[] = [
-  { id: "NEUTRAL", name: "Neutrals", colour: "#d8d4c9", shades: [
-    { name: "Traffic white", code: "RAL 9016", colour: "#f1f0ea" },
-    { name: "Cream", code: "RAL 9001", colour: "#e9e0d2" },
-    { name: "Oyster white", code: "RAL 1013", colour: "#eae6d8" },
-    { name: "Silk grey", code: "RAL 7044", colour: "#cac4b8" },
-    { name: "Pebble grey", code: "RAL 7032", colour: "#b8b799" },
-  ] },
-  { id: "YELLOW", name: "Yellows", colour: "#edc829", shades: [
-    { name: "Green beige", code: "RAL 1000", colour: "#cdbb8a" },
-    { name: "Beige", code: "RAL 1001", colour: "#d0b084" },
-    { name: "Ivory", code: "RAL 1014", colour: "#ddc49a" },
-    { name: "Light ivory", code: "RAL 1015", colour: "#e6d2b5" },
-    { name: "Sulfur yellow", code: "RAL 1016", colour: "#f1dd38" },
-    { name: "Rape yellow", code: "RAL 1021", colour: "#f6b600" },
-  ] },
-  { id: "RED", name: "Reds & pinks", colour: "#b84f58", shades: [
-    { name: "Beige red", code: "RAL 3012", colour: "#c1876b" },
-    { name: "Light pink", code: "RAL 3015", colour: "#d8a0a6" },
-    { name: "Antique pink", code: "RAL 3014", colour: "#d36e70" },
-    { name: "Coral red", code: "RAL 3016", colour: "#a94c3f" },
-    { name: "Purple red", code: "RAL 3004", colour: "#701f29" },
-  ] },
-  { id: "GREEN", name: "Greens", colour: "#5f8869", shades: [
-    { name: "Pastel green", code: "RAL 6019", colour: "#b7d9b1" },
-    { name: "Pale green", code: "RAL 6021", colour: "#8a9977" },
-    { name: "Pastel turquoise", code: "RAL 6034", colour: "#7fb0b2" },
-    { name: "Fern green", code: "RAL 6025", colour: "#286230" },
-    { name: "Moss green", code: "RAL 6005", colour: "#0f4336" },
-  ] },
-  { id: "BLUE", name: "Blues", colour: "#4f79a3", shades: [
-    { name: "Pastel blue", code: "RAL 5024", colour: "#6c9ac3" },
-    { name: "Pigeon blue", code: "RAL 5014", colour: "#637d96" },
-    { name: "Azure blue", code: "RAL 5009", colour: "#225f78" },
-    { name: "Distant blue", code: "RAL 5023", colour: "#42698c" },
-    { name: "Sapphire blue", code: "RAL 5003", colour: "#1d1e33" },
-  ] },
-  { id: "ORANGE", name: "Oranges", colour: "#dc7b28", shades: [
-    { name: "Pastel orange", code: "RAL 2003", colour: "#f67828" },
-    { name: "Pure orange", code: "RAL 2004", colour: "#e25303" },
-    { name: "Salmon orange", code: "RAL 2012", colour: "#d5654d" },
-    { name: "Deep orange", code: "RAL 2011", colour: "#e26e0e" },
-  ] },
-  { id: "BROWN", name: "Browns", colour: "#86654f", shades: [
-    { name: "Green brown", code: "RAL 8000", colour: "#89693e" },
-    { name: "Ochre brown", code: "RAL 8001", colour: "#9d622b" },
-    { name: "Beige brown", code: "RAL 8024", colour: "#79553c" },
-    { name: "Terra brown", code: "RAL 8028", colour: "#4e3b31" },
-  ] },
-  { id: "VIOLET", name: "Violets", colour: "#73527d", shades: [
-    { name: "Pastel violet", code: "RAL 4009", colour: "#9d8692" },
-    { name: "Heather violet", code: "RAL 4003", colour: "#c0638c" },
-    { name: "Blue lilac", code: "RAL 4005", colour: "#76689a" },
-    { name: "Traffic purple", code: "RAL 4006", colour: "#903373" },
-  ] },
-];
 
 interface TileStyle {
   id: string;
@@ -1138,13 +1069,18 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
 
 function ContextControls({ room, selection, onObstaclesChange, onFinishesChange }: Pick<ViewerProps, "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection }) {
   const [applyToAllWalls, setApplyToAllWalls] = useState(false);
-  const [paintFamilyId, setPaintFamilyId] = useState("NEUTRAL");
+  const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
+  const [paintSearch, setPaintSearch] = useState("");
   if (!selection) return null;
   const finishes = room.finishes ?? {};
   const selectedElement = selection.type === "ELEMENT" ? room.obstacles.find((item) => item.id === selection.id) : undefined;
-  const paintFamily = PAINT_FAMILIES.find((family) => family.id === paintFamilyId) ?? PAINT_FAMILIES[0];
+  const paintFamily = DULUX_PAINT_FAMILIES.find((family) => family.id === paintFamilyId) ?? DULUX_PAINT_FAMILIES[0];
+  const normalisedPaintSearch = paintSearch.trim().toLocaleLowerCase();
+  const visiblePaintShades = normalisedPaintSearch
+    ? paintFamily.shades.filter((shade) => `${shade.name} ${shade.ralCode} ${shade.ralName}`.toLocaleLowerCase().includes(normalisedPaintSearch))
+    : paintFamily.shades;
 
-  function setWallColour(shade?: PaintShade) {
+  function setWallColour(shade?: DuluxPaintShade) {
     if (selection?.type !== "WALL") return;
     const wallColors = { ...(finishes.wall_colors ?? {}) };
     const wallColorCodes = { ...(finishes.wall_color_codes ?? {}) };
@@ -1154,7 +1090,7 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
     wallIds.forEach((wallId) => {
       if (shade) {
         wallColors[wallId] = shade.colour;
-        wallColorCodes[wallId] = shade.code;
+        wallColorCodes[wallId] = `${shade.name} · ${shade.ralCode} (closest match)`;
       } else {
         delete wallColors[wallId];
         delete wallColorCodes[wallId];
@@ -1198,14 +1134,16 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
         <span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span>
         <strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong>
         <label className="paint-all-choice"><input type="checkbox" checked={applyToAllWalls} onChange={(event) => setApplyToAllWalls(event.target.checked)} /><span>Paint all walls together</span></label>
-        <div className="paint-family-picker" role="tablist" aria-label="Paint colour families">{PAINT_FAMILIES.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => setPaintFamilyId(family.id)}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
+        <div className="paint-family-picker" role="tablist" aria-label="Dulux paint colour families">{DULUX_PAINT_FAMILIES.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => { setPaintFamilyId(family.id); setPaintSearch(""); }}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
         <div className="paint-shade-panel">
-          <div className="paint-shade-heading"><strong>{paintFamily.name}</strong><small>RAL Classic references</small></div>
-          <div className="paint-shades">{paintFamily.shades.map((shade) => {
+          <div className="paint-shade-heading"><strong>{paintFamily.name}</strong><small>{paintFamily.shades.length} Dulux shades</small></div>
+          <label className="paint-search"><span>Find a shade</span><input type="search" value={paintSearch} onChange={(event) => setPaintSearch(event.target.value)} placeholder="Name or closest RAL" /></label>
+          <div className="paint-shades">{visiblePaintShades.map((shade) => {
             const active = selection.ids.every((wallId) => finishes.wall_colors?.[wallId] === shade.colour);
-            return <button key={shade.code} type="button" aria-label={`Paint selected walls ${shade.name}, ${shade.code}`} className={active ? "selected" : ""} onClick={() => setWallColour(shade)}><span className="paint-shade-swatch" style={{ background: shade.colour }} /><strong>{shade.name}</strong><code>{shade.code}</code></button>;
+            return <button key={shade.id} type="button" title={`${shade.name} · closest ${shade.ralCode} ${shade.ralName}`} aria-label={`Paint selected walls Dulux ${shade.name}, closest match ${shade.ralCode}`} className={active ? "selected" : ""} onClick={() => setWallColour(shade)}><span className="paint-shade-swatch" style={{ background: shade.colour }} /><strong>{shade.name}</strong><code>≈ {shade.ralCode}</code></button>;
           })}</div>
-          <p className="paint-code-note">Use the RAL code when ordering paint. Screen colours are visual approximations; confirm with a physical sample.</p>
+          {!visiblePaintShades.length && <p className="paint-empty">No shades match this search.</p>}
+          <p className="paint-code-note">Dulux names and screen colours come from the <a href={DULUX_PALETTE_SOURCE} target="_blank" rel="noreferrer">Dulux UK catalogue</a>. RAL codes are nearest digital matches, not official equivalents. Confirm with physical samples before ordering.</p>
         </div>
         <button className="remove-finish" type="button" onClick={() => setWallColour()}>Remove colour</button>
       </>}
