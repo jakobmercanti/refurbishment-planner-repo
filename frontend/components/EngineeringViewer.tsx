@@ -10,6 +10,7 @@ import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutI
 import type { Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 
 const SCALE = 0.001;
+const DISABLED_MESH_RAYCAST: THREE.Mesh["raycast"] = () => undefined;
 
 interface Toggles {
   elements: boolean;
@@ -327,23 +328,28 @@ function WallPiece({
   onSelect: (additive: boolean) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const solidMeshRef = useRef<THREE.Mesh>(null);
+  const paintMeshRef = useRef<THREE.Mesh>(null);
   const fullLength = Math.hypot(end.x - start.x, end.y - start.y);
   const vector = fullLength > 0 ? wallVector(start, end) : { dx: 1, dy: 0, length: 0, angle: 0 };
   useFrame(({ camera }) => {
     if (!groupRef.current) return;
+    let isVisible = true;
     if (wallMode !== "CUTAWAY_2D") {
-      groupRef.current.visible = true;
-      return;
+      isVisible = true;
+    } else {
+      const centre = new THREE.Vector3((start.x + end.x) * SCALE / 2, 0, -(start.y + end.y) * SCALE / 2);
+      const toCamera = camera.position.clone().sub(centre).setY(0);
+      if (toCamera.lengthSq() >= 1e-6) {
+        toCamera.normalize();
+        const outward = new THREE.Vector3(vector.dy, 0, vector.dx);
+        isVisible = outward.dot(toCamera) <= 0.05;
+      }
     }
-    const centre = new THREE.Vector3((start.x + end.x) * SCALE / 2, 0, -(start.y + end.y) * SCALE / 2);
-    const toCamera = camera.position.clone().sub(centre).setY(0);
-    if (toCamera.lengthSq() < 1e-6) {
-      groupRef.current.visible = true;
-      return;
-    }
-    toCamera.normalize();
-    const outward = new THREE.Vector3(vector.dy, 0, vector.dx);
-    groupRef.current.visible = outward.dot(toCamera) <= 0.05;
+    groupRef.current.visible = isVisible;
+    const raycast = isVisible ? THREE.Mesh.prototype.raycast : DISABLED_MESH_RAYCAST;
+    if (solidMeshRef.current) solidMeshRef.current.raycast = raycast;
+    if (paintMeshRef.current) paintMeshRef.current.raycast = raycast;
   });
   if (length <= 0 || height <= 0) return null;
   const exteriorX = vector.dy;
@@ -370,6 +376,7 @@ function WallPiece({
   return (
     <group ref={groupRef}>
       {wallMode !== "CUTAWAY_2D" && <mesh
+        ref={solidMeshRef}
         position={[0, base * SCALE, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         castShadow
@@ -380,6 +387,7 @@ function WallPiece({
         <meshStandardMaterial color="#d9d4c8" roughness={0.76} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>}
       <mesh
+        ref={paintMeshRef}
         position={[
           innerCentre.x * SCALE - vector.dy * paintOffset,
           (base + height / 2) * SCALE,
