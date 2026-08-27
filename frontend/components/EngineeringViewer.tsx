@@ -2,7 +2,7 @@
 
 import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { DULUX_PAINT_FAMILIES, DULUX_PALETTE_SOURCE, type DuluxPaintShade } from "@/lib/duluxPalette";
@@ -1071,6 +1071,9 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
   const [applyToAllWalls, setApplyToAllWalls] = useState(false);
   const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
   const [paintSearch, setPaintSearch] = useState("");
+  const panelRef = useRef<HTMLElement>(null);
+  const panelActionRef = useRef<{ mode: "MOVE" | "WIDTH" | "HEIGHT"; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number } | null>(null);
+  const [panelBox, setPanelBox] = useState<{ left: number | null; top: number | null; width: number; height: number | null }>({ left: null, top: null, width: 460, height: null });
   if (!selection) return null;
   const finishes = room.finishes ?? {};
   const selectedElement = selection.type === "ELEMENT" ? room.obstacles.find((item) => item.id === selection.id) : undefined;
@@ -1117,8 +1120,49 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
     onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? updated : item));
   }
 
+  function startPanelAction(mode: "MOVE" | "WIDTH" | "HEIGHT", event: ReactPointerEvent<HTMLButtonElement>) {
+    const panel = panelRef.current;
+    const parent = panel?.parentElement;
+    if (!panel || !parent) return;
+    const rect = panel.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    panelActionRef.current = { mode, pointerX: event.clientX, pointerY: event.clientY, left: rect.left - parentRect.left, top: rect.top - parentRect.top, width: rect.width, height: rect.height, parentWidth: parentRect.width, parentHeight: parentRect.height };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function movePanelAction(mode: "MOVE" | "WIDTH" | "HEIGHT", event: ReactPointerEvent<HTMLButtonElement>) {
+    const action = panelActionRef.current;
+    if (!action || action.mode !== mode) return;
+    const deltaX = event.clientX - action.pointerX;
+    const deltaY = event.clientY - action.pointerY;
+    if (mode === "MOVE") {
+      const width = panelBox.width;
+      const height = panelBox.height ?? action.height;
+      setPanelBox({ left: Math.max(12, Math.min(action.parentWidth - width - 12, action.left + deltaX)), top: Math.max(12, Math.min(action.parentHeight - height - 12, action.top + deltaY)), width, height });
+    } else if (mode === "WIDTH") {
+      setPanelBox((current) => ({ ...current, width: Math.max(360, Math.min(action.parentWidth - action.left - 12, action.width + deltaX)) }));
+    } else {
+      setPanelBox((current) => ({ ...current, height: Math.max(220, Math.min(action.parentHeight - action.top - 12, action.height + deltaY)) }));
+    }
+  }
+
+  function endPanelAction(event: ReactPointerEvent<HTMLButtonElement>) {
+    panelActionRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  const panelStyle: CSSProperties = {
+    left: panelBox.left ?? undefined,
+    top: panelBox.top ?? undefined,
+    right: panelBox.left === null ? 12 : undefined,
+    width: panelBox.width,
+    height: panelBox.height ?? undefined,
+  };
+
   return (
-    <aside className="context-controls" aria-label="Selected object controls" title="Drag a panel edge or corner to resize">
+    <aside ref={panelRef} className="context-controls" aria-label="Selected object controls" style={panelStyle}>
+      <button className="context-drag-handle" type="button" aria-label="Drag to move panel" title="Drag to move panel" onPointerDown={(event) => startPanelAction("MOVE", event)} onPointerMove={(event) => movePanelAction("MOVE", event)} onPointerUp={endPanelAction}>⠿</button>
       {selection.type === "ELEMENT" && selectedElement && <>
         <span className="eyebrow">Selected element</span>
         <strong>{selectedElement.name}</strong>
@@ -1159,6 +1203,8 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
         })()}
         <button className="remove-finish" type="button" onClick={() => setFloorTile()}>Remove floor finish</button>
       </>}
+      <button className="context-resize-handle context-resize-width" type="button" aria-label="Drag to adjust panel width" title="Drag to adjust width" onPointerDown={(event) => startPanelAction("WIDTH", event)} onPointerMove={(event) => movePanelAction("WIDTH", event)} onPointerUp={endPanelAction} />
+      <button className="context-resize-handle context-resize-height" type="button" aria-label="Drag to adjust panel height" title="Drag to adjust height" onPointerDown={(event) => startPanelAction("HEIGHT", event)} onPointerMove={(event) => movePanelAction("HEIGHT", event)} onPointerUp={endPanelAction} />
     </aside>
   );
 }
