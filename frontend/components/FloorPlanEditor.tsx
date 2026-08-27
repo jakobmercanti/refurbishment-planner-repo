@@ -19,22 +19,27 @@ const CANVAS_HEIGHT = 560;
 const PADDING_MM = 400;
 const SNAP_MM = 50;
 
-const TEMPLATES: Record<"RECTANGLE" | "L_SHAPE", Point2D[]> = {
-  RECTANGLE: [
-    { x: 0, y: 0 },
-    { x: 2400, y: 0 },
-    { x: 2400, y: 1800 },
-    { x: 0, y: 1800 },
-  ],
-  L_SHAPE: [
-    { x: 0, y: 0 },
-    { x: 3200, y: 0 },
-    { x: 3200, y: 1800 },
-    { x: 2200, y: 1800 },
-    { x: 2200, y: 2800 },
-    { x: 0, y: 2800 },
-  ],
-};
+const RECTANGLE_TEMPLATE: Point2D[] = [
+  { x: 0, y: 0 },
+  { x: 2400, y: 0 },
+  { x: 2400, y: 1800 },
+  { x: 0, y: 1800 },
+];
+
+const L_SHAPE_TEMPLATES: Array<{ id: string; name: string; preview: string; vertices: Point2D[] }> = [
+  { id: "NOTCH_TOP_RIGHT", name: "Notch top right", preview: "polygon(0 0, 69% 0, 69% 36%, 100% 36%, 100% 100%, 0 100%)", vertices: [
+    { x: 0, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 1800 }, { x: 2200, y: 1800 }, { x: 2200, y: 2800 }, { x: 0, y: 2800 },
+  ] },
+  { id: "NOTCH_BOTTOM_RIGHT", name: "Notch bottom right", preview: "polygon(0 0, 100% 0, 100% 64%, 69% 64%, 69% 100%, 0 100%)", vertices: [
+    { x: 0, y: 0 }, { x: 2200, y: 0 }, { x: 2200, y: 1000 }, { x: 3200, y: 1000 }, { x: 3200, y: 2800 }, { x: 0, y: 2800 },
+  ] },
+  { id: "NOTCH_TOP_LEFT", name: "Notch top left", preview: "polygon(31% 0, 100% 0, 100% 100%, 0 100%, 0 36%, 31% 36%)", vertices: [
+    { x: 0, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 2800 }, { x: 1000, y: 2800 }, { x: 1000, y: 1800 }, { x: 0, y: 1800 },
+  ] },
+  { id: "NOTCH_BOTTOM_LEFT", name: "Notch bottom left", preview: "polygon(0 0, 100% 0, 100% 100%, 31% 100%, 31% 64%, 0 64%)", vertices: [
+    { x: 1000, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 2800 }, { x: 0, y: 2800 }, { x: 0, y: 1000 }, { x: 1000, y: 1000 },
+  ] },
+];
 
 interface FloorPlanEditorProps {
   room: Room;
@@ -89,6 +94,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   const [history, setHistory] = useState<Point2D[][]>([]);
   const [selectedVertex, setSelectedVertex] = useState<number | null>(0);
   const [selectedWall, setSelectedWall] = useState<number | null>(null);
+  const [lShapePickerOpen, setLShapePickerOpen] = useState(false);
   const [mode, setMode] = useState<"SELECT" | "DRAW">("SELECT");
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [wallHeight, setWallHeight] = useState(room.wall_height.value);
@@ -277,14 +283,16 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     setDragBounds(null);
   };
 
-  const applyTemplate = (template: keyof typeof TEMPLATES) => {
-    commitVertices(cloneVertices(TEMPLATES[template]));
+  const applyTemplate = (template: Point2D[]) => {
+    commitVertices(cloneVertices(template));
     setSelectedVertex(0);
     setSelectedWall(null);
     setMode("SELECT");
+    setLShapePickerOpen(false);
   };
 
   const newOutline = () => {
+    setLShapePickerOpen(false);
     setHistory((current) => [...current.slice(-29), cloneVertices(vertices)]);
     setVertices([]);
     setCoordinateInput("");
@@ -558,11 +566,16 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
           <section className="tool-section">
             <div className="tool-heading"><span>1</span><h2>Start or edit</h2></div>
             <div className="button-grid">
-              <button onClick={() => applyTemplate("RECTANGLE")}>Rectangle</button>
-              <button onClick={() => applyTemplate("L_SHAPE")}>L-shape</button>
+              <button onClick={() => applyTemplate(RECTANGLE_TEMPLATE)}>Rectangle</button>
+              <button className={lShapePickerOpen ? "active" : ""} aria-expanded={lShapePickerOpen} aria-controls="l-shape-picker" onClick={() => setLShapePickerOpen((current) => !current)}>L-shape</button>
               <button onClick={newOutline}>New outline</button>
               <button onClick={undo} disabled={!history.length}>Undo</button>
             </div>
+            {lShapePickerOpen && <div className="l-shape-picker" id="l-shape-picker">
+              <div><span>Choose the L orientation</span><button type="button" aria-label="Close L-shape chooser" onClick={() => setLShapePickerOpen(false)}>×</button></div>
+              <p>Select the position of the internal notch. You can resize every wall afterwards.</p>
+              <div className="l-shape-options">{L_SHAPE_TEMPLATES.map((template) => <button key={template.id} type="button" onClick={() => applyTemplate(template.vertices)}><span className="l-shape-thumbnail"><i style={{ clipPath: template.preview }} /></span><strong>{template.name}</strong></button>)}</div>
+            </div>}
             <div className="mode-switch" role="group" aria-label="Editor mode">
               <button className={mode === "SELECT" ? "active" : ""} onClick={() => setMode("SELECT")}>Select & move</button>
               <button className={mode === "DRAW" ? "active" : ""} onClick={() => setMode("DRAW")}>Add corners</button>
