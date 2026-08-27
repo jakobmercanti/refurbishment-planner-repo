@@ -1080,7 +1080,7 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
   const paintFamily = DULUX_PAINT_FAMILIES.find((family) => family.id === paintFamilyId) ?? DULUX_PAINT_FAMILIES[0];
   const normalisedPaintSearch = paintSearch.trim().toLocaleLowerCase();
   const visiblePaintShades = normalisedPaintSearch
-    ? paintFamily.shades.filter((shade) => `${shade.name} ${shade.ralCode} ${shade.ralName}`.toLocaleLowerCase().includes(normalisedPaintSearch))
+    ? paintFamily.shades.filter((shade) => shade.name.toLocaleLowerCase().includes(normalisedPaintSearch))
     : paintFamily.shades;
 
   function setWallColour(shade?: DuluxPaintShade) {
@@ -1093,7 +1093,7 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
     wallIds.forEach((wallId) => {
       if (shade) {
         wallColors[wallId] = shade.colour;
-        wallColorCodes[wallId] = `${shade.name} · ${shade.ralCode} (closest match)`;
+        wallColorCodes[wallId] = shade.name;
       } else {
         delete wallColors[wallId];
         delete wallColorCodes[wallId];
@@ -1179,13 +1179,13 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
         <div className="paint-family-picker" role="tablist" aria-label="Dulux paint colour families">{DULUX_PAINT_FAMILIES.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => { setPaintFamilyId(family.id); setPaintSearch(""); }}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
         <div className="paint-shade-panel">
           <div className="paint-shade-heading"><strong>{paintFamily.name}</strong><small>{paintFamily.shades.length} Dulux shades</small></div>
-          <label className="paint-search"><span>Find a shade</span><input type="search" value={paintSearch} onChange={(event) => setPaintSearch(event.target.value)} placeholder="Name or closest RAL" /></label>
+          <label className="paint-search"><span>Find a shade</span><input type="search" value={paintSearch} onChange={(event) => setPaintSearch(event.target.value)} placeholder="Colour name" /></label>
           <div className="paint-shades">{visiblePaintShades.map((shade) => {
             const active = selection.ids.every((wallId) => finishes.wall_colors?.[wallId] === shade.colour);
-            return <button key={shade.id} type="button" title={`${shade.name} · closest ${shade.ralCode} ${shade.ralName}`} aria-label={`Paint selected walls Dulux ${shade.name}, closest match ${shade.ralCode}`} className={active ? "selected" : ""} onClick={() => setWallColour(shade)}><span className="paint-shade-swatch" style={{ background: shade.colour }} /><strong>{shade.name}</strong><code>≈ {shade.ralCode}</code></button>;
+            return <button key={shade.id} type="button" title={shade.name} aria-label={`Paint selected walls Dulux ${shade.name}`} className={active ? "selected" : ""} onClick={() => setWallColour(shade)}><span className="paint-shade-swatch" style={{ background: shade.colour }} /><strong>{shade.name}</strong></button>;
           })}</div>
           {!visiblePaintShades.length && <p className="paint-empty">No shades match this search.</p>}
-          <p className="paint-code-note">Dulux names and screen colours come from the <a href={DULUX_PALETTE_SOURCE} target="_blank" rel="noreferrer">Dulux UK catalogue</a>. RAL codes are nearest digital matches, not official equivalents. Confirm with physical samples before ordering.</p>
+          <p className="paint-code-note">Dulux names and screen colours come from the <a href={DULUX_PALETTE_SOURCE} target="_blank" rel="noreferrer">Dulux UK catalogue</a>. Confirm with a physical sample before ordering.</p>
         </div>
         <button className="remove-finish" type="button" onClick={() => setWallColour()}>Remove colour</button>
       </>}
