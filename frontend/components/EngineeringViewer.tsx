@@ -1197,7 +1197,6 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
       {selection.type === "WALL" && <>
         <span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span>
         <strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong>
-        {!applyToAllWalls && <p className="wall-selection-hint">Hold Ctrl and click walls to add or remove them from this paint set.</p>}
         <label className="paint-all-choice"><input type="checkbox" checked={applyToAllWalls} onChange={(event) => setApplyToAllWalls(event.target.checked)} /><span>Paint all walls together</span></label>
         <div className="paint-family-picker" role="tablist" aria-label="Paint colour families">{PAINT_FAMILIES.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => setPaintFamilyId(family.id)}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
         <div className="paint-shade-panel">
