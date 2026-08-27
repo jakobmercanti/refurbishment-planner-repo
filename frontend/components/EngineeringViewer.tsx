@@ -1118,7 +1118,7 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
   }
 
   return (
-    <aside className="context-controls" aria-label="Selected object controls">
+    <aside className="context-controls" aria-label="Selected object controls" title="Drag a panel edge or corner to resize">
       {selection.type === "ELEMENT" && selectedElement && <>
         <span className="eyebrow">Selected element</span>
         <strong>{selectedElement.name}</strong>
