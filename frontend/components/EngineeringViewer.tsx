@@ -1072,7 +1072,7 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
   const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
   const [paintSearch, setPaintSearch] = useState("");
   const panelRef = useRef<HTMLElement>(null);
-  const panelActionRef = useRef<{ mode: "MOVE" | "WIDTH" | "HEIGHT"; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number } | null>(null);
+  const panelActionRef = useRef<{ mode: "MOVE" | "HEIGHT"; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number } | null>(null);
   const [panelBox, setPanelBox] = useState<{ left: number | null; top: number | null; width: number; height: number | null }>({ left: null, top: null, width: 460, height: null });
   if (!selection) return null;
   const finishes = room.finishes ?? {};
@@ -1120,7 +1120,7 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
     onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? updated : item));
   }
 
-  function startPanelAction(mode: "MOVE" | "WIDTH" | "HEIGHT", event: ReactPointerEvent<HTMLButtonElement>) {
+  function startPanelAction(mode: "MOVE" | "HEIGHT", event: ReactPointerEvent<HTMLButtonElement>) {
     const panel = panelRef.current;
     const parent = panel?.parentElement;
     if (!panel || !parent) return;
@@ -1131,7 +1131,7 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
     event.preventDefault();
   }
 
-  function movePanelAction(mode: "MOVE" | "WIDTH" | "HEIGHT", event: ReactPointerEvent<HTMLButtonElement>) {
+  function movePanelAction(mode: "MOVE" | "HEIGHT", event: ReactPointerEvent<HTMLButtonElement>) {
     const action = panelActionRef.current;
     if (!action || action.mode !== mode) return;
     const deltaX = event.clientX - action.pointerX;
@@ -1140,8 +1140,6 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
       const width = panelBox.width;
       const height = panelBox.height ?? action.height;
       setPanelBox({ left: Math.max(12, Math.min(action.parentWidth - width - 12, action.left + deltaX)), top: Math.max(12, Math.min(action.parentHeight - height - 12, action.top + deltaY)), width, height });
-    } else if (mode === "WIDTH") {
-      setPanelBox((current) => ({ ...current, width: Math.max(360, Math.min(action.parentWidth - action.left - 12, action.width + deltaX)) }));
     } else {
       setPanelBox((current) => ({ ...current, height: Math.max(220, Math.min(action.parentHeight - action.top - 12, action.height + deltaY)) }));
     }
@@ -1203,7 +1201,6 @@ function ContextControls({ room, selection, onObstaclesChange, onFinishesChange 
         })()}
         <button className="remove-finish" type="button" onClick={() => setFloorTile()}>Remove floor finish</button>
       </>}
-      <button className="context-resize-handle context-resize-width" type="button" aria-label="Drag to adjust panel width" title="Drag to adjust width" onPointerDown={(event) => startPanelAction("WIDTH", event)} onPointerMove={(event) => movePanelAction("WIDTH", event)} onPointerUp={endPanelAction} />
       <button className="context-resize-handle context-resize-height" type="button" aria-label="Drag to adjust panel height" title="Drag to adjust height" onPointerDown={(event) => startPanelAction("HEIGHT", event)} onPointerMove={(event) => movePanelAction("HEIGHT", event)} onPointerUp={endPanelAction} />
     </aside>
   );
