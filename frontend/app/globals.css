@@ -291,13 +291,17 @@ button { font: inherit; }
 .drawing-toolbar button { border: 0; background: transparent; color: var(--deep); font: 700 10px var(--font-mono); cursor: pointer; }
 .floor-canvas { width: 100%; min-height: 560px; display: block; border: 1px solid var(--line); background: #eef1ed; touch-action: none; cursor: crosshair; }
 .canvas-background { fill: #eef1ed; }
-.canvas-background, .plan-grid, .room-polygon, .wall-label, .vertex-label { pointer-events: none; }
+.canvas-background, .plan-grid, .room-polygon, .wall-dimension, .wall-label, .vertex-label { pointer-events: none; }
 .plan-grid line { stroke: #d9dfda; stroke-width: 1; }
 .room-polygon { fill: rgba(255,255,255,.82); stroke: none; }
 .wall-line { stroke: var(--deep); stroke-width: 6; stroke-linecap: round; cursor: grab; }
 .wall-line:active { cursor: grabbing; }
 .wall-line:hover, .wall-line.selected { stroke: #d28718; stroke-width: 8; }
-.wall-label { fill: #44514b; font: 650 10px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: white; stroke-width: 4px; }
+.wall-dimension { color: #68756f; }
+.dimension-line, .dimension-extension, .dimension-tick { stroke: currentColor; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.dimension-extension { opacity: .62; }
+.dimension-tick { stroke-width: 1.3; }
+.wall-label { fill: #44514b; font: 650 10px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
 .vertex-handle { fill: white; stroke: var(--deep); stroke-width: 4; cursor: grab; }
 .vertex-handle:active { cursor: grabbing; }
 .vertex-handle.selected { fill: #ffcb71; stroke: #8d5700; }
@@ -305,15 +309,17 @@ button { font: inherit; }
 .opening-symbol { pointer-events: auto; }
 .pickable-opening { cursor: grab; }
 .pickable-opening:active { cursor: grabbing; }
-.pickable-opening:hover .opening-label { fill: #b86e08; }
-.opening-gap { stroke: white; stroke-width: 15; }
-.door-threshold { stroke: #cb851a; stroke-width: 6; stroke-linecap: square; }
-.door-leaf { stroke: #cb851a; stroke-width: 4; stroke-linecap: round; }
-.double-door-box { stroke: #c97912; stroke-width: 13; stroke-linecap: square; }
-.double-door-divider { stroke: white; stroke-width: 3; }
-.window-frame { stroke: #287fb8; stroke-width: 11; stroke-linecap: square; }
-.window-core { stroke: white; stroke-width: 3; }
-.opening-label { fill: #52615b; font: 750 8px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: white; stroke-width: 4px; }
+.opening-hit { stroke: transparent; stroke-width: 25; pointer-events: stroke; }
+.opening-gap { stroke: white; stroke-width: 14; pointer-events: none; }
+.opening-jamb { stroke: #233e37; stroke-width: 2.5; stroke-linecap: square; pointer-events: none; }
+.door-closed-line { stroke: #8e9a95; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
+.door-leaf { stroke: #bd7411; stroke-width: 3; stroke-linecap: square; pointer-events: none; }
+.door-swing { fill: none; stroke: #bd7411; stroke-width: 1.5; stroke-dasharray: 4 2; pointer-events: none; }
+.window-frame { stroke: #287fb8; stroke-width: 2.6; stroke-linecap: square; pointer-events: none; }
+.window-core { stroke: #76acd0; stroke-width: 1.2; pointer-events: none; }
+.window-jamb { stroke: #287fb8; }
+.pickable-opening:hover .door-leaf, .pickable-opening:hover .door-swing, .pickable-opening.selected .door-leaf, .pickable-opening.selected .door-swing { stroke: #e29527; }
+.pickable-opening:hover .window-frame, .pickable-opening:hover .window-core, .pickable-opening:hover .window-jamb, .pickable-opening.selected .window-frame, .pickable-opening.selected .window-core, .pickable-opening.selected .window-jamb { stroke: #49a3dd; }
 .drawing-scale { display: flex; justify-content: space-between; gap: 12px; padding: 8px 11px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; background: white; color: var(--muted); font: 500 8px var(--font-mono); }
 textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .validation-section { border-color: #b8c7c0; }

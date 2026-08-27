@@ -76,6 +76,14 @@ function snap(value: number, enabled: boolean): number {
   return enabled ? Math.round(value / SNAP_MM) * SNAP_MM : Math.round(value * 10) / 10;
 }
 
+function swingArcPath(centre: Point2D, start: Point2D, end: Point2D): string {
+  const startVector = { x: start.x - centre.x, y: start.y - centre.y };
+  const endVector = { x: end.x - centre.x, y: end.y - centre.y };
+  const radius = Math.hypot(startVector.x, startVector.y);
+  const cross = startVector.x * endVector.y - startVector.y * endVector.x;
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 0 ${cross >= 0 ? 1 : 0} ${end.x} ${end.y}`;
+}
+
 export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEditorProps) {
   const [vertices, setVertices] = useState<Point2D[]>(() => cloneVertices(room.vertices));
   const [history, setHistory] = useState<Point2D[][]>([]);
@@ -702,6 +710,16 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               const start = toScreen(vertex);
               const end = toScreen(vertices[(index + 1) % vertices.length] ?? vertex);
               const length = Math.hypot((vertices[(index + 1) % vertices.length]?.x ?? vertex.x) - vertex.x, (vertices[(index + 1) % vertices.length]?.y ?? vertex.y) - vertex.y);
+              const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+              const screenTangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength };
+              const outward = { x: -screenTangent.y, y: screenTangent.x };
+              const dimensionOffset = 22;
+              const dimensionStart = { x: start.x + outward.x * dimensionOffset, y: start.y + outward.y * dimensionOffset };
+              const dimensionEnd = { x: end.x + outward.x * dimensionOffset, y: end.y + outward.y * dimensionOffset };
+              const dimensionLabel = {
+                x: (dimensionStart.x + dimensionEnd.x) / 2 + outward.x * 10,
+                y: (dimensionStart.y + dimensionEnd.y) / 2 + outward.y * 10,
+              };
               return (
                 <g key={`wall-${index}`}>
                   {vertices.length > 1 && (
@@ -728,7 +746,14 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                           event.currentTarget.setPointerCapture(event.pointerId);
                         }}
                       />
-                      <text className="wall-label" x={(start.x + end.x) / 2} y={(start.y + end.y) / 2 - 8}>{length.toFixed(0)} mm</text>
+                      <g className="wall-dimension" aria-hidden>
+                        <line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={dimensionStart.x + outward.x * 4} y2={dimensionStart.y + outward.y * 4} />
+                        <line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={dimensionEnd.x + outward.x * 4} y2={dimensionEnd.y + outward.y * 4} />
+                        <line className="dimension-line" x1={dimensionStart.x} y1={dimensionStart.y} x2={dimensionEnd.x} y2={dimensionEnd.y} />
+                        <line className="dimension-tick" x1={dimensionStart.x - screenTangent.x * 4 + outward.x * 4} y1={dimensionStart.y - screenTangent.y * 4 + outward.y * 4} x2={dimensionStart.x + screenTangent.x * 4 - outward.x * 4} y2={dimensionStart.y + screenTangent.y * 4 - outward.y * 4} />
+                        <line className="dimension-tick" x1={dimensionEnd.x - screenTangent.x * 4 + outward.x * 4} y1={dimensionEnd.y - screenTangent.y * 4 + outward.y * 4} x2={dimensionEnd.x + screenTangent.x * 4 - outward.x * 4} y2={dimensionEnd.y + screenTangent.y * 4 - outward.y * 4} />
+                        <text className="wall-label" x={dimensionLabel.x} y={dimensionLabel.y}>{length.toFixed(0)} mm</text>
+                      </g>
                     </>
                   )}
                   <circle
@@ -768,13 +793,23 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               const openingStart = toScreen(openingStartModel);
               const openingEnd = toScreen(openingEndModel);
               const centre = { x: (openingStart.x + openingEnd.x) / 2, y: (openingStart.y + openingEnd.y) / 2 };
+              const openingPixelLength = Math.hypot(openingEnd.x - openingStart.x, openingEnd.y - openingStart.y) || 1;
+              const openingTangent = { x: (openingEnd.x - openingStart.x) / openingPixelLength, y: (openingEnd.y - openingStart.y) / openingPixelLength };
+              const openingPerpendicular = { x: -openingTangent.y, y: openingTangent.x };
+              const jambHalf = 7;
+              const openingClass = editingOpeningId === opening.id ? " selected" : "";
               if (opening.kind === "WINDOW") {
+                const frameOffset = 4;
                 return (
-                  <g key={opening.id} className="opening-symbol window-symbol pickable-opening" onPointerDown={(event) => startOpeningDrag(event, opening)}>
+                  <g key={opening.id} className={`opening-symbol window-symbol pickable-opening${openingClass}`} onPointerDown={(event) => startOpeningDrag(event, opening)}>
+                    <title>{`Window ${opening.width.value.toFixed(0)} mm — drag along wall`}</title>
+                    <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
-                    <line className="window-frame" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                    <line className="window-frame" x1={openingStart.x + openingPerpendicular.x * frameOffset} y1={openingStart.y + openingPerpendicular.y * frameOffset} x2={openingEnd.x + openingPerpendicular.x * frameOffset} y2={openingEnd.y + openingPerpendicular.y * frameOffset} />
+                    <line className="window-frame" x1={openingStart.x - openingPerpendicular.x * frameOffset} y1={openingStart.y - openingPerpendicular.y * frameOffset} x2={openingEnd.x - openingPerpendicular.x * frameOffset} y2={openingEnd.y - openingPerpendicular.y * frameOffset} />
                     <line className="window-core" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
-                    <text className="opening-label" x={centre.x} y={centre.y - 15}>WINDOW</text>
+                    <line className="opening-jamb window-jamb" x1={openingStart.x - openingPerpendicular.x * jambHalf} y1={openingStart.y - openingPerpendicular.y * jambHalf} x2={openingStart.x + openingPerpendicular.x * jambHalf} y2={openingStart.y + openingPerpendicular.y * jambHalf} />
+                    <line className="opening-jamb window-jamb" x1={openingEnd.x - openingPerpendicular.x * jambHalf} y1={openingEnd.y - openingPerpendicular.y * jambHalf} x2={openingEnd.x + openingPerpendicular.x * jambHalf} y2={openingEnd.y + openingPerpendicular.y * jambHalf} />
                   </g>
                 );
               }
@@ -785,13 +820,17 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 const firstLeafEnd = toScreen({ x: openingStartModel.x + normal.x * halfWidth, y: openingStartModel.y + normal.y * halfWidth });
                 const secondLeafEnd = toScreen({ x: openingEndModel.x + normal.x * halfWidth, y: openingEndModel.y + normal.y * halfWidth });
                 return (
-                  <g key={opening.id} className="opening-symbol double-door-symbol pickable-opening" onPointerDown={(event) => startOpeningDrag(event, opening)}>
+                  <g key={opening.id} className={`opening-symbol double-door-symbol pickable-opening${openingClass}`} onPointerDown={(event) => startOpeningDrag(event, opening)}>
+                    <title>{`Double door ${opening.width.value.toFixed(0)} mm — drag along wall`}</title>
+                    <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
-                    <line className="double-door-box" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
-                    <line className="double-door-divider" x1={centre.x - normal.x * 7} y1={centre.y + normal.y * 7} x2={centre.x + normal.x * 7} y2={centre.y - normal.y * 7} />
+                    <line className="door-closed-line" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                    <line className="opening-jamb" x1={openingStart.x - openingPerpendicular.x * jambHalf} y1={openingStart.y - openingPerpendicular.y * jambHalf} x2={openingStart.x + openingPerpendicular.x * jambHalf} y2={openingStart.y + openingPerpendicular.y * jambHalf} />
+                    <line className="opening-jamb" x1={openingEnd.x - openingPerpendicular.x * jambHalf} y1={openingEnd.y - openingPerpendicular.y * jambHalf} x2={openingEnd.x + openingPerpendicular.x * jambHalf} y2={openingEnd.y + openingPerpendicular.y * jambHalf} />
                     <line className="door-leaf" x1={openingStart.x} y1={openingStart.y} x2={firstLeafEnd.x} y2={firstLeafEnd.y} />
                     <line className="door-leaf" x1={openingEnd.x} y1={openingEnd.y} x2={secondLeafEnd.x} y2={secondLeafEnd.y} />
-                    <text className="opening-label" x={centre.x} y={centre.y - 17}>DOUBLE DOOR</text>
+                    <path className="door-swing" d={swingArcPath(openingStart, centre, firstLeafEnd)} />
+                    <path className="door-swing" d={swingArcPath(openingEnd, centre, secondLeafEnd)} />
                   </g>
                 );
               }
@@ -799,12 +838,17 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               const hinge = hingeAtStart ? openingStartModel : openingEndModel;
               const leafEnd = toScreen({ x: hinge.x + normal.x * opening.width.value, y: hinge.y + normal.y * opening.width.value });
               const hingeScreen = hingeAtStart ? openingStart : openingEnd;
+              const closedLeafEnd = hingeAtStart ? openingEnd : openingStart;
               return (
-                <g key={opening.id} className="opening-symbol door-symbol pickable-opening" onPointerDown={(event) => startOpeningDrag(event, opening)}>
+                <g key={opening.id} className={`opening-symbol door-symbol pickable-opening${openingClass}`} onPointerDown={(event) => startOpeningDrag(event, opening)}>
+                  <title>{`Door ${opening.width.value.toFixed(0)} mm — drag along wall`}</title>
+                  <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                   <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
-                  <line className="door-threshold" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                  <line className="door-closed-line" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
+                  <line className="opening-jamb" x1={openingStart.x - openingPerpendicular.x * jambHalf} y1={openingStart.y - openingPerpendicular.y * jambHalf} x2={openingStart.x + openingPerpendicular.x * jambHalf} y2={openingStart.y + openingPerpendicular.y * jambHalf} />
+                  <line className="opening-jamb" x1={openingEnd.x - openingPerpendicular.x * jambHalf} y1={openingEnd.y - openingPerpendicular.y * jambHalf} x2={openingEnd.x + openingPerpendicular.x * jambHalf} y2={openingEnd.y + openingPerpendicular.y * jambHalf} />
                   <line className="door-leaf" x1={hingeScreen.x} y1={hingeScreen.y} x2={leafEnd.x} y2={leafEnd.y} />
-                  <text className="opening-label" x={centre.x} y={centre.y - 15}>DOOR</text>
+                  <path className="door-swing" d={swingArcPath(hingeScreen, closedLeafEnd, leafEnd)} />
                 </g>
               );
             })}
