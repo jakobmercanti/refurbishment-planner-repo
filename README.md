@@ -49,13 +49,13 @@ The simplest way to start both parts of the application is the included launcher
 3. Start the application and open it in your browser:
 
    ```powershell
-   .\start-local.ps1 -OpenBrowser
+   .\start-local.cmd
    ```
 
-If Windows blocks the script the first time, run this once in the same PowerShell window, then repeat the start command:
+The `.cmd` launcher automatically starts PowerShell with the temporary permission needed to run the project script. If you prefer to run the PowerShell script directly, use:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-local.ps1 -OpenBrowser
 ```
 
 The application opens at `http://localhost:3000`. The engineering backend is available at `http://127.0.0.1:8000/docs`.
@@ -70,7 +70,7 @@ To stop the local application, run:
 Get-NetTCPConnection -LocalPort 3000,8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
 ```
 
-Then use `./start-local.ps1 -OpenBrowser` again to restart it.
+Then use `./start-local.cmd` again to restart it.
 
 ## Manual local development
 
