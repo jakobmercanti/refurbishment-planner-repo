@@ -783,10 +783,10 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                 outward.y > 0 ? (CANVAS_HEIGHT - edgePadding - start.y) / outward.y : outward.y < 0 ? (edgePadding - start.y) / outward.y : Number.POSITIVE_INFINITY,
               ].filter((value) => value >= 0).reduce((minimum, value) => Math.min(minimum, value), Number.POSITIVE_INFINITY);
               const dimensionOffset = Math.max(12, Math.min(requestedDimensionOffset, offsetLimit));
-              // If the outer side is constrained by the canvas edge (common on
-              // the top wall), place opening dimensions on the opposite side so
-              // their labels never collapse onto the authoritative wall value.
-              const dimensionSide = offsetLimit < requestedDimensionOffset ? -1 : 1;
+              // Keep every dimension outside the wall. The authoritative wall
+              // lane is deliberately farther out, with opening lanes tucked
+              // between it and the wall at consistent spacing.
+              const dimensionSide = 1;
               const dimensionStart = { x: start.x + outward.x * dimensionOffset, y: start.y + outward.y * dimensionOffset };
               const dimensionEnd = { x: end.x + outward.x * dimensionOffset, y: end.y + outward.y * dimensionOffset };
               const dimensionLabel = {
