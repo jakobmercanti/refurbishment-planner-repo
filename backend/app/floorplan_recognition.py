@@ -58,8 +58,6 @@ def _clean_contour_vertices(points: np.ndarray) -> np.ndarray:
             previous_leg = float(np.linalg.norm(current - previous))
             next_leg = float(np.linalg.norm(following - current))
             shortcut = float(np.linalg.norm(following - previous))
-            # A long out-and-back excursion with endpoints only a few pixels apart
-            # is never a usable architectural corner.
             if min(previous_leg, next_leg) >= 12 and shortcut <= min(previous_leg, next_leg) * 0.3:
                 cleaned.pop(index)
                 changed = True
@@ -86,16 +84,34 @@ def _to_plan_vertices(contour: np.ndarray, image_height: int) -> list[dict[str, 
         return []
     if _polygon_area(vertices) < 0:
         vertices.reverse()
-    return vertices
+    return _orthogonalize_vertices(vertices)
+
+
+def _orthogonalize_vertices(vertices: list[dict[str, float]], tolerance_degrees: float = 5.0) -> list[dict[str, float]]:
+    """Snap near-horizontal/vertical runs to true orthogonal walls.
+
+    Raster scans commonly introduce a few degrees of skew at otherwise square
+    corners.  Preserve genuinely angled walls, but make runs within the 5°
+    architectural tolerance exactly horizontal or vertical.
+    """
+    if len(vertices) < 3:
+        return vertices
+    result = [dict(vertex) for vertex in vertices]
+    tolerance = np.tan(np.deg2rad(tolerance_degrees))
+    for _ in range(2):
+        for index, current in enumerate(result):
+            following = result[(index + 1) % len(result)]
+            dx = following["x"] - current["x"]
+            dy = following["y"] - current["y"]
+            if abs(dx) < 1 or abs(dy) / abs(dx) <= tolerance:
+                following["y"] = current["y"]
+            elif abs(dy) < 1 or abs(dx) / abs(dy) <= tolerance:
+                following["x"] = current["x"]
+    return result
 
 
 def _has_structural_boundary(component: np.ndarray, thick_core: np.ndarray) -> bool:
-    """Reject spaces enclosed mainly by dimensions or aggressive gap repairs.
-
-    Door gaps are allowed, but most of a candidate room boundary must still sit
-    beside the original thick wall cores. This prevents a site boundary, garden,
-    or annotation frame from becoming a selectable room.
-    """
+    """Reject spaces enclosed mainly by dimensions or aggressive gap repairs."""
     boundary = cv2.morphologyEx(component, cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8))
     boundary_pixels = np.count_nonzero(boundary)
     if not boundary_pixels:
@@ -165,9 +181,6 @@ def recognise_rooms(data: bytes, filename: str, gap_closure: float = 0.15) -> tu
         # The outside of the drawing touches an image edge; enclosed rooms do not.
         if x <= 1 or y <= 1 or x + component_width >= width - 1 or y + component_height >= height - 1:
             continue
-        # Survey frames and exterior gardens are often enclosed by dimensions or
-        # a partial site boundary. Do not promote areas sitting in the drawing
-        # margin to editable rooms.
         if x < drawing_margin or y < drawing_margin or x + component_width > width - drawing_margin or y + component_height > height - drawing_margin:
             continue
         mask = np.where(_label_image == label, 255, 0).astype(np.uint8)
