@@ -773,10 +773,10 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
               const outwardDoorDepth = openings
                 .filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR" && opening.opens_inward === false)
                 .reduce((maximum, opening) => Math.max(maximum, opening.door_type === "DOUBLE" ? opening.width.value / 2 : opening.width.value), 0);
-              const doorDimensionOffset = 34;
+              const doorDimensionOffset = 42;
               // Keep the authoritative wall dimension outside the door-relative
               // dimensions, and move it farther out when an outward swing needs room.
-              const requestedDimensionOffset = 92 + outwardDoorDepth * activeBounds.scale;
+              const requestedDimensionOffset = 132 + outwardDoorDepth * activeBounds.scale;
               const edgePadding = 18;
               const offsetLimit = [
                 outward.x > 0 ? (CANVAS_WIDTH - edgePadding - start.x) / outward.x : outward.x < 0 ? (edgePadding - start.x) / outward.x : Number.POSITIVE_INFINITY,
@@ -829,7 +829,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                         const modelUnit = { x: (wallEnd.x - wallStart.x) / length, y: (wallEnd.y - wallStart.y) / length };
                         const doorStartModel = { x: wallStart.x + modelUnit.x * opening.offset_mm, y: wallStart.y + modelUnit.y * opening.offset_mm };
                         const doorEndModel = { x: wallStart.x + modelUnit.x * (opening.offset_mm + opening.width.value), y: wallStart.y + modelUnit.y * (opening.offset_mm + opening.width.value) };
-                        const rowOffset = doorDimensionOffset + openingIndex * 18;
+                        const rowOffset = doorDimensionOffset + openingIndex * 28;
                         const points = [start, toScreen(doorStartModel), toScreen(doorEndModel), end].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
                         const values = [opening.offset_mm, opening.width.value, Math.max(0, length - opening.offset_mm - opening.width.value)];
                         return <g key={`opening-dimensions-${opening.id}`} className={`opening-dimension ${opening.kind === "WINDOW" ? "window-dimension" : ""}`} aria-label={`${opening.kind === "WINDOW" ? "Window" : "Door"} dimensions: ${formatLength(opening.width.value, displayUnits)} wide, ${formatLength(opening.offset_mm, displayUnits)} from wall start, ${formatLength(values[2], displayUnits)} to wall end`}>
