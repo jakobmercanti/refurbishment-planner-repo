@@ -42,15 +42,67 @@ def _polygon_area(vertices: list[dict[str, float]]) -> float:
     ) / 2
 
 
+def _clean_contour_vertices(points: np.ndarray) -> np.ndarray:
+    """Remove narrow return loops made by door arcs, labels, and line repairs."""
+    cleaned = [point.astype(float) for point in points]
+    if len(cleaned) < 3:
+        return points
+
+    changed = True
+    while changed and len(cleaned) >= 3:
+        changed = False
+        for index in range(len(cleaned)):
+            previous = cleaned[index - 1]
+            current = cleaned[index]
+            following = cleaned[(index + 1) % len(cleaned)]
+            previous_leg = float(np.linalg.norm(current - previous))
+            next_leg = float(np.linalg.norm(following - current))
+            shortcut = float(np.linalg.norm(following - previous))
+            # A long out-and-back excursion with endpoints only a few pixels apart
+            # is never a usable architectural corner.
+            if min(previous_leg, next_leg) >= 12 and shortcut <= min(previous_leg, next_leg) * 0.3:
+                cleaned.pop(index)
+                changed = True
+                break
+            if shortcut > 0:
+                projection = float(np.dot(current - previous, following - previous) / (shortcut * shortcut))
+                direction = following - previous
+                offset = current - previous
+                distance_from_line = abs(float(direction[0] * offset[1] - direction[1] * offset[0])) / shortcut
+                if 0.05 < projection < 0.95 and distance_from_line <= 2.5:
+                    cleaned.pop(index)
+                    changed = True
+                    break
+
+    return np.asarray(cleaned, dtype=np.float32)
+
+
 def _to_plan_vertices(contour: np.ndarray, image_height: int) -> list[dict[str, float]]:
     perimeter = cv2.arcLength(contour, True)
     approximate = cv2.approxPolyDP(contour, max(3.0, perimeter * 0.012), True).reshape(-1, 2)
+    approximate = _clean_contour_vertices(approximate)
     vertices = [{"x": float(x), "y": float(image_height - y)} for x, y in approximate]
     if len(vertices) < 3:
         return []
     if _polygon_area(vertices) < 0:
         vertices.reverse()
     return vertices
+
+
+def _has_structural_boundary(component: np.ndarray, thick_core: np.ndarray) -> bool:
+    """Reject spaces enclosed mainly by dimensions or aggressive gap repairs.
+
+    Door gaps are allowed, but most of a candidate room boundary must still sit
+    beside the original thick wall cores. This prevents a site boundary, garden,
+    or annotation frame from becoming a selectable room.
+    """
+    boundary = cv2.morphologyEx(component, cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8))
+    boundary_pixels = np.count_nonzero(boundary)
+    if not boundary_pixels:
+        return False
+    nearest_core = cv2.distanceTransform(cv2.bitwise_not(thick_core), cv2.DIST_L2, 5)
+    supported = np.count_nonzero((boundary > 0) & (nearest_core <= 10))
+    return supported / boundary_pixels >= 0.58
 
 
 def _structural_wall_mask(grayscale: np.ndarray, gap_closure: float) -> np.ndarray:
@@ -95,11 +147,16 @@ def recognise_rooms(data: bytes, filename: str, gap_closure: float = 0.15) -> tu
         height, width = image.shape[:2]
 
     grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    walls = _structural_wall_mask(grayscale, max(0.035, min(0.18, gap_closure)))
+    requested_gap_closure = max(0.035, min(0.18, gap_closure))
+    walls = _structural_wall_mask(grayscale, requested_gap_closure)
+    ink = cv2.threshold(grayscale, 175, 255, cv2.THRESH_BINARY_INV)[1]
+    distance = cv2.distanceTransform(ink, cv2.DIST_L2, 5)
+    thick_core = np.where(distance >= max(1.8, min(width, height) * 0.0035), 255, 0).astype(np.uint8)
     empty_space = cv2.bitwise_not(walls)
     labels, _label_image, statistics, _centroids = cv2.connectedComponentsWithStats(empty_space, connectivity=8)
 
     minimum_area = max(1_500, width * height * 0.012)
+    drawing_margin = max(12, round(min(width, height) * 0.04))
     rooms: list[DetectedRoom] = []
     for label in range(1, labels):
         x, y, component_width, component_height, area = statistics[label]
@@ -108,7 +165,14 @@ def recognise_rooms(data: bytes, filename: str, gap_closure: float = 0.15) -> tu
         # The outside of the drawing touches an image edge; enclosed rooms do not.
         if x <= 1 or y <= 1 or x + component_width >= width - 1 or y + component_height >= height - 1:
             continue
+        # Survey frames and exterior gardens are often enclosed by dimensions or
+        # a partial site boundary. Do not promote areas sitting in the drawing
+        # margin to editable rooms.
+        if x < drawing_margin or y < drawing_margin or x + component_width > width - drawing_margin or y + component_height > height - drawing_margin:
+            continue
         mask = np.where(_label_image == label, 255, 0).astype(np.uint8)
+        if not _has_structural_boundary(mask, thick_core):
+            continue
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             continue

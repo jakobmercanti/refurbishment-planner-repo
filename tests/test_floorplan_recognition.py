@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 
@@ -32,3 +34,13 @@ def test_recognise_rooms_bridges_a_door_gap_between_rooms() -> None:
 
     assert len(rooms) == 2
     assert all(room.confidence >= 0.8 for room in rooms)
+
+
+def test_ground_floor_plan_excludes_exterior_space_and_cleans_return_loop() -> None:
+    source = Path(__file__).parents[1] / "floorplans" / "GroundFloorOriginal.png"
+
+    _width, _height, rooms = recognise_rooms(source.read_bytes(), source.name, gap_closure=0.15)
+
+    assert len(rooms) == 4
+    # The kitchen outline previously contained a narrow out-and-back spike.
+    assert max(len(room.vertices) for room in rooms) <= 6
