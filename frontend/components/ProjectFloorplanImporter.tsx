@@ -33,7 +33,7 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom, displayUnits }: P
   const [result, setResult] = useState<ProjectFloorplanResponse | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [millimetresPerPixel, setMillimetresPerPixel] = useState(10);
-  const [gapClosure, setGapClosure] = useState(0.15);
+  const gapClosure = 0.15;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previewUrl = useMemo(() => file && file.type !== "application/pdf" ? URL.createObjectURL(file) : null, [file]);
@@ -77,7 +77,6 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom, displayUnits }: P
       <section className="project-upload-card">
         <h2>1 · Add a drawing</h2>
         <label className="project-file-input"><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setResult(null); setError(null); }} /><span>{file ? file.name : "Choose PDF or image"}</span><small>PDF, JPG, PNG or WEBP · up to 25 MB</small></label>
-        <label className="project-recognition-control"><span>Door-gap repair</span><select value={gapClosure} onChange={(event) => setGapClosure(Number(event.target.value))}><option value={0.06}>Light</option><option value={0.105}>Balanced</option><option value={0.15}>Strong · recommended</option></select><small>Reduce this only if nearby rooms are being split incorrectly.</small></label>
         <button className="project-primary" type="button" onClick={detectRooms} disabled={!file || loading}>{loading ? "Reading drawing…" : result ? "Recognise again" : "Recognise rooms"}</button>
         {error && <p className="project-error">{error}</p>}
         {previewUrl ? <div className="project-source-map"><img className="project-source-preview" src={previewUrl} alt="Uploaded floorplan preview" />{result && <svg viewBox={`0 0 ${result.source_width_px} ${result.source_height_px}`} preserveAspectRatio="xMidYMid meet" aria-label="Detected rooms overlaid on uploaded floorplan">{result.rooms.map((room) => <polygon key={room.id} className={selectedRoom?.id === room.id ? "selected" : ""} points={room.vertices.map((point) => `${point.x},${result.source_height_px - point.y}`).join(" ")} onClick={() => setSelectedRoomId(room.id)} />)}</svg>}</div> : file?.type === "application/pdf" ? <div className="project-pdf-preview">PDF remains loaded · recognition uses page 1</div> : null}
