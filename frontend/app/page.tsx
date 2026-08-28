@@ -10,6 +10,7 @@ import { PersonEditor } from "@/components/PersonEditor";
 import { ProjectFloorplanImporter } from "@/components/ProjectFloorplanImporter";
 import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
 import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes, WallViewMode } from "@/lib/types";
+import { formatLength, formatMeasurementText } from "@/lib/units";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -152,10 +153,10 @@ export default function Home() {
       </header>
 
       <div hidden={mode !== "PROJECT"}>
-        <ProjectFloorplanImporter apiUrl={API_URL} onOpenRoom={openDetectedRoom} />
+        <ProjectFloorplanImporter apiUrl={API_URL} displayUnits={preferences.units} onOpenRoom={openDetectedRoom} />
       </div>
       {mode === "EDITOR" ? (
-        <FloorPlanEditor room={demo.room} apiUrl={API_URL} onApply={applyRoom} onCancel={() => setMode("ANALYSIS")} />
+        <FloorPlanEditor room={demo.room} apiUrl={API_URL} displayUnits={preferences.units} onApply={applyRoom} onCancel={() => setMode("ANALYSIS")} />
       ) : mode === "ANALYSIS" ? (
         <section className="workspace">
           <aside className="evidence-panel">
@@ -163,8 +164,8 @@ export default function Home() {
             <h1>Plan fixtures and furniture</h1>
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
-            <FixtureEditor room={demo.room} onChange={applyObstacles} />
-            {personPanelVisible && <PersonEditor key={`person-editor-${demo.room.version}`} room={demo.room} onChange={applyPerson} />}
+            <FixtureEditor room={demo.room} displayUnits={preferences.units} onChange={applyObstacles} />
+            {personPanelVisible && <PersonEditor key={`person-editor-${demo.room.version}`} room={demo.room} displayUnits={preferences.units} onChange={applyPerson} />}
 
             {(!layoutResult || analysisIsStale) && (
               <div className="stale-analysis">
@@ -183,8 +184,8 @@ export default function Home() {
                 </div>
                 <div className="metric-grid">
                   <div><span>Placed elements</span><strong>{demo.room.obstacles.length}</strong></div>
-                  <div><span>Room height</span><strong>{demo.room.wall_height.value.toFixed(0)} <small>mm</small></strong></div>
-                  <div><span>Wall thickness</span><strong>{demo.room.wall_thickness.value.toFixed(0)} <small>mm</small></strong></div>
+                  <div><span>Room height</span><strong>{formatLength(demo.room.wall_height.value, preferences.units)}</strong></div>
+                  <div><span>Wall thickness</span><strong>{formatLength(demo.room.wall_thickness.value, preferences.units)}</strong></div>
                   <div><span>Room topology</span><strong>{demo.room.vertices.length} <small>walls</small></strong></div>
                 </div>
                 <div className="checks-heading"><h2>Individual checks</h2><span>{layoutResult.checks.length} rules</span></div>
@@ -192,8 +193,8 @@ export default function Home() {
                   {layoutResult.checks.map((check) => (
                     <article key={check.check_id} className={`check check-${check.status.toLowerCase()}`}>
                       <span className="check-status">{check.status}</span>
-                      <div><h3>{check.check_id.replaceAll("-", " ").replaceAll(":", " · ")}</h3><p>{check.explanation}</p></div>
-                      {check.margin_mm !== undefined && check.margin_mm !== null && <code>{check.margin_mm >= 0 ? "+" : ""}{check.margin_mm.toFixed(1)} mm</code>}
+                      <div><h3>{check.check_id.replaceAll("-", " ").replaceAll(":", " · ")}</h3><p>{formatMeasurementText(check.explanation, preferences.units)}</p></div>
+                      {check.margin_mm !== undefined && check.margin_mm !== null && <code>{check.margin_mm >= 0 ? "+" : "−"}{formatLength(Math.abs(check.margin_mm), preferences.units)}</code>}
                     </article>
                   ))}
                 </div>
@@ -207,7 +208,7 @@ export default function Home() {
           </section>
         </section>
       ) : null}
-      <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
+      <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
       <SettingsDialog open={settingsOpen} preferences={preferences} onChange={setPreferences} onClose={() => setSettingsOpen(false)} />
     </main>
   );

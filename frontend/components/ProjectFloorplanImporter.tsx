@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { DetectedProjectRoom, Point2D, ProjectFloorplanResponse } from "@/lib/types";
+import { fromDisplayNumber, toDisplayNumber, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 
 interface ProjectFloorplanImporterProps {
   apiUrl: string;
   onOpenRoom: (name: string, vertices: Point2D[]) => void;
+  displayUnits: DisplayUnits;
 }
 
 function previewPoints(vertices: Point2D[]): string {
@@ -26,7 +28,7 @@ function scaleRoom(vertices: Point2D[], millimetresPerPixel: number): Point2D[] 
   }));
 }
 
-export function ProjectFloorplanImporter({ apiUrl, onOpenRoom }: ProjectFloorplanImporterProps) {
+export function ProjectFloorplanImporter({ apiUrl, onOpenRoom, displayUnits }: ProjectFloorplanImporterProps) {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ProjectFloorplanResponse | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom }: ProjectFloorpla
         {previewUrl ? <div className="project-source-map"><img className="project-source-preview" src={previewUrl} alt="Uploaded floorplan preview" />{result && <svg viewBox={`0 0 ${result.source_width_px} ${result.source_height_px}`} preserveAspectRatio="xMidYMid meet" aria-label="Detected rooms overlaid on uploaded floorplan">{result.rooms.map((room) => <polygon key={room.id} className={selectedRoom?.id === room.id ? "selected" : ""} points={room.vertices.map((point) => `${point.x},${result.source_height_px - point.y}`).join(" ")} onClick={() => setSelectedRoomId(room.id)} />)}</svg>}</div> : file?.type === "application/pdf" ? <div className="project-pdf-preview">PDF remains loaded · recognition uses page 1</div> : null}
       </section>
       <section className="project-rooms-card">
-        <div className="project-room-heading"><div><h2>2 · Select a room</h2><p>{result ? `${result.rooms.length} detected outline${result.rooms.length === 1 ? "" : "s"}` : "Upload a drawing to find rooms."}</p></div>{result && <label>Scale <input type="number" min="0.1" step="0.1" value={millimetresPerPixel} onChange={(event) => setMillimetresPerPixel(Number(event.target.value))} /> <small>mm / pixel</small></label>}</div>
+        <div className="project-room-heading"><div><h2>2 · Select a room</h2><p>{result ? `${result.rooms.length} detected outline${result.rooms.length === 1 ? "" : "s"}` : "Upload a drawing to find rooms."}</p></div>{result && <label>Scale <input type="number" min="0.01" step="0.01" value={toDisplayNumber(millimetresPerPixel, displayUnits)} onChange={(event) => setMillimetresPerPixel(fromDisplayNumber(Number(event.target.value), displayUnits))} /> <small>{UNIT_LABEL[displayUnits]} / pixel</small></label>}</div>
         {result && <p className="project-warning">{result.warning}</p>}
         <div className="project-room-list">{result?.rooms.map((room: DetectedProjectRoom) => <button key={room.id} type="button" className={selectedRoom?.id === room.id ? "selected" : ""} onClick={() => setSelectedRoomId(room.id)}><svg viewBox="0 0 200 160" aria-hidden="true"><polygon points={previewPoints(room.vertices)} /></svg><span><strong>{room.name}</strong><small>{Math.round(room.area_px2).toLocaleString()} px² · {room.vertices.length} corners</small><em>{Math.round(room.confidence * 100)}% outline confidence</em></span></button>)}</div>
         <button className="project-primary" type="button" disabled={!selectedRoom || !Number.isFinite(millimetresPerPixel) || millimetresPerPixel <= 0} onClick={openSelectedRoom}>Open selected room in floorplan editor</button>

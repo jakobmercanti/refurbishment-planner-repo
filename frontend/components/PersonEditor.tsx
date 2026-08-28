@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import { EditableNumberInput } from "@/components/EditableNumberInput";
+import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type { PersonMockup, PersonPosture, Room } from "@/lib/types";
 
 interface PersonEditorProps {
   room: Room;
+  displayUnits: DisplayUnits;
   onChange: (person: PersonMockup | null) => void;
 }
 
@@ -38,7 +41,7 @@ function defaultPerson(room: Room): PersonMockup {
   };
 }
 
-export function PersonEditor({ room, onChange }: PersonEditorProps) {
+export function PersonEditor({ room, displayUnits, onChange }: PersonEditorProps) {
   const person = room.person_mockup?.enabled ? room.person_mockup : null;
   const [draft, setDraft] = useState<PersonMockup>(() => person ?? defaultPerson(room));
 
@@ -79,20 +82,20 @@ export function PersonEditor({ room, onChange }: PersonEditorProps) {
         <p>Set the body envelope and viewpoint, then update the model.</p>
         <label className="person-field person-posture"><span>Posture</span><select value={draft.posture} onChange={(event) => setPosture(event.target.value as PersonPosture)}><option value="STANDING">Standing</option><option value="SEATED">Seated</option><option value="CROUCHING">Crouching</option></select></label>
         <fieldset><legend>Position</legend><div className="person-field-grid">
-          <label className="person-field"><span>X <small>mm</small></span><EditableNumberInput value={draft.center.x} onValueChange={(value) => set("center", { ...draft.center, x: value })} /></label>
-          <label className="person-field"><span>Y <small>mm</small></span><EditableNumberInput value={draft.center.y} onValueChange={(value) => set("center", { ...draft.center, y: value })} /></label>
+          <label className="person-field"><span>X <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={draft.center.x} units={displayUnits} onMmChange={(value) => set("center", { ...draft.center, x: value })} /></label>
+          <label className="person-field"><span>Y <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={draft.center.y} units={displayUnits} onMmChange={(value) => set("center", { ...draft.center, y: value })} /></label>
           <label className="person-field"><span>Rotation <small>°</small></span><EditableNumberInput value={draft.rotation_deg} onValueChange={(value) => set("rotation_deg", value)} /></label>
         </div></fieldset>
         <fieldset><legend>Body dimensions</legend><div className="person-field-grid">
-          <label className="person-field"><span>Height <small>mm</small></span><EditableNumberInput min={501} max={2500} value={draft.height_mm} onValueChange={(value) => setDraft((current) => ({ ...current, height_mm: value, eye_height_mm: Math.min(current.eye_height_mm, value) }))} /></label>
-          <label className="person-field"><span>Shoulders <small>mm</small></span><EditableNumberInput min={201} max={1000} value={draft.shoulder_width_mm} onValueChange={(value) => set("shoulder_width_mm", value)} /></label>
-          <label className="person-field"><span>Body depth <small>mm</small></span><EditableNumberInput min={101} max={1000} value={draft.body_depth_mm} onValueChange={(value) => set("body_depth_mm", value)} /></label>
+          <label className="person-field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={501} maxMm={2500} valueMm={draft.height_mm} units={displayUnits} onMmChange={(value) => setDraft((current) => ({ ...current, height_mm: value, eye_height_mm: Math.min(current.eye_height_mm, value) }))} /></label>
+          <label className="person-field"><span>Shoulders <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={201} maxMm={1000} valueMm={draft.shoulder_width_mm} units={displayUnits} onMmChange={(value) => set("shoulder_width_mm", value)} /></label>
+          <label className="person-field"><span>Body depth <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={101} maxMm={1000} valueMm={draft.body_depth_mm} units={displayUnits} onMmChange={(value) => set("body_depth_mm", value)} /></label>
         </div></fieldset>
         <fieldset><legend>Usability</legend><div className="person-field-grid two-columns">
-          <label className="person-field"><span>Eye height <small>mm</small></span><EditableNumberInput min={301} max={Math.min(2400, draft.height_mm)} value={draft.eye_height_mm} onValueChange={(value) => set("eye_height_mm", value)} /></label>
-          <label className="person-field"><span>Clear space around body <small>mm</small></span><EditableNumberInput min={0} max={2000} value={draft.movement_clearance_mm} onValueChange={(value) => set("movement_clearance_mm", value)} /></label>
+          <label className="person-field"><span>Eye height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={301} maxMm={Math.min(2400, draft.height_mm)} valueMm={draft.eye_height_mm} units={displayUnits} onMmChange={(value) => set("eye_height_mm", value)} /></label>
+          <label className="person-field"><span>Clear space around body <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} maxMm={2000} valueMm={draft.movement_clearance_mm} units={displayUnits} onMmChange={(value) => set("movement_clearance_mm", value)} /></label>
         </div></fieldset>
-        <p className="person-clearance-note">Initial planning allowance: 300 mm around the body. Increase it where accessibility or a specific activity requires a larger clear floor zone.</p>
+        <p className="person-clearance-note">Initial planning allowance: {formatLength(300, displayUnits)} around the body. Increase it where accessibility or a specific activity requires a larger clear floor zone.</p>
         <label className="person-enable-choice compact"><input type="checkbox" checked={draft.include_in_analysis} onChange={(event) => set("include_in_analysis", event.target.checked)} /><span>Include body and movement space in layout analysis</span></label>
         <button className="person-update" type="button" onClick={() => onChange({ ...draft, enabled: true })}>Update person</button>
       </div>}

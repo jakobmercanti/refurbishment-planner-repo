@@ -5,8 +5,10 @@ import {
   useMemo,
   useRef,
   useState,
+  useEffect,
 } from "react";
-import { EditableNumberInput } from "@/components/EditableNumberInput";
+import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { formatArea, formatLength, formatMeasurementText, fromDisplayNumber, toDisplayNumber, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type {
   Opening,
   Point2D,
@@ -44,6 +46,7 @@ const L_SHAPE_TEMPLATES: Array<{ id: string; name: string; preview: string; vert
 interface FloorPlanEditorProps {
   room: Room;
   apiUrl: string;
+  displayUnits: DisplayUnits;
   onApply: (room: Room) => void;
   onCancel: () => void;
 }
@@ -52,11 +55,11 @@ function cloneVertices(vertices: Point2D[]): Point2D[] {
   return vertices.map((vertex) => ({ ...vertex }));
 }
 
-function coordinateText(vertices: Point2D[]): string {
-  return vertices.map((vertex) => `${vertex.x}, ${vertex.y}`).join("\n");
+function coordinateText(vertices: Point2D[], units: DisplayUnits): string {
+  return vertices.map((vertex) => `${toDisplayNumber(vertex.x, units).toFixed(units === "MM" ? 0 : 2)}, ${toDisplayNumber(vertex.y, units).toFixed(units === "MM" ? 0 : 2)}`).join("\n");
 }
 
-function parseCoordinateText(value: string): Point2D[] {
+function parseCoordinateText(value: string, units: DisplayUnits): Point2D[] {
   const points = value
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -71,7 +74,7 @@ function parseCoordinateText(value: string): Point2D[] {
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         throw new Error(`Line ${index + 1} contains a non-numeric coordinate.`);
       }
-      return { x, y };
+      return { x: fromDisplayNumber(x, units), y: fromDisplayNumber(y, units) };
     });
   if (points.length < 3) throw new Error("Enter at least three vertices.");
   return points;
@@ -89,7 +92,28 @@ function swingArcPath(centre: Point2D, start: Point2D, end: Point2D): string {
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 0 ${cross >= 0 ? 1 : 0} ${end.x} ${end.y}`;
 }
 
-export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEditorProps) {
+function swingSectorPath(centre: Point2D, start: Point2D, end: Point2D): string {
+  const startVector = { x: start.x - centre.x, y: start.y - centre.y };
+  const endVector = { x: end.x - centre.x, y: end.y - centre.y };
+  const radius = Math.hypot(startVector.x, startVector.y);
+  const cross = startVector.x * endVector.y - startVector.y * endVector.x;
+  return `M ${centre.x} ${centre.y} L ${start.x} ${start.y} A ${radius} ${radius} 0 0 ${cross >= 0 ? 1 : 0} ${end.x} ${end.y} Z`;
+}
+
+function projectToSegment(point: Point2D, start: Point2D, end: Point2D): { distance: number; along: number } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return { distance: Math.hypot(point.x - start.x, point.y - start.y), along: 0 };
+  const rawAlong = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+  const along = Math.max(0, Math.min(1, rawAlong));
+  return {
+    distance: Math.hypot(point.x - (start.x + dx * along), point.y - (start.y + dy * along)),
+    along,
+  };
+}
+
+export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel }: FloorPlanEditorProps) {
   const [vertices, setVertices] = useState<Point2D[]>(() => cloneVertices(room.vertices));
   const [history, setHistory] = useState<Point2D[][]>([]);
   const [selectedVertex, setSelectedVertex] = useState<number | null>(0);
@@ -111,7 +135,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   const [opensInward, setOpensInward] = useState(true);
   const [openingError, setOpeningError] = useState<string | null>(null);
   const [editingOpeningId, setEditingOpeningId] = useState<string | null>(null);
-  const [coordinateInput, setCoordinateInput] = useState(() => coordinateText(room.vertices));
+  const [coordinateInput, setCoordinateInput] = useState(() => coordinateText(room.vertices, displayUnits));
   const [coordinateError, setCoordinateError] = useState<string | null>(null);
   const [validation, setValidation] = useState<RoomValidationResponse | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -126,6 +150,12 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   const draggingOpening = useRef<string | null>(null);
   const openingDragStart = useRef<Opening[] | null>(null);
   const dragPointerStart = useRef<Point2D | null>(null);
+
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(() => {
+    setCoordinateInput(coordinateText(vertices, displayUnits));
+  }, [displayUnits]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const bounds = useMemo(() => {
     const safeVertices = vertices.length ? vertices : [{ x: 0, y: 0 }];
@@ -220,7 +250,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   const commitVertices = (next: Point2D[]) => {
     setHistory((current) => [...current.slice(-29), cloneVertices(vertices)]);
     setVertices(next);
-    setCoordinateInput(coordinateText(next));
+    setCoordinateInput(coordinateText(next, displayUnits));
     markChanged();
   };
 
@@ -229,7 +259,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     if (recordHistory) commitVertices(updated);
     else {
       setVertices(updated);
-      setCoordinateInput(coordinateText(updated));
+      setCoordinateInput(coordinateText(updated, displayUnits));
       markChanged();
     }
   };
@@ -238,7 +268,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     const previous = history.at(-1);
     if (!previous) return;
     setVertices(cloneVertices(previous));
-    setCoordinateInput(coordinateText(previous));
+    setCoordinateInput(coordinateText(previous, displayUnits));
     setHistory((current) => current.slice(0, -1));
     setSelectedVertex(null);
     setSelectedWall(null);
@@ -274,7 +304,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     const startVertices = dragStart.current;
     if (startVertices) {
       setVertices(cloneVertices(startVertices));
-      setCoordinateInput(coordinateText(startVertices));
+      setCoordinateInput(coordinateText(startVertices, displayUnits));
     }
     draggingVertex.current = null;
     draggingWall.current = null;
@@ -325,7 +355,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
 
   const applyCoordinateInput = () => {
     try {
-      const parsed = parseCoordinateText(coordinateInput);
+      const parsed = parseCoordinateText(coordinateInput, displayUnits);
       commitVertices(parsed);
       setCoordinateError(null);
       setMode("SELECT");
@@ -336,9 +366,9 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
 
   const setSelectedWallLength = () => {
     if (selectedWall === null) return;
-    const requested = Number(wallLengthInput);
+    const requested = fromDisplayNumber(Number(wallLengthInput), displayUnits);
     if (!Number.isFinite(requested) || requested <= 0) {
-      setValidationError("Wall length must be a positive finite millimetre value.");
+      setValidationError(`Wall length must be a positive finite ${UNIT_LABEL[displayUnits]} value.`);
       return;
     }
     const start = vertices[selectedWall];
@@ -365,11 +395,11 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     }
     const wallLength = Math.hypot(end.x - start.x, end.y - start.y);
     if (![openingOffset, openingWidth, openingHeight].every(Number.isFinite) || openingOffset < 0 || openingWidth <= 0 || openingHeight <= 0) {
-      setOpeningError("Offset, width, and height must be valid positive millimetre values.");
+      setOpeningError(`Offset, width, and height must be valid positive ${UNIT_LABEL[displayUnits]} values.`);
       return;
     }
     if (openingOffset + openingWidth > wallLength) {
-      setOpeningError(`The opening ends at ${openingOffset + openingWidth} mm, beyond this ${wallLength.toFixed(0)} mm wall.`);
+      setOpeningError(`The opening ends at ${formatLength(openingOffset + openingWidth, displayUnits)}, beyond this ${formatLength(wallLength, displayUnits)} wall.`);
       return;
     }
     const overlapsExisting = openings.some((opening) => (
@@ -450,7 +480,16 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     if (!openingId) return false;
     const opening = openings.find((item) => item.id === openingId);
     if (!opening) return true;
-    const wallIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
+    const pointer = fromClientPoint(event.clientX, event.clientY, event.currentTarget, false);
+    const nearestWall = vertices.slice(0, -1).map((wallStart, index) => {
+      const wallEnd = vertices[(index + 1) % vertices.length];
+      return { index, projection: projectToSegment(pointer, wallStart, wallEnd) };
+    }).concat(vertices.length > 1 ? [{
+      index: vertices.length - 1,
+      projection: projectToSegment(pointer, vertices[vertices.length - 1], vertices[0]),
+    }] : []).sort((first, second) => first.projection.distance - second.projection.distance)[0];
+    if (!nearestWall) return true;
+    const wallIndex = nearestWall.index;
     const wallStart = vertices[wallIndex];
     const wallEnd = vertices[(wallIndex + 1) % vertices.length];
     if (!wallStart || !wallEnd) return true;
@@ -460,15 +499,18 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
     if (wallLength <= opening.width.value) return true;
     const unitX = dx / wallLength;
     const unitY = dy / wallLength;
-    const pointer = fromClientPoint(event.clientX, event.clientY, event.currentTarget, false);
     const requested = snap((pointer.x - wallStart.x) * unitX + (pointer.y - wallStart.y) * unitY - opening.width.value / 2, snapEnabled);
     const maximum = wallLength - opening.width.value;
-    const blockers = openings.filter((item) => item.id !== opening.id && item.parent_wall_id === opening.parent_wall_id);
+    const nextWallId = `wall-${String(wallIndex + 1).padStart(3, "0")}`;
+    const blockers = openings.filter((item) => item.id !== opening.id && item.parent_wall_id === nextWallId);
     const candidates = [Math.max(0, Math.min(maximum, requested)), 0, maximum, ...blockers.flatMap((item) => [item.offset_mm + item.width.value, item.offset_mm - opening.width.value])]
       .filter((value) => value >= 0 && value <= maximum)
       .filter((value) => blockers.every((item) => value + opening.width.value <= item.offset_mm || value >= item.offset_mm + item.width.value));
     const nextOffset = (candidates.length ? candidates : [opening.offset_mm]).sort((first, second) => Math.abs(first - requested) - Math.abs(second - requested))[0];
-    setOpenings((current) => current.map((item) => item.id === opening.id ? { ...item, offset_mm: nextOffset } : item));
+    setOpenings((current) => current.map((item) => item.id === opening.id
+      ? { ...item, parent_wall_id: nextWallId, offset_mm: nextOffset }
+      : item));
+    setOpeningWallId(nextWallId);
     setOpeningOffset(nextOffset);
     markChanged();
     return true;
@@ -557,7 +599,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
   return (
     <section className="editor-page">
       <div className="editor-intro">
-        <div><span className="eyebrow">Finished internal boundary · millimetres</span><h1>Draw the bathroom floor plan</h1></div>
+        <div><span className="eyebrow">Finished internal boundary · {UNIT_LABEL[displayUnits]}</span><h1>Draw the bathroom floor plan</h1></div>
         <p>The polygon is the finished inside face of the walls. Wall thickness is generated outward and never reduces the entered room.</p>
       </div>
 
@@ -580,13 +622,13 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               <button className={mode === "SELECT" ? "active" : ""} onClick={() => setMode("SELECT")}>Select & move</button>
               <button className={mode === "DRAW" ? "active" : ""} onClick={() => setMode("DRAW")}>Add corners</button>
             </div>
-            <label className="check-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to {SNAP_MM} mm grid</span></label>
+            <label className="check-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to {formatLength(SNAP_MM, displayUnits)} grid</span></label>
           </section>
 
           <section className="tool-section">
             <div className="tool-heading"><span>2</span><h2>Room properties</h2></div>
-            <label className="field"><span>Wall height <small>mm</small></span><EditableNumberInput min="1" max="100000" value={wallHeight} onValueChange={(value) => { setWallHeight(value); markChanged(); }} /></label>
-            <label className="field"><span>Wall thickness <small>mm</small></span><EditableNumberInput min="1" max="2000" value={wallThickness} onValueChange={(value) => { setWallThickness(value); markChanged(); }} /></label>
+            <label className="field"><span>Wall height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} maxMm={100000} valueMm={wallHeight} units={displayUnits} onMmChange={(value) => { setWallHeight(value); markChanged(); }} /></label>
+            <label className="field"><span>Wall thickness <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={wallThickness} units={displayUnits} onMmChange={(value) => { setWallThickness(value); markChanged(); }} /></label>
           </section>
 
           <section className="tool-section opening-section">
@@ -602,10 +644,10 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               </select>
             </label>
             <div className="coordinate-fields">
-              <label className="field"><span>Offset <small>mm</small></span><EditableNumberInput min="0" value={openingOffset} onValueChange={setOpeningOffset} /></label>
-              <label className="field"><span>Width <small>mm</small></span><EditableNumberInput min="1" value={openingWidth} onValueChange={setOpeningWidth} /></label>
-              <label className="field"><span>Height <small>mm</small></span><EditableNumberInput min="1" value={openingHeight} onValueChange={setOpeningHeight} /></label>
-              {openingKind === "WINDOW" && <label className="field"><span>Sill height <small>mm</small></span><EditableNumberInput min="0" value={windowSill} onValueChange={setWindowSill} /></label>}
+              <label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label>
+              <label className="field"><span>Width <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingWidth} units={displayUnits} onMmChange={setOpeningWidth} /></label>
+              <label className="field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingHeight} units={displayUnits} onMmChange={setOpeningHeight} /></label>
+              {openingKind === "WINDOW" && <label className="field"><span>Sill height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={windowSill} units={displayUnits} onMmChange={setWindowSill} /></label>}
             </div>
             {openingKind === "DOOR" && (
               <>
@@ -623,7 +665,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
             </div>
             {openings.length > 0 && (
               <div className="opening-list">
-                {openings.map((opening) => <div key={opening.id} className={editingOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind === "DOOR" ? opening.door_type === "DOUBLE" ? "DOUBLE DOOR" : "DOOR" : "WINDOW"}</span><p>{opening.parent_wall_id.replace("wall-", "W")} · {opening.width.value.toFixed(0)} mm</p><button className="edit-opening" onClick={() => editOpening(opening)}>Edit</button><button className="remove-opening" onClick={() => removeOpening(opening.id)} aria-label={`Remove ${opening.id}`}>×</button></div>)}
+                {openings.map((opening) => <div key={opening.id} className={editingOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind === "DOOR" ? opening.door_type === "DOUBLE" ? "DOUBLE DOOR" : "DOOR" : "WINDOW"}</span><p>{opening.parent_wall_id.replace("wall-", "W")} · {formatLength(opening.width.value, displayUnits)}</p><button className="edit-opening" onClick={() => editOpening(opening)}>Edit</button><button className="remove-opening" onClick={() => removeOpening(opening.id)} aria-label={`Remove ${opening.id}`}>×</button></div>)}
               </div>
             )}
           </section>
@@ -632,8 +674,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
             <section className="tool-section selected-properties">
               <div className="tool-heading"><span>V{selectedVertex + 1}</span><h2>Selected corner</h2></div>
               <div className="coordinate-fields">
-                <label className="field"><span>X <small>mm</small></span><EditableNumberInput value={vertices[selectedVertex].x} onValueChange={(value) => updateVertex(selectedVertex, { ...vertices[selectedVertex], x: value })} /></label>
-                <label className="field"><span>Y <small>mm</small></span><EditableNumberInput value={vertices[selectedVertex].y} onValueChange={(value) => updateVertex(selectedVertex, { ...vertices[selectedVertex], y: value })} /></label>
+                <label className="field"><span>X <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={vertices[selectedVertex].x} units={displayUnits} onMmChange={(value) => updateVertex(selectedVertex, { ...vertices[selectedVertex], x: value })} /></label>
+                <label className="field"><span>Y <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={vertices[selectedVertex].y} units={displayUnits} onMmChange={(value) => updateVertex(selectedVertex, { ...vertices[selectedVertex], y: value })} /></label>
               </div>
               <div className="button-grid"><button onClick={addAfterSelected}>Add corner after</button><button className="danger-button" onClick={deleteSelected} disabled={vertices.length <= 3}>Delete corner</button></div>
             </section>
@@ -643,7 +685,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
             <section className="tool-section selected-properties">
               <div className="tool-heading"><span>W{selectedWall + 1}</span><h2>Selected wall</h2></div>
               <p className="tool-note">Drag the wall to move it parallel, or enter a new length to move its endpoint. Adjoining walls update automatically.</p>
-              <label className="field"><span>New length <small>mm</small></span><input type="number" min="1" value={wallLengthInput} placeholder={Math.hypot(vertices[(selectedWall + 1) % vertices.length].x - vertices[selectedWall].x, vertices[(selectedWall + 1) % vertices.length].y - vertices[selectedWall].y).toFixed(1)} onChange={(event) => setWallLengthInput(event.target.value)} /></label>
+              <label className="field"><span>New length <small>{UNIT_LABEL[displayUnits]}</small></span><input type="number" min="0" value={wallLengthInput} placeholder={toDisplayNumber(Math.hypot(vertices[(selectedWall + 1) % vertices.length].x - vertices[selectedWall].x, vertices[(selectedWall + 1) % vertices.length].y - vertices[selectedWall].y), displayUnits).toFixed(1)} onChange={(event) => setWallLengthInput(event.target.value)} /></label>
               <button className="primary-small" onClick={setSelectedWallLength}>Apply wall length</button>
             </section>
           )}
@@ -707,7 +749,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 y: wallEnd.y + normalY * distance,
               };
               setVertices(updated);
-              setCoordinateInput(coordinateText(updated));
+              setCoordinateInput(coordinateText(updated, displayUnits));
               markChanged();
             }}
             onPointerUp={finishDragging}
@@ -730,7 +772,10 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               const outwardDoorDepth = openings
                 .filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR" && opening.opens_inward === false)
                 .reduce((maximum, opening) => Math.max(maximum, opening.door_type === "DOUBLE" ? opening.width.value / 2 : opening.width.value), 0);
-              const dimensionOffset = 22 + outwardDoorDepth * activeBounds.scale;
+              const doorDimensionOffset = 24;
+              // Keep the authoritative wall dimension outside the door-relative
+              // dimensions, and move it farther out when an outward swing needs room.
+              const dimensionOffset = 62 + outwardDoorDepth * activeBounds.scale;
               const dimensionStart = { x: start.x + outward.x * dimensionOffset, y: start.y + outward.y * dimensionOffset };
               const dimensionEnd = { x: end.x + outward.x * dimensionOffset, y: end.y + outward.y * dimensionOffset };
               const dimensionLabel = {
@@ -769,8 +814,29 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                         <line className="dimension-line" x1={dimensionStart.x} y1={dimensionStart.y} x2={dimensionEnd.x} y2={dimensionEnd.y} />
                         <line className="dimension-tick" x1={dimensionStart.x - screenTangent.x * 4 + outward.x * 4} y1={dimensionStart.y - screenTangent.y * 4 + outward.y * 4} x2={dimensionStart.x + screenTangent.x * 4 - outward.x * 4} y2={dimensionStart.y + screenTangent.y * 4 - outward.y * 4} />
                         <line className="dimension-tick" x1={dimensionEnd.x - screenTangent.x * 4 + outward.x * 4} y1={dimensionEnd.y - screenTangent.y * 4 + outward.y * 4} x2={dimensionEnd.x + screenTangent.x * 4 - outward.x * 4} y2={dimensionEnd.y + screenTangent.y * 4 - outward.y * 4} />
-                        <text className="wall-label" x={dimensionLabel.x} y={dimensionLabel.y}>{length.toFixed(0)} mm</text>
+                        <text className="wall-label" x={dimensionLabel.x} y={dimensionLabel.y}>{formatLength(length, displayUnits)}</text>
                       </g>
+                      {openings.filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR").map((opening) => {
+                        const doorStartModel = { x: start.x + (end.x - start.x) / length * opening.offset_mm, y: start.y + (end.y - start.y) / length * opening.offset_mm };
+                        const doorEndModel = { x: start.x + (end.x - start.x) / length * (opening.offset_mm + opening.width.value), y: start.y + (end.y - start.y) / length * (opening.offset_mm + opening.width.value) };
+                        const points = [start, toScreen(doorStartModel), toScreen(doorEndModel), end].map((point) => ({ x: point.x + outward.x * doorDimensionOffset, y: point.y + outward.y * doorDimensionOffset }));
+                        const values = [opening.offset_mm, opening.width.value, Math.max(0, length - opening.offset_mm - opening.width.value)];
+                        return <g key={`door-dimensions-${opening.id}`} className="opening-dimension" aria-label={`Door dimensions: ${opening.width.value.toFixed(0)} mm wide, ${opening.offset_mm.toFixed(0)} mm from wall start, ${values[2].toFixed(0)} mm to wall end`}>
+                          {values.map((value, segmentIndex) => {
+                            const first = points[segmentIndex];
+                            const second = points[segmentIndex + 1];
+                            const label = { x: (first.x + second.x) / 2 + outward.x * 9, y: (first.y + second.y) / 2 + outward.y * 9 };
+                            return <g key={`${opening.id}-segment-${segmentIndex}`}>
+                              <line className="dimension-extension" x1={first.x - outward.x * 5} y1={first.y - outward.y * 5} x2={first.x + outward.x * 3} y2={first.y + outward.y * 3} />
+                              <line className="dimension-extension" x1={second.x - outward.x * 5} y1={second.y - outward.y * 5} x2={second.x + outward.x * 3} y2={second.y + outward.y * 3} />
+                              <line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} />
+                              <line className="dimension-tick" x1={first.x - screenTangent.x * 3 - outward.x * 3} y1={first.y - screenTangent.y * 3 - outward.y * 3} x2={first.x + screenTangent.x * 3 + outward.x * 3} y2={first.y + screenTangent.y * 3 + outward.y * 3} />
+                              <line className="dimension-tick" x1={second.x - screenTangent.x * 3 - outward.x * 3} y1={second.y - screenTangent.y * 3 - outward.y * 3} x2={second.x + screenTangent.x * 3 + outward.x * 3} y2={second.y + screenTangent.y * 3 + outward.y * 3} />
+                              <text className="opening-dimension-label" x={label.x} y={label.y}>{value.toFixed(0)} mm</text>
+                            </g>;
+                          })}
+                        </g>;
+                      })}
                     </>
                   )}
                 </g>
@@ -801,7 +867,7 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 const frameOffset = 4;
                 return (
                   <g key={opening.id} className={`opening-symbol window-symbol pickable-opening${openingClass}`} onPointerDown={(event) => startOpeningDrag(event, opening)}>
-                    <title>{`Window ${opening.width.value.toFixed(0)} mm — drag along wall`}</title>
+                    <title>{`Window ${formatLength(opening.width.value, displayUnits)} — drag along wall`}</title>
                     <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="opening-gap" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="window-frame" x1={openingStart.x + openingPerpendicular.x * frameOffset} y1={openingStart.y + openingPerpendicular.y * frameOffset} x2={openingEnd.x + openingPerpendicular.x * frameOffset} y2={openingEnd.y + openingPerpendicular.y * frameOffset} />
@@ -820,7 +886,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
                 const secondLeafEnd = toScreen({ x: openingEndModel.x + normal.x * halfWidth, y: openingEndModel.y + normal.y * halfWidth });
                 return (
                   <g key={opening.id} className={`opening-symbol double-door-symbol pickable-opening${openingClass}`} onPointerDown={(event) => startOpeningDrag(event, opening)}>
-                    <title>{`Double door ${opening.width.value.toFixed(0)} mm — drag along wall`}</title>
+                    <title>{`Double door ${formatLength(opening.width.value, displayUnits)} — drag along wall`}</title>
+                    <path className="opening-hit-area" d={`${swingSectorPath(openingStart, centre, firstLeafEnd)} ${swingSectorPath(openingEnd, centre, secondLeafEnd)}`} />
                     <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                     <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={firstLeafEnd.x} y2={firstLeafEnd.y} />
                     <line className="opening-hit" x1={openingEnd.x} y1={openingEnd.y} x2={secondLeafEnd.x} y2={secondLeafEnd.y} />
@@ -844,7 +911,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               const closedLeafEnd = hingeAtStart ? openingEnd : openingStart;
               return (
                 <g key={opening.id} className={`opening-symbol door-symbol pickable-opening${openingClass}`} onPointerDown={(event) => startOpeningDrag(event, opening)}>
-                  <title>{`Door ${opening.width.value.toFixed(0)} mm — drag along wall`}</title>
+                  <title>{`Door ${formatLength(opening.width.value, displayUnits)} — drag along wall`}</title>
+                  <path className="opening-hit-area" d={swingSectorPath(hingeScreen, closedLeafEnd, leafEnd)} />
                   <line className="opening-hit" x1={openingStart.x} y1={openingStart.y} x2={openingEnd.x} y2={openingEnd.y} />
                   <line className="opening-hit" x1={hingeScreen.x} y1={hingeScreen.y} x2={leafEnd.x} y2={leafEnd.y} />
                   <path className="opening-swing-hit" d={swingArcPath(hingeScreen, closedLeafEnd, leafEnd)} />
@@ -883,14 +951,14 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
               })}
             </g>
           </svg>
-          <div className="drawing-scale"><span>Coordinates and dimensions are authoritative millimetres</span><span>Grid display auto-fits the current polygon</span></div>
+          <div className="drawing-scale"><span>Coordinates and dimensions shown in {UNIT_LABEL[displayUnits]} · calculations remain millimetre-authoritative</span><span>Grid display auto-fits the current polygon</span></div>
         </div>
 
         <aside className="coordinate-panel">
           <section className="tool-section">
             <div className="tool-heading"><span>3</span><h2>Enter coordinates</h2></div>
             <p className="tool-note">One X,Y pair per line, ordered counter-clockwise. This is the fastest route from a measured sketch.</p>
-            <textarea value={coordinateInput} onChange={(event) => setCoordinateInput(event.target.value)} spellCheck={false} aria-label="Room polygon coordinates in millimetres" />
+            <textarea value={coordinateInput} onChange={(event) => setCoordinateInput(event.target.value)} spellCheck={false} aria-label={`Room polygon coordinates in ${UNIT_LABEL[displayUnits]}`} />
             {coordinateError && <p className="inline-error">{coordinateError}</p>}
             <button className="primary-small" onClick={applyCoordinateInput}>Replace polygon</button>
           </section>
@@ -902,8 +970,8 @@ export function FloorPlanEditor({ room, apiUrl, onApply, onCancel }: FloorPlanEd
             {validationError && <div className="validation-fail"><strong>INVALID</strong><p>{validationError}</p></div>}
             {validation && (
               <div className="validation-pass">
-                <div><strong>VALID · CCW</strong><span>{(validation.area_mm2 / 1_000_000).toFixed(2)} m² · {(validation.perimeter_mm / 1000).toFixed(2)} m perimeter</span></div>
-                <ul>{validation.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+                <div><strong>VALID · CCW</strong><span>{formatArea(validation.area_mm2, displayUnits)} · {formatLength(validation.perimeter_mm, displayUnits)} perimeter</span></div>
+                <ul>{validation.warnings.map((warning) => <li key={warning}>{formatMeasurementText(warning, displayUnits)}</li>)}</ul>
                 {validation.invalidations.length > 0 && (
                   <div className="invalidation-list">
                     <strong>{validation.invalidations.length} dependent item{validation.invalidations.length === 1 ? "" : "s"} require review</strong>

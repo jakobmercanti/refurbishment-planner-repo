@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { EditableNumberInput } from "@/components/EditableNumberInput";
+import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type { CatalogueCategory, CatalogueItem, CatalogueItemInput } from "@/lib/types";
 
 interface CatalogueBrowserProps {
   apiUrl: string;
   open: boolean;
+  displayUnits: DisplayUnits;
   onClose: () => void;
   onInsert: (item: CatalogueItem) => void;
 }
@@ -35,7 +37,7 @@ function blankEntry(): CatalogueItemInput {
   };
 }
 
-export function CatalogueBrowser({ apiUrl, open, onClose, onInsert }: CatalogueBrowserProps) {
+export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert }: CatalogueBrowserProps) {
   const [categories, setCategories] = useState<CatalogueCategory[]>([]);
   const [items, setItems] = useState<CatalogueItem[]>([]);
   const [categoryId, setCategoryId] = useState<string>("");
@@ -162,7 +164,7 @@ export function CatalogueBrowser({ apiUrl, open, onClose, onInsert }: CatalogueB
           <nav className="catalogue-categories" aria-label="Catalogue categories"><button className={!categoryId ? "active" : ""} onClick={() => setCategoryId("")}><span>All objects</span><small>{categories.reduce((total, item) => total + item.item_count, 0)}</small></button>{categories.map((category) => <button key={category.id} className={categoryId === category.id ? "active" : ""} onClick={() => setCategoryId(category.id)} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>)}</nav>
           <div className="catalogue-results">
             <div className="catalogue-result-heading"><strong>{categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects"}</strong><span>{items.length} result{items.length === 1 ? "" : "s"}</span></div>
-            {items.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{items.map((item) => <article key={item.id}><div className="catalogue-object-preview" style={{ "--object-colour": item.color_hex } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3><p>{item.supplier} · {item.sku}</p><code>{item.width_mm.toFixed(0)} × {item.depth_mm.toFixed(0)} × {item.height_mm.toFixed(0)} mm</code><div className="catalogue-card-actions"><button onClick={() => beginEdit(item)}>Edit entry</button><button className="catalogue-insert" onClick={() => { onInsert(item); onClose(); }}>Add to room</button></div></div></article>)}</div>}
+            {items.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{items.map((item) => <article key={item.id}><div className="catalogue-object-preview" style={{ "--object-colour": item.color_hex } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3><p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions"><button onClick={() => beginEdit(item)}>Edit entry</button><button className="catalogue-insert" onClick={() => { onInsert(item); onClose(); }}>Add to room</button></div></div></article>)}</div>}
           </div>
         </div>
 
@@ -172,9 +174,9 @@ export function CatalogueBrowser({ apiUrl, open, onClose, onInsert }: CatalogueB
           <label className="field span-two"><span>Object name</span><input value={form.name} onChange={(event) => setField("name", event.target.value)} /></label>
           <label className="field"><span>Supplier</span><input value={form.supplier} onChange={(event) => setField("supplier", event.target.value)} /></label>
           <label className="field"><span>Supplier SKU</span><input value={form.sku} onChange={(event) => setField("sku", event.target.value)} /></label>
-          <label className="field"><span>Width mm</span><EditableNumberInput min={1} value={form.width_mm} onValueChange={(value) => setField("width_mm", value)} /></label>
-          <label className="field"><span>Depth mm</span><EditableNumberInput min={1} value={form.depth_mm} onValueChange={(value) => setField("depth_mm", value)} /></label>
-          <label className="field"><span>Height mm</span><EditableNumberInput min={1} value={form.height_mm} onValueChange={(value) => setField("height_mm", value)} /></label>
+          <label className="field"><span>Width {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.width_mm} units={displayUnits} onMmChange={(value) => setField("width_mm", value)} /></label>
+          <label className="field"><span>Depth {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.depth_mm} units={displayUnits} onMmChange={(value) => setField("depth_mm", value)} /></label>
+          <label className="field"><span>Height {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.height_mm} units={displayUnits} onMmChange={(value) => setField("height_mm", value)} /></label>
           <div className="field span-two stl-import-field"><span>Optional 3D model</span><div><button type="button" onClick={() => stlInput.current?.click()}>{form.stl_filename ? "Replace STL" : "Import STL"}</button>{form.stl_filename && <><strong>{form.stl_filename}</strong><button type="button" className="remove-stl" onClick={() => setForm((current) => ({ ...current, stl_filename: null, stl_base64: null }))}>Remove</button></>}</div><small>The model is scaled to the width, depth and height entered above. Maximum 20 MB.</small><input ref={stlInput} hidden type="file" accept=".stl,model/stl,application/sla" onChange={(event) => { importStl(event.target.files?.[0]); event.target.value = ""; }} /></div>
           <label className="field span-two"><span>Description</span><textarea value={form.description} onChange={(event) => setField("description", event.target.value)} /></label>
         </div>{error && <p className="inline-error">{error}</p>}<div className="catalogue-form-actions">{editingId && !items.find((item) => item.id === editingId)?.is_default && <button className="catalogue-archive" type="button" onClick={() => void archiveEntry()}>Archive</button>}<button type="button" onClick={() => setShowForm(false)}>Cancel</button><button className="catalogue-insert" type="submit">{editingId ? "Save changes" : "Create entry"}</button></div></form></div>}
