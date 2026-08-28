@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, or_, select
@@ -24,11 +24,13 @@ from backend.app.schemas import (
     FitRequest,
     GeometryInvalidation,
     PolygonUpdate,
+    ProjectFloorplanResponse,
     ProjectCreate,
     ProjectResponse,
     RoomValidationResponse,
     WallSummary,
 )
+from backend.app.floorplan_recognition import recognise_rooms
 from cad.generator import generate_cad
 from database.catalog import catalogue_session, initialise_catalogue
 from database.models import FurnitureCategoryRecord, FurnitureItemRecord
@@ -109,6 +111,25 @@ async def polygon_validation_error(_request: object, error: PolygonValidationErr
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "engine": "deterministic", "unit": "mm"}
+
+
+@app.post("/project-floorplan/detect", response_model=ProjectFloorplanResponse)
+def detect_project_floorplan(
+    document: bytes = Body(...),
+    filename: str = Header("floorplan", alias="X-Filename"),
+) -> ProjectFloorplanResponse:
+    if len(document) > 25_000_000:
+        raise HTTPException(status_code=413, detail="Floorplan files must be 25 MB or smaller.")
+    try:
+        width, height, rooms_detected = recognise_rooms(document, filename)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return ProjectFloorplanResponse(
+        source_width_px=width,
+        source_height_px=height,
+        rooms=[{"id": room.identifier, "name": room.name, "vertices": room.vertices, "area_px2": room.area_px2} for room in rooms_detected],
+        warning="Detected outlines are drafts. Confirm the scale and edit the selected room before using it for fit decisions.",
+    )
 
 
 @app.post("/projects", response_model=ProjectResponse, status_code=201)

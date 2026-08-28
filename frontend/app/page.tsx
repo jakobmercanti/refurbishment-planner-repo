@@ -7,6 +7,7 @@ import { CatalogueBrowser } from "@/components/CatalogueBrowser";
 import { FixtureEditor } from "@/components/FixtureEditor";
 import { FloorPlanEditor } from "@/components/FloorPlanEditor";
 import { PersonEditor } from "@/components/PersonEditor";
+import { ProjectFloorplanImporter } from "@/components/ProjectFloorplanImporter";
 import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
 import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes, WallViewMode } from "@/lib/types";
 
@@ -14,7 +15,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function Home() {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
-  const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
+  const [mode, setMode] = useState<"PROJECT" | "EDITOR" | "ANALYSIS">("PROJECT");
   const [layoutResult, setLayoutResult] = useState<LayoutResult | null>(null);
   const [runningAnalysis, setRunningAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -46,6 +47,12 @@ export default function Home() {
     setDemo((current) => current ? { ...current, room } : current);
     invalidateAnalysis();
     setMode("ANALYSIS");
+  }
+
+  function openDetectedRoom(name: string, vertices: import("@/lib/types").Point2D[]) {
+    setDemo((current) => current ? { ...current, room: { ...current.room, name, vertices, openings: [], obstacles: [], person_mockup: null, finishes: undefined, version: current.room.version + 1 } } : current);
+    invalidateAnalysis();
+    setMode("EDITOR");
   }
 
   function applyObstacles(obstacles: Obstacle[]) {
@@ -137,13 +144,16 @@ export default function Home() {
       <header className="topbar">
         <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} wallMode={wallMode} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={togglePersonPanel} onWallModeChange={setWallMode} onOpenSettings={() => setSettingsOpen(true)} /></div>
         <nav className="app-nav" aria-label="Project workflow">
-          <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>1 · Floor plan</button>
-          <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>2 · Fit analysis</button>
+          <button className={mode === "PROJECT" ? "active" : ""} onClick={() => setMode("PROJECT")}>1 · Project floorplan</button>
+          <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>2 · Floor plan</button>
+          <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>3 · Fit analysis</button>
         </nav>
         <div className="truth-badge"><span className="truth-dot" />Deterministic engine · {{ MM: "mm", CM: "cm", INCHES: "in", FEET_INCHES: "ft + in" }[preferences.units]}</div>
       </header>
 
-      {mode === "EDITOR" ? (
+      {mode === "PROJECT" ? (
+        <ProjectFloorplanImporter apiUrl={API_URL} onOpenRoom={openDetectedRoom} />
+      ) : mode === "EDITOR" ? (
         <FloorPlanEditor room={demo.room} apiUrl={API_URL} onApply={applyRoom} onCancel={() => setMode("ANALYSIS")} />
       ) : (
         <section className="workspace">
