@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DetectedProjectRoom, Point2D, ProjectFloorplanResponse } from "@/lib/types";
 
 interface ProjectFloorplanImporterProps {
@@ -31,9 +31,11 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom }: ProjectFloorpla
   const [result, setResult] = useState<ProjectFloorplanResponse | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [millimetresPerPixel, setMillimetresPerPixel] = useState(10);
+  const [gapClosure, setGapClosure] = useState(0.15);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previewUrl = useMemo(() => file && file.type !== "application/pdf" ? URL.createObjectURL(file) : null, [file]);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const selectedRoom = useMemo(() => result?.rooms.find((room) => room.id === selectedRoomId) ?? result?.rooms[0] ?? null, [result, selectedRoomId]);
 
@@ -44,7 +46,7 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom }: ProjectFloorpla
     try {
       const response = await fetch(`${apiUrl}/project-floorplan/detect`, {
         method: "POST",
-        headers: { "Content-Type": file.type || "application/octet-stream", "X-Filename": file.name },
+        headers: { "Content-Type": file.type || "application/octet-stream", "X-Filename": file.name, "X-Gap-Closure": String(gapClosure) },
         body: await file.arrayBuffer(),
       });
       const payload = await response.json() as ProjectFloorplanResponse | { detail?: string };
@@ -73,14 +75,15 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom }: ProjectFloorpla
       <section className="project-upload-card">
         <h2>1 · Add a drawing</h2>
         <label className="project-file-input"><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setResult(null); setError(null); }} /><span>{file ? file.name : "Choose PDF or image"}</span><small>PDF, JPG, PNG or WEBP · up to 25 MB</small></label>
-        <button className="project-primary" type="button" onClick={detectRooms} disabled={!file || loading}>{loading ? "Reading drawing…" : "Recognise rooms"}</button>
+        <label className="project-recognition-control"><span>Door-gap repair</span><select value={gapClosure} onChange={(event) => setGapClosure(Number(event.target.value))}><option value={0.06}>Light</option><option value={0.105}>Balanced</option><option value={0.15}>Strong · recommended</option></select><small>Reduce this only if nearby rooms are being split incorrectly.</small></label>
+        <button className="project-primary" type="button" onClick={detectRooms} disabled={!file || loading}>{loading ? "Reading drawing…" : result ? "Recognise again" : "Recognise rooms"}</button>
         {error && <p className="project-error">{error}</p>}
-        {previewUrl ? <img className="project-source-preview" src={previewUrl} alt="Uploaded floorplan preview" /> : file?.type === "application/pdf" ? <div className="project-pdf-preview">PDF ready for recognition</div> : null}
+        {previewUrl ? <div className="project-source-map"><img className="project-source-preview" src={previewUrl} alt="Uploaded floorplan preview" />{result && <svg viewBox={`0 0 ${result.source_width_px} ${result.source_height_px}`} preserveAspectRatio="xMidYMid meet" aria-label="Detected rooms overlaid on uploaded floorplan">{result.rooms.map((room) => <polygon key={room.id} className={selectedRoom?.id === room.id ? "selected" : ""} points={room.vertices.map((point) => `${point.x},${result.source_height_px - point.y}`).join(" ")} onClick={() => setSelectedRoomId(room.id)} />)}</svg>}</div> : file?.type === "application/pdf" ? <div className="project-pdf-preview">PDF remains loaded · recognition uses page 1</div> : null}
       </section>
       <section className="project-rooms-card">
         <div className="project-room-heading"><div><h2>2 · Select a room</h2><p>{result ? `${result.rooms.length} detected outline${result.rooms.length === 1 ? "" : "s"}` : "Upload a drawing to find rooms."}</p></div>{result && <label>Scale <input type="number" min="0.1" step="0.1" value={millimetresPerPixel} onChange={(event) => setMillimetresPerPixel(Number(event.target.value))} /> <small>mm / pixel</small></label>}</div>
         {result && <p className="project-warning">{result.warning}</p>}
-        <div className="project-room-list">{result?.rooms.map((room: DetectedProjectRoom) => <button key={room.id} type="button" className={selectedRoom?.id === room.id ? "selected" : ""} onClick={() => setSelectedRoomId(room.id)}><svg viewBox="0 0 200 160" aria-hidden="true"><polygon points={previewPoints(room.vertices)} /></svg><span><strong>{room.name}</strong><small>{Math.round(room.area_px2).toLocaleString()} px² · {room.vertices.length} corners</small></span></button>)}</div>
+        <div className="project-room-list">{result?.rooms.map((room: DetectedProjectRoom) => <button key={room.id} type="button" className={selectedRoom?.id === room.id ? "selected" : ""} onClick={() => setSelectedRoomId(room.id)}><svg viewBox="0 0 200 160" aria-hidden="true"><polygon points={previewPoints(room.vertices)} /></svg><span><strong>{room.name}</strong><small>{Math.round(room.area_px2).toLocaleString()} px² · {room.vertices.length} corners</small><em>{Math.round(room.confidence * 100)}% outline confidence</em></span></button>)}</div>
         <button className="project-primary" type="button" disabled={!selectedRoom || !Number.isFinite(millimetresPerPixel) || millimetresPerPixel <= 0} onClick={openSelectedRoom}>Open selected room in floorplan editor</button>
       </section>
     </div>

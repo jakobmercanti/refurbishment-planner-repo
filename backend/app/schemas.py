@@ -71,6 +71,7 @@ class DetectedProjectRoom(BaseModel):
     name: str
     vertices: list[Point2D] = Field(min_length=3)
     area_px2: float
+    confidence: float = Field(ge=0, le=1)
 
 
 class ProjectFloorplanResponse(BaseModel):

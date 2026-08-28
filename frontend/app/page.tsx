@@ -151,11 +151,12 @@ export default function Home() {
         <div className="truth-badge"><span className="truth-dot" />Deterministic engine · {{ MM: "mm", CM: "cm", INCHES: "in", FEET_INCHES: "ft + in" }[preferences.units]}</div>
       </header>
 
-      {mode === "PROJECT" ? (
+      <div hidden={mode !== "PROJECT"}>
         <ProjectFloorplanImporter apiUrl={API_URL} onOpenRoom={openDetectedRoom} />
-      ) : mode === "EDITOR" ? (
+      </div>
+      {mode === "EDITOR" ? (
         <FloorPlanEditor room={demo.room} apiUrl={API_URL} onApply={applyRoom} onCancel={() => setMode("ANALYSIS")} />
-      ) : (
+      ) : mode === "ANALYSIS" ? (
         <section className="workspace">
           <aside className="evidence-panel">
             <div className="eyebrow">Engineering analysis</div>
@@ -205,7 +206,7 @@ export default function Home() {
             <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
           </section>
         </section>
-      )}
+      ) : null}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
       <SettingsDialog open={settingsOpen} preferences={preferences} onChange={setPreferences} onClose={() => setSettingsOpen(false)} />
     </main>

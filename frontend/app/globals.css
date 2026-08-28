@@ -347,12 +347,15 @@ button { font: inherit; }
 .pickable-opening { cursor: grab; }
 .pickable-opening:active { cursor: grabbing; }
 .opening-hit { stroke: transparent; stroke-width: 25; pointer-events: stroke; }
+.opening-hit-area { fill: rgba(189,116,17,.001); stroke: transparent; stroke-width: 12; pointer-events: fill; }
 .opening-swing-hit { fill: none; stroke: transparent; stroke-width: 18; pointer-events: stroke; }
 .opening-gap { stroke: white; stroke-width: 14; pointer-events: none; }
 .opening-jamb { stroke: #233e37; stroke-width: 2.5; stroke-linecap: square; pointer-events: none; }
 .door-closed-line { stroke: #8e9a95; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
 .door-leaf { stroke: #bd7411; stroke-width: 3; stroke-linecap: square; pointer-events: none; }
 .door-swing { fill: none; stroke: #bd7411; stroke-width: 1.5; stroke-dasharray: 4 2; pointer-events: none; }
+.opening-dimension { color: #bd7411; pointer-events: none; }
+.opening-dimension-label { fill: #8e5b12; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
 .window-frame { stroke: #287fb8; stroke-width: 2.6; stroke-linecap: square; pointer-events: none; }
 .window-core { stroke: #76acd0; stroke-width: 1.2; pointer-events: none; }
 .window-jamb { stroke: #287fb8; }
@@ -409,10 +412,18 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .project-file-input input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .project-file-input span { overflow: hidden; font: 650 10px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .project-file-input small { color: var(--muted); font-size: 9px; }
+.project-recognition-control { display: grid; grid-template-columns: 1fr 105px; gap: 5px 9px; align-items: center; margin: 0 0 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #f8faf8; color: var(--ink); font: 650 9px var(--font-mono); }
+.project-recognition-control select { width: 100%; padding: 7px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); font: 550 9px var(--font-mono); }
+.project-recognition-control small { grid-column: 1 / -1; color: var(--muted); font: 500 8px/1.4 var(--font-sans); }
 .project-primary { width: 100%; min-height: 39px; border: 1px solid var(--deep); border-radius: 7px; background: var(--deep); color: white; font: 650 9px var(--font-mono); cursor: pointer; }
 .project-primary:disabled { opacity: .45; cursor: not-allowed; }
 .project-error { margin: 9px 0 0; color: var(--fail); font-size: 10px; line-height: 1.4; }
 .project-source-preview { width: 100%; max-height: 330px; margin-top: 14px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: #f2f4f1; }
+.project-source-map { position: relative; margin-top: 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #f2f4f1; }
+.project-source-map .project-source-preview { display: block; margin: 0; border: 0; border-radius: 0; }
+.project-source-map > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.project-source-map polygon { fill: rgba(25,122,80,.18); stroke: rgba(25,122,80,.82); stroke-width: 3; vector-effect: non-scaling-stroke; cursor: pointer; }
+.project-source-map polygon:hover, .project-source-map polygon.selected { fill: rgba(168,102,0,.26); stroke: #a86600; stroke-width: 5; }
 .project-pdf-preview { display: grid; min-height: 180px; margin-top: 14px; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #f2f4f1; color: var(--muted); font: 600 10px var(--font-mono); }
 .project-room-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
 .project-room-heading p { margin: 5px 0 0; color: var(--muted); font-size: 10px; }
@@ -428,6 +439,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .project-room-list span { min-width: 0; display: grid; gap: 5px; }
 .project-room-list strong { overflow: hidden; font: 650 9px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .project-room-list small { color: var(--muted); font: 500 8px var(--font-mono); line-height: 1.4; }
+.project-room-list em { color: var(--fit); font: 650 7px var(--font-mono); font-style: normal; }
 
 @media (max-width: 1180px) {
   .editor-layout { grid-template-columns: 250px minmax(460px, 1fr); }

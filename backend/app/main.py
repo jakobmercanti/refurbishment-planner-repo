@@ -51,7 +51,7 @@ app.add_middleware(
     allow_origins=["http://localhost:3000"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Content-Type", "X-Filename"],
+    allow_headers=["Content-Type", "X-Filename", "X-Gap-Closure"],
 )
 initialise_catalogue()
 
@@ -117,17 +117,18 @@ def health() -> dict[str, str]:
 def detect_project_floorplan(
     document: bytes = Body(...),
     filename: str = Header("floorplan", alias="X-Filename"),
+    gap_closure: float = Header(0.15, alias="X-Gap-Closure", ge=0.035, le=0.18),
 ) -> ProjectFloorplanResponse:
     if len(document) > 25_000_000:
         raise HTTPException(status_code=413, detail="Floorplan files must be 25 MB or smaller.")
     try:
-        width, height, rooms_detected = recognise_rooms(document, filename)
+        width, height, rooms_detected = recognise_rooms(document, filename, gap_closure)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return ProjectFloorplanResponse(
         source_width_px=width,
         source_height_px=height,
-        rooms=[{"id": room.identifier, "name": room.name, "vertices": room.vertices, "area_px2": room.area_px2} for room in rooms_detected],
+        rooms=[{"id": room.identifier, "name": room.name, "vertices": room.vertices, "area_px2": room.area_px2, "confidence": room.confidence} for room in rooms_detected],
         warning="Detected outlines are drafts. Confirm the scale and edit the selected room before using it for fit decisions.",
     )
 

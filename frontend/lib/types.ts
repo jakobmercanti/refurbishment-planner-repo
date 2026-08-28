@@ -206,6 +206,7 @@ export interface DetectedProjectRoom {
   name: string;
   vertices: Point2D[];
   area_px2: number;
+  confidence: number;
 }
 
 export interface ProjectFloorplanResponse {
