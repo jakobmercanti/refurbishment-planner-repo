@@ -770,13 +770,14 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
               const screenTangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength };
               const outward = { x: -screenTangent.y, y: screenTangent.x };
               const wallId = `wall-${String(index + 1).padStart(3, "0")}`;
+              const wallOpenings = openings.filter((opening) => opening.parent_wall_id === wallId && (opening.kind === "DOOR" || opening.kind === "WINDOW"));
               const outwardDoorDepth = openings
                 .filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR" && opening.opens_inward === false)
                 .reduce((maximum, opening) => Math.max(maximum, opening.door_type === "DOUBLE" ? opening.width.value / 2 : opening.width.value), 0);
-              const doorDimensionOffset = 42;
+              const openingDimensionGap = 24;
               // Keep the authoritative wall dimension outside the door-relative
               // dimensions, and move it farther out when an outward swing needs room.
-              const requestedDimensionOffset = 132 + outwardDoorDepth * activeBounds.scale;
+              const requestedDimensionOffset = 78 + wallOpenings.length * openingDimensionGap + outwardDoorDepth * activeBounds.scale;
               const edgePadding = 18;
               const offsetLimit = [
                 outward.x > 0 ? (CANVAS_WIDTH - edgePadding - start.x) / outward.x : outward.x < 0 ? (edgePadding - start.x) / outward.x : Number.POSITIVE_INFINITY,
@@ -827,13 +828,14 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                         <line className="dimension-tick" x1={dimensionEnd.x - screenTangent.x * 4 + outward.x * 4} y1={dimensionEnd.y - screenTangent.y * 4 + outward.y * 4} x2={dimensionEnd.x + screenTangent.x * 4 - outward.x * 4} y2={dimensionEnd.y + screenTangent.y * 4 - outward.y * 4} />
                         <text className="wall-label" x={dimensionLabel.x} y={dimensionLabel.y}>{formatLength(length, displayUnits)}</text>
                       </g>
-                      {openings.filter((opening) => opening.parent_wall_id === wallId && (opening.kind === "DOOR" || opening.kind === "WINDOW")).map((opening, openingIndex) => {
+                      {wallOpenings.map((opening, openingIndex) => {
                         const wallStart = vertex;
                         const wallEnd = vertices[(index + 1) % vertices.length] ?? vertex;
                         const modelUnit = { x: (wallEnd.x - wallStart.x) / length, y: (wallEnd.y - wallStart.y) / length };
                         const doorStartModel = { x: wallStart.x + modelUnit.x * opening.offset_mm, y: wallStart.y + modelUnit.y * opening.offset_mm };
                         const doorEndModel = { x: wallStart.x + modelUnit.x * (opening.offset_mm + opening.width.value), y: wallStart.y + modelUnit.y * (opening.offset_mm + opening.width.value) };
-                        const rowOffset = dimensionSide * (doorDimensionOffset + openingIndex * 28);
+                        const firstOpeningLane = Math.max(18, dimensionOffset - 34 - Math.max(0, wallOpenings.length - 1) * openingDimensionGap);
+                        const rowOffset = dimensionSide * (firstOpeningLane + openingIndex * openingDimensionGap);
                         const points = [start, toScreen(doorStartModel), toScreen(doorEndModel), end].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
                         const values = [opening.offset_mm, opening.width.value, Math.max(0, length - opening.offset_mm - opening.width.value)];
                         return <g key={`opening-dimensions-${opening.id}`} className={`opening-dimension ${opening.kind === "WINDOW" ? "window-dimension" : ""}`} aria-label={`${opening.kind === "WINDOW" ? "Window" : "Door"} dimensions: ${formatLength(opening.width.value, displayUnits)} wide, ${formatLength(opening.offset_mm, displayUnits)} from wall start, ${formatLength(values[2], displayUnits)} to wall end`}>
