@@ -772,7 +772,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
               const outwardDoorDepth = openings
                 .filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR" && opening.opens_inward === false)
                 .reduce((maximum, opening) => Math.max(maximum, opening.door_type === "DOUBLE" ? opening.width.value / 2 : opening.width.value), 0);
-              const doorDimensionOffset = 24;
+              const doorDimensionOffset = 34;
               // Keep the authoritative wall dimension outside the door-relative
               // dimensions, and move it farther out when an outward swing needs room.
               const dimensionOffset = 62 + outwardDoorDepth * activeBounds.scale;
@@ -816,7 +816,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                         <line className="dimension-tick" x1={dimensionEnd.x - screenTangent.x * 4 + outward.x * 4} y1={dimensionEnd.y - screenTangent.y * 4 + outward.y * 4} x2={dimensionEnd.x + screenTangent.x * 4 - outward.x * 4} y2={dimensionEnd.y + screenTangent.y * 4 - outward.y * 4} />
                         <text className="wall-label" x={dimensionLabel.x} y={dimensionLabel.y}>{formatLength(length, displayUnits)}</text>
                       </g>
-                      {openings.filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR").map((opening) => {
+                      {openings.filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR").map((opening, openingIndex) => {
                         // Calculate opening points in authoritative model space before
                         // converting them to screen space. Using the already-rendered
                         // screen points here applies the view transform twice and
@@ -826,7 +826,8 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                         const modelUnit = { x: (wallEnd.x - wallStart.x) / length, y: (wallEnd.y - wallStart.y) / length };
                         const doorStartModel = { x: wallStart.x + modelUnit.x * opening.offset_mm, y: wallStart.y + modelUnit.y * opening.offset_mm };
                         const doorEndModel = { x: wallStart.x + modelUnit.x * (opening.offset_mm + opening.width.value), y: wallStart.y + modelUnit.y * (opening.offset_mm + opening.width.value) };
-                        const points = [start, toScreen(doorStartModel), toScreen(doorEndModel), end].map((point) => ({ x: point.x + outward.x * doorDimensionOffset, y: point.y + outward.y * doorDimensionOffset }));
+                        const rowOffset = doorDimensionOffset + openingIndex * 18;
+                        const points = [start, toScreen(doorStartModel), toScreen(doorEndModel), end].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
                         const values = [opening.offset_mm, opening.width.value, Math.max(0, length - opening.offset_mm - opening.width.value)];
                         return <g key={`door-dimensions-${opening.id}`} className="opening-dimension" aria-label={`Door dimensions: ${opening.width.value.toFixed(0)} mm wide, ${opening.offset_mm.toFixed(0)} mm from wall start, ${values[2].toFixed(0)} mm to wall end`}>
                           {values.map((value, segmentIndex) => {
