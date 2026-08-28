@@ -352,10 +352,10 @@ button { font: inherit; }
 .opening-gap { stroke: white; stroke-width: 14; pointer-events: none; }
 .opening-jamb { stroke: #233e37; stroke-width: 2.5; stroke-linecap: square; pointer-events: none; }
 .door-closed-line { stroke: #8e9a95; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
-.door-leaf { stroke: #bd7411; stroke-width: 3; stroke-linecap: square; pointer-events: none; }
-.door-swing { fill: none; stroke: #bd7411; stroke-width: 1.5; stroke-dasharray: 4 2; pointer-events: none; }
-.opening-dimension { color: #bd7411; pointer-events: none; }
-.opening-dimension-label { fill: #8e5b12; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
+.door-leaf { stroke: #176b58; stroke-width: 3; stroke-linecap: square; pointer-events: none; }
+.door-swing { fill: none; stroke: #176b58; stroke-width: 1.5; stroke-dasharray: 4 2; pointer-events: none; }
+.opening-dimension { color: #176b58; pointer-events: none; }
+.opening-dimension-label { fill: #176b58; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
 .window-frame { stroke: #287fb8; stroke-width: 2.6; stroke-linecap: square; pointer-events: none; }
 .window-core { stroke: #76acd0; stroke-width: 1.2; pointer-events: none; }
 .window-jamb { stroke: #287fb8; }

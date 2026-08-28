@@ -817,8 +817,15 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                         <text className="wall-label" x={dimensionLabel.x} y={dimensionLabel.y}>{formatLength(length, displayUnits)}</text>
                       </g>
                       {openings.filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR").map((opening) => {
-                        const doorStartModel = { x: start.x + (end.x - start.x) / length * opening.offset_mm, y: start.y + (end.y - start.y) / length * opening.offset_mm };
-                        const doorEndModel = { x: start.x + (end.x - start.x) / length * (opening.offset_mm + opening.width.value), y: start.y + (end.y - start.y) / length * (opening.offset_mm + opening.width.value) };
+                        // Calculate opening points in authoritative model space before
+                        // converting them to screen space. Using the already-rendered
+                        // screen points here applies the view transform twice and
+                        // skews the three door dimensions away from the wall.
+                        const wallStart = vertex;
+                        const wallEnd = vertices[(index + 1) % vertices.length] ?? vertex;
+                        const modelUnit = { x: (wallEnd.x - wallStart.x) / length, y: (wallEnd.y - wallStart.y) / length };
+                        const doorStartModel = { x: wallStart.x + modelUnit.x * opening.offset_mm, y: wallStart.y + modelUnit.y * opening.offset_mm };
+                        const doorEndModel = { x: wallStart.x + modelUnit.x * (opening.offset_mm + opening.width.value), y: wallStart.y + modelUnit.y * (opening.offset_mm + opening.width.value) };
                         const points = [start, toScreen(doorStartModel), toScreen(doorEndModel), end].map((point) => ({ x: point.x + outward.x * doorDimensionOffset, y: point.y + outward.y * doorDimensionOffset }));
                         const values = [opening.offset_mm, opening.width.value, Math.max(0, length - opening.offset_mm - opening.width.value)];
                         return <g key={`door-dimensions-${opening.id}`} className="opening-dimension" aria-label={`Door dimensions: ${opening.width.value.toFixed(0)} mm wide, ${opening.offset_mm.toFixed(0)} mm from wall start, ${values[2].toFixed(0)} mm to wall end`}>
