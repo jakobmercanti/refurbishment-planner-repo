@@ -315,7 +315,7 @@ function WallPiece({
         onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
       >
         <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
-        <meshBasicMaterial color="#d9d4c8" side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
+        <meshStandardMaterial color="#d9d4c8" roughness={0.9} flatShading side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>}
       <mesh
         ref={paintMeshRef}
