@@ -149,7 +149,7 @@ export default function Home() {
           <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>2 · Floor plan</button>
           <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>3 · Fit analysis</button>
         </nav>
-        <div className="truth-badge"><span className="truth-dot" />Deterministic engine · {{ MM: "mm", CM: "cm", INCHES: "in", FEET_INCHES: "ft + in" }[preferences.units]}</div>
+        <div className="truth-badge"><span className="truth-dot" />Deterministic engine · {{ MM: "mm", CM: "cm", INCHES: "in", FEET: "ft", METERS: "m" }[preferences.units]}</div>
       </header>
 
       <div hidden={mode !== "PROJECT"}>

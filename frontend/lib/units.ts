@@ -1,40 +1,46 @@
-export type DisplayUnits = "MM" | "CM" | "INCHES" | "FEET_INCHES";
+export type DisplayUnits = "MM" | "CM" | "INCHES" | "FEET" | "METERS";
 
-const MM_PER_UNIT: Record<Exclude<DisplayUnits, "FEET_INCHES">, number> = { MM: 1, CM: 10, INCHES: 25.4 };
+const MM_PER_UNIT: Record<DisplayUnits, number> = {
+  MM: 1,
+  CM: 10,
+  INCHES: 25.4,
+  FEET: 304.8,
+  METERS: 1000,
+};
 
-export const UNIT_LABEL: Record<DisplayUnits, string> = { MM: "mm", CM: "cm", INCHES: "in", FEET_INCHES: "ft + in" };
+export const UNIT_LABEL: Record<DisplayUnits, string> = {
+  MM: "mm",
+  CM: "cm",
+  INCHES: "in",
+  FEET: "ft",
+  METERS: "m",
+};
 
 export function toDisplayNumber(mm: number, units: DisplayUnits): number {
-  return units === "FEET_INCHES" ? mm / 304.8 : mm / MM_PER_UNIT[units];
+  return mm / MM_PER_UNIT[units];
 }
 
+/** Number suitable for an editable field, avoiding long repeating conversion decimals. */
 export function toDisplayInputNumber(mm: number, units: DisplayUnits): number {
   const value = toDisplayNumber(mm, units);
-  const precision = units === "MM" ? 2 : units === "CM" ? 3 : 4;
+  const precision = units === "MM" ? 2 : units === "CM" ? 3 : units === "INCHES" ? 4 : 3;
   return Number(value.toFixed(precision));
 }
 
 export function fromDisplayNumber(value: number, units: DisplayUnits): number {
-  return units === "FEET_INCHES" ? value * 304.8 : value * MM_PER_UNIT[units];
+  return value * MM_PER_UNIT[units];
 }
 
 export function formatLength(mm: number, units: DisplayUnits, decimals?: number): string {
   if (!Number.isFinite(mm)) return "—";
-  if (units === "FEET_INCHES") {
-    const totalInches = Math.abs(mm) / 25.4;
-    let feet = Math.floor(totalInches / 12);
-    let inches = Number((totalInches - feet * 12).toFixed(1));
-    if (inches >= 12) { feet += 1; inches = 0; }
-    return `${mm < 0 ? "-" : ""}${feet}' ${inches.toFixed(1)}\"`;
-  }
-  const precision = decimals ?? (units === "MM" ? 0 : units === "CM" ? 1 : 2);
+  const precision = decimals ?? (units === "MM" ? 0 : units === "CM" ? 1 : units === "INCHES" ? 2 : 2);
   return `${toDisplayNumber(mm, units).toFixed(precision)} ${UNIT_LABEL[units]}`;
 }
 
 export function formatArea(areaMm2: number, units: DisplayUnits): string {
-  const divisor = units === "MM" ? 1 : units === "CM" ? 100 : units === "INCHES" ? 645.16 : 92903.04;
+  const divisor = units === "MM" ? 1 : units === "CM" ? 100 : units === "INCHES" ? 645.16 : units === "FEET" ? 92903.04 : 1_000_000;
   const precision = units === "MM" ? 0 : units === "CM" ? 1 : 2;
-  const label = units === "MM" ? "mm²" : units === "CM" ? "cm²" : units === "INCHES" ? "in²" : "ft²";
+  const label = units === "MM" ? "mm²" : units === "CM" ? "cm²" : units === "INCHES" ? "in²" : units === "FEET" ? "ft²" : "m²";
   return `${(areaMm2 / divisor).toFixed(precision)} ${label}`;
 }
 
