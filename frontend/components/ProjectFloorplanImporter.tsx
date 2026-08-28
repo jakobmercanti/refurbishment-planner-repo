@@ -32,6 +32,7 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom, displayUnits }: P
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ProjectFloorplanResponse | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [roomNames, setRoomNames] = useState<Record<string, string>>({});
   const [millimetresPerPixel, setMillimetresPerPixel] = useState(10);
   const gapClosure = 0.15;
   const [loading, setLoading] = useState(false);
@@ -55,6 +56,7 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom, displayUnits }: P
       if (!response.ok) throw new Error("detail" in payload ? payload.detail : "The floorplan could not be read.");
       const recognised = payload as ProjectFloorplanResponse;
       setResult(recognised);
+      setRoomNames(Object.fromEntries(recognised.rooms.map((room) => [room.id, room.name])));
       setSelectedRoomId(recognised.rooms[0]?.id ?? null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The floorplan could not be read.");
@@ -65,7 +67,7 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom, displayUnits }: P
 
   function openSelectedRoom() {
     if (!selectedRoom || !Number.isFinite(millimetresPerPixel) || millimetresPerPixel <= 0) return;
-    onOpenRoom(selectedRoom.name, scaleRoom(selectedRoom.vertices, millimetresPerPixel));
+    onOpenRoom(roomNames[selectedRoom.id]?.trim() || selectedRoom.name, scaleRoom(selectedRoom.vertices, millimetresPerPixel));
   }
 
   return <section className="project-floorplan-page">
@@ -84,7 +86,7 @@ export function ProjectFloorplanImporter({ apiUrl, onOpenRoom, displayUnits }: P
       <section className="project-rooms-card">
         <div className="project-room-heading"><div><h2>2 · Select a room</h2><p>{result ? `${result.rooms.length} detected outline${result.rooms.length === 1 ? "" : "s"}` : "Upload a drawing to find rooms."}</p></div>{result && <label>Scale <input type="number" min="0.01" step="0.01" value={toDisplayNumber(millimetresPerPixel, displayUnits)} onChange={(event) => setMillimetresPerPixel(fromDisplayNumber(Number(event.target.value), displayUnits))} /> <small>{UNIT_LABEL[displayUnits]} / pixel</small></label>}</div>
         {result && <p className="project-warning">{result.warning}</p>}
-        <div className="project-room-list">{result?.rooms.map((room: DetectedProjectRoom) => <button key={room.id} type="button" className={selectedRoom?.id === room.id ? "selected" : ""} onClick={() => setSelectedRoomId(room.id)}><svg viewBox="0 0 200 160" aria-hidden="true"><polygon points={previewPoints(room.vertices)} /></svg><span><strong>{room.name}</strong><small>{Math.round(room.area_px2).toLocaleString()} px² · {room.vertices.length} corners</small><em>{Math.round(room.confidence * 100)}% outline confidence</em></span></button>)}</div>
+        <div className="project-room-list">{result?.rooms.map((room: DetectedProjectRoom) => <div key={room.id} className={`project-room-option ${selectedRoom?.id === room.id ? "selected" : ""}`} onClick={() => setSelectedRoomId(room.id)}><svg viewBox="0 0 200 160" aria-hidden="true"><polygon points={previewPoints(room.vertices)} /></svg><span><input aria-label={`Room ${room.id} name`} value={roomNames[room.id] ?? room.name} onChange={(event) => setRoomNames((current) => ({ ...current, [room.id]: event.target.value }))} onClick={(event) => event.stopPropagation()} /><small>{Math.round(room.area_px2).toLocaleString()} px² · {room.vertices.length} corners</small><em>{Math.round(room.confidence * 100)}% outline confidence</em></span></div>)}</div>
         <button className="project-primary" type="button" disabled={!selectedRoom || !Number.isFinite(millimetresPerPixel) || millimetresPerPixel <= 0} onClick={openSelectedRoom}>Open selected room in floorplan editor</button>
       </section>
     </div>

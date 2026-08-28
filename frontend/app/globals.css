@@ -352,10 +352,10 @@ button { font: inherit; }
 .opening-gap { stroke: white; stroke-width: 14; pointer-events: none; }
 .opening-jamb { stroke: #233e37; stroke-width: 2.5; stroke-linecap: square; pointer-events: none; }
 .door-closed-line { stroke: #8e9a95; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
-.door-leaf { stroke: #176b58; stroke-width: 3; stroke-linecap: square; pointer-events: none; }
-.door-swing { fill: none; stroke: #176b58; stroke-width: 1.5; stroke-dasharray: 4 2; pointer-events: none; }
-.opening-dimension { color: #176b58; pointer-events: none; }
-.opening-dimension-label { fill: #176b58; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
+.door-leaf { stroke: #4caf8a; stroke-width: 3; stroke-linecap: square; pointer-events: none; }
+.door-swing { fill: none; stroke: #4caf8a; stroke-width: 1.5; stroke-dasharray: 4 2; pointer-events: none; }
+.opening-dimension { color: #4caf8a; pointer-events: none; }
+.opening-dimension-label { fill: #328064; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
 .window-frame { stroke: #287fb8; stroke-width: 2.6; stroke-linecap: square; pointer-events: none; }
 .window-core { stroke: #76acd0; stroke-width: 1.2; pointer-events: none; }
 .window-jamb { stroke: #287fb8; }
@@ -432,8 +432,10 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .project-room-heading small { font-size: 7px; }
 .project-warning { margin: 14px 0; padding: 9px; border-left: 3px solid var(--verify); border-radius: 0 6px 6px 0; background: var(--verify-soft); color: #73531c; font-size: 9px; line-height: 1.4; }
 .project-room-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; min-height: 230px; margin: 14px 0; }
-.project-room-list > button { min-width: 0; display: grid; grid-template-columns: 88px minmax(0,1fr); gap: 9px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); text-align: left; cursor: pointer; }
-.project-room-list > button:hover, .project-room-list > button.selected { border-color: var(--deep); box-shadow: inset 0 0 0 1px var(--deep); background: #f0f6f2; }
+.project-room-list > .project-room-option { min-width: 0; display: grid; grid-template-columns: 88px minmax(0,1fr); gap: 9px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); text-align: left; cursor: pointer; }
+.project-room-list > .project-room-option:hover, .project-room-list > .project-room-option.selected { border-color: var(--deep); box-shadow: inset 0 0 0 1px var(--deep); background: #f0f6f2; }
+.project-room-list input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; padding: 2px 0; background: transparent; color: var(--ink); font: 650 9px var(--font-mono); }
+.project-room-list input:focus { outline: none; border-bottom-color: var(--deep); }
 .project-room-list svg { width: 88px; height: 70px; border-radius: 5px; background: #edf2ed; }
 .project-room-list polygon { fill: #dbeadf; stroke: var(--deep); stroke-width: 3; stroke-linejoin: round; }
 .project-room-list span { min-width: 0; display: grid; gap: 5px; }
