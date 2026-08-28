@@ -1211,6 +1211,7 @@ export function EngineeringViewer(props: ViewerProps) {
   const [preset, setPreset] = useState<CameraView>("perspective");
   const [captureRequest, setCaptureRequest] = useState(0);
   const [selection, setSelection] = useState<Selection>(null);
+  const [panelSelection, setPanelSelection] = useState<Selection>(null);
   const [toggles, setToggles] = useState<Toggles>({
     elements: true,
     doorSwings: true,
@@ -1219,6 +1220,14 @@ export function EngineeringViewer(props: ViewerProps) {
     clearance: true,
   });
   const flip = (key: keyof Toggles) => setToggles((current) => ({ ...current, [key]: !current[key] }));
+  const selectObject = (nextSelection: Selection) => {
+    setSelection(nextSelection);
+    setPanelSelection(nextSelection);
+  };
+  const clearSelection = () => {
+    setSelection(null);
+    setPanelSelection(null);
+  };
   return (
     <div className="viewer-shell">
       <div className="viewer-toolbar" aria-label="3D viewer controls">
@@ -1236,9 +1245,9 @@ export function EngineeringViewer(props: ViewerProps) {
           ))}
         </div>
       </div>
-      <ContextControls room={props.room} selection={selection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onSelectionChange={setSelection} />
-      <Canvas shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, near: 0.01, far: 100 }} onPointerMissed={() => setSelection(null)}>
-        <Scene {...props} toggles={toggles} preset={preset} selection={selection} onSelectionChange={setSelection} />
+      <ContextControls room={props.room} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onSelectionChange={() => setSelection(null)} />
+      <Canvas shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
+        <Scene {...props} toggles={toggles} preset={preset} selection={selection} onSelectionChange={selectObject} />
         <CaptureController request={captureRequest} />
       </Canvas>
       <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
