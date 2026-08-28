@@ -35,7 +35,44 @@ engine returns `VERIFY`, never an unjustified `FIT`.
 - `tests/`: deterministic regression suite
 - `docs/`: architectural and engineering decisions
 
-## Local development
+## Start the application locally
+
+The simplest way to start both parts of the application is the included launcher.
+
+1. Open PowerShell.
+2. Go to this project folder:
+
+   ```powershell
+   cd "C:\Users\Dell\Jakob Drive\P1 - Consultancy\P2 - Renovation site\python code"
+   ```
+
+3. Start the application and open it in your browser:
+
+   ```powershell
+   .\start-local.ps1 -OpenBrowser
+   ```
+
+If Windows blocks the script the first time, run this once in the same PowerShell window, then repeat the start command:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+```
+
+The application opens at `http://localhost:3000`. The engineering backend is available at `http://127.0.0.1:8000/docs`.
+
+The launcher starts the frontend and backend in the background. If either one is already running, it leaves that service running and uses it. Startup logs are saved in `.local-logs` if you need to investigate an error.
+
+### Stop or restart
+
+To stop the local application, run:
+
+```powershell
+Get-NetTCPConnection -LocalPort 3000,8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
+```
+
+Then use `./start-local.ps1 -OpenBrowser` again to restart it.
+
+## Manual local development
 
 ```powershell
 uv sync
