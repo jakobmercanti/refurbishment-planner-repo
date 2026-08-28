@@ -356,6 +356,8 @@ button { font: inherit; }
 .door-swing { fill: none; stroke: #4caf8a; stroke-width: 1.5; stroke-dasharray: 4 2; pointer-events: none; }
 .opening-dimension { color: #4caf8a; pointer-events: none; }
 .opening-dimension-label { fill: #328064; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
+.window-dimension { color: #2589d8; }
+.window-dimension .opening-dimension-label { fill: #1672b8; }
 .window-frame { stroke: #287fb8; stroke-width: 2.6; stroke-linecap: square; pointer-events: none; }
 .window-core { stroke: #76acd0; stroke-width: 1.2; pointer-events: none; }
 .window-jamb { stroke: #287fb8; }

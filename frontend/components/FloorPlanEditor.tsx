@@ -151,6 +151,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
   const openingDragStart = useRef<Opening[] | null>(null);
   const dragPointerStart = useRef<Point2D | null>(null);
 
+  // Coordinate text is an editable draft; reformat it only when the display unit changes.
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     setCoordinateInput(coordinateText(vertices, displayUnits));
@@ -564,7 +565,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
       if (!response.ok) throw new Error(payload.detail ?? `Validation returned ${response.status}`);
       setValidation(payload as RoomValidationResponse);
     } catch (error) {
-      setValidationError(error instanceof Error ? error.message : "Room validation failed.");
+      setValidationError(formatMeasurementText(error instanceof Error ? error.message : "Room validation failed.", displayUnits));
     }
   };
 
@@ -583,7 +584,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
       if (!response.ok) throw new Error(payload.detail ?? `Save returned ${response.status}`);
       onApply(payload as Room);
     } catch (error) {
-      setValidationError(error instanceof Error ? error.message : "Room could not be saved.");
+      setValidationError(formatMeasurementText(error instanceof Error ? error.message : "Room could not be saved.", displayUnits));
     } finally {
       setSaving(false);
     }
@@ -775,7 +776,13 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
               const doorDimensionOffset = 34;
               // Keep the authoritative wall dimension outside the door-relative
               // dimensions, and move it farther out when an outward swing needs room.
-              const dimensionOffset = 62 + outwardDoorDepth * activeBounds.scale;
+              const requestedDimensionOffset = 92 + outwardDoorDepth * activeBounds.scale;
+              const edgePadding = 18;
+              const offsetLimit = [
+                outward.x > 0 ? (CANVAS_WIDTH - edgePadding - start.x) / outward.x : outward.x < 0 ? (edgePadding - start.x) / outward.x : Number.POSITIVE_INFINITY,
+                outward.y > 0 ? (CANVAS_HEIGHT - edgePadding - start.y) / outward.y : outward.y < 0 ? (edgePadding - start.y) / outward.y : Number.POSITIVE_INFINITY,
+              ].filter((value) => value >= 0).reduce((minimum, value) => Math.min(minimum, value), Number.POSITIVE_INFINITY);
+              const dimensionOffset = Math.max(12, Math.min(requestedDimensionOffset, offsetLimit));
               const dimensionStart = { x: start.x + outward.x * dimensionOffset, y: start.y + outward.y * dimensionOffset };
               const dimensionEnd = { x: end.x + outward.x * dimensionOffset, y: end.y + outward.y * dimensionOffset };
               const dimensionLabel = {
@@ -816,11 +823,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                         <line className="dimension-tick" x1={dimensionEnd.x - screenTangent.x * 4 + outward.x * 4} y1={dimensionEnd.y - screenTangent.y * 4 + outward.y * 4} x2={dimensionEnd.x + screenTangent.x * 4 - outward.x * 4} y2={dimensionEnd.y + screenTangent.y * 4 - outward.y * 4} />
                         <text className="wall-label" x={dimensionLabel.x} y={dimensionLabel.y}>{formatLength(length, displayUnits)}</text>
                       </g>
-                      {openings.filter((opening) => opening.parent_wall_id === wallId && opening.kind === "DOOR").map((opening, openingIndex) => {
-                        // Calculate opening points in authoritative model space before
-                        // converting them to screen space. Using the already-rendered
-                        // screen points here applies the view transform twice and
-                        // skews the three door dimensions away from the wall.
+                      {openings.filter((opening) => opening.parent_wall_id === wallId && (opening.kind === "DOOR" || opening.kind === "WINDOW")).map((opening, openingIndex) => {
                         const wallStart = vertex;
                         const wallEnd = vertices[(index + 1) % vertices.length] ?? vertex;
                         const modelUnit = { x: (wallEnd.x - wallStart.x) / length, y: (wallEnd.y - wallStart.y) / length };
@@ -829,7 +832,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                         const rowOffset = doorDimensionOffset + openingIndex * 18;
                         const points = [start, toScreen(doorStartModel), toScreen(doorEndModel), end].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
                         const values = [opening.offset_mm, opening.width.value, Math.max(0, length - opening.offset_mm - opening.width.value)];
-                        return <g key={`door-dimensions-${opening.id}`} className="opening-dimension" aria-label={`Door dimensions: ${opening.width.value.toFixed(0)} mm wide, ${opening.offset_mm.toFixed(0)} mm from wall start, ${values[2].toFixed(0)} mm to wall end`}>
+                        return <g key={`opening-dimensions-${opening.id}`} className={`opening-dimension ${opening.kind === "WINDOW" ? "window-dimension" : ""}`} aria-label={`${opening.kind === "WINDOW" ? "Window" : "Door"} dimensions: ${formatLength(opening.width.value, displayUnits)} wide, ${formatLength(opening.offset_mm, displayUnits)} from wall start, ${formatLength(values[2], displayUnits)} to wall end`}>
                           {values.map((value, segmentIndex) => {
                             const first = points[segmentIndex];
                             const second = points[segmentIndex + 1];
@@ -840,7 +843,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                               <line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} />
                               <line className="dimension-tick" x1={first.x - screenTangent.x * 3 - outward.x * 3} y1={first.y - screenTangent.y * 3 - outward.y * 3} x2={first.x + screenTangent.x * 3 + outward.x * 3} y2={first.y + screenTangent.y * 3 + outward.y * 3} />
                               <line className="dimension-tick" x1={second.x - screenTangent.x * 3 - outward.x * 3} y1={second.y - screenTangent.y * 3 - outward.y * 3} x2={second.x + screenTangent.x * 3 + outward.x * 3} y2={second.y + screenTangent.y * 3 + outward.y * 3} />
-                              <text className="opening-dimension-label" x={label.x} y={label.y}>{value.toFixed(0)} mm</text>
+                              <text className="opening-dimension-label" x={label.x} y={label.y}>{formatLength(value, displayUnits)}</text>
                             </g>;
                           })}
                         </g>;
