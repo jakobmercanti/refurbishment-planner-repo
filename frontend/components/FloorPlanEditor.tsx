@@ -798,6 +798,7 @@ export function FloorPlanEditor({ room, apiUrl, displayUnits, onApply, onCancel 
                 <g key={`wall-${index}`}>
                   {vertices.length > 1 && (
                     <>
+                      <line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
                       <line
                         className={selectedWall === index ? "wall-line selected" : "wall-line"}
                         x1={start.x}

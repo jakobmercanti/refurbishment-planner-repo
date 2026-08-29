@@ -331,9 +331,10 @@ button { font: inherit; }
 .canvas-background, .plan-grid, .room-polygon, .wall-dimension, .wall-label, .vertex-label { pointer-events: none; }
 .plan-grid line { stroke: #d9dfda; stroke-width: 1; }
 .room-polygon { fill: rgba(255,255,255,.82); stroke: none; }
-.wall-line { stroke: var(--deep); stroke-width: 6; stroke-linecap: round; cursor: grab; }
+.wall-body { stroke: var(--deep); stroke-width: 10; stroke-linecap: square; pointer-events: none; }
+.wall-line { stroke: white; stroke-width: 4; stroke-linecap: square; cursor: grab; }
 .wall-line:active { cursor: grabbing; }
-.wall-line:hover, .wall-line.selected { stroke: #d28718; stroke-width: 8; }
+.wall-line:hover, .wall-line.selected { stroke: #f1b14b; stroke-width: 5; }
 .wall-dimension { color: #68756f; }
 .dimension-line, .dimension-extension, .dimension-tick { stroke: currentColor; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .dimension-extension { opacity: .62; }
@@ -540,3 +541,34 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .full-floorplan-rooms button { width: 100%; margin-top: 8px; }
 .embedded-floorplan-importer { margin-top: 18px; border-top: 1px solid var(--line); }
 @media (max-width: 900px) { .full-floorplan-toolbar { align-items: flex-start; flex-direction: column; } .full-floorplan-workspace { grid-template-columns: 1fr; } .full-floorplan-rooms { border-left: 0; border-top: 1px solid var(--line); } }
+.full-plan-shell { display: grid; grid-template-columns: 220px minmax(0,1fr) 220px; gap: 14px; padding: 18px; background: var(--paper); }
+.full-plan-controls, .full-plan-rooms, .full-plan-canvas-card { border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.96); box-shadow: 0 12px 30px rgba(20,39,31,.07); }
+.full-plan-controls, .full-plan-rooms { align-self: start; padding: 16px; }
+.step-badge { display: grid; place-items: center; width: 27px; height: 27px; margin-bottom: 9px; border-radius: 50%; background: var(--deep); color: white; font: 700 11px var(--font-mono); }
+.full-plan-controls h2, .full-plan-rooms h2 { margin: 0 0 13px; font-size: 17px; }
+.full-plan-controls button, .full-plan-rooms button { width: 100%; margin-bottom: 7px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: white; font: 650 9px var(--font-mono); }
+.full-plan-controls button.active, .full-plan-controls button.finish, .full-plan-controls button.recognise, .full-plan-rooms > button { border-color: var(--deep); background: var(--deep); color: white; }
+.full-plan-controls button.danger { border-color: #b5524c; color: #9a2f2a; background: #fff1ef; }
+.full-plan-controls hr { margin: 10px 0; border: 0; border-top: 1px solid var(--line); }
+.full-plan-controls small { display: block; overflow: hidden; margin: 3px 0 8px; color: var(--muted); text-overflow: ellipsis; }
+.full-plan-help { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.full-plan-canvas-card { min-width: 0; overflow: hidden; }
+.full-plan-canvas-card > header { display: flex; justify-content: space-between; align-items: end; padding: 14px 17px; border-bottom: 1px solid var(--line); }
+.full-plan-canvas-card h1 { margin: 2px 0 0; font-size: 20px; }
+.full-plan-canvas-card header > span { color: var(--muted); font: 600 9px var(--font-mono); }
+.full-plan-canvas { position: relative; height: min(70vh,700px); min-height: 540px; background: #eef2ee; overflow: hidden; }
+.full-plan-canvas > img, .full-plan-canvas > embed { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; border: 0; opacity: .58; pointer-events: none; }
+.full-plan-canvas > svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.full-wall-outer, .full-wall-inner { fill: none; stroke-linejoin: miter; stroke-linecap: square; vector-effect: non-scaling-stroke; }
+.full-wall-outer { stroke: var(--deep); stroke-width: 12; }
+.full-wall-inner { stroke: rgba(255,255,255,.92); stroke-width: 5; }
+.full-wall-outer.draft { stroke: #d28718; stroke-dasharray: 8 5; }
+.full-wall-inner.draft { stroke: #fff6df; stroke-dasharray: 8 5; }
+.full-plan-canvas g.removable { cursor: pointer; }
+.full-plan-canvas g.removable:hover .full-wall-outer { stroke: #b53a34; }
+.full-plan-rooms > p { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.full-plan-rooms > div:not(.step-badge) { display: grid; gap: 4px; margin-bottom: 7px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.full-plan-rooms > div.selected { border-color: var(--deep); box-shadow: inset 0 0 0 1px var(--deep); }
+.full-plan-rooms input { min-width: 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; font-weight: 650; }
+.full-plan-rooms small { color: var(--muted); }
+@media (max-width: 1050px) { .full-plan-shell { grid-template-columns: 190px minmax(0,1fr); } .full-plan-rooms { grid-column: 1 / -1; } }
