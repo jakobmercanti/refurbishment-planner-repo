@@ -1,0 +1,540 @@
+"use client";
+
+import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
+import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import type { Opening, Point2D, ProjectFloorplanResponse } from "@/lib/types";
+
+type Wall = { id: string; points: Point2D[] };
+type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string };
+type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE";
+type SegmentSelection = { wallId: string; segmentIndex: number };
+type PointSelection = { wallId: string; pointIndex: number };
+type FullOpening = {
+  id: string; kind: "DOOR" | "WINDOW"; wallId: string; segmentIndex: number;
+  offset: number; width: number; height: number; sill: number;
+  hingeSide: "START" | "END"; doorType: "SINGLE" | "DOUBLE"; opensInward: boolean;
+};
+type Snapshot = { walls: Wall[]; openings: FullOpening[] };
+type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; finished: boolean; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean };
+interface Props { apiUrl: string; displayUnits: DisplayUnits; onOpenRoom: (name: string, vertices: Point2D[], openings: Opening[]) => void; }
+
+const DEFAULT_SIZE = { width: 1100, height: 700 };
+const SNAP = 50;
+const STORAGE_KEY = "renovation-fit:complete-floorplan:v2";
+const RECTANGLE_TEMPLATE: Point2D[] = [{ x: 0, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 1800 }, { x: 0, y: 1800 }];
+const L_SHAPE_TEMPLATES: Array<{ id: string; name: string; preview: string; points: Point2D[] }> = [
+  { id: "NOTCH_TOP_RIGHT", name: "Notch top right", preview: "polygon(0 0, 69% 0, 69% 36%, 100% 36%, 100% 100%, 0 100%)", points: [{ x: 0, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 1800 }, { x: 2200, y: 1800 }, { x: 2200, y: 2800 }, { x: 0, y: 2800 }] },
+  { id: "NOTCH_BOTTOM_RIGHT", name: "Notch bottom right", preview: "polygon(0 0, 100% 0, 100% 64%, 69% 64%, 69% 100%, 0 100%)", points: [{ x: 0, y: 0 }, { x: 2200, y: 0 }, { x: 2200, y: 1000 }, { x: 3200, y: 1000 }, { x: 3200, y: 2800 }, { x: 0, y: 2800 }] },
+  { id: "NOTCH_TOP_LEFT", name: "Notch top left", preview: "polygon(31% 0, 100% 0, 100% 100%, 0 100%, 0 36%, 31% 36%)", points: [{ x: 0, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 2800 }, { x: 1000, y: 2800 }, { x: 1000, y: 1800 }, { x: 0, y: 1800 }] },
+  { id: "NOTCH_BOTTOM_LEFT", name: "Notch bottom left", preview: "polygon(0 0, 100% 0, 100% 100%, 31% 100%, 31% 64%, 0 64%)", points: [{ x: 1000, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 2800 }, { x: 0, y: 2800 }, { x: 0, y: 1000 }, { x: 1000, y: 1000 }] },
+];
+const cloneWalls = (walls: Wall[]) => walls.map((wall) => ({ ...wall, points: wall.points.map((point) => ({ ...point })) }));
+const cloneOpenings = (openings: FullOpening[]) => openings.map((opening) => ({ ...opening }));
+const samePoint = (a: Point2D, b: Point2D, tolerance = 1) => Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
+const MIN_ENCLOSED_AREA_MM2 = 10_000;
+
+function hasMinimumEnclosedArea(points: Point2D[]): boolean {
+  const closed = points.length >= 4 && samePoint(points[0], points.at(-1)!);
+  if (!closed) return true;
+  const outline = points.slice(0, -1);
+  const twiceArea = outline.reduce((total, point, index) => {
+    const next = outline[(index + 1) % outline.length];
+    return total + point.x * next.y - next.x * point.y;
+  }, 0);
+  return Math.abs(twiceArea) / 2 >= MIN_ENCLOSED_AREA_MM2;
+}
+const segmentLength = (wall: Wall, index: number) => Math.hypot(wall.points[index + 1].x - wall.points[index].x, wall.points[index + 1].y - wall.points[index].y);
+const parentKey = (wallId: string, segmentIndex: number) => `${wallId}::${segmentIndex}`;
+
+function pointOnSegment(point: Point2D, start: Point2D, end: Point2D): { point: Point2D; along: number } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return { point: { ...start }, along: 0 };
+  const along = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  return { point: { x: start.x + dx * along, y: start.y + dy * along }, along };
+}
+
+function snapPoint(point: Point2D, walls: Wall[], enabled: boolean, increment: number): Point2D {
+  const nearby = walls.flatMap((wall) => wall.points).find((candidate) => Math.hypot(candidate.x - point.x, candidate.y - point.y) <= 14);
+  return nearby ?? (enabled ? { x: Math.round(point.x / increment) * increment, y: Math.round(point.y / increment) * increment } : point);
+}
+
+function squareWallPoints(points: Point2D[]): Point2D[] {
+  if (points.length < 2) return points.map((point) => ({ ...point }));
+  const closed = samePoint(points[0], points.at(-1)!);
+  const core = closed ? points.slice(0, -1) : points;
+  if (core.length < 2) return points.map((point) => ({ ...point }));
+  const firstHorizontal = Math.abs(core[1].x - core[0].x) >= Math.abs(core[1].y - core[0].y);
+  const alternating = closed && core.length % 2 === 0;
+  const squared = [{ ...core[0] }];
+  for (let index = 1; index < core.length; index += 1) {
+    const source = core[index]; const previous = squared[index - 1];
+    const horizontal = alternating ? (index % 2 === 1 ? firstHorizontal : !firstHorizontal) : Math.abs(source.x - previous.x) >= Math.abs(source.y - previous.y);
+    squared.push(horizontal ? { x: source.x, y: previous.y } : { x: previous.x, y: source.y });
+  }
+  if (alternating) { const last = squared.length - 1; squared[last] = firstHorizontal ? { ...squared[last], x: squared[0].x } : { ...squared[last], y: squared[0].y }; }
+  return closed ? [...squared, { ...squared[0] }] : squared;
+}
+
+function squareDrawPoint(from: Point2D, requested: Point2D): Point2D {
+  return Math.abs(requested.x - from.x) >= Math.abs(requested.y - from.y)
+    ? { x: requested.x, y: from.y }
+    : { x: from.x, y: requested.y };
+}
+
+function orthogonalPathTo(points: Point2D[], target: Point2D): Point2D[] {
+  const last = points.at(-1);
+  if (!last || samePoint(last, target)) return points;
+  if (last.x === target.x || last.y === target.y) return [...points, target];
+  const horizontalFirst = Math.abs(target.x - last.x) >= Math.abs(target.y - last.y);
+  const turn = horizontalFirst ? { x: target.x, y: last.y } : { x: last.x, y: target.y };
+  return [...points, turn, target];
+}
+
+function moveSquaredWallPoint(points: Point2D[], index: number, next: Point2D): Point2D[] {
+  const closed = points.length > 2 && samePoint(points[0], points.at(-1)!);
+  const core = closed ? points.slice(0, -1) : points;
+  if (!core[index]) return points.map((point) => ({ ...point }));
+  const squared = core.map((point) => ({ ...point }));
+  squared[index] = { ...next };
+  (["x", "y"] as const).forEach((axis) => {
+    const usesVerticalWall = axis === "x";
+    const queue = [index]; const visited = new Set<number>(queue);
+    while (queue.length) {
+      const current = queue.shift()!;
+      const candidates = [
+        ...(current > 0 || closed ? [{ point: (current - 1 + core.length) % core.length, segment: (current - 1 + core.length) % core.length }] : []),
+        ...(current < core.length - 1 || closed ? [{ point: (current + 1) % core.length, segment: current }] : []),
+      ];
+      for (const candidate of candidates) {
+        const start = core[candidate.segment]; const end = core[(candidate.segment + 1) % core.length];
+        const horizontal = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y);
+        if ((usesVerticalWall && horizontal) || (!usesVerticalWall && !horizontal) || visited.has(candidate.point)) continue;
+        squared[candidate.point][axis] = next[axis]; visited.add(candidate.point); queue.push(candidate.point);
+      }
+    }
+  });
+  return closed ? [...squared, { ...squared[0] }] : squared;
+}
+
+function closedRooms(walls: Wall[], height: number): NamedOutline[] {
+  return walls.filter((wall) => wall.points.length >= 4 && samePoint(wall.points[0], wall.points.at(-1)!, 16)).map((wall, index) => ({
+    id: `project-room-${index + 1}`,
+    name: `Room ${index + 1}`,
+    sourceWallId: wall.id,
+    vertices: wall.points.slice(0, -1).map((point) => ({ x: point.x, y: height - point.y })),
+  }));
+}
+
+function roomOpenings(room: NamedOutline, openings: FullOpening[]): Opening[] {
+  const measurement = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
+  return openings.filter((opening) => opening.wallId === room.sourceWallId).map((opening) => ({
+    id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(opening.segmentIndex + 1).padStart(3, "0")}`,
+    offset_mm: opening.offset, width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0,
+    ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}),
+  }));
+}
+
+export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props) {
+  const [walls, setWalls] = useState<Wall[]>([]);
+  const [openings, setOpenings] = useState<FullOpening[]>([]);
+  const [history, setHistory] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
+  const [draft, setDraft] = useState<Point2D[]>([]);
+  const [tool, setTool] = useState<Tool>("SELECT");
+  const [lShapePickerOpen, setLShapePickerOpen] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [snapSize, setSnapSize] = useState(SNAP);
+  const [squaredWalls, setSquaredWalls] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<Point2D>({ x: 0, y: 0 });
+  const [selectedSegment, setSelectedSegment] = useState<SegmentSelection | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<PointSelection | null>(null);
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [canvasSize, setCanvasSize] = useState(DEFAULT_SIZE);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
+  const [rooms, setRooms] = useState<NamedOutline[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [openingKind, setOpeningKind] = useState<"DOOR" | "WINDOW">("DOOR");
+  const [openingParent, setOpeningParent] = useState("");
+  const [openingOffset, setOpeningOffset] = useState(100);
+  const [openingWidth, setOpeningWidth] = useState(800);
+  const [openingHeight, setOpeningHeight] = useState(2040);
+  const [windowSill, setWindowSill] = useState(900);
+  const [doorType, setDoorType] = useState<"SINGLE" | "DOUBLE">("SINGLE");
+  const [hingeSide, setHingeSide] = useState<"START" | "END">("START");
+  const [opensInward, setOpensInward] = useState(true);
+  const [openingError, setOpeningError] = useState<string | null>(null);
+  const [restored, setRestored] = useState(false);
+  const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
+  const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
+
+  const selectedRoom = useMemo(() => rooms.find((room) => room.id === selectedRoomId) ?? rooms[0] ?? null, [rooms, selectedRoomId]);
+  const segmentOptions = useMemo(() => walls.flatMap((wall, wallIndex) => wall.points.slice(0, -1).map((_, segmentIndex) => ({ key: parentKey(wall.id, segmentIndex), label: `Wall ${wallIndex + 1}.${segmentIndex + 1}`, wall, segmentIndex }))), [walls]);
+  const selectedWall = selectedSegment ? walls.find((wall) => wall.id === selectedSegment.wallId) ?? null : null;
+  const coordinateWall = selectedWall ?? walls[0] ?? null;
+  const coordinatePoints = coordinateWall?.points.slice(0, samePoint(coordinateWall.points[0], coordinateWall.points.at(-1)!) ? -1 : undefined) ?? [];
+  const viewport = useMemo(() => {
+    const geometry = [...walls.flatMap((wall) => wall.points), ...draft];
+    const points = sourceUrl ? [...geometry, { x: 0, y: 0 }, { x: canvasSize.width, y: canvasSize.height }] : geometry;
+    const xs = points.map((point) => point.x); const ys = points.map((point) => point.y);
+    const span = points.length > 1 ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) : 1000;
+    return createFloorPlanViewport(points, Math.max(120, span * .17));
+  }, [canvasSize.height, canvasSize.width, draft, sourceUrl, walls]);
+  const zoomedViewport = scaleFloorPlanViewport(lockedViewport ?? viewport, zoom);
+  const activeViewport = { ...zoomedViewport, offsetX: zoomedViewport.offsetX + pan.x, offsetY: zoomedViewport.offsetY + pan.y };
+  const toScreen = (point: Point2D) => floorPlanToScreen(point, activeViewport);
+
+  useEffect(() => () => { if (sourceUrl) URL.revokeObjectURL(sourceUrl); }, [sourceUrl]);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as PersistedFloorplan;
+        setWalls(cloneWalls(saved.walls ?? [])); setOpenings(cloneOpenings(saved.openings ?? []));
+        setCanvasSize(saved.canvasSize ?? DEFAULT_SIZE); setFinished(Boolean(saved.finished));
+        setRooms(saved.rooms ?? []); setSelectedRoomId(saved.selectedRoomId ?? null);
+        setSnapEnabled(saved.snapEnabled ?? true); setSnapSize(saved.snapSize ?? SNAP); setSquaredWalls(saved.squaredWalls ?? false);
+      }
+    } catch { /* Ignore a damaged browser draft and start clean. */ }
+    setRestored(true);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!restored) return;
+    const value: PersistedFloorplan = { walls, openings, canvasSize, finished, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+  }, [canvasSize, finished, openings, restored, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, walls]);
+
+  useEffect(() => {
+    const leaveCornerMode = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || tool !== "ADD_CORNERS") return;
+      setTool("SELECT");
+      setSelectedSegment(null);
+      setSelectedPoint(null);
+      setLockedViewport(null);
+    };
+    window.addEventListener("keydown", leaveCornerMode);
+    return () => window.removeEventListener("keydown", leaveCornerMode);
+  }, [tool]);
+
+  function snapshot(): Snapshot { return { walls: cloneWalls(walls), openings: cloneOpenings(openings) }; }
+  function invalidateCompletion() { setFinished(false); setRooms([]); setSelectedRoomId(null); }
+  function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); invalidateCompletion(); }
+  function restore(value: Snapshot) { setWalls(cloneWalls(value.walls)); setOpenings(cloneOpenings(value.openings)); setDraft([]); setSelectedSegment(null); setSelectedPoint(null); invalidateCompletion(); }
+  function undo() { const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous); }
+  function redo() { const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next); }
+
+  function canvasPoint(event: ReactPointerEvent<SVGSVGElement>, attachToWalls = true): Point2D {
+    return canvasPointFromClient(event.clientX, event.clientY, event.currentTarget, attachToWalls);
+  }
+
+  function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
+    if (event.button !== 1) return;
+    event.preventDefault(); event.stopPropagation();
+    panDrag.current = { clientX: event.clientX, clientY: event.clientY, pan: { ...pan } };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function canvasPointFromClient(clientX: number, clientY: number, svg: SVGSVGElement, attachToWalls = true): Point2D {
+    const mapped = floorPlanFromClient(clientX, clientY, svg, activeViewport);
+    const gridPoint = snapEnabled ? { x: Math.round(mapped.x / snapSize) * snapSize, y: Math.round(mapped.y / snapSize) * snapSize } : mapped;
+    return attachToWalls ? snapPoint(gridPoint, walls, snapEnabled, snapSize) : gridPoint;
+  }
+
+  function commitDraft(points = draft) {
+    if (points.length >= 2) { record(); setWalls((current) => [...current, { id: crypto.randomUUID(), points: squaredWalls ? squareWallPoints(points) : points }]); }
+    setDraft([]); setLockedViewport(null);
+  }
+
+  function connectDraftToWall(wallId: string, segmentIndex: number, requested: Point2D) {
+    const wall = walls.find((item) => item.id === wallId);
+    const start = wall?.points[segmentIndex]; const end = wall?.points[segmentIndex + 1];
+    if (!start || !end) return;
+    const point = pointOnSegment(requested, start, end).point;
+    if (draft.length) commitDraft(squaredWalls ? orthogonalPathTo(draft, point) : [...draft, point]);
+    else setDraft([point]);
+    setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null);
+  }
+
+  function clearImportedDrawing() {
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    setSourceUrl(null); setSourceFile(null); setCanvasSize(DEFAULT_SIZE); setImportError(null);
+  }
+
+  function applyTemplate(points: Point2D[]) {
+    record();
+    clearImportedDrawing();
+    const outline = [...points.map((point) => ({ ...point })), { ...points[0] }];
+    setWalls([{ id: crypto.randomUUID(), points: squaredWalls ? squareWallPoints(outline) : outline }]);
+    setOpenings([]); setDraft([]); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null); setLockedViewport(null); setLShapePickerOpen(false);
+  }
+
+  function newOutline() {
+    record();
+    clearImportedDrawing();
+    setWalls([]); setOpenings([]); setDraft([]); setTool("DRAW"); setSelectedSegment(null); setSelectedPoint(null); setLockedViewport(viewport); setLShapePickerOpen(false);
+  }
+
+  function removeSegment(wallId: string, segmentIndex: number) {
+    const wall = walls.find((item) => item.id === wallId);
+    if (!wall || !wall.points[segmentIndex + 1]) return;
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    record();
+    if (closed) {
+      const core = wall.points.slice(0, -1);
+      const count = core.length;
+      const remaining = Array.from({ length: count }, (_, index) => core[(segmentIndex + 1 + index) % count]);
+      setWalls((current) => current.map((item) => item.id === wallId ? { ...item, points: remaining.map((point) => ({ ...point })) } : item));
+      setOpenings((current) => current.filter((opening) => !(opening.wallId === wallId && opening.segmentIndex === segmentIndex)).map((opening) => {
+        if (opening.wallId !== wallId) return opening;
+        return { ...opening, segmentIndex: (opening.segmentIndex - (segmentIndex + 1) + count) % count };
+      }));
+    } else {
+      const firstRun = wall.points.slice(0, segmentIndex + 1);
+      const secondRun = wall.points.slice(segmentIndex + 1);
+      const secondId = crypto.randomUUID();
+      setWalls((current) => current.flatMap((item) => item.id !== wallId ? [item] : [
+        ...(firstRun.length >= 2 ? [{ ...item, points: firstRun.map((point) => ({ ...point })) }] : []),
+        ...(secondRun.length >= 2 ? [{ id: secondId, points: secondRun.map((point) => ({ ...point })) }] : []),
+      ]));
+      setOpenings((current) => current.filter((opening) => !(opening.wallId === wallId && opening.segmentIndex === segmentIndex)).map((opening) => {
+        if (opening.wallId !== wallId || opening.segmentIndex < segmentIndex) return opening;
+        return { ...opening, wallId: secondId, segmentIndex: opening.segmentIndex - segmentIndex - 1 };
+      }));
+    }
+    setSelectedSegment(null); setSelectedPoint(null); setOpeningParent("");
+  }
+
+  function insertPointAt(wallId: string, segmentIndex: number, requested?: Point2D) {
+    const wall = walls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const start = wall.points[segmentIndex]; const end = wall.points[segmentIndex + 1];
+    if (!start || !end) return;
+    const projected = pointOnSegment(requested ?? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }, start, end);
+    if (projected.along <= .015 || projected.along >= .985) return;
+    const inserted = projected.point;
+    record();
+    setWalls((current) => current.map((item) => {
+      if (item.id !== wallId) return item;
+      const points = [...item.points.slice(0, segmentIndex + 1), inserted, ...item.points.slice(segmentIndex + 1)];
+      return { ...item, points: squaredWalls ? squareWallPoints(points) : points };
+    }));
+    setOpenings((current) => current.filter((opening) => !(opening.wallId === wallId && opening.segmentIndex === segmentIndex)).map((opening) => opening.wallId === wallId && opening.segmentIndex > segmentIndex ? { ...opening, segmentIndex: opening.segmentIndex + 1 } : opening));
+    setSelectedPoint({ wallId, pointIndex: segmentIndex + 1 });
+    setSelectedSegment({ wallId, segmentIndex: segmentIndex + 1 });
+  }
+
+  function insertPoint() {
+    if (!selectedSegment) return;
+    insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex);
+  }
+
+  function deletePoint() {
+    if (!selectedPoint) return;
+    const wall = walls.find((item) => item.id === selectedPoint.wallId); if (!wall) return;
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!); const unique = closed ? wall.points.length - 1 : wall.points.length;
+    if (unique <= (closed ? 3 : 2)) return;
+    record();
+    setWalls((current) => current.map((item) => {
+      if (item.id !== wall.id) return item;
+      const core = closed ? item.points.slice(0, -1) : [...item.points]; core.splice(selectedPoint.pointIndex, 1);
+      const points = closed ? [...core, { ...core[0] }] : core;
+      return { ...item, points: squaredWalls ? squareWallPoints(points) : points };
+    }));
+    setOpenings((current) => current.filter((opening) => opening.wallId !== wall.id)); setSelectedPoint(null); setSelectedSegment(null);
+  }
+
+  function beginPointDrag(event: ReactPointerEvent<SVGCircleElement>, selection: PointSelection) {
+    if (tool !== "SELECT") return;
+    event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    pointDrag.current = { selection, before: snapshot() }; setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null);
+  }
+
+  function movePoint(event: ReactPointerEvent<SVGSVGElement>) {
+    const panStart = panDrag.current;
+    if (panStart) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setPan({ x: panStart.pan.x + (event.clientX - panStart.clientX) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: panStart.pan.y + (event.clientY - panStart.clientY) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height });
+      return;
+    }
+    if (!pointDrag.current) return;
+    const { selection } = pointDrag.current; const next = canvasPoint(event, false);
+    setWalls((current) => current.map((wall) => {
+      if (wall.id !== selection.wallId) return wall;
+      if (squaredWalls) {
+        const points = moveSquaredWallPoint(wall.points, selection.pointIndex, next);
+        return hasMinimumEnclosedArea(points) ? { ...wall, points } : wall;
+      }
+      const points = wall.points.map((point) => ({ ...point })); const closed = samePoint(points[0], points.at(-1)!);
+      points[selection.pointIndex] = next; if (closed && selection.pointIndex === 0) points[points.length - 1] = { ...next };
+      return hasMinimumEnclosedArea(points) ? { ...wall, points } : wall;
+    }));
+  }
+
+  function finishPointDrag() {
+    if (panDrag.current) { panDrag.current = null; return; }
+    if (!pointDrag.current) return;
+    const before = pointDrag.current.before; pointDrag.current = null; setLockedViewport(null); record(before);
+    setOpenings((current) => current.filter((opening) => {
+      const wall = walls.find((item) => item.id === opening.wallId);
+      return Boolean(wall && wall.points[opening.segmentIndex + 1] && opening.offset + opening.width <= segmentLength(wall, opening.segmentIndex));
+    }));
+  }
+
+  function selectSegment(wallId: string, segmentIndex: number) {
+    if (tool === "REMOVE") { removeSegment(wallId, segmentIndex); return; }
+    if (tool === "ADD_CORNERS") { setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); return; }
+    if (tool !== "SELECT") return;
+    setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setOpeningParent(parentKey(wallId, segmentIndex));
+  }
+
+  function updateCoordinatePoint(wallId: string, pointIndex: number, next: Point2D) {
+    record();
+    setWalls((current) => current.map((wall) => {
+      if (wall.id !== wallId) return wall;
+      const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+      if (squaredWalls) {
+        const points = moveSquaredWallPoint(wall.points, pointIndex, next);
+        return hasMinimumEnclosedArea(points) ? { ...wall, points } : wall;
+      }
+      const points = wall.points.map((point) => ({ ...point }));
+      points[pointIndex] = { ...next };
+      if (closed && pointIndex === 0) points[points.length - 1] = { ...next };
+      return hasMinimumEnclosedArea(points) ? { ...wall, points } : wall;
+    }));
+  }
+
+  function saveOpening() {
+    setOpeningError(null);
+    const option = segmentOptions.find((item) => item.key === openingParent);
+    if (!option) { setOpeningError("Select a wall in the drawing first."); return; }
+    const length = segmentLength(option.wall, option.segmentIndex);
+    if (openingWidth <= 0 || openingOffset < 0 || openingOffset + openingWidth > length) { setOpeningError(`The opening must fit within this ${formatLength(length, displayUnits)} wall.`); return; }
+    if (openings.some((item) => item.wallId === option.wall.id && item.segmentIndex === option.segmentIndex && openingOffset < item.offset + item.width && openingOffset + openingWidth > item.offset)) { setOpeningError("This opening overlaps another door or window."); return; }
+    record();
+    setOpenings((current) => [...current, { id: crypto.randomUUID(), kind: openingKind, wallId: option.wall.id, segmentIndex: option.segmentIndex, offset: openingOffset, width: openingWidth, height: openingHeight, sill: openingKind === "WINDOW" ? windowSill : 0, hingeSide, doorType, opensInward }]);
+  }
+
+  async function importDrawing(file?: File) {
+    if (!file) return;
+    setSourceFile(file); if (sourceUrl) URL.revokeObjectURL(sourceUrl); setSourceUrl(URL.createObjectURL(file)); setImporting(true); setImportError(null);
+    try {
+      const response = await fetch(`${apiUrl}/project-floorplan/detect`, { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "X-Filename": file.name, "X-Gap-Closure": "0.15" }, body: await file.arrayBuffer() });
+      const payload = await response.json() as ProjectFloorplanResponse | { detail?: string };
+      if (!response.ok) throw new Error("detail" in payload ? payload.detail : "The drawing could not be recognised.");
+      const result = payload as ProjectFloorplanResponse; record(); setCanvasSize({ width: result.source_width_px, height: result.source_height_px });
+      setWalls(result.rooms.map((room) => {
+        const points = [...room.vertices.map((point) => ({ x: point.x, y: result.source_height_px - point.y })), { x: room.vertices[0].x, y: result.source_height_px - room.vertices[0].y }];
+        return { id: room.id, points: squaredWalls ? squareWallPoints(points) : points };
+      }));
+      setOpenings([]); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null);
+    } catch (reason) { setImportError(reason instanceof Error ? reason.message : "The drawing could not be recognised."); }
+    finally { setImporting(false); }
+  }
+
+  function recogniseRooms() {
+    const names = new Map(rooms.map((room) => [room.sourceWallId, room.name]));
+    const found = closedRooms(walls, canvasSize.height).map((room) => ({ ...room, name: names.get(room.sourceWallId) ?? room.name }));
+    setFinished(true); setRooms(found); setSelectedRoomId(found[0]?.id ?? null); setTool("SELECT");
+  }
+
+  const help = tool === "DRAW" ? "Click an existing wall to start or finish a connected wall run. Elsewhere, click consecutive points; double-click or right-click to finish." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
+  const vertexCount = walls.reduce((total, wall) => total + wall.points.length - (samePoint(wall.points[0], wall.points.at(-1)!) ? 1 : 0), 0);
+  const sourceTopLeft = toScreen({ x: 0, y: canvasSize.height }); const sourceBottomRight = toScreen({ x: canvasSize.width, y: 0 });
+
+  const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Doors and windows">
+    <div className="tool-heading"><span>+</span><h2>Add doors & windows</h2></div><p className="tool-note">Choose a wall, then add or remove openings without leaving the plan.</p>
+    <div className="mode-switch" role="group" aria-label="Full floorplan opening type"><button className={openingKind === "DOOR" ? "active" : ""} onClick={() => { setOpeningKind("DOOR"); setOpeningHeight(2040); }}>Door</button><button className={openingKind === "WINDOW" ? "active" : ""} onClick={() => { setOpeningKind("WINDOW"); setOpeningHeight(900); }}>Window</button></div>
+    <label className="field"><span>Parent wall</span><select value={openingParent} onChange={(event) => setOpeningParent(event.target.value)}><option value="">Select a wall…</option>{segmentOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
+    <div className="coordinate-fields"><label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label><label className="field"><span>Width <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingWidth} units={displayUnits} onMmChange={setOpeningWidth} /></label><label className="field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingHeight} units={displayUnits} onMmChange={setOpeningHeight} /></label>{openingKind === "WINDOW" && <label className="field"><span>Sill <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={windowSill} units={displayUnits} onMmChange={setWindowSill} /></label>}</div>
+    {openingKind === "DOOR" && <><label className="check-row double-door-choice"><input type="checkbox" checked={doorType === "DOUBLE"} onChange={(event) => setDoorType(event.target.checked ? "DOUBLE" : "SINGLE")} /><span><strong>Double door</strong></span></label><div className="coordinate-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div></>}
+    {openingError && <p className="inline-error">{openingError}</p>}<button className="primary-small" onClick={saveOpening}>Add {openingKind === "DOOR" ? doorType === "DOUBLE" ? "double door" : "door" : "window"}</button>
+    {openings.length > 0 && <div className="full-opening-list">{openings.map((opening) => <div key={opening.id}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small>{formatLength(opening.width, displayUnits)}</small><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => { record(); setOpenings((current) => current.filter((item) => item.id !== opening.id)); }}>×</button></div>)}</div>}
+  </section>;
+
+  return <section className="editor-page full-plan-page">
+    <div className="editor-intro"><div><span className="eyebrow">Complete floorplan · {UNIT_LABEL[displayUnits]}</span><h1>Draw the complete floorplan</h1></div><p>Use the same measured-plan editor for the whole building, with additional wall and room tools.</p></div>
+    <div className="editor-layout full-plan-layout">
+      <aside className="editor-tools full-plan-controls">
+        <section className="tool-section"><div className="tool-heading"><span>1</span><h2>Build floorplan</h2></div>
+          <div className="button-grid">
+            <button onClick={() => applyTemplate(RECTANGLE_TEMPLATE)}>Rectangle</button>
+            <button className={lShapePickerOpen ? "active" : ""} aria-expanded={lShapePickerOpen} aria-controls="full-l-shape-picker" onClick={() => setLShapePickerOpen((current) => !current)}>L-shape</button>
+            <button onClick={newOutline}>New outline</button>
+            <button className={tool === "SELECT" ? "active" : ""} onClick={() => { setTool("SELECT"); setDraft([]); setLockedViewport(null); }}>Modify</button>
+          </div>
+          {lShapePickerOpen && <div className="l-shape-picker" id="full-l-shape-picker"><div><span>Choose the L orientation</span><button type="button" aria-label="Close L-shape chooser" onClick={() => setLShapePickerOpen(false)}>×</button></div><p>Select the position of the internal notch. You can reshape every wall afterwards.</p><div className="l-shape-options">{L_SHAPE_TEMPLATES.map((template) => <button key={template.id} type="button" onClick={() => applyTemplate(template.points)}><span className="l-shape-thumbnail"><i style={{ clipPath: template.preview }} /></span><strong>{template.name}</strong></button>)}</div></div>}
+          <div className="button-grid editor-history-row"><button onClick={undo} disabled={!history.length}>↶ Undo</button><button onClick={redo} disabled={!future.length}>↷ Redo</button></div>
+          <div className="button-grid full-plan-action-row" role="group" aria-label="Wall tools"><button className={tool === "DRAW" ? "active" : ""} onClick={() => { setTool("DRAW"); setDraft([]); setLockedViewport(viewport); setSelectedSegment(null); setSelectedPoint(null); }}>Add wall</button><button className={tool === "REMOVE" ? "active danger-button" : "danger-button"} onClick={() => { if (selectedSegment) { removeSegment(selectedSegment.wallId, selectedSegment.segmentIndex); return; } setTool("REMOVE"); setDraft([]); setLockedViewport(null); setSelectedPoint(null); }}>Remove wall</button></div>
+          <div className="button-grid full-plan-action-row" role="group" aria-label="Corner tools"><button className={tool === "ADD_CORNERS" ? "active" : ""} onClick={() => { const firstWall = walls[0]; setTool("ADD_CORNERS"); setDraft([]); setLockedViewport(viewport); setSelectedPoint(null); setSelectedSegment((current) => current ?? (firstWall ? { wallId: firstWall.id, segmentIndex: 0 } : null)); }}>Add corners</button><button className="danger-button" disabled={!selectedPoint} onClick={deletePoint}>Remove corner</button></div>
+          <div className="plan-constraint-controls">
+            <label className="snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to grid – <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput className="snap-size-input" minMm={1} valueMm={snapSize} units={displayUnits} disabled={!snapEnabled} onMmChange={setSnapSize} /></label>
+            <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => { const next = event.target.checked; setSquaredWalls(next); if (next) { record(); setWalls((current) => current.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) }))); } }} /><span><strong>Square walls</strong><small>Keep every wall horizontal or vertical while editing.</small></span></label>
+          </div>
+          <p className={`full-plan-help ${tool === "REMOVE" ? "danger-help" : ""}`}>{help}</p>
+          {tool === "SELECT" && selectedSegment && selectedWall && <div className="selected-properties"><div className="tool-heading"><span>W</span><h2>Selected wall</h2></div><strong>Segment {selectedSegment.segmentIndex + 1}</strong><small>{formatLength(segmentLength(selectedWall, selectedSegment.segmentIndex), displayUnits)}</small><button className="primary-small" onClick={insertPoint}>Add point at midpoint</button><button className="danger-button" onClick={() => removeSegment(selectedWall.id, selectedSegment.segmentIndex)}>Remove this wall segment</button></div>}
+          {tool === "SELECT" && selectedPoint && <div className="selected-properties"><div className="tool-heading"><span>V</span><h2>Selected corner</h2></div><small>Drag the corner directly on the plan.</small><button className="danger-button" onClick={deletePoint}>Remove this corner</button></div>}
+        </section>
+        <section className="tool-section"><div className="tool-heading"><span>2</span><h2>Import drawing</h2></div><p className="tool-note">Use a PDF, PNG, JPG, or WEBP as an editable tracing reference.</p><button className="primary-small secondary-action" onClick={() => fileInput.current?.click()}>{importing ? "Importing…" : "Import PDF or image"}</button><input ref={fileInput} hidden type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => { void importDrawing(event.target.files?.[0]); event.target.value = ""; }} />{sourceFile && <><small>{sourceFile.name}</small><button className="danger-button secondary-action" type="button" onClick={clearImportedDrawing}>Remove imported drawing</button></>}{importError && <p className="project-error">{importError}</p>}</section>
+      </aside>
+
+      <main className="drawing-column full-plan-drawing">
+        <div className="resizable-floorplan-window">
+        <div className="drawing-toolbar"><span>{help}</span><div className="drawing-zoom" role="group" aria-label="Drawing zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom and pan" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><strong>{vertexCount} vertices · {walls.length} wall run{walls.length === 1 ? "" : "s"}</strong></div>
+        <div className="full-plan-canvas">{sourceUrl && sourceFile?.type === "application/pdf" && <embed src={sourceUrl} type="application/pdf" />}
+          <FloorPlanCanvas className={`mode-${tool.toLowerCase()}`} showGrid={!sourceUrl} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onPointerDownCapture={beginPan} onPointerMove={movePoint} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
+            if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
+            if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { if (event.target === event.currentTarget && tool === "SELECT") { setSelectedSegment(null); setSelectedPoint(null); setOpeningParent(""); setOpeningError(null); } return; }
+            const requested = canvasPoint(event); const point = squaredWalls && draft.length ? squareDrawPoint(draft.at(-1)!, requested) : requested; const touches = walls.some((wall) => wall.points.some((candidate) => samePoint(candidate, requested, 14))); const closes = draft.length >= 3 && samePoint(requested, draft[0], 16);
+            if ((touches && draft.length) || closes) { commitDraft(squaredWalls ? orthogonalPathTo(draft, closes ? draft[0] : requested) : [...draft, closes ? draft[0] : point]); return; }
+            setDraft((current) => current.length && squaredWalls ? [...current, squareDrawPoint(current.at(-1)!, requested)] : [...current, requested]);
+          }} onDoubleClick={(event) => { event.preventDefault(); if (draft.length) commitDraft(); }} onContextMenu={(event) => { event.preventDefault(); if (draft.length) commitDraft(); }}>
+            {sourceUrl && sourceFile?.type !== "application/pdf" && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
+            {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import an existing drawing</text><text x="410" y="292">Both floorplan modes now use the same scale, dimensions, and handles.</text></g>}
+            {rooms.map((room, index) => {
+              const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); const centre = outline.reduce((total, point) => ({ x: total.x + point.x / outline.length, y: total.y + point.y / outline.length }), { x: 0, y: 0 });
+              return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} /><text x={centre.x} y={centre.y}>{room.name}</text></g>;
+            })}
+            {walls.map((wall) => {
+              const closed = samePoint(wall.points[0], wall.points.at(-1)!); const modelPoints = closed ? wall.points.slice(0, -1) : wall.points; const screenPoints = modelPoints.map(toScreen); const centre = screenPoints.reduce((total, point) => ({ x: total.x + point.x / screenPoints.length, y: total.y + point.y / screenPoints.length }), { x: 0, y: 0 });
+              const dimensions = wall.points.slice(0, -1).map((modelStart, segmentIndex) => {
+                const modelEnd = wall.points[segmentIndex + 1]; const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y) || 1; const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const offset = 78; const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * 10, y: (first.y + second.y) / 2 + outward.y * 10 };
+                return <g key={`${wall.id}-dimension-${segmentIndex}`} className="wall-dimension"><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
+              });
+              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{closed && <polygon points={screenPoints.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />}{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
+            })}
+            {draft.length > 0 && <polyline points={draft.map(toScreen).map((point) => `${point.x},${point.y}`).join(" ")} className="full-wall-draft" />}
+            {openings.map((opening) => {
+              const wall = walls.find((item) => item.id === opening.wallId); const modelStart = wall?.points[opening.segmentIndex]; const modelEnd = wall?.points[opening.segmentIndex + 1]; if (!wall || !modelStart || !modelEnd) return null;
+              const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y); if (!length || opening.offset + opening.width > length) return null;
+              const unit = { x: (modelEnd.x - modelStart.x) / length, y: (modelEnd.y - modelStart.y) / length }; const first = toScreen({ x: modelStart.x + unit.x * opening.offset, y: modelStart.y + unit.y * opening.offset }); const second = toScreen({ x: modelStart.x + unit.x * (opening.offset + opening.width), y: modelStart.y + unit.y * (opening.offset + opening.width) }); const pixelLength = Math.hypot(second.x - first.x, second.y - first.y) || 1; const tangent = { x: (second.x - first.x) / pixelLength, y: (second.y - first.y) / pixelLength }; const direction = opening.opensInward ? 1 : -1; const normal = { x: -tangent.y * direction, y: tangent.x * direction }; const jamb = 7;
+              const selectOpening = (event: ReactPointerEvent<SVGGElement>) => { event.stopPropagation(); setTool("SELECT"); setSelectedSegment({ wallId: opening.wallId, segmentIndex: opening.segmentIndex }); setOpeningParent(parentKey(opening.wallId, opening.segmentIndex)); };
+              if (opening.kind === "WINDOW") return <g key={opening.id} className="opening-symbol window-symbol pickable-opening" onPointerDown={selectOpening}><line className="opening-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="opening-gap" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="window-frame" x1={first.x + normal.x * 4} y1={first.y + normal.y * 4} x2={second.x + normal.x * 4} y2={second.y + normal.y * 4} /><line className="window-core" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="window-frame" x1={first.x - normal.x * 4} y1={first.y - normal.y * 4} x2={second.x - normal.x * 4} y2={second.y - normal.y * 4} /></g>;
+              const hinge = opening.hingeSide === "END" ? second : first; const closedEnd = opening.hingeSide === "END" ? first : second; const leafLength = opening.width * activeViewport.scale; const leaf = { x: hinge.x + normal.x * leafLength, y: hinge.y + normal.y * leafLength }; const sweep = opening.hingeSide === "END" ? 0 : 1;
+              return <g key={opening.id} className="opening-symbol door-symbol pickable-opening" onPointerDown={selectOpening}><line className="opening-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="opening-gap" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="opening-jamb" x1={first.x - normal.x * jamb} y1={first.y - normal.y * jamb} x2={first.x + normal.x * jamb} y2={first.y + normal.y * jamb} /><line className="opening-jamb" x1={second.x - normal.x * jamb} y1={second.y - normal.y * jamb} x2={second.x + normal.x * jamb} y2={second.y + normal.y * jamb} />{opening.doorType === "DOUBLE" ? <><line className="door-leaf" x1={first.x} y1={first.y} x2={first.x + normal.x * leafLength / 2} y2={first.y + normal.y * leafLength / 2} /><line className="door-leaf" x1={second.x} y1={second.y} x2={second.x + normal.x * leafLength / 2} y2={second.y + normal.y * leafLength / 2} /></> : <><line className="door-closed-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="door-leaf" x1={hinge.x} y1={hinge.y} x2={leaf.x} y2={leaf.y} /><path className="door-swing" d={`M ${leaf.x} ${leaf.y} A ${leafLength} ${leafLength} 0 0 ${sweep} ${closedEnd.x} ${closedEnd.y}`} /></>}</g>;
+            })}
+            <g className="vertex-layer">{walls.flatMap((wall, wallIndex) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""}`} onPointerDown={(event) => beginPointDrag(event, { wallId: wall.id, pointIndex })} /><text className="vertex-label" x={point.x} y={point.y + 3}>{wallIndex === 0 ? pointIndex + 1 : `${wallIndex + 1}.${pointIndex + 1}`}</text></g>; }); })}</g>
+            {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r="7" className="full-plan-draft-node" />; })}
+          </FloorPlanCanvas>
+        </div><div className="drawing-scale"><span>Coordinates and dimensions shown in {UNIT_LABEL[displayUnits]} · calculations remain millimetre-authoritative</span><span>Shared floorplan engine auto-fits the complete plan</span></div>
+        </div>
+      </main>
+
+      <aside className="coordinate-panel full-plan-side-column">
+        <section className="tool-section"><div className="tool-heading"><span>3</span><h2>Coordinates</h2></div><p className="tool-note">{coordinateWall ? "Each fixed corner label matches the numbered point on the drawing. Edit only the X and Y values." : "Add a wall run to edit its numbered corner coordinates."}</p><div className="coordinate-input-list" aria-label={`Selected wall coordinates in ${UNIT_LABEL[displayUnits]}`}>{coordinateWall && coordinatePoints.map((point, index) => <div key={`${coordinateWall.id}-coordinate-${index}`}><span className="coordinate-prefix">{index + 1} -</span><DisplayNumberInput aria-label={`Corner ${index + 1} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(coordinateWall.id, index, { ...point, x: value })} /><span className="coordinate-comma">,</span><DisplayNumberInput aria-label={`Corner ${index + 1} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(coordinateWall.id, index, { ...point, y: value })} /></div>)}</div></section>
+        <section className="tool-section full-plan-rooms"><div className="tool-heading"><span>4</span><h2>Recognise rooms</h2></div><p className="tool-note">Finish the connected wall layout, then detect and name each closed room.</p><button className="primary-small" disabled={!walls.length || Boolean(draft.length)} onClick={recogniseRooms}>{rooms.length ? "Recognise rooms again" : "Recognise rooms"}</button>{finished && rooms.length === 0 && <p className="inline-error">No closed room outlines were found. Close each room boundary before recognising.</p>}{rooms.map((room) => <div key={room.id} className={selectedRoom?.id === room.id ? "selected" : ""} onClick={() => setSelectedRoomId(room.id)}><input aria-label={`${room.name} name`} value={room.name} onClick={(event) => event.stopPropagation()} onChange={(event) => setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name: event.target.value } : item))} /><small>{room.vertices.length} walls · {roomOpenings(room, openings).length} openings</small></div>)}<button className="primary-small secondary-action" disabled={!selectedRoom} onClick={() => selectedRoom && onOpenRoom(selectedRoom.name, selectedRoom.vertices, roomOpenings(selectedRoom, openings))}>Open selected room in 3D viewer</button></section>
+        {openingPanel}
+      </aside>
+    </div>
+  </section>;
+}
