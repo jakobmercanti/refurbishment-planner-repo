@@ -6,8 +6,8 @@ import { ApplicationMenuBar } from "@/components/ApplicationMenuBar";
 import { CatalogueBrowser } from "@/components/CatalogueBrowser";
 import { FixtureEditor } from "@/components/FixtureEditor";
 import { FloorPlanEditor } from "@/components/FloorPlanEditor";
+import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { PersonEditor } from "@/components/PersonEditor";
-import { ProjectFloorplanImporter } from "@/components/ProjectFloorplanImporter";
 import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
 import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes, WallViewMode } from "@/lib/types";
 import { formatLength, formatMeasurementText } from "@/lib/units";
@@ -16,7 +16,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function Home() {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
-  const [mode, setMode] = useState<"PROJECT" | "EDITOR" | "ANALYSIS">("PROJECT");
+  const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
+  const [floorplanMode, setFloorplanMode] = useState<"SINGLE" | "FULL">("SINGLE");
+  const [projectRooms, setProjectRooms] = useState<Room[]>([]);
   const [layoutResult, setLayoutResult] = useState<LayoutResult | null>(null);
   const [runningAnalysis, setRunningAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -46,12 +48,18 @@ export default function Home() {
 
   function applyRoom(room: Room) {
     setDemo((current) => current ? { ...current, room } : current);
+    setProjectRooms((current) => current.some((item) => item.id === room.id) ? current.map((item) => item.id === room.id ? room : item) : [...current, room]);
     invalidateAnalysis();
     setMode("ANALYSIS");
   }
 
   function openDetectedRoom(name: string, vertices: import("@/lib/types").Point2D[]) {
-    setDemo((current) => current ? { ...current, room: { ...current.room, name, vertices, openings: [], obstacles: [], person_mockup: null, finishes: undefined, version: current.room.version + 1 } } : current);
+    setDemo((current) => {
+      if (!current) return current;
+      const room = { ...current.room, id: crypto.randomUUID(), name, vertices, openings: [], obstacles: [], person_mockup: null, finishes: undefined, version: current.room.version + 1 };
+      setProjectRooms((rooms) => [...rooms, room]);
+      return { ...current, room };
+    });
     invalidateAnalysis();
     setMode("EDITOR");
   }
@@ -145,20 +153,16 @@ export default function Home() {
       <header className="topbar">
         <div className="app-identity"><div className="brand"><span className="brand-mark">RF</span><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} personPanelVisible={personPanelVisible} wallMode={wallMode} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={togglePersonPanel} onWallModeChange={setWallMode} onOpenSettings={() => setSettingsOpen(true)} /></div>
         <nav className="app-nav" aria-label="Project workflow">
-          <button className={mode === "PROJECT" ? "active" : ""} onClick={() => setMode("PROJECT")}>1 · Project floorplan</button>
-          <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>2 · Floor plan</button>
-          <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>3 · Fit analysis</button>
+          <button className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>1 · Floorplan</button>
+          <button className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>2 · 3D viewer</button>
         </nav>
         <div className="truth-badge"><span className="truth-dot" />Deterministic engine · {{ MM: "mm", CM: "cm", INCHES: "in", FEET: "ft", METERS: "m" }[preferences.units]}</div>
       </header>
 
-      <div hidden={mode !== "PROJECT"}>
-        <ProjectFloorplanImporter apiUrl={API_URL} displayUnits={preferences.units} onOpenRoom={openDetectedRoom} />
-      </div>
       {mode === "EDITOR" ? (
-        <FloorPlanEditor room={demo.room} apiUrl={API_URL} displayUnits={preferences.units} onApply={applyRoom} onCancel={() => setMode("ANALYSIS")} />
+        <section className="floorplan-mode-shell"><div className="floorplan-mode-toggle"><button className={floorplanMode === "SINGLE" ? "active" : ""} onClick={() => setFloorplanMode("SINGLE")}>Single room</button><button className={floorplanMode === "FULL" ? "active" : ""} onClick={() => setFloorplanMode("FULL")}>Full floorplan</button></div>{floorplanMode === "SINGLE" ? <FloorPlanEditor room={demo.room} apiUrl={API_URL} displayUnits={preferences.units} onApply={applyRoom} onCancel={() => setMode("ANALYSIS")} /> : <FullFloorplanEditor apiUrl={API_URL} displayUnits={preferences.units} onOpenRoom={openDetectedRoom} />}</section>
       ) : mode === "ANALYSIS" ? (
-        <section className="workspace">
+        <><div className="viewer-room-selector"><label>Room <select value={demo.room.id} onChange={(event) => { const room = projectRooms.find((item) => item.id === event.target.value); if (room) setDemo((current) => current ? { ...current, room } : current); }}><option value={demo.room.id}>{demo.room.name}</option>{projectRooms.filter((room) => room.id !== demo.room.id).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div><section className="workspace">
           <aside className="evidence-panel">
             <div className="eyebrow">Engineering analysis</div>
             <h1>Plan fixtures and furniture</h1>
@@ -206,7 +210,7 @@ export default function Home() {
             <EngineeringViewer room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} />
             <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
           </section>
-        </section>
+        </section></>
       ) : null}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
       <SettingsDialog open={settingsOpen} preferences={preferences} onChange={setPreferences} onClose={() => setSettingsOpen(false)} />
