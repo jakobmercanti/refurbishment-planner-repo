@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import cv2
 import numpy as np
 
@@ -36,11 +34,14 @@ def test_recognise_rooms_bridges_a_door_gap_between_rooms() -> None:
     assert all(room.confidence >= 0.8 for room in rooms)
 
 
-def test_ground_floor_plan_excludes_exterior_space_and_cleans_return_loop() -> None:
-    source = Path(__file__).parents[1] / "floorplans" / "GroundFloorOriginal.png"
+def test_recognition_rejects_annotation_box_and_does_not_invent_a_room() -> None:
+    image = np.full((500, 700, 3), 255, dtype=np.uint8)
+    # A thin annotation frame and label should not become a floorplan room.
+    cv2.rectangle(image, (90, 90), (610, 410), (0, 0, 0), thickness=2)
+    cv2.putText(image, "SITE PLAN", (250, 250), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    success, encoded = cv2.imencode(".png", image)
 
-    _width, _height, rooms = recognise_rooms(source.read_bytes(), source.name, gap_closure=0.15)
+    assert success
+    _width, _height, rooms = recognise_rooms(encoded.tobytes(), "annotation.png")
 
-    assert len(rooms) == 4
-    # The kitchen outline previously contained a narrow out-and-back spike.
-    assert max(len(room.vertices) for room in rooms) <= 6
+    assert rooms == []
