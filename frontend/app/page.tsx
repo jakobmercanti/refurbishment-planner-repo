@@ -61,6 +61,7 @@ export default function Home() {
       return { ...current, room };
     });
     invalidateAnalysis();
+    setFloorplanMode("SINGLE");
     setMode("EDITOR");
   }
 
