@@ -879,17 +879,23 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
           return { ...wall, points };
         }
         // Explicit anchors are created when a wall starts or finishes on this segment.
-        // They are rigid constraints, not a proximity guess, so attached room corners
-        // keep following the host wall after any number of edits.
+        // Resolve every anchored point from the host segment itself instead of moving it
+        // from its previous coordinates. That keeps a junction rigid and repairs a
+        // legacy corner that has already drifted slightly away from its host wall.
         const attachments = { ...wall.attachments };
         const points = wall.points.map((point, pointIndex) => {
           const attachment = wall.attachments?.[pointIndex];
-          if (attachment?.wallId === activeWall.wallId && attachment.segmentIndex === activeWall.segmentIndex) return { x: point.x + normal.x * distance, y: point.y + normal.y * distance };
+          if (attachment?.wallId === activeWall.wallId && attachment.segmentIndex === activeWall.segmentIndex) {
+            const along = Math.max(0, Math.min(1, attachment.along));
+            return { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
+          }
           const projection = pointOnInfiniteLine(point, start, end);
           const isEndpoint = pointIndex === 0 || pointIndex === wall.points.length - 1;
-          if (isEndpoint && Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance) {
-            attachments[pointIndex] = { wallId: activeWall.wallId, segmentIndex: activeWall.segmentIndex, along: projection.along };
-            return { x: point.x + normal.x * distance, y: point.y + normal.y * distance };
+          const isOnHostSegment = projection.along >= -.02 && projection.along <= 1.02;
+          if (isEndpoint && isOnHostSegment && Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance) {
+            const along = Math.max(0, Math.min(1, projection.along));
+            attachments[pointIndex] = { wallId: activeWall.wallId, segmentIndex: activeWall.segmentIndex, along };
+            return { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
           }
           return { ...point };
         });
