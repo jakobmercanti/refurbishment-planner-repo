@@ -876,18 +876,21 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
           points[endIndex] = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
           if (closed && activeWall.segmentIndex === 0) points[points.length - 1] = { ...points[0] };
           if (closed && endIndex === points.length - 1) points[0] = { ...points[endIndex] };
-          return { ...wall, points: squaredWalls ? squareWallPoints(points) : points };
+          return { ...wall, points };
         }
         // Explicit anchors are created when a wall starts or finishes on this segment.
         // Resolve every anchored point from the host segment itself instead of moving it
         // from its previous coordinates. That keeps a junction rigid and repairs a
         // legacy corner that has already drifted slightly away from its host wall.
         const attachments = { ...wall.attachments };
-        const points = wall.points.map((point, pointIndex) => {
+        let points = wall.points.map((point) => ({ ...point }));
+        wall.points.forEach((point, pointIndex) => {
           const attachment = wall.attachments?.[pointIndex];
           if (attachment?.wallId === activeWall.wallId && attachment.segmentIndex === activeWall.segmentIndex) {
             const along = Math.max(0, Math.min(1, attachment.along));
-            return { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
+            const target = { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
+            points = squaredWalls ? moveSquaredWallPoint(points, pointIndex, target) : points.map((candidate, index) => index === pointIndex ? target : candidate);
+            return;
           }
           const projection = pointOnInfiniteLine(point, start, end);
           const isEndpoint = pointIndex === 0 || pointIndex === wall.points.length - 1;
@@ -895,14 +898,11 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
           if (isEndpoint && isOnHostSegment && Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance) {
             const along = Math.max(0, Math.min(1, projection.along));
             attachments[pointIndex] = { wallId: activeWall.wallId, segmentIndex: activeWall.segmentIndex, along };
-            return { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
+            const target = { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
+            points = squaredWalls ? moveSquaredWallPoint(points, pointIndex, target) : points.map((candidate, index) => index === pointIndex ? target : candidate);
           }
-          return { ...point };
         });
-          // Moving an anchored end of another wall can move a whole connected run.
-          // Re-square that run so Square walls does not reject an otherwise valid
-          // vertical/horizontal wall translation.
-          return { ...wall, points: squaredWalls ? squareWallPoints(points) : points, attachments: Object.keys(attachments).length ? attachments : undefined };
+        return { ...wall, points, attachments: Object.keys(attachments).length ? attachments : undefined };
         }).map((wall) => ({ ...wall, points: samePoint(wall.points[0], wall.points.at(-1)!) ? [...wall.points.slice(0, -1), { ...wall.points[0] }] : wall.points }));
         const preservesConstraints = nextWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
         return preservesConstraints ? nextWalls : current;
