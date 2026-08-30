@@ -372,18 +372,18 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const selectedWall = selectedSegment ? walls.find((wall) => wall.id === selectedSegment.wallId) ?? null : null;
   const selectedPointWall = selectedPoint ? walls.find((wall) => wall.id === selectedPoint.wallId) ?? null : null;
   const selectedPointValue = selectedPointWall && selectedPoint ? selectedPointWall.points[selectedPoint.pointIndex] : null;
-  const coordinateEntries = walls.flatMap((wall) => {
-    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
-    const points = wall.points.slice(0, closed ? -1 : undefined);
-    const start = wallVertexStarts.get(wall.id) ?? 1;
-    return points.map((point, index) => ({ wall, point, pointIndex: index, cornerNumber: start + index }));
-  });
   const detectedRooms = useMemo(() => closedRooms(walls, canvasSize.height), [canvasSize.height, walls]);
   const wallVertexStarts = useMemo(() => {
     const starts = new Map<string, number>(); let next = 1;
     walls.forEach((wall) => { starts.set(wall.id, next); next += wall.points.length - (samePoint(wall.points[0], wall.points.at(-1)!) ? 1 : 0); });
     return starts;
   }, [walls]);
+  const coordinateEntries = walls.flatMap((wall) => {
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    const points = wall.points.slice(0, closed ? -1 : undefined);
+    const start = wallVertexStarts.get(wall.id) ?? 1;
+    return points.map((point, index) => ({ wall, point, pointIndex: index, cornerNumber: start + index }));
+  });
   const viewport = useMemo(() => {
     const geometry = [...walls.flatMap((wall) => wall.points), ...draft];
     const points = sourceUrl ? [...geometry, { x: 0, y: 0 }, { x: canvasSize.width, y: canvasSize.height }] : geometry;
