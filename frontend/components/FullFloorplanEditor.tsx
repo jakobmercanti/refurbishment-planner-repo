@@ -392,7 +392,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     pointDrag.current = { selection, before: snapshot() }; setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null);
   }
 
-  function beginOpeningDrag(event: ReactPointerEvent<SVGGElement>, opening: FullOpening) {
+  function beginOpeningDrag(event: ReactPointerEvent<SVGElement>, opening: FullOpening) {
     if (event.button !== 0) return;
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     openingDrag.current = { openingId: opening.id, before: snapshot() };

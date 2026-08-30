@@ -19,7 +19,7 @@ type OpeningProps = {
   toScreen: (point: Point2D) => Point2D;
   displayUnits: DisplayUnits;
   selected?: boolean;
-  onPointerDown?: (event: ReactPointerEvent<SVGGElement>) => void;
+  onPointerDown?: (event: ReactPointerEvent<SVGElement>) => void;
 };
 
 function arcPath(centre: Point2D, start: Point2D, end: Point2D): string {
@@ -72,9 +72,9 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
     const half = opening.width / 2;
     const firstLeaf = toScreen({ x: startModel.x + modelNormal.x * half, y: startModel.y + modelNormal.y * half });
     const secondLeaf = toScreen({ x: endModel.x + modelNormal.x * half, y: endModel.y + modelNormal.y * half });
-    return <g className={`opening-symbol double-door-symbol pickable-opening${className}`} onPointerDown={onPointerDown}>
+    return <g className={`opening-symbol double-door-symbol pickable-opening${className}`}>
       <title>{`Double door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
-      <path className="opening-hit-area" d={`${sectorPath(start, centre, firstLeaf)} ${sectorPath(end, centre, secondLeaf)}`} />
+      <path className="opening-hit-area" d={`${sectorPath(start, centre, firstLeaf)} ${sectorPath(end, centre, secondLeaf)}`} onPointerDown={onPointerDown} />
       <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="opening-hit" x1={start.x} y1={start.y} x2={firstLeaf.x} y2={firstLeaf.y} />
       <line className="opening-hit" x1={end.x} y1={end.y} x2={secondLeaf.x} y2={secondLeaf.y} />
@@ -93,9 +93,9 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   const hingeModel = hingeAtStart ? startModel : endModel;
   const hinge = hingeAtStart ? start : end; const closedEnd = hingeAtStart ? end : start;
   const leaf = toScreen({ x: hingeModel.x + modelNormal.x * opening.width, y: hingeModel.y + modelNormal.y * opening.width });
-  return <g className={`opening-symbol door-symbol pickable-opening${className}`} onPointerDown={onPointerDown}>
+  return <g className={`opening-symbol door-symbol pickable-opening${className}`}>
     <title>{`Door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
-    <path className="opening-hit-area" d={sectorPath(hinge, closedEnd, leaf)} />
+    <path className="opening-hit-area" d={sectorPath(hinge, closedEnd, leaf)} onPointerDown={onPointerDown} />
     <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
     <line className="opening-hit" x1={hinge.x} y1={hinge.y} x2={leaf.x} y2={leaf.y} />
     <path className="opening-swing-hit" d={arcPath(hinge, closedEnd, leaf)} />
