@@ -1,6 +1,6 @@
 "use client";
 
-import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
 import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
@@ -239,16 +239,23 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
   }, [canvasSize, finished, openings, restored, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, walls]);
 
+  const commitActiveDraft = useEffectEvent(() => commitDraft());
   useEffect(() => {
-    const leaveCornerMode = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || tool !== "ADD_CORNERS") return;
-      setTool("SELECT");
-      setSelectedSegment(null);
-      setSelectedPoint(null);
-      setLockedViewport(null);
+    const finishActiveTool = (event: KeyboardEvent) => {
+      if (tool === "DRAW" && (event.key === "Enter" || event.key === "Escape")) {
+        event.preventDefault();
+        commitActiveDraft();
+        return;
+      }
+      if (event.key === "Escape" && tool === "ADD_CORNERS") {
+        setTool("SELECT");
+        setSelectedSegment(null);
+        setSelectedPoint(null);
+        setLockedViewport(null);
+      }
     };
-    window.addEventListener("keydown", leaveCornerMode);
-    return () => window.removeEventListener("keydown", leaveCornerMode);
+    window.addEventListener("keydown", finishActiveTool);
+    return () => window.removeEventListener("keydown", finishActiveTool);
   }, [tool]);
 
   function snapshot(): Snapshot { return { walls: cloneWalls(walls), openings: cloneOpenings(openings) }; }
@@ -277,7 +284,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
 
   function commitDraft(points = draft) {
     if (points.length >= 2) { record(); setWalls((current) => [...current, { id: crypto.randomUUID(), points: squaredWalls ? squareWallPoints(points) : points }]); }
-    setDraft([]); setLockedViewport(null);
+    setDraft([]); setTool("SELECT"); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null);
   }
 
   function connectDraftToWall(wallId: string, segmentIndex: number, requested: Point2D) {
@@ -590,7 +597,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
 
   function cancelRoomRecognition() { setFinished(false); setRooms([]); setSelectedRoomId(null); setRoomValidation(null); setRoomValidationError(null); }
 
-  const help = tool === "DRAW" ? "Click an existing wall to start or finish a connected wall run. Elsewhere, click consecutive points; double-click or right-click to finish." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
+  const help = tool === "DRAW" ? "Click an existing wall to start or finish a connected wall run. Double-click, right-click, Enter, or Esc also confirms the run and exits Add wall." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
   const vertexCount = walls.reduce((total, wall) => total + wall.points.length - (samePoint(wall.points[0], wall.points.at(-1)!) ? 1 : 0), 0);
   const sourceTopLeft = toScreen({ x: 0, y: canvasSize.height }); const sourceBottomRight = toScreen({ x: canvasSize.width, y: 0 });
 
@@ -641,7 +648,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
             const requested = canvasPoint(event); const point = squaredWalls && draft.length ? squareDrawPoint(draft.at(-1)!, requested) : requested; const touches = walls.some((wall) => wall.points.some((candidate) => samePoint(candidate, requested, 14))); const closes = draft.length >= 3 && samePoint(requested, draft[0], 16);
             if ((touches && draft.length) || closes) { commitDraft(squaredWalls ? orthogonalPathTo(draft, closes ? draft[0] : requested) : [...draft, closes ? draft[0] : point]); return; }
             setDraft((current) => current.length && squaredWalls ? [...current, squareDrawPoint(current.at(-1)!, requested)] : [...current, requested]);
-          }} onDoubleClick={(event) => { event.preventDefault(); if (draft.length) commitDraft(); }} onContextMenu={(event) => { event.preventDefault(); if (draft.length) commitDraft(); }}>
+          }} onDoubleClick={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }}>
             {sourceUrl && sourceFile?.type !== "application/pdf" && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
             {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import an existing drawing</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
             {rooms.map((room, index) => {
