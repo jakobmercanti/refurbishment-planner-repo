@@ -758,7 +758,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
       <button type="button" role="menuitem" onClick={() => setContextMenu(null)}>Modify</button>
       <button type="button" role="menuitem" className="danger-button" onClick={() => { const target = contextMenu; setContextMenu(null); if (target.kind === "WALL") removeSegment(target.wallId, target.segmentIndex); else deletePointAt(target); }}>Delete</button>
     </div>}
-    <div className="editor-intro"><div><span className="eyebrow">Complete floorplan · {UNIT_LABEL[displayUnits]}</span><h1>Draw the complete floorplan</h1></div><p>Use the same measured-plan editor for the whole building, with additional wall and room tools.</p></div>
+    <div className="editor-intro"><h1>Draw the complete floorplan</h1><p className="editor-context-help">{help}</p></div>
     <div className="editor-layout full-plan-layout">
       <aside className="editor-tools full-plan-controls">
         <section className="tool-section"><div className="tool-heading"><span>1</span><h2>Build floorplan</h2></div>
@@ -786,7 +786,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
 
       <main className="drawing-column full-plan-drawing">
         <div className="resizable-floorplan-window">
-        <div className="drawing-toolbar"><span>{help}</span><div className="drawing-zoom" role="group" aria-label="Drawing zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom and pan" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><strong>{vertexCount} vertices · {walls.length} wall run{walls.length === 1 ? "" : "s"}</strong></div>
+        <div className="drawing-toolbar"><div className="drawing-zoom" role="group" aria-label="Drawing zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom and pan" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><strong>{vertexCount} vertices · {walls.length} wall run{walls.length === 1 ? "" : "s"}</strong></div>
         <div className="full-plan-canvas">{sourceUrl && sourceFile?.type === "application/pdf" && <embed src={sourceUrl} type="application/pdf" />}
           <FloorPlanCanvas className={`mode-${tool.toLowerCase()}`} showGrid={!sourceUrl} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onPointerDownCapture={beginPan} onPointerMove={movePoint} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
