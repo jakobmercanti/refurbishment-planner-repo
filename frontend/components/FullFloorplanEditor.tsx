@@ -623,7 +623,12 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     const wall = walls.find((item) => item.id === wallId);
     const start = wall?.points[segmentIndex]; const end = wall?.points[segmentIndex + 1];
     if (!start || !end) return;
-    const point = pointOnSegment(requested, start, end).point;
+    const projected = pointOnSegment(requested, start, end).point;
+    // Finishing on an existing wall endpoint must reuse that endpoint. Without this
+    // small snap, a close click can leave a tiny sliver and create an unwanted extra
+    // numbered corner beside the existing junction.
+    const endpointTolerance = snapEnabled ? Math.max(8, snapSize * 0.5) : 8;
+    const point = Math.hypot(projected.x - start.x, projected.y - start.y) <= endpointTolerance ? { ...start } : Math.hypot(projected.x - end.x, projected.y - end.y) <= endpointTolerance ? { ...end } : projected;
     if (draft.length) commitDraft(squaredWalls ? orthogonalPathTo(draft, point) : [...draft, point]);
     else setDraft([point]);
     setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null);
