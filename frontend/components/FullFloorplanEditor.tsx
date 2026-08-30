@@ -570,7 +570,6 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   function openMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, id: string) {
-    if (!measurementEditEnabled) return;
     event.preventDefault(); event.stopPropagation();
     setContextMenu(null); setSelectedMeasurement(`custom:${id}`);
     setMeasurementContextMenu({ id, custom: true, x: event.clientX, y: event.clientY });
@@ -600,9 +599,20 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   function openAutoMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, selection: SegmentSelection) {
-    if (!measurementEditEnabled) return;
     event.preventDefault(); event.stopPropagation(); setContextMenu(null); setSelectedMeasurement(`auto:${selection.wallId}:${selection.segmentIndex}`);
     setMeasurementContextMenu({ id: `${selection.wallId}:${selection.segmentIndex}`, custom: false, x: event.clientX, y: event.clientY });
+  }
+
+  function changeAutoMeasurementValue(id: string) {
+    const separator = id.lastIndexOf(":");
+    const wallId = id.slice(0, separator); const segmentIndex = Number(id.slice(separator + 1));
+    const wall = walls.find((item) => item.id === wallId); const start = wall?.points[segmentIndex]; const end = wall?.points[segmentIndex + 1];
+    const current = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0;
+    const entered = window.prompt("New wall length (mm)", current ? String(Math.round(current * 10) / 10) : ""); const value = Number(entered);
+    if (!wall || !start || !end || !current || !Number.isFinite(value) || value <= 0) { setMeasurementContextMenu(null); return; }
+    const next = { x: start.x + (end.x - start.x) * value / current, y: start.y + (end.y - start.y) * value / current };
+    updateCoordinatePoint(wallId, segmentIndex + 1, next);
+    setMeasurementContextMenu(null);
   }
 
   function deleteSelectedMeasurement() {
@@ -800,7 +810,6 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   function openWallContextMenu(event: ReactMouseEvent<SVGLineElement>, selection: SegmentSelection) {
-    if (tool !== "SELECT") return;
     event.preventDefault(); event.stopPropagation();
     setSelectedSegment(selection); setSelectedPoint(null); setSelectedOpeningId(null); setWallLengthInput(null);
     setOpeningParent(parentKey(selection.wallId, selection.segmentIndex));
@@ -808,7 +817,6 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   function openPointContextMenu(event: ReactMouseEvent<SVGCircleElement>, selection: PointSelection) {
-    if (tool !== "SELECT") return;
     event.preventDefault(); event.stopPropagation();
     setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null);
     setContextMenu({ kind: "POINT", ...selection, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
@@ -1122,6 +1130,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "NORMAL")}>Normal direction</button>
       <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "HORIZONTAL")}>Horizontal dimension only</button>
       <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "VERTICAL")}>Vertical dimension only</button></>}
+      {!measurementContextMenu.custom && <button type="button" role="menuitem" onClick={() => changeAutoMeasurementValue(measurementContextMenu.id)}>Change wall length…</button>}
       <button type="button" role="menuitem" className="danger-button" onClick={() => deleteMeasurement(measurementContextMenu.id, measurementContextMenu.custom)}>{measurementContextMenu.custom ? "Delete measurement" : "Hide measurement"}</button>
     </div>}
     {openingContextMenu && <div className="floorplan-context-menu" role="menu" aria-label="Opening actions" style={{ left: openingContextMenu.x, top: openingContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
