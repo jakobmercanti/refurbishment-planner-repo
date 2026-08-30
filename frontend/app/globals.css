@@ -526,7 +526,19 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .traditional-floorplan .canvas-background { fill: white; }
 .traditional-floorplan .wall-body, .traditional-floorplan .wall-line, .traditional-floorplan .opening-gap, .traditional-floorplan .opening-jamb, .traditional-floorplan .door-leaf, .traditional-floorplan .door-swing, .traditional-floorplan .window-frame, .traditional-floorplan .window-core, .traditional-floorplan .window-jamb { stroke: #151515; }
 .traditional-floorplan .wall-line { stroke-width: 5; }
-.traditional-floorplan .full-room-highlight { display: none; }
+.traditional-floorplan .vertex-layer { opacity: 0; }
+.traditional-floorplan .vertex-label, .traditional-floorplan .wall-dimension, .traditional-floorplan .opening-dimension { display: none; }
+.traditional-floorplan .full-room-highlight polygon { display: none; }
+.traditional-floorplan .full-room-highlight { cursor: default; }
+.traditional-floorplan .room-name-editor input { color: #151515; font-family: Arial, sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+.traditional-floorplan .opening-gap { stroke: white; stroke-width: 12; }
+.traditional-floorplan .opening-jamb { stroke-width: 1.4; }
+.traditional-floorplan .door-closed-line { display: none; }
+.traditional-floorplan .door-leaf { stroke: #606060; stroke-width: 1.15; }
+.traditional-floorplan .door-swing { stroke: #777; stroke-width: 1; stroke-dasharray: none; }
+.traditional-floorplan .window-frame { stroke: #151515; stroke-width: 1.25; }
+.traditional-floorplan .window-core { stroke: #777; stroke-width: .8; }
+.traditional-floorplan .window-jamb { stroke-width: 1.2; }
 .traditional-floorplan .wall-label, .traditional-floorplan .opening-dimension-label { fill: #151515; }
 .floorplan-export-dialog { width: min(420px,calc(100vw - 32px)); display: grid; gap: 13px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 20px 55px rgba(20,39,31,.24); }
 .floorplan-export-dialog header, .floorplan-export-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
