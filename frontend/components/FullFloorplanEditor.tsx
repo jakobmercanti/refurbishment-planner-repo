@@ -7,7 +7,7 @@ import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeni
 import { formatArea, formatLength, formatMeasurementText, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room, RoomValidationResponse } from "@/lib/types";
 
-type WallAttachment = { wallId: string; segmentIndex: number; along: number };
+type WallAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean };
 type Wall = { id: string; points: Point2D[]; attachments?: Record<number, WallAttachment> };
 type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[] };
 type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE" | "MEASURE" | "ADD_MEASURE";
@@ -377,14 +377,14 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const detectedRooms = useMemo(() => closedRooms(walls, canvasSize.height), [canvasSize.height, walls]);
   const wallVertexStarts = useMemo(() => {
     const starts = new Map<string, number>(); let next = 1;
-    walls.forEach((wall) => { starts.set(wall.id, next); next += wall.points.length - (samePoint(wall.points[0], wall.points.at(-1)!) ? 1 : 0); });
+    walls.forEach((wall) => { starts.set(wall.id, next); next += wall.points.slice(0, samePoint(wall.points[0], wall.points.at(-1)!) ? -1 : undefined).filter((_, index) => !wall.attachments?.[index]?.hideCorner).length; });
     return starts;
   }, [walls]);
   const coordinateEntries = walls.flatMap((wall) => {
     const closed = samePoint(wall.points[0], wall.points.at(-1)!);
     const points = wall.points.slice(0, closed ? -1 : undefined);
     const start = wallVertexStarts.get(wall.id) ?? 1;
-    return points.map((point, index) => ({ wall, point, pointIndex: index, cornerNumber: start + index }));
+    return points.map((point, pointIndex) => ({ point, pointIndex })).filter(({ pointIndex }) => !wall.attachments?.[pointIndex]?.hideCorner).map(({ point, pointIndex }, visibleIndex) => ({ wall, point, pointIndex, cornerNumber: start + visibleIndex }));
   });
   const viewport = useMemo(() => {
     const geometry = [...walls.flatMap((wall) => wall.points), ...draft];
@@ -622,7 +622,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       const shapedPoints = squaredWalls ? squareWallPoints(points) : points;
       const attachments: Record<number, WallAttachment> = {};
       if (draftStartAttachment.current) attachments[0] = { ...draftStartAttachment.current };
-      if (endAttachment) attachments[shapedPoints.length - 1] = { ...endAttachment };
+      if (endAttachment) attachments[shapedPoints.length - 1] = { ...endAttachment, hideCorner: true };
       setWalls((current) => [...current, { id: crypto.randomUUID(), points: shapedPoints, attachments: Object.keys(attachments).length ? attachments : undefined }]);
     }
     draftStartAttachment.current = null; setDraft([]); setTool("SELECT"); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null);
@@ -1175,7 +1175,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
               const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward };
               return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} onContextMenu={(event) => openOpeningContextMenu(event, opening)} />;
             })}
-            <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "POINT" && reference.wallId === wall.id && reference.pointIndex === pointIndex); return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" || tool === "ADD_MEASURE" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { event.stopPropagation(); addMeasurementReference({ kind: "POINT", ...selection }); return; } beginPointDrag(event, selection); }} /><text className="vertex-label" x={point.x} y={point.y + 3}>{firstNumber + pointIndex}</text></g>; }); })}</g>
+            <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => ({ modelPoint, pointIndex })).filter(({ pointIndex }) => !wall.attachments?.[pointIndex]?.hideCorner).map(({ modelPoint, pointIndex }, visibleIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "POINT" && reference.wallId === wall.id && reference.pointIndex === pointIndex); return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" || tool === "ADD_MEASURE" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { event.stopPropagation(); addMeasurementReference({ kind: "POINT", ...selection }); return; } beginPointDrag(event, selection); }} /><text className="vertex-label" x={point.x} y={point.y + 3}>{firstNumber + visibleIndex}</text></g>; }); })}</g>
             {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r="7" className="full-plan-draft-node" />; })}
           </FloorPlanCanvas>
         </div><div className="drawing-scale"><span>Coordinates and dimensions shown in {UNIT_LABEL[displayUnits]} · calculations remain millimetre-authoritative</span><span>Shared floorplan engine auto-fits the complete plan</span></div>
