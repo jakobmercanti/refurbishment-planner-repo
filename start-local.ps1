@@ -42,7 +42,11 @@ $frontendLog = Join-Path $logRoot "frontend.log"
 if (Test-PortInUse 8000) {
   Write-Host "Backend already running at http://127.0.0.1:8000"
 } else {
-  $backendCommand = "Set-Location -LiteralPath '$projectRoot'; uv run uvicorn backend.app.main:app --reload *>&1 | Tee-Object -FilePath '$backendLog'"
+  # Keep uv's cache inside the project. The default user cache can be read-only
+  # on managed Windows profiles, which otherwise leaves the frontend showing a
+  # misleading API 500 while the backend process fails during startup.
+  $backendCache = Join-Path $projectRoot ".uv-cache"
+  $backendCommand = "`$env:UV_CACHE_DIR = '$backendCache'; Set-Location -LiteralPath '$projectRoot'; uv run uvicorn backend.app.main:app --reload *>&1 | Tee-Object -FilePath '$backendLog'"
   Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $backendCommand) -WindowStyle Hidden
   Write-Host "Starting backend at http://127.0.0.1:8000"
 }
