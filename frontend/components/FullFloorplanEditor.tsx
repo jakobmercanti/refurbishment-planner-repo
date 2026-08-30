@@ -17,6 +17,8 @@ type MeasurementDirection = "NORMAL" | "HORIZONTAL" | "VERTICAL";
 type CustomMeasurement = { id: string; first: MeasurementReference; second: MeasurementReference; offset: number; direction?: MeasurementDirection };
 type GeometryContextMenu = ({ kind: "WALL" } & SegmentSelection | { kind: "POINT" } & PointSelection) & { x: number; y: number };
 type MeasurementContextMenu = { id: string; x: number; y: number };
+type OpeningContextMenu = { id: string; x: number; y: number };
+type FixtureContextMenu = { id: string; x: number; y: number };
 type FullOpening = {
   id: string; kind: "DOOR" | "WINDOW"; wallId: string; segmentIndex: number;
   offset: number; width: number; height: number; sill: number;
@@ -263,14 +265,18 @@ function roomOpenings(room: NamedOutline, openings: FullOpening[], walls: Wall[]
   return openings.flatMap((opening) => {
     const wall = walls.find((item) => item.id === opening.wallId); const start = wall?.points[opening.segmentIndex]; const end = wall?.points[opening.segmentIndex + 1];
     if (!start || !end) return [];
+    const segmentLengthMm = Math.hypot(end.x - start.x, end.y - start.y); if (!segmentLengthMm) return [];
+    const unit = { x: (end.x - start.x) / segmentLengthMm, y: (end.y - start.y) / segmentLengthMm };
+    const openingStart = { x: start.x + unit.x * opening.offset, y: start.y + unit.y * opening.offset };
+    const openingEnd = { x: openingStart.x + unit.x * opening.width, y: openingStart.y + unit.y * opening.width };
     const edge = roomEdges.find((candidate) => {
-      const startProjection = pointOnSegment(start, candidate.start, candidate.end); const endProjection = pointOnSegment(end, candidate.start, candidate.end);
-      return Math.hypot(start.x - startProjection.point.x, start.y - startProjection.point.y) <= 1 && Math.hypot(end.x - endProjection.point.x, end.y - endProjection.point.y) <= 1;
+      const startProjection = pointOnSegment(openingStart, candidate.start, candidate.end); const endProjection = pointOnSegment(openingEnd, candidate.start, candidate.end);
+      return Math.hypot(openingStart.x - startProjection.point.x, openingStart.y - startProjection.point.y) <= 1 && Math.hypot(openingEnd.x - endProjection.point.x, openingEnd.y - endProjection.point.y) <= 1;
     });
     if (!edge) return [];
     const edgeDx = edge.end.x - edge.start.x; const edgeDy = edge.end.y - edge.start.y; const segmentDx = end.x - start.x; const segmentDy = end.y - start.y;
-    const edgeLength = Math.hypot(edgeDx, edgeDy); const startProjection = pointOnSegment(start, edge.start, edge.end);
-    const offset = edgeDx * segmentDx + edgeDy * segmentDy >= 0 ? startProjection.along * edgeLength + opening.offset : startProjection.along * edgeLength - opening.offset - opening.width;
+    const edgeLength = Math.hypot(edgeDx, edgeDy); const startProjection = pointOnSegment(openingStart, edge.start, edge.end);
+    const offset = edgeDx * segmentDx + edgeDy * segmentDy >= 0 ? startProjection.along * edgeLength : edgeLength - startProjection.along * edgeLength - opening.width;
     return [{ id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(edge.index + 1).padStart(3, "0")}`, offset_mm: Math.max(0, offset), width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0, ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}) }];
   });
 }
@@ -321,6 +327,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const [selectedMeasurement, setSelectedMeasurement] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<GeometryContextMenu | null>(null);
   const [measurementContextMenu, setMeasurementContextMenu] = useState<MeasurementContextMenu | null>(null);
+  const [openingContextMenu, setOpeningContextMenu] = useState<OpeningContextMenu | null>(null);
+  const [fixtureContextMenu, setFixtureContextMenu] = useState<FixtureContextMenu | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStyle, setExportStyle] = useState<"CURRENT" | "TRADITIONAL" | "MODERN" | "CREATIVE">("CURRENT");
   const [exportFormat, setExportFormat] = useState<"PDF" | "PNG" | "JPG">("PDF");
@@ -548,6 +556,16 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     return true;
   }
 
+  function openFixtureContextMenu(event: ReactMouseEvent<SVGRectElement>, fixture: Obstacle) {
+    if (!onFixturesChange) return;
+    event.preventDefault(); event.stopPropagation(); setFixtureContextMenu({ id: fixture.id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 244)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
+  }
+
+  function updateFixture(id: string, update: (fixture: Obstacle) => Obstacle) {
+    if (!onFixturesChange) return;
+    onFixturesChange(fixtures.map((fixture) => fixture.id === id ? update(fixture) : fixture));
+  }
+
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.button !== 1) return;
     event.preventDefault(); event.stopPropagation();
@@ -720,11 +738,23 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   function beginOpeningDrag(event: ReactPointerEvent<SVGElement>, opening: FullOpening) {
     if (event.button !== 0) return;
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
-    openingDrag.current = { openingId: opening.id, before: snapshot() };
+    openingDrag.current = { openingId: opening.id, before: snapshot() }; selectOpeningForEdit(opening);
+  }
+
+  function selectOpeningForEdit(opening: FullOpening) {
     setTool("SELECT"); setLockedViewport(viewport); setSelectedOpeningId(opening.id); setSelectedPoint(null);
     setSelectedSegment({ wallId: opening.wallId, segmentIndex: opening.segmentIndex }); setOpeningParent(parentKey(opening.wallId, opening.segmentIndex));
     setOpeningKind(opening.kind); setOpeningOffset(opening.offset); setOpeningWidth(opening.width); setOpeningHeight(opening.height); setWindowSill(opening.sill);
     setDoorType(opening.doorType); setHingeSide(opening.hingeSide); setOpensInward(opening.opensInward); setOpeningError(null);
+  }
+
+  function openOpeningContextMenu(event: ReactMouseEvent<SVGGElement>, opening: FullOpening) {
+    event.preventDefault(); event.stopPropagation(); selectOpeningForEdit(opening); setContextMenu(null); setMeasurementContextMenu(null);
+    setOpeningContextMenu({ id: opening.id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
+  }
+
+  function deleteOpeningById(id: string) {
+    record(); setOpenings((current) => current.filter((opening) => opening.id !== id)); if (selectedOpeningId === id) setSelectedOpeningId(null);
   }
 
   function moveOpening(event: ReactPointerEvent<SVGSVGElement>): boolean {
@@ -936,13 +966,18 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     {openings.length > 0 && <div className="full-opening-list">{openings.map((opening) => <div key={opening.id}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small>{formatLength(opening.width, displayUnits)}</small><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => { record(); setOpenings((current) => current.filter((item) => item.id !== opening.id)); }}>×</button></div>)}</div>}
   </section>;
 
-  async function exportFloorplan() {
+  function exportSvgMarkup(styleChoice = exportStyle) {
     const source = editorRoot.current?.querySelector<SVGSVGElement>(".floor-canvas");
-    if (!source) return;
+    if (!source) return null;
     const clone = source.cloneNode(true) as SVGSVGElement;
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg"); clone.setAttribute("width", "1640"); clone.setAttribute("height", "1120");
-    const style = exportStyle === "TRADITIONAL" ? ".plan-grid{display:none}.wall-body,.wall-line,.opening-gap,.opening-jamb,.door-leaf,.door-swing,.window-frame,.window-core,.window-jamb{stroke:#111!important}.wall-line{stroke-width:5!important}.canvas-background{fill:#fff!important}.full-room-highlight{display:none}.wall-label,.opening-dimension-label{fill:#111!important}" : exportStyle === "MODERN" ? ".canvas-background{fill:#f7faf9}.plan-grid{opacity:.25}.wall-line{stroke:#155d55}.wall-label,.opening-dimension-label{font-family:Arial,sans-serif!important}" : exportStyle === "CREATIVE" ? ".canvas-background{fill:#fff8ed}.plan-grid{stroke:#d7b77e!important}.wall-line{stroke:#75572d}.full-room-highlight polygon{fill-opacity:.28!important}" : "";
-    const markup = new XMLSerializer().serializeToString(clone).replace(">", `><style>${style}</style>`);
+    const style = styleChoice === "TRADITIONAL" ? ".plan-grid{display:none}.wall-body,.wall-line,.opening-gap,.opening-jamb,.door-leaf,.door-swing,.window-frame,.window-core,.window-jamb{stroke:#111!important}.wall-line{stroke-width:5!important}.canvas-background{fill:#fff!important}.full-room-highlight{display:none}.wall-label,.opening-dimension-label{fill:#111!important}" : styleChoice === "MODERN" ? ".canvas-background{fill:#f7faf9}.plan-grid{opacity:.25}.wall-line{stroke:#155d55}.wall-label,.opening-dimension-label{font-family:Arial,sans-serif!important}" : styleChoice === "CREATIVE" ? ".canvas-background{fill:#fff8ed}.plan-grid{stroke:#d7b77e!important}.wall-line{stroke:#75572d}.full-room-highlight polygon{fill-opacity:.28!important}" : "";
+    return new XMLSerializer().serializeToString(clone).replace(">", `><style>${style}</style>`);
+  }
+
+  async function exportFloorplan() {
+    const markup = exportSvgMarkup();
+    if (!markup) return;
     const svgBlob = new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
     const save = async (blob: Blob, extension: string) => {
       const picker = (window as Window & { showSaveFilePicker?: (options: unknown) => Promise<{ createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> }> }).showSaveFilePicker;
@@ -961,8 +996,10 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     image.src = url;
   }
 
+  const exportPreviewMarkup = exportOpen ? exportSvgMarkup() : null;
+
   return <section ref={editorRoot} className={`editor-page full-plan-page ${floorplanStyle === "TRADITIONAL" ? "traditional-floorplan" : ""}`}>
-    {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyle === "CURRENT" ? (floorplanStyle === "TRADITIONAL" ? "Current traditional view" : "Current default view") : `${exportStyle[0]}${exportStyle.slice(1).toLowerCase()} drawing`}</strong><small>Export keeps the floorplan, doors, windows and dimensions in the selected drawing style.</small></div><label className="field"><span>Drawing style</span><select value={exportStyle} onChange={(event) => setExportStyle(event.target.value as typeof exportStyle)}><option value="CURRENT">Current style</option><option value="TRADITIONAL">Traditional style</option><option value="MODERN">Modern style</option><option value="CREATIVE">Creative style</option></select></label><label className="field"><span>File format</span><select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as typeof exportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label><footer><button type="button" onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" onClick={() => { void exportFloorplan(); setExportOpen(false); }}>Save as {exportFormat}</button></footer></section></div>}
+    {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyle === "CURRENT" ? (floorplanStyle === "TRADITIONAL" ? "Current traditional view" : "Current default view") : `${exportStyle[0]}${exportStyle.slice(1).toLowerCase()} drawing`}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} onChange={(event) => setExportStyle(event.target.value as typeof exportStyle)}><option value="CURRENT">Current style</option><option value="TRADITIONAL">Traditional style</option><option value="MODERN">Modern style</option><option value="CREATIVE">Creative style</option></select></label><label className="field"><span>File format</span><select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as typeof exportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label><footer><button type="button" onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" onClick={() => { void exportFloorplan(); setExportOpen(false); }}>Save as {exportFormat}</button></footer></section></div>}
     {measurementContextMenu && <div className="floorplan-context-menu" role="menu" aria-label="Measurement direction" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>Measurement direction</strong>
       <button type="button" role="menuitem" onClick={() => changeCustomMeasurementValue(measurementContextMenu.id)}>Change measurement value…</button>
@@ -970,6 +1007,12 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "HORIZONTAL")}>Horizontal dimension only</button>
       <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "VERTICAL")}>Vertical dimension only</button>
     </div>}
+    {openingContextMenu && <div className="floorplan-context-menu" role="menu" aria-label="Opening actions" style={{ left: openingContextMenu.x, top: openingContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      <strong>{openings.find((opening) => opening.id === openingContextMenu.id)?.kind === "WINDOW" ? "Window" : "Door"}</strong>
+      <button type="button" role="menuitem" onClick={() => { setOpeningContextMenu(null); }}>Edit values</button>
+      <button type="button" role="menuitem" className="danger-button" onClick={() => { const id = openingContextMenu.id; setOpeningContextMenu(null); deleteOpeningById(id); }}>Delete opening</button>
+    </div>}
+    {fixtureContextMenu && (() => { const fixture = fixtures.find((item) => item.id === fixtureContextMenu.id); return fixture ? <div className="floorplan-context-menu floorplan-value-menu" role="menu" aria-label="Fixture values" style={{ left: fixtureContextMenu.x, top: fixtureContextMenu.y }} onContextMenu={(event) => event.preventDefault()}><strong>{fixture.name}</strong><div className="context-coordinate-fields"><label>X <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={fixture.center.x} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, center: { ...item.center, x: value } }))} /></label><label>Y <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={fixture.center.y} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, center: { ...item.center, y: value } }))} /></label><label>Width <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixture.dimensions.width.value} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, width: { ...item.dimensions.width, value } } }))} /></label><label>Depth <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixture.dimensions.depth.value} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, depth: { ...item.dimensions.depth, value } } }))} /></label></div><button type="button" role="menuitem" onClick={() => setFixtureContextMenu(null)}>Done</button></div> : null; })()}
     {contextMenu && <div className="floorplan-context-menu floorplan-value-menu" role="menu" aria-label={`${contextMenu.kind === "WALL" ? "Wall" : "Corner"} actions`} style={{ left: contextMenu.x, top: contextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{contextMenu.kind === "WALL" ? "Wall" : "Corner"}</strong>
       {contextMenu.kind === "WALL" && selectedWall && <><label>Wall length <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={wallLengthInput ?? segmentLength(selectedWall, contextMenu.segmentIndex)} units={displayUnits} onMmChange={setWallLengthInput} /></label><button type="button" role="menuitem" onClick={() => { applySelectedWallLength(); setContextMenu(null); }}>Apply wall length</button><button type="button" role="menuitem" className="danger-button" onClick={() => { const target = contextMenu; setContextMenu(null); removeSegment(target.wallId, target.segmentIndex); }}>Delete wall segment</button></>}
@@ -1025,7 +1068,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
               const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
               const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
               const centre = toScreen(fixture.center); const label = `${formatLength(width, displayUnits)} × ${formatLength(depth, displayUnits)}`;
-              return <g key={`fixture-${fixture.id}`} className="floorplan-fixture" onPointerDown={(event) => event.stopPropagation()}><rect x={topLeft.x} y={topLeft.y} width={bottomRight.x - topLeft.x} height={bottomRight.y - topLeft.y} onPointerDown={(event) => beginFixtureDrag(event, fixture)} /><text x={centre.x} y={centre.y - 3}>{fixture.name}</text><text className="floorplan-fixture-dimension" x={centre.x} y={centre.y + 10}>{label}</text></g>;
+              return <g key={`fixture-${fixture.id}`} className="floorplan-fixture" onPointerDown={(event) => event.stopPropagation()}><rect x={topLeft.x} y={topLeft.y} width={bottomRight.x - topLeft.x} height={bottomRight.y - topLeft.y} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)} /><text x={centre.x} y={centre.y - 3}>{fixture.name}</text><text className="floorplan-fixture-dimension" x={centre.x} y={centre.y + 10}>{label}</text></g>;
             })}
             {walls.map((wall) => {
               const closed = samePoint(wall.points[0], wall.points.at(-1)!); const modelPoints = closed ? wall.points.slice(0, -1) : wall.points; const screenPoints = modelPoints.map(toScreen); const centre = screenPoints.reduce((total, point) => ({ x: total.x + point.x / screenPoints.length, y: total.y + point.y / screenPoints.length }), { x: 0, y: 0 });
@@ -1065,7 +1108,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
               const wall = walls.find((item) => item.id === opening.wallId); const wallStart = wall?.points[opening.segmentIndex]; const wallEnd = wall?.points[opening.segmentIndex + 1];
               if (!wall || !wallStart || !wallEnd) return null;
               const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward };
-              return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} />;
+              return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} onContextMenu={(event) => openOpeningContextMenu(event, opening)} />;
             })}
             <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "POINT" && reference.wallId === wall.id && reference.pointIndex === pointIndex); return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" || tool === "ADD_MEASURE" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { event.stopPropagation(); addMeasurementReference({ kind: "POINT", ...selection }); return; } beginPointDrag(event, selection); }} /><text className="vertex-label" x={point.x} y={point.y + 3}>{firstNumber + pointIndex}</text></g>; }); })}</g>
             {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r="7" className="full-plan-draft-node" />; })}
