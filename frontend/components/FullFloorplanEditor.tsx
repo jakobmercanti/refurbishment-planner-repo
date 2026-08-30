@@ -1,6 +1,6 @@
 "use client";
 
-import { type PointerEvent as ReactPointerEvent, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
 import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
@@ -12,6 +12,7 @@ type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallI
 type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE";
 type SegmentSelection = { wallId: string; segmentIndex: number };
 type PointSelection = { wallId: string; pointIndex: number };
+type GeometryContextMenu = ({ kind: "WALL" } & SegmentSelection | { kind: "POINT" } & PointSelection) & { x: number; y: number };
 type FullOpening = {
   id: string; kind: "DOOR" | "WINDOW"; wallId: string; segmentIndex: number;
   offset: number; width: number; height: number; sill: number;
@@ -188,6 +189,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const [opensInward, setOpensInward] = useState(true);
   const [openingError, setOpeningError] = useState<string | null>(null);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<GeometryContextMenu | null>(null);
   const [restored, setRestored] = useState(false);
   const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -265,6 +267,25 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     window.addEventListener("keydown", finishActiveTool);
     return () => window.removeEventListener("keydown", finishActiveTool);
   }, [tool]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".floorplan-context-menu")) return;
+      setContextMenu(null);
+    };
+    const dismissWithKeyboard = (event: KeyboardEvent) => { if (event.key === "Escape") setContextMenu(null); };
+    const dismissOnBlur = () => setContextMenu(null);
+    window.addEventListener("pointerdown", dismiss);
+    window.addEventListener("keydown", dismissWithKeyboard);
+    window.addEventListener("blur", dismissOnBlur);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("keydown", dismissWithKeyboard);
+      window.removeEventListener("blur", dismissOnBlur);
+    };
+  }, [contextMenu]);
 
   function snapshot(): Snapshot { return { walls: cloneWalls(walls), openings: cloneOpenings(openings) }; }
   function invalidateCompletion() { setFinished(false); setRooms([]); setSelectedRoomId(null); setRoomValidation(null); setRoomValidationError(null); }
@@ -399,23 +420,41 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     setWallLengthInput(null);
   }
 
-  function deletePoint() {
-    if (!selectedPoint) return;
-    const wall = walls.find((item) => item.id === selectedPoint.wallId); if (!wall) return;
+  function deletePointAt(selection: PointSelection) {
+    const wall = walls.find((item) => item.id === selection.wallId); if (!wall) return;
     const closed = samePoint(wall.points[0], wall.points.at(-1)!); const unique = closed ? wall.points.length - 1 : wall.points.length;
     if (unique <= (closed ? 3 : 2)) return;
     record();
     setWalls((current) => current.map((item) => {
       if (item.id !== wall.id) return item;
-      const core = closed ? item.points.slice(0, -1) : [...item.points]; core.splice(selectedPoint.pointIndex, 1);
+      const core = closed ? item.points.slice(0, -1) : [...item.points]; core.splice(selection.pointIndex, 1);
       const points = closed ? [...core, { ...core[0] }] : core;
       return { ...item, points: squaredWalls ? squareWallPoints(points) : points };
     }));
     setOpenings((current) => current.filter((opening) => opening.wallId !== wall.id)); setSelectedPoint(null); setSelectedSegment(null);
   }
 
-  function beginPointDrag(event: ReactPointerEvent<SVGCircleElement>, selection: PointSelection) {
+  function deletePoint() {
+    if (selectedPoint) deletePointAt(selectedPoint);
+  }
+
+  function openWallContextMenu(event: ReactMouseEvent<SVGLineElement>, selection: SegmentSelection) {
     if (tool !== "SELECT") return;
+    event.preventDefault(); event.stopPropagation();
+    setSelectedSegment(selection); setSelectedPoint(null); setSelectedOpeningId(null); setWallLengthInput(null);
+    setOpeningParent(parentKey(selection.wallId, selection.segmentIndex));
+    setContextMenu({ kind: "WALL", ...selection, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
+  }
+
+  function openPointContextMenu(event: ReactMouseEvent<SVGCircleElement>, selection: PointSelection) {
+    if (tool !== "SELECT") return;
+    event.preventDefault(); event.stopPropagation();
+    setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null);
+    setContextMenu({ kind: "POINT", ...selection, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
+  }
+
+  function beginPointDrag(event: ReactPointerEvent<SVGCircleElement>, selection: PointSelection) {
+    if (tool !== "SELECT" || event.button !== 0) return;
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     pointDrag.current = { selection, before: snapshot() }; setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null);
   }
@@ -620,6 +659,11 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   </section>;
 
   return <section ref={editorRoot} className="editor-page full-plan-page">
+    {contextMenu && <div className="floorplan-context-menu" role="menu" aria-label={`${contextMenu.kind === "WALL" ? "Wall" : "Corner"} actions`} style={{ left: contextMenu.x, top: contextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      <strong>{contextMenu.kind === "WALL" ? "Wall" : "Corner"}</strong>
+      <button type="button" role="menuitem" onClick={() => setContextMenu(null)}>Modify</button>
+      <button type="button" role="menuitem" className="danger-button" onClick={() => { const target = contextMenu; setContextMenu(null); if (target.kind === "WALL") removeSegment(target.wallId, target.segmentIndex); else deletePointAt(target); }}>Delete</button>
+    </div>}
     <div className="editor-intro"><div><span className="eyebrow">Complete floorplan · {UNIT_LABEL[displayUnits]}</span><h1>Draw the complete floorplan</h1></div><p>Use the same measured-plan editor for the whole building, with additional wall and room tools.</p></div>
     <div className="editor-layout full-plan-layout">
       <aside className="editor-tools full-plan-controls">
@@ -669,7 +713,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
                 const modelEnd = wall.points[segmentIndex + 1]; const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y) || 1; const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const offset = 78; const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * 10, y: (first.y + second.y) / 2 + outward.y * 10 };
                 return <g key={`${wall.id}-dimension-${segmentIndex}`} className="wall-dimension"><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
               });
-              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{closed && <polygon points={screenPoints.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />}{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
+              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{closed && <polygon points={screenPoints.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />}{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const selection = { wallId: wall.id, segmentIndex }; return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onContextMenu={(event) => openWallContextMenu(event, selection)} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
             })}
             {draft.length > 0 && <polyline points={draft.map(toScreen).map((point) => `${point.x},${point.y}`).join(" ")} className="full-wall-draft" />}
             {openings.map((opening) => {
@@ -687,7 +731,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
               const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward };
               return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} />;
             })}
-            <g className="vertex-layer">{walls.flatMap((wall, wallIndex) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""}`} onPointerDown={(event) => beginPointDrag(event, { wallId: wall.id, pointIndex })} /><text className="vertex-label" x={point.x} y={point.y + 3}>{wallIndex === 0 ? pointIndex + 1 : `${wallIndex + 1}.${pointIndex + 1}`}</text></g>; }); })}</g>
+            <g className="vertex-layer">{walls.flatMap((wall, wallIndex) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""}`} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => beginPointDrag(event, selection)} /><text className="vertex-label" x={point.x} y={point.y + 3}>{wallIndex === 0 ? pointIndex + 1 : `${wallIndex + 1}.${pointIndex + 1}`}</text></g>; }); })}</g>
             {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r="7" className="full-plan-draft-node" />; })}
           </FloorPlanCanvas>
         </div><div className="drawing-scale"><span>Coordinates and dimensions shown in {UNIT_LABEL[displayUnits]} · calculations remain millimetre-authoritative</span><span>Shared floorplan engine auto-fits the complete plan</span></div>
