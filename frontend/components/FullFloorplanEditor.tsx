@@ -178,6 +178,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
+  const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
   const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
 
   const selectedRoom = useMemo(() => rooms.find((room) => room.id === selectedRoomId) ?? rooms[0] ?? null, [rooms, selectedRoomId]);
@@ -378,6 +379,40 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     pointDrag.current = { selection, before: snapshot() }; setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null);
   }
 
+  function beginOpeningDrag(event: ReactPointerEvent<SVGGElement>, opening: FullOpening) {
+    if (event.button !== 0) return;
+    event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    openingDrag.current = { openingId: opening.id, before: snapshot() };
+    setTool("SELECT"); setLockedViewport(viewport); setSelectedOpeningId(opening.id); setSelectedPoint(null);
+    setSelectedSegment({ wallId: opening.wallId, segmentIndex: opening.segmentIndex }); setOpeningParent(parentKey(opening.wallId, opening.segmentIndex));
+    setOpeningKind(opening.kind); setOpeningOffset(opening.offset); setOpeningWidth(opening.width); setOpeningHeight(opening.height); setWindowSill(opening.sill);
+    setDoorType(opening.doorType); setHingeSide(opening.hingeSide); setOpensInward(opening.opensInward); setOpeningError(null);
+  }
+
+  function moveOpening(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    const active = openingDrag.current;
+    if (!active) return false;
+    const opening = openings.find((item) => item.id === active.openingId);
+    if (!opening) return true;
+    const pointer = canvasPoint(event, false);
+    const nearest = walls.flatMap((wall) => wall.points.slice(0, -1).map((start, segmentIndex) => {
+      const end = wall.points[segmentIndex + 1]; const projection = pointOnSegment(pointer, start, end); const length = segmentLength(wall, segmentIndex);
+      return { wall, segmentIndex, projection, length, distance: Math.hypot(pointer.x - projection.point.x, pointer.y - projection.point.y) };
+    })).filter((item) => item.length >= opening.width).sort((first, second) => first.distance - second.distance)[0];
+    if (!nearest) return true;
+    const maximum = nearest.length - opening.width;
+    const rawOffset = nearest.projection.along * nearest.length - opening.width / 2;
+    const requested = snapEnabled ? Math.round(rawOffset / snapSize) * snapSize : Math.round(rawOffset * 10) / 10;
+    const blockers = openings.filter((item) => item.id !== opening.id && item.wallId === nearest.wall.id && item.segmentIndex === nearest.segmentIndex);
+    const candidates = [Math.max(0, Math.min(maximum, requested)), 0, maximum, ...blockers.flatMap((item) => [item.offset + item.width, item.offset - opening.width])]
+      .filter((value) => value >= 0 && value <= maximum)
+      .filter((value) => blockers.every((item) => value + opening.width <= item.offset || value >= item.offset + item.width));
+    const nextOffset = (candidates.length ? candidates : [opening.offset]).sort((first, second) => Math.abs(first - requested) - Math.abs(second - requested))[0];
+    setOpenings((current) => current.map((item) => item.id === opening.id ? { ...item, wallId: nearest.wall.id, segmentIndex: nearest.segmentIndex, offset: nextOffset } : item));
+    setSelectedSegment({ wallId: nearest.wall.id, segmentIndex: nearest.segmentIndex }); setOpeningParent(parentKey(nearest.wall.id, nearest.segmentIndex)); setOpeningOffset(nextOffset);
+    return true;
+  }
+
   function movePoint(event: ReactPointerEvent<SVGSVGElement>) {
     const panStart = panDrag.current;
     if (panStart) {
@@ -385,6 +420,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
       setPan({ x: panStart.pan.x + (event.clientX - panStart.clientX) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: panStart.pan.y + (event.clientY - panStart.clientY) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height });
       return;
     }
+    if (moveOpening(event)) return;
     if (!pointDrag.current) return;
     const { selection } = pointDrag.current; const next = canvasPoint(event, false);
     setWalls((current) => current.map((wall) => {
@@ -401,6 +437,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
 
   function finishPointDrag() {
     if (panDrag.current) { panDrag.current = null; return; }
+    if (openingDrag.current) { const before = openingDrag.current.before; openingDrag.current = null; setLockedViewport(null); record(before); return; }
     if (!pointDrag.current) return;
     const before = pointDrag.current.before; pointDrag.current = null; setLockedViewport(null); record(before);
     setOpenings((current) => current.filter((opening) => {
@@ -545,7 +582,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
               const wall = walls.find((item) => item.id === opening.wallId); const wallStart = wall?.points[opening.segmentIndex]; const wallEnd = wall?.points[opening.segmentIndex + 1];
               if (!wall || !wallStart || !wallEnd) return null;
               const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward };
-              return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => { event.stopPropagation(); setTool("SELECT"); setSelectedOpeningId(opening.id); setSelectedSegment({ wallId: opening.wallId, segmentIndex: opening.segmentIndex }); setOpeningParent(parentKey(opening.wallId, opening.segmentIndex)); }} />;
+              return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} />;
             })}
             <g className="vertex-layer">{walls.flatMap((wall, wallIndex) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""}`} onPointerDown={(event) => beginPointDrag(event, { wallId: wall.id, pointIndex })} /><text className="vertex-label" x={point.x} y={point.y + 3}>{wallIndex === 0 ? pointIndex + 1 : `${wallIndex + 1}.${pointIndex + 1}`}</text></g>; }); })}</g>
             {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r="7" className="full-plan-draft-node" />; })}

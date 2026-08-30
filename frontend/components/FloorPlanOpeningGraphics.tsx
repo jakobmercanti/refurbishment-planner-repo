@@ -56,7 +56,7 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   const className = selected ? " selected" : "";
   if (opening.kind === "WINDOW") {
     return <g className={`opening-symbol window-symbol pickable-opening${className}`} onPointerDown={onPointerDown}>
-      <title>{`Window ${formatLength(opening.width, displayUnits)}`}</title>
+      <title>{`Window ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
       <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="window-frame" x1={start.x + perpendicular.x * 4} y1={start.y + perpendicular.y * 4} x2={end.x + perpendicular.x * 4} y2={end.y + perpendicular.y * 4} />
@@ -73,7 +73,7 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
     const firstLeaf = toScreen({ x: startModel.x + modelNormal.x * half, y: startModel.y + modelNormal.y * half });
     const secondLeaf = toScreen({ x: endModel.x + modelNormal.x * half, y: endModel.y + modelNormal.y * half });
     return <g className={`opening-symbol double-door-symbol pickable-opening${className}`} onPointerDown={onPointerDown}>
-      <title>{`Double door ${formatLength(opening.width, displayUnits)}`}</title>
+      <title>{`Double door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
       <path className="opening-hit-area" d={`${sectorPath(start, centre, firstLeaf)} ${sectorPath(end, centre, secondLeaf)}`} />
       <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
@@ -90,7 +90,7 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   const hinge = hingeAtStart ? start : end; const closedEnd = hingeAtStart ? end : start;
   const leaf = toScreen({ x: hingeModel.x + modelNormal.x * opening.width, y: hingeModel.y + modelNormal.y * opening.width });
   return <g className={`opening-symbol door-symbol pickable-opening${className}`} onPointerDown={onPointerDown}>
-    <title>{`Door ${formatLength(opening.width, displayUnits)}`}</title>
+    <title>{`Door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
     <path className="opening-hit-area" d={sectorPath(hinge, closedEnd, leaf)} />
     <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
     <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
