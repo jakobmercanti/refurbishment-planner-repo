@@ -354,6 +354,7 @@ button { font: inherit; }
 .drawing-zoom button { min-width: 26px; min-height: 23px; padding: 3px 6px; border-right: 1px solid var(--line); font-size: 11px; }
 .drawing-zoom button:last-child { border-right: 0; }
 .drawing-zoom button:nth-child(2) { min-width: 44px; color: var(--muted); font-size: 9px; }
+.drawing-zoom .fit-view-button { min-width: 38px; color: var(--deep); font-size: 9px; }
 .drawing-zoom button:hover { background: #edf3ef; color: var(--deep); }
 .floor-canvas { width: 100%; min-height: 560px; display: block; border: 1px solid var(--line); background: #eef1ed; touch-action: none; cursor: crosshair; }
 .canvas-background { fill: #eef1ed; }
