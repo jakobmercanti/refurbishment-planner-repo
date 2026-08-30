@@ -315,7 +315,8 @@ button { font: inherit; }
 .l-shape-options strong { font: 600 7px/1.3 var(--font-mono); }
 .mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 12px; }
 .plan-constraint-controls { display: grid; gap: 9px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
-.measurement-mode-row { margin-top: 2px; }
+.measurement-mode-row { display: grid; gap: 8px; margin-top: 2px; }
+.measurement-action-row { grid-template-columns: 1fr 1fr; }
 .snap-control-row { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1; white-space: nowrap; }
 .snap-control-row > input { margin: 0; accent-color: var(--deep); }
 .snap-control-row > span { flex: 1; }
