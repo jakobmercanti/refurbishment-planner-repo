@@ -44,6 +44,18 @@ const cloneMeasurements = (measurements: CustomMeasurement[]) => measurements.ma
 const samePoint = (a: Point2D, b: Point2D, tolerance = 1) => Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
 const MIN_ENCLOSED_AREA_MM2 = 10_000;
 
+function signedPolygonArea(points: Point2D[]): number {
+  return points.reduce((area, point, index) => {
+    const next = points[(index + 1) % points.length];
+    return area + point.x * next.y - next.x * point.y;
+  }, 0) / 2;
+}
+
+function counterClockwiseVertices(points: Point2D[]): Point2D[] {
+  const vertices = points.map((point) => ({ ...point }));
+  return signedPolygonArea(vertices) < 0 ? vertices.reverse() : vertices;
+}
+
 function hasMinimumEnclosedArea(points: Point2D[]): boolean {
   const closed = points.length >= 4 && samePoint(points[0], points.at(-1)!);
   if (!closed) return true;
@@ -228,7 +240,7 @@ function closedRooms(walls: Wall[], height: number): NamedOutline[] {
       name: `Room ${index + 1}`,
       sourceWallId: sourceWallIds[0] ?? "",
       sourceWallIds,
-      vertices: face.keys.map((key) => { const point = nodes.get(key)!; return { x: point.x, y: height - point.y }; }),
+      vertices: counterClockwiseVertices(face.keys.map((key) => { const point = nodes.get(key)!; return { x: point.x, y: height - point.y }; })),
     };
   });
 }
@@ -928,7 +940,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   function selectedRoomDraft(): Room | null {
     if (!selectedRoom) return null;
     const roomId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(selectedRoom.id) ? selectedRoom.id : crypto.randomUUID();
-    return { id: roomId, name: selectedRoom.name, version: 1, vertices: selectedRoom.vertices, wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, openings: roomOpenings(selectedRoom, openings, walls), obstacles: [], person_mockup: null };
+    const normalizedRoom = { ...selectedRoom, vertices: counterClockwiseVertices(selectedRoom.vertices) };
+    return { id: roomId, name: normalizedRoom.name, version: 1, vertices: normalizedRoom.vertices, wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, openings: roomOpenings(normalizedRoom, openings, walls), obstacles: [], person_mockup: null };
   }
 
   async function validateSelectedRoom() {
