@@ -30,7 +30,8 @@ function arcPath(centre: Point2D, start: Point2D, end: Point2D): string {
 }
 
 function sectorPath(centre: Point2D, start: Point2D, end: Point2D): string {
-  return `M ${centre.x} ${centre.y} L ${start.x} ${start.y} ${arcPath(centre, start, end).replace(/^M [^A]+/, "A")} Z`;
+  const arc = arcPath(centre, start, end).replace(/^M [^A]+A\s*/, "A ");
+  return `M ${centre.x} ${centre.y} L ${start.x} ${start.y} ${arc} Z`;
 }
 
 function geometry(opening: FloorPlanOpeningGraphic, wallStart: Point2D, wallEnd: Point2D, toScreen: (point: Point2D) => Point2D) {
