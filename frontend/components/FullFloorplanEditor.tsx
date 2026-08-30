@@ -46,6 +46,15 @@ function hasMinimumEnclosedArea(points: Point2D[]): boolean {
   }, 0);
   return Math.abs(twiceArea) / 2 >= MIN_ENCLOSED_AREA_MM2;
 }
+
+function hasOnlyOrthogonalSegments(points: Point2D[]): boolean {
+  const tolerance = 0.001;
+  return points.slice(0, -1).every((start, index) => {
+    const end = points[index + 1];
+    return Math.abs(end.x - start.x) <= tolerance || Math.abs(end.y - start.y) <= tolerance;
+  });
+}
+
 const segmentLength = (wall: Wall, index: number) => Math.hypot(wall.points[index + 1].x - wall.points[index].x, wall.points[index + 1].y - wall.points[index].y);
 const parentKey = (wallId: string, segmentIndex: number) => `${wallId}::${segmentIndex}`;
 
@@ -212,10 +221,13 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as PersistedFloorplan;
-        setWalls(cloneWalls(saved.walls ?? [])); setOpenings(cloneOpenings(saved.openings ?? []));
+        const savedSquaredWalls = saved.squaredWalls ?? false;
+        const savedWalls = cloneWalls(saved.walls ?? []);
+        setWalls(savedSquaredWalls ? savedWalls.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) })) : savedWalls);
+        setOpenings(cloneOpenings(saved.openings ?? []));
         setCanvasSize(saved.canvasSize ?? DEFAULT_SIZE); setFinished(Boolean(saved.finished));
         setRooms(saved.rooms ?? []); setSelectedRoomId(saved.selectedRoomId ?? null);
-        setSnapEnabled(saved.snapEnabled ?? true); setSnapSize(saved.snapSize ?? SNAP); setSquaredWalls(saved.squaredWalls ?? false); setWallHeight(saved.wallHeight ?? 2400); setWallThickness(saved.wallThickness ?? 100);
+        setSnapEnabled(saved.snapEnabled ?? true); setSnapSize(saved.snapSize ?? SNAP); setSquaredWalls(savedSquaredWalls); setWallHeight(saved.wallHeight ?? 2400); setWallThickness(saved.wallThickness ?? 100);
       }
     } catch { /* Ignore a damaged browser draft and start clean. */ }
     setRestored(true);
@@ -458,7 +470,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
         points[endIndex] = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
         if (closed && activeWall.segmentIndex === 0) points[points.length - 1] = { ...points[0] };
         if (closed && endIndex === points.length - 1) points[0] = { ...points[endIndex] };
-        return hasMinimumEnclosedArea(points) ? { ...wall, points } : wall;
+        const preservesConstraints = (!squaredWalls || hasOnlyOrthogonalSegments(points)) && hasMinimumEnclosedArea(points);
+        return preservesConstraints ? { ...wall, points } : wall;
       }));
       return;
     }
