@@ -421,6 +421,8 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .opening-form-actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; margin-top: 10px; }
 .opening-form-actions > button { min-height: 38px; border: 1px solid var(--line); border-radius: 7px; background: #f9faf8; color: var(--ink); font: 600 10px var(--font-mono); cursor: pointer; }
 .opening-form-actions > .primary-small:only-child { grid-column: 1 / -1; }
+.opening-form-actions:has(> :nth-child(3)) { grid-template-columns: 1.4fr 1fr 1fr; }
+.opening-form-actions .danger-button { color: var(--fail); border-color: #efc5c1; background: var(--fail-soft); }
 .opening-chip { padding: 4px 6px; border-radius: 4px; font: 750 7px var(--font-mono); }
 .opening-chip.door { background: var(--verify-soft); color: var(--verify); }
 .opening-chip.window { background: #e5f1fa; color: #24668f; }
@@ -519,6 +521,24 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .embedded-floorplan-importer { margin-top: 18px; border-top: 1px solid var(--line); }
 @media (max-width: 900px) { .full-floorplan-toolbar { align-items: flex-start; flex-direction: column; } .full-floorplan-workspace { grid-template-columns: 1fr; } .full-floorplan-rooms { border-left: 0; border-top: 1px solid var(--line); } }
 .full-plan-page { background: var(--paper); }
+.traditional-floorplan .plan-grid { display: none; }
+.traditional-floorplan .canvas-background { fill: white; }
+.traditional-floorplan .wall-body, .traditional-floorplan .wall-line, .traditional-floorplan .opening-gap, .traditional-floorplan .opening-jamb, .traditional-floorplan .door-leaf, .traditional-floorplan .door-swing, .traditional-floorplan .window-frame, .traditional-floorplan .window-core, .traditional-floorplan .window-jamb { stroke: #151515; }
+.traditional-floorplan .wall-line { stroke-width: 5; }
+.traditional-floorplan .full-room-highlight { display: none; }
+.traditional-floorplan .wall-label, .traditional-floorplan .opening-dimension-label { fill: #151515; }
+.floorplan-export-dialog { width: min(420px,calc(100vw - 32px)); display: grid; gap: 13px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 20px 55px rgba(20,39,31,.24); }
+.floorplan-export-dialog header, .floorplan-export-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.floorplan-export-dialog h2 { margin: 3px 0 0; font-size: 18px; }
+.floorplan-export-dialog footer button { min-height: 35px; padding: 0 12px; border: 1px solid var(--line); border-radius: 7px; background: #f8faf8; color: var(--ink); font: 650 10px var(--font-mono); cursor: pointer; }
+.floorplan-export-dialog footer .primary { border-color: var(--deep); background: var(--deep); color: white; }
+.export-style-preview { display: grid; gap: 5px; min-height: 94px; padding: 14px; border: 1px solid #cfd8d1; border-radius: 8px; background: linear-gradient(135deg,#f8faf8,#edf4ef); }
+.export-style-preview > span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.export-style-preview strong { font-size: 14px; }
+.export-style-preview small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.export-style-traditional .export-style-preview { background: white; color: #151515; }
+.export-style-modern .export-style-preview { background: linear-gradient(135deg,#edf8f6,#e8eff9); }
+.export-style-creative .export-style-preview { background: linear-gradient(135deg,#fff4de,#f6e8dc); }
 .full-plan-layout { grid-template-columns: 285px max-content 320px; }
 .full-plan-controls { max-height: min(78vh,760px); overflow-y: auto; }
 .full-plan-controls small { display: block; overflow: hidden; margin: 5px 0 8px; color: var(--muted); text-overflow: ellipsis; }
@@ -534,6 +554,11 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .floorplan-context-menu button { width: 100%; padding: 8px 9px; border: 1px solid var(--line); border-radius: 6px; background: #f8faf8; color: var(--ink); font: 650 10px var(--font-mono); text-align: left; cursor: pointer; }
 .floorplan-context-menu button:hover, .floorplan-context-menu button:focus-visible { border-color: var(--deep); outline: none; background: #edf4ef; }
 .floorplan-context-menu .danger-button { border-color: #efc5c1; background: var(--fail-soft); color: var(--fail); }
+.floorplan-context-menu.floorplan-value-menu { width: 224px; }
+.floorplan-value-menu label { display: grid; gap: 4px; padding: 3px 5px; color: var(--muted); font: 650 8px var(--font-mono); }
+.floorplan-value-menu label > div { width: 100%; }
+.floorplan-value-menu input { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--line); border-radius: 5px; background: white; color: var(--ink); font: 650 10px var(--font-mono); }
+.context-coordinate-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .secondary-action { border-color: var(--line); background: #f9faf8; color: var(--ink); }
 .full-plan-drawing { min-width: 0; }
 .full-plan-canvas { position: relative; overflow: hidden; }
@@ -555,6 +580,12 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .full-room-highlight.room-colour-3 { color: #8954a1; }
 .full-room-highlight.room-colour-4 { color: #b44355; }
 .full-room-highlight.room-colour-5 { color: #3b8d9a; }
+.floorplan-fixture rect { fill: color-mix(in srgb, var(--deep) 18%, white); stroke: var(--deep); stroke-width: 2.5; stroke-dasharray: 5 3; cursor: grab; }
+.floorplan-fixture rect:active { cursor: grabbing; }
+.floorplan-fixture text { fill: var(--deep); font: 700 8px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: white; stroke-width: 4px; pointer-events: none; }
+.floorplan-fixture .floorplan-fixture-dimension { fill: #3978b9; font-size: 7px; }
+.traditional-floorplan .floorplan-fixture rect { fill: white; stroke: #151515; }
+.traditional-floorplan .floorplan-fixture text { fill: #151515; }
 .inline-status { margin: 8px 0 0; padding: 8px; border-radius: 6px; background: #f2f5f2; color: var(--muted); font-size: 10px; }
 .full-wall-draft { fill: none; stroke: #2e8b70; stroke-width: 8; stroke-linecap: square; stroke-linejoin: miter; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
 .full-plan-canvas g.removable .wall-line { cursor: crosshair; }

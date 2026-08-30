@@ -5,13 +5,17 @@ import type { Room, WallViewMode } from "@/lib/types";
 
 interface ApplicationMenuBarProps {
   room: Room;
+  mode: "EDITOR" | "ANALYSIS";
   personPanelVisible: boolean;
   wallMode: WallViewMode;
+  floorplanStyle: "DEFAULT" | "TRADITIONAL";
   displayUnits: "MM" | "CM" | "INCHES" | "FEET" | "METERS";
   onOpenRoom: (room: Room) => Promise<void>;
   onOpenCatalogue: () => void;
   onTogglePersonPanel: () => void;
   onWallModeChange: (mode: WallViewMode) => void;
+  onFloorplanStyleChange: (style: "DEFAULT" | "TRADITIONAL") => void;
+  onExportFloorplan: () => void;
   onOpenSettings: () => void;
 }
 
@@ -43,7 +47,7 @@ async function saveRoomAs(room: Room, filename: string) {
   }
 }
 
-export function ApplicationMenuBar({ room, personPanelVisible, wallMode, displayUnits, onOpenRoom, onOpenCatalogue, onTogglePersonPanel, onWallModeChange, onOpenSettings }: ApplicationMenuBarProps) {
+export function ApplicationMenuBar({ room, mode, personPanelVisible, wallMode, floorplanStyle, displayUnits, onOpenRoom, onOpenCatalogue, onTogglePersonPanel, onWallModeChange, onFloorplanStyleChange, onExportFloorplan, onOpenSettings }: ApplicationMenuBarProps) {
   const [menu, setMenu] = useState<MenuName>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
@@ -74,8 +78,8 @@ export function ApplicationMenuBar({ room, personPanelVisible, wallMode, display
   return <>
   <nav className="software-menu" aria-label="Application menu">
     <div className="software-menu-item"><button className={menu === "FILE" ? "active" : ""} onClick={() => toggle("FILE")}>File</button>{menu === "FILE" && <div className="software-dropdown"><button onClick={() => fileInput.current?.click()}><span>Open…</span><kbd>Ctrl+O</kbd></button><button onClick={() => { downloadRoom(room, "renovation-fit-room"); setMenu(null); }}><span>Save</span><kbd>Ctrl+S</kbd></button><button onClick={() => { setSaveName("bathroom-plan"); setSaveAsOpen(true); setMenu(null); }}><span>Save as…</span></button>{error && <p>{error}</p>}</div>}</div>
-    <div className="software-menu-item"><button className={menu === "TOOLS" ? "active" : ""} onClick={() => toggle("TOOLS")}>Tools</button>{menu === "TOOLS" && <div className="software-dropdown"><button onClick={() => { onOpenCatalogue(); setMenu(null); }}><span>Object catalogue…</span></button><button onClick={() => { onTogglePersonPanel(); setMenu(null); }}><span>{personPanelVisible ? "✓ " : ""}Human mock-up panel</span></button></div>}</div>
-    <div className="software-menu-item"><button className={menu === "VIEW" ? "active" : ""} onClick={() => toggle("VIEW")}>View</button>{menu === "VIEW" && <div className="software-dropdown" role="menu" aria-label="Wall display"><button aria-pressed={wallMode === "SOLID"} onClick={() => setWallMode("SOLID")}><span>{wallMode === "SOLID" ? "✓ " : ""}Solid walls</span></button><button aria-pressed={wallMode === "TRANSPARENT"} onClick={() => setWallMode("TRANSPARENT")}><span>{wallMode === "TRANSPARENT" ? "✓ " : ""}Transparent walls</span></button><button aria-pressed={wallMode === "CUTAWAY_2D"} onClick={() => setWallMode("CUTAWAY_2D")}><span>{wallMode === "CUTAWAY_2D" ? "✓ " : ""}2D cutaway walls</span></button><button aria-pressed={wallMode === "INVISIBLE"} onClick={() => setWallMode("INVISIBLE")}><span>{wallMode === "INVISIBLE" ? "✓ " : ""}Invisible walls</span></button></div>}</div>
+    <div className="software-menu-item"><button className={menu === "TOOLS" ? "active" : ""} onClick={() => toggle("TOOLS")}>Tools</button>{menu === "TOOLS" && <div className="software-dropdown">{mode === "EDITOR" ? <button onClick={() => { onExportFloorplan(); setMenu(null); }}><span>Export floorplan…</span></button> : <><button onClick={() => { onOpenCatalogue(); setMenu(null); }}><span>Object catalogue…</span></button><button onClick={() => { onTogglePersonPanel(); setMenu(null); }}><span>{personPanelVisible ? "✓ " : ""}Human mock-up panel</span></button></>}</div>}</div>
+    <div className="software-menu-item"><button className={menu === "VIEW" ? "active" : ""} onClick={() => toggle("VIEW")}>View</button>{menu === "VIEW" && <div className="software-dropdown" role="menu" aria-label={mode === "EDITOR" ? "Floorplan display" : "Wall display"}>{mode === "EDITOR" ? <><button aria-pressed={floorplanStyle === "DEFAULT"} onClick={() => { onFloorplanStyleChange("DEFAULT"); setMenu(null); }}><span>{floorplanStyle === "DEFAULT" ? "✓ " : ""}Default view</span></button><button aria-pressed={floorplanStyle === "TRADITIONAL"} onClick={() => { onFloorplanStyleChange("TRADITIONAL"); setMenu(null); }}><span>{floorplanStyle === "TRADITIONAL" ? "✓ " : ""}Traditional view</span></button></> : <><button aria-pressed={wallMode === "SOLID"} onClick={() => setWallMode("SOLID")}><span>{wallMode === "SOLID" ? "✓ " : ""}Solid walls</span></button><button aria-pressed={wallMode === "TRANSPARENT"} onClick={() => setWallMode("TRANSPARENT")}><span>{wallMode === "TRANSPARENT" ? "✓ " : ""}Transparent walls</span></button><button aria-pressed={wallMode === "CUTAWAY_2D"} onClick={() => setWallMode("CUTAWAY_2D")}><span>{wallMode === "CUTAWAY_2D" ? "✓ " : ""}2D cutaway walls</span></button><button aria-pressed={wallMode === "INVISIBLE"} onClick={() => setWallMode("INVISIBLE")}><span>{wallMode === "INVISIBLE" ? "✓ " : ""}Invisible walls</span></button></>}</div>}</div>
     <div className="software-menu-item"><button className={menu === "SETTINGS" ? "active" : ""} onClick={() => toggle("SETTINGS")}>Settings</button>{menu === "SETTINGS" && <div className="software-dropdown"><button onClick={() => { onOpenSettings(); setMenu(null); }}><span>Preferences…</span></button><button disabled><span>Display units</span><kbd>{{ MM: "mm", CM: "cm", INCHES: "in", FEET: "ft", METERS: "m" }[displayUnits]}</kbd></button></div>}</div>
     <input ref={fileInput} hidden type="file" accept="application/json,.json" onChange={(event) => { void openFile(event.target.files?.[0]); event.target.value = ""; }} />
   </nav>
