@@ -317,11 +317,12 @@ button { font: inherit; }
 .plan-constraint-controls { display: grid; gap: 9px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .measurement-mode-row { display: grid; gap: 8px; margin-top: 2px; }
 .measurement-action-row { grid-template-columns: 1fr 1fr; }
-.snap-control-row { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1; white-space: nowrap; }
+.snap-control-row { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1; white-space: nowrap; }
 .snap-control-row > input { margin: 0; accent-color: var(--deep); }
-.snap-control-row > span { flex: 1; }
-.snap-control-row small { font: 600 8px var(--font-mono); }
-.snap-size-input { flex: 0 0 58px; width: 58px !important; min-width: 0 !important; padding: 5px 6px !important; text-align: center; }
+.snap-control-row > span { display: inline-flex; align-items: center; gap: 3px; flex: 1; min-width: 0; white-space: nowrap; }
+.snap-control-row small { font: 600 8px var(--font-mono); white-space: nowrap; }
+.snap-size-input { flex: 0 0 36px; width: 36px !important; min-width: 0 !important; margin: 0; padding: 1px 2px !important; border: 0 !important; border-bottom: 1px solid transparent !important; border-radius: 0 !important; background: transparent !important; color: var(--ink) !important; font: 700 11px var(--font-mono) !important; line-height: 1; text-align: center; box-shadow: none !important; }
+.snap-size-input:focus { border-bottom-color: var(--deep) !important; outline: 0; }
 .square-walls-control { align-items: flex-start; white-space: normal !important; }
 .square-walls-control > span { display: grid; gap: 2px; }
 .square-walls-control small { color: var(--muted); font: 500 9px/1.35 var(--font-sans); }
