@@ -846,7 +846,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       const pointer = canvasPoint(event, false); const normal = { x: -dy / length, y: dx / length };
       const rawDistance = (pointer.x - activeWall.pointerStart.x) * normal.x + (pointer.y - activeWall.pointerStart.y) * normal.y;
       const distance = snapEnabled ? Math.round(rawDistance / snapSize) * snapSize : Math.round(rawDistance * 10) / 10;
-      const attachmentTolerance = snapEnabled ? Math.max(4, snapSize * 0.25) : 4;
+      // Repair small gaps left by earlier snapped edits and keep projected
+      // junction endpoints rigidly attached during every wall translation.
+      const attachmentTolerance = snapEnabled ? Math.max(200, snapSize * 4) : 200;
       setWalls((current) => {
         const nextWalls = current.map((wall) => {
         if (wall.id === activeWall.wallId) {
