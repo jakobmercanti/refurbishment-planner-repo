@@ -7,7 +7,8 @@ import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeni
 import { formatArea, formatLength, formatMeasurementText, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room, RoomValidationResponse } from "@/lib/types";
 
-type Wall = { id: string; points: Point2D[] };
+type WallAttachment = { wallId: string; segmentIndex: number; along: number };
+type Wall = { id: string; points: Point2D[]; attachments?: Record<number, WallAttachment> };
 type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[] };
 type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE" | "MEASURE" | "ADD_MEASURE";
 type SegmentSelection = { wallId: string; segmentIndex: number };
@@ -38,7 +39,7 @@ const L_SHAPE_TEMPLATES: Array<{ id: string; name: string; preview: string; poin
   { id: "NOTCH_TOP_LEFT", name: "Notch top left", preview: "polygon(31% 0, 100% 0, 100% 100%, 0 100%, 0 36%, 31% 36%)", points: [{ x: 0, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 2800 }, { x: 1000, y: 2800 }, { x: 1000, y: 1800 }, { x: 0, y: 1800 }] },
   { id: "NOTCH_BOTTOM_LEFT", name: "Notch bottom left", preview: "polygon(0 0, 100% 0, 100% 100%, 31% 100%, 31% 64%, 0 64%)", points: [{ x: 1000, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 2800 }, { x: 0, y: 2800 }, { x: 0, y: 1000 }, { x: 1000, y: 1000 }] },
 ];
-const cloneWalls = (walls: Wall[]) => walls.map((wall) => ({ ...wall, points: wall.points.map((point) => ({ ...point })) }));
+const cloneWalls = (walls: Wall[]) => walls.map((wall) => ({ ...wall, points: wall.points.map((point) => ({ ...point })), attachments: wall.attachments ? Object.fromEntries(Object.entries(wall.attachments).map(([index, attachment]) => [index, { ...attachment }])) : undefined }));
 const cloneOpenings = (openings: FullOpening[]) => openings.map((opening) => ({ ...opening }));
 const cloneMeasurements = (measurements: CustomMeasurement[]) => measurements.map((measurement) => ({ ...measurement, first: { ...measurement.first }, second: { ...measurement.second } }));
 const samePoint = (a: Point2D, b: Point2D, tolerance = 1) => Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
@@ -361,6 +362,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const editorRoot = useRef<HTMLElement>(null);
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
   const wallDrag = useRef<{ wallId: string; segmentIndex: number; before: Snapshot; points: Point2D[]; pointerStart: Point2D } | null>(null);
+  const draftStartAttachment = useRef<WallAttachment | null>(null);
   const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
   const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
   const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
@@ -614,9 +616,16 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     return attachToWalls ? snapPoint(gridPoint, walls, snapEnabled, snapSize) : gridPoint;
   }
 
-  function commitDraft(points = draft) {
-    if (points.length >= 2) { record(); setWalls((current) => [...current, { id: crypto.randomUUID(), points: squaredWalls ? squareWallPoints(points) : points }]); }
-    setDraft([]); setTool("SELECT"); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null);
+  function commitDraft(points = draft, endAttachment?: WallAttachment) {
+    if (points.length >= 2) {
+      record();
+      const shapedPoints = squaredWalls ? squareWallPoints(points) : points;
+      const attachments: Record<number, WallAttachment> = {};
+      if (draftStartAttachment.current) attachments[0] = { ...draftStartAttachment.current };
+      if (endAttachment) attachments[shapedPoints.length - 1] = { ...endAttachment };
+      setWalls((current) => [...current, { id: crypto.randomUUID(), points: shapedPoints, attachments: Object.keys(attachments).length ? attachments : undefined }]);
+    }
+    draftStartAttachment.current = null; setDraft([]); setTool("SELECT"); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null);
   }
 
   function connectDraftToWall(wallId: string, segmentIndex: number, requested: Point2D) {
@@ -629,8 +638,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     // numbered corner beside the existing junction.
     const endpointTolerance = snapEnabled ? Math.max(8, snapSize * 0.5) : 8;
     const point = Math.hypot(projected.x - start.x, projected.y - start.y) <= endpointTolerance ? { ...start } : Math.hypot(projected.x - end.x, projected.y - end.y) <= endpointTolerance ? { ...end } : projected;
-    if (draft.length) commitDraft(squaredWalls ? orthogonalPathTo(draft, point) : [...draft, point]);
-    else setDraft([point]);
+    const attachment = { wallId, segmentIndex, along: pointOnSegment(point, start, end).along };
+    if (draft.length) commitDraft(squaredWalls ? orthogonalPathTo(draft, point) : [...draft, point], attachment);
+    else { draftStartAttachment.current = attachment; setDraft([point]); }
     setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null);
   }
 
@@ -859,13 +869,22 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
           if (closed && endIndex === points.length - 1) points[0] = { ...points[endIndex] };
           return { ...wall, points };
         }
-        // Move every corner anchored on the original segment too. This preserves connected
-        // room boundaries when a shared wall is translated rather than opening a gap.
-        const points = wall.points.map((point) => {
+        // Explicit anchors are created when a wall starts or finishes on this segment.
+        // They are rigid constraints, not a proximity guess, so attached room corners
+        // keep following the host wall after any number of edits.
+        const attachments = { ...wall.attachments };
+        const points = wall.points.map((point, pointIndex) => {
+          const attachment = wall.attachments?.[pointIndex];
+          if (attachment?.wallId === activeWall.wallId && attachment.segmentIndex === activeWall.segmentIndex) return { x: point.x + normal.x * distance, y: point.y + normal.y * distance };
           const projection = pointOnSegment(point, start, end);
-          return Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance ? { x: point.x + normal.x * distance, y: point.y + normal.y * distance } : { ...point };
+          const isEndpoint = pointIndex === 0 || pointIndex === wall.points.length - 1;
+          if (isEndpoint && Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance) {
+            attachments[pointIndex] = { wallId: activeWall.wallId, segmentIndex: activeWall.segmentIndex, along: projection.along };
+            return { x: point.x + normal.x * distance, y: point.y + normal.y * distance };
+          }
+          return { ...point };
         });
-          return { ...wall, points };
+          return { ...wall, points, attachments: Object.keys(attachments).length ? attachments : undefined };
         }).map((wall) => ({ ...wall, points: samePoint(wall.points[0], wall.points.at(-1)!) ? [...wall.points.slice(0, -1), { ...wall.points[0] }] : wall.points }));
         const preservesConstraints = nextWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
         return preservesConstraints ? nextWalls : current;
