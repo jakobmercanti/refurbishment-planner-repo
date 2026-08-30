@@ -76,6 +76,10 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
       <title>{`Double door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
       <path className="opening-hit-area" d={`${sectorPath(start, centre, firstLeaf)} ${sectorPath(end, centre, secondLeaf)}`} />
       <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+      <line className="opening-hit" x1={start.x} y1={start.y} x2={firstLeaf.x} y2={firstLeaf.y} />
+      <line className="opening-hit" x1={end.x} y1={end.y} x2={secondLeaf.x} y2={secondLeaf.y} />
+      <path className="opening-swing-hit" d={arcPath(start, centre, firstLeaf)} />
+      <path className="opening-swing-hit" d={arcPath(end, centre, secondLeaf)} />
       <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="door-closed-line" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="opening-jamb" x1={start.x - perpendicular.x * jambHalf} y1={start.y - perpendicular.y * jambHalf} x2={start.x + perpendicular.x * jambHalf} y2={start.y + perpendicular.y * jambHalf} />
@@ -93,6 +97,8 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
     <title>{`Door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
     <path className="opening-hit-area" d={sectorPath(hinge, closedEnd, leaf)} />
     <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+    <line className="opening-hit" x1={hinge.x} y1={hinge.y} x2={leaf.x} y2={leaf.y} />
+    <path className="opening-swing-hit" d={arcPath(hinge, closedEnd, leaf)} />
     <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
     <line className="door-closed-line" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
     <line className="opening-jamb" x1={start.x - perpendicular.x * jambHalf} y1={start.y - perpendicular.y * jambHalf} x2={start.x + perpendicular.x * jambHalf} y2={start.y + perpendicular.y * jambHalf} />
