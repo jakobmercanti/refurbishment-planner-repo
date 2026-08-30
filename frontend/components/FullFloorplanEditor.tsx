@@ -876,7 +876,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
           points[endIndex] = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
           if (closed && activeWall.segmentIndex === 0) points[points.length - 1] = { ...points[0] };
           if (closed && endIndex === points.length - 1) points[0] = { ...points[endIndex] };
-          return { ...wall, points };
+          return { ...wall, points: squaredWalls ? squareWallPoints(points) : points };
         }
         // Explicit anchors are created when a wall starts or finishes on this segment.
         // Resolve every anchored point from the host segment itself instead of moving it
@@ -899,7 +899,10 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
           }
           return { ...point };
         });
-          return { ...wall, points, attachments: Object.keys(attachments).length ? attachments : undefined };
+          // Moving an anchored end of another wall can move a whole connected run.
+          // Re-square that run so Square walls does not reject an otherwise valid
+          // vertical/horizontal wall translation.
+          return { ...wall, points: squaredWalls ? squareWallPoints(points) : points, attachments: Object.keys(attachments).length ? attachments : undefined };
         }).map((wall) => ({ ...wall, points: samePoint(wall.points[0], wall.points.at(-1)!) ? [...wall.points.slice(0, -1), { ...wall.points[0] }] : wall.points }));
         const preservesConstraints = nextWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
         return preservesConstraints ? nextWalls : current;
