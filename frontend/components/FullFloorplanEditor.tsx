@@ -249,6 +249,16 @@ function roomCentre(room: NamedOutline): Point2D {
   return room.vertices.reduce((total, point) => ({ x: total.x + point.x / room.vertices.length, y: total.y + point.y / room.vertices.length }), { x: 0, y: 0 });
 }
 
+function roomVisualCentre(points: Point2D[]): Point2D {
+  let twiceArea = 0; let x = 0; let y = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length]; const cross = point.x * next.y - next.x * point.y;
+    twiceArea += cross; x += (point.x + next.x) * cross; y += (point.y + next.y) * cross;
+  });
+  if (Math.abs(twiceArea) < 1e-9) return roomCentre({ vertices: points } as NamedOutline);
+  return { x: x / (3 * twiceArea), y: y / (3 * twiceArea) };
+}
+
 function reconcileRooms(current: NamedOutline[], detected: NamedOutline[]): NamedOutline[] {
   const available = [...current];
   const usedNames = new Set(current.map((room) => room.name));
@@ -1086,7 +1096,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
             {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import an existing drawing</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
             {detectedRooms.map((room) => { const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />; })}
             {rooms.map((room, index) => {
-              const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); const centre = outline.reduce((total, point) => ({ x: total.x + point.x / outline.length, y: total.y + point.y / outline.length }), { x: 0, y: 0 });
+              const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); const visualCentre = roomVisualCentre(room.vertices); const centre = toScreen({ x: visualCentre.x, y: canvasSize.height - visualCentre.y });
               return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} /><foreignObject className="room-name-editor" x={centre.x - 82} y={centre.y - 17} width="164" height="34"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); setRoomValidation(null); }} /></foreignObject></g>;
             })}
             {visibleFixtures.map((fixture) => {
