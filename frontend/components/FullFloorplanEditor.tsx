@@ -154,6 +154,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const [pan, setPan] = useState<Point2D>({ x: 0, y: 0 });
   const [selectedSegment, setSelectedSegment] = useState<SegmentSelection | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<PointSelection | null>(null);
+  const [wallLengthInput, setWallLengthInput] = useState<number | null>(null);
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [canvasSize, setCanvasSize] = useState(DEFAULT_SIZE);
@@ -182,6 +183,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const selectedRoom = useMemo(() => rooms.find((room) => room.id === selectedRoomId) ?? rooms[0] ?? null, [rooms, selectedRoomId]);
   const segmentOptions = useMemo(() => walls.flatMap((wall, wallIndex) => wall.points.slice(0, -1).map((_, segmentIndex) => ({ key: parentKey(wall.id, segmentIndex), label: `Wall ${wallIndex + 1}.${segmentIndex + 1}`, wall, segmentIndex }))), [walls]);
   const selectedWall = selectedSegment ? walls.find((wall) => wall.id === selectedSegment.wallId) ?? null : null;
+  const selectedPointWall = selectedPoint ? walls.find((wall) => wall.id === selectedPoint.wallId) ?? null : null;
+  const selectedPointValue = selectedPointWall && selectedPoint ? selectedPointWall.points[selectedPoint.pointIndex] : null;
   const coordinateWall = selectedWall ?? walls[0] ?? null;
   const coordinatePoints = coordinateWall?.points.slice(0, samePoint(coordinateWall.points[0], coordinateWall.points.at(-1)!) ? -1 : undefined) ?? [];
   const viewport = useMemo(() => {
@@ -341,6 +344,19 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex);
   }
 
+  function applySelectedWallLength() {
+    if (!selectedSegment || !selectedWall) return;
+    const start = selectedWall.points[selectedSegment.segmentIndex]; const end = selectedWall.points[selectedSegment.segmentIndex + 1];
+    const currentLength = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0;
+    const requested = wallLengthInput ?? currentLength;
+    if (!start || !end || !currentLength || !Number.isFinite(requested) || requested <= 0) return;
+    const next = { x: start.x + (end.x - start.x) / currentLength * requested, y: start.y + (end.y - start.y) / currentLength * requested };
+    const closed = samePoint(selectedWall.points[0], selectedWall.points.at(-1)!);
+    const endIndex = closed && selectedSegment.segmentIndex + 1 === selectedWall.points.length - 1 ? 0 : selectedSegment.segmentIndex + 1;
+    updateCoordinatePoint(selectedWall.id, endIndex, next);
+    setWallLengthInput(null);
+  }
+
   function deletePoint() {
     if (!selectedPoint) return;
     const wall = walls.find((item) => item.id === selectedPoint.wallId); if (!wall) return;
@@ -397,7 +413,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     if (tool === "REMOVE") { removeSegment(wallId, segmentIndex); return; }
     if (tool === "ADD_CORNERS") { setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); return; }
     if (tool !== "SELECT") return;
-    setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setOpeningParent(parentKey(wallId, segmentIndex));
+    setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setWallLengthInput(null); setOpeningParent(parentKey(wallId, segmentIndex));
   }
 
   function updateCoordinatePoint(wallId: string, pointIndex: number, next: Point2D) {
@@ -484,8 +500,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
             <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => { const next = event.target.checked; setSquaredWalls(next); if (next) { record(); setWalls((current) => current.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) }))); } }} /><span><strong>Square walls</strong><small>Keep every wall horizontal or vertical while editing.</small></span></label>
           </div>
           <p className={`full-plan-help ${tool === "REMOVE" ? "danger-help" : ""}`}>{help}</p>
-          {tool === "SELECT" && selectedSegment && selectedWall && <div className="selected-properties"><div className="tool-heading"><span>W</span><h2>Selected wall</h2></div><strong>Segment {selectedSegment.segmentIndex + 1}</strong><small>{formatLength(segmentLength(selectedWall, selectedSegment.segmentIndex), displayUnits)}</small><button className="primary-small" onClick={insertPoint}>Add point at midpoint</button><button className="danger-button" onClick={() => removeSegment(selectedWall.id, selectedSegment.segmentIndex)}>Remove this wall segment</button></div>}
-          {tool === "SELECT" && selectedPoint && <div className="selected-properties"><div className="tool-heading"><span>V</span><h2>Selected corner</h2></div><small>Drag the corner directly on the plan.</small><button className="danger-button" onClick={deletePoint}>Remove this corner</button></div>}
+          {tool === "SELECT" && selectedSegment && selectedWall && <div className="selected-properties"><div className="tool-heading"><span>W{walls.findIndex((wall) => wall.id === selectedWall.id) + 1}.{selectedSegment.segmentIndex + 1}</span><h2>Selected wall</h2></div><p className="tool-note">Enter a new length to move the wall endpoint. Adjoining walls update automatically.</p><label className="field"><span>New length <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={wallLengthInput ?? segmentLength(selectedWall, selectedSegment.segmentIndex)} units={displayUnits} onMmChange={setWallLengthInput} /></label><button className="primary-small" onClick={applySelectedWallLength}>Apply wall length</button><div className="button-grid"><button onClick={insertPoint}>Add point at midpoint</button><button className="danger-button" onClick={() => removeSegment(selectedWall.id, selectedSegment.segmentIndex)}>Remove wall segment</button></div></div>}
+          {tool === "SELECT" && selectedPoint && selectedPointWall && selectedPointValue && <div className="selected-properties"><div className="tool-heading"><span>V{walls.findIndex((wall) => wall.id === selectedPointWall.id) + 1}.{selectedPoint.pointIndex + 1}</span><h2>Selected corner</h2></div><div className="coordinate-fields"><label className="field"><span>X <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, x: value })} /></label><label className="field"><span>Y <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, y: value })} /></label></div><button className="danger-button" onClick={deletePoint}>Remove this corner</button></div>}
         </section>
         <section className="tool-section"><div className="tool-heading"><span>2</span><h2>Import drawing</h2></div><p className="tool-note">Use a PDF, PNG, JPG, or WEBP as an editable tracing reference.</p><button className="primary-small secondary-action" onClick={() => fileInput.current?.click()}>{importing ? "Importing…" : "Import PDF or image"}</button><input ref={fileInput} hidden type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => { void importDrawing(event.target.files?.[0]); event.target.value = ""; }} />{sourceFile && <><small>{sourceFile.name}</small><button className="danger-button secondary-action" type="button" onClick={clearImportedDrawing}>Remove imported drawing</button></>}{importError && <p className="project-error">{importError}</p>}</section>
       </aside>
