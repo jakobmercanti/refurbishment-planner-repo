@@ -5,7 +5,6 @@ import { EngineeringViewer } from "@/components/EngineeringViewer";
 import { ApplicationMenuBar } from "@/components/ApplicationMenuBar";
 import { CatalogueBrowser } from "@/components/CatalogueBrowser";
 import { FixtureEditor } from "@/components/FixtureEditor";
-import { FloorPlanEditor } from "@/components/FloorPlanEditor";
 import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { PersonEditor } from "@/components/PersonEditor";
 import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
@@ -20,7 +19,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/engineering-api";
 export default function Home() {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
   const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
-  const [floorplanMode, setFloorplanMode] = useState<"SINGLE" | "FULL">("SINGLE");
   const [projectRooms, setProjectRooms] = useState<Room[]>([]);
   const [layoutResult, setLayoutResult] = useState<LayoutResult | null>(null);
   const [runningAnalysis, setRunningAnalysis] = useState(false);
@@ -49,13 +47,6 @@ export default function Home() {
     setAnalysisError(null);
   }
 
-  function applyRoom(room: Room) {
-    setDemo((current) => current ? { ...current, room } : current);
-    setProjectRooms((current) => current.some((item) => item.id === room.id) ? current.map((item) => item.id === room.id ? room : item) : [...current, room]);
-    invalidateAnalysis();
-    setMode("ANALYSIS");
-  }
-
   function openDetectedRoom(name: string, vertices: import("@/lib/types").Point2D[], openings: import("@/lib/types").Opening[], wallHeight: number, wallThickness: number) {
     setDemo((current) => {
       if (!current) return current;
@@ -64,8 +55,7 @@ export default function Home() {
       return { ...current, room };
     });
     invalidateAnalysis();
-    setFloorplanMode("SINGLE");
-    setMode("EDITOR");
+    setMode("ANALYSIS");
   }
 
   function applyObstacles(obstacles: Obstacle[]) {
@@ -163,7 +153,7 @@ export default function Home() {
         <div className="truth-badge"><span className="truth-dot" />Deterministic engine · {{ MM: "mm", CM: "cm", INCHES: "in", FEET: "ft", METERS: "m" }[preferences.units]}</div>
       </header>
 
-      <section className={`floorplan-mode-shell ${mode !== "EDITOR" ? "floorplan-mode-hidden" : ""}`} aria-hidden={mode !== "EDITOR"}><div className="floorplan-mode-toggle"><button className={floorplanMode === "SINGLE" ? "active" : ""} onClick={() => setFloorplanMode("SINGLE")}>Single room</button><button className={floorplanMode === "FULL" ? "active" : ""} onClick={() => setFloorplanMode("FULL")}>Full floorplan</button></div><div hidden={floorplanMode !== "SINGLE"}><FloorPlanEditor room={demo.room} apiUrl={API_URL} displayUnits={preferences.units} onApply={applyRoom} onCancel={() => setMode("ANALYSIS")} /></div><div hidden={floorplanMode !== "FULL"}><FullFloorplanEditor apiUrl={API_URL} displayUnits={preferences.units} onOpenRoom={openDetectedRoom} /></div></section>
+      <section hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor apiUrl={API_URL} displayUnits={preferences.units} onOpenRoom={openDetectedRoom} /></section>
       {mode === "ANALYSIS" ? (
         <><div className="viewer-room-selector"><label>Room <select value={demo.room.id} onChange={(event) => { const room = projectRooms.find((item) => item.id === event.target.value); if (room) setDemo((current) => current ? { ...current, room } : current); }}><option value={demo.room.id}>{demo.room.name}</option>{projectRooms.filter((room) => room.id !== demo.room.id).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div><section className="workspace">
           <aside className="evidence-panel">

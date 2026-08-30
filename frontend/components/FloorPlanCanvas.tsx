@@ -76,7 +76,7 @@ interface FloorPlanCanvasProps extends Omit<SVGProps<SVGSVGElement>, "viewBox"> 
   underlay?: boolean;
 }
 
-/** Shared SVG surface for both single-room and complete-floorplan editors. */
+/** Canonical SVG surface for the floorplan editor. */
 export function FloorPlanCanvas({ children, className = "", showGrid = true, underlay = false, ...props }: FloorPlanCanvasProps) {
   const gridLines = Array.from({ length: 17 }, (_, index) => index * FLOOR_PLAN_CANVAS_WIDTH / 16);
 
