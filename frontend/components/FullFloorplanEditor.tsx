@@ -838,6 +838,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       const pointer = canvasPoint(event, false); const normal = { x: -dy / length, y: dx / length };
       const rawDistance = (pointer.x - activeWall.pointerStart.x) * normal.x + (pointer.y - activeWall.pointerStart.y) * normal.y;
       const distance = snapEnabled ? Math.round(rawDistance / snapSize) * snapSize : Math.round(rawDistance * 10) / 10;
+      const attachmentTolerance = snapEnabled ? Math.max(4, snapSize * 0.25) : 4;
       setWalls((current) => {
         const nextWalls = current.map((wall) => {
         if (wall.id === activeWall.wallId) {
@@ -852,7 +853,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         // room boundaries when a shared wall is translated rather than opening a gap.
         const points = wall.points.map((point) => {
           const projection = pointOnSegment(point, start, end);
-          return Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= 1 ? { x: point.x + normal.x * distance, y: point.y + normal.y * distance } : { ...point };
+          return Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance ? { x: point.x + normal.x * distance, y: point.y + normal.y * distance } : { ...point };
         });
           return { ...wall, points };
         }).map((wall) => ({ ...wall, points: samePoint(wall.points[0], wall.points.at(-1)!) ? [...wall.points.slice(0, -1), { ...wall.points[0] }] : wall.points }));
