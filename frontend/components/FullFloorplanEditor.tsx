@@ -160,6 +160,16 @@ function moveSquaredWallPoint(points: Point2D[], index: number, next: Point2D): 
   return closed ? [...squared, { ...squared[0] }] : squared;
 }
 
+function pointInsidePolygon(point: Point2D, polygon: Point2D[]): boolean {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+    const current = polygon[index]; const before = polygon[previous];
+    const crosses = (current.y > point.y) !== (before.y > point.y);
+    if (crosses && point.x < (before.x - current.x) * (point.y - current.y) / (before.y - current.y) + current.x) inside = !inside;
+  }
+  return inside;
+}
+
 function closedRooms(walls: Wall[], height: number): NamedOutline[] {
   type SourceSegment = { start: Point2D; end: Point2D; wallId: string };
   type GraphEdge = { first: string; second: string; wallIds: Set<string> };
@@ -243,7 +253,21 @@ function closedRooms(walls: Wall[], height: number): NamedOutline[] {
     });
   });
 
-  return faces.sort((first, second) => second.area - first.area).map((face, index) => {
+  const closedWallRoomEntries = walls.flatMap((wall) => {
+    if (!samePoint(wall.points[0], wall.points.at(-1)!)) return [];
+    const screenVertices = wall.points.slice(0, -1).map((point) => ({ ...point }));
+    if (screenVertices.length < 3) return [];
+    return [{
+      id: `closed-wall-${wall.id}`,
+      name: "",
+      sourceWallId: wall.id,
+      sourceWallIds: [wall.id],
+      screenVertices,
+      vertices: counterClockwiseVertices(screenVertices.map((point) => ({ x: point.x, y: height - point.y }))),
+    }];
+  });
+
+  const graphRooms = faces.sort((first, second) => second.area - first.area).map((face, index) => {
     const sourceWallIds = [...face.wallIds];
     return {
       id: `project-room-${index + 1}`,
@@ -253,6 +277,16 @@ function closedRooms(walls: Wall[], height: number): NamedOutline[] {
       vertices: counterClockwiseVertices(face.keys.map((key) => { const point = nodes.get(key)!; return { x: point.x, y: height - point.y }; })),
     };
   });
+
+  // A closed wall run remains a complete room even when an added wall begins at
+  // an inserted corner on its edge. The graph face walker sees that T-junction as
+  // a branch and can otherwise leave an artificial unfilled strip beside it.
+  const extraGraphRooms = graphRooms.filter((room) => {
+    const roomScreenCentre = room.vertices.reduce((total, point) => ({ x: total.x + point.x / room.vertices.length, y: total.y + (height - point.y) / room.vertices.length }), { x: 0, y: 0 });
+    return !closedWallRoomEntries.some((closedRoom) => pointInsidePolygon(roomScreenCentre, closedRoom.screenVertices));
+  });
+  const closedWallRooms: NamedOutline[] = closedWallRoomEntries.map((room) => ({ id: room.id, name: room.name, sourceWallId: room.sourceWallId, sourceWallIds: room.sourceWallIds, vertices: room.vertices }));
+  return [...closedWallRooms, ...extraGraphRooms];
 }
 
 function roomCentre(room: NamedOutline): Point2D {
