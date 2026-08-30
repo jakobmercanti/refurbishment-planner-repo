@@ -4,8 +4,8 @@ import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, use
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
 import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
-import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
-import type { Opening, Point2D, ProjectFloorplanResponse } from "@/lib/types";
+import { formatArea, formatLength, formatMeasurementText, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import type { Opening, Point2D, ProjectFloorplanResponse, Room, RoomValidationResponse } from "@/lib/types";
 
 type Wall = { id: string; points: Point2D[] };
 type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string };
@@ -165,6 +165,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const [finished, setFinished] = useState(false);
   const [rooms, setRooms] = useState<NamedOutline[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [roomValidation, setRoomValidation] = useState<RoomValidationResponse | null>(null);
+  const [roomValidationError, setRoomValidationError] = useState<string | null>(null);
+  const [roomSaving, setRoomSaving] = useState(false);
   const [openingKind, setOpeningKind] = useState<"DOOR" | "WINDOW">("DOOR");
   const [openingParent, setOpeningParent] = useState("");
   const [openingOffset, setOpeningOffset] = useState(100);
@@ -236,7 +239,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   }, [tool]);
 
   function snapshot(): Snapshot { return { walls: cloneWalls(walls), openings: cloneOpenings(openings) }; }
-  function invalidateCompletion() { setFinished(false); setRooms([]); setSelectedRoomId(null); }
+  function invalidateCompletion() { setFinished(false); setRooms([]); setSelectedRoomId(null); setRoomValidation(null); setRoomValidationError(null); }
   function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); invalidateCompletion(); }
   function restore(value: Snapshot) { setWalls(cloneWalls(value.walls)); setOpenings(cloneOpenings(value.openings)); setDraft([]); setSelectedSegment(null); setSelectedPoint(null); invalidateCompletion(); }
   function undo() { const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous); }
@@ -510,8 +513,40 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   function recogniseRooms() {
     const names = new Map(rooms.map((room) => [room.sourceWallId, room.name]));
     const found = closedRooms(walls, canvasSize.height).map((room) => ({ ...room, name: names.get(room.sourceWallId) ?? room.name }));
-    setFinished(true); setRooms(found); setSelectedRoomId(found[0]?.id ?? null); setTool("SELECT");
+    setFinished(true); setRooms(found); setSelectedRoomId(found[0]?.id ?? null); setRoomValidation(null); setRoomValidationError(null); setTool("SELECT");
   }
+
+  function selectedRoomDraft(): Room | null {
+    if (!selectedRoom) return null;
+    const roomId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(selectedRoom.id) ? selectedRoom.id : crypto.randomUUID();
+    return { id: roomId, name: selectedRoom.name, version: 1, vertices: selectedRoom.vertices, wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, openings: roomOpenings(selectedRoom, openings), obstacles: [], person_mockup: null };
+  }
+
+  async function validateSelectedRoom() {
+    const draftRoom = selectedRoomDraft(); setRoomValidation(null); setRoomValidationError(null);
+    if (!draftRoom) { setRoomValidationError("Select a recognised room first."); return; }
+    try {
+      const response = await fetch(`${apiUrl}/rooms/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draftRoom) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail ?? `Validation returned ${response.status}`);
+      setRoomValidation(payload as RoomValidationResponse);
+    } catch (error) { setRoomValidationError(formatMeasurementText(error instanceof Error ? error.message : "Room validation failed.", displayUnits)); }
+  }
+
+  async function saveSelectedRoom() {
+    const draftRoom = selectedRoomDraft(); if (!draftRoom || !roomValidation) return;
+    setRoomSaving(true); setRoomValidationError(null);
+    try {
+      const response = await fetch(`${apiUrl}/rooms/${draftRoom.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draftRoom) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail ?? `Save returned ${response.status}`);
+      setRooms((current) => current.map((room) => room.id === selectedRoom?.id ? { ...room, id: (payload as Room).id, name: (payload as Room).name } : room));
+      setSelectedRoomId((payload as Room).id);
+    } catch (error) { setRoomValidationError(formatMeasurementText(error instanceof Error ? error.message : "Room could not be saved.", displayUnits)); }
+    finally { setRoomSaving(false); }
+  }
+
+  function cancelRoomRecognition() { setFinished(false); setRooms([]); setSelectedRoomId(null); setRoomValidation(null); setRoomValidationError(null); }
 
   const help = tool === "DRAW" ? "Click an existing wall to start or finish a connected wall run. Elsewhere, click consecutive points; double-click or right-click to finish." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
   const vertexCount = walls.reduce((total, wall) => total + wall.points.length - (samePoint(wall.points[0], wall.points.at(-1)!) ? 1 : 0), 0);
@@ -604,7 +639,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
 
       <aside className="coordinate-panel full-plan-side-column">
         <section className="tool-section"><div className="tool-heading"><span>4</span><h2>Coordinates</h2></div><p className="tool-note">{coordinateWall ? "Each fixed corner label matches the numbered point on the drawing. Edit only the X and Y values." : "Add a wall run to edit its numbered corner coordinates."}</p><div className="coordinate-input-list" aria-label={`Selected wall coordinates in ${UNIT_LABEL[displayUnits]}`}>{coordinateWall && coordinatePoints.map((point, index) => <div key={`${coordinateWall.id}-coordinate-${index}`}><span className="coordinate-prefix">{index + 1} -</span><DisplayNumberInput aria-label={`Corner ${index + 1} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(coordinateWall.id, index, { ...point, x: value })} /><span className="coordinate-comma">,</span><DisplayNumberInput aria-label={`Corner ${index + 1} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(coordinateWall.id, index, { ...point, y: value })} /></div>)}</div></section>
-        <section className="tool-section full-plan-rooms"><div className="tool-heading"><span>5</span><h2>Recognise rooms</h2></div><p className="tool-note">Finish the connected wall layout, then detect and name each closed room.</p><button className="primary-small" disabled={!walls.length || Boolean(draft.length)} onClick={recogniseRooms}>{rooms.length ? "Recognise rooms again" : "Recognise rooms"}</button>{finished && rooms.length === 0 && <p className="inline-error">No closed room outlines were found. Close each room boundary before recognising.</p>}{rooms.map((room) => <div key={room.id} className={selectedRoom?.id === room.id ? "selected" : ""} onClick={() => setSelectedRoomId(room.id)}><input aria-label={`${room.name} name`} value={room.name} onClick={(event) => event.stopPropagation()} onChange={(event) => setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name: event.target.value } : item))} /><small>{room.vertices.length} walls · {roomOpenings(room, openings).length} openings</small></div>)}<button className="primary-small secondary-action" disabled={!selectedRoom} onClick={() => selectedRoom && onOpenRoom(selectedRoom.name, selectedRoom.vertices, roomOpenings(selectedRoom, openings), wallHeight, wallThickness)}>Open selected room in 3D viewer</button></section>
+        <section className="tool-section full-plan-rooms"><div className="tool-heading"><span>5</span><h2>Recognise rooms</h2></div><p className="tool-note">Finish the connected wall layout, then detect, name, validate and save each closed room.</p><button className="primary-small" disabled={!walls.length || Boolean(draft.length)} onClick={recogniseRooms}>{rooms.length ? "Recognise rooms again" : "Recognise rooms"}</button>{finished && rooms.length === 0 && <p className="inline-error">No closed room outlines were found. Close each room boundary before recognising.</p>}{rooms.length > 0 && <><label className="field"><span>Room to edit and view</span><select value={selectedRoom?.id ?? ""} onChange={(event) => { setSelectedRoomId(event.target.value); setRoomValidation(null); setRoomValidationError(null); }}>{rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>{selectedRoom && <label className="field"><span>Room name</span><input value={selectedRoom.name} onChange={(event) => { setRooms((current) => current.map((room) => room.id === selectedRoom.id ? { ...room, name: event.target.value } : room)); setRoomValidation(null); }} /></label>}<button className="validate-button" onClick={validateSelectedRoom}>Validate geometry</button>{roomValidationError && <div className="validation-fail"><strong>INVALID</strong><p>{roomValidationError}</p></div>}{roomValidation && <div className="validation-pass"><div><strong>VALID · CCW</strong><span>{formatArea(roomValidation.area_mm2, displayUnits)} · {formatLength(roomValidation.perimeter_mm, displayUnits)} perimeter</span></div><ul>{roomValidation.warnings.map((warning) => <li key={warning}>{formatMeasurementText(warning, displayUnits)}</li>)}</ul></div>}<div className="save-actions"><button onClick={cancelRoomRecognition}>Cancel</button><button className="save-button" disabled={!roomValidation || roomSaving} onClick={saveSelectedRoom}>{roomSaving ? "Saving…" : "Save room revision"}</button></div><button className="primary-small secondary-action" disabled={!selectedRoom} onClick={() => selectedRoom && onOpenRoom(selectedRoom.name, selectedRoom.vertices, roomOpenings(selectedRoom, openings), wallHeight, wallThickness)}>Open selected room in 3D viewer</button></>}</section>
         {openingPanel}
       </aside>
     </div>
