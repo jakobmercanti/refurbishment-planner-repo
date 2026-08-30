@@ -183,6 +183,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
+  const wallDrag = useRef<{ wallId: string; segmentIndex: number; before: Snapshot; points: Point2D[]; pointerStart: Point2D } | null>(null);
   const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
   const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
 
@@ -392,6 +393,14 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     pointDrag.current = { selection, before: snapshot() }; setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null);
   }
 
+  function beginWallDrag(event: ReactPointerEvent<SVGLineElement>, wall: Wall, segmentIndex: number) {
+    if (tool !== "SELECT" || event.button !== 0) return;
+    const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
+    event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    wallDrag.current = { wallId: wall.id, segmentIndex, before: snapshot(), points: wall.points.map((point) => ({ ...point })), pointerStart: canvasPointFromClient(event.clientX, event.clientY, svg, false) };
+    setLockedViewport(viewport); setSelectedSegment({ wallId: wall.id, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setWallLengthInput(null); setOpeningParent(parentKey(wall.id, segmentIndex));
+  }
+
   function beginOpeningDrag(event: ReactPointerEvent<SVGElement>, opening: FullOpening) {
     if (event.button !== 0) return;
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
@@ -434,6 +443,25 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
       return;
     }
     if (moveOpening(event)) return;
+    const activeWall = wallDrag.current;
+    if (activeWall) {
+      const start = activeWall.points[activeWall.segmentIndex]; const endIndex = activeWall.segmentIndex + 1; const end = activeWall.points[endIndex];
+      if (!start || !end) return;
+      const dx = end.x - start.x; const dy = end.y - start.y; const length = Math.hypot(dx, dy); if (!length) return;
+      const pointer = canvasPoint(event, false); const normal = { x: -dy / length, y: dx / length };
+      const rawDistance = (pointer.x - activeWall.pointerStart.x) * normal.x + (pointer.y - activeWall.pointerStart.y) * normal.y;
+      const distance = snapEnabled ? Math.round(rawDistance / snapSize) * snapSize : Math.round(rawDistance * 10) / 10;
+      setWalls((current) => current.map((wall) => {
+        if (wall.id !== activeWall.wallId) return wall;
+        const points = activeWall.points.map((point) => ({ ...point })); const closed = samePoint(points[0], points.at(-1)!);
+        points[activeWall.segmentIndex] = { x: start.x + normal.x * distance, y: start.y + normal.y * distance };
+        points[endIndex] = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
+        if (closed && activeWall.segmentIndex === 0) points[points.length - 1] = { ...points[0] };
+        if (closed && endIndex === points.length - 1) points[0] = { ...points[endIndex] };
+        return hasMinimumEnclosedArea(points) ? { ...wall, points } : wall;
+      }));
+      return;
+    }
     if (!pointDrag.current) return;
     const { selection } = pointDrag.current; const next = canvasPoint(event, false);
     setWalls((current) => current.map((wall) => {
@@ -451,6 +479,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   function finishPointDrag() {
     if (panDrag.current) { panDrag.current = null; return; }
     if (openingDrag.current) { const before = openingDrag.current.before; openingDrag.current = null; setLockedViewport(null); record(before); return; }
+    if (wallDrag.current) { const before = wallDrag.current.before; wallDrag.current = null; setLockedViewport(null); record(before); return; }
     if (!pointDrag.current) return;
     const before = pointDrag.current.before; pointDrag.current = null; setLockedViewport(null); record(before);
     setOpenings((current) => current.filter((opening) => {
@@ -612,7 +641,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
                 const modelEnd = wall.points[segmentIndex + 1]; const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y) || 1; const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const offset = 78; const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * 10, y: (first.y + second.y) / 2 + outward.y * 10 };
                 return <g key={`${wall.id}-dimension-${segmentIndex}`} className="wall-dimension"><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
               });
-              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{closed && <polygon points={screenPoints.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />}{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
+              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{closed && <polygon points={screenPoints.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />}{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
             })}
             {draft.length > 0 && <polyline points={draft.map(toScreen).map((point) => `${point.x},${point.y}`).join(" ")} className="full-wall-draft" />}
             {openings.map((opening) => {
