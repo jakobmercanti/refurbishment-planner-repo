@@ -8,7 +8,7 @@ import { formatArea, formatLength, formatMeasurementText, UNIT_LABEL, type Displ
 import type { Opening, Point2D, ProjectFloorplanResponse, Room, RoomValidationResponse } from "@/lib/types";
 
 type Wall = { id: string; points: Point2D[] };
-type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string };
+type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[] };
 type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE";
 type SegmentSelection = { wallId: string; segmentIndex: number };
 type PointSelection = { wallId: string; pointIndex: number };
@@ -132,17 +132,104 @@ function moveSquaredWallPoint(points: Point2D[], index: number, next: Point2D): 
 }
 
 function closedRooms(walls: Wall[], height: number): NamedOutline[] {
-  return walls.filter((wall) => wall.points.length >= 4 && samePoint(wall.points[0], wall.points.at(-1)!, 16)).map((wall, index) => ({
-    id: `project-room-${index + 1}`,
-    name: `Room ${index + 1}`,
-    sourceWallId: wall.id,
-    vertices: wall.points.slice(0, -1).map((point) => ({ x: point.x, y: height - point.y })),
-  }));
+  type SourceSegment = { start: Point2D; end: Point2D; wallId: string };
+  type GraphEdge = { first: string; second: string; wallIds: Set<string> };
+  const tolerance = 0.5;
+  const keyFor = (point: Point2D) => `${Math.round(point.x / tolerance)}:${Math.round(point.y / tolerance)}`;
+  const segments: SourceSegment[] = walls.flatMap((wall) => wall.points.slice(0, -1).map((start, index) => ({ start, end: wall.points[index + 1], wallId: wall.id })).filter(({ start, end }) => !samePoint(start, end, tolerance)));
+  const nodes = new Map<string, Point2D>();
+  const addNode = (point: Point2D) => { const key = keyFor(point); if (!nodes.has(key)) nodes.set(key, { ...point }); return key; };
+  segments.forEach(({ start, end }) => { addNode(start); addNode(end); });
+
+  // Add crossings, then split every source segment at crossings and at wall-run endpoints.
+  for (let firstIndex = 0; firstIndex < segments.length; firstIndex += 1) {
+    const first = segments[firstIndex];
+    for (let secondIndex = firstIndex + 1; secondIndex < segments.length; secondIndex += 1) {
+      const second = segments[secondIndex];
+      const firstVector = { x: first.end.x - first.start.x, y: first.end.y - first.start.y };
+      const secondVector = { x: second.end.x - second.start.x, y: second.end.y - second.start.y };
+      const denominator = firstVector.x * secondVector.y - firstVector.y * secondVector.x;
+      if (Math.abs(denominator) <= 1e-9) continue;
+      const delta = { x: second.start.x - first.start.x, y: second.start.y - first.start.y };
+      const firstAlong = (delta.x * secondVector.y - delta.y * secondVector.x) / denominator;
+      const secondAlong = (delta.x * firstVector.y - delta.y * firstVector.x) / denominator;
+      if (firstAlong < -1e-6 || firstAlong > 1 + 1e-6 || secondAlong < -1e-6 || secondAlong > 1 + 1e-6) continue;
+      addNode({ x: first.start.x + firstVector.x * firstAlong, y: first.start.y + firstVector.y * firstAlong });
+    }
+  }
+
+  const edges = new Map<string, GraphEdge>();
+  segments.forEach((segment) => {
+    const splitPoints = [...nodes.entries()].map(([key, point]) => ({ key, point, projection: pointOnSegment(point, segment.start, segment.end) }))
+      .filter(({ point, projection }) => samePoint(point, projection.point, tolerance))
+      .sort((first, second) => first.projection.along - second.projection.along);
+    for (let index = 0; index < splitPoints.length - 1; index += 1) {
+      const first = splitPoints[index].key; const second = splitPoints[index + 1].key;
+      if (first === second) continue;
+      const edgeKey = [first, second].sort().join("|");
+      const edge = edges.get(edgeKey) ?? { first, second, wallIds: new Set<string>() };
+      edge.wallIds.add(segment.wallId); edges.set(edgeKey, edge);
+    }
+  });
+
+  const neighbours = new Map<string, Set<string>>();
+  edges.forEach(({ first, second }) => {
+    if (!neighbours.has(first)) neighbours.set(first, new Set());
+    if (!neighbours.has(second)) neighbours.set(second, new Set());
+    neighbours.get(first)!.add(second); neighbours.get(second)!.add(first);
+  });
+  const visited = new Set<string>();
+  const faces: { keys: string[]; area: number; wallIds: Set<string> }[] = [];
+  const directedKey = (from: string, to: string) => `${from}>${to}`;
+
+  // Follow each half-edge clockwise around the screen-coordinate graph. Positive-area
+  // cycles are bounded room faces; the unbounded exterior is traversed in reverse.
+  edges.forEach(({ first, second }) => {
+    [[first, second], [second, first]].forEach(([initialFrom, initialTo]) => {
+      if (visited.has(directedKey(initialFrom, initialTo))) return;
+      const faceKeys: string[] = []; const faceWallIds = new Set<string>();
+      let from = initialFrom; let to = initialTo; let complete = false;
+      for (let step = 0; step <= edges.size * 2; step += 1) {
+        const halfEdge = directedKey(from, to);
+        if (visited.has(halfEdge)) { complete = from === initialFrom && to === initialTo; break; }
+        visited.add(halfEdge); faceKeys.push(from);
+        const edge = edges.get([from, to].sort().join("|")); edge?.wallIds.forEach((wallId) => faceWallIds.add(wallId));
+        const centre = nodes.get(to)!;
+        const ordered = [...(neighbours.get(to) ?? [])].sort((firstKey, secondKey) => {
+          const firstPoint = nodes.get(firstKey)!; const secondPoint = nodes.get(secondKey)!;
+          return Math.atan2(firstPoint.y - centre.y, firstPoint.x - centre.x) - Math.atan2(secondPoint.y - centre.y, secondPoint.x - centre.x);
+        });
+        const reverseIndex = ordered.indexOf(from);
+        if (reverseIndex < 0 || !ordered.length) break;
+        const next = ordered[(reverseIndex - 1 + ordered.length) % ordered.length];
+        from = to; to = next;
+        if (from === initialFrom && to === initialTo) { complete = true; break; }
+      }
+      if (!complete || faceKeys.length < 3) return;
+      const area = faceKeys.reduce((total, key, index) => {
+        const point = nodes.get(key)!; const next = nodes.get(faceKeys[(index + 1) % faceKeys.length])!;
+        return total + point.x * next.y - next.x * point.y;
+      }, 0) / 2;
+      if (area >= MIN_ENCLOSED_AREA_MM2) faces.push({ keys: faceKeys, area, wallIds: faceWallIds });
+    });
+  });
+
+  return faces.sort((first, second) => second.area - first.area).map((face, index) => {
+    const sourceWallIds = [...face.wallIds];
+    return {
+      id: `project-room-${index + 1}`,
+      name: `Room ${index + 1}`,
+      sourceWallId: sourceWallIds[0] ?? "",
+      sourceWallIds,
+      vertices: face.keys.map((key) => { const point = nodes.get(key)!; return { x: point.x, y: height - point.y }; }),
+    };
+  });
 }
 
 function roomOpenings(room: NamedOutline, openings: FullOpening[]): Opening[] {
   const measurement = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
-  return openings.filter((opening) => opening.wallId === room.sourceWallId).map((opening) => ({
+  const sourceWallIds = room.sourceWallIds?.length ? room.sourceWallIds : [room.sourceWallId];
+  return openings.filter((opening) => sourceWallIds.includes(opening.wallId)).map((opening) => ({
     id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(opening.segmentIndex + 1).padStart(3, "0")}`,
     offset_mm: opening.offset, width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0,
     ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}),
@@ -206,6 +293,13 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const selectedPointValue = selectedPointWall && selectedPoint ? selectedPointWall.points[selectedPoint.pointIndex] : null;
   const coordinateWall = selectedWall ?? walls[0] ?? null;
   const coordinatePoints = coordinateWall?.points.slice(0, samePoint(coordinateWall.points[0], coordinateWall.points.at(-1)!) ? -1 : undefined) ?? [];
+  const detectedRooms = useMemo(() => closedRooms(walls, canvasSize.height), [canvasSize.height, walls]);
+  const wallVertexStarts = useMemo(() => {
+    const starts = new Map<string, number>(); let next = 1;
+    walls.forEach((wall) => { starts.set(wall.id, next); next += wall.points.length - (samePoint(wall.points[0], wall.points.at(-1)!) ? 1 : 0); });
+    return starts;
+  }, [walls]);
+  const coordinateStart = coordinateWall ? wallVertexStarts.get(coordinateWall.id) ?? 1 : 1;
   const viewport = useMemo(() => {
     const geometry = [...walls.flatMap((wall) => wall.points), ...draft];
     const points = sourceUrl ? [...geometry, { x: 0, y: 0 }, { x: canvasSize.width, y: canvasSize.height }] : geometry;
@@ -607,8 +701,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   }
 
   function recogniseRooms() {
-    const names = new Map(rooms.map((room) => [room.sourceWallId, room.name]));
-    const found = closedRooms(walls, canvasSize.height).map((room) => ({ ...room, name: names.get(room.sourceWallId) ?? room.name }));
+    const names = new Map(rooms.map((room) => [room.id, room.name]));
+    const found = detectedRooms.map((room) => ({ ...room, name: names.get(room.id) ?? room.name }));
     setFinished(true); setRooms(found); setSelectedRoomId(found[0]?.id ?? null); setRoomValidation(null); setRoomValidationError(null); setTool("SELECT");
   }
 
@@ -684,7 +778,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
           </div>
           <p className={`full-plan-help ${tool === "REMOVE" ? "danger-help" : ""}`}>{help}</p>
           {tool === "SELECT" && selectedSegment && selectedWall && <div className="selected-properties"><div className="tool-heading"><span>W{walls.findIndex((wall) => wall.id === selectedWall.id) + 1}.{selectedSegment.segmentIndex + 1}</span><h2>Selected wall</h2></div><p className="tool-note">Enter a new length to move the wall endpoint. Adjoining walls update automatically.</p><label className="field"><span>New length <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={wallLengthInput ?? segmentLength(selectedWall, selectedSegment.segmentIndex)} units={displayUnits} onMmChange={setWallLengthInput} /></label><button className="primary-small" onClick={applySelectedWallLength}>Apply wall length</button><div className="button-grid"><button onClick={insertPoint}>Add point at midpoint</button><button className="danger-button" onClick={() => removeSegment(selectedWall.id, selectedSegment.segmentIndex)}>Remove wall segment</button></div></div>}
-          {tool === "SELECT" && selectedPoint && selectedPointWall && selectedPointValue && <div className="selected-properties"><div className="tool-heading"><span>V{walls.findIndex((wall) => wall.id === selectedPointWall.id) + 1}.{selectedPoint.pointIndex + 1}</span><h2>Selected corner</h2></div><div className="coordinate-fields"><label className="field"><span>X <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, x: value })} /></label><label className="field"><span>Y <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, y: value })} /></label></div><div className="button-grid"><button onClick={insertPointAfterSelected} disabled={!samePoint(selectedPointWall.points[0], selectedPointWall.points.at(-1)!) && selectedPoint.pointIndex >= selectedPointWall.points.length - 1}>Add corner after</button><button className="danger-button" onClick={deletePoint}>Delete corner</button></div></div>}
+          {tool === "SELECT" && selectedPoint && selectedPointWall && selectedPointValue && <div className="selected-properties"><div className="tool-heading"><span>V{(wallVertexStarts.get(selectedPointWall.id) ?? 1) + selectedPoint.pointIndex}</span><h2>Selected corner</h2></div><div className="coordinate-fields"><label className="field"><span>X <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, x: value })} /></label><label className="field"><span>Y <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, y: value })} /></label></div><div className="button-grid"><button onClick={insertPointAfterSelected} disabled={!samePoint(selectedPointWall.points[0], selectedPointWall.points.at(-1)!) && selectedPoint.pointIndex >= selectedPointWall.points.length - 1}>Add corner after</button><button className="danger-button" onClick={deletePoint}>Delete corner</button></div></div>}
         </section>
         <section className="tool-section"><div className="tool-heading"><span>2</span><h2>Overall properties</h2></div><div className="coordinate-fields room-measurements"><label className="field"><span>Wall height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} maxMm={100000} valueMm={wallHeight} units={displayUnits} onMmChange={setWallHeight} /></label><label className="field"><span>Wall thickness <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={wallThickness} units={displayUnits} onMmChange={setWallThickness} /></label></div></section>
         <section className="tool-section"><div className="tool-heading"><span>3</span><h2>Import drawing</h2></div><p className="tool-note">Use a PDF, PNG, JPG, or WEBP as an editable tracing reference.</p><button className="primary-small secondary-action" onClick={() => fileInput.current?.click()}>{importing ? "Importing…" : "Import PDF or image"}</button><input ref={fileInput} hidden type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => { void importDrawing(event.target.files?.[0]); event.target.value = ""; }} />{sourceFile && <><small>{sourceFile.name}</small><button className="danger-button secondary-action" type="button" onClick={clearImportedDrawing}>Remove imported drawing</button></>}{importError && <p className="project-error">{importError}</p>}</section>
@@ -703,6 +797,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
           }} onDoubleClick={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }}>
             {sourceUrl && sourceFile?.type !== "application/pdf" && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
             {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import an existing drawing</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
+            {detectedRooms.map((room) => { const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />; })}
             {rooms.map((room, index) => {
               const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); const centre = outline.reduce((total, point) => ({ x: total.x + point.x / outline.length, y: total.y + point.y / outline.length }), { x: 0, y: 0 });
               return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} /><text x={centre.x} y={centre.y}>{room.name}</text></g>;
@@ -713,7 +808,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
                 const modelEnd = wall.points[segmentIndex + 1]; const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y) || 1; const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const offset = 78; const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * 10, y: (first.y + second.y) / 2 + outward.y * 10 };
                 return <g key={`${wall.id}-dimension-${segmentIndex}`} className="wall-dimension"><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
               });
-              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{closed && <polygon points={screenPoints.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />}{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const selection = { wallId: wall.id, segmentIndex }; return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onContextMenu={(event) => openWallContextMenu(event, selection)} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
+              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const selection = { wallId: wall.id, segmentIndex }; return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onContextMenu={(event) => openWallContextMenu(event, selection)} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
             })}
             {draft.length > 0 && <polyline points={draft.map(toScreen).map((point) => `${point.x},${point.y}`).join(" ")} className="full-wall-draft" />}
             {openings.map((opening) => {
@@ -731,7 +826,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
               const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward };
               return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} />;
             })}
-            <g className="vertex-layer">{walls.flatMap((wall, wallIndex) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""}`} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => beginPointDrag(event, selection)} /><text className="vertex-label" x={point.x} y={point.y + 3}>{wallIndex === 0 ? pointIndex + 1 : `${wallIndex + 1}.${pointIndex + 1}`}</text></g>; }); })}</g>
+            <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""}`} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => beginPointDrag(event, selection)} /><text className="vertex-label" x={point.x} y={point.y + 3}>{firstNumber + pointIndex}</text></g>; }); })}</g>
             {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r="7" className="full-plan-draft-node" />; })}
           </FloorPlanCanvas>
         </div><div className="drawing-scale"><span>Coordinates and dimensions shown in {UNIT_LABEL[displayUnits]} · calculations remain millimetre-authoritative</span><span>Shared floorplan engine auto-fits the complete plan</span></div>
@@ -739,7 +834,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
       </main>
 
       <aside className="coordinate-panel full-plan-side-column">
-        <section className="tool-section"><div className="tool-heading"><span>4</span><h2>Coordinates</h2></div><p className="tool-note">{coordinateWall ? "Each fixed corner label matches the numbered point on the drawing. Edit only the X and Y values." : "Add a wall run to edit its numbered corner coordinates."}</p><div className="coordinate-input-list" aria-label={`Selected wall coordinates in ${UNIT_LABEL[displayUnits]}`}>{coordinateWall && coordinatePoints.map((point, index) => <div key={`${coordinateWall.id}-coordinate-${index}`}><span className="coordinate-prefix">{index + 1} -</span><DisplayNumberInput aria-label={`Corner ${index + 1} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(coordinateWall.id, index, { ...point, x: value })} /><span className="coordinate-comma">,</span><DisplayNumberInput aria-label={`Corner ${index + 1} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(coordinateWall.id, index, { ...point, y: value })} /></div>)}</div></section>
+        <section className="tool-section"><div className="tool-heading"><span>4</span><h2>Coordinates</h2></div><p className="tool-note">{coordinateWall ? "Each fixed corner label matches the numbered point on the drawing. Edit only the X and Y values." : "Add a wall run to edit its numbered corner coordinates."}</p><div className="coordinate-input-list" aria-label={`Selected wall coordinates in ${UNIT_LABEL[displayUnits]}`}>{coordinateWall && coordinatePoints.map((point, index) => { const cornerNumber = coordinateStart + index; return <div key={`${coordinateWall.id}-coordinate-${index}`}><span className="coordinate-prefix">{cornerNumber} -</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(coordinateWall.id, index, { ...point, x: value })} /><span className="coordinate-comma">,</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(coordinateWall.id, index, { ...point, y: value })} /></div>; })}</div></section>
         <section className="tool-section full-plan-rooms"><div className="tool-heading"><span>5</span><h2>Recognise rooms</h2></div><p className="tool-note">Finish the connected wall layout, then detect, name, validate and save each closed room.</p><button className="primary-small" disabled={!walls.length || Boolean(draft.length)} onClick={recogniseRooms}>{rooms.length ? "Recognise rooms again" : "Recognise rooms"}</button>{finished && rooms.length === 0 && <p className="inline-error">No closed room outlines were found. Close each room boundary before recognising.</p>}{rooms.length > 0 && <><label className="field"><span>Room to edit and view</span><select value={selectedRoom?.id ?? ""} onChange={(event) => { setSelectedRoomId(event.target.value); setRoomValidation(null); setRoomValidationError(null); }}>{rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>{selectedRoom && <label className="field"><span>Room name</span><input value={selectedRoom.name} onChange={(event) => { setRooms((current) => current.map((room) => room.id === selectedRoom.id ? { ...room, name: event.target.value } : room)); setRoomValidation(null); }} /></label>}<button className="validate-button" onClick={validateSelectedRoom}>Validate geometry</button>{roomValidationError && <div className="validation-fail"><strong>INVALID</strong><p>{roomValidationError}</p></div>}{roomValidation && <div className="validation-pass"><div><strong>VALID · CCW</strong><span>{formatArea(roomValidation.area_mm2, displayUnits)} · {formatLength(roomValidation.perimeter_mm, displayUnits)} perimeter</span></div><ul>{roomValidation.warnings.map((warning) => <li key={warning}>{formatMeasurementText(warning, displayUnits)}</li>)}</ul></div>}<div className="save-actions"><button onClick={cancelRoomRecognition}>Cancel</button><button className="save-button" disabled={!roomValidation || roomSaving} onClick={saveSelectedRoom}>{roomSaving ? "Saving…" : "Save room revision"}</button></div><button className="primary-small secondary-action" disabled={!selectedRoom} onClick={() => selectedRoom && onOpenRoom(selectedRoom.name, selectedRoom.vertices, roomOpenings(selectedRoom, openings), wallHeight, wallThickness)}>Open selected room in 3D viewer</button></>}</section>
         {openingPanel}
       </aside>

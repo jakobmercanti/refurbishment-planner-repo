@@ -332,8 +332,8 @@ button { font: inherit; }
 .field input, .field select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: #fcfdfb; color: var(--ink); font: 500 11px var(--font-mono); }
 .field input:focus, .field select:focus, textarea:focus { outline: 2px solid rgba(24,61,52,.18); border-color: var(--deep); }
 .coordinate-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.coordinate-input-list { display: grid; gap: 6px; }
-.coordinate-input-list > div { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 5px; }
+.coordinate-input-list { max-height: 142px; display: grid; gap: 6px; overflow-y: auto; padding-right: 4px; scrollbar-gutter: stable; }
+.coordinate-input-list > div { min-height: 31px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 5px; }
 .coordinate-input-list input { min-width: 0; padding: 1px 2px; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; color: var(--ink); font: 700 11px var(--font-mono); text-align: right; box-shadow: none; }
 .coordinate-input-list input:hover { border-bottom-color: #c8d3cc; }
 .coordinate-input-list input:focus { outline: 0; border-bottom-color: var(--deep); background: rgba(232,241,236,.5); }
@@ -358,7 +358,7 @@ button { font: inherit; }
 .canvas-background { fill: #eef1ed; }
 .canvas-background, .plan-grid, .room-polygon, .wall-dimension, .wall-label, .vertex-label { pointer-events: none; }
 .plan-grid line { stroke: #d9dfda; stroke-width: 1; }
-.room-polygon { fill: rgba(255,255,255,.82); stroke: none; }
+.room-polygon { fill: #fff; stroke: none; }
 .wall-body { stroke: var(--deep); stroke-width: 10; stroke-linecap: square; pointer-events: none; }
 .wall-line { stroke: white; stroke-width: 4; stroke-linecap: square; cursor: grab; }
 .wall-line:active { cursor: grabbing; }
@@ -534,9 +534,9 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .full-plan-empty text { fill: var(--muted); font: 600 11px var(--font-mono); text-anchor: middle; pointer-events: none; }
 .full-plan-empty text + text { font-size: 9px; opacity: .8; }
 .full-room-highlight { cursor: pointer; }
-.full-room-highlight polygon { stroke: currentColor; stroke-width: 4; vector-effect: non-scaling-stroke; fill: currentColor; fill-opacity: .18; }
+.full-room-highlight polygon { stroke: currentColor; stroke-width: 4; vector-effect: non-scaling-stroke; fill: white; fill-opacity: .96; }
 .full-room-highlight text { fill: #173b32; font: 700 12px var(--font-mono); text-anchor: middle; dominant-baseline: middle; pointer-events: none; paint-order: stroke; stroke: white; stroke-width: 5px; }
-.full-room-highlight.selected polygon { fill-opacity: .32; stroke-width: 5; }
+.full-room-highlight.selected polygon { fill-opacity: 1; stroke-width: 5; }
 .full-room-highlight.room-colour-0 { color: #278a69; }
 .full-room-highlight.room-colour-1 { color: #3978b9; }
 .full-room-highlight.room-colour-2 { color: #b66b23; }
