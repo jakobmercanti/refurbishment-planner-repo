@@ -16,7 +16,7 @@ type MeasurementReference = ({ kind: "WALL" } & SegmentSelection) | ({ kind: "PO
 type MeasurementDirection = "NORMAL" | "HORIZONTAL" | "VERTICAL";
 type CustomMeasurement = { id: string; first: MeasurementReference; second: MeasurementReference; offset: number; direction?: MeasurementDirection };
 type GeometryContextMenu = ({ kind: "WALL" } & SegmentSelection | { kind: "POINT" } & PointSelection) & { x: number; y: number };
-type MeasurementContextMenu = { id: string; x: number; y: number };
+type MeasurementContextMenu = { id: string; custom: boolean; x: number; y: number };
 type OpeningContextMenu = { id: string; x: number; y: number };
 type FixtureContextMenu = { id: string; x: number; y: number };
 type FullOpening = {
@@ -325,6 +325,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const [hiddenDimensions, setHiddenDimensions] = useState<string[]>([]);
   const [measurementDraft, setMeasurementDraft] = useState<MeasurementReference[]>([]);
   const [selectedMeasurement, setSelectedMeasurement] = useState<string | null>(null);
+  const [measurementEditEnabled, setMeasurementEditEnabled] = useState(false);
   const [contextMenu, setContextMenu] = useState<GeometryContextMenu | null>(null);
   const [measurementContextMenu, setMeasurementContextMenu] = useState<MeasurementContextMenu | null>(null);
   const [openingContextMenu, setOpeningContextMenu] = useState<OpeningContextMenu | null>(null);
@@ -428,7 +429,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         setSelectedPoint(null);
         setLockedViewport(null);
       }
-      if (event.key === "Escape" && (tool === "MEASURE" || tool === "ADD_MEASURE")) {
+      if (event.key === "Escape" && tool === "ADD_MEASURE") {
         setTool("SELECT"); setMeasurementDraft([]); setSelectedMeasurement(null); setMeasurementContextMenu(null);
       }
     };
@@ -487,11 +488,11 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     if (sameReference) return;
     const id = crypto.randomUUID(); record();
     setMeasurements((current) => [...current, { id, first, second: reference, offset: 48 }]);
-    setMeasurementDraft([]); setSelectedMeasurement(`custom:${id}`); setTool("MEASURE");
+    setMeasurementDraft([]); setSelectedMeasurement(`custom:${id}`); setMeasurementEditEnabled(true); setTool("MEASURE");
   }
 
   function beginMeasurementDrag(event: ReactPointerEvent<SVGGElement>, id: string, custom: boolean, offset: number, normal: Point2D) {
-    if (tool !== "MEASURE" || event.button !== 0) return;
+    if (!measurementEditEnabled || event.button !== 0) return;
     const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     measurementDrag.current = { id, custom, offset, normal, pointerStart: screenPointFromClient(event.clientX, event.clientY, svg), before: snapshot() };
@@ -499,10 +500,10 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   function openMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, id: string) {
-    if (tool !== "MEASURE") return;
+    if (!measurementEditEnabled) return;
     event.preventDefault(); event.stopPropagation();
     setContextMenu(null); setSelectedMeasurement(`custom:${id}`);
-    setMeasurementContextMenu({ id, x: event.clientX, y: event.clientY });
+    setMeasurementContextMenu({ id, custom: true, x: event.clientX, y: event.clientY });
   }
 
   function setMeasurementDirection(id: string, direction: MeasurementDirection) {
@@ -529,8 +530,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   function openAutoMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, selection: SegmentSelection) {
-    if (tool !== "MEASURE") return;
-    event.preventDefault(); event.stopPropagation(); setSelectedSegment(selection); setSelectedPoint(null); setWallLengthInput(null); setContextMenu({ kind: "WALL", ...selection, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 240)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 160)) });
+    if (!measurementEditEnabled) return;
+    event.preventDefault(); event.stopPropagation(); setContextMenu(null); setSelectedMeasurement(`auto:${selection.wallId}:${selection.segmentIndex}`);
+    setMeasurementContextMenu({ id: `${selection.wallId}:${selection.segmentIndex}`, custom: false, x: event.clientX, y: event.clientY });
   }
 
   function deleteSelectedMeasurement() {
@@ -539,6 +541,14 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     if (selectedMeasurement.startsWith("custom:")) setMeasurements((current) => current.filter((measurement) => measurement.id !== selectedMeasurement.slice(7)));
     else setHiddenDimensions((current) => [...new Set([...current, selectedMeasurement.slice(5)])]);
     setSelectedMeasurement(null);
+  }
+
+  function deleteMeasurement(id: string, custom: boolean) {
+    setSelectedMeasurement(`${custom ? "custom" : "auto"}:${id}`);
+    record();
+    if (custom) setMeasurements((current) => current.filter((measurement) => measurement.id !== id));
+    else setHiddenDimensions((current) => [...new Set([...current, id])]);
+    setMeasurementContextMenu(null); setSelectedMeasurement(null);
   }
 
   function beginFixtureDrag(event: ReactPointerEvent<SVGRectElement>, fixture: Obstacle) {
@@ -947,7 +957,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
 
   function clearRoomValidation() { setRoomValidation(null); setRoomValidationError(null); }
 
-  const help = tool === "DRAW" ? "Click an existing wall to start or finish a connected wall run. Double-click, right-click, Enter, or Esc also confirms the run and exits Add wall." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : tool === "MEASURE" ? "Drag an existing measurement to reposition it, or select one and use Delete measurement." : tool === "ADD_MEASURE" ? `${measurementDraft.length ? "Now select a second matching" : "Select the first"} wall or corner to add a measurement.` : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
+  const help = tool === "DRAW" ? "Click an existing wall to start or finish a connected wall run. Double-click, right-click, Enter, or Esc also confirms the run and exits Add wall." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : tool === "ADD_MEASURE" ? `${measurementDraft.length ? "Now select a second matching" : "Select the first"} wall or corner to add a measurement.` : measurementEditEnabled ? "Drag any measurement to reposition it, or right-click it to edit or delete it." : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
   const vertexCount = walls.reduce((total, wall) => total + wall.points.length - (samePoint(wall.points[0], wall.points.at(-1)!) ? 1 : 0), 0);
   const sourceTopLeft = toScreen({ x: 0, y: canvasSize.height }); const sourceBottomRight = toScreen({ x: canvasSize.width, y: 0 });
 
@@ -995,12 +1005,13 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
 
   return <section ref={editorRoot} className={`editor-page full-plan-page ${floorplanStyle === "TRADITIONAL" ? "traditional-floorplan" : ""}`}>
     {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyle === "CURRENT" ? (floorplanStyle === "TRADITIONAL" ? "Current traditional view" : "Current default view") : `${exportStyle[0]}${exportStyle.slice(1).toLowerCase()} drawing`}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} onChange={(event) => setExportStyle(event.target.value as typeof exportStyle)}><option value="CURRENT">Current style</option><option value="TRADITIONAL">Traditional style</option><option value="MODERN">Modern style</option><option value="CREATIVE">Creative style</option></select></label><label className="field"><span>File format</span><select value={exportFormat} onChange={(event) => setExportFormat(event.target.value as typeof exportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label><footer><button type="button" onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" onClick={() => { void exportFloorplan(); setExportOpen(false); }}>Save as {exportFormat}</button></footer></section></div>}
-    {measurementContextMenu && <div className="floorplan-context-menu" role="menu" aria-label="Measurement direction" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
-      <strong>Measurement direction</strong>
-      <button type="button" role="menuitem" onClick={() => changeCustomMeasurementValue(measurementContextMenu.id)}>Change measurement value…</button>
+    {measurementContextMenu && <div className="floorplan-context-menu" role="menu" aria-label="Measurement actions" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      <strong>{measurementContextMenu.custom ? "Measurement" : "Wall measurement"}</strong>
+      {measurementContextMenu.custom && <><button type="button" role="menuitem" onClick={() => changeCustomMeasurementValue(measurementContextMenu.id)}>Change measurement value…</button>
       <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "NORMAL")}>Normal direction</button>
       <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "HORIZONTAL")}>Horizontal dimension only</button>
-      <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "VERTICAL")}>Vertical dimension only</button>
+      <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "VERTICAL")}>Vertical dimension only</button></>}
+      <button type="button" role="menuitem" className="danger-button" onClick={() => deleteMeasurement(measurementContextMenu.id, measurementContextMenu.custom)}>{measurementContextMenu.custom ? "Delete measurement" : "Hide measurement"}</button>
     </div>}
     {openingContextMenu && <div className="floorplan-context-menu" role="menu" aria-label="Opening actions" style={{ left: openingContextMenu.x, top: openingContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{openings.find((opening) => opening.id === openingContextMenu.id)?.kind === "WINDOW" ? "Window" : "Door"}</strong>
@@ -1030,10 +1041,10 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
           <div className="plan-constraint-controls">
             <label className="snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to grid – <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput className="snap-size-input" minMm={1} valueMm={snapSize} units={displayUnits} disabled={!snapEnabled} onMmChange={setSnapSize} /></label>
             <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => { const next = event.target.checked; setSquaredWalls(next); if (next) { record(); setWalls((current) => current.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) }))); } }} /><span><strong>Square walls</strong><small>Keep every wall horizontal or vertical while editing.</small></span></label>
-            <div className="button-grid measurement-mode-row"><button className={tool === "MEASURE" ? "active" : ""} onClick={() => { setTool("MEASURE"); setMeasurementDraft([]); setSelectedSegment(null); setSelectedPoint(null); }}>Edit measurements</button><button className={tool === "ADD_MEASURE" ? "active" : ""} onClick={() => { setTool("ADD_MEASURE"); setMeasurementDraft([]); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); }}>Add measurement</button></div>
+            <div className="measurement-mode-row"><label className="check-row measurement-edit-toggle"><input type="checkbox" checked={measurementEditEnabled} onChange={(event) => { setMeasurementEditEnabled(event.target.checked); setMeasurementDraft([]); setSelectedMeasurement(null); setMeasurementContextMenu(null); setTool(event.target.checked ? "MEASURE" : "SELECT"); }} /><span><strong>Edit measurements</strong><small>Drag or right-click any measurement to edit or delete it.</small></span></label><button className={tool === "ADD_MEASURE" ? "active" : ""} onClick={() => { setTool("ADD_MEASURE"); setMeasurementEditEnabled(false); setMeasurementDraft([]); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); }}>Add measurement</button></div>
           </div>
           <p className={`full-plan-help ${tool === "REMOVE" ? "danger-help" : ""}`}>{help}</p>
-          {tool === "MEASURE" && selectedMeasurement && <div className="selected-properties measurement-properties"><div className="tool-heading"><span>M</span><h2>Selected measurement</h2></div><p className="tool-note">Drag this measurement on the drawing or remove it.</p><button className="danger-button" onClick={deleteSelectedMeasurement}>Delete measurement</button></div>}
+          {measurementEditEnabled && selectedMeasurement && <div className="selected-properties measurement-properties"><div className="tool-heading"><span>M</span><h2>Selected measurement</h2></div><p className="tool-note">Drag this measurement on the drawing, right-click it for actions, or remove it.</p><button className="danger-button" onClick={deleteSelectedMeasurement}>Delete measurement</button></div>}
           {tool === "SELECT" && selectedSegment && selectedWall && <div className="selected-properties"><div className="tool-heading"><span>W{walls.findIndex((wall) => wall.id === selectedWall.id) + 1}.{selectedSegment.segmentIndex + 1}</span><h2>Selected wall</h2></div><p className="tool-note">Enter a new length to move the wall endpoint. Adjoining walls update automatically.</p><label className="field"><span>New length <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={wallLengthInput ?? segmentLength(selectedWall, selectedSegment.segmentIndex)} units={displayUnits} onMmChange={setWallLengthInput} /></label><button className="primary-small" onClick={applySelectedWallLength}>Apply wall length</button><div className="button-grid"><button onClick={insertPoint}>Add point at midpoint</button><button className="danger-button" onClick={() => removeSegment(selectedWall.id, selectedSegment.segmentIndex)}>Remove wall segment</button></div></div>}
           {tool === "SELECT" && selectedPoint && selectedPointWall && selectedPointValue && <div className="selected-properties"><div className="tool-heading"><span>V{(wallVertexStarts.get(selectedPointWall.id) ?? 1) + selectedPoint.pointIndex}</span><h2>Selected corner</h2></div><div className="coordinate-fields"><label className="field"><span>X <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, x: value })} /></label><label className="field"><span>Y <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, y: value })} /></label></div><div className="button-grid"><button onClick={insertPointAfterSelected} disabled={!samePoint(selectedPointWall.points[0], selectedPointWall.points.at(-1)!) && selectedPoint.pointIndex >= selectedPointWall.points.length - 1}>Add corner after</button><button className="danger-button" onClick={deletePoint}>Delete corner</button></div></div>}
         </section>

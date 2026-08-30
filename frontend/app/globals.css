@@ -367,7 +367,7 @@ button { font: inherit; }
 .wall-line:active { cursor: grabbing; }
 .wall-line:hover, .wall-line.selected { stroke: #f1b14b; stroke-width: 5; }
 .wall-dimension { color: #68756f; pointer-events: none; }
-.measurement-item.editable { pointer-events: all; cursor: grab; }
+.measurement-item.editable, .measurement-item.editable * { pointer-events: all; cursor: grab; }
 .measurement-item.editable:active { cursor: grabbing; }
 .measurement-item.selected { color: #1678bd; }
 .custom-measurement { color: #3978b9; }
