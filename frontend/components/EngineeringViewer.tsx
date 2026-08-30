@@ -895,7 +895,10 @@ function CameraPreset({ preset, person, target }: { preset: CameraView; person?:
       camera.lookAt(eyeTarget(person));
     } else {
       if (preset === "top") {
-        camera.up.set(0, 0, -1);
+        // Floorplan coordinates grow downward on screen and are rendered as
+        // negative Z in Three.js. Positive Z must therefore be screen-up in
+        // the Top view, otherwise asymmetric rooms are vertically mirrored.
+        camera.up.set(0, 0, 1);
         camera.position.set(target[0], 6.4, target[2]);
       } else {
         camera.up.set(0, 1, 0);
