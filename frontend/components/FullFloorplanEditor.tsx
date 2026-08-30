@@ -13,8 +13,10 @@ type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE" | "MEASURE" | "ADD_MEAS
 type SegmentSelection = { wallId: string; segmentIndex: number };
 type PointSelection = { wallId: string; pointIndex: number };
 type MeasurementReference = ({ kind: "WALL" } & SegmentSelection) | ({ kind: "POINT" } & PointSelection);
-type CustomMeasurement = { id: string; first: MeasurementReference; second: MeasurementReference; offset: number };
+type MeasurementDirection = "NORMAL" | "HORIZONTAL" | "VERTICAL";
+type CustomMeasurement = { id: string; first: MeasurementReference; second: MeasurementReference; offset: number; direction?: MeasurementDirection };
 type GeometryContextMenu = ({ kind: "WALL" } & SegmentSelection | { kind: "POINT" } & PointSelection) & { x: number; y: number };
+type MeasurementContextMenu = { id: string; x: number; y: number };
 type FullOpening = {
   id: string; kind: "DOOR" | "WINDOW"; wallId: string; segmentIndex: number;
   offset: number; width: number; height: number; sill: number;
@@ -310,6 +312,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const [measurementDraft, setMeasurementDraft] = useState<MeasurementReference[]>([]);
   const [selectedMeasurement, setSelectedMeasurement] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<GeometryContextMenu | null>(null);
+  const [measurementContextMenu, setMeasurementContextMenu] = useState<MeasurementContextMenu | null>(null);
   const [restored, setRestored] = useState(false);
   const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -403,7 +406,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
         setLockedViewport(null);
       }
       if (event.key === "Escape" && (tool === "MEASURE" || tool === "ADD_MEASURE")) {
-        setTool("SELECT"); setMeasurementDraft([]); setSelectedMeasurement(null);
+        setTool("SELECT"); setMeasurementDraft([]); setSelectedMeasurement(null); setMeasurementContextMenu(null);
       }
     };
     window.addEventListener("keydown", finishActiveTool);
@@ -470,6 +473,21 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     measurementDrag.current = { id, custom, offset, normal, pointerStart: screenPointFromClient(event.clientX, event.clientY, svg), before: snapshot() };
     setSelectedMeasurement(`${custom ? "custom" : "auto"}:${id}`);
+  }
+
+  function openMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, id: string) {
+    if (tool !== "MEASURE") return;
+    event.preventDefault(); event.stopPropagation();
+    setContextMenu(null); setSelectedMeasurement(`custom:${id}`);
+    setMeasurementContextMenu({ id, x: event.clientX, y: event.clientY });
+  }
+
+  function setMeasurementDirection(id: string, direction: MeasurementDirection) {
+    const measurement = measurements.find((item) => item.id === id);
+    if (!measurement || (measurement.direction ?? "NORMAL") === direction) { setMeasurementContextMenu(null); return; }
+    record();
+    setMeasurements((current) => current.map((item) => item.id === id ? { ...item, direction } : item));
+    setMeasurementContextMenu(null);
   }
 
   function deleteSelectedMeasurement() {
@@ -844,6 +862,12 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   </section>;
 
   return <section ref={editorRoot} className="editor-page full-plan-page">
+    {measurementContextMenu && <div className="floorplan-context-menu" role="menu" aria-label="Measurement direction" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      <strong>Measurement direction</strong>
+      <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "NORMAL")}>Normal direction</button>
+      <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "HORIZONTAL")}>Horizontal dimension only</button>
+      <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "VERTICAL")}>Vertical dimension only</button>
+    </div>}
     {contextMenu && <div className="floorplan-context-menu" role="menu" aria-label={`${contextMenu.kind === "WALL" ? "Wall" : "Corner"} actions`} style={{ left: contextMenu.x, top: contextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{contextMenu.kind === "WALL" ? "Wall" : "Corner"}</strong>
       <button type="button" role="menuitem" onClick={() => setContextMenu(null)}>Modify</button>
@@ -906,10 +930,18 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
             {measurements.map((measurement) => {
               const modelStart = resolveMeasurementReference(measurement.first); const modelEnd = resolveMeasurementReference(measurement.second);
               if (!modelStart || !modelEnd) return null;
-              const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y); const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y);
-              if (!screenLength || !length) return null;
-              const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const normal = { x: -tangent.y, y: tangent.x }; const first = { x: start.x + normal.x * measurement.offset, y: start.y + normal.y * measurement.offset }; const second = { x: end.x + normal.x * measurement.offset, y: end.y + normal.y * measurement.offset }; const label = { x: (first.x + second.x) / 2 + normal.x * 10, y: (first.y + second.y) / 2 + normal.y * 10 };
-              return <g key={measurement.id} className={`wall-dimension custom-measurement measurement-item ${tool === "MEASURE" ? "editable" : ""} ${selectedMeasurement === `custom:${measurement.id}` ? "selected" : ""}`} onPointerDown={(event) => beginMeasurementDrag(event, measurement.id, true, measurement.offset, normal)}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={start.x} y1={start.y} x2={first.x} y2={first.y} /><line className="dimension-extension" x1={end.x} y1={end.y} x2={second.x} y2={second.y} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + normal.x * 4} y1={first.y - tangent.y * 4 + normal.y * 4} x2={first.x + tangent.x * 4 - normal.x * 4} y2={first.y + tangent.y * 4 - normal.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + normal.x * 4} y1={second.y - tangent.y * 4 + normal.y * 4} x2={second.x + tangent.x * 4 - normal.x * 4} y2={second.y + tangent.y * 4 - normal.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
+              const start = toScreen(modelStart); const end = toScreen(modelEnd); const direction = measurement.direction ?? "NORMAL";
+              const screenLength = Math.hypot(end.x - start.x, end.y - start.y); const normalLength = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y);
+              if (!screenLength || !normalLength) return null;
+              const normalTangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const normalNormal = { x: -normalTangent.y, y: normalTangent.x };
+              const tangent = direction === "HORIZONTAL" ? { x: 1, y: 0 } : direction === "VERTICAL" ? { x: 0, y: 1 } : normalTangent;
+              const normal = direction === "HORIZONTAL" ? { x: 0, y: -1 } : direction === "VERTICAL" ? { x: 1, y: 0 } : normalNormal;
+              const baseline = direction === "HORIZONTAL" ? (start.y + end.y) / 2 + normal.y * measurement.offset : direction === "VERTICAL" ? (start.x + end.x) / 2 + normal.x * measurement.offset : null;
+              const first = direction === "HORIZONTAL" ? { x: start.x, y: baseline! } : direction === "VERTICAL" ? { x: baseline!, y: start.y } : { x: start.x + normal.x * measurement.offset, y: start.y + normal.y * measurement.offset };
+              const second = direction === "HORIZONTAL" ? { x: end.x, y: baseline! } : direction === "VERTICAL" ? { x: baseline!, y: end.y } : { x: end.x + normal.x * measurement.offset, y: end.y + normal.y * measurement.offset };
+              const length = direction === "HORIZONTAL" ? Math.abs(modelEnd.x - modelStart.x) : direction === "VERTICAL" ? Math.abs(modelEnd.y - modelStart.y) : normalLength;
+              const label = { x: (first.x + second.x) / 2 + normal.x * 10, y: (first.y + second.y) / 2 + normal.y * 10 };
+              return <g key={measurement.id} className={`wall-dimension custom-measurement measurement-item ${tool === "MEASURE" ? "editable" : ""} ${selectedMeasurement === `custom:${measurement.id}` ? "selected" : ""}`} onPointerDown={(event) => beginMeasurementDrag(event, measurement.id, true, measurement.offset, normal)} onContextMenu={(event) => openMeasurementContextMenu(event, measurement.id)}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={start.x} y1={start.y} x2={first.x} y2={first.y} /><line className="dimension-extension" x1={end.x} y1={end.y} x2={second.x} y2={second.y} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + normal.x * 4} y1={first.y - tangent.y * 4 + normal.y * 4} x2={first.x + tangent.x * 4 - normal.x * 4} y2={first.y + tangent.y * 4 - normal.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + normal.x * 4} y1={second.y - tangent.y * 4 + normal.y * 4} x2={second.x + tangent.x * 4 - normal.x * 4} y2={second.y + tangent.y * 4 - normal.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
             })}
             {draft.length > 0 && <polyline points={draft.map(toScreen).map((point) => `${point.x},${point.y}`).join(" ")} className="full-wall-draft" />}
             {openings.map((opening) => {
