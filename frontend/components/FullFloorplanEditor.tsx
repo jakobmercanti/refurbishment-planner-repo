@@ -88,6 +88,15 @@ function pointOnSegment(point: Point2D, start: Point2D, end: Point2D): { point: 
   return { point: { x: start.x + dx * along, y: start.y + dy * along }, along };
 }
 
+function pointOnInfiniteLine(point: Point2D, start: Point2D, end: Point2D): { point: Point2D; along: number } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return { point: { ...start }, along: 0 };
+  const along = ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+  return { point: { x: start.x + dx * along, y: start.y + dy * along }, along };
+}
+
 function snapPoint(point: Point2D, walls: Wall[], enabled: boolean, increment: number): Point2D {
   const nearby = walls.flatMap((wall) => wall.points).find((candidate) => Math.hypot(candidate.x - point.x, candidate.y - point.y) <= 14);
   return nearby ?? (enabled ? { x: Math.round(point.x / increment) * increment, y: Math.round(point.y / increment) * increment } : point);
@@ -876,7 +885,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         const points = wall.points.map((point, pointIndex) => {
           const attachment = wall.attachments?.[pointIndex];
           if (attachment?.wallId === activeWall.wallId && attachment.segmentIndex === activeWall.segmentIndex) return { x: point.x + normal.x * distance, y: point.y + normal.y * distance };
-          const projection = pointOnSegment(point, start, end);
+          const projection = pointOnInfiniteLine(point, start, end);
           const isEndpoint = pointIndex === 0 || pointIndex === wall.points.length - 1;
           if (isEndpoint && Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance) {
             attachments[pointIndex] = { wallId: activeWall.wallId, segmentIndex: activeWall.segmentIndex, along: projection.along };
