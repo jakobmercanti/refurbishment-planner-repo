@@ -56,10 +56,10 @@ export default function Home() {
     setMode("ANALYSIS");
   }
 
-  function openDetectedRoom(name: string, vertices: import("@/lib/types").Point2D[], openings: import("@/lib/types").Opening[]) {
+  function openDetectedRoom(name: string, vertices: import("@/lib/types").Point2D[], openings: import("@/lib/types").Opening[], wallHeight: number, wallThickness: number) {
     setDemo((current) => {
       if (!current) return current;
-      const room = { ...current.room, id: crypto.randomUUID(), name, vertices, openings, obstacles: [], person_mockup: null, finishes: undefined, version: current.room.version + 1 };
+      const room = { ...current.room, id: crypto.randomUUID(), name, vertices, openings, wall_height: { ...current.room.wall_height, value: wallHeight }, wall_thickness: { ...current.room.wall_thickness, value: wallThickness }, obstacles: [], person_mockup: null, finishes: undefined, version: current.room.version + 1 };
       setProjectRooms((rooms) => [...rooms, room]);
       return { ...current, room };
     });
