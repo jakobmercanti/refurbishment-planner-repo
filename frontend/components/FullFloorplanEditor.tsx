@@ -902,6 +902,12 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     }));
   }
 
+  function resetOpeningForm(kind = openingKind) {
+    setOpeningKind(kind); setOpeningOffset(100); setOpeningWidth(800); setOpeningHeight(kind === "DOOR" ? 2040 : 900); setWindowSill(900);
+    setDoorType("SINGLE"); setHingeSide("START"); setOpensInward(true); setOpeningError(null);
+    setOpeningParent(selectedSegment ? parentKey(selectedSegment.wallId, selectedSegment.segmentIndex) : "");
+  }
+
   function saveOpening() {
     setOpeningError(null);
     const option = segmentOptions.find((item) => item.key === openingParent);
@@ -913,11 +919,11 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     const nextOpening: Omit<FullOpening, "id"> = { kind: openingKind, wallId: option.wall.id, segmentIndex: option.segmentIndex, offset: openingOffset, width: openingWidth, height: openingHeight, sill: openingKind === "WINDOW" ? windowSill : 0, hingeSide, doorType, opensInward };
     if (selectedOpeningId) setOpenings((current) => current.map((item) => item.id === selectedOpeningId ? { ...nextOpening, id: item.id } : item));
     else setOpenings((current) => [...current, { ...nextOpening, id: crypto.randomUUID() }]);
-    setSelectedOpeningId(null);
+    setSelectedOpeningId(null); resetOpeningForm(nextOpening.kind);
   }
 
   function cancelOpeningEdit() {
-    setSelectedOpeningId(null); setOpeningError(null); setOpeningParent(selectedSegment ? parentKey(selectedSegment.wallId, selectedSegment.segmentIndex) : "");
+    setSelectedOpeningId(null); resetOpeningForm();
   }
 
   async function importDrawing(file?: File) {
