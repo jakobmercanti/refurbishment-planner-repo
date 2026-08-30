@@ -191,6 +191,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const [restored, setRestored] = useState(false);
   const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const editorRoot = useRef<HTMLElement>(null);
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
   const wallDrag = useRef<{ wallId: string; segmentIndex: number; before: Snapshot; points: Point2D[]; pointerStart: Point2D } | null>(null);
   const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
@@ -240,8 +241,15 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   }, [canvasSize, finished, openings, restored, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, walls]);
 
   const commitActiveDraft = useEffectEvent(() => commitDraft());
+  const undoLastOperation = useEffectEvent(() => undo());
   useEffect(() => {
     const finishActiveTool = (event: KeyboardEvent) => {
+      if (!editorRoot.current || editorRoot.current.closest("[hidden]")) return;
+      if (!event.repeat && !event.shiftKey && !event.altKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undoLastOperation();
+        return;
+      }
       if (tool === "DRAW" && (event.key === "Enter" || event.key === "Escape")) {
         event.preventDefault();
         commitActiveDraft();
@@ -611,7 +619,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     {openings.length > 0 && <div className="full-opening-list">{openings.map((opening) => <div key={opening.id}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small>{formatLength(opening.width, displayUnits)}</small><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => { record(); setOpenings((current) => current.filter((item) => item.id !== opening.id)); }}>×</button></div>)}</div>}
   </section>;
 
-  return <section className="editor-page full-plan-page">
+  return <section ref={editorRoot} className="editor-page full-plan-page">
     <div className="editor-intro"><div><span className="eyebrow">Complete floorplan · {UNIT_LABEL[displayUnits]}</span><h1>Draw the complete floorplan</h1></div><p>Use the same measured-plan editor for the whole building, with additional wall and room tools.</p></div>
     <div className="editor-layout full-plan-layout">
       <aside className="editor-tools full-plan-controls">
@@ -623,7 +631,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
             <button className={tool === "SELECT" ? "active" : ""} onClick={() => { setTool("SELECT"); setDraft([]); setLockedViewport(null); }}>Modify</button>
           </div>
           {lShapePickerOpen && <div className="l-shape-picker" id="full-l-shape-picker"><div><span>Choose the L orientation</span><button type="button" aria-label="Close L-shape chooser" onClick={() => setLShapePickerOpen(false)}>×</button></div><p>Select the position of the internal notch. You can reshape every wall afterwards.</p><div className="l-shape-options">{L_SHAPE_TEMPLATES.map((template) => <button key={template.id} type="button" onClick={() => applyTemplate(template.points)}><span className="l-shape-thumbnail"><i style={{ clipPath: template.preview }} /></span><strong>{template.name}</strong></button>)}</div></div>}
-          <div className="button-grid editor-history-row"><button onClick={undo} disabled={!history.length}>↶ Undo</button><button onClick={redo} disabled={!future.length}>↷ Redo</button></div>
+          <div className="button-grid editor-history-row"><button title="Undo last operation (Ctrl+Z)" onClick={undo} disabled={!history.length}>↶ Undo</button><button onClick={redo} disabled={!future.length}>↷ Redo</button></div>
           <div className="button-grid full-plan-action-row" role="group" aria-label="Wall tools"><button className={tool === "DRAW" ? "active" : ""} onClick={() => { setTool("DRAW"); setDraft([]); setLockedViewport(viewport); setSelectedSegment(null); setSelectedPoint(null); }}>Add wall</button><button className={tool === "REMOVE" ? "active danger-button" : "danger-button"} onClick={() => { if (selectedSegment) { removeSegment(selectedSegment.wallId, selectedSegment.segmentIndex); return; } setTool("REMOVE"); setDraft([]); setLockedViewport(null); setSelectedPoint(null); }}>Remove wall</button></div>
           <div className="button-grid full-plan-action-row" role="group" aria-label="Corner tools"><button className={tool === "ADD_CORNERS" ? "active" : ""} onClick={() => { const firstWall = walls[0]; setTool("ADD_CORNERS"); setDraft([]); setLockedViewport(viewport); setSelectedPoint(null); setSelectedSegment((current) => current ?? (firstWall ? { wallId: firstWall.id, segmentIndex: 0 } : null)); }}>Add corners</button><button className="danger-button" disabled={!selectedPoint} onClick={deletePoint}>Remove corner</button></div>
           <div className="plan-constraint-controls">
