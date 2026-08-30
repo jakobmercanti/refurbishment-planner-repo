@@ -9,6 +9,7 @@ import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room, RoomVa
 
 type WallAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean };
 type Wall = { id: string; points: Point2D[]; attachments?: Record<number, WallAttachment> };
+type HostWallCorner = { wallId: string; segmentIndex: number; point: Point2D };
 type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[] };
 type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE" | "MEASURE" | "ADD_MEASURE";
 type SegmentSelection = { wallId: string; segmentIndex: number };
@@ -669,14 +670,22 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     return attachToWalls ? snapPoint(gridPoint, walls, snapEnabled, snapSize) : gridPoint;
   }
 
-  function commitDraft(points = draft, endAttachment?: WallAttachment) {
+  function commitDraft(points = draft, endAttachment?: WallAttachment, hostCorner?: HostWallCorner) {
     if (points.length >= 2) {
       record();
       const shapedPoints = squaredWalls ? squareWallPoints(points) : points;
       const attachments: Record<number, WallAttachment> = {};
       if (draftStartAttachment.current) attachments[0] = { ...draftStartAttachment.current };
       if (endAttachment) attachments[shapedPoints.length - 1] = { ...endAttachment, hideCorner: true };
-      setWalls((current) => [...current, { id: crypto.randomUUID(), points: shapedPoints, attachments: Object.keys(attachments).length ? attachments : undefined }]);
+      setWalls((current) => {
+        const nextWalls = hostCorner ? current.map((wall) => {
+          if (wall.id !== hostCorner.wallId) return wall;
+          const pointsWithCorner = [...wall.points.slice(0, hostCorner.segmentIndex + 1), { ...hostCorner.point }, ...wall.points.slice(hostCorner.segmentIndex + 1)];
+          const shiftedAttachments = wall.attachments && Object.fromEntries(Object.entries(wall.attachments).map(([index, attachment]) => [Number(index) >= hostCorner.segmentIndex + 1 ? Number(index) + 1 : Number(index), { ...attachment }]));
+          return { ...wall, points: pointsWithCorner, attachments: shiftedAttachments };
+        }) : current;
+        return [...nextWalls, { id: crypto.randomUUID(), points: shapedPoints, attachments: Object.keys(attachments).length ? attachments : undefined }];
+      });
     }
     draftStartAttachment.current = null; setDraft([]); setTool("SELECT"); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null);
   }
@@ -690,9 +699,12 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     // small snap, a close click can leave a tiny sliver and create an unwanted extra
     // numbered corner beside the existing junction.
     const endpointTolerance = snapEnabled ? Math.max(8, snapSize * 0.5) : 8;
-    const point = Math.hypot(projected.x - start.x, projected.y - start.y) <= endpointTolerance ? { ...start } : Math.hypot(projected.x - end.x, projected.y - end.y) <= endpointTolerance ? { ...end } : projected;
+    const touchesStart = Math.hypot(projected.x - start.x, projected.y - start.y) <= endpointTolerance;
+    const touchesEnd = Math.hypot(projected.x - end.x, projected.y - end.y) <= endpointTolerance;
+    const point = touchesStart ? { ...start } : touchesEnd ? { ...end } : projected;
     const attachment = { wallId, segmentIndex, along: pointOnSegment(point, start, end).along };
-    if (draft.length) commitDraft(squaredWalls ? orthogonalPathTo(draft, point) : [...draft, point], attachment);
+    const hostCorner = !touchesStart && !touchesEnd ? { wallId, segmentIndex, point } : undefined;
+    if (draft.length) commitDraft(squaredWalls ? orthogonalPathTo(draft, point) : [...draft, point], attachment, hostCorner);
     else { draftStartAttachment.current = attachment; setDraft([point]); }
     setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null);
   }
