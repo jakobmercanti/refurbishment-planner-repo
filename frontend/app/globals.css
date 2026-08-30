@@ -315,6 +315,7 @@ button { font: inherit; }
 .l-shape-options strong { font: 600 7px/1.3 var(--font-mono); }
 .mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 12px; }
 .plan-constraint-controls { display: grid; gap: 9px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.measurement-mode-row { margin-top: 2px; }
 .snap-control-row { display: flex; align-items: center; gap: 7px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1; white-space: nowrap; }
 .snap-control-row > input { margin: 0; accent-color: var(--deep); }
 .snap-control-row > span { flex: 1; }
@@ -358,14 +359,21 @@ button { font: inherit; }
 .drawing-zoom button:hover { background: #edf3ef; color: var(--deep); }
 .floor-canvas { width: 100%; min-height: 560px; display: block; border: 1px solid var(--line); background: #eef1ed; touch-action: none; cursor: crosshair; }
 .canvas-background { fill: #eef1ed; }
-.canvas-background, .plan-grid, .room-polygon, .wall-dimension, .wall-label, .vertex-label { pointer-events: none; }
+.canvas-background, .plan-grid, .room-polygon, .wall-label, .vertex-label { pointer-events: none; }
 .plan-grid line { stroke: #d9dfda; stroke-width: 1; }
 .room-polygon { fill: #fff; stroke: none; }
 .wall-body { stroke: var(--deep); stroke-width: 10; stroke-linecap: square; pointer-events: none; }
 .wall-line { stroke: white; stroke-width: 4; stroke-linecap: square; cursor: grab; }
 .wall-line:active { cursor: grabbing; }
 .wall-line:hover, .wall-line.selected { stroke: #f1b14b; stroke-width: 5; }
-.wall-dimension { color: #68756f; }
+.wall-dimension { color: #68756f; pointer-events: none; }
+.measurement-item.editable { pointer-events: all; cursor: grab; }
+.measurement-item.editable:active { cursor: grabbing; }
+.measurement-item.selected { color: #1678bd; }
+.custom-measurement { color: #3978b9; }
+.measurement-hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; }
+.wall-line.measurement-chosen { stroke: #2f9b7c; stroke-width: 7; }
+.vertex-handle.measurement-chosen { fill: #d7f5e9; stroke: #2f9b7c; stroke-width: 5; }
 .dimension-line, .dimension-extension, .dimension-tick { stroke: currentColor; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .dimension-extension { opacity: .62; }
 .dimension-tick { stroke-width: 1.3; }

@@ -9,16 +9,18 @@ import type { Opening, Point2D, ProjectFloorplanResponse, Room, RoomValidationRe
 
 type Wall = { id: string; points: Point2D[] };
 type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[] };
-type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE";
+type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE" | "MEASURE" | "ADD_MEASURE";
 type SegmentSelection = { wallId: string; segmentIndex: number };
 type PointSelection = { wallId: string; pointIndex: number };
+type MeasurementReference = ({ kind: "WALL" } & SegmentSelection) | ({ kind: "POINT" } & PointSelection);
+type CustomMeasurement = { id: string; first: MeasurementReference; second: MeasurementReference; offset: number };
 type GeometryContextMenu = ({ kind: "WALL" } & SegmentSelection | { kind: "POINT" } & PointSelection) & { x: number; y: number };
 type FullOpening = {
   id: string; kind: "DOOR" | "WINDOW"; wallId: string; segmentIndex: number;
   offset: number; width: number; height: number; sill: number;
   hingeSide: "START" | "END"; doorType: "SINGLE" | "DOUBLE"; opensInward: boolean;
 };
-type Snapshot = { walls: Wall[]; openings: FullOpening[] };
+type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[] };
 type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number };
 interface Props { apiUrl: string; displayUnits: DisplayUnits; onOpenRoom: (name: string, vertices: Point2D[], openings: Opening[], wallHeight: number, wallThickness: number) => void; }
 
@@ -34,6 +36,7 @@ const L_SHAPE_TEMPLATES: Array<{ id: string; name: string; preview: string; poin
 ];
 const cloneWalls = (walls: Wall[]) => walls.map((wall) => ({ ...wall, points: wall.points.map((point) => ({ ...point })) }));
 const cloneOpenings = (openings: FullOpening[]) => openings.map((opening) => ({ ...opening }));
+const cloneMeasurements = (measurements: CustomMeasurement[]) => measurements.map((measurement) => ({ ...measurement, first: { ...measurement.first }, second: { ...measurement.second } }));
 const samePoint = (a: Point2D, b: Point2D, tolerance = 1) => Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
 const MIN_ENCLOSED_AREA_MM2 = 10_000;
 
@@ -301,6 +304,11 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const [opensInward, setOpensInward] = useState(true);
   const [openingError, setOpeningError] = useState<string | null>(null);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [measurements, setMeasurements] = useState<CustomMeasurement[]>([]);
+  const [dimensionOffsets, setDimensionOffsets] = useState<Record<string, number>>({});
+  const [hiddenDimensions, setHiddenDimensions] = useState<string[]>([]);
+  const [measurementDraft, setMeasurementDraft] = useState<MeasurementReference[]>([]);
+  const [selectedMeasurement, setSelectedMeasurement] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<GeometryContextMenu | null>(null);
   const [restored, setRestored] = useState(false);
   const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
@@ -309,6 +317,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
   const wallDrag = useRef<{ wallId: string; segmentIndex: number; before: Snapshot; points: Point2D[]; pointerStart: Point2D } | null>(null);
   const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
+  const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
   const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
 
   const selectedRoom = useMemo(() => rooms.find((room) => room.id === selectedRoomId) ?? rooms[0] ?? null, [rooms, selectedRoomId]);
@@ -347,6 +356,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
         const savedWalls = cloneWalls(saved.walls ?? []);
         setWalls(savedSquaredWalls ? savedWalls.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) })) : savedWalls);
         setOpenings(cloneOpenings(saved.openings ?? []));
+        setMeasurements(cloneMeasurements(saved.measurements ?? [])); setDimensionOffsets(saved.dimensionOffsets ?? {}); setHiddenDimensions(saved.hiddenDimensions ?? []);
         setCanvasSize(saved.canvasSize ?? DEFAULT_SIZE);
         setRooms(saved.rooms ?? []); setSelectedRoomId(saved.selectedRoomId ?? null);
         setSnapEnabled(saved.snapEnabled ?? true); setSnapSize(saved.snapSize ?? SNAP); setSquaredWalls(savedSquaredWalls); setWallHeight(saved.wallHeight ?? 2400); setWallThickness(saved.wallThickness ?? 100);
@@ -356,9 +366,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
   }, []);
   useEffect(() => {
     if (!restored) return;
-    const value: PersistedFloorplan = { walls, openings, canvasSize, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness };
+    const value: PersistedFloorplan = { walls, openings, measurements, dimensionOffsets, hiddenDimensions, canvasSize, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-  }, [canvasSize, openings, restored, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, walls]);
+  }, [canvasSize, dimensionOffsets, hiddenDimensions, measurements, openings, restored, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, walls]);
 
   useEffect(() => {
     if (!restored) return;
@@ -392,6 +402,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
         setSelectedPoint(null);
         setLockedViewport(null);
       }
+      if (event.key === "Escape" && (tool === "MEASURE" || tool === "ADD_MEASURE")) {
+        setTool("SELECT"); setMeasurementDraft([]); setSelectedMeasurement(null);
+      }
     };
     window.addEventListener("keydown", finishActiveTool);
     return () => window.removeEventListener("keydown", finishActiveTool);
@@ -416,15 +429,55 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     };
   }, [contextMenu]);
 
-  function snapshot(): Snapshot { return { walls: cloneWalls(walls), openings: cloneOpenings(openings) }; }
+  function snapshot(): Snapshot { return { walls: cloneWalls(walls), openings: cloneOpenings(openings), measurements: cloneMeasurements(measurements), dimensionOffsets: { ...dimensionOffsets }, hiddenDimensions: [...hiddenDimensions] }; }
   function invalidateRoomValidation() { setRoomValidation(null); setRoomValidationError(null); }
   function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); invalidateRoomValidation(); }
-  function restore(value: Snapshot) { setWalls(cloneWalls(value.walls)); setOpenings(cloneOpenings(value.openings)); setDraft([]); setSelectedSegment(null); setSelectedPoint(null); invalidateRoomValidation(); }
+  function restore(value: Snapshot) { setWalls(cloneWalls(value.walls)); setOpenings(cloneOpenings(value.openings)); setMeasurements(cloneMeasurements(value.measurements ?? [])); setDimensionOffsets({ ...(value.dimensionOffsets ?? {}) }); setHiddenDimensions([...(value.hiddenDimensions ?? [])]); setDraft([]); setMeasurementDraft([]); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); invalidateRoomValidation(); }
   function undo() { const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous); }
   function redo() { const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next); }
 
   function canvasPoint(event: ReactPointerEvent<SVGSVGElement>, attachToWalls = true): Point2D {
     return canvasPointFromClient(event.clientX, event.clientY, event.currentTarget, attachToWalls);
+  }
+
+  function screenPointFromClient(clientX: number, clientY: number, svg: SVGSVGElement): Point2D {
+    const rect = svg.getBoundingClientRect();
+    return { x: (clientX - rect.left) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: (clientY - rect.top) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height };
+  }
+
+  function resolveMeasurementReference(reference: MeasurementReference): Point2D | null {
+    const wall = walls.find((item) => item.id === reference.wallId);
+    if (!wall) return null;
+    if (reference.kind === "POINT") return wall.points[reference.pointIndex] ?? null;
+    const start = wall.points[reference.segmentIndex]; const end = wall.points[reference.segmentIndex + 1];
+    return start && end ? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 } : null;
+  }
+
+  function addMeasurementReference(reference: MeasurementReference) {
+    if (tool !== "ADD_MEASURE") return;
+    const first = measurementDraft[0];
+    if (!first || first.kind !== reference.kind) { setMeasurementDraft([reference]); return; }
+    const sameReference = first.wallId === reference.wallId && (first.kind === "POINT" ? first.pointIndex === (reference as PointSelection).pointIndex : first.segmentIndex === (reference as SegmentSelection).segmentIndex);
+    if (sameReference) return;
+    const id = crypto.randomUUID(); record();
+    setMeasurements((current) => [...current, { id, first, second: reference, offset: 48 }]);
+    setMeasurementDraft([]); setSelectedMeasurement(`custom:${id}`); setTool("MEASURE");
+  }
+
+  function beginMeasurementDrag(event: ReactPointerEvent<SVGGElement>, id: string, custom: boolean, offset: number, normal: Point2D) {
+    if (tool !== "MEASURE" || event.button !== 0) return;
+    const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
+    event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    measurementDrag.current = { id, custom, offset, normal, pointerStart: screenPointFromClient(event.clientX, event.clientY, svg), before: snapshot() };
+    setSelectedMeasurement(`${custom ? "custom" : "auto"}:${id}`);
+  }
+
+  function deleteSelectedMeasurement() {
+    if (!selectedMeasurement) return;
+    record();
+    if (selectedMeasurement.startsWith("custom:")) setMeasurements((current) => current.filter((measurement) => measurement.id !== selectedMeasurement.slice(7)));
+    else setHiddenDimensions((current) => [...new Set([...current, selectedMeasurement.slice(5)])]);
+    setSelectedMeasurement(null);
   }
 
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
@@ -465,13 +518,13 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
     clearImportedDrawing();
     const outline = [...points.map((point) => ({ ...point })), { ...points[0] }];
     setWalls([{ id: crypto.randomUUID(), points: squaredWalls ? squareWallPoints(outline) : outline }]);
-    setOpenings([]); setRooms([]); setSelectedRoomId(null); setDraft([]); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null); setLockedViewport(null); setLShapePickerOpen(false);
+    setOpenings([]); setMeasurements([]); setDimensionOffsets({}); setHiddenDimensions([]); setRooms([]); setSelectedRoomId(null); setDraft([]); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null); setLockedViewport(null); setLShapePickerOpen(false);
   }
 
   function newOutline() {
     record();
     clearImportedDrawing();
-    setWalls([]); setOpenings([]); setRooms([]); setSelectedRoomId(null); setDraft([]); setTool("DRAW"); setSelectedSegment(null); setSelectedPoint(null); setLockedViewport(viewport); setLShapePickerOpen(false);
+    setWalls([]); setOpenings([]); setMeasurements([]); setDimensionOffsets({}); setHiddenDimensions([]); setRooms([]); setSelectedRoomId(null); setDraft([]); setTool("DRAW"); setSelectedSegment(null); setSelectedPoint(null); setLockedViewport(viewport); setLShapePickerOpen(false);
   }
 
   function removeSegment(wallId: string, segmentIndex: number) {
@@ -637,6 +690,14 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
       setPan({ x: panStart.pan.x + (event.clientX - panStart.clientX) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: panStart.pan.y + (event.clientY - panStart.clientY) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height });
       return;
     }
+    const activeMeasurement = measurementDrag.current;
+    if (activeMeasurement) {
+      const pointer = screenPointFromClient(event.clientX, event.clientY, event.currentTarget);
+      const distance = activeMeasurement.offset + (pointer.x - activeMeasurement.pointerStart.x) * activeMeasurement.normal.x + (pointer.y - activeMeasurement.pointerStart.y) * activeMeasurement.normal.y;
+      if (activeMeasurement.custom) setMeasurements((current) => current.map((measurement) => measurement.id === activeMeasurement.id ? { ...measurement, offset: distance } : measurement));
+      else setDimensionOffsets((current) => ({ ...current, [activeMeasurement.id]: distance }));
+      return;
+    }
     if (moveOpening(event)) return;
     const activeWall = wallDrag.current;
     if (activeWall) {
@@ -674,6 +735,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
 
   function finishPointDrag() {
     if (panDrag.current) { panDrag.current = null; return; }
+    if (measurementDrag.current) { const before = measurementDrag.current.before; measurementDrag.current = null; record(before); return; }
     if (openingDrag.current) { const before = openingDrag.current.before; openingDrag.current = null; setLockedViewport(null); record(before); return; }
     if (wallDrag.current) { const before = wallDrag.current.before; wallDrag.current = null; setLockedViewport(null); record(before); return; }
     if (!pointDrag.current) return;
@@ -730,7 +792,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
         const points = [...room.vertices.map((point) => ({ x: point.x, y: result.source_height_px - point.y })), { x: room.vertices[0].x, y: result.source_height_px - room.vertices[0].y }];
         return { id: room.id, points: squaredWalls ? squareWallPoints(points) : points };
       }));
-      setOpenings([]); setRooms([]); setSelectedRoomId(null); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null);
+      setOpenings([]); setMeasurements([]); setDimensionOffsets({}); setHiddenDimensions([]); setRooms([]); setSelectedRoomId(null); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null);
     } catch (reason) { setImportError(reason instanceof Error ? reason.message : "The drawing could not be recognised."); }
     finally { setImporting(false); }
   }
@@ -767,7 +829,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
 
   function clearRoomValidation() { setRoomValidation(null); setRoomValidationError(null); }
 
-  const help = tool === "DRAW" ? "Click an existing wall to start or finish a connected wall run. Double-click, right-click, Enter, or Esc also confirms the run and exits Add wall." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
+  const help = tool === "DRAW" ? "Click an existing wall to start or finish a connected wall run. Double-click, right-click, Enter, or Esc also confirms the run and exits Add wall." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : tool === "MEASURE" ? "Drag an existing measurement to reposition it, or select one and use Delete measurement." : tool === "ADD_MEASURE" ? `${measurementDraft.length ? "Now select a second matching" : "Select the first"} wall or corner to add a measurement.` : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
   const vertexCount = walls.reduce((total, wall) => total + wall.points.length - (samePoint(wall.points[0], wall.points.at(-1)!) ? 1 : 0), 0);
   const sourceTopLeft = toScreen({ x: 0, y: canvasSize.height }); const sourceBottomRight = toScreen({ x: canvasSize.width, y: 0 });
 
@@ -804,8 +866,10 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
           <div className="plan-constraint-controls">
             <label className="snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to grid – <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput className="snap-size-input" minMm={1} valueMm={snapSize} units={displayUnits} disabled={!snapEnabled} onMmChange={setSnapSize} /></label>
             <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => { const next = event.target.checked; setSquaredWalls(next); if (next) { record(); setWalls((current) => current.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) }))); } }} /><span><strong>Square walls</strong><small>Keep every wall horizontal or vertical while editing.</small></span></label>
+            <div className="button-grid measurement-mode-row"><button className={tool === "MEASURE" ? "active" : ""} onClick={() => { setTool("MEASURE"); setMeasurementDraft([]); setSelectedSegment(null); setSelectedPoint(null); }}>Edit measurements</button><button className={tool === "ADD_MEASURE" ? "active" : ""} onClick={() => { setTool("ADD_MEASURE"); setMeasurementDraft([]); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); }}>Add measurement</button></div>
           </div>
           <p className={`full-plan-help ${tool === "REMOVE" ? "danger-help" : ""}`}>{help}</p>
+          {tool === "MEASURE" && selectedMeasurement && <div className="selected-properties measurement-properties"><div className="tool-heading"><span>M</span><h2>Selected measurement</h2></div><p className="tool-note">Drag this measurement on the drawing or remove it.</p><button className="danger-button" onClick={deleteSelectedMeasurement}>Delete measurement</button></div>}
           {tool === "SELECT" && selectedSegment && selectedWall && <div className="selected-properties"><div className="tool-heading"><span>W{walls.findIndex((wall) => wall.id === selectedWall.id) + 1}.{selectedSegment.segmentIndex + 1}</span><h2>Selected wall</h2></div><p className="tool-note">Enter a new length to move the wall endpoint. Adjoining walls update automatically.</p><label className="field"><span>New length <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={wallLengthInput ?? segmentLength(selectedWall, selectedSegment.segmentIndex)} units={displayUnits} onMmChange={setWallLengthInput} /></label><button className="primary-small" onClick={applySelectedWallLength}>Apply wall length</button><div className="button-grid"><button onClick={insertPoint}>Add point at midpoint</button><button className="danger-button" onClick={() => removeSegment(selectedWall.id, selectedSegment.segmentIndex)}>Remove wall segment</button></div></div>}
           {tool === "SELECT" && selectedPoint && selectedPointWall && selectedPointValue && <div className="selected-properties"><div className="tool-heading"><span>V{(wallVertexStarts.get(selectedPointWall.id) ?? 1) + selectedPoint.pointIndex}</span><h2>Selected corner</h2></div><div className="coordinate-fields"><label className="field"><span>X <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, x: value })} /></label><label className="field"><span>Y <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput valueMm={selectedPointValue.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, y: value })} /></label></div><div className="button-grid"><button onClick={insertPointAfterSelected} disabled={!samePoint(selectedPointWall.points[0], selectedPointWall.points.at(-1)!) && selectedPoint.pointIndex >= selectedPointWall.points.length - 1}>Add corner after</button><button className="danger-button" onClick={deletePoint}>Delete corner</button></div></div>}
         </section>
@@ -834,10 +898,18 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
             {walls.map((wall) => {
               const closed = samePoint(wall.points[0], wall.points.at(-1)!); const modelPoints = closed ? wall.points.slice(0, -1) : wall.points; const screenPoints = modelPoints.map(toScreen); const centre = screenPoints.reduce((total, point) => ({ x: total.x + point.x / screenPoints.length, y: total.y + point.y / screenPoints.length }), { x: 0, y: 0 });
               const dimensions = wall.points.slice(0, -1).map((modelStart, segmentIndex) => {
-                const modelEnd = wall.points[segmentIndex + 1]; const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y) || 1; const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const offset = 78; const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * 10, y: (first.y + second.y) / 2 + outward.y * 10 };
-                return <g key={`${wall.id}-dimension-${segmentIndex}`} className="wall-dimension"><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
+                const modelEnd = wall.points[segmentIndex + 1]; const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y) || 1; const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const dimensionId = `${wall.id}:${segmentIndex}`; if (hiddenDimensions.includes(dimensionId)) return null; const offset = dimensionOffsets[dimensionId] ?? 78; const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * 10, y: (first.y + second.y) / 2 + outward.y * 10 };
+                return <g key={`${wall.id}-dimension-${segmentIndex}`} className={`wall-dimension measurement-item ${tool === "MEASURE" ? "editable" : ""} ${selectedMeasurement === `auto:${dimensionId}` ? "selected" : ""}`} onPointerDown={(event) => beginMeasurementDrag(event, dimensionId, false, offset, outward)}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
               });
-              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const selection = { wallId: wall.id, segmentIndex }; return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onContextMenu={(event) => openWallContextMenu(event, selection)} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
+              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const selection = { wallId: wall.id, segmentIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "WALL" && reference.wallId === wall.id && reference.segmentIndex === segmentIndex); return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onContextMenu={(event) => openWallContextMenu(event, selection)} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_MEASURE") { addMeasurementReference({ kind: "WALL", ...selection }); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} /></g>; })}{dimensions}</g>;
+            })}
+            {measurements.map((measurement) => {
+              const modelStart = resolveMeasurementReference(measurement.first); const modelEnd = resolveMeasurementReference(measurement.second);
+              if (!modelStart || !modelEnd) return null;
+              const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y); const length = Math.hypot(modelEnd.x - modelStart.x, modelEnd.y - modelStart.y);
+              if (!screenLength || !length) return null;
+              const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const normal = { x: -tangent.y, y: tangent.x }; const first = { x: start.x + normal.x * measurement.offset, y: start.y + normal.y * measurement.offset }; const second = { x: end.x + normal.x * measurement.offset, y: end.y + normal.y * measurement.offset }; const label = { x: (first.x + second.x) / 2 + normal.x * 10, y: (first.y + second.y) / 2 + normal.y * 10 };
+              return <g key={measurement.id} className={`wall-dimension custom-measurement measurement-item ${tool === "MEASURE" ? "editable" : ""} ${selectedMeasurement === `custom:${measurement.id}` ? "selected" : ""}`} onPointerDown={(event) => beginMeasurementDrag(event, measurement.id, true, measurement.offset, normal)}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={start.x} y1={start.y} x2={first.x} y2={first.y} /><line className="dimension-extension" x1={end.x} y1={end.y} x2={second.x} y2={second.y} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + normal.x * 4} y1={first.y - tangent.y * 4 + normal.y * 4} x2={first.x + tangent.x * 4 - normal.x * 4} y2={first.y + tangent.y * 4 - normal.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + normal.x * 4} y1={second.y - tangent.y * 4 + normal.y * 4} x2={second.x + tangent.x * 4 - normal.x * 4} y2={second.y + tangent.y * 4 - normal.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
             })}
             {draft.length > 0 && <polyline points={draft.map(toScreen).map((point) => `${point.x},${point.y}`).join(" ")} className="full-wall-draft" />}
             {openings.map((opening) => {
@@ -855,7 +927,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, onOpenRoom }: Props)
               const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward };
               return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} />;
             })}
-            <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""}`} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => beginPointDrag(event, selection)} /><text className="vertex-label" x={point.x} y={point.y + 3}>{firstNumber + pointIndex}</text></g>; }); })}</g>
+            <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "POINT" && reference.wallId === wall.id && reference.pointIndex === pointIndex); return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" || tool === "ADD_MEASURE" ? "editable" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { event.stopPropagation(); addMeasurementReference({ kind: "POINT", ...selection }); return; } beginPointDrag(event, selection); }} /><text className="vertex-label" x={point.x} y={point.y + 3}>{firstNumber + pointIndex}</text></g>; }); })}</g>
             {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r="7" className="full-plan-draft-node" />; })}
           </FloorPlanCanvas>
         </div><div className="drawing-scale"><span>Coordinates and dimensions shown in {UNIT_LABEL[displayUnits]} · calculations remain millimetre-authoritative</span><span>Shared floorplan engine auto-fits the complete plan</span></div>
