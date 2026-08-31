@@ -45,6 +45,46 @@ const cloneMeasurements = (measurements: CustomMeasurement[]) => measurements.ma
 const samePoint = (a: Point2D, b: Point2D, tolerance = 1) => Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
 const MIN_ENCLOSED_AREA_MM2 = 10_000;
 
+function synchronizeConnectedJunctions(baselineWalls: Wall[], candidateWalls: Wall[], squaredWalls: boolean, preferredWallId: string): Wall[] {
+  type JunctionReference = { wallId: string; pointIndex: number; point: Point2D };
+  const groups: JunctionReference[][] = [];
+  baselineWalls.forEach((wall) => {
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    wall.points.slice(0, closed ? -1 : undefined).forEach((point, pointIndex) => {
+      const reference = { wallId: wall.id, pointIndex, point };
+      const group = groups.find((items) => samePoint(items[0].point, point));
+      if (group) group.push(reference); else groups.push([reference]);
+    });
+  });
+  const synchronized = cloneWalls(candidateWalls);
+  const maximumPasses = baselineWalls.reduce((total, wall) => total + wall.points.length, 0) + 1;
+  for (let pass = 0; pass < maximumPasses; pass += 1) {
+    let updated = false;
+    for (const group of groups) {
+      const changed = group.flatMap((reference) => {
+        const wall = synchronized.find((item) => item.id === reference.wallId);
+        const point = wall?.points[reference.pointIndex];
+        if (!point || samePoint(point, reference.point, .001)) return [];
+        return [{ reference, point, distance: Math.hypot(point.x - reference.point.x, point.y - reference.point.y) }];
+      }).sort((first, second) => Number(second.reference.wallId === preferredWallId) - Number(first.reference.wallId === preferredWallId) || second.distance - first.distance);
+      if (!changed.length) continue;
+      const target = changed[0].point;
+      for (const reference of group) {
+        const wallIndex = synchronized.findIndex((item) => item.id === reference.wallId);
+        if (wallIndex < 0 || samePoint(synchronized[wallIndex].points[reference.pointIndex], target, .001)) continue;
+        const wall = synchronized[wallIndex];
+        const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+        const points = squaredWalls ? moveSquaredWallPoint(wall.points, reference.pointIndex, target) : wall.points.map((point, pointIndex) => pointIndex === reference.pointIndex ? { ...target } : { ...point });
+        if (!squaredWalls && closed && reference.pointIndex === 0) points[points.length - 1] = { ...target };
+        synchronized[wallIndex] = { ...wall, points };
+        updated = true;
+      }
+    }
+    if (!updated) break;
+  }
+  return synchronized;
+}
+
 function signedPolygonArea(points: Point2D[]): number {
   return points.reduce((area, point, index) => {
     const next = points[(index + 1) % points.length];
@@ -1068,8 +1108,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         });
         return { ...wall, points, attachments: Object.keys(attachments).length ? attachments : undefined };
         }).map((wall) => ({ ...wall, points: samePoint(wall.points[0], wall.points.at(-1)!) ? [...wall.points.slice(0, -1), { ...wall.points[0] }] : wall.points }));
-        const preservesConstraints = nextWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
-        return preservesConstraints ? nextWalls : current;
+        const synchronizedWalls = synchronizeConnectedJunctions(activeWall.before.walls, nextWalls, squaredWalls, activeWall.wallId);
+        const preservesConstraints = synchronizedWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
+        return preservesConstraints ? synchronizedWalls : current;
       });
       return;
     }
