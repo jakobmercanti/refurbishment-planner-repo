@@ -1011,6 +1011,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       const pointer = canvasPoint(event, false); const normal = { x: -dy / length, y: dx / length };
       const rawDistance = (pointer.x - activeWall.pointerStart.x) * normal.x + (pointer.y - activeWall.pointerStart.y) * normal.y;
       const distance = snapEnabled ? Math.round(rawDistance / snapSize) * snapSize : Math.round(rawDistance * 10) / 10;
+      const movedStart = { x: start.x + normal.x * distance, y: start.y + normal.y * distance };
+      const movedEnd = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
       // Repair small gaps left by earlier snapped edits and keep projected
       // junction endpoints rigidly attached during every wall translation.
       const attachmentTolerance = snapEnabled ? Math.max(200, snapSize * 4) : 200;
@@ -1018,8 +1020,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         const nextWalls = current.map((wall) => {
         if (wall.id === activeWall.wallId) {
           const points = activeWall.points.map((point) => ({ ...point })); const closed = samePoint(points[0], points.at(-1)!);
-          points[activeWall.segmentIndex] = { x: start.x + normal.x * distance, y: start.y + normal.y * distance };
-          points[endIndex] = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
+          points[activeWall.segmentIndex] = { ...movedStart };
+          points[endIndex] = { ...movedEnd };
           if (closed && activeWall.segmentIndex === 0) points[points.length - 1] = { ...points[0] };
           if (closed && endIndex === points.length - 1) points[0] = { ...points[endIndex] };
           return { ...wall, points };
@@ -1028,10 +1030,26 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         // Resolve every anchored point from the host segment itself instead of moving it
         // from its previous coordinates. That keeps a junction rigid and repairs a
         // legacy corner that has already drifted slightly away from its host wall.
-        const attachments = { ...wall.attachments };
-        let points = wall.points.map((point) => ({ ...point }));
-        wall.points.forEach((point, pointIndex) => {
-          const attachment = wall.attachments?.[pointIndex];
+        // Always identify connections from the drag-start snapshot. After the first
+        // pointer update a connected point has already moved away from its original
+        // coordinate, so comparing the live geometry on later updates loses the
+        // junction and lets the selected wall continue moving on its own.
+        const baselineWall = activeWall.before.walls.find((item) => item.id === wall.id) ?? wall;
+        const attachments = { ...baselineWall.attachments };
+        let points = baselineWall.points.map((point) => ({ ...point }));
+        const closed = samePoint(baselineWall.points[0], baselineWall.points.at(-1)!);
+        baselineWall.points.forEach((point, pointIndex) => {
+          // A closed floorplan can contain the same physical junction in several
+          // wall runs. Move every coincident corner, including interior points;
+          // restricting this to run endpoints leaves the other wall behind and
+          // visibly opens the room.
+          if (closed && pointIndex === baselineWall.points.length - 1) return;
+          const sharedTarget = samePoint(point, start) ? movedStart : samePoint(point, end) ? movedEnd : null;
+          if (sharedTarget) {
+            points = squaredWalls ? moveSquaredWallPoint(points, pointIndex, sharedTarget) : points.map((candidate, index) => index === pointIndex ? { ...sharedTarget } : candidate);
+            return;
+          }
+          const attachment = baselineWall.attachments?.[pointIndex];
           if (attachment?.wallId === activeWall.wallId && attachment.segmentIndex === activeWall.segmentIndex) {
             const along = Math.max(0, Math.min(1, attachment.along));
             const target = { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
@@ -1039,7 +1057,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
             return;
           }
           const projection = pointOnInfiniteLine(point, start, end);
-          const isEndpoint = pointIndex === 0 || pointIndex === wall.points.length - 1;
+          const isEndpoint = pointIndex === 0 || pointIndex === baselineWall.points.length - 1;
           const isOnHostSegment = projection.along >= -.02 && projection.along <= 1.02;
           if (isEndpoint && isOnHostSegment && Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance) {
             const along = Math.max(0, Math.min(1, projection.along));
