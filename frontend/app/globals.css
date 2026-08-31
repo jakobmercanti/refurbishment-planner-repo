@@ -390,6 +390,7 @@ button { font: inherit; }
 .vertex-handle:active { cursor: grabbing; }
 .vertex-handle.selected { fill: #ffcb71; stroke: #8d5700; }
 .vertex-handle.draw-connect-target { fill: #fff0cf; stroke: #f1b14b; stroke-width: 5; cursor: crosshair; }
+.corner-connect-hit { fill: transparent; stroke: transparent; pointer-events: all; cursor: crosshair; }
 .vertex-label { fill: var(--ink); font: 700 8px var(--font-mono); text-anchor: middle; }
 .opening-symbol { pointer-events: auto; }
 .pickable-opening { cursor: grab; }

@@ -728,7 +728,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     draftStartAttachment.current = null; setDraft([]); setHoveredCorner(null); setTool("SELECT"); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null);
   }
 
-  function connectDraftToWall(wallId: string, segmentIndex: number, requested: Point2D) {
+  function connectDraftToWall(wallId: string, segmentIndex: number, requested: Point2D, alignClosingCorner = false) {
     const wall = walls.find((item) => item.id === wallId);
     const start = wall?.points[segmentIndex]; const end = wall?.points[segmentIndex + 1];
     if (!start || !end) return;
@@ -742,7 +742,13 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     const touchesEnd = Math.hypot(projected.x - end.x, projected.y - end.y) <= endpointTolerance;
     const point = touchesStart ? { ...start } : touchesEnd ? { ...end } : projected;
     const attachment = { wallId, segmentIndex, along: pointOnSegment(point, start, end).along, hideCorner: touchesStart || touchesEnd };
-    if (draft.length) commitDraft(squaredWalls ? orthogonalPathTo(draft, point) : [...draft, point], attachment);
+    if (draft.length) {
+      // Picking a real corner is an explicit request to close at that corner. Align
+      // the last draft point even when free-angle drawing is enabled, so the final
+      // segment finishes flush instead of preserving a near-miss below/alongside it.
+      const alignedDraft = alignClosingCorner ? alignDraftToCorner(draft, point) : draft;
+      commitDraft(squaredWalls ? orthogonalPathTo(alignedDraft, point) : [...alignedDraft, point], attachment);
+    }
     else { draftStartAttachment.current = attachment; setDraft([point]); }
     setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null);
   }
@@ -754,7 +760,15 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     const segmentIndex = wall.points[selection.pointIndex + 1] ? selection.pointIndex : selection.pointIndex - 1;
     if (segmentIndex < 0) return;
     setHoveredCorner(null);
-    connectDraftToWall(selection.wallId, segmentIndex, point);
+    connectDraftToWall(selection.wallId, segmentIndex, point, true);
+  }
+
+  function alignDraftToCorner(points: Point2D[], corner: Point2D): Point2D[] {
+    const last = points.at(-1);
+    if (!last || last.x === corner.x || last.y === corner.y) return points;
+    const horizontalConnection = Math.abs(corner.x - last.x) >= Math.abs(corner.y - last.y);
+    const aligned = horizontalConnection ? { ...last, y: corner.y } : { ...last, x: corner.x };
+    return [...points.slice(0, -1), aligned];
   }
 
   function findWallSegmentNear(point: Point2D): SegmentSelection | null {
@@ -770,7 +784,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   function findCornerNear(point: Point2D): PointSelection | null {
-    const tolerance = snapEnabled ? Math.max(24, snapSize * 1.5) : 24;
+    const tolerance = snapEnabled ? Math.max(40, snapSize * 2) : 40;
     let closest: (PointSelection & { distance: number }) | null = null;
     walls.forEach((wall) => wall.points.slice(0, samePoint(wall.points[0], wall.points.at(-1)!) ? -1 : undefined).forEach((corner, pointIndex) => {
       if (wall.attachments?.[pointIndex]?.hideCorner) return;
@@ -1334,7 +1348,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
               const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward };
               return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} onContextMenu={(event) => openOpeningContextMenu(event, opening)} />;
             })}
-            <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => ({ modelPoint, pointIndex })).filter(({ pointIndex }) => !wall.attachments?.[pointIndex]?.hideCorner).map(({ modelPoint, pointIndex }, visibleIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "POINT" && reference.wallId === wall.id && reference.pointIndex === pointIndex); const reusable = tool === "DRAW" && hoveredCorner?.wallId === wall.id && hoveredCorner.pointIndex === pointIndex; return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" || tool === "ADD_MEASURE" ? "editable" : ""} ${reusable ? "draw-connect-target" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} onPointerEnter={() => { if (tool === "DRAW") setHoveredCorner(selection); }} onPointerLeave={() => { if (tool === "DRAW") setHoveredCorner((current) => current?.wallId === wall.id && current.pointIndex === pointIndex ? null : current); }} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => { if (tool === "DRAW" && event.button === 0) { event.stopPropagation(); connectDraftToCorner(selection); return; } if (tool === "ADD_MEASURE") { event.stopPropagation(); addMeasurementReference({ kind: "POINT", ...selection }); return; } beginPointDrag(event, selection); }} /><text className="vertex-label" x={point.x} y={point.y + 3}>{firstNumber + visibleIndex}</text></g>; }); })}</g>
+            <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => ({ modelPoint, pointIndex })).filter(({ pointIndex }) => !wall.attachments?.[pointIndex]?.hideCorner).map(({ modelPoint, pointIndex }, visibleIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "POINT" && reference.wallId === wall.id && reference.pointIndex === pointIndex); const reusable = tool === "DRAW" && hoveredCorner?.wallId === wall.id && hoveredCorner.pointIndex === pointIndex; const clearHoveredCorner = () => { if (tool === "DRAW") setHoveredCorner((current) => current?.wallId === wall.id && current.pointIndex === pointIndex ? null : current); }; return <g key={`${wall.id}-point-${pointIndex}`}>{tool === "DRAW" && <circle cx={point.x} cy={point.y} r="22" className="corner-connect-hit" onPointerEnter={() => setHoveredCorner(selection)} onPointerLeave={clearHoveredCorner} onPointerDown={(event) => { if (event.button === 0) { event.stopPropagation(); connectDraftToCorner(selection); } }} />}<circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" || tool === "ADD_MEASURE" ? "editable" : ""} ${reusable ? "draw-connect-target" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} onPointerEnter={() => { if (tool === "DRAW") setHoveredCorner(selection); }} onPointerLeave={clearHoveredCorner} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={(event) => { if (tool === "DRAW" && event.button === 0) { event.stopPropagation(); connectDraftToCorner(selection); return; } if (tool === "ADD_MEASURE") { event.stopPropagation(); addMeasurementReference({ kind: "POINT", ...selection }); return; } beginPointDrag(event, selection); }} /><text className="vertex-label" x={point.x} y={point.y + 3}>{firstNumber + visibleIndex}</text></g>; }); })}</g>
             {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r="7" className="full-plan-draft-node" />; })}
           </FloorPlanCanvas>
         </div><div className="drawing-scale"><span>Coordinates and dimensions shown in {UNIT_LABEL[displayUnits]} · calculations remain millimetre-authoritative</span><span>Shared floorplan engine auto-fits the complete plan</span></div>
