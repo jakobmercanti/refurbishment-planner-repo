@@ -32,6 +32,7 @@ interface Props { apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: "D
 
 const DEFAULT_SIZE = { width: 1100, height: 700 };
 const SNAP = 50;
+const MIN_WALL_CLEARANCE_MM = 200;
 const STORAGE_KEY = "renovation-fit:complete-floorplan:v2";
 const RECTANGLE_TEMPLATE: Point2D[] = [{ x: 0, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 1800 }, { x: 0, y: 1800 }];
 const L_SHAPE_TEMPLATES: Array<{ id: string; name: string; preview: string; points: Point2D[] }> = [
@@ -834,7 +835,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       const alignedDraft = alignClosingCorner ? alignDraftToCorner(draft, point) : draft;
       commitDraft(squaredWalls ? orthogonalPathTo(alignedDraft, point) : [...alignedDraft, point], attachment);
     }
-    else { draftStartAttachment.current = attachment; setDraft([point]); }
+    else { setLockedViewport(viewport); draftStartAttachment.current = attachment; setDraft([point]); }
     setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null);
   }
 
@@ -1093,7 +1094,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       const pointer = canvasPoint(event, false); const normal = { x: -dy / length, y: dx / length };
       const rawDistance = (pointer.x - activeWall.pointerStart.x) * normal.x + (pointer.y - activeWall.pointerStart.y) * normal.y;
       const requestedDistance = snapEnabled ? Math.round(rawDistance / snapSize) * snapSize : Math.round(rawDistance * 10) / 10;
-      const distance = constrainWallDragDistance(requestedDistance, activeWall, Math.max(50, snapEnabled ? snapSize : 0));
+      const distance = constrainWallDragDistance(requestedDistance, activeWall, Math.max(MIN_WALL_CLEARANCE_MM, snapEnabled ? snapSize : 0));
       const movedStart = { x: start.x + normal.x * distance, y: start.y + normal.y * distance };
       const movedEnd = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
       // Repair small gaps left by earlier snapped edits and keep projected
@@ -1400,6 +1401,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
             if (closes) { commitDraft(squaredWalls ? orthogonalPathTo(draft, draft[0]) : [...draft, draft[0]]); return; }
             const wallHit = findWallSegmentNear(canvasPoint(event, false));
             if (wallHit) { connectDraftToWall(wallHit.wallId, wallHit.segmentIndex, canvasPoint(event, false)); return; }
+            if (!draft.length) setLockedViewport(viewport);
             setDraft((current) => current.length && squaredWalls ? [...current, squareDrawPoint(current.at(-1)!, requested)] : [...current, requested]);
           }} onDoubleClick={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }}>
             {sourceUrl && sourceFile?.type !== "application/pdf" && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}

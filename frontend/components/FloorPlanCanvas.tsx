@@ -62,8 +62,21 @@ export function floorPlanFromClient(
   viewport: FloorPlanViewport,
 ): Point2D {
   const rectangle = svg.getBoundingClientRect();
-  const screenX = (clientX - rectangle.left) * FLOOR_PLAN_CANVAS_WIDTH / rectangle.width;
-  const screenY = (clientY - rectangle.top) * FLOOR_PLAN_CANVAS_HEIGHT / rectangle.height;
+  const [viewBoxX = 0, viewBoxY = 0, viewBoxWidth = FLOOR_PLAN_CANVAS_WIDTH, viewBoxHeight = FLOOR_PLAN_CANVAS_HEIGHT] = (svg.getAttribute("viewBox") ?? "")
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number)
+    .filter(Number.isFinite);
+  // SVG preserves its viewBox aspect ratio by default. The editor is resizable,
+  // so using the outer SVG rectangle maps clicks in the letterboxed area to a
+  // different drawing point. Map through the rendered viewBox instead.
+  const clientWidth = svg.clientWidth || rectangle.width;
+  const clientHeight = svg.clientHeight || rectangle.height;
+  const scale = Math.min(clientWidth / viewBoxWidth, clientHeight / viewBoxHeight);
+  const contentLeft = rectangle.left + svg.clientLeft + (clientWidth - viewBoxWidth * scale) / 2;
+  const contentTop = rectangle.top + svg.clientTop + (clientHeight - viewBoxHeight * scale) / 2;
+  const screenX = viewBoxX + (clientX - contentLeft) / scale;
+  const screenY = viewBoxY + (clientY - contentTop) / scale;
   return {
     x: viewport.minX + (screenX - viewport.offsetX) / viewport.scale,
     y: viewport.maxY - (screenY - viewport.offsetY) / viewport.scale,
