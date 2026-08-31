@@ -9,7 +9,7 @@ import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room, RoomVa
 
 type WallAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean };
 type Wall = { id: string; points: Point2D[]; attachments?: Record<number, WallAttachment> };
-type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[] };
+type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[]; colourIndex?: number };
 type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE" | "MEASURE" | "ADD_MEASURE";
 type SegmentSelection = { wallId: string; segmentIndex: number };
 type PointSelection = { wallId: string; pointIndex: number };
@@ -367,12 +367,21 @@ function roomVisualCentre(points: Point2D[]): Point2D {
 }
 
 function reconcileRooms(current: NamedOutline[], detected: NamedOutline[]): NamedOutline[] {
-  const available = [...current];
+  const available = current.map((room, index) => ({ ...room, colourIndex: room.colourIndex ?? index % 6 }));
   const usedNames = new Set(current.map((room) => room.name));
+  const usedColours = new Set(available.map((room) => room.colourIndex));
   let nextRoomNumber = 1;
+  let nextColour = 0;
   const nextName = () => {
     while (usedNames.has(`Room ${nextRoomNumber}`)) nextRoomNumber += 1;
     const name = `Room ${nextRoomNumber}`; usedNames.add(name); nextRoomNumber += 1; return name;
+  };
+  const nextColourIndex = () => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const colour = (nextColour + attempt) % 6;
+      if (!usedColours.has(colour)) { usedColours.add(colour); nextColour = colour + 1; return colour; }
+    }
+    const colour = nextColour % 6; nextColour += 1; return colour;
   };
   return detected.map((room) => {
     const centre = roomCentre(room); const sourceIds = room.sourceWallIds ?? [room.sourceWallId];
@@ -382,9 +391,9 @@ function reconcileRooms(current: NamedOutline[], detected: NamedOutline[]): Name
       return { candidate, index, sharesWall, distance: Math.hypot(centre.x - candidateCentre.x, centre.y - candidateCentre.y) };
     }).filter((candidate) => candidate.sharesWall).sort((first, second) => first.distance - second.distance);
     const match = candidates[0];
-    if (!match) return { ...room, id: crypto.randomUUID(), name: nextName() };
+    if (!match) return { ...room, id: crypto.randomUUID(), name: nextName(), colourIndex: nextColourIndex() };
     available.splice(match.index, 1);
-    return { ...room, id: match.candidate.id, name: match.candidate.name };
+    return { ...room, id: match.candidate.id, name: match.candidate.name, colourIndex: match.candidate.colourIndex };
   });
 }
 
@@ -1362,7 +1371,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
             {detectedRooms.map((room) => { const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />; })}
             {rooms.map((room, index) => {
               const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); const visualCentre = roomVisualCentre(room.vertices); const centre = toScreen({ x: visualCentre.x, y: canvasSize.height - visualCentre.y });
-              return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className="room-name-editor" x={centre.x - 82} y={centre.y - 17} width="164" height="34"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); setRoomValidation(null); }} /></foreignObject>}</g>;
+              return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className="room-name-editor" x={centre.x - 82} y={centre.y - 17} width="164" height="34"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); setRoomValidation(null); }} /></foreignObject>}</g>;
             })}
             {visibleFixtures.map((fixture) => {
               const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
