@@ -249,6 +249,25 @@ function moveSquaredWallPoint(points: Point2D[], index: number, next: Point2D): 
   return closed ? [...squared, { ...squared[0] }] : squared;
 }
 
+function hasPerpendicularConnectedLeg(points: Point2D[], index: number, hostStart: Point2D, hostEnd: Point2D): boolean {
+  const closed = points.length > 2 && samePoint(points[0], points.at(-1)!);
+  const core = closed ? points.slice(0, -1) : points;
+  const point = core[index];
+  const hostLength = Math.hypot(hostEnd.x - hostStart.x, hostEnd.y - hostStart.y);
+  if (!point || !hostLength) return false;
+  const hostDirection = { x: (hostEnd.x - hostStart.x) / hostLength, y: (hostEnd.y - hostStart.y) / hostLength };
+  const neighbours = [
+    ...(index > 0 || closed ? [core[(index - 1 + core.length) % core.length]] : []),
+    ...(index < core.length - 1 || closed ? [core[(index + 1) % core.length]] : []),
+  ];
+  return neighbours.some((neighbour) => {
+    const length = Math.hypot(neighbour.x - point.x, neighbour.y - point.y);
+    if (!length) return false;
+    const alignment = Math.abs(((neighbour.x - point.x) / length) * hostDirection.x + ((neighbour.y - point.y) / length) * hostDirection.y);
+    return alignment < .995;
+  });
+}
+
 function pointInsidePolygon(point: Point2D, polygon: Point2D[]): boolean {
   let inside = false;
   for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
@@ -1141,9 +1160,11 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
             return;
           }
           const projection = pointOnInfiniteLine(point, start, end);
-          const isEndpoint = pointIndex === 0 || pointIndex === baselineWall.points.length - 1;
           const isOnHostSegment = projection.along >= -.02 && projection.along <= 1.02;
-          if (isEndpoint && isOnHostSegment && Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance) {
+          // A connected corner can be an interior point of a wall run (a T or
+          // multi-room junction), not only a run endpoint. Keep its perpendicular
+          // leg attached to the moving host segment so a wall is never left open.
+          if (hasPerpendicularConnectedLeg(baselineWall.points, pointIndex, start, end) && isOnHostSegment && Math.hypot(point.x - projection.point.x, point.y - projection.point.y) <= attachmentTolerance) {
             const along = Math.max(0, Math.min(1, projection.along));
             attachments[pointIndex] = { wallId: activeWall.wallId, segmentIndex: activeWall.segmentIndex, along };
             const target = { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
