@@ -297,6 +297,7 @@ function WallPiece({
   const outsideFrom = offsetAt(from, outerStart, Math.abs(from) < 1e-6);
   const outsideTo = offsetAt(to, outerEnd, Math.abs(to - wallLength) < 1e-6);
   const shape = new THREE.Shape();
+  // Rotating the shape's XY plane into XZ maps plan Y to negative world Z.
   shape.moveTo(innerFrom.x * SCALE, innerFrom.y * SCALE);
   shape.lineTo(innerTo.x * SCALE, innerTo.y * SCALE);
   shape.lineTo(outsideTo.x * SCALE, outsideTo.y * SCALE);
@@ -453,6 +454,7 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
     const next = new THREE.Shape();
     vertices.forEach((vertex, index) => {
       const x = vertex.x * SCALE;
+      // The rotation below maps the shape's plan Y to negative world Z.
       const y = vertex.y * SCALE;
       if (index === 0) next.moveTo(x, y);
       else next.lineTo(x, y);
