@@ -897,10 +897,11 @@ function CameraPreset({ preset, person, target }: { preset: CameraView; person?:
       camera.lookAt(eyeTarget(person));
     } else {
       if (preset === "top") {
-        // Floorplan coordinates grow downward on screen and are rendered as
-        // negative Z in Three.js. Positive Z must therefore be screen-up in
-        // the Top view, otherwise asymmetric rooms are vertically mirrored.
-        camera.up.set(0, 0, 1);
+        // Room data uses Cartesian plan coordinates (positive Y is floorplan-up),
+        // while every 3D item maps plan Y to negative world Z. Keep negative Z
+        // screen-up so floors, walls, openings and placed items retain the same
+        // top-view orientation as the floorplan.
+        camera.up.set(0, 0, -1);
         camera.position.set(target[0], 6.4, target[2]);
       } else {
         camera.up.set(0, 1, 0);
