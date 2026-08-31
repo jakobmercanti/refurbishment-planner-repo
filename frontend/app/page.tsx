@@ -31,16 +31,29 @@ export default function Home() {
   const [floorplanStyle, setFloorplanStyle] = useState<"DEFAULT" | "TRADITIONAL">("DEFAULT");
   const [floorplanExportRequest, setFloorplanExportRequest] = useState(0);
   const [preferences, setPreferences] = useState<AppPreferences>({ density: "COMFORTABLE", confirmBeforeOpen: true, units: "MM" });
+  const [demoLoadRequest, setDemoLoadRequest] = useState(0);
 
   useEffect(() => {
-    fetch(`${API_URL}/demo`)
-      .then((response) => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const loadDemo = async (attempt: number): Promise<void> => {
+      try {
+        const response = await fetch(`${API_URL}/demo`);
         if (!response.ok) throw new Error(`API returned ${response.status}`);
-        return response.json() as Promise<DemoResponse>;
-      })
-      .then(setDemo)
-      .catch((reason: Error) => setError(reason.message));
-  }, []);
+        const nextDemo = await response.json() as DemoResponse;
+        if (!cancelled) { setDemo(nextDemo); setError(null); }
+      } catch (reason) {
+        if (cancelled) return;
+        if (attempt < 4) {
+          retryTimer = setTimeout(() => { void loadDemo(attempt + 1); }, 500 * (attempt + 1));
+          return;
+        }
+        setError(reason instanceof Error ? reason.message : "Unable to reach the engineering backend.");
+      }
+    };
+    void loadDemo(0);
+    return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
+  }, [demoLoadRequest]);
 
   const analysisIsStale = Boolean(layoutResult && demo && layoutResult.room_version !== demo.room.version);
 
@@ -141,7 +154,7 @@ export default function Home() {
   }
 
   if (!demo) {
-    return <main className="loading-state"><div className="brand-mark">RF</div><h1>Connecting to the engineering kernel</h1><p>{error ? `Backend unavailable: ${error}` : "Loading verified millimetre geometry…"}</p></main>;
+    return <main className="loading-state"><div className="brand-mark">RF</div><h1>Connecting to the engineering kernel</h1><p>{error ? `Backend unavailable: ${error}` : "Loading verified millimetre geometry…"}</p>{error && <button type="button" onClick={() => { setDemo(null); setError(null); setDemoLoadRequest((request) => request + 1); }}>Retry connection</button>}</main>;
   }
 
   return (
