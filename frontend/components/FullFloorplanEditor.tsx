@@ -5,6 +5,7 @@ import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
 import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
 import { formatArea, formatLength, formatMeasurementText, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import { retainDraggedWallConnections } from "@/lib/wallDragGeometry";
 import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room, RoomValidationResponse } from "@/lib/types";
 
 type WallAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean };
@@ -1178,8 +1179,12 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         return { ...wall, points, attachments: Object.keys(attachments).length ? attachments : undefined };
         }).map((wall) => ({ ...wall, points: samePoint(wall.points[0], wall.points.at(-1)!) ? [...wall.points.slice(0, -1), { ...wall.points[0] }] : wall.points }));
         const synchronizedWalls = synchronizeConnectedJunctions(activeWall.before.walls, nextWalls, squaredWalls, activeWall.wallId);
-        const preservesConstraints = synchronizedWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
-        return preservesConstraints ? synchronizedWalls : current;
+        // Connections can point in either direction. When the selected wall's own
+        // endpoint was attached to another wall, moving it beyond that host's end
+        // needs a real bridge segment; otherwise the enclosing room graph opens.
+        const connectedWalls = retainDraggedWallConnections(activeWall.before.walls, synchronizedWalls, activeWall.wallId, activeWall.segmentIndex);
+        const preservesConstraints = connectedWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
+        return preservesConstraints ? connectedWalls : current;
       });
       return;
     }
