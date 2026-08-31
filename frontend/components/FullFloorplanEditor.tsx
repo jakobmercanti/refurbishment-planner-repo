@@ -26,6 +26,7 @@ type FullOpening = {
   hingeSide: "START" | "END"; doorType: "SINGLE" | "DOUBLE"; opensInward: boolean;
 };
 type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[] };
+type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; points: Point2D[]; pointerStart: Point2D };
 type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number };
 interface Props { apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: "DEFAULT" | "TRADITIONAL"; exportRequest: number; activeRoomName?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; onOpenRoom: (name: string, vertices: Point2D[], openings: Opening[], wallHeight: number, wallThickness: number) => void; }
 
@@ -118,6 +119,39 @@ function hasOnlyOrthogonalSegments(points: Point2D[]): boolean {
 
 const segmentLength = (wall: Wall, index: number) => Math.hypot(wall.points[index + 1].x - wall.points[index].x, wall.points[index + 1].y - wall.points[index].y);
 const parentKey = (wallId: string, segmentIndex: number) => `${wallId}::${segmentIndex}`;
+
+function constrainWallDragDistance(requestedDistance: number, drag: WallDrag, minimumClearance: number): number {
+  const start = drag.points[drag.segmentIndex];
+  const end = drag.points[drag.segmentIndex + 1];
+  if (!start || !end || !requestedDistance) return requestedDistance;
+  const length = Math.hypot(end.x - start.x, end.y - start.y);
+  if (!length) return requestedDistance;
+  const tangent = { x: (end.x - start.x) / length, y: (end.y - start.y) / length };
+  const normal = { x: -tangent.y, y: tangent.x };
+  let constrainedDistance = requestedDistance;
+
+  for (const wall of drag.before.walls) {
+    wall.points.slice(0, -1).forEach((candidateStart, segmentIndex) => {
+      if (wall.id === drag.wallId && segmentIndex === drag.segmentIndex) return;
+      const candidateEnd = wall.points[segmentIndex + 1];
+      if (!candidateEnd || samePoint(candidateStart, start) || samePoint(candidateStart, end) || samePoint(candidateEnd, start) || samePoint(candidateEnd, end)) return;
+      const candidateLength = Math.hypot(candidateEnd.x - candidateStart.x, candidateEnd.y - candidateStart.y);
+      if (!candidateLength) return;
+      const candidateTangent = { x: (candidateEnd.x - candidateStart.x) / candidateLength, y: (candidateEnd.y - candidateStart.y) / candidateLength };
+      if (Math.abs(tangent.x * candidateTangent.x + tangent.y * candidateTangent.y) < .995) return;
+      const candidateAlongStart = (candidateStart.x - start.x) * tangent.x + (candidateStart.y - start.y) * tangent.y;
+      const candidateAlongEnd = (candidateEnd.x - start.x) * tangent.x + (candidateEnd.y - start.y) * tangent.y;
+      const overlap = Math.min(length, Math.max(candidateAlongStart, candidateAlongEnd)) - Math.max(0, Math.min(candidateAlongStart, candidateAlongEnd));
+      if (overlap <= 1) return;
+      const offset = ((candidateStart.x - start.x) * normal.x + (candidateStart.y - start.y) * normal.y + (candidateEnd.x - start.x) * normal.x + (candidateEnd.y - start.y) * normal.y) / 2;
+      if (requestedDistance * offset <= 0) return;
+      if (Math.abs(offset) <= minimumClearance) { constrainedDistance = 0; return; }
+      const stoppingDistance = offset - Math.sign(offset) * minimumClearance;
+      if (Math.abs(constrainedDistance) > Math.abs(stoppingDistance)) constrainedDistance = stoppingDistance;
+    });
+  }
+  return constrainedDistance;
+}
 
 function pointOnSegment(point: Point2D, start: Point2D, end: Point2D): { point: Point2D; along: number } {
   const dx = end.x - start.x;
@@ -478,7 +512,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const fileInput = useRef<HTMLInputElement>(null);
   const editorRoot = useRef<HTMLElement>(null);
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
-  const wallDrag = useRef<{ wallId: string; segmentIndex: number; before: Snapshot; points: Point2D[]; pointerStart: Point2D } | null>(null);
+  const wallDrag = useRef<WallDrag | null>(null);
   const draftStartAttachment = useRef<WallAttachment | null>(null);
   const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
   const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
@@ -1058,7 +1092,8 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       const dx = end.x - start.x; const dy = end.y - start.y; const length = Math.hypot(dx, dy); if (!length) return;
       const pointer = canvasPoint(event, false); const normal = { x: -dy / length, y: dx / length };
       const rawDistance = (pointer.x - activeWall.pointerStart.x) * normal.x + (pointer.y - activeWall.pointerStart.y) * normal.y;
-      const distance = snapEnabled ? Math.round(rawDistance / snapSize) * snapSize : Math.round(rawDistance * 10) / 10;
+      const requestedDistance = snapEnabled ? Math.round(rawDistance / snapSize) * snapSize : Math.round(rawDistance * 10) / 10;
+      const distance = constrainWallDragDistance(requestedDistance, activeWall, Math.max(50, snapEnabled ? snapSize : 0));
       const movedStart = { x: start.x + normal.x * distance, y: start.y + normal.y * distance };
       const movedEnd = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
       // Repair small gaps left by earlier snapped edits and keep projected
