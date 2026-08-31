@@ -233,7 +233,7 @@ function pointInsideOrOnPolygon(point: Point2D, polygon: Point2D[], tolerance = 
   });
 }
 
-function closedRooms(walls: Wall[], height: number): NamedOutline[] {
+function closedRooms(walls: Wall[]): NamedOutline[] {
   type SourceSegment = { start: Point2D; end: Point2D; wallId: string };
   type GraphEdge = { first: string; second: string; wallIds: Set<string> };
   const tolerance = 0.5;
@@ -284,7 +284,7 @@ function closedRooms(walls: Wall[], height: number): NamedOutline[] {
   const faces: { keys: string[]; area: number; wallIds: Set<string> }[] = [];
   const directedKey = (from: string, to: string) => `${from}>${to}`;
 
-  // Follow each half-edge clockwise around the screen-coordinate graph. Positive-area
+  // Follow each half-edge clockwise around the Cartesian plan graph. Positive-area
   // cycles are bounded room faces; the unbounded exterior is traversed in reverse.
   edges.forEach(({ first, second }) => {
     [[first, second], [second, first]].forEach(([initialFrom, initialTo]) => {
@@ -318,15 +318,15 @@ function closedRooms(walls: Wall[], height: number): NamedOutline[] {
 
   const closedWallRoomEntries = walls.flatMap((wall) => {
     if (!samePoint(wall.points[0], wall.points.at(-1)!)) return [];
-    const screenVertices = wall.points.slice(0, -1).map((point) => ({ ...point }));
-    if (screenVertices.length < 3) return [];
+    const planVertices = wall.points.slice(0, -1).map((point) => ({ ...point }));
+    if (planVertices.length < 3) return [];
     return [{
       id: `closed-wall-${wall.id}`,
       name: "",
       sourceWallId: wall.id,
       sourceWallIds: [wall.id],
-      screenVertices,
-      vertices: counterClockwiseVertices(screenVertices.map((point) => ({ x: point.x, y: height - point.y }))),
+      planVertices,
+      vertices: counterClockwiseVertices(planVertices),
     }];
   });
 
@@ -337,7 +337,7 @@ function closedRooms(walls: Wall[], height: number): NamedOutline[] {
       name: `Room ${index + 1}`,
       sourceWallId: sourceWallIds[0] ?? "",
       sourceWallIds,
-      vertices: counterClockwiseVertices(face.keys.map((key) => { const point = nodes.get(key)!; return { x: point.x, y: height - point.y }; })),
+      vertices: counterClockwiseVertices(face.keys.map((key) => ({ ...nodes.get(key)! }))),
     };
   });
 
@@ -345,8 +345,7 @@ function closedRooms(walls: Wall[], height: number): NamedOutline[] {
   // an inserted corner on its edge. The graph face walker sees that T-junction as
   // a branch and can otherwise leave an artificial unfilled strip beside it.
   const extraGraphRooms = graphRooms.filter((room) => {
-    const roomScreenVertices = room.vertices.map((point) => ({ x: point.x, y: height - point.y }));
-    return !closedWallRoomEntries.some((closedRoom) => roomScreenVertices.every((point) => pointInsideOrOnPolygon(point, closedRoom.screenVertices)));
+    return !closedWallRoomEntries.some((closedRoom) => room.vertices.every((point) => pointInsideOrOnPolygon(point, closedRoom.planVertices)));
   });
   const closedWallRooms: NamedOutline[] = closedWallRoomEntries.map((room) => ({ id: room.id, name: room.name, sourceWallId: room.sourceWallId, sourceWallIds: room.sourceWallIds, vertices: room.vertices }));
   return [...closedWallRooms, ...extraGraphRooms];
@@ -492,7 +491,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const selectedWall = selectedSegment ? walls.find((wall) => wall.id === selectedSegment.wallId) ?? null : null;
   const selectedPointWall = selectedPoint ? walls.find((wall) => wall.id === selectedPoint.wallId) ?? null : null;
   const selectedPointValue = selectedPointWall && selectedPoint ? selectedPointWall.points[selectedPoint.pointIndex] : null;
-  const detectedRooms = useMemo(() => closedRooms(walls, canvasSize.height), [canvasSize.height, walls]);
+  const detectedRooms = useMemo(() => closedRooms(walls), [walls]);
   const wallVertexStarts = useMemo(() => {
     const starts = new Map<string, number>(); let next = 1;
     walls.forEach((wall) => { starts.set(wall.id, next); next += wall.points.slice(0, samePoint(wall.points[0], wall.points.at(-1)!) ? -1 : undefined).filter((_, index) => !wall.attachments?.[index]?.hideCorner).length; });
@@ -1207,7 +1206,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       if (!response.ok) throw new Error("detail" in payload ? payload.detail : "The drawing could not be recognised.");
       const result = payload as ProjectFloorplanResponse; record(); setCanvasSize({ width: result.source_width_px, height: result.source_height_px });
       setWalls(result.rooms.map((room) => {
-        const points = [...room.vertices.map((point) => ({ x: point.x, y: result.source_height_px - point.y })), { x: room.vertices[0].x, y: result.source_height_px - room.vertices[0].y }];
+        // Recognition already returns Cartesian plan coordinates; preserve them
+        // unchanged so imported and manually drawn rooms use the same convention.
+        const points = [...room.vertices.map((point) => ({ ...point })), { ...room.vertices[0] }];
         return { id: room.id, points: squaredWalls ? squareWallPoints(points) : points };
       }));
       setOpenings([]); setMeasurements([]); setDimensionOffsets({}); setHiddenDimensions([]); setRooms([]); setSelectedRoomId(null); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null);
@@ -1368,9 +1369,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
           }} onDoubleClick={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }}>
             {sourceUrl && sourceFile?.type !== "application/pdf" && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
             {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import an existing drawing</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
-            {detectedRooms.map((room) => { const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />; })}
+            {detectedRooms.map((room) => { const outline = room.vertices.map(toScreen); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />; })}
             {rooms.map((room, index) => {
-              const outline = room.vertices.map((point) => toScreen({ x: point.x, y: canvasSize.height - point.y })); const visualCentre = roomVisualCentre(room.vertices); const centre = toScreen({ x: visualCentre.x, y: canvasSize.height - visualCentre.y });
+              const outline = room.vertices.map(toScreen); const visualCentre = roomVisualCentre(room.vertices); const centre = toScreen(visualCentre);
               return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className="room-name-editor" x={centre.x - 82} y={centre.y - 17} width="164" height="34"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { event.stopPropagation(); setSelectedRoomId(room.id); }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); setRoomValidation(null); }} /></foreignObject>}</g>;
             })}
             {visibleFixtures.map((fixture) => {
