@@ -1160,7 +1160,11 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
             return;
           }
           const projection = pointOnInfiniteLine(point, start, end);
-          const isOnHostSegment = projection.along >= -.02 && projection.along <= 1.02;
+          // The same physical tolerance governs both distance from and position
+          // along the host wall. A junction just beyond an endpoint (common after
+          // snapping) must still attach to that endpoint instead of opening a gap.
+          const alongTolerance = attachmentTolerance / length;
+          const isOnHostSegment = projection.along >= -alongTolerance && projection.along <= 1 + alongTolerance;
           // A connected corner can be an interior point of a wall run (a T or
           // multi-room junction), not only a run endpoint. Keep its perpendicular
           // leg attached to the moving host segment so a wall is never left open.
