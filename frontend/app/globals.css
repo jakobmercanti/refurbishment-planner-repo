@@ -314,8 +314,8 @@ button { font: inherit; }
 .button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .button-grid .span-two { grid-column: 1 / -1; }
 .editor-history-row { margin-top: 7px; }
-.button-grid button, .mode-switch button, .save-actions button, .primary-small, .validate-button, .danger-button { border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px; background: #f9faf8; color: var(--ink); font: 600 10px var(--font-mono); cursor: pointer; }
-.button-grid button:hover, .mode-switch button:hover, .save-actions button:hover { border-color: #aab5af; }
+.button-grid button, .mode-switch button, .save-actions button, .primary-small, .validate-button, .danger-button, .review-style-button { border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px; background: #f9faf8; color: var(--ink); font: 600 10px var(--font-mono); cursor: pointer; }
+.button-grid button:hover, .mode-switch button:hover, .save-actions button:hover, .review-style-button:hover:not(:disabled) { border-color: #aab5af; }
 .button-grid button.active { border-color: var(--deep); background: #eaf2ee; box-shadow: inset 0 0 0 1px var(--deep); }
 .l-shape-picker { margin-top: 10px; padding: 10px; border: 1px solid #b9c9c1; border-radius: 9px; background: #f3f7f4; }
 .l-shape-picker > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink); font: 700 10px var(--font-mono); }
@@ -731,6 +731,8 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .plan-constraint-controls .measurement-action-row { grid-column: 1 / -1; }
 .room-action-panel { display: grid; gap: 9px; }
 .room-action-panel > button { width: 100%; margin: 0; }
+.room-action-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.room-action-buttons > button { width: 100%; margin: 0; }
 .room-action-panel .save-actions { display: grid; grid-template-columns: 1fr; gap: 9px; margin: 0; }
 .room-action-panel .save-actions button { width: 100%; margin: 0; }
 .opening-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
