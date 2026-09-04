@@ -83,6 +83,9 @@ export interface CatalogueItem {
   stl_base64?: string | null;
   side_clearance_mm?: number | null;
   front_clearance_mm?: number | null;
+  subcategory: string;
+  plan_shape: "RECTANGLE" | "ELLIPSE";
+  images: Array<{ data_url: string; url?: string | null; filename?: string | null; content_type?: string | null; size_bytes?: number | null; alt: string }>;
   supplier_editable: boolean;
   active: boolean;
   created_at: string;
@@ -109,6 +112,7 @@ export interface PersonMockup {
   eye_height_mm: number;
   movement_clearance_mm: number;
   include_in_analysis: boolean;
+  show_clearance?: boolean;
 }
 
 export type TilePattern = "NONE" | "SQUARE_300" | "SQUARE_600" | "HERRINGBONE" | "CHECKERBOARD" | "DIAMOND" | "KITKAT" | "TERRAZZO" | "HEXAGON" | "MARBLE";
@@ -124,6 +128,7 @@ export interface RoomFinishes {
 
 export interface Room {
   id: string;
+  source_floorplan_room_id?: string;
   name: string;
   version: number;
   vertices: Point2D[];

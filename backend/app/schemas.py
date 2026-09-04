@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from geometry.models import FitResult, Placement, Point2D, ProductDefinition, RoomDefinition
 
@@ -90,6 +90,29 @@ class CatalogueCategoryResponse(BaseModel):
     default_front_clearance_mm: float
 
 
+class CatalogueCategoryUpdate(BaseModel):
+    default_side_clearance_mm: float = Field(ge=0, le=5000)
+    default_front_clearance_mm: float = Field(ge=0, le=5000)
+
+
+class CatalogueImage(BaseModel):
+    data_url: str | None = Field(default=None, max_length=700_000)
+    url: str | None = Field(default=None, max_length=500)
+    filename: str | None = Field(default=None, max_length=255)
+    content_type: Literal["image/jpeg", "image/png", "image/webp"] | None = None
+    size_bytes: int | None = Field(default=None, ge=0, le=500_000)
+    alt: str = Field(min_length=1, max_length=200)
+
+    @field_validator("data_url")
+    @classmethod
+    def validate_data_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value.startswith(("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")):
+            raise ValueError("picture must be a JPEG, PNG or WebP data URL")
+        return value
+
+
 class CatalogueItemInput(BaseModel):
     category_id: str = Field(min_length=1, max_length=50)
     fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE"]
@@ -105,6 +128,14 @@ class CatalogueItemInput(BaseModel):
     stl_base64: str | None = Field(default=None, max_length=30_000_000)
     side_clearance_mm: float | None = Field(default=None, ge=0, le=5000)
     front_clearance_mm: float | None = Field(default=None, ge=0, le=5000)
+    subcategory: str = Field(default="General", min_length=1, max_length=120)
+    plan_shape: Literal["RECTANGLE", "ELLIPSE"] = "RECTANGLE"
+    images: list[CatalogueImage] = Field(default_factory=list, max_length=3)
+
+    @field_validator("color_hex")
+    @classmethod
+    def normalize_hex(cls, value: str) -> str:
+        return value.upper()
 
 
 class CatalogueItemResponse(CatalogueItemInput):
@@ -123,6 +154,32 @@ class MaterialItemResponse(BaseModel):
     code: str | None
     color_hex: str
     metadata: dict[str, object]
+
+
+class CatalogueWebsiteImport(BaseModel):
+    source_url: str = Field(min_length=8, max_length=2000)
+    page: str = Field(default="", max_length=500)
+    category_id: str = Field(min_length=1, max_length=50)
+    subcategory: str = Field(min_length=1, max_length=120)
+    fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE"]
+    supplier: str = Field(min_length=1, max_length=200)
+    fallback_name: str = Field(min_length=1, max_length=200)
+    fallback_sku: str = Field(min_length=1, max_length=120)
+    width_mm: float = Field(gt=0, le=20_000)
+    depth_mm: float = Field(gt=0, le=20_000)
+    height_mm: float = Field(gt=0, le=20_000)
+    color_hex: str = Field(default="#B99B77", pattern=r"^#[0-9A-Fa-f]{6}$")
+    plan_shape: Literal["RECTANGLE", "ELLIPSE"] = "RECTANGLE"
+
+    @field_validator("color_hex")
+    @classmethod
+    def normalize_hex(cls, value: str) -> str:
+        return value.upper()
+
+
+class CatalogueWebsiteImportResponse(BaseModel):
+    imported: list[CatalogueItemResponse]
+    skipped: list[str]
 
 
 class MaterialFamilyResponse(BaseModel):

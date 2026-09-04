@@ -13,6 +13,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
+from database.catalogue_assets import migrate_legacy_pictures
 
 
 def database_path() -> Path:
@@ -114,8 +115,24 @@ def _seed_materials(session: Session) -> None:
             record.family_id, record.name, record.code, record.color_hex, record.metadata_json = row[1], row[2], row[4].get("code"), row[3], row[4]
 
 
+def _backfill_new_clearance_columns(session: Session, *, side_added: bool, front_added: bool) -> None:
+    if not side_added and not front_added:
+        return
+    for category_id, _name, _description, _sort, side, front in CATEGORIES:
+        category = session.get(FurnitureCategoryRecord, category_id)
+        if category is not None:
+            if side_added:
+                category.default_side_clearance_mm = side
+            if front_added:
+                category.default_front_clearance_mm = front
+
+
 def initialise_catalogue() -> None:
     Base.metadata.create_all(ENGINE)
+    added_side_clearance = False
+    added_front_clearance = False
+    added_subcategory = False
+    added_plan_shape = False
     with ENGINE.begin() as connection:
         existing_columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(furniture_items)").fetchall()
@@ -133,11 +150,21 @@ def initialise_catalogue() -> None:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN side_clearance_mm FLOAT")
         if "front_clearance_mm" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN front_clearance_mm FLOAT")
+        if "subcategory" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN subcategory VARCHAR(120) NOT NULL DEFAULT 'General'")
+            added_subcategory = True
+        if "plan_shape" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_shape VARCHAR(12) NOT NULL DEFAULT 'RECTANGLE'")
+            added_plan_shape = True
+        if "image_data_json" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN image_data_json TEXT NOT NULL DEFAULT '[]'")
         category_columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(furniture_categories)").fetchall()}
         if "default_side_clearance_mm" not in category_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_categories ADD COLUMN default_side_clearance_mm FLOAT NOT NULL DEFAULT 0")
+            added_side_clearance = True
         if "default_front_clearance_mm" not in category_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_categories ADD COLUMN default_front_clearance_mm FLOAT NOT NULL DEFAULT 0")
+            added_front_clearance = True
         for obsolete_index in (
             "ix_furniture_items_category_id",
             "ix_furniture_items_fixture_kind",
@@ -153,11 +180,7 @@ def initialise_catalogue() -> None:
                 for item in CATEGORIES
             )
             session.flush()
-        for category_id, _name, _description, _sort, side, front in CATEGORIES:
-            category = session.get(FurnitureCategoryRecord, category_id)
-            if category is not None:
-                category.default_side_clearance_mm = side
-                category.default_front_clearance_mm = front
+        _backfill_new_clearance_columns(session, side_added=added_side_clearance, front_added=added_front_clearance)
         for item in SEED_ITEMS:
             default_key = item[4]
             existing = session.scalar(
@@ -176,13 +199,21 @@ def initialise_catalogue() -> None:
                     width_mm=item[5], depth_mm=item[6], height_mm=item[7], color_hex=item[8],
                     description="Built-in bathroom catalogue object. Dimensions and appearance can be modified.",
                     is_default=True, default_key=default_key, supplier_editable=True,
+                    subcategory={"showers": "Enclosures", "basins": "Basins and vanities", "toilets": "Toilets", "storage": "Storage"}[item[0]],
+                    plan_shape="ELLIPSE" if item[1] == "TOILET" else "RECTANGLE",
                 ))
             else:
                 existing.is_default = True
                 existing.default_key = default_key
                 existing.active = True
                 existing.supplier_editable = True
+                if added_subcategory and (not existing.subcategory or existing.subcategory == "General"):
+                    existing.subcategory = {"showers": "Enclosures", "basins": "Basins and vanities", "toilets": "Toilets", "storage": "Storage"}[item[0]]
+                if added_plan_shape and existing.fixture_kind == "TOILET" and existing.plan_shape == "RECTANGLE":
+                    existing.plan_shape = "ELLIPSE"
         _seed_materials(session)
+        for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
+            catalogue_item.image_data_json = migrate_legacy_pictures(catalogue_item.id, catalogue_item.image_data_json)
         session.commit()
         session.execute(select(FurnitureItemRecord.id).limit(1)).all()
         session.connection().exec_driver_sql("PRAGMA optimize")

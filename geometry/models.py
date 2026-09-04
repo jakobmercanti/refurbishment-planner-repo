@@ -236,6 +236,7 @@ class PersonMockup(BaseModel):
     eye_height_mm: float = Field(default=1630.0, gt=300.0, le=2400.0)
     movement_clearance_mm: float = Field(default=300.0, ge=0.0, le=2000.0)
     include_in_analysis: bool = True
+    show_clearance: bool = True
 
     @field_validator(
         "rotation_deg",

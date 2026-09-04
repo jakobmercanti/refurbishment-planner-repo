@@ -9,9 +9,7 @@ export type ToolbarId =
   | "viewer-room"
   | "viewer-analysis"
   | "viewer-person"
-  | "viewer-view"
-  | "viewer-navigation"
-  | "viewer-selection";
+  | "viewer-view";
 
 export interface ToolbarDefinition {
   id: ToolbarId;
@@ -35,8 +33,6 @@ export const VIEWER_TOOLBARS: ToolbarDefinition[] = [
   { id: "viewer-analysis", name: "Layout & fit analysis" },
   { id: "viewer-person", name: "Human mock-up" },
   { id: "viewer-view", name: "View properties" },
-  { id: "viewer-navigation", name: "Scene navigation" },
-  { id: "viewer-selection", name: "Selected object controls" },
 ];
 
 export const DEFAULT_TOOLBAR_VISIBILITY = Object.fromEntries(

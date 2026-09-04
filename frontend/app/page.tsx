@@ -5,6 +5,7 @@ import Image from "next/image";
 import { EngineeringViewer } from "@/components/EngineeringViewer";
 import { ApplicationMenuBar } from "@/components/ApplicationMenuBar";
 import { CatalogueBrowser } from "@/components/CatalogueBrowser";
+import { CatalogueManager } from "@/components/CatalogueManager";
 import { FixtureEditor } from "@/components/FixtureEditor";
 import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { FloatingToolbar } from "@/components/FloatingToolbar";
@@ -29,6 +30,8 @@ export default function Home() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [catalogueOpen, setCatalogueOpen] = useState(false);
+  const [catalogueManagerOpen, setCatalogueManagerOpen] = useState(false);
+  const [catalogueManagerOpener, setCatalogueManagerOpener] = useState<HTMLElement | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
   const [floorplanStyle, setFloorplanStyle] = useState<"DEFAULT" | "TRADITIONAL">("DEFAULT");
@@ -67,33 +70,36 @@ export default function Home() {
     setAnalysisError(null);
   }
 
-  function openDetectedRoom(name: string, vertices: import("@/lib/types").Point2D[], openings: import("@/lib/types").Opening[], wallHeight: number, wallThickness: number, wallThicknessOverridesMm: Record<string, number>) {
-    setDemo((current) => {
-      if (!current) return current;
-      const room = { ...current.room, id: crypto.randomUUID(), name, vertices, openings, wall_height: { ...current.room.wall_height, value: wallHeight }, wall_thickness: { ...current.room.wall_thickness, value: wallThickness }, wall_thickness_overrides_mm: wallThicknessOverridesMm, obstacles: [], person_mockup: null, finishes: undefined, version: current.room.version + 1 };
-      setProjectRooms((rooms) => [...rooms, room]);
-      return { ...current, room };
-    });
+  function openDetectedRoom(sourceRoomId: string, name: string, vertices: import("@/lib/types").Point2D[], openings: import("@/lib/types").Opening[], wallHeight: number, wallThickness: number, wallThicknessOverridesMm: Record<string, number>) {
+    if (!demo) return;
+    const existing = projectRooms.find((room) => room.source_floorplan_room_id === sourceRoomId);
+    const room = { ...demo.room, id: existing?.id ?? crypto.randomUUID(), source_floorplan_room_id: sourceRoomId, name, vertices, openings, wall_height: { ...demo.room.wall_height, value: wallHeight }, wall_thickness: { ...demo.room.wall_thickness, value: wallThickness }, wall_thickness_overrides_mm: wallThicknessOverridesMm, obstacles: existing?.obstacles ?? [], person_mockup: existing?.person_mockup ?? null, finishes: existing?.finishes, version: (existing?.version ?? demo.room.version) + 1 };
+    setDemo({ ...demo, room });
+    setProjectRooms((rooms) => [...rooms.filter((candidate) => candidate.source_floorplan_room_id !== sourceRoomId), room]);
     invalidateAnalysis();
     setMode("ANALYSIS");
   }
 
   function applyObstacles(obstacles: Obstacle[]) {
     setDemo((current) => current ? { ...current, room: { ...current.room, obstacles, version: current.room.version + 1 } } : current);
+    setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id ? { ...room, obstacles, version: room.version + 1 } : room));
     invalidateAnalysis();
   }
 
   function applyFinishes(finishes: RoomFinishes) {
     setDemo((current) => current ? { ...current, room: { ...current.room, finishes } } : current);
+    setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id ? { ...room, finishes } : room));
   }
 
   function applyPerson(person: PersonMockup | null) {
     setDemo((current) => current ? { ...current, room: { ...current.room, person_mockup: person, version: current.room.version + 1 } } : current);
+    setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id ? { ...room, person_mockup: person, version: room.version + 1 } : room));
     invalidateAnalysis();
   }
 
-  function togglePersonPanel() {
-    toggleToolbar("viewer-person");
+  function applyPersonVisibility(showClearance: boolean) {
+    setDemo((current) => current?.room.person_mockup ? { ...current, room: { ...current.room, person_mockup: { ...current.room.person_mockup, show_clearance: showClearance } } } : current);
+    setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id && room.person_mockup ? { ...room, person_mockup: { ...room.person_mockup, show_clearance: showClearance } } : room));
   }
 
   function toggleToolbar(id: ToolbarId) {
@@ -132,7 +138,7 @@ export default function Home() {
     const unalignedObstacle: Obstacle = {
       id: `fixture-${crypto.randomUUID().slice(0, 8)}`,
       name: item.name,
-      kind: "BOX",
+      kind: item.plan_shape === "ELLIPSE" ? "CYLINDER" : "BOX",
       center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
       dimensions: { width: measured(item.width_mm), depth: measured(item.depth_mm), height: measured(item.height_mm) },
       base_z_mm: 0,
@@ -181,18 +187,18 @@ export default function Home() {
   return (
     <main className={preferences.density === "COMPACT" ? "density-compact" : ""}>
       <header className="topbar">
-        <div className="app-identity"><div className="brand"><Image className="brand-mark" src="/planner-build-icon.png" alt="PlannerBuild" width={34} height={34} priority /><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} mode={mode} personPanelVisible={toolbarVisibility["viewer-person"]} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onTogglePersonPanel={togglePersonPanel} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
+        <div className="app-identity"><div className="brand"><Image className="brand-mark" src="/planner-build-icon.png" alt="PlannerBuild" width={34} height={34} priority /><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} mode={mode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
           <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>2D</button>
           <button aria-pressed={mode === "ANALYSIS"} className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>3D</button>
         </nav>
       </header>
 
-      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeRoomName={demo.room.name} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} onOpenRoom={openDetectedRoom} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} /></section>
+      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} onOpenRoom={openDetectedRoom} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} /></section>
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
-          <EngineeringViewer apiUrl={API_URL} room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} />
-          {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={{ side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={180} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={demo.room.id} onChange={(event) => { const room = projectRooms.find((item) => item.id === event.target.value); if (room) setDemo((current) => current ? { ...current, room } : current); }}><option value={demo.room.id}>{demo.room.name}</option>{projectRooms.filter((room) => room.id !== demo.room.id).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div></FloatingToolbar>}
+          <EngineeringViewer key={`engineering-viewer-${demo.room.id}`} apiUrl={API_URL} room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} />
+          {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={{ side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={180} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={demo.room.id} onChange={(event) => { const room = projectRooms.find((item) => item.id === event.target.value); if (room) setDemo((current) => current ? { ...current, room } : current); }}>{(projectRooms.some((room) => room.id === demo.room.id) ? projectRooms : [...projectRooms, demo.room]).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div></FloatingToolbar>}
           {toolbarVisibility["viewer-analysis"] && <FloatingToolbar title="Layout & fit analysis" defaultPosition={{ x: 18, y: 112 }} dock={{ side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-analysis")}><aside className="evidence-panel floating-evidence-panel">
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
@@ -232,11 +238,12 @@ export default function Home() {
               </>
             )}
           </aside></FloatingToolbar>}
-          {toolbarVisibility["viewer-person"] && <FloatingToolbar title="Human mock-up" defaultPosition={{ x: 430, y: 18 }} dock={{ side: "LEFT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={620} onClose={() => toggleToolbar("viewer-person")}><PersonEditor key={`person-editor-${demo.room.version}`} room={demo.room} displayUnits={preferences.units} onChange={applyPerson} /></FloatingToolbar>}
+          {toolbarVisibility["viewer-person"] && <FloatingToolbar title="Human mock-up" defaultPosition={{ x: 430, y: 18 }} dock={{ side: "LEFT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={620} onClose={() => toggleToolbar("viewer-person")}><PersonEditor key={`person-editor-${demo.room.id}-${demo.room.version}`} room={demo.room} displayUnits={preferences.units} onChange={applyPerson} onVisibilityChange={applyPersonVisibility} /></FloatingToolbar>}
           <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
         </section>
       ) : null}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
+      <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} onClose={() => setCatalogueManagerOpen(false)} />
       <SettingsDialog open={settingsOpen} preferences={preferences} onChange={setPreferences} onClose={() => setSettingsOpen(false)} />
     </main>
   );

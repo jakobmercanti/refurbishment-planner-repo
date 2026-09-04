@@ -4,13 +4,21 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from itertools import pairwise
+import base64
+import http.client
+import ipaddress
+import json
 from pathlib import Path
-from typing import Annotated
+import socket
+import ssl
+from typing import Annotated, Any, Awaitable, Callable
+from urllib.parse import urljoin, urlparse
 from uuid import UUID, uuid4
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import ValidationError
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,6 +26,9 @@ from sqlalchemy.orm import Session
 from backend.app.schemas import (
     CADResponse,
     CatalogueCategoryResponse,
+    CatalogueCategoryUpdate,
+    CatalogueWebsiteImport,
+    CatalogueWebsiteImportResponse,
     CatalogueItemInput,
     CatalogueItemResponse,
     DemoResponse,
@@ -36,6 +47,13 @@ from backend.app.schemas import (
 from backend.app.floorplan_recognition import recognise_rooms
 from cad.generator import generate_cad
 from database.catalog import catalogue_session, initialise_catalogue
+from database.catalogue_assets import (
+    PictureReplacement,
+    asset_root,
+    decode_picture,
+    remove_item_pictures,
+    stage_item_picture_replacement,
+)
 from database.models import FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
 from geometry.engine import check_fit
 from geometry.fixtures import build_l_shaped_fixture
@@ -44,11 +62,52 @@ from geometry.models import FitResult, GenericOpening, LayoutResult, ObstacleDef
 from geometry.shapes import obstacle_footprint
 from geometry.walls import PolygonValidationError, derive_walls, room_polygon
 
+class RequestBodyLimitMiddleware:
+    """Reject oversized streamed request bodies before route parsing."""
+
+    def __init__(self, app: Callable[..., Awaitable[None]], default_limit: int = 34_000_000) -> None:
+        self.app = app
+        self.default_limit = default_limit
+
+    async def __call__(self, scope: dict[str, Any], receive: Callable[..., Awaitable[dict[str, Any]]], send: Callable[..., Awaitable[None]]) -> None:
+        if scope.get("type") != "http" or scope.get("method") not in {"POST", "PUT", "PATCH"}:
+            await self.app(scope, receive, send)
+            return
+        limit = 25_000_000 if scope.get("path") == "/project-floorplan/detect" else self.default_limit
+        messages: list[dict[str, Any]] = []
+        total = 0
+        while True:
+            message = await receive()
+            messages.append(message)
+            if message.get("type") == "http.request":
+                total += len(message.get("body", b""))
+                if total > limit:
+                    await send({"type": "http.response.start", "status": 413, "headers": [(b"content-type", b"application/json")]})
+                    await send({"type": "http.response.body", "body": b'{"detail":"Request body is too large."}'})
+                    return
+                if not message.get("more_body", False):
+                    break
+            elif message.get("type") == "http.disconnect":
+                return
+        index = 0
+
+        async def replay() -> dict[str, Any]:
+            nonlocal index
+            if index >= len(messages):
+                return {"type": "http.request", "body": b"", "more_body": False}
+            message = messages[index]
+            index += 1
+            return message
+
+        await self.app(scope, replay, send)
+
+
 app = FastAPI(
     title="Renovation Fit API",
     version="0.1.0",
     description="Deterministic millimetre-based spatial fit verification",
 )
+app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -73,6 +132,13 @@ CatalogueSearch = Annotated[str | None, Query(max_length=100)]
 
 
 def catalogue_item_response(item: FurnitureItemRecord) -> CatalogueItemResponse:
+    try:
+        images = json.loads(item.image_data_json or "[]")
+        if not isinstance(images, list):
+            images = []
+        images = [image for image in images if isinstance(image, dict) and image.get("url")][:3]
+    except json.JSONDecodeError:
+        images = []
     return CatalogueItemResponse(
         id=item.id,
         category_id=item.category_id,
@@ -91,6 +157,9 @@ def catalogue_item_response(item: FurnitureItemRecord) -> CatalogueItemResponse:
         stl_base64=item.stl_base64,
         side_clearance_mm=item.side_clearance_mm,
         front_clearance_mm=item.front_clearance_mm,
+        subcategory=item.subcategory,
+        plan_shape=item.plan_shape,
+        images=images,
         supplier_editable=item.supplier_editable,
         active=item.active,
         created_at=item.created_at,
@@ -106,6 +175,138 @@ def validate_catalogue_category(session: Session, payload: CatalogueItemInput) -
     if expected_kind != payload.fixture_kind:
         raise HTTPException(status_code=422, detail=f"{category.name} entries must use fixture_kind {expected_kind}")
     return category
+
+
+def catalogue_item_values(payload: CatalogueItemInput) -> dict[str, object]:
+    return payload.model_dump(exclude={"images"})
+
+
+def resolved_catalogue_pictures(item_id: str, payload: CatalogueItemInput, existing_json: str | None = None) -> list[tuple[bytes, str, str, str]]:
+    try:
+        existing = json.loads(existing_json or "[]")
+    except json.JSONDecodeError:
+        existing = []
+    by_url = {record.get("url"): record for record in existing if isinstance(record, dict) and record.get("url")}
+    pictures: list[tuple[bytes, str, str, str]] = []
+    for picture in payload.images:
+        try:
+            if picture.data_url:
+                data, content_type, extension = decode_picture(picture.data_url)
+            elif picture.url and picture.url in by_url:
+                record = by_url[picture.url]
+                filename = str(record.get("filename") or "")
+                path = asset_root() / item_id / filename
+                if not filename or path.parent != asset_root() / item_id or not path.is_file():
+                    raise ValueError("existing catalogue picture is unavailable")
+                data = path.read_bytes()
+                content_type = str(record.get("content_type"))
+                data, content_type, extension = decode_picture(f"data:{content_type};base64,{base64.b64encode(data).decode()}")
+            else:
+                raise ValueError("catalogue picture must contain uploaded data or an existing item URL")
+        except (OSError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        pictures.append((data, content_type, extension, picture.alt))
+    return pictures
+
+
+def resolve_public_catalogue_url(url: str) -> tuple[str, str, int, str]:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise HTTPException(status_code=422, detail="source must be a public HTTP(S) URL")
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        addresses = {record[4][0] for record in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)}
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="source URL contains an invalid port") from error
+    except socket.gaierror as error:
+        raise HTTPException(status_code=422, detail="source host could not be resolved") from error
+    if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
+        raise HTTPException(status_code=422, detail="private, local and reserved source hosts are not allowed")
+    return parsed.scheme, sorted(addresses)[0], port, parsed.hostname
+
+
+def safe_catalogue_url(payload: CatalogueWebsiteImport) -> str:
+    url = urljoin(payload.source_url.rstrip("/") + "/", payload.page.strip()) if payload.page.strip() else payload.source_url
+    resolve_public_catalogue_url(url)
+    return url
+
+
+class PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, pinned_ip: str, server_hostname: str, port: int, timeout: float) -> None:
+        super().__init__(server_hostname, port=port, timeout=timeout, context=ssl.create_default_context())
+        self.pinned_ip = pinned_ip
+
+    def connect(self) -> None:
+        raw_socket = socket.create_connection((self.pinned_ip, self.port), self.timeout, self.source_address)
+        self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
+
+
+def open_pinned_catalogue_response(url: str) -> http.client.HTTPResponse:
+    scheme, pinned_ip, port, hostname = resolve_public_catalogue_url(url)
+    parsed = urlparse(url)
+    connection: http.client.HTTPConnection
+    if scheme == "https":
+        connection = PinnedHTTPSConnection(pinned_ip, hostname, port, 6)
+    else:
+        connection = http.client.HTTPConnection(pinned_ip, port=port, timeout=6)
+    path = parsed.path or "/"
+    if parsed.query:
+        path += f"?{parsed.query}"
+    host_header = hostname if parsed.port is None else f"{hostname}:{port}"
+    connection.request("GET", path, headers={"Host": host_header, "User-Agent": "RenovationFitCatalogueImporter/1.0", "Accept": "text/html,application/json"})
+    return connection.getresponse()
+
+
+def fetch_catalogue_page(url: str) -> str:
+    current_url = url
+    for redirect_count in range(4):
+        try:
+            response = open_pinned_catalogue_response(current_url)
+            if response.status in {301, 302, 303, 307, 308}:
+                location = response.getheader("Location")
+                response.close()
+                if not location:
+                    raise HTTPException(status_code=502, detail="source returned a redirect without a destination")
+                if redirect_count == 3:
+                    raise HTTPException(status_code=502, detail="source exceeded the redirect limit")
+                current_url = urljoin(current_url, location)
+                resolve_public_catalogue_url(current_url)
+                continue
+            if response.status >= 400:
+                status = response.status
+                response.close()
+                raise HTTPException(status_code=502, detail=f"source website returned HTTP {status}")
+            content = response.read(2_000_001)
+            response.close()
+        except (OSError, http.client.HTTPException, ssl.SSLError) as error:
+            raise HTTPException(status_code=502, detail=f"source website could not be fetched: {error}") from error
+        if len(content) > 2_000_000:
+            raise HTTPException(status_code=413, detail="source page must be 2 MB or smaller")
+        return content.decode("utf-8", errors="replace")
+    raise HTTPException(status_code=502, detail="source exceeded the redirect limit")
+
+
+def json_ld_products(document: str) -> list[dict[str, object]]:
+    import re
+
+    products: list[dict[str, object]] = []
+    for raw in re.findall(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', document, re.I | re.S):
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        stack = value if isinstance(value, list) else [value]
+        while stack:
+            candidate = stack.pop()
+            if not isinstance(candidate, dict):
+                continue
+            graph = candidate.get("@graph")
+            if isinstance(graph, list):
+                stack.extend(graph)
+            kind = candidate.get("@type")
+            if kind == "Product" or isinstance(kind, list) and "Product" in kind:
+                products.append(candidate)
+    return products
 
 
 @app.exception_handler(PolygonValidationError)
@@ -337,6 +538,26 @@ def list_catalogue_categories(session: CatalogueSession) -> list[CatalogueCatego
     ]
 
 
+@app.patch("/catalog/categories/{category_id}", response_model=CatalogueCategoryResponse)
+def update_catalogue_category(
+    category_id: str,
+    payload: CatalogueCategoryUpdate,
+    session: CatalogueSession,
+) -> CatalogueCategoryResponse:
+    category = session.get(FurnitureCategoryRecord, category_id)
+    if category is None:
+        raise HTTPException(status_code=404, detail="catalogue category not found")
+    category.default_side_clearance_mm = payload.default_side_clearance_mm
+    category.default_front_clearance_mm = payload.default_front_clearance_mm
+    session.commit()
+    count = session.scalar(select(func.count(FurnitureItemRecord.id)).where(FurnitureItemRecord.category_id == category.id, FurnitureItemRecord.active)) or 0
+    return CatalogueCategoryResponse(
+        id=category.id, name=category.name, description=category.description, item_count=count,
+        default_side_clearance_mm=category.default_side_clearance_mm,
+        default_front_clearance_mm=category.default_front_clearance_mm,
+    )
+
+
 @app.get("/catalog/materials", response_model=list[MaterialCollectionResponse])
 def list_catalogue_materials(session: CatalogueSession, kind: str | None = None) -> list[MaterialCollectionResponse]:
     collections = session.scalars(select(MaterialCollectionRecord).where(MaterialCollectionRecord.kind == kind) if kind else select(MaterialCollectionRecord)).all()
@@ -345,7 +566,7 @@ def list_catalogue_materials(session: CatalogueSession, kind: str | None = None)
         families = session.scalars(select(MaterialFamilyRecord).where(MaterialFamilyRecord.collection_id == collection.id).order_by(MaterialFamilyRecord.sort_order)).all()
         response.append(MaterialCollectionResponse(
             id=collection.id, kind=collection.kind, name=collection.name, source_url=collection.source_url,
-            families=[MaterialFamilyResponse(id=family.id, name=family.name, items=[MaterialItemResponse(id=item.id, name=item.name, code=item.code, color_hex=item.color_hex, metadata=item.metadata_json) for item in session.scalars(select(MaterialItemRecord).where(MaterialItemRecord.family_id == family.id).order_by(MaterialItemRecord.name)).all()]) for family in families],
+            families=[MaterialFamilyResponse(id=family.id, name=family.name, items=[MaterialItemResponse(id=item.id, name=item.name, code=item.code, color_hex=item.color_hex.upper(), metadata=item.metadata_json) for item in session.scalars(select(MaterialItemRecord).where(MaterialItemRecord.family_id == family.id).order_by(MaterialItemRecord.name)).all()]) for family in families],
         ))
     return response
 
@@ -354,11 +575,14 @@ def list_catalogue_materials(session: CatalogueSession, kind: str | None = None)
 def list_catalogue_items(
     session: CatalogueSession,
     category_id: str | None = None,
+    subcategory: str | None = None,
     search: CatalogueSearch = None,
 ) -> list[CatalogueItemResponse]:
     statement = select(FurnitureItemRecord).where(FurnitureItemRecord.active).order_by(FurnitureItemRecord.name)
     if category_id:
         statement = statement.where(FurnitureItemRecord.category_id == category_id)
+    if subcategory:
+        statement = statement.where(FurnitureItemRecord.subcategory == subcategory)
     if search:
         term = f"%{search.strip()}%"
         statement = statement.where(or_(
@@ -383,13 +607,27 @@ def create_catalogue_item(
     session: CatalogueSession,
 ) -> CatalogueItemResponse:
     validate_catalogue_category(session, payload)
-    item = FurnitureItemRecord(**payload.model_dump(), supplier_editable=True)
+    item_id = str(uuid4())
+    pictures = resolved_catalogue_pictures(item_id, payload)
+    item = FurnitureItemRecord(id=item_id, **catalogue_item_values(payload), image_data_json="[]", supplier_editable=True)
     session.add(item)
+    replacement: PictureReplacement | None = None
     try:
+        session.flush()
+        replacement = stage_item_picture_replacement(item_id, pictures)
+        item.image_data_json = json.dumps(replacement.metadata)
         session.commit()
     except IntegrityError as error:
         session.rollback()
+        if replacement:
+            replacement.rollback()
         raise HTTPException(status_code=409, detail="this supplier SKU already exists") from error
+    except Exception as error:
+        session.rollback()
+        if replacement:
+            replacement.rollback()
+        raise HTTPException(status_code=500, detail="catalogue pictures could not be stored") from error
+    replacement.finalize_best_effort()
     session.refresh(item)
     return catalogue_item_response(item)
 
@@ -406,13 +644,26 @@ def update_catalogue_item(
     if not item.supplier_editable:
         raise HTTPException(status_code=403, detail="catalogue item is read-only")
     validate_catalogue_category(session, payload)
-    for field, value in payload.model_dump().items():
+    pictures = resolved_catalogue_pictures(item.id, payload, item.image_data_json)
+    for field, value in catalogue_item_values(payload).items():
         setattr(item, field, value)
+    replacement: PictureReplacement | None = None
     try:
+        session.flush()
+        replacement = stage_item_picture_replacement(item.id, pictures)
+        item.image_data_json = json.dumps(replacement.metadata)
         session.commit()
     except IntegrityError as error:
         session.rollback()
+        if replacement:
+            replacement.rollback()
         raise HTTPException(status_code=409, detail="this supplier SKU already exists") from error
+    except Exception as error:
+        session.rollback()
+        if replacement:
+            replacement.rollback()
+        raise HTTPException(status_code=500, detail="catalogue pictures could not be stored") from error
+    replacement.finalize_best_effort()
     session.refresh(item)
     return catalogue_item_response(item)
 
@@ -420,7 +671,13 @@ def update_catalogue_item(
 @app.delete("/catalog/items/{item_id}", status_code=204)
 def archive_catalogue_item(item_id: str, session: CatalogueSession) -> Response:
     item = session.get(FurnitureItemRecord, item_id)
-    if item is None or not item.active:
+    if item is None:
+        raise HTTPException(status_code=404, detail="catalogue item not found")
+    if not item.active:
+        try:
+            remove_item_pictures(item.id)
+        except OSError:
+            pass
         raise HTTPException(status_code=404, detail="catalogue item not found")
     if not item.supplier_editable:
         raise HTTPException(status_code=403, detail="catalogue item is read-only")
@@ -428,7 +685,81 @@ def archive_catalogue_item(item_id: str, session: CatalogueSession) -> Response:
         raise HTTPException(status_code=403, detail="default catalogue objects can be modified but not archived")
     item.active = False
     session.commit()
+    try:
+        remove_item_pictures(item.id)
+    except OSError:
+        # The committed inactive state makes the asset endpoint inaccessible.
+        # A later maintenance pass can retry physical cleanup.
+        pass
     return Response(status_code=204)
+
+
+@app.get("/catalog/items/{item_id}/images/{image_index}")
+def get_catalogue_item_picture(item_id: str, image_index: int, session: CatalogueSession) -> FileResponse:
+    item = session.get(FurnitureItemRecord, item_id)
+    if item is None or not item.active:
+        raise HTTPException(status_code=404, detail="catalogue item not found")
+    try:
+        images = json.loads(item.image_data_json or "[]")
+        image = images[image_index]
+        filename = str(image["filename"])
+        content_type = str(image["content_type"])
+    except (IndexError, KeyError, TypeError, json.JSONDecodeError):
+        raise HTTPException(status_code=404, detail="catalogue picture not found") from None
+    path = (asset_root() / item.id / filename).resolve()
+    expected_parent = (asset_root() / item.id).resolve()
+    if path.parent != expected_parent or not path.is_file():
+        raise HTTPException(status_code=404, detail="catalogue picture not found")
+    return FileResponse(path, media_type=content_type)
+
+
+@app.post("/catalog/import-website", response_model=CatalogueWebsiteImportResponse)
+def import_catalogue_website(
+    payload: CatalogueWebsiteImport,
+    session: CatalogueSession,
+) -> CatalogueWebsiteImportResponse:
+    category = session.get(FurnitureCategoryRecord, payload.category_id)
+    if category is None or CATEGORY_KINDS.get(category.id) != payload.fixture_kind:
+        raise HTTPException(status_code=422, detail="category and fixture kind do not match")
+    url = safe_catalogue_url(payload)
+    products = json_ld_products(fetch_catalogue_page(url))
+    candidates = products or [{"name": payload.fallback_name, "sku": payload.fallback_sku}]
+    imported: list[CatalogueItemResponse] = []
+    skipped: list[str] = []
+    validated: list[CatalogueItemInput] = []
+    for index, product in enumerate(candidates[:50]):
+        name_value = product.get("name")
+        sku_value = product.get("sku")
+        if not isinstance(name_value, str) or not name_value.strip() or not isinstance(sku_value, (str, int)) or not str(sku_value).strip():
+            skipped.append(f"candidate {index + 1}: missing valid product name or SKU")
+            continue
+        try:
+            validated.append(CatalogueItemInput(
+                category_id=payload.category_id, fixture_kind=payload.fixture_kind, name=name_value.strip(),
+                supplier=payload.supplier, sku=str(sku_value).strip(), width_mm=payload.width_mm, depth_mm=payload.depth_mm,
+                height_mm=payload.height_mm, color_hex=payload.color_hex,
+                description=f"Imported from {url}", subcategory=payload.subcategory, plan_shape=payload.plan_shape,
+            ))
+        except ValidationError as error:
+            skipped.append(f"candidate {index + 1}: {error.errors()[0]['msg']}")
+    inserted: list[FurnitureItemRecord] = []
+    for item_payload in validated:
+        item = FurnitureItemRecord(id=str(uuid4()), **catalogue_item_values(item_payload), image_data_json="[]", supplier_editable=True)
+        try:
+            with session.begin_nested():
+                session.add(item)
+                session.flush()
+        except IntegrityError:
+            skipped.append(f"{item_payload.sku}: supplier SKU already exists")
+            continue
+        inserted.append(item)
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    imported.extend(catalogue_item_response(item) for item in inserted)
+    return CatalogueWebsiteImportResponse(imported=imported, skipped=skipped)
 
 
 @app.get("/products")

@@ -819,30 +819,28 @@ function OpeningFixture({ room, opening }: { room: Room; opening: Opening }) {
     <mesh position={[0, sill + height - frame / 2, 0]} castShadow><boxGeometry args={[width, frame, depth]} />{frameMaterial}</mesh>
     {opening.kind === "WINDOW" && <mesh position={[0, sill + frame / 2, 0]} castShadow><boxGeometry args={[width, frame, depth]} />{frameMaterial}</mesh>}
   </>;
-  const leafHeight = Math.max(height - frame * 2, 0.1);
-  const leafWidth = Math.max(width - frame * 2, 0.1);
-  const opensInward = opening.opens_inward !== false;
-  const hingeAtStart = opening.hinge_side !== "END";
-  const leafDirection = (hingeAtStart ? 1 : -1) * (opensInward ? 1 : -1);
-  const makeDoorLeaf = (offsetX: number, leafWidthValue: number, sign: number) => (
-    <group position={[offsetX, sill + frame, 0.002]} rotation={[0, leafDirection * sign * 0.22, 0]}>
-      <mesh position={[sign * leafWidthValue / 2, leafHeight / 2, 0]} castShadow receiveShadow>
+  const leafHeight = Math.max(height, 0.1);
+  const leafWidth = Math.max(width, 0.1);
+  const makeDoorLeaf = (centreX: number, leafWidthValue: number) => (
+    <group position={[centreX, sill, 0.002]}>
+      <mesh position={[0, leafHeight / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[leafWidthValue, leafHeight, Math.min(depth * 0.28, 0.052)]} />
-        <meshStandardMaterial color="#84654d" roughness={0.55} />
+        <meshStandardMaterial color="#f6f6f3" roughness={0.5} />
       </mesh>
-      <mesh position={[sign * leafWidthValue * 0.72, leafHeight * 0.52, depth * 0.16]} castShadow>
+      {[0.24, 0.67].flatMap((vertical, row) => [-0.24, 0.24].map((horizontal, column) => <mesh key={`${row}-${column}`} position={[horizontal * leafWidthValue, vertical * leafHeight, depth * 0.17 + 0.004]} castShadow><boxGeometry args={[leafWidthValue * 0.38, leafHeight * 0.28, 0.018]} /><meshStandardMaterial color="#ecece8" roughness={0.58} /></mesh>))}
+      <mesh position={[leafWidthValue * 0.36, leafHeight * 0.5, depth * 0.2]} castShadow>
         <sphereGeometry args={[0.025, 14, 10]} />
-        <meshStandardMaterial color="#c3a159" metalness={0.72} roughness={0.23} />
+        <meshStandardMaterial color="#c8cccd" metalness={0.82} roughness={0.2} />
       </mesh>
     </group>
   );
   return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]}>
-    {framePieces}
     {opening.kind === "DOOR" ? (
       opening.door_type === "DOUBLE"
-        ? <>{makeDoorLeaf(0, leafWidth / 2, -1)}{makeDoorLeaf(0, leafWidth / 2, 1)}</>
-        : makeDoorLeaf(hingeAtStart ? -leafWidth / 2 : leafWidth / 2, leafWidth, hingeAtStart ? 1 : -1)
+        ? <>{makeDoorLeaf(-leafWidth / 4, leafWidth / 2)}{makeDoorLeaf(leafWidth / 4, leafWidth / 2)}</>
+        : makeDoorLeaf(0, leafWidth)
     ) : <>
+        {framePieces}
         <mesh position={[0, sill + height / 2, 0]} receiveShadow>
           <boxGeometry args={[Math.max(width - frame * 2, 0.1), Math.max(height - frame * 2, 0.1), 0.012]} />
           <meshPhysicalMaterial color="#98c8d5" transparent opacity={0.52} roughness={0.08} metalness={0.1} transmission={0.12} />
@@ -973,13 +971,20 @@ function eyeTarget(person: PersonMockup) {
   return new THREE.Vector3(person.center.x * SCALE + Math.sin(angle) * 2, person.eye_height_mm * SCALE, -person.center.y * SCALE + Math.cos(angle) * 2);
 }
 
-function CameraPreset({ preset, projection, person, target }: { preset: CameraView; projection: ProjectionMode; person?: PersonMockup | null; target: VectorTuple }) {
-  const { camera } = useThree();
-  const previousView = useRef<string | null>(null);
+function setCameraZoom(camera: THREE.Camera, zoom: number) {
+  if ("zoom" in camera) (camera as THREE.OrthographicCamera | THREE.PerspectiveCamera).zoom = zoom;
+}
+
+function CameraPreset({ preset, projection, person, target, span, resetKey, zoomPercent }: { preset: CameraView; projection: ProjectionMode; person?: PersonMockup | null; target: VectorTuple; span: [number, number, number]; resetKey: number; zoomPercent: number }) {
+  const { camera, size } = useThree();
   useEffect(() => {
-    const viewKey = `${preset}:${target.join(":")}`;
-    if (previousView.current === viewKey) return;
-    previousView.current = viewKey;
+    const horizontalSpan = preset === "left" || preset === "right" ? span[2] : span[0];
+    const verticalSpan = preset === "top" || preset === "bottom" ? span[2] : span[1];
+    const aspect = Math.max(size.width / Math.max(size.height, 1), 0.1);
+    const verticalFov = THREE.MathUtils.degToRad(camera instanceof THREE.PerspectiveCamera ? camera.fov : 50);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
+    const boundingRadius = Math.sqrt(span[0] ** 2 + span[1] ** 2 + span[2] ** 2) / 2;
+    const fitDistance = Math.max(0.1, boundingRadius / Math.sin(Math.min(verticalFov, horizontalFov) / 2)) * 1.15;
     if (preset === "eye" && person?.enabled) {
       camera.up.set(0, 1, 0);
       camera.position.set(person.center.x * SCALE, person.eye_height_mm * SCALE, -person.center.y * SCALE);
@@ -991,24 +996,26 @@ function CameraPreset({ preset, projection, person, target }: { preset: CameraVi
         // screen-up so floors, walls, openings and placed items retain the same
         // top-view orientation as the floorplan.
         camera.up.set(0, 0, -1);
-        camera.position.set(target[0], 6.4, target[2]);
+        camera.position.set(target[0], target[1] + fitDistance, target[2]);
       } else if (preset === "bottom") {
         camera.up.set(0, 0, 1);
-        camera.position.set(target[0], -6.4, target[2]);
+        camera.position.set(target[0], target[1] - fitDistance, target[2]);
       } else if (preset === "left") {
         camera.up.set(0, 1, 0);
-        camera.position.set(target[0] - 6.4, 2.3, target[2]);
+        camera.position.set(target[0] - fitDistance, target[1], target[2]);
       } else if (preset === "right") {
         camera.up.set(0, 1, 0);
-        camera.position.set(target[0] + 6.4, 2.3, target[2]);
+        camera.position.set(target[0] + fitDistance, target[1], target[2]);
       } else {
         camera.up.set(0, 1, 0);
-        camera.position.set(target[0] + 3, 4.1, target[2] + 3.4);
+        camera.position.set(target[0] + fitDistance, target[1] + fitDistance * 0.85, target[2] + fitDistance);
       }
       camera.lookAt(...target);
     }
+    const orthographicFit = Math.min(size.width / Math.max(horizontalSpan * 1.15, 0.001), size.height / Math.max(verticalSpan * 1.15, 0.001));
+    setCameraZoom(camera, projection === "parallel" ? orthographicFit * zoomPercent / 100 : zoomPercent / 100);
     camera.updateProjectionMatrix();
-  }, [camera, person, preset, projection, target]);
+  }, [camera, person, preset, projection, resetKey, size.height, size.width, span, target, zoomPercent]);
   return null;
 }
 
@@ -1021,7 +1028,9 @@ function WheelZoom() {
       event.preventDefault();
       if (event.deltaY === 0) return;
       const factor = event.deltaY > 0 ? 0.9 : 1.1;
-      camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, 45, 480);
+      camera.zoom = camera instanceof THREE.OrthographicCamera
+        ? THREE.MathUtils.clamp(camera.zoom * factor, 0.0001, 1_000_000)
+        : THREE.MathUtils.clamp(camera.zoom * factor, 0.35, 3);
       camera.updateProjectionMatrix();
     };
     canvas.addEventListener("wheel", zoomWithWheel, { passive: false });
@@ -1083,13 +1092,15 @@ function CaptureController({ request, format }: { request: number; format: Captu
   return null;
 }
 
-function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid }: ViewerProps & {
+function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, zoomPercent }: ViewerProps & {
   toggles: Toggles;
   preset: CameraView;
   projection: ProjectionMode;
   selection: Selection;
   onSelectionChange: (selection: Selection) => void;
   showGrid: boolean;
+  cameraResetKey: number;
+  zoomPercent: number;
 }) {
   const [dragging, setDragging] = useState<{ id: string; offset: Point2D } | null>(null);
   const [personDragging, setPersonDragging] = useState<{ offset: Point2D } | null>(null);
@@ -1103,8 +1114,13 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
     const maxX = Math.max(...room.vertices.map((point) => point.x));
     const minY = Math.min(...room.vertices.map((point) => point.y));
     const maxY = Math.max(...room.vertices.map((point) => point.y));
-    return [(minX + maxX) * SCALE / 2, 0, -(minY + maxY) * SCALE / 2];
-  }, [room.vertices]);
+    return [(minX + maxX) * SCALE / 2, room.wall_height.value * SCALE / 2, -(minY + maxY) * SCALE / 2];
+  }, [room.vertices, room.wall_height.value]);
+  const roomSpan = useMemo<[number, number, number]>(() => [
+    (Math.max(...room.vertices.map((point) => point.x)) - Math.min(...room.vertices.map((point) => point.x))) * SCALE,
+    room.wall_height.value * SCALE,
+    (Math.max(...room.vertices.map((point) => point.y)) - Math.min(...room.vertices.map((point) => point.y))) * SCALE,
+  ], [room.vertices, room.wall_height.value]);
   const orbitTarget: [number, number, number] = preset === "eye" && room.person_mockup?.enabled
     ? eyeTarget(room.person_mockup).toArray()
     : roomTarget;
@@ -1184,7 +1200,7 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
 
   return (
     <>
-      <CameraPreset preset={preset} projection={projection} person={room.person_mockup} target={roomTarget} />
+      <CameraPreset preset={preset} projection={projection} person={room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey} zoomPercent={zoomPercent} />
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
       <Floor room={room} selected={selection?.type === "FLOOR"} onSelect={() => onSelectionChange({ type: "FLOOR" })} />
@@ -1215,7 +1231,7 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
         {room.openings.map((opening) => <OpeningImprint key={`imprint-${opening.id}`} room={room} opening={opening} />)}
         {room.openings.filter((item) => item.kind === "DOOR").map((door) => <DoorSwing key={`swing-${door.id}`} room={room} door={door} />)}
       </>}
-      {toggles.person && displayedPerson?.enabled && <PersonMesh person={displayedPerson} showClearance={toggles.clearance} collision={collisionIds.includes(displayedPerson.id)} selected={selection?.type === "PERSON"} onPointerDown={(event) => startPersonDrag(event, displayedPerson)} onPointerMove={(event) => movePersonDrag(event, displayedPerson)} onPointerUp={(event) => endPersonDrag(event, displayedPerson)} />}
+      {toggles.person && displayedPerson?.enabled && <PersonMesh person={displayedPerson} showClearance={toggles.clearance && displayedPerson.show_clearance !== false} collision={collisionIds.includes(displayedPerson.id)} selected={selection?.type === "PERSON"} onPointerDown={(event) => startPersonDrag(event, displayedPerson)} onPointerMove={(event) => movePersonDrag(event, displayedPerson)} onPointerUp={(event) => endPersonDrag(event, displayedPerson)} />}
       {toggles.collisions && room.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
         <mesh key={`collision-${obstacle.id}`} position={[obstacle.center.x * SCALE, 0.9, -obstacle.center.y * SCALE]}>
           <sphereGeometry args={[0.11, 24, 24]} />
@@ -1223,12 +1239,12 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
         </mesh>
       ))}
       {showGrid && <Grid position={[1.6, -0.002, -1.4]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />}
-      <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate={!(["top", "bottom", "left", "right"] as CameraView[]).includes(preset)} enabled={!dragging && !personDragging} target={orbitTarget} />
+      <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate enabled={!dragging && !personDragging} target={orbitTarget} />
     </>
   );
 }
 
-function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishesChange, onSelectionChange, onClose }: Pick<ViewerProps, "apiUrl" | "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection; onSelectionChange: (selection: Selection) => void; onClose: () => void }) {
+function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishesChange, onClose }: Pick<ViewerProps, "apiUrl" | "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection; onClose: () => void }) {
   const [applyToAllWalls, setApplyToAllWalls] = useState(false);
   const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
   const [paintSearch, setPaintSearch] = useState("");
@@ -1266,7 +1282,6 @@ function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishe
       }
     });
     onFinishesChange({ ...finishes, wall_colors: wallColors, wall_color_codes: wallColorCodes });
-    onSelectionChange(null);
   }
 
   function setFloorTile(tile?: TileStyle) {
@@ -1316,11 +1331,12 @@ function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishe
       {selection.type === "PERSON" && <>
         <span className="eyebrow">Selected human mock-up</span>
         <strong>Person usability model</strong>
-        <p>Drag the body across the floor to reposition it. Use Tools → Human mock-up panel for rotation, posture and clearance settings.</p>
+        <p>Drag the body across the floor to reposition it. Use the Human mock-up toolbar for rotation, posture and clearance settings.</p>
       </>}
       {selection.type === "WALL" && <>
         <span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span>
         <strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong>
+        <output className="selected-colour-hex">HEX <code>{(finishes.wall_colors?.[selection.id] ?? "#FFFFFF").toUpperCase()}</code></output>
         <label className="paint-all-choice"><input type="checkbox" checked={applyToAllWalls} onChange={(event) => setApplyToAllWalls(event.target.checked)} /><span>Paint all walls together</span></label>
         <label className="field"><span>Paint collection</span><select value={paintCollectionId} onChange={(event) => { setPaintCollectionId(event.target.value); setPaintFamilyId(""); setPaintSearch(""); }}>{materialCollections.length ? materialCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="paints-dulux">Dulux paints</option>}</select></label>
         <div className="paint-family-picker" role="tablist" aria-label="Paint colour families">{paintFamilies.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => { setPaintFamilyId(family.id); setPaintSearch(""); }}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
@@ -1339,6 +1355,7 @@ function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishe
       {selection.type === "FLOOR" && <>
         <span className="eyebrow">Selected floor</span>
         <strong>Floor tile collection</strong>
+        <output className="selected-colour-hex">HEX <code>{(finishes.floor_tile_colours?.[finishes.floor_tile_id ?? ""]?.base ?? finishes.floor_color ?? "#E8E1D6").toUpperCase()}</code></output>
         <label className="field"><span>Tile collection</span><select value={tileCollectionId} onChange={(event) => setTileCollectionId(event.target.value)}>{tileCollections.length ? tileCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="tiles-default">Default colours</option>}</select></label>
         <div className="tile-collection">{tiles.map((tile) => <button key={tile.id} type="button" className={finishes.floor_tile_id === tile.id ? "selected" : ""} onClick={() => setFloorTile(tile)}><span className="tile-swatch" style={{ background: tile.preview }} /><small>{tile.name}</small></button>)}</div>
         {(() => {
@@ -1360,11 +1377,14 @@ export function EngineeringViewer(props: ViewerProps) {
   const [captureRequest, setCaptureRequest] = useState(0);
   const [captureFormat, setCaptureFormat] = useState<CaptureFormat>("png");
   const [captureMenuOpen, setCaptureMenuOpen] = useState(false);
+  const [cameraResetKey, setCameraResetKey] = useState(0);
+  const [zoomPercent, setZoomPercent] = useState(100);
   const [showGrid, setShowGrid] = useState(true);
   const [selection, setSelection] = useState<Selection>(null);
   const [panelSelection, setPanelSelection] = useState<Selection>(null);
   const [toolbarContextMenu, setToolbarContextMenu] = useState<{ x: number; y: number } | null>(null);
   const rightPointerRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const saveViewButton = useRef<HTMLButtonElement>(null);
   const [toggles, setToggles] = useState<Toggles>({
     elements: true,
     openingImprints: true,
@@ -1381,15 +1401,26 @@ export function EngineeringViewer(props: ViewerProps) {
     setSelection(null);
     setPanelSelection(null);
   };
+  const applyPreset = (next: CameraView) => { setPreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
+  useEffect(() => {
+    if (!captureMenuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") { setCaptureMenuOpen(false); saveViewButton.current?.focus(); } };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [captureMenuOpen]);
   return (
     <div className="viewer-shell" onPointerDownCapture={(event) => { if (event.button === 2) rightPointerRef.current = { x: event.clientX, y: event.clientY, moved: false }; }} onPointerMoveCapture={(event) => { const pointer = rightPointerRef.current; if (pointer && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) pointer.moved = true; }} onPointerUpCapture={(event) => { if (event.button === 2 && rightPointerRef.current?.moved) window.setTimeout(() => { rightPointerRef.current = null; }, 0); }} onContextMenu={(event) => { if (!(event.target instanceof HTMLCanvasElement)) return; event.preventDefault(); const wasPan = rightPointerRef.current?.moved; rightPointerRef.current = null; if (wasPan) return; clearSelection(); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
-      {props.toolbarVisibility["viewer-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={{ side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={210} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
+      {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={{ side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
         <div className="segmented">
-          <button className={projection === "perspective" ? "active" : ""} onClick={() => setProjection("perspective")}>Perspective</button>
-          <button className={projection === "parallel" ? "active" : ""} onClick={() => setProjection("parallel")}>Parallel</button>
+          <button className={projection === "perspective" ? "active" : ""} aria-pressed={projection === "perspective"} onClick={() => setProjection("perspective")}>Perspective</button>
+          <button className={projection === "parallel" ? "active" : ""} aria-pressed={projection === "parallel"} onClick={() => setProjection("parallel")}>Parallel</button>
+          <button type="button" aria-label="Zoom out" onClick={() => setZoomPercent((value) => Math.max(25, value - 10))}>−</button>
+          <button type="button" aria-label="Reset zoom" onClick={() => { setZoomPercent(100); setCameraResetKey((value) => value + 1); }}>{zoomPercent}%</button>
+          <button type="button" aria-label="Zoom in" onClick={() => setZoomPercent((value) => Math.min(300, value + 10))}>+</button>
+          <button type="button" onClick={() => { setZoomPercent(100); setCameraResetKey((value) => value + 1); }}>Fit</button>
           <button className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button>
-          {props.room.person_mockup?.enabled && <button className={preset === "eye" ? "active" : ""} onClick={() => setPreset("eye")}>Eye level</button>}
-          <div className="viewer-save-menu"><button type="button" onClick={() => setCaptureMenuOpen((current) => !current)} aria-expanded={captureMenuOpen}>Save view…</button>{captureMenuOpen && <div role="menu"><button role="menuitem" onClick={() => { setCaptureFormat("png"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PNG image</button><button role="menuitem" onClick={() => { setCaptureFormat("jpg"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>JPG image</button><button role="menuitem" onClick={() => { setCaptureFormat("pdf"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PDF document</button></div>}</div>
+          {props.room.person_mockup?.enabled && <button className={preset === "eye" ? "active" : ""} aria-pressed={preset === "eye"} onClick={() => applyPreset("eye")}>Eye level</button>}
+          {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={preset === view ? "active" : ""} aria-pressed={preset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
         </div>
         <div className="toggle-row">
           {(["elements", "openingImprints", "collisions", "person"] as Array<keyof Toggles>).map((key) => (
@@ -1399,11 +1430,11 @@ export function EngineeringViewer(props: ViewerProps) {
           ))}
           <label className="viewer-toggle-checkbox"><input type="checkbox" checked={toggles.clearance} onChange={() => flip("clearance")} />Clearance envelope</label>
         </div>
+        <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => setCaptureMenuOpen((current) => !current)} aria-expanded={captureMenuOpen} aria-haspopup="menu">Save view…</button>{captureMenuOpen && <div role="menu" aria-label="Save view format"><button autoFocus role="menuitem" onClick={() => { setCaptureFormat("png"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PNG image</button><button role="menuitem" onClick={() => { setCaptureFormat("jpg"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>JPG image</button><button role="menuitem" onClick={() => { setCaptureFormat("pdf"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PDF document</button></div>}</div></div>
       </div></FloatingToolbar>}
-      {props.toolbarVisibility["viewer-selection"] && <ContextControls key={props.toolbarLayoutResetKey} apiUrl={props.apiUrl} room={props.room} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onSelectionChange={() => setSelection(null)} onClose={() => props.onToggleToolbar("viewer-selection")} />}
-      {props.toolbarVisibility["viewer-navigation"] && <FloatingToolbar title="Scene navigation" defaultPosition={{ x: 790, y: 235 }} dock={{ side: "RIGHT", slot: 1, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={150} onClose={() => props.onToggleToolbar("viewer-navigation")}><div className="viewer-navigation floating-viewer-navigation" aria-label="Scene navigation"><button type="button" onClick={() => setPreset("top")}>Top</button><button type="button" onClick={() => setPreset("bottom")}>Bottom</button><button type="button" onClick={() => setPreset("left")}>Left</button><button type="button" onClick={() => setPreset("right")}>Right</button></div></FloatingToolbar>}
+      {panelSelection && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}`} apiUrl={props.apiUrl} room={props.room} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onClose={clearSelection} />}
       <Canvas key={projection} orthographic={projection === "parallel"} shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
-        <Scene {...props} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} />
+        <Scene {...props} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} zoomPercent={zoomPercent} />
         <WheelZoom />
         <CaptureController request={captureRequest} format={captureFormat} />
       </Canvas>
