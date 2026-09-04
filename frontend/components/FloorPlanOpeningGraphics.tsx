@@ -1,4 +1,5 @@
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import { openingRenderWidths } from "@/lib/openingRendering";
 import { formatLength, type DisplayUnits } from "@/lib/units";
 import type { Point2D } from "@/lib/types";
 
@@ -19,6 +20,7 @@ type OpeningProps = {
   toScreen: (point: Point2D) => Point2D;
   displayUnits: DisplayUnits;
   selected?: boolean;
+  wallThicknessScreen?: number;
   onPointerDown?: (event: ReactPointerEvent<SVGElement>) => void;
   onContextMenu?: (event: ReactMouseEvent<SVGGElement>) => void;
 };
@@ -50,14 +52,15 @@ function geometry(opening: FloorPlanOpeningGraphic, wallStart: Point2D, wallEnd:
   return { wallLength, unit, startModel, endModel, start, end, tangent, perpendicular, modelNormal };
 }
 
-export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, displayUnits, selected = false, onPointerDown, onContextMenu }: OpeningProps) {
+export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, displayUnits, selected = false, wallThicknessScreen, onPointerDown, onContextMenu }: OpeningProps) {
   const shape = geometry(opening, wallStart, wallEnd, toScreen);
   if (!shape) return null;
   const { startModel, endModel, start, end, perpendicular, modelNormal } = shape;
-  const jambHalf = 7;
+  const { gapWidth, jambHalf } = openingRenderWidths(wallThicknessScreen);
+  const style = { "--opening-gap-width": `${gapWidth}px` } as CSSProperties;
   const className = selected ? " selected" : "";
   if (opening.kind === "WINDOW") {
-    return <g className={`opening-symbol window-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
+    return <g style={style} className={`opening-symbol window-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
       <title>{`Window ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
       <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
@@ -74,7 +77,7 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
     const half = opening.width / 2;
     const firstLeaf = toScreen({ x: startModel.x + modelNormal.x * half, y: startModel.y + modelNormal.y * half });
     const secondLeaf = toScreen({ x: endModel.x + modelNormal.x * half, y: endModel.y + modelNormal.y * half });
-    return <g className={`opening-symbol double-door-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
+    return <g style={style} className={`opening-symbol double-door-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
       <title>{`Double door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
       <path className="opening-hit-area" d={`${sectorPath(start, centre, firstLeaf)} ${sectorPath(end, centre, secondLeaf)}`} />
       <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
@@ -95,7 +98,7 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   const hingeModel = hingeAtStart ? startModel : endModel;
   const hinge = hingeAtStart ? start : end; const closedEnd = hingeAtStart ? end : start;
   const leaf = toScreen({ x: hingeModel.x + modelNormal.x * opening.width, y: hingeModel.y + modelNormal.y * opening.width });
-  return <g className={`opening-symbol door-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
+  return <g style={style} className={`opening-symbol door-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
     <title>{`Door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
     <path className="opening-hit-area" d={sectorPath(hinge, closedEnd, leaf)} />
     <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />

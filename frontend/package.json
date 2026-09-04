@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test:geometry": "node --test --experimental-strip-types tests/wallDragGeometry.test.mts tests/openingPlacement.test.mts tests/floatingWindowGeometry.test.mts",
+    "test:geometry": "node --test --experimental-strip-types tests/*.test.mts",
     "sync:dulux-colours": "node scripts/sync-dulux-colours.mjs"
   },
   "dependencies": {

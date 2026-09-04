@@ -59,7 +59,6 @@ export function PersonEditor({ room, displayUnits, onChange }: PersonEditorProps
   return (
     <section className="person-editor" aria-label="Human mock-up controls">
       <div className="person-editor-heading">
-        <div><span className="eyebrow">Usability model</span><h2>Human mock-up</h2></div>
         <small>1 person maximum</small>
       </div>
       <label className="person-enable-choice">
