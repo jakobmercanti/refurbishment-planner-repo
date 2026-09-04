@@ -1243,7 +1243,7 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
         </mesh>
       ))}
       {showGrid && <Grid position={[1.6, -0.002, -1.4]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />}
-      <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate enabled={!dragging && !personDragging} target={orbitTarget} />
+      <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!dragging && !personDragging} target={orbitTarget} />
     </>
   );
 }
