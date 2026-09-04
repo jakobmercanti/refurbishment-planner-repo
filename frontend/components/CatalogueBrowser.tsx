@@ -1,0 +1,208 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import type { CatalogueCategory, CatalogueItem, CatalogueItemInput, MaterialCollection } from "@/lib/types";
+
+interface CatalogueBrowserProps {
+  apiUrl: string;
+  open: boolean;
+  displayUnits: DisplayUnits;
+  onClose: () => void;
+  onInsert: (item: CatalogueItem) => void;
+}
+
+const CATEGORY_KINDS: Record<string, CatalogueItemInput["fixture_kind"]> = {
+  showers: "SHOWER",
+  basins: "BASIN",
+  toilets: "TOILET",
+  storage: "FURNITURE",
+};
+
+function blankEntry(): CatalogueItemInput {
+  return {
+    category_id: "storage",
+    fixture_kind: "FURNITURE",
+    name: "",
+    supplier: "",
+    sku: "",
+    width_mm: 600,
+    depth_mm: 450,
+    height_mm: 850,
+    color_hex: "#b99b77",
+    description: "",
+    stl_filename: null,
+    stl_base64: null,
+    side_clearance_mm: null,
+    front_clearance_mm: null,
+  };
+}
+
+export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert }: CatalogueBrowserProps) {
+  const [categories, setCategories] = useState<CatalogueCategory[]>([]);
+  const [materialCollections, setMaterialCollections] = useState<MaterialCollection[]>([]);
+  const [items, setItems] = useState<CatalogueItem[]>([]);
+  const [categoryId, setCategoryId] = useState<string>("");
+  const [activeMaterialId, setActiveMaterialId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState<CatalogueItemInput>(blankEntry);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const stlInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch(`${apiUrl}/catalog/categories`)
+      .then((response) => response.ok ? response.json() as Promise<CatalogueCategory[]> : Promise.reject(new Error("Catalogue categories are unavailable.")))
+      .then(setCategories)
+      .catch((reason: Error) => setError(reason.message));
+    fetch(`${apiUrl}/catalog/materials`)
+      .then((response) => response.ok ? response.json() as Promise<MaterialCollection[]> : Promise.reject(new Error("Catalogue materials are unavailable.")))
+      .then(setMaterialCollections)
+      .catch((reason: Error) => setError(reason.message));
+  }, [apiUrl, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const parameters = new URLSearchParams();
+    if (categoryId) parameters.set("category_id", categoryId);
+    if (search.trim()) parameters.set("search", search.trim());
+    fetch(`${apiUrl}/catalog/items?${parameters}`)
+      .then((response) => response.ok ? response.json() as Promise<CatalogueItem[]> : Promise.reject(new Error("Catalogue objects are unavailable.")))
+      .then(setItems)
+      .catch((reason: Error) => setError(reason.message));
+  }, [apiUrl, categoryId, open, search]);
+
+  if (!open) return null;
+
+  const activeMaterial = materialCollections.find((collection) => collection.id === activeMaterialId);
+  const activeCategory = categories.find((category) => category.id === form.category_id);
+  const useCategoryClearances = form.side_clearance_mm === null && form.front_clearance_mm === null;
+
+  function setField<K extends keyof CatalogueItemInput>(key: K, value: CatalogueItemInput[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function beginCreate() {
+    setForm(blankEntry());
+    setEditingId(null);
+    setShowForm(true);
+    setError(null);
+  }
+
+  function beginEdit(item: CatalogueItem) {
+    setForm({
+      category_id: item.category_id,
+      fixture_kind: item.fixture_kind,
+      name: item.name,
+      supplier: item.supplier,
+      sku: item.sku,
+      width_mm: item.width_mm,
+      depth_mm: item.depth_mm,
+      height_mm: item.height_mm,
+      color_hex: item.color_hex,
+      description: item.description,
+      stl_filename: item.stl_filename,
+      stl_base64: item.stl_base64,
+      side_clearance_mm: item.side_clearance_mm,
+      front_clearance_mm: item.front_clearance_mm,
+    });
+    setEditingId(item.id);
+    setShowForm(true);
+    setError(null);
+  }
+
+  function importStl(file?: File) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".stl")) {
+      setError("Choose an STL file.");
+      return;
+    }
+    if (file.size > 20_000_000) {
+      setError("The STL must be smaller than 20 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((current) => ({ ...current, stl_filename: file.name, stl_base64: String(reader.result) }));
+      setError(null);
+    };
+    reader.onerror = () => setError("The STL file could not be read.");
+    reader.readAsDataURL(file);
+  }
+
+  async function saveEntry() {
+    if (!form.name.trim() || !form.supplier.trim() || !form.sku.trim()) {
+      setError("Name, supplier and SKU are required.");
+      return;
+    }
+    const response = await fetch(`${apiUrl}/catalog/items${editingId ? `/${editingId}` : ""}`, {
+      method: editingId ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    if (!response.ok) {
+      const payload = await response.json() as { detail?: string };
+      setError(payload.detail ?? "The catalogue entry could not be saved.");
+      return;
+    }
+    const saved = await response.json() as CatalogueItem;
+    setItems((current) => editingId ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved].sort((a, b) => a.name.localeCompare(b.name)));
+    setShowForm(false);
+    setEditingId(null);
+    setError(null);
+    const responseCategories = await fetch(`${apiUrl}/catalog/categories`);
+    if (responseCategories.ok) setCategories(await responseCategories.json() as CatalogueCategory[]);
+  }
+
+  async function archiveEntry() {
+    if (!editingId || !window.confirm("Remove this entry from the active catalogue?")) return;
+    const response = await fetch(`${apiUrl}/catalog/items/${editingId}`, { method: "DELETE" });
+    if (!response.ok) {
+      setError("The catalogue entry could not be removed.");
+      return;
+    }
+    setItems((current) => current.filter((item) => item.id !== editingId));
+    setShowForm(false);
+    setEditingId(null);
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="catalogue-modal" role="dialog" aria-modal="true" aria-labelledby="catalogue-title">
+        <header className="catalogue-header"><div><h2 id="catalogue-title">Object catalogue</h2><p>Bathroom fixtures, paints and tiles are organised by collection and family. Built-in defaults remain editable.</p></div><button className="modal-close" onClick={onClose} aria-label="Close catalogue">×</button></header>
+        {!activeMaterial && <div className="catalogue-toolbar"><label><span>Search catalogue</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, supplier or SKU" /></label><button onClick={beginCreate}>+ Add supplier entry</button></div>}
+        <div className="catalogue-layout">
+          <nav className="catalogue-categories" aria-label="Catalogue categories">
+            <strong className="catalogue-group-label">Bathroom fixtures</strong>
+            <button className={!categoryId && !activeMaterial ? "active" : ""} onClick={() => { setCategoryId(""); setActiveMaterialId(null); }}><span>All objects</span><small>{categories.reduce((total, item) => total + item.item_count, 0)}</small></button>
+            {categories.map((category) => <button key={category.id} className={categoryId === category.id && !activeMaterial ? "active" : ""} onClick={() => { setCategoryId(category.id); setActiveMaterialId(null); }} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>)}
+            {(["PAINT", "TILE"] as const).map((kind) => <div key={kind}><strong className="catalogue-group-label">{kind === "PAINT" ? "Paints" : "Tiles"}</strong>{materialCollections.filter((collection) => collection.kind === kind).map((collection) => <button key={collection.id} className={activeMaterialId === collection.id ? "active" : ""} onClick={() => { setActiveMaterialId(collection.id); setCategoryId(""); }}><span>{collection.name}</span><small>{collection.families.reduce((total, family) => total + family.items.length, 0)}</small></button>)}</div>)}
+          </nav>
+          <div className="catalogue-results">
+            {activeMaterial ? <><div className="catalogue-result-heading"><strong>{activeMaterial.name}</strong><span>{activeMaterial.families.reduce((total, family) => total + family.items.length, 0)} colours</span></div><div className="catalogue-grid">{activeMaterial.families.map((family) => <section key={family.id} className="catalogue-material-family"><h3>{family.name}</h3><div className="catalogue-material-swatches">{family.items.map((item) => <div key={item.id} title={item.code ?? item.name}><span style={{ background: item.color_hex }} /><small>{item.name}</small></div>)}</div></section>)}</div></> : <><div className="catalogue-result-heading"><strong>{categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects"}</strong><span>{items.length} result{items.length === 1 ? "" : "s"}</span></div>{items.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{items.map((item) => <article key={item.id}><div className="catalogue-object-preview" style={{ "--object-colour": item.color_hex } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3><p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions"><button onClick={() => beginEdit(item)}>Edit entry</button><button className="catalogue-insert" onClick={() => { onInsert(item); onClose(); }}>Add to room</button></div></div></article>)}</div>}</>}
+          </div>
+        </div>
+
+        {showForm && <div className="catalogue-form-backdrop"><form className="catalogue-form" onSubmit={(event) => { event.preventDefault(); void saveEntry(); }}><div className="catalogue-form-heading"><div><span className="eyebrow">Supplier catalogue</span><h3>{editingId ? "Modify entry" : "Add new entry"}</h3></div><button type="button" onClick={() => setShowForm(false)}>×</button></div><div className="catalogue-form-grid">
+          <label className="field"><span>Category</span><select value={form.category_id} onChange={(event) => { const next = event.target.value; setForm((current) => ({ ...current, category_id: next, fixture_kind: CATEGORY_KINDS[next] })); }}>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <label className="field"><span>Colour</span><input type="color" value={form.color_hex} onChange={(event) => setField("color_hex", event.target.value)} /></label>
+          <label className="field span-two"><span>Object name</span><input value={form.name} onChange={(event) => setField("name", event.target.value)} /></label>
+          <label className="field"><span>Supplier</span><input value={form.supplier} onChange={(event) => setField("supplier", event.target.value)} /></label>
+          <label className="field"><span>Supplier SKU</span><input value={form.sku} onChange={(event) => setField("sku", event.target.value)} /></label>
+          <label className="field"><span>Width {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.width_mm} units={displayUnits} onMmChange={(value) => setField("width_mm", value)} /></label>
+          <label className="field"><span>Depth {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.depth_mm} units={displayUnits} onMmChange={(value) => setField("depth_mm", value)} /></label>
+          <label className="field"><span>Height {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.height_mm} units={displayUnits} onMmChange={(value) => setField("height_mm", value)} /></label>
+          <label className="field span-two"><input type="checkbox" checked={useCategoryClearances} onChange={(event) => { if (event.target.checked) { setForm((current) => ({ ...current, side_clearance_mm: null, front_clearance_mm: null })); } else { setForm((current) => ({ ...current, side_clearance_mm: activeCategory?.default_side_clearance_mm ?? 0, front_clearance_mm: activeCategory?.default_front_clearance_mm ?? 0 })); } }} /><span>Use {activeCategory?.name ?? "category"} clearance defaults ({activeCategory?.default_side_clearance_mm ?? 0} mm side, {activeCategory?.default_front_clearance_mm ?? 0} mm front)</span></label>
+          <label className="field"><span>Side clearance {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={0} valueMm={form.side_clearance_mm ?? activeCategory?.default_side_clearance_mm ?? 0} units={displayUnits} onMmChange={(value) => setField("side_clearance_mm", value)} disabled={useCategoryClearances} /><small>Overrides apply only to this entry.</small></label>
+          <label className="field"><span>Front clearance {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={0} valueMm={form.front_clearance_mm ?? activeCategory?.default_front_clearance_mm ?? 0} units={displayUnits} onMmChange={(value) => setField("front_clearance_mm", value)} disabled={useCategoryClearances} /><small>Overrides apply only to this entry.</small></label>
+          <div className="field span-two stl-import-field"><span>Optional 3D model</span><div><button type="button" onClick={() => stlInput.current?.click()}>{form.stl_filename ? "Replace STL" : "Import STL"}</button>{form.stl_filename && <><strong>{form.stl_filename}</strong><button type="button" className="remove-stl" onClick={() => setForm((current) => ({ ...current, stl_filename: null, stl_base64: null }))}>Remove</button></>}</div><small>The model is scaled to the width, depth and height entered above. Maximum 20 MB.</small><input ref={stlInput} hidden type="file" accept=".stl,model/stl,application/sla" onChange={(event) => { importStl(event.target.files?.[0]); event.target.value = ""; }} /></div>
+          <label className="field span-two"><span>Description</span><textarea value={form.description} onChange={(event) => setField("description", event.target.value)} /></label>
+        </div>{error && <p className="inline-error">{error}</p>}<div className="catalogue-form-actions">{editingId && !items.find((item) => item.id === editingId)?.is_default && <button className="catalogue-archive" type="button" onClick={() => void archiveEntry()}>Archive</button>}<button type="button" onClick={() => setShowForm(false)}>Cancel</button><button className="catalogue-insert" type="submit">{editingId ? "Save changes" : "Create entry"}</button></div></form></div>}
+        {error && !showForm && <p className="catalogue-error">{error}</p>}
+      </section>
+    </div>
+  );
+}
