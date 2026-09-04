@@ -901,11 +901,14 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   const limbRadius = Math.max(width * 0.06, 0.03);
   const standing = person.posture === "STANDING";
   const seated = person.posture === "SEATED";
+  const crouching = person.posture === "CROUCHING";
+  const footHeight = seated ? height * 0.055 : height * 0.07;
+  const seatedLegZ = depth * 0.12;
   const headY = standing ? height * 0.91 : Math.min(eye + headRadius * 0.18, height - headRadius);
   const shoulderY = standing ? height * 0.84 : headY - headRadius * 1.15;
   const hipY = standing ? height * 0.48 : seated ? height * 0.35 : height * 0.31;
-  const shoulderZ = person.posture === "CROUCHING" ? depth * 0.38 : 0;
-  const hipZ = person.posture === "CROUCHING" ? -depth * 0.08 : 0;
+  const shoulderZ = crouching ? depth * 0.08 : 0;
+  const hipZ = crouching ? -depth * 0.08 : 0;
   const torsoHeight = Math.max(shoulderY - hipY, height * 0.2);
   const torsoY = (shoulderY + hipY) / 2;
   const torsoZ = (shoulderZ + hipZ) / 2;
@@ -914,14 +917,15 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   const shoulderRight: VectorTuple = [width * 0.36, shoulderY, shoulderZ];
   const hipLeft: VectorTuple = [-width * 0.2, hipY, hipZ];
   const hipRight: VectorTuple = [width * 0.2, hipY, hipZ];
-  const kneeLeft: VectorTuple = standing ? [-width * 0.18, height * 0.26, 0] : seated ? [-width * 0.2, height * 0.33, depth * 1.12] : [-width * 0.34, height * 0.14, depth * 0.92];
-  const kneeRight: VectorTuple = standing ? [width * 0.18, height * 0.26, 0] : seated ? [width * 0.2, height * 0.33, depth * 1.12] : [width * 0.34, height * 0.14, depth * 0.92];
-  const ankleLeft: VectorTuple = standing ? [-width * 0.18, height * 0.055, 0] : seated ? [-width * 0.2, height * 0.055, depth * 1.12] : [-width * 0.27, height * 0.045, depth * 0.12];
-  const ankleRight: VectorTuple = standing ? [width * 0.18, height * 0.055, 0] : seated ? [width * 0.2, height * 0.055, depth * 1.12] : [width * 0.27, height * 0.045, depth * 0.12];
+  const kneeLeft: VectorTuple = standing ? [-width * 0.18, height * 0.26, 0] : seated ? [-width * 0.2, height * 0.29, seatedLegZ] : [-width * 0.34, height * 0.14, depth * 0.16];
+  const kneeRight: VectorTuple = standing ? [width * 0.18, height * 0.26, 0] : seated ? [width * 0.2, height * 0.29, seatedLegZ] : [width * 0.34, height * 0.14, depth * 0.16];
+  const ankleLeft: VectorTuple = standing ? [-width * 0.18, height * 0.055, 0] : seated ? [-width * 0.2, footHeight * 0.8, seatedLegZ] : [-width * 0.27, height * 0.045, depth * 0.12];
+  const ankleRight: VectorTuple = standing ? [width * 0.18, height * 0.055, 0] : seated ? [width * 0.2, footHeight * 0.8, seatedLegZ] : [width * 0.27, height * 0.045, depth * 0.12];
   const elbowY = standing ? height * 0.56 : seated ? height * 0.47 : height * 0.32;
   const handY = standing ? height * 0.39 : seated ? height * 0.34 : height * 0.12;
-  const elbowZ = person.posture === "CROUCHING" ? depth * 0.78 : depth * 0.08;
-  const handZ = person.posture === "CROUCHING" ? depth * 1.08 : depth * 0.12;
+  const elbowZ = crouching ? depth * 0.18 : depth * 0.08;
+  const handZ = crouching ? depth * 0.22 : depth * 0.12;
+  const footForwardOffset = standing ? depth * 0.24 : 0;
   const clearanceWidth = width + clearance * 2;
   const clearanceDepth = depth + clearance * 2;
   const clearancePoints: VectorTuple[] = [[-clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, -clearanceDepth / 2], [clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, clearanceDepth / 2], [-clearanceWidth / 2, 0.017, -clearanceDepth / 2]];
@@ -960,7 +964,7 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
       <Limb from={kneeLeft} to={ankleLeft} radius={limbRadius * 1.05} colour={trousers} />
       <Limb from={hipRight} to={kneeRight} radius={limbRadius * 1.25} colour={trousers} />
       <Limb from={kneeRight} to={ankleRight} radius={limbRadius * 1.05} colour={trousers} />
-      {[ankleLeft, ankleRight].map((ankle, index) => <RoundedBox key={`foot-${index}`} args={[width * 0.23, height * 0.07, depth * 0.76]} radius={0.025} smoothness={3} position={[ankle[0], height * 0.034, ankle[2] + depth * 0.24]} castShadow><meshStandardMaterial color={shoe} roughness={0.82} /></RoundedBox>)}
+      {[ankleLeft, ankleRight].map((ankle, index) => <RoundedBox key={`foot-${index}`} args={[width * 0.23, footHeight, depth * 0.76]} radius={0.025} smoothness={3} position={[ankle[0], footHeight / 2, ankle[2] + footForwardOffset]} castShadow><meshStandardMaterial color={shoe} roughness={0.82} /></RoundedBox>)}
       <mesh position={[0, 0.023, depth * 0.7]} rotation={[-Math.PI / 2, 0, 0]}><coneGeometry args={[0.06, 0.16, 3]} /><meshStandardMaterial color="#e2a73a" emissive="#e2a73a" emissiveIntensity={0.25} /></mesh>
     </group>
   );

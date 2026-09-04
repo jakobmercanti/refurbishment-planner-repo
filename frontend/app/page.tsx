@@ -11,6 +11,7 @@ import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { FloatingToolbar } from "@/components/FloatingToolbar";
 import { PersonEditor } from "@/components/PersonEditor";
 import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
+import { normalizeRoomPerson } from "@/lib/person";
 import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
 import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes, WallViewMode } from "@/lib/types";
 import { formatLength, formatMeasurementText } from "@/lib/units";
@@ -49,7 +50,7 @@ export default function Home() {
         const response = await fetch(`${API_URL}/demo`);
         if (!response.ok) throw new Error(`API returned ${response.status}`);
         const nextDemo = await response.json() as DemoResponse;
-        if (!cancelled) { setDemo(nextDemo); setError(null); }
+        if (!cancelled) { setDemo({ ...nextDemo, room: normalizeRoomPerson(nextDemo.room) }); setError(null); }
       } catch (reason) {
         if (cancelled) return;
         if (attempt < 4) {
@@ -73,7 +74,7 @@ export default function Home() {
   function openDetectedRoom(sourceRoomId: string, name: string, vertices: import("@/lib/types").Point2D[], openings: import("@/lib/types").Opening[], wallHeight: number, wallThickness: number, wallThicknessOverridesMm: Record<string, number>) {
     if (!demo) return;
     const existing = projectRooms.find((room) => room.source_floorplan_room_id === sourceRoomId);
-    const room = { ...demo.room, id: existing?.id ?? crypto.randomUUID(), source_floorplan_room_id: sourceRoomId, name, vertices, openings, wall_height: { ...demo.room.wall_height, value: wallHeight }, wall_thickness: { ...demo.room.wall_thickness, value: wallThickness }, wall_thickness_overrides_mm: wallThicknessOverridesMm, obstacles: existing?.obstacles ?? [], person_mockup: existing?.person_mockup ?? null, finishes: existing?.finishes, version: (existing?.version ?? demo.room.version) + 1 };
+    const room = normalizeRoomPerson({ ...demo.room, id: existing?.id ?? crypto.randomUUID(), source_floorplan_room_id: sourceRoomId, name, vertices, openings, wall_height: { ...demo.room.wall_height, value: wallHeight }, wall_thickness: { ...demo.room.wall_thickness, value: wallThickness }, wall_thickness_overrides_mm: wallThicknessOverridesMm, obstacles: existing?.obstacles ?? [], person_mockup: existing?.person_mockup ?? null, finishes: existing?.finishes, version: (existing?.version ?? demo.room.version) + 1 });
     setDemo({ ...demo, room });
     setProjectRooms((rooms) => [...rooms.filter((candidate) => candidate.source_floorplan_room_id !== sourceRoomId), room]);
     invalidateAnalysis();
@@ -120,12 +121,13 @@ export default function Home() {
   async function openRoomFile(room: Room) {
     if (!Array.isArray(room.vertices) || !room.wall_height || !room.wall_thickness) throw new Error("This file is not a Renovation Fit room.");
     if (preferences.confirmBeforeOpen && !window.confirm("Replace the current working room with the selected file?")) return;
-    const response = await fetch(`${API_URL}/rooms/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(room) });
+    const normalizedRoom = normalizeRoomPerson(room);
+    const response = await fetch(`${API_URL}/rooms/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(normalizedRoom) });
     if (!response.ok) {
       const payload = await response.json() as { detail?: string };
       throw new Error(payload.detail ?? "The room geometry is invalid.");
     }
-    setDemo((current) => current ? { ...current, room } : current);
+    setDemo((current) => current ? { ...current, room: normalizedRoom } : current);
     invalidateAnalysis();
   }
 
@@ -198,7 +200,7 @@ export default function Home() {
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
           <EngineeringViewer key={`engineering-viewer-${demo.room.id}`} apiUrl={API_URL} room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} />
-          {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={{ side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={180} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={demo.room.id} onChange={(event) => { const room = projectRooms.find((item) => item.id === event.target.value); if (room) setDemo((current) => current ? { ...current, room } : current); }}>{(projectRooms.some((room) => room.id === demo.room.id) ? projectRooms : [...projectRooms, demo.room]).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div></FloatingToolbar>}
+          {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={{ side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={180} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={demo.room.id} onChange={(event) => { const room = projectRooms.find((item) => item.id === event.target.value); if (room) setDemo((current) => current ? { ...current, room: normalizeRoomPerson(room) } : current); }}>{(projectRooms.some((room) => room.id === demo.room.id) ? projectRooms : [...projectRooms, demo.room]).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div></FloatingToolbar>}
           {toolbarVisibility["viewer-analysis"] && <FloatingToolbar title="Layout & fit analysis" defaultPosition={{ x: 18, y: 112 }} dock={{ side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-analysis")}><aside className="evidence-panel floating-evidence-panel">
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 

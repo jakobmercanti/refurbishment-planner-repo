@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { bodyDimensions, normalizePerson } from "@/lib/person";
 import { UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type { PersonMockup, PersonPosture, Room } from "@/lib/types";
 
@@ -17,15 +18,6 @@ const POSTURE_EYE_HEIGHT: Record<PersonPosture, number> = {
   SEATED: 1180,
   CROUCHING: 900,
 };
-
-function bodyDimensions(heightMm: number, posture: PersonPosture) {
-  const postureWidth = posture === "CROUCHING" ? 0.3 : posture === "SEATED" ? 0.285 : 0.263;
-  const postureDepth = posture === "CROUCHING" ? 0.32 : posture === "SEATED" ? 0.36 : 0.16;
-  return {
-    shoulder_width_mm: Math.round(heightMm * postureWidth),
-    body_depth_mm: Math.round(heightMm * postureDepth),
-  };
-}
 
 function roomCentre(room: Room) {
   return {
@@ -53,7 +45,7 @@ function defaultPerson(room: Room): PersonMockup {
 
 export function PersonEditor({ room, displayUnits, onChange, onVisibilityChange }: PersonEditorProps) {
   const person = room.person_mockup?.enabled ? room.person_mockup : null;
-  const [draft, setDraft] = useState<PersonMockup>(() => person ?? defaultPerson(room));
+  const [draft, setDraft] = useState<PersonMockup>(() => normalizePerson(person) ?? defaultPerson(room));
 
   function set<K extends keyof PersonMockup>(key: K, value: PersonMockup[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -64,7 +56,7 @@ export function PersonEditor({ room, displayUnits, onChange, onVisibilityChange 
       ...current,
       posture,
       eye_height_mm: Math.min(POSTURE_EYE_HEIGHT[posture], current.height_mm),
-      ...bodyDimensions(current.height_mm, posture),
+      ...bodyDimensions(current.height_mm),
     }));
   }
 
@@ -92,7 +84,7 @@ export function PersonEditor({ room, displayUnits, onChange, onVisibilityChange 
         <p>Set the person height, then drag the model in the 3D viewer to position it.</p>
         <label className="person-field person-posture"><span>Posture</span><select value={draft.posture} onChange={(event) => setPosture(event.target.value as PersonPosture)}><option value="STANDING">Standing</option><option value="SEATED">Seated</option><option value="CROUCHING">Crouching</option></select></label>
         <fieldset><legend>Body dimensions</legend><div className="person-field-grid">
-          <label className="person-field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={501} maxMm={2500} valueMm={draft.height_mm} units={displayUnits} onMmChange={(value) => setDraft((current) => ({ ...current, height_mm: value, eye_height_mm: Math.min(current.eye_height_mm, value), ...bodyDimensions(value, current.posture) }))} /></label>
+          <label className="person-field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={501} maxMm={2500} valueMm={draft.height_mm} units={displayUnits} onMmChange={(value) => setDraft((current) => ({ ...current, height_mm: value, eye_height_mm: Math.min(current.eye_height_mm, value), ...bodyDimensions(value) }))} /></label>
         </div></fieldset>
         <fieldset><legend>Usability</legend><div className="person-field-grid">
           <label className="person-field"><span>Clear space around body <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} maxMm={2000} valueMm={draft.movement_clearance_mm} units={displayUnits} onMmChange={(value) => set("movement_clearance_mm", value)} /></label>
