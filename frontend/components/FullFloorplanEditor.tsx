@@ -43,7 +43,8 @@ type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: numb
 interface Props { apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: "DEFAULT" | "TRADITIONAL"; exportRequest: number; activeRoomName?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; onOpenRoom: (name: string, vertices: Point2D[], openings: Opening[], wallHeight: number, wallThickness: number, wallThicknessOverridesMm: Record<string, number>) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; }
 
 const DEFAULT_SIZE = { width: 1100, height: 700 };
-const SNAP = 50;
+const DEFAULT_SNAP_MM = 50;
+const DEFAULT_WALL_THICKNESS_MM = 50;
 const MIN_WALL_CLEARANCE_MM = 200;
 const MAX_DEFAULT_MEASUREMENT_OFFSET_MM = 150;
 const DEFAULT_WALL_DIMENSION_OFFSET_SCREEN = 78;
@@ -483,10 +484,10 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const [tool, setTool] = useState<Tool>("SELECT");
   const [lShapePickerOpen, setLShapePickerOpen] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(true);
-  const [snapSize, setSnapSize] = useState(SNAP);
+  const [snapSize, setSnapSize] = useState(DEFAULT_SNAP_MM);
   const [squaredWalls, setSquaredWalls] = useState(false);
   const [wallHeight, setWallHeight] = useState(2400);
-  const [wallThickness, setWallThickness] = useState(100);
+  const [wallThickness, setWallThickness] = useState(DEFAULT_WALL_THICKNESS_MM);
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
   const [showWallThickness, setShowWallThickness] = useState(true);
@@ -616,7 +617,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         setMeasurements(cloneMeasurements(saved.measurements ?? [])); setDimensionOffsets(saved.dimensionOffsets ?? {}); setHiddenDimensions(saved.hiddenDimensions ?? []);
         setCanvasSize(saved.canvasSize ?? DEFAULT_SIZE);
         setRooms(saved.rooms ?? []); setSelectedRoomId(saved.selectedRoomId ?? null);
-        setSnapEnabled(saved.snapEnabled ?? true); setSnapSize(saved.snapSize ?? SNAP); setSquaredWalls(savedSquaredWalls); setWallHeight(saved.wallHeight ?? 2400); setWallThickness(saved.wallThickness ?? 100);
+        setSnapEnabled(saved.snapEnabled ?? true); setSnapSize(saved.snapSize ?? DEFAULT_SNAP_MM); setSquaredWalls(savedSquaredWalls); setWallHeight(saved.wallHeight ?? 2400); setWallThickness(saved.wallThickness ?? DEFAULT_WALL_THICKNESS_MM);
       }
     } catch { /* Ignore a damaged browser draft and start clean. */ }
     setRestored(true);
