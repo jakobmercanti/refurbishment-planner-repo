@@ -329,7 +329,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="modal-backdrop catalogue-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="catalogue-modal" role={nestedDialogOpen ? undefined : "dialog"} aria-modal={nestedDialogOpen ? undefined : "true"} aria-labelledby={nestedDialogOpen ? undefined : "catalogue-title"} onKeyDown={nestedDialogOpen ? undefined : trapFocus}>
         <header className="catalogue-header" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}><div><h2 id="catalogue-title">Object catalogue</h2><p>Bathroom fixtures, paints and tiles are organised by collection and family. Built-in defaults remain editable.</p></div><button ref={closeButton} className="modal-close" onClick={onClose} aria-label="Close catalogue">×</button></header>
         {!activeMaterial && <div className="catalogue-toolbar" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}><label><span>Search catalogue</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, supplier or SKU" /></label><button onClick={(event) => beginCreate(event.currentTarget)}>+ Add supplier entry</button></div>}
