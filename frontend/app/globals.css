@@ -336,7 +336,7 @@ button { font: inherit; }
 .snap-control-row { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font: 500 12px/1.25 var(--font-sans); white-space: nowrap; }
 .snap-control-row > input { margin: 0; accent-color: var(--deep); }
 .snap-control-row > span { display: inline-flex; align-items: center; gap: 3px; flex: 1; min-width: 0; white-space: nowrap; }
-.snap-control-row small { font: 600 8px var(--font-mono); white-space: nowrap; }
+.snap-control-row small { font: inherit; white-space: nowrap; }
 .snap-size-input { flex: 0 0 36px; width: 36px !important; min-width: 0 !important; margin: 0; padding: 1px 2px !important; border: 0 !important; border-bottom: 1px solid transparent !important; border-radius: 0 !important; background: transparent !important; color: var(--ink) !important; font: 700 11px var(--font-mono) !important; line-height: 1; text-align: center; box-shadow: none !important; }
 .snap-size-input:focus { border-bottom-color: var(--deep) !important; outline: 0; }
 .square-walls-control { align-items: flex-start; white-space: normal !important; }
