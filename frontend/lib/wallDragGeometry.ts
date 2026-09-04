@@ -1735,13 +1735,43 @@ export function retainDraggedWallConnections(
     const explicitEnd = explicitHost?.points[(explicitAttachment?.segmentIndex ?? -1) + 1];
     const explicitIsValid = Boolean(explicitAttachment && explicitStart && explicitEnd
       && projectOnSegment(originalPoint, explicitStart, explicitEnd).distance <= CONNECTION_TOLERANCE_MM);
-    const connection = explicitIsValid ? explicitAttachment : inferredHost;
-    if (!connection) return;
+    const initialConnection = explicitIsValid && explicitAttachment ? explicitAttachment : inferredHost;
+    if (!initialConnection) return;
+    let connection = initialConnection;
 
     const hostWall = repaired.find((wall) => wall.id === connection.wallId);
-    const hostStart = hostWall?.points[connection.segmentIndex];
-    const hostEnd = hostWall?.points[connection.segmentIndex + 1];
+    let hostStart = hostWall?.points[connection.segmentIndex];
+    let hostEnd = hostWall?.points[connection.segmentIndex + 1];
     if (!hostWall || !hostStart || !hostEnd) return;
+
+    // An attachment can legitimately point to the segment which ended at the
+    // old materialized junction. Once that junction moves along a straight
+    // host, the endpoint is on the following subsegment instead. Resolve the
+    // live host segment before deciding whether to materialize a new corner;
+    // otherwise the stale segment makes a perfectly attached endpoint look
+    // like an off-host move and leaves the old split behind.
+    const baselineHostForLookup = baselineWalls.find((wall) => wall.id === connection.wallId);
+    const hasMaterializedHostJunction = Boolean(baselineHostForLookup
+      && baselineHostForLookup.points.some((point, pointIndex) => samePoint(point, originalPoint)
+        && baselineHostForLookup.attachments?.[pointIndex]?.hideCorner
+        && baselineHostForLookup.attachments?.[pointIndex]?.wallId === baselineHostForLookup.id));
+    const movedHostSegment = hasMaterializedHostJunction ? hostWall.points.slice(0, -1).map((candidateStart, candidateSegmentIndex) => {
+      const candidateEnd = hostWall.points[candidateSegmentIndex + 1];
+      if (!candidateEnd || candidateSegmentIndex === connection.segmentIndex) return null;
+      const candidateProjection = projectOnSegment(movedPoint, candidateStart, candidateEnd);
+      if (candidateProjection.distance > CONNECTION_TOLERANCE_MM
+        || candidateProjection.along <= 1e-6
+        || candidateProjection.along >= 1 - 1e-6) return null;
+      const baselineStart = baselineHostForLookup?.points[candidateSegmentIndex];
+      const baselineEnd = baselineHostForLookup?.points[candidateSegmentIndex + 1];
+      if (!baselineStart || !baselineEnd || projectOnSegment(originalPoint, baselineStart, baselineEnd).distance > CONNECTION_TOLERANCE_MM) return null;
+      return { candidateSegmentIndex, candidateStart, candidateEnd, candidateProjection };
+    }).find((candidate): candidate is { candidateSegmentIndex: number; candidateStart: WallDragPoint; candidateEnd: WallDragPoint; candidateProjection: { point: WallDragPoint; along: number; distance: number } } => Boolean(candidate)) : undefined;
+    if (movedHostSegment) {
+      connection = { ...connection, segmentIndex: movedHostSegment.candidateSegmentIndex, along: movedHostSegment.candidateProjection.along };
+      hostStart = movedHostSegment.candidateStart;
+      hostEnd = movedHostSegment.candidateEnd;
+    }
 
     const hostEndpointIndex = unbranchedHostEndpointIndex(baselineWalls, draggedWallId, pointIndex, connection, originalPoint);
     if (hostEndpointIndex !== null) {
@@ -1756,6 +1786,60 @@ export function retainDraggedWallConnections(
 
     const projection = projectOnSegment(movedPoint, hostStart, hostEnd);
     if (projection.distance <= CONNECTION_TOLERANCE_MM) {
+      // A junction which was materialized on the host before this drag is
+      // represented by a hidden host vertex.  If the attached endpoint slides
+      // *along* that host (the 9–8 wall moving up/down on wall 2–3), carry the
+      // existing vertex with it.  Otherwise the intersection materializer sees
+      // the stale host vertex as a second source and recreates a split at the
+      // original coordinate.  A normal/off-host move deliberately skips this
+      // path so the bridge logic below can preserve the detached wall.
+      const materializedHost = baselineWalls.find((wall) => wall.id === connection.wallId);
+      const materializedHostLength = Math.hypot(hostEnd.x - hostStart.x, hostEnd.y - hostStart.y);
+      const hostTangent = materializedHostLength > CONNECTION_TOLERANCE_MM
+        ? { x: (hostEnd.x - hostStart.x) / materializedHostLength, y: (hostEnd.y - hostStart.y) / materializedHostLength }
+        : null;
+      const endpointDelta = { x: movedPoint.x - originalPoint.x, y: movedPoint.y - originalPoint.y };
+      const slidesAlongHost = Boolean(hostTangent
+        && Math.abs(endpointDelta.x * hostTangent.x + endpointDelta.y * hostTangent.y) > CONNECTION_TOLERANCE_MM
+        && Math.abs(endpointDelta.x * -hostTangent.y + endpointDelta.y * hostTangent.x) <= CONNECTION_TOLERANCE_MM);
+      if (slidesAlongHost && materializedHost) {
+        const baselineClosed = materializedHost.points.length > 2 && samePoint(materializedHost.points[0], materializedHost.points.at(-1)!);
+        const baselineLimit = materializedHost.points.length - (baselineClosed ? 1 : 0);
+        const existingHostPointIndex = materializedHost.points.slice(0, baselineLimit).findIndex((point, pointIndex) => {
+          if (!samePoint(point, originalPoint)) return false;
+          const attachment = materializedHost.attachments?.[pointIndex];
+          return Boolean(attachment?.hideCorner && attachment.wallId === materializedHost.id);
+        });
+        if (existingHostPointIndex >= 0) {
+          const hostIndex = repaired.findIndex((wall) => wall.id === connection.wallId);
+          if (hostIndex >= 0) {
+            const points = repaired[hostIndex].points.map((candidate, pointIndex) => pointIndex === existingHostPointIndex ? { ...movedPoint } : { ...candidate });
+            if (baselineClosed && existingHostPointIndex === 0) points[points.length - 1] = { ...movedPoint };
+            repaired[hostIndex] = { ...repaired[hostIndex], points };
+
+            // Keep endpoint metadata aligned with the moved host vertex. This
+            // prevents the next drag frame from projecting back to the stale
+            // pre-drag segment ratio.
+            const hostSegmentIndex = existingHostPointIndex > connection.segmentIndex
+              ? existingHostPointIndex - 1
+              : existingHostPointIndex;
+            const hostAlong = existingHostPointIndex > connection.segmentIndex ? 1 : 0;
+            const movedHostPoint = repaired[hostIndex].points[existingHostPointIndex];
+            const draggedIndex = repaired.findIndex((wall) => wall.id === draggedWallId);
+            if (draggedIndex >= 0 && movedHostPoint) {
+              const dragged = repaired[draggedIndex];
+              const attachments = { ...dragged.attachments };
+              baselineDraggedWall.points.forEach((point, sourceIndex) => {
+                if (!samePoint(point, originalPoint) || attachments[sourceIndex]?.wallId !== connection.wallId) return;
+                attachments[sourceIndex] = { ...attachments[sourceIndex], wallId: connection.wallId, segmentIndex: hostSegmentIndex, along: hostAlong };
+              });
+              repaired[draggedIndex] = { ...dragged, attachments: Object.keys(attachments).length ? attachments : undefined };
+            }
+          }
+          return;
+        }
+      }
+
       // `translateHostSegmentWithDraggedEndpoint` may already have moved this
       // host segment by exactly the dragged endpoint delta. In that case the
       // endpoint is still a valid interior junction on the translated wall;

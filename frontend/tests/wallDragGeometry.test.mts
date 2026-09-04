@@ -265,6 +265,47 @@ test("does not add an overlapping bridge when a moved stacked-room endpoint stay
   assert.ok(materialized.find((wall) => wall.id === "lower-room")?.points.some((point) => Math.abs(point.x - 300) < 0.001 && Math.abs(point.y - 1800) < 0.001));
 });
 
+test("moves an existing stacked-room junction instead of splitting wall 2-3 at its old position", () => {
+  const baseline: WallDragWall[] = [
+    // The host already contains the hidden vertex materialized when room 2
+    // was added. It is the original position of corner 9 on wall 2-3.
+    {
+      id: "room-1",
+      points: [{ x: 0, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 2660 }, { x: 2400, y: 4080 }, { x: 0, y: 4080 }, { x: 0, y: 0 }],
+      cornerNumbers: { 0: 1, 1: 2, 2: 9, 3: 3, 4: 4 },
+      attachments: { 2: { wallId: "room-1", segmentIndex: 1, along: 1, hideCorner: true } },
+    },
+    {
+      // Room 2's 9–8 side is horizontal. Dragging it down moves corner 9
+      // along the vertical 2–3 host, rather than away from that wall.
+      id: "room-2",
+      points: [{ x: 2400, y: 2660 }, { x: 3820, y: 2660 }, { x: 3820, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 2660 }],
+      cornerNumbers: { 0: 9, 1: 8, 2: 7, 3: 3 },
+      attachments: {
+        0: { wallId: "room-1", segmentIndex: 1, along: 1 },
+        4: { wallId: "room-1", segmentIndex: 1, along: 1 },
+      },
+    },
+  ];
+  const candidate: WallDragWall[] = [
+    baseline[0],
+    { ...baseline[1], points: [{ x: 2400, y: 3500 }, { x: 3820, y: 3500 }, { x: 3820, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 3500 }] },
+  ];
+
+  const repaired = retainDraggedWallConnections(baseline, candidate, "room-2", 0);
+  const materialized = materializeWallIntersections(repaired);
+  const host = materialized.find((wall) => wall.id === "room-1")!;
+  const movedRoom = materialized.find((wall) => wall.id === "room-2")!;
+
+  assert.equal(host.points.length, baseline[0].points.length);
+  assert.deepEqual(host.points[2], { x: 2400, y: 3500 });
+  assert.equal(host.points.some((point) => Math.abs(point.x - 2400) < 0.001 && Math.abs(point.y - 2660) < 0.001), false);
+  assert.equal(movedRoom.points.length, baseline[1].points.length);
+  assert.deepEqual(movedRoom.points[0], { x: 2400, y: 3500 });
+  assert.deepEqual(movedRoom.points.at(-1), { x: 2400, y: 3500 });
+  assert.equal(materialized.some((wall) => wall.id.startsWith("auto-wall-bridge:")), false);
+});
+
 test("reveals a previously hidden stacked-room endpoint when it moves into the host wall", () => {
   const baseline: WallDragWall[] = [
     { id: "lower-room", points: [{ x: 0, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 1800 }, { x: 0, y: 1800 }, { x: 0, y: 0 }], cornerNumbers: { 0: 1, 1: 2, 2: 3, 3: 4 } },
