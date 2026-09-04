@@ -9,7 +9,7 @@ import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { closestValidOpeningOffset, cornerOffsetsOnWallSegment, isOpeningPlacementValid } from "@/lib/openingPlacement";
 import { closedRooms as detectClosedRooms } from "@/lib/roomDetection";
 import { formatArea, formatLength, formatMeasurementText, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
-import { constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
+import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
 import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room, RoomValidationResponse } from "@/lib/types";
 import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
@@ -575,17 +575,6 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     const start = wallVertexStarts.get(wall.id) ?? 1;
     return points.map((point, pointIndex) => ({ point, pointIndex })).filter(({ pointIndex }) => !wall.attachments?.[pointIndex]?.hideCorner).map(({ point, pointIndex }, visibleIndex) => ({ wall, point, pointIndex, cornerNumber: wall.cornerNumbers?.[pointIndex] ?? start + visibleIndex }));
   });
-  function viewportForDraftStart(point: Point2D): FloorPlanViewport {
-    const geometry = [...walls.flatMap((wall) => wall.points), ...draft, point];
-    const points = sourceUrl ? [...geometry, { x: 0, y: 0 }, { x: canvasSize.width, y: canvasSize.height }] : geometry;
-    const xs = points.map((item) => item.x); const ys = points.map((item) => item.y);
-    const minX = Math.min(...xs); const maxX = Math.max(...xs); const minY = Math.min(...ys); const maxY = Math.max(...ys);
-    const centerX = (minX + maxX) / 2; const centerY = (minY + maxY) / 2;
-    const halfWidth = Math.max((maxX - minX) / 2, 500); const halfHeight = Math.max((maxY - minY) / 2, 500);
-    const span = Math.max(halfWidth * 2, halfHeight * 2);
-    const fitPoints = [...points, { x: centerX - halfWidth, y: centerY - halfHeight }, { x: centerX + halfWidth, y: centerY + halfHeight }];
-    return createFloorPlanViewport(fitPoints, Math.max(120, span * .17));
-  }
   const viewport = useMemo(() => {
     const geometry = [...walls.flatMap((wall) => wall.points), ...draft];
     const points = sourceUrl ? [...geometry, { x: 0, y: 0 }, { x: canvasSize.width, y: canvasSize.height }] : geometry;
@@ -894,7 +883,16 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       // An attached endpoint is still the corner that closes the new wall. Keep its
       // label visible; the attachment itself prevents it from drifting off its host.
       if (endAttachment) attachments[shapedPoints.length - 1] = { ...endAttachment };
-      setWallsRespectingMeasurements((current) => [...current, { id: crypto.randomUUID(), points: shapedPoints, attachments: Object.keys(attachments).length ? attachments : undefined }]);
+      // A connected draft can start or finish in the middle of an existing
+      // wall.  Keep that host run intact and materialize the junction instead
+      // of leaving two partially overlapping runs whose visible union appears
+      // truncated.  The materializer only inserts junction vertices; it never
+      // removes or shortens an existing endpoint.
+      setWallsRespectingMeasurements((current) => appendWallRunPreservingExistingWalls(current, {
+        id: crypto.randomUUID(),
+        points: shapedPoints,
+        attachments: Object.keys(attachments).length ? attachments : undefined,
+      }));
     }
     draftStartAttachment.current = null; setDraft([]); setHoveredCorner(null); setTool("SELECT"); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null);
   }
@@ -924,12 +922,10 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
       commitDraft(squaredWalls ? orthogonalPathTo(alignedDraft, point) : [...alignedDraft, point], attachment);
     }
     else {
-      // A new wall starts in model space.  Discard any pan/zoom from the
-      // previous editing session before fitting the first point, otherwise a
-      // stale transform can move that point underneath a toolbar or outside
-      // the visible canvas on the next render.
-      setZoom(1); setPan({ x: 0, y: 0 });
-      setLockedViewport(viewportForDraftStart(point)); draftStartAttachment.current = attachment; setDraft([point]);
+      // Keep the user's current view when the first point starts a wall. The
+      // point is mapped using this viewport, so locking the same viewport
+      // prevents the draft from triggering an automatic fit/jump.
+      setLockedViewport(viewport); draftStartAttachment.current = attachment; setDraft([point]);
     }
     setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null);
   }
@@ -1665,13 +1661,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
             if (closes) { commitDraft(squaredWalls ? orthogonalPathTo(draft, draft[0]) : [...draft, draft[0]]); return; }
             const wallHit = findWallSegmentNear(canvasPoint(event, false));
             if (wallHit) { connectDraftToWall(wallHit.wallId, wallHit.segmentIndex, canvasPoint(event, false)); return; }
-            if (!draft.length) {
-              // Apply the same reset for a blank-canvas start as for a wall
-              // attachment.  This keeps the click and the fitted viewport in
-              // the same coordinate frame even after prior navigation.
-              setZoom(1); setPan({ x: 0, y: 0 });
-              setLockedViewport(viewportForDraftStart(requested));
-            }
+            if (!draft.length) setLockedViewport(viewport);
             setDraft((current) => current.length && squaredWalls ? [...current, squareDrawPoint(current.at(-1)!, requested)] : [...current, requested]);
           }} onDoubleClick={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && target.classList.contains("canvas-background")); if (!background) return; event.preventDefault(); if (tool === "DRAW") { commitDraft(); return; } setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedMeasurement(null); setContextMenu(null); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }}>
             {sourceUrl && sourceFile?.type !== "application/pdf" && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}

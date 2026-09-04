@@ -380,6 +380,20 @@ export function preserveUnrelatedWallGeometry(
       if (attachment.wallId === movedWallId && attachment.segmentIndex === movedSegmentIndex) allowedPointIndexes.add(pointIndex);
     });
     const closed = baselineWall.points.length > 2 && samePoint(baselineWall.points[0], baselineWall.points.at(-1)!);
+    // A newly drawn adjoining run can remember the shared corner through the
+    // *other* segment incident to that corner (for example, corner 3 points
+    // at the room's top edge rather than the side being dragged).  In that
+    // case its endpoint attachment does not name the selected segment, even
+    // though the endpoint is the same physical junction.  Treat coincident
+    // endpoints as connected as well; otherwise this repair pass restores the
+    // endpoint from the drag-start snapshot and leaves the adjoining wall
+    // truncated when the selected side translates.
+    if (!closed) {
+      baselineWall.points.forEach((point, pointIndex) => {
+        const endpoint = pointIndex === 0 || pointIndex === baselineWall.points.length - 1;
+        if (endpoint && (samePoint(point, selectedStart, .001) || samePoint(point, selectedEnd, .001))) allowedPointIndexes.add(pointIndex);
+      });
+    }
     // A shared endpoint between two closed room runs is a real junction, not
     // an unrelated corner. The synchronization pass moves that point on every
     // incident room; restoring it here would reopen the neighbouring room at
@@ -1207,6 +1221,18 @@ export function materializeWallIntersections(walls: WallDragWall[]): WallDragWal
     if (!inserted) break;
   }
   return nextWalls;
+}
+
+/**
+ * Add a newly drawn wall run without losing the span of any existing run.
+ *
+ * Connected drafts are allowed to terminate on the middle of another wall.
+ * Normalising the complete set after the append records that junction on the
+ * host wall while cloning every original endpoint, so an adjoining room can
+ * never make a previously continuous wall appear truncated.
+ */
+export function appendWallRunPreservingExistingWalls(walls: WallDragWall[], wall: WallDragWall): WallDragWall[] {
+  return materializeWallIntersections([...walls, wall]);
 }
 
 /**

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type WallDragWall } from "../lib/wallDragGeometry.ts";
+import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type WallDragWall } from "../lib/wallDragGeometry.ts";
 
 const roomWall: WallDragWall = {
   id: "room-1",
@@ -299,6 +299,28 @@ test("keeps a closed host wall closed when an interior junction is materialized"
   assert.deepEqual(repaired[0].points, [{ x: 0, y: 0 }, { x: 900, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 1800 }, { x: 0, y: 1800 }, { x: 0, y: 0 }]);
 });
 
+test("keeps a continuous shared wall when an adjoining room run is added", () => {
+  const sharedWall: WallDragWall = {
+    id: "room-2-bottom",
+    points: [{ x: 2400, y: 1800 }, { x: 3900, y: 1800 }],
+    cornerNumbers: { 0: 3, 1: 7 },
+  };
+  const adjoiningRoom: WallDragWall = {
+    id: "room-3",
+    points: [{ x: 3000, y: 1800 }, { x: 3000, y: 0 }, { x: 3900, y: 0 }, { x: 3900, y: 1800 }],
+    attachments: {
+      0: { wallId: "room-2-bottom", segmentIndex: 0, along: .4 },
+      3: { wallId: "room-2-bottom", segmentIndex: 0, along: 1 },
+    },
+  };
+
+  const committed = appendWallRunPreservingExistingWalls([sharedWall], adjoiningRoom);
+  const preserved = committed.find((wall) => wall.id === sharedWall.id)!;
+  assert.deepEqual(preserved.points[0], { x: 2400, y: 1800 });
+  assert.deepEqual(preserved.points.at(-1), { x: 3900, y: 1800 });
+  assert.deepEqual(preserved.points, [{ x: 2400, y: 1800 }, { x: 3000, y: 1800 }, { x: 3900, y: 1800 }]);
+});
+
 test("repairs the mirrored start endpoint", () => {
   const baseline: WallDragWall[] = [
     roomWall,
@@ -593,6 +615,23 @@ test("preserves an explicitly attached endpoint while restoring unrelated points
   const isolated = preserveUnrelatedWallGeometry(baseline, candidate, "room", 0);
 
   assert.deepEqual(isolated.find((wall) => wall.id === "attached")?.points, [{ x: 1200, y: 150 }, { x: 1200, y: 900 }, { x: 1800, y: 900 }]);
+});
+
+test("keeps an adjoining run endpoint at a moved room-side junction", () => {
+  const baseline: WallDragWall[] = [
+    { id: "room-1", points: [{ x: 0, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 1800 }, { x: 0, y: 1800 }, { x: 0, y: 0 }] },
+    // The endpoint is attached to the room's top segment at corner 3.  The
+    // room's right side (segment 1) is the segment being translated, so the
+    // attachment metadata names a different incident segment.
+    { id: "room-2", points: [{ x: 0, y: 1800 }, { x: 0, y: 2400 }, { x: 2900, y: 2400 }, { x: 2900, y: 1800 }, { x: 2400, y: 1800 }], attachments: { 4: { wallId: "room-1", segmentIndex: 2, along: 0, hideCorner: true } } },
+  ];
+  const candidate: WallDragWall[] = [
+    { ...baseline[0], points: [{ x: 0, y: 0 }, { x: 2100, y: 0 }, { x: 2100, y: 1800 }, { x: 0, y: 1800 }, { x: 0, y: 0 }] },
+    { ...baseline[1], points: [{ x: 0, y: 1800 }, { x: 0, y: 2400 }, { x: 2900, y: 2400 }, { x: 2900, y: 1800 }, { x: 2100, y: 1800 }] },
+  ];
+
+  const isolated = preserveUnrelatedWallGeometry(baseline, candidate, "room-1", 1);
+  assert.deepEqual(isolated.find((wall) => wall.id === "room-2")?.points.at(-1), { x: 2100, y: 1800 });
 });
 
 test("keeps closed rooms joined when a shared wall is translated", () => {
