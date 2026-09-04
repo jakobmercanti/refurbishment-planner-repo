@@ -343,7 +343,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
                 const key = `category-${category.id}`;
                 return <div key={category.id} className="catalogue-tree-item">
                   <button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setCategoryId(category.id); setActiveSubcategory(""); setActiveMaterialId(null); }} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>
-                  {(expanded[key] ?? false) && <div id={`${key}-children`} className="catalogue-branch nested"><button onClick={(event) => openCategorySettings(category, event.currentTarget)}>⚙ Category settings</button>{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => { setCategoryId(category.id); setActiveSubcategory(subcategory); setActiveMaterialId(null); }}><span>{subcategory}</span></button>)}</div>}
+                  {(expanded[key] ?? false) && <div id={`${key}-children`} className="catalogue-branch nested">{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => { setCategoryId(category.id); setActiveSubcategory(subcategory); setActiveMaterialId(null); }}><span>{subcategory}</span></button>)}</div>}
                 </div>;
               })}
             </div>}
