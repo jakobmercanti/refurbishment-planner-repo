@@ -71,6 +71,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   const [categoryId, setCategoryIdState] = useState<string>("");
   const [activeSubcategory, setActiveSubcategory] = useState("");
   const [activeMaterialId, setActiveMaterialId] = useState<string | null>(null);
+  const [activeMaterialFamilyId, setActiveMaterialFamilyId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<CatalogueItemInput>(blankEntry);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -176,6 +177,12 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   if (!open) return null;
 
   const activeMaterial = materialCollections.find((collection) => collection.id === activeMaterialId);
+  const activeMaterialFamily = activeMaterial?.families.find((family) => family.id === activeMaterialFamilyId);
+  const visibleMaterialFamilies = activeMaterial
+    ? activeMaterialFamilyId
+      ? activeMaterial.families.filter((family) => family.id === activeMaterialFamilyId)
+      : activeMaterial.families
+    : [];
   const activeCategory = categories.find((category) => category.id === form.category_id);
   const useCategoryClearances = form.side_clearance_mm === null && form.front_clearance_mm === null;
   const nestedDialogOpen = showForm || settingsCategory !== null;
@@ -340,12 +347,12 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
                 </div>;
               })}
             </div>}
-            {(["PAINT", "TILE"] as const).map((kind) => <div key={kind}><button className="catalogue-disclosure" aria-expanded={expanded[kind]} aria-controls={`catalogue-${kind}`} onClick={() => setExpanded((current) => ({ ...current, [kind]: !current[kind] }))}><strong>{kind === "PAINT" ? "Paints" : "Tiles"}</strong><span aria-hidden>{expanded[kind] ? "−" : "+"}</span></button>{expanded[kind] && <div id={`catalogue-${kind}`} className="catalogue-branch">{materialCollections.filter((collection) => collection.kind === kind).map((collection) => { const key = `material-${collection.id}`; return <div key={collection.id} className="catalogue-tree-item"><button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-families`} className={activeMaterialId === collection.id ? "active" : ""} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setActiveMaterialId(collection.id); setCategoryId(""); }}><span>{collection.name}</span><small>{collection.families.reduce((total, family) => total + family.items.length, 0)}</small></button>{(expanded[key] ?? false) && <div id={`${key}-families`} className="catalogue-branch nested">{collection.families.map((family) => <button key={family.id} onClick={() => { setActiveMaterialId(collection.id); setCategoryId(""); document.getElementById(`family-${family.id}`)?.scrollIntoView({ block: "start" }); }}><span>{family.name}</span><small>{family.items.length}</small></button>)}</div>}</div>; })}</div>}</div>)}
+            {(["PAINT", "TILE"] as const).map((kind) => <div key={kind}><button className="catalogue-disclosure" aria-expanded={expanded[kind]} aria-controls={`catalogue-${kind}`} onClick={() => setExpanded((current) => ({ ...current, [kind]: !current[kind] }))}><strong>{kind === "PAINT" ? "Paints" : "Tiles"}</strong><span aria-hidden>{expanded[kind] ? "−" : "+"}</span></button>{expanded[kind] && <div id={`catalogue-${kind}`} className="catalogue-branch">{materialCollections.filter((collection) => collection.kind === kind).map((collection) => { const key = `material-${collection.id}`; return <div key={collection.id} className="catalogue-tree-item"><button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-families`} className={activeMaterialId === collection.id ? "active" : ""} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setActiveMaterialId(collection.id); setActiveMaterialFamilyId(null); setCategoryId(""); }}><span>{collection.name}</span><small>{collection.families.reduce((total, family) => total + family.items.length, 0)}</small></button>{(expanded[key] ?? false) && <div id={`${key}-families`} className="catalogue-branch nested">{collection.families.map((family) => <button key={family.id} className={activeMaterialFamilyId === family.id ? "active" : ""} aria-pressed={activeMaterialFamilyId === family.id} onClick={() => { setActiveMaterialId(collection.id); setActiveMaterialFamilyId(family.id); setCategoryId(""); document.getElementById(`family-${family.id}`)?.scrollIntoView({ block: "start" }); }}><span>{family.name}</span><small>{family.items.length}</small></button>)}</div>}</div>; })}</div>}</div>)}
           </nav>
           <div className="catalogue-results">
             {activeMaterial ? <>
-              <div className="catalogue-result-heading"><strong>{activeMaterial.name}</strong><span>{activeMaterial.families.reduce((total, family) => total + family.items.length, 0)} colours</span></div>
-              <div className="catalogue-grid">{activeMaterial.families.map((family) => <section id={`family-${family.id}`} key={family.id} className="catalogue-material-family"><h3>{family.name}</h3><div className="catalogue-material-swatches">{family.items.map((item) => <div key={item.id} title={item.code ?? item.name}><span style={{ background: item.color_hex }} /><small>{item.name}</small><code>{item.color_hex.toUpperCase()}</code></div>)}</div></section>)}</div>
+              <div className="catalogue-result-heading"><strong>{activeMaterialFamily?.name ?? activeMaterial.name}</strong><span>{visibleMaterialFamilies.reduce((total, family) => total + family.items.length, 0)} colours</span></div>
+              <div className="catalogue-grid">{visibleMaterialFamilies.map((family) => <section id={`family-${family.id}`} key={family.id} className="catalogue-material-family"><h3>{family.name}</h3><div className="catalogue-material-swatches">{family.items.map((item) => <div key={item.id} title={item.code ?? item.name}><span style={{ background: item.color_hex }} /><small>{item.name}</small><code>{item.color_hex.toUpperCase()}</code></div>)}</div></section>)}</div>
             </> : <>
               <div className="catalogue-result-heading"><strong>{activeSubcategory || (categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects")}</strong><span>{items.length} result{items.length === 1 ? "" : "s"}</span></div>
               {categoryId && <button className="category-settings-button" onClick={(event) => openCategorySettings(categories.find((item) => item.id === categoryId) ?? null, event.currentTarget)}>Category settings…</button>}
