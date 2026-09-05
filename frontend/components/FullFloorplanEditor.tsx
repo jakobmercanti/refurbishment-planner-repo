@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
 import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
@@ -13,9 +13,9 @@ import { closestValidOpeningOffset, cornerOffsetsOnWallSegment, isOpeningPlaceme
 import { closedRooms as detectClosedRooms } from "@/lib/roomDetection";
 import { addRoomOutsideWall, removeRoomBoundary } from "@/lib/roomOperations";
 import { needsWallThicknessOverride } from "@/lib/wallThickness";
-import { formatArea, formatLength, formatMeasurementText, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
-import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room, RoomValidationResponse } from "@/lib/types";
+import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room } from "@/lib/types";
 import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
 type WallAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean };
@@ -43,7 +43,7 @@ type FullOpening = {
 type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[]; wallThickness?: number; rooms?: NamedOutline[]; selectedRoomId?: string | null };
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
 type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number };
-interface Props { projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: "DEFAULT" | "TRADITIONAL"; exportRequest: number; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; onOpenRoom: (sourceRoomId: string, name: string, vertices: Point2D[], openings: Opening[], wallHeight: number, wallThickness: number, wallThicknessOverridesMm: Record<string, number>) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; }
+interface Props { projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: "DEFAULT" | "TRADITIONAL"; exportRequest: number; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; }
 
 const DEFAULT_SIZE = { width: 1100, height: 700 };
 const DEFAULT_SNAP_MM = 50;
@@ -478,7 +478,7 @@ function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultTh
   return overrides;
 }
 
-export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUrl, displayUnits, floorplanStyle, exportRequest, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, onOpenRoom, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey }: Props) {
+export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey }: Props) {
   const [walls, setWalls] = useState<Wall[]>([]);
   const [openings, setOpenings] = useState<FullOpening[]>([]);
   const [history, setHistory] = useState<Snapshot[]>([]);
@@ -513,9 +513,6 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUr
   const [importError, setImportError] = useState<string | null>(null);
   const [rooms, setRooms] = useState<NamedOutline[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
-  const [roomValidation, setRoomValidation] = useState<RoomValidationResponse | null>(null);
-  const [roomValidationError, setRoomValidationError] = useState<string | null>(null);
-  const [roomSaving, setRoomSaving] = useState(false);
   const [elementTab, setElementTab] = useState<"DOOR" | "WINDOW" | "FURNITURE">("DOOR");
   const [openingKind, setOpeningKind] = useState<"DOOR" | "WINDOW">("DOOR");
   const [openingParent, setOpeningParent] = useState("");
@@ -574,6 +571,32 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUr
   const storedRoom = projectRooms.find(room => room.source_floorplan_room_id === selectedRoom?.id);
   const fixtures = storedRoom?.obstacles ?? (selectedRoom?.id === activeSourceRoomId ? currentFixtures : []);
   const visibleFixtures = [...projectRooms.filter(room => rooms.some(outline => outline.id === room.source_floorplan_room_id) && room.source_floorplan_room_id !== selectedRoom?.id).flatMap(room => room.obstacles), ...fixtures];
+  const roomDraftForOutline = useCallback((outline: NamedOutline): Room => {
+    const stored = projectRooms.find(room => room.source_floorplan_room_id === outline.id);
+    const normalized = { ...outline, vertices: counterClockwiseVertices(outline.vertices) };
+    return {
+      id: stored?.id ?? outline.id,
+      source_floorplan_room_id: outline.id,
+      name: normalized.name,
+      version: stored?.version ?? 1,
+      vertices: normalized.vertices,
+      wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" },
+      wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" },
+      wall_thickness_overrides_mm: roomWallThicknessOverrides(normalized, walls, wallThickness),
+      openings: roomOpenings(normalized, openings, walls),
+      obstacles: stored?.obstacles ?? (outline.id === activeSourceRoomId ? currentFixtures : []),
+      person_mockup: stored?.person_mockup ?? null,
+      finishes: stored?.finishes,
+    };
+  }, [activeSourceRoomId, currentFixtures, openings, projectRooms, wallHeight, wallThickness, walls]);
+  const planRooms = useMemo(() => rooms.map(roomDraftForOutline), [roomDraftForOutline, rooms]);
+  const planRoomsSignature = useMemo(() => JSON.stringify(planRooms), [planRooms]);
+  const publishedPlanRooms = useRef("");
+  useEffect(() => {
+    if (!restored || !onPlanRoomsChange || publishedPlanRooms.current === planRoomsSignature) return;
+    publishedPlanRooms.current = planRoomsSignature;
+    onPlanRoomsChange(planRooms);
+  }, [onPlanRoomsChange, planRooms, planRoomsSignature, restored]);
   function onFixturesChange(next: Obstacle[]) {
     const draft = selectedRoomDraft();
     if (draft && onPlanRoomChange) onPlanRoomChange({ ...draft, ...storedRoom, id: storedRoom?.id ?? draft.id, source_floorplan_room_id: selectedRoom!.id, vertices: draft.vertices, openings: draft.openings, obstacles: next, version: (storedRoom?.version ?? 0) + 1 });
@@ -632,6 +655,8 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUr
       }
     } catch { /* Ignore a damaged browser draft and start clean. */ }
     setRestored(true);
+  // This is a mount-only restore; re-running it when the setter closure changes would overwrite edits.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (!restored) return;
@@ -642,7 +667,6 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUr
   useEffect(() => {
     if (!restored) return;
     setRooms((current) => reconcileRooms(current, detectedRooms));
-    setRoomValidation(null); setRoomValidationError(null);
   }, [detectedRooms, restored]);
 
   useEffect(() => {
@@ -717,9 +741,8 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUr
   }, [contextMenu, fixtureContextMenu, measurementContextMenu, openingContextMenu, openingMeasurementContextMenu, toolbarContextMenu]);
 
   function snapshot(): Snapshot { return { wallThickness, rooms: rooms.map((room) => ({ ...room, vertices: room.vertices.map((point) => ({ ...point })) })), selectedRoomId, walls: cloneWalls(walls), openings: cloneOpenings(openings), measurements: cloneMeasurements(measurements), dimensionOffsets: { ...dimensionOffsets }, hiddenDimensions: [...hiddenDimensions] }; }
-  function invalidateRoomValidation() { setRoomValidation(null); setRoomValidationError(null); }
-  function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); invalidateRoomValidation(); }
-  function restore(value: Snapshot) { setDefaultWallThicknessInput(null); setWallThicknessInput(null); setWalls(cloneWalls(value.walls)); if (value.wallThickness !== undefined) setWallThickness(value.wallThickness); if (value.rooms) setRooms(value.rooms); setSelectedRoomId(value.selectedRoomId ?? null); setOpenings(cloneOpenings(value.openings)); setMeasurements(cloneMeasurements(value.measurements ?? [])); setDimensionOffsets({ ...(value.dimensionOffsets ?? {}) }); setHiddenDimensions([...(value.hiddenDimensions ?? [])]); setDraft([]); setMeasurementDraft([]); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); invalidateRoomValidation(); }
+  function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); }
+  function restore(value: Snapshot) { setDefaultWallThicknessInput(null); setWallThicknessInput(null); setWalls(cloneWalls(value.walls)); if (value.wallThickness !== undefined) setWallThickness(value.wallThickness); if (value.rooms) setRooms(value.rooms); setSelectedRoomId(value.selectedRoomId ?? null); setOpenings(cloneOpenings(value.openings)); setMeasurements(cloneMeasurements(value.measurements ?? [])); setDimensionOffsets({ ...(value.dimensionOffsets ?? {}) }); setHiddenDimensions([...(value.hiddenDimensions ?? [])]); setDraft([]); setMeasurementDraft([]); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); }
   function undo() { const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous); }
   function redo() { const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next); }
 
@@ -1527,37 +1550,8 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUr
   }
 
   function selectedRoomDraft(): Room | null {
-    if (!selectedRoom) return null;
-    const roomId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(selectedRoom.id) ? selectedRoom.id : crypto.randomUUID();
-    const normalizedRoom = { ...selectedRoom, vertices: counterClockwiseVertices(selectedRoom.vertices) };
-    return { id: roomId, name: normalizedRoom.name, version: 1, vertices: normalizedRoom.vertices, wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness_overrides_mm: roomWallThicknessOverrides(normalizedRoom, walls, wallThickness), openings: roomOpenings(normalizedRoom, openings, walls), obstacles: fixtures, person_mockup: storedRoom?.person_mockup ?? null };
+    return selectedRoom ? roomDraftForOutline(selectedRoom) : null;
   }
-
-  async function validateSelectedRoom() {
-    const draftRoom = selectedRoomDraft(); setRoomValidation(null); setRoomValidationError(null);
-    if (!draftRoom) { setRoomValidationError("Select a recognised room first."); return; }
-    try {
-      const response = await fetch(`${apiUrl}/rooms/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draftRoom) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail ?? `Validation returned ${response.status}`);
-      setRoomValidation(payload as RoomValidationResponse);
-    } catch (error) { setRoomValidationError(formatMeasurementText(error instanceof Error ? error.message : "Room validation failed.", displayUnits)); }
-  }
-
-  async function saveSelectedRoom() {
-    const draftRoom = selectedRoomDraft(); if (!draftRoom || !roomValidation) return;
-    setRoomSaving(true); setRoomValidationError(null);
-    try {
-      const response = await fetch(`${apiUrl}/rooms/${draftRoom.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draftRoom) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail ?? `Save returned ${response.status}`);
-      setRooms((current) => current.map((room) => room.id === selectedRoom?.id ? { ...room, id: (payload as Room).id, name: (payload as Room).name } : room));
-      setSelectedRoomId((payload as Room).id);
-    } catch (error) { setRoomValidationError(formatMeasurementText(error instanceof Error ? error.message : "Room could not be saved.", displayUnits)); }
-    finally { setRoomSaving(false); }
-  }
-
-  function clearRoomValidation() { setRoomValidation(null); setRoomValidationError(null); }
 
   const help = tool === "DRAW" ? "Click an existing wall or highlighted corner to start or finish a connected wall run. Existing corners are reused. Double-click, right-click, Enter, or Esc also confirms the run and exits Add wall." : tool === "ADD_CORNERS" ? "Click a wall to insert a corner exactly at that position. The selected wall stays active for further corners." : tool === "REMOVE" ? "Click one wall segment to remove only the portion between its two corners. Use Undo if needed." : tool === "ADD_MEASURE" ? `${measurementDraft.length ? "Now select a second matching" : "Select the first"} wall or corner to add a measurement.` : measurementEditEnabled ? "Drag any measurement to reposition it, or right-click it to edit or delete it." : "Click a wall to select it, or drag any numbered corner to reshape the floorplan.";
   const vertexCount = walls.reduce((total, wall) => total + wall.points.slice(0, samePoint(wall.points[0], wall.points.at(-1)!) ? -1 : undefined).filter((_, index) => !wall.attachments?.[index]?.hideCorner).length, 0);
@@ -1735,7 +1729,7 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUr
             {detectedRooms.map((room) => { const outline = room.vertices.map(toScreen); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />; })}
             {rooms.map((room, index) => {
               const outline = room.vertices.map(toScreen); const visualCentre = roomVisualCentre(room.vertices); const centre = toScreen(visualCentre);
-              return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { if (tool !== "DRAW") { event.stopPropagation(); setSelectedRoomId(room.id); } }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className="room-name-editor" x={centre.x - 82} y={centre.y - 17} width="164" height="34"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { if (tool !== "DRAW") { event.stopPropagation(); setSelectedRoomId(room.id); } }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); setRoomValidation(null); }} /></foreignObject>}</g>;
+              return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { if (tool !== "DRAW") { event.stopPropagation(); setSelectedRoomId(room.id); } }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className="room-name-editor" x={centre.x - 82} y={centre.y - 17} width="164" height="34"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { if (tool !== "DRAW") { event.stopPropagation(); setSelectedRoomId(room.id); } }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); }} /></foreignObject>}</g>;
             })}
             {visibleFixtures.map((fixture) => {
               const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
@@ -1793,9 +1787,6 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUr
       <aside className="coordinate-panel full-plan-side-column">
         {toolbarVisibility["floorplan-coordinates"] && <FloatingToolbar title="Coordinates" defaultPosition={{ x: 662, y: 58 }} dock={{ side: "LEFT", slot: 3, slots: 4 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={450} onClose={() => onToggleToolbar("floorplan-coordinates")}>
         <section className="tool-section"><p className="tool-note">Modify any X, Y corner coordinates here to update the drawing</p><div className="coordinate-input-list" aria-label={`Floorplan coordinates in ${UNIT_LABEL[displayUnits]}`}><div className="coordinate-table-heading"><span>Corner ID</span><span>X</span><span>Y</span></div>{coordinateEntries.map(({ wall, point, pointIndex, cornerNumber }) => <div key={`${wall.id}-coordinate-${pointIndex}`}><span className="coordinate-prefix">{cornerNumber}</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, x: value })} /><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, y: value })} /></div>)}</div></section>
-        </FloatingToolbar>}
-        {toolbarVisibility["floorplan-rooms"] && <FloatingToolbar title="Rooms & 3D viewer" defaultPosition={{ x: 1005, y: 58 }} dock={{ side: "RIGHT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={510} onClose={() => onToggleToolbar("floorplan-rooms")}>
-        <section className="tool-section full-plan-rooms room-action-panel"><p className="tool-note">Closed rooms appear here automatically. Rename them on the plan or below, then choose which room to view in 3D.</p>{rooms.length === 0 ? <p className="inline-status">No closed rooms yet.</p> : <><label className="field"><span>Room to edit and view</span><select value={selectedRoom?.id ?? ""} onChange={(event) => { setSelectedRoomId(event.target.value); clearRoomValidation(); }}>{rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>{selectedRoom && <label className="field"><span>Room name</span><input value={selectedRoom.name} onChange={(event) => { setRooms((current) => current.map((room) => room.id === selectedRoom.id ? { ...room, name: event.target.value } : room)); setRoomValidation(null); }} /></label>}<div className="room-action-buttons" role="group" aria-label="Room actions"><button className="review-style-button" onClick={validateSelectedRoom}>Validate geometry</button><button className="review-style-button" disabled={!selectedRoom} onClick={() => selectedRoom && onOpenRoom(selectedRoom.id, selectedRoom.name, selectedRoom.vertices, roomOpenings(selectedRoom, openings, walls), wallHeight, wallThickness, roomWallThicknessOverrides({ ...selectedRoom, vertices: counterClockwiseVertices(selectedRoom.vertices) }, walls, wallThickness))}>Open selection in 3D</button><button className="review-style-button" onClick={clearRoomValidation}>Clear validation</button><button className="review-style-button" disabled={!roomValidation || roomSaving} onClick={saveSelectedRoom}>{roomSaving ? "Saving…" : "Save room revision"}</button></div>{roomValidationError && <div className="validation-fail"><strong>INVALID</strong><p>{roomValidationError}</p></div>}{roomValidation && <div className="validation-pass"><div><strong>VALID · CCW</strong><span>{formatArea(roomValidation.area_mm2, displayUnits)} · {formatLength(roomValidation.perimeter_mm, displayUnits)} perimeter</span></div><ul>{roomValidation.warnings.map((warning) => <li key={warning}>{formatMeasurementText(warning, displayUnits)}</li>)}</ul></div>}</>}</section>
         </FloatingToolbar>}
         {toolbarVisibility["floorplan-openings"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={520} onClose={() => onToggleToolbar("floorplan-openings")}>{openingPanel}</FloatingToolbar>}
       </aside>

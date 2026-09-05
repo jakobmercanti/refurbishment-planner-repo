@@ -32,6 +32,7 @@ type CaptureFormat = "png" | "jpg" | "pdf";
 interface ViewerProps {
   apiUrl: string;
   room: Room;
+  sceneRooms?: Room[];
   collisionIds: string[];
   onObstaclesChange: (obstacles: Obstacle[]) => void;
   onFinishesChange: (finishes: RoomFinishes) => void;
@@ -564,9 +565,9 @@ function StlFixture({ obstacle, width, depth, height, colour }: { obstacle: Obst
 function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPointerUp }: {
   obstacle: Obstacle;
   selected: boolean;
-  onPointerDown: (event: ThreeEvent<PointerEvent>) => void;
-  onPointerMove: (event: ThreeEvent<PointerEvent>) => void;
-  onPointerUp: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerDown?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerUp?: (event: ThreeEvent<PointerEvent>) => void;
 }) {
   const fixtureKind = fixtureKindForObstacle(obstacle);
   const width = obstacle.dimensions.width.value * SCALE;
@@ -778,9 +779,9 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   showClearance: boolean;
   collision: boolean;
   selected: boolean;
-  onPointerDown: (event: ThreeEvent<PointerEvent>) => void;
-  onPointerMove: (event: ThreeEvent<PointerEvent>) => void;
-  onPointerUp: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerDown?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerUp?: (event: ThreeEvent<PointerEvent>) => void;
 }) {
   const height = person.height_mm * SCALE;
   const width = person.shoulder_width_mm * SCALE;
@@ -827,9 +828,10 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
   const neckBottom = shoulderY - headRadius * 0.04;
   const neckTop = headY - headRadius * 0.92;
   const neckHeight = Math.max(neckTop - neckBottom, headRadius * 0.34);
+  const interactionProps = { onPointerDown, onPointerMove, onPointerUp };
 
   return (
-    <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+    <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]} {...interactionProps}>
       {showClearance && <>
         <RoundedBox args={[clearanceWidth, height, clearanceDepth]} radius={Math.min(clearance, 0.18)} smoothness={4} position={[0, height / 2, 0]}>
           <meshBasicMaterial color={collision ? "#e04545" : "#e2a73a"} transparent opacity={0.055} depthWrite={false} />
@@ -990,7 +992,7 @@ function CaptureController({ request, format }: { request: number; format: Captu
   return null;
 }
 
-function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, zoomPercent }: ViewerProps & {
+function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, zoomPercent }: ViewerProps & {
   toggles: Toggles;
   preset: CameraView;
   projection: ProjectionMode;
@@ -1007,19 +1009,26 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
+  const renderedRooms = useMemo(() => sceneRooms?.length ? sceneRooms : [room], [room, sceneRooms]);
+  const multiRoom = renderedRooms.length > 1;
+  const sceneBounds = useMemo(() => {
+    const points = renderedRooms.flatMap((sceneRoom) => sceneRoom.vertices);
+    const minX = Math.min(...points.map((point) => point.x));
+    const maxX = Math.max(...points.map((point) => point.x));
+    const minY = Math.min(...points.map((point) => point.y));
+    const maxY = Math.max(...points.map((point) => point.y));
+    const wallHeight = Math.max(...renderedRooms.map((sceneRoom) => sceneRoom.wall_height.value));
+    return { minX, maxX, minY, maxY, wallHeight };
+  }, [renderedRooms]);
   const roomTarget = useMemo<VectorTuple>(() => {
-    const minX = Math.min(...room.vertices.map((point) => point.x));
-    const maxX = Math.max(...room.vertices.map((point) => point.x));
-    const minY = Math.min(...room.vertices.map((point) => point.y));
-    const maxY = Math.max(...room.vertices.map((point) => point.y));
-    return [(minX + maxX) * SCALE / 2, room.wall_height.value * SCALE / 2, -(minY + maxY) * SCALE / 2];
-  }, [room.vertices, room.wall_height.value]);
+    return [(sceneBounds.minX + sceneBounds.maxX) * SCALE / 2, sceneBounds.wallHeight * SCALE / 2, -(sceneBounds.minY + sceneBounds.maxY) * SCALE / 2];
+  }, [sceneBounds]);
   const roomSpan = useMemo<[number, number, number]>(() => [
-    (Math.max(...room.vertices.map((point) => point.x)) - Math.min(...room.vertices.map((point) => point.x))) * SCALE,
-    room.wall_height.value * SCALE,
-    (Math.max(...room.vertices.map((point) => point.y)) - Math.min(...room.vertices.map((point) => point.y))) * SCALE,
-  ], [room.vertices, room.wall_height.value]);
-  const orbitTarget: [number, number, number] = preset === "eye" && room.person_mockup?.enabled
+    (sceneBounds.maxX - sceneBounds.minX) * SCALE,
+    sceneBounds.wallHeight * SCALE,
+    (sceneBounds.maxY - sceneBounds.minY) * SCALE,
+  ], [sceneBounds]);
+  const orbitTarget: [number, number, number] = preset === "eye" && !multiRoom && room.person_mockup?.enabled
     ? eyeTarget(room.person_mockup).toArray()
     : roomTarget;
 
@@ -1098,45 +1107,54 @@ function Scene({ room, collisionIds, onObstaclesChange, onPersonChange, wallMode
 
   return (
     <>
-      <CameraPreset preset={preset} projection={projection} person={room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey} zoomPercent={zoomPercent} />
+      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey} zoomPercent={zoomPercent} />
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
-      <Floor room={room} selected={selection?.type === "FLOOR"} onSelect={() => onSelectionChange({ type: "FLOOR" })} />
-      {room.vertices.map((start, index) => wallMode !== "INVISIBLE" && (
-        <WallWithOpenings
-          key={`wall-${index}`}
-          index={index}
-          room={room}
-          start={start}
-          end={room.vertices[(index + 1) % room.vertices.length]}
-          wallMode={wallMode}
-          selected={selection?.type === "WALL" && selection.ids.includes(`wall-${String(index + 1).padStart(3, "0")}`)}
-          onSelect={(additive) => selectWall(`wall-${String(index + 1).padStart(3, "0")}`, additive)}
-        />
-      ))}
-      {room.openings.map((opening) => <OpeningFixture key={`fixture-${opening.id}`} room={room} opening={opening} />)}
-      {toggles.elements && displayedObstacles.map((obstacle) => (
-        <FixtureMesh
-          key={obstacle.id}
-          obstacle={obstacle}
-          selected={selection?.type === "ELEMENT" && selection.id === obstacle.id}
-          onPointerDown={(event) => startDrag(event, obstacle)}
-          onPointerMove={(event) => moveDrag(event, obstacle)}
-          onPointerUp={(event) => endDrag(event, obstacle)}
-        />
-      ))}
-      {toggles.openingImprints && <>
-        {room.openings.map((opening) => <OpeningImprint key={`imprint-${opening.id}`} room={room} opening={opening} />)}
-        {room.openings.filter((item) => item.kind === "DOOR").map((door) => <DoorSwing key={`swing-${door.id}`} room={room} door={door} />)}
-      </>}
-      {toggles.person && displayedPerson?.enabled && <PersonMesh person={displayedPerson} showClearance={toggles.clearance && displayedPerson.show_clearance !== false} collision={collisionIds.includes(displayedPerson.id)} selected={selection?.type === "PERSON"} onPointerDown={(event) => startPersonDrag(event, displayedPerson)} onPointerMove={(event) => movePersonDrag(event, displayedPerson)} onPointerUp={(event) => endPersonDrag(event, displayedPerson)} />}
-      {toggles.collisions && room.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
-        <mesh key={`collision-${obstacle.id}`} position={[obstacle.center.x * SCALE, 0.9, -obstacle.center.y * SCALE]}>
-          <sphereGeometry args={[0.11, 24, 24]} />
-          <meshStandardMaterial color="#ff2d2d" emissive="#ff2d2d" emissiveIntensity={1.2} />
-        </mesh>
-      ))}
-      {showGrid && <Grid position={[1.6, -0.002, -1.4]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />}
+      {renderedRooms.map((sceneRoom) => {
+        const sceneInteractive = !multiRoom && sceneRoom.id === room.id;
+        const sceneObstacles = sceneRoom.id === room.id ? displayedObstacles : sceneRoom.obstacles;
+        const scenePerson = sceneRoom.id === room.id ? displayedPerson : sceneRoom.person_mockup;
+        return (
+          <group key={`room-${sceneRoom.id}`}>
+            <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR"} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR" }) : () => undefined} />
+            {sceneRoom.vertices.map((start, index) => wallMode !== "INVISIBLE" && (
+              <WallWithOpenings
+                key={`wall-${sceneRoom.id}-${index}`}
+                index={index}
+                room={sceneRoom}
+                start={start}
+                end={sceneRoom.vertices[(index + 1) % sceneRoom.vertices.length]}
+                wallMode={wallMode}
+                selected={sceneInteractive && selection?.type === "WALL" && selection.ids.includes(`wall-${String(index + 1).padStart(3, "0")}`)}
+                onSelect={sceneInteractive ? (additive) => selectWall(`wall-${String(index + 1).padStart(3, "0")}`, additive) : () => undefined}
+              />
+            ))}
+            {sceneRoom.openings.map((opening) => <OpeningFixture key={`fixture-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} />)}
+            {toggles.elements && sceneObstacles.map((obstacle) => (
+              <FixtureMesh
+                key={`${sceneRoom.id}-${obstacle.id}`}
+                obstacle={obstacle}
+                selected={sceneInteractive && selection?.type === "ELEMENT" && selection.id === obstacle.id}
+                onPointerDown={sceneInteractive ? (event) => startDrag(event, obstacle) : undefined}
+                onPointerMove={sceneInteractive ? (event) => moveDrag(event, obstacle) : undefined}
+                onPointerUp={sceneInteractive ? (event) => endDrag(event, obstacle) : undefined}
+              />
+            ))}
+            {toggles.openingImprints && <>
+              {sceneRoom.openings.map((opening) => <OpeningImprint key={`imprint-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} />)}
+              {sceneRoom.openings.filter((item) => item.kind === "DOOR").map((door) => <DoorSwing key={`swing-${sceneRoom.id}-${door.id}`} room={sceneRoom} door={door} />)}
+            </>}
+            {toggles.person && scenePerson?.enabled && <PersonMesh person={scenePerson} showClearance={toggles.clearance && scenePerson.show_clearance !== false} collision={collisionIds.includes(scenePerson.id)} selected={sceneInteractive && selection?.type === "PERSON"} onPointerDown={sceneInteractive ? (event) => startPersonDrag(event, scenePerson) : undefined} onPointerMove={sceneInteractive ? (event) => movePersonDrag(event, scenePerson) : undefined} onPointerUp={sceneInteractive ? (event) => endPersonDrag(event, scenePerson) : undefined} />}
+            {toggles.collisions && sceneRoom.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
+              <mesh key={`collision-${sceneRoom.id}-${obstacle.id}`} position={[obstacle.center.x * SCALE, 0.9, -obstacle.center.y * SCALE]}>
+                <sphereGeometry args={[0.11, 24, 24]} />
+                <meshStandardMaterial color="#ff2d2d" emissive="#ff2d2d" emissiveIntensity={1.2} />
+              </mesh>
+            ))}
+          </group>
+        );
+      })}
+      {showGrid && <Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />}
       <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!dragging && !personDragging} target={orbitTarget} />
     </>
   );

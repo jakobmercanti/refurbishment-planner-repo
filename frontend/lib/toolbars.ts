@@ -3,7 +3,6 @@ export type ToolbarId =
   | "floorplan-properties"
   | "floorplan-import"
   | "floorplan-coordinates"
-  | "floorplan-rooms"
   | "floorplan-openings"
   | "floorplan-view"
   | "viewer-room"
@@ -23,7 +22,6 @@ export const FLOORPLAN_TOOLBARS: ToolbarDefinition[] = [
   { id: "floorplan-properties", name: "Overall properties" },
   { id: "floorplan-import", name: "Import drawing" },
   { id: "floorplan-coordinates", name: "Coordinates" },
-  { id: "floorplan-rooms", name: "Rooms & 3D viewer" },
   { id: "floorplan-openings", name: "Add elements" },
   { id: "floorplan-view", name: "View properties" },
 ];

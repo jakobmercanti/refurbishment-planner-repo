@@ -21,11 +21,14 @@ import { DEFAULT_TOOLBAR_VISIBILITY, FLOORPLAN_TOOLBARS, VIEWER_TOOLBARS, type T
 // the private local engineering backend, so phones on the LAN never try to use
 // their own `localhost:8000`.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/engineering-api";
+const FULL_FLOORPLAN_SELECTION = "__FULL_FLOORPLAN__";
 
 export default function Home() {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
   const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
   const [projectRooms, setProjectRooms] = useState<Room[]>([]);
+  const [viewerRoomSelection, setViewerRoomSelection] = useState(FULL_FLOORPLAN_SELECTION);
+  const [pendingViewerRoomSelection, setPendingViewerRoomSelection] = useState(FULL_FLOORPLAN_SELECTION);
   const [layoutResult, setLayoutResult] = useState<LayoutResult | null>(null);
   const [runningAnalysis, setRunningAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -71,14 +74,25 @@ export default function Home() {
     setAnalysisError(null);
   }
 
-  function openDetectedRoom(sourceRoomId: string, name: string, vertices: import("@/lib/types").Point2D[], openings: import("@/lib/types").Opening[], wallHeight: number, wallThickness: number, wallThicknessOverridesMm: Record<string, number>) {
-    if (!demo) return;
-    const existing = projectRooms.find((room) => room.source_floorplan_room_id === sourceRoomId);
-    const room = normalizeRoomPerson({ ...demo.room, id: existing?.id ?? crypto.randomUUID(), source_floorplan_room_id: sourceRoomId, name, vertices, openings, wall_height: { ...demo.room.wall_height, value: wallHeight }, wall_thickness: { ...demo.room.wall_thickness, value: wallThickness }, wall_thickness_overrides_mm: wallThicknessOverridesMm, obstacles: existing?.obstacles ?? [], person_mockup: existing?.person_mockup ?? null, finishes: existing?.finishes, version: (existing?.version ?? demo.room.version) + 1 });
-    setDemo({ ...demo, room });
-    setProjectRooms((rooms) => [...rooms.filter((candidate) => candidate.source_floorplan_room_id !== sourceRoomId), room]);
+  function roomOptions(current: DemoResponse | null, rooms = projectRooms): Room[] {
+    return current ? (rooms.length ? rooms : [current.room]) : [];
+  }
+
+  function resolveViewerRoom(current: DemoResponse | null, rooms = projectRooms, selection = viewerRoomSelection): Room | null {
+    if (!current) return null;
+    const options = roomOptions(current, rooms);
+    if (selection === FULL_FLOORPLAN_SELECTION) return options.find((room) => room.id === current.room.id) ?? options[0] ?? current.room;
+    return options.find((room) => room.id === selection) ?? current.room;
+  }
+
+  function applyPlanRooms(rooms: Room[]) {
+    setProjectRooms(rooms);
+    setDemo((current) => {
+      if (!current) return current;
+      const room = resolveViewerRoom(current, rooms);
+      return room ? { ...current, room: normalizeRoomPerson(room) } : current;
+    });
     invalidateAnalysis();
-    setMode("ANALYSIS");
   }
 
   function applyPlanRoom(room: Room) {
@@ -88,25 +102,37 @@ export default function Home() {
   }
 
   function applyObstacles(obstacles: Obstacle[]) {
-    setDemo((current) => current ? { ...current, room: { ...current.room, obstacles, version: current.room.version + 1 } } : current);
-    setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id ? { ...room, obstacles, version: room.version + 1 } : room));
+    const target = resolveViewerRoom(demo);
+    if (!target) return;
+    const updated = { ...target, obstacles, version: target.version + 1 };
+    setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);
+    setProjectRooms((rooms) => rooms.map((room) => room.id === target.id ? updated : room));
     invalidateAnalysis();
   }
 
   function applyFinishes(finishes: RoomFinishes) {
-    setDemo((current) => current ? { ...current, room: { ...current.room, finishes } } : current);
-    setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id ? { ...room, finishes } : room));
+    const target = resolveViewerRoom(demo);
+    if (!target) return;
+    const updated = { ...target, finishes };
+    setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);
+    setProjectRooms((rooms) => rooms.map((room) => room.id === target.id ? updated : room));
   }
 
   function applyPerson(person: PersonMockup | null) {
-    setDemo((current) => current ? { ...current, room: { ...current.room, person_mockup: person, version: current.room.version + 1 } } : current);
-    setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id ? { ...room, person_mockup: person, version: room.version + 1 } : room));
+    const target = resolveViewerRoom(demo);
+    if (!target) return;
+    const updated = { ...target, person_mockup: person, version: target.version + 1 };
+    setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);
+    setProjectRooms((rooms) => rooms.map((room) => room.id === target.id ? updated : room));
     invalidateAnalysis();
   }
 
   function applyPersonVisibility(showClearance: boolean) {
-    setDemo((current) => current?.room.person_mockup ? { ...current, room: { ...current.room, person_mockup: { ...current.room.person_mockup, show_clearance: showClearance } } } : current);
-    setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id && room.person_mockup ? { ...room, person_mockup: { ...room.person_mockup, show_clearance: showClearance } } : room));
+    const target = resolveViewerRoom(demo);
+    if (!target?.person_mockup) return;
+    const updated = { ...target, person_mockup: { ...target.person_mockup, show_clearance: showClearance } };
+    setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);
+    setProjectRooms((rooms) => rooms.map((room) => room.id === target.id ? updated : room));
   }
 
   function toggleToolbar(id: ToolbarId) {
@@ -138,10 +164,12 @@ export default function Home() {
   }
 
   function insertCatalogueItem(item: CatalogueItem) {
-    const minX = Math.min(...demo!.room.vertices.map((point) => point.x));
-    const maxX = Math.max(...demo!.room.vertices.map((point) => point.x));
-    const minY = Math.min(...demo!.room.vertices.map((point) => point.y));
-    const maxY = Math.max(...demo!.room.vertices.map((point) => point.y));
+    const target = resolveViewerRoom(demo);
+    if (!target) return;
+    const minX = Math.min(...target.vertices.map((point) => point.x));
+    const maxX = Math.max(...target.vertices.map((point) => point.x));
+    const minY = Math.min(...target.vertices.map((point) => point.y));
+    const maxY = Math.max(...target.vertices.map((point) => point.y));
     const measured = (value: number): Measurement => ({ value, uncertainty_mm: 5, verified: false, source_type: "MANUFACTURER_DATASHEET" });
     const unalignedObstacle: Obstacle = {
       id: `fixture-${crypto.randomUUID().slice(0, 8)}`,
@@ -168,20 +196,21 @@ export default function Home() {
       side_clearance_mm: item.side_clearance_mm ?? undefined,
       front_clearance_mm: item.front_clearance_mm ?? undefined,
     };
-    const obstacle = alignObstacleToNearestWall(unalignedObstacle, demo!.room.vertices, unalignedObstacle.center);
-    applyObstacles([...demo!.room.obstacles, obstacle]);
+    const obstacle = alignObstacleToNearestWall(unalignedObstacle, target.vertices, unalignedObstacle.center);
+    applyObstacles([...target.obstacles, obstacle]);
     setMode("ANALYSIS");
   }
 
   async function runAnalysis() {
-    if (!demo) return;
+    const target = resolveViewerRoom(demo);
+    if (!target) return;
     setRunningAnalysis(true);
     setAnalysisError(null);
     try {
       const response = await fetch(`${API_URL}/layout-checks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(demo.room),
+        body: JSON.stringify(target),
       });
       if (!response.ok) throw new Error(await response.text());
       setLayoutResult(await response.json() as LayoutResult);
@@ -196,6 +225,22 @@ export default function Home() {
     return <main className="loading-state"><Image className="brand-mark" src="/planner-build-icon.png" alt="PlannerBuild" width={34} height={34} priority /><h1>Connecting to the engineering kernel</h1><p>{error ? `Backend unavailable: ${error}` : "Loading verified millimetre geometry…"}</p>{error && <button type="button" onClick={() => { setDemo(null); setError(null); setDemoLoadRequest((request) => request + 1); }}>Retry connection</button>}</main>;
   }
 
+  const viewerRoomOptions = roomOptions(demo);
+  const appliedViewerSelection = viewerRoomSelection === FULL_FLOORPLAN_SELECTION || viewerRoomOptions.some((room) => room.id === viewerRoomSelection) ? viewerRoomSelection : FULL_FLOORPLAN_SELECTION;
+  const pendingSelection = pendingViewerRoomSelection === FULL_FLOORPLAN_SELECTION || viewerRoomOptions.some((room) => room.id === pendingViewerRoomSelection) ? pendingViewerRoomSelection : FULL_FLOORPLAN_SELECTION;
+  const selectedViewerRoom = resolveViewerRoom(demo, projectRooms, appliedViewerSelection) ?? demo.room;
+  const displayedViewerRooms = appliedViewerSelection === FULL_FLOORPLAN_SELECTION ? viewerRoomOptions : [selectedViewerRoom];
+
+  function openViewerSelection() {
+    const selection = pendingSelection;
+    const target = resolveViewerRoom(demo, projectRooms, selection);
+    if (!target) return;
+    setViewerRoomSelection(selection);
+    setPendingViewerRoomSelection(selection);
+    setDemo((current) => current ? { ...current, room: normalizeRoomPerson(target) } : current);
+    invalidateAnalysis();
+  }
+
   return (
     <main className={preferences.density === "COMPACT" ? "density-compact" : ""}>
       <header className="topbar">
@@ -206,11 +251,11 @@ export default function Home() {
         </nav>
       </header>
 
-      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} onOpenRoom={openDetectedRoom} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} /></section>
+      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} /></section>
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
-          <EngineeringViewer key={`engineering-viewer-${demo.room.id}`} apiUrl={API_URL} room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} />
-          {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={{ side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={180} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={demo.room.id} onChange={(event) => { const room = projectRooms.find((item) => item.id === event.target.value); if (room) setDemo((current) => current ? { ...current, room: normalizeRoomPerson(room) } : current); }}>{(projectRooms.some((room) => room.id === demo.room.id) ? projectRooms : [...projectRooms, demo.room]).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div></FloatingToolbar>}
+          <EngineeringViewer key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} />
+          {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={{ side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={240} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={pendingSelection} onChange={(event) => setPendingViewerRoomSelection(event.target.value)}><option value={FULL_FLOORPLAN_SELECTION}>Full floorplan</option>{projectRooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><button className="review-style-button" type="button" onClick={openViewerSelection}>Open selection in 3D</button></div></FloatingToolbar>}
           {toolbarVisibility["viewer-analysis"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 18, y: 112 }} dock={{ side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-analysis")}><aside className="evidence-panel floating-evidence-panel">
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
