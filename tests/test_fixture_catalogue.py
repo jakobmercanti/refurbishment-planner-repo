@@ -7,7 +7,7 @@ from backend.app.schemas import CatalogueItemInput
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from database.fixture_defaults import FIXTURE_DEFAULTS, seed_fixture_defaults
+from database.fixture_defaults import FIXTURE_DEFAULTS, fixture_default_name, seed_fixture_defaults
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.models import RoomDefinition
@@ -22,12 +22,12 @@ def test_generic_catalogue_hierarchy_assets_and_idempotence():
         seed_fixture_defaults(session)
         session.commit()
         items = session.scalars(select(FurnitureItemRecord)).all()
-        assert len(items) == 17
+        assert len(items) == 18
         for category, (_, variants) in FIXTURE_DEFAULTS.items():
-            assert 3 <= len(variants) <= 10
+            assert 1 <= len(variants) <= 10
             assert {item.subcategory for item in items if item.category_id == category} == {v[1] for v in variants}
+            assert {item.name for item in items if item.category_id == category} == {fixture_default_name(category, slug, subcategory) for slug, subcategory, *_ in variants}
         for item in items:
-            assert item.name == "Default"
             assert (Path("frontend/public") / item.plan_symbol_url.lstrip("/")).is_file()
             assert (Path("frontend/public/fixture-previews") / f"{item.representation_key}.svg").is_file()
         items[0].width_mm = 777
@@ -35,7 +35,7 @@ def test_generic_catalogue_hierarchy_assets_and_idempotence():
         session.commit()
         seed_fixture_defaults(session)
         session.commit()
-        assert len(session.scalars(select(FurnitureItemRecord)).all()) == 17
+        assert len(session.scalars(select(FurnitureItemRecord)).all()) == 18
         assert items[0].width_mm == 777
         assert items[0].name == "Edited default"
 

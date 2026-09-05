@@ -31,6 +31,38 @@ FIXTURE_DEFAULTS = {
         ("close-coupled", "Close coupled", 380, 650, 800),
         ("back-to-wall", "Back to wall", 360, 560, 420),
     ]),
+    "storage": ("FURNITURE", [
+        ("storage-unit", "Storage", 600, 450, 850),
+    ]),
+}
+
+DEFAULT_NAMES = {
+    "showers": {
+        "corner": "Default corner enclosure",
+        "quadrant": "Default quadrant enclosure",
+        "walk-in": "Default walk-in enclosure",
+        "alcove": "Default alcove enclosure",
+        "freestanding": "Default freestanding shower",
+        "wet-room": "Default wet room shower",
+    },
+    "basins": {
+        "wall-mounted": "Default wall-mounted basin",
+        "pedestal": "Default pedestal basin",
+        "countertop": "Default countertop basin",
+        "undermount": "Default undermount basin",
+        "vanity": "Default vanity basin",
+        "double-vanity": "Default double vanity basin",
+        "corner": "Default corner basin",
+    },
+    "toilets": {
+        "freestanding": "Default freestanding toilet",
+        "wall-mounted": "Default wall-mounted toilet",
+        "close-coupled": "Default close-coupled toilet",
+        "back-to-wall": "Default back-to-wall toilet",
+    },
+    "storage": {
+        "storage-unit": "Default storage unit",
+    },
 }
 
 # Keep old IDs and customisations; classify legacy products once.
@@ -42,7 +74,15 @@ LEGACY = {
     "RF-WC-360": ("Wall mounted", "toilet-wall-mounted"),
     "RF-WC-365": ("Freestanding", "toilet-freestanding"),
     "RF-WC-380": ("Close coupled", "toilet-close-coupled"),
+    "RF-FU-600": ("Storage", "furniture-storage-unit"),
+    "RF-FU-400": ("Storage", "furniture-storage-unit"),
+    "RF-BE-800": ("Storage", "furniture-storage-unit"),
 }
+LEGACY_DEFAULT_KEYS = frozenset(LEGACY)
+
+
+def fixture_default_name(category: str, slug: str, subcategory: str) -> str:
+    return DEFAULT_NAMES.get(category, {}).get(slug, f"Default {subcategory.lower()}")
 
 
 def seed_fixture_defaults(session):
@@ -59,11 +99,17 @@ def seed_fixture_defaults(session):
     for category, (kind, variants) in FIXTURE_DEFAULTS.items():
         for slug, subcategory, width, depth, height in variants:
             key = f"{kind.lower()}-{slug}"
-            if session.scalar(select(FurnitureItemRecord.id).where(FurnitureItemRecord.default_key == f"generic-{key}")):
+            default_key = f"generic-{key}"
+            existing = session.scalar(select(FurnitureItemRecord).where(FurnitureItemRecord.default_key == default_key))
+            if existing:
+                existing.active = True
+                existing.is_default = True
+                if existing.name == "Default":
+                    existing.name = fixture_default_name(category, slug, subcategory)
                 continue
             session.add(FurnitureItemRecord(
-                id=f"generic-{key}", default_key=f"generic-{key}", is_default=True,
-                category_id=category, fixture_kind=kind, name="Default", supplier="Renovation Fit",
+                id=default_key, default_key=default_key, is_default=True,
+                category_id=category, fixture_kind=kind, name=fixture_default_name(category, slug, subcategory), supplier="Renovation Fit",
                 sku=f"GENERIC-{key.upper()}", subcategory=subcategory, representation_key=key,
                 plan_symbol_url=f"/fixture-symbols/{key}.svg",
                 width_mm=width, depth_mm=depth, height_mm=height, color_hex="#F4F3EE",

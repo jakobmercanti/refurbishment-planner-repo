@@ -31,13 +31,13 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const family = items.filter(item => item.category_id === activeCategory);
   const subcategories = [...new Set(family.map(item => item.subcategory))].sort();
   const activeSubcategory = subcategories.includes(subcategory) ? subcategory : subcategories[0];
-  const objects = family.filter(item => item.subcategory === activeSubcategory).sort((a, b) => Number(b.name === "Default") - Number(a.name === "Default") || a.name.localeCompare(b.name));
+  const objects = family.filter(item => item.subcategory === activeSubcategory).sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
   const selected = objects.find(item => item.id === objectId) ?? objects[0];
   const existing = room.obstacles.find(item => item.id === editingId);
   function fromCatalogue(item: CatalogueItem): Obstacle {
     const measured = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
     return {
-      id: "draft", name: item.name === "Default" ? `${item.category_name} · ${item.subcategory}` : item.name,
+      id: "draft", name: item.name,
       kind: item.plan_shape === "ELLIPSE" ? "CYLINDER" : "BOX", fixture_kind: item.fixture_kind,
       model_id: item.id, plan_symbol_data_url: item.plan_symbol_data_url, representation_key: item.representation_key, subcategory: item.subcategory, plan_symbol_url: item.plan_symbol_url,
       center: { x: (Math.min(...room.vertices.map(p => p.x)) + Math.max(...room.vertices.map(p => p.x))) / 2, y: (Math.min(...room.vertices.map(p => p.y)) + Math.max(...room.vertices.map(p => p.y))) / 2 },
@@ -67,7 +67,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     <div className="fixture-selectors" style={{ gridTemplateColumns: "1fr" }}>
       <label className="field"><span>Category</span><select value={activeCategory ?? ""} onChange={event => { setCategory(event.target.value); setSubcategory(""); setObjectId(""); setDraft(null); setEditingId(null); }}>{categories.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
       <label className="field"><span>Subcategory</span><select value={activeSubcategory ?? ""} onChange={event => { setSubcategory(event.target.value); setObjectId(""); setDraft(null); setEditingId(null); }}>{subcategories.map(name => <option key={name}>{name}</option>)}</select></label>
-      <label className="field"><span>Object</span><select value={selected?.id ?? ""} onChange={event => choose(objects.find(item => item.id === event.target.value))}>{objects.map(item => <option key={item.id} value={item.id}>{item.name}{item.name !== "Default" ? ` · ${item.supplier}` : ""}</option>)}</select></label>
+      <label className="field"><span>Object</span><select value={selected?.id ?? ""} onChange={event => choose(objects.find(item => item.id === event.target.value))}>{objects.map(item => <option key={item.id} value={item.id}>{item.name}{!item.is_default ? ` · ${item.supplier}` : ""}</option>)}</select></label>
     </div>
     {value && <>
       {value.fixture_kind !== "FURNITURE" && !value.stl_base64 && <FixturePreview obstacle={value} />}

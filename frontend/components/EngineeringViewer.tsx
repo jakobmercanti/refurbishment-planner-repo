@@ -34,16 +34,16 @@ interface ViewerProps {
   room: Room;
   sceneRooms?: Room[];
   collisionIds: string[];
-  onObstaclesChange: (obstacles: Obstacle[]) => void;
-  onFinishesChange: (finishes: RoomFinishes) => void;
-  onPersonChange: (person: PersonMockup | null) => void;
+  onObstaclesChange: (obstacles: Obstacle[], roomId?: string) => void;
+  onFinishesChange: (finishes: RoomFinishes, roomId?: string) => void;
+  onPersonChange: (person: PersonMockup | null, roomId?: string) => void;
   wallMode: WallViewMode;
   toolbarVisibility: ToolbarVisibility;
   onToggleToolbar: (id: ToolbarId) => void;
   toolbarLayoutResetKey: number;
 }
 
-type Selection = { type: "ELEMENT"; id: string } | { type: "PERSON" } | { type: "WALL"; id: string; ids: string[] } | { type: "FLOOR" } | null;
+type Selection = { type: "ELEMENT"; id: string; roomId: string } | { type: "PERSON"; roomId: string } | { type: "WALL"; id: string; ids: string[]; roomId: string } | { type: "FLOOR"; roomId: string } | null;
 
 interface TileStyle {
   id: string;
@@ -1060,72 +1060,72 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
     return point ? { x: point.x / SCALE, y: -point.z / SCALE } : null;
   }
 
-  function startDrag(event: ThreeEvent<PointerEvent>, obstacle: Obstacle) {
+  function startDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, obstacle: Obstacle) {
     event.stopPropagation();
-    onSelectionChange({ type: "ELEMENT", id: obstacle.id });
+    onSelectionChange({ type: "ELEMENT", id: obstacle.id, roomId: sceneRoom.id });
     const point = floorPoint(event);
     if (!point) return;
     (event.target as EventTarget & { setPointerCapture(pointerId: number): void }).setPointerCapture(event.pointerId);
     setDragging({ id: obstacle.id, offset: { x: obstacle.center.x - point.x, y: obstacle.center.y - point.y } });
   }
 
-  function moveDrag(event: ThreeEvent<PointerEvent>, obstacle: Obstacle) {
+  function moveDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, obstacle: Obstacle) {
     if (dragging?.id !== obstacle.id) return;
     event.stopPropagation();
     const point = floorPoint(event);
     if (!point) return;
     const requested = { x: point.x + dragging.offset.x, y: point.y + dragging.offset.y };
     const preview = obstacle.wall_lock
-      ? alignObstacleToNearestWall(obstacle, room.vertices, requested)
+      ? alignObstacleToNearestWall(obstacle, sceneRoom.vertices, requested)
       : { ...obstacle, center: requested };
     setPreviewObstacles((current) => ({ ...current, [obstacle.id]: preview }));
   }
 
-  function endDrag(event: ThreeEvent<PointerEvent>, obstacle: Obstacle) {
+  function endDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, obstacle: Obstacle) {
     if (dragging?.id !== obstacle.id) return;
     event.stopPropagation();
     const updated = previewObstacles[obstacle.id] ?? obstacle;
-    onObstaclesChange(room.obstacles.map((item) => item.id === obstacle.id ? updated : item));
+    onObstaclesChange(sceneRoom.obstacles.map((item) => item.id === obstacle.id ? updated : item), sceneRoom.id);
     setPreviewObstacles({});
     setDragging(null);
   }
 
-  function startPersonDrag(event: ThreeEvent<PointerEvent>, person: PersonMockup) {
+  function startPersonDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, person: PersonMockup) {
     event.stopPropagation();
-    onSelectionChange({ type: "PERSON" });
+    onSelectionChange({ type: "PERSON", roomId: sceneRoom.id });
     const point = floorPoint(event);
     if (!point) return;
     (event.target as EventTarget & { setPointerCapture(pointerId: number): void }).setPointerCapture(event.pointerId);
     setPersonDragging({ offset: { x: person.center.x - point.x, y: person.center.y - point.y } });
   }
 
-  function movePersonDrag(event: ThreeEvent<PointerEvent>, person: PersonMockup) {
+  function movePersonDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, person: PersonMockup) {
     if (!personDragging) return;
     event.stopPropagation();
     const point = floorPoint(event);
     if (!point) return;
     const requested = { x: point.x + personDragging.offset.x, y: point.y + personDragging.offset.y };
     const previous = previewPerson?.center ?? person.center;
-    setPreviewPerson({ ...person, center: constrainPersonToRoom(person, room.vertices, requested, previous) });
+    setPreviewPerson({ ...person, center: constrainPersonToRoom(person, sceneRoom.vertices, requested, previous) });
   }
 
-  function endPersonDrag(event: ThreeEvent<PointerEvent>, person: PersonMockup) {
+  function endPersonDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, person: PersonMockup) {
     if (!personDragging) return;
     event.stopPropagation();
-    onPersonChange(previewPerson ?? person);
+    onPersonChange(previewPerson ?? person, sceneRoom.id);
     setPreviewPerson(null);
     setPersonDragging(null);
   }
 
-  function selectWall(wallId: string, additive: boolean) {
-    if (!additive || selection?.type !== "WALL") {
-      onSelectionChange({ type: "WALL", id: wallId, ids: [wallId] });
+  function selectWall(roomId: string, wallId: string, additive: boolean) {
+    if (!additive || selection?.type !== "WALL" || selection.roomId !== roomId) {
+      onSelectionChange({ type: "WALL", id: wallId, ids: [wallId], roomId });
       return;
     }
     const ids = selection.ids.includes(wallId)
       ? selection.ids.filter((id) => id !== wallId)
       : [...selection.ids, wallId];
-    onSelectionChange(ids.length ? { type: "WALL", id: ids.at(-1) ?? wallId, ids } : null);
+    onSelectionChange(ids.length ? { type: "WALL", id: ids.at(-1) ?? wallId, ids, roomId } : null);
   }
 
   return (
@@ -1135,7 +1135,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
       {renderedWalls.map(({ room: wallRoom, index, start, end }) => {
         if (wallMode === "INVISIBLE") return null;
-        const sceneInteractive = !multiRoom && wallRoom.id === room.id;
+        const sceneInteractive = multiRoom || wallRoom.id === room.id;
         return (
           <WallWithOpenings
             key={`wall-${wallSegmentKey(start, end)}`}
@@ -1144,34 +1144,34 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
             start={start}
             end={end}
             wallMode={wallMode}
-            selected={sceneInteractive && selection?.type === "WALL" && selection.ids.includes(wallId(index))}
-            onSelect={sceneInteractive ? (additive) => selectWall(wallId(index), additive) : () => undefined}
+            selected={sceneInteractive && selection?.type === "WALL" && selection.roomId === wallRoom.id && selection.ids.includes(wallId(index))}
+            onSelect={sceneInteractive ? (additive) => selectWall(wallRoom.id, wallId(index), additive) : () => undefined}
           />
         );
       })}
       {renderedRooms.map((sceneRoom) => {
-        const sceneInteractive = !multiRoom && sceneRoom.id === room.id;
-        const sceneObstacles = sceneRoom.id === room.id ? displayedObstacles : sceneRoom.obstacles;
+        const sceneInteractive = multiRoom || sceneRoom.id === room.id;
+        const sceneObstacles = sceneRoom.id === room.id ? displayedObstacles : sceneRoom.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
         const scenePerson = sceneRoom.id === room.id ? displayedPerson : sceneRoom.person_mockup;
         return (
           <group key={`room-${sceneRoom.id}`}>
-            <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR"} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR" }) : () => undefined} />
+            <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id }) : () => undefined} />
             {sceneRoom.openings.map((opening) => <OpeningFixture key={`fixture-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} />)}
             {toggles.elements && sceneObstacles.map((obstacle) => (
               <FixtureMesh
                 key={`${sceneRoom.id}-${obstacle.id}`}
                 obstacle={obstacle}
-                selected={sceneInteractive && selection?.type === "ELEMENT" && selection.id === obstacle.id}
-                onPointerDown={sceneInteractive ? (event) => startDrag(event, obstacle) : undefined}
-                onPointerMove={sceneInteractive ? (event) => moveDrag(event, obstacle) : undefined}
-                onPointerUp={sceneInteractive ? (event) => endDrag(event, obstacle) : undefined}
+                selected={sceneInteractive && selection?.type === "ELEMENT" && selection.roomId === sceneRoom.id && selection.id === obstacle.id}
+                onPointerDown={sceneInteractive ? (event) => startDrag(event, sceneRoom, obstacle) : undefined}
+                onPointerMove={sceneInteractive ? (event) => moveDrag(event, sceneRoom, obstacle) : undefined}
+                onPointerUp={sceneInteractive ? (event) => endDrag(event, sceneRoom, obstacle) : undefined}
               />
             ))}
             {toggles.openingImprints && <>
               {sceneRoom.openings.map((opening) => <OpeningImprint key={`imprint-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} />)}
               {sceneRoom.openings.filter((item) => item.kind === "DOOR").map((door) => <DoorSwing key={`swing-${sceneRoom.id}-${door.id}`} room={sceneRoom} door={door} />)}
             </>}
-            {toggles.person && scenePerson?.enabled && <PersonMesh person={scenePerson} showClearance={toggles.clearance && scenePerson.show_clearance !== false} collision={collisionIds.includes(scenePerson.id)} selected={sceneInteractive && selection?.type === "PERSON"} onPointerDown={sceneInteractive ? (event) => startPersonDrag(event, scenePerson) : undefined} onPointerMove={sceneInteractive ? (event) => movePersonDrag(event, scenePerson) : undefined} onPointerUp={sceneInteractive ? (event) => endPersonDrag(event, scenePerson) : undefined} />}
+            {toggles.person && scenePerson?.enabled && <PersonMesh person={scenePerson} showClearance={toggles.clearance && scenePerson.show_clearance !== false} collision={collisionIds.includes(scenePerson.id)} selected={sceneInteractive && selection?.type === "PERSON" && selection.roomId === sceneRoom.id} onPointerDown={sceneInteractive ? (event) => startPersonDrag(event, sceneRoom, scenePerson) : undefined} onPointerMove={sceneInteractive ? (event) => movePersonDrag(event, sceneRoom, scenePerson) : undefined} onPointerUp={sceneInteractive ? (event) => endPersonDrag(event, sceneRoom, scenePerson) : undefined} />}
             {toggles.collisions && sceneRoom.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
               <mesh key={`collision-${sceneRoom.id}-${obstacle.id}`} position={[obstacle.center.x * SCALE, 0.9, -obstacle.center.y * SCALE]}>
                 <sphereGeometry args={[0.11, 24, 24]} />
@@ -1224,7 +1224,7 @@ function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishe
         delete wallColorCodes[wallId];
       }
     });
-    onFinishesChange({ ...finishes, wall_colors: wallColors, wall_color_codes: wallColorCodes });
+    onFinishesChange({ ...finishes, wall_colors: wallColors, wall_color_codes: wallColorCodes }, room.id);
   }
 
   function setFloorTile(tile?: TileStyle) {
@@ -1233,21 +1233,21 @@ function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishe
       floor_tile_id: tile?.id,
       floor_color: tile?.base,
       floor_pattern: tile?.pattern ?? "NONE",
-    });
+    }, room.id);
   }
 
   function setFloorColours(tileId: string, colours: { base: string; accent: string; grout: string }) {
     onFinishesChange({
       ...finishes,
       floor_tile_colours: { ...(finishes.floor_tile_colours ?? {}), [tileId]: colours },
-    });
+    }, room.id);
   }
 
   function setWallLock(locked: boolean) {
     if (!selectedElement) return;
     const unlocked = { ...selectedElement, wall_lock: locked };
     const updated = locked ? alignObstacleToNearestWall(unlocked, room.vertices, unlocked.center) : unlocked;
-    onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? updated : item));
+    onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? updated : item), room.id);
   }
 
   const selectedTileCollection = tileCollections.find((collection) => collection.id === tileCollectionId);
@@ -1344,6 +1344,9 @@ export function EngineeringViewer(props: ViewerProps) {
     setSelection(null);
     setPanelSelection(null);
   };
+  const panelRoom = panelSelection
+    ? props.sceneRooms?.find((sceneRoom) => sceneRoom.id === panelSelection.roomId) ?? (panelSelection.roomId === props.room.id ? props.room : null)
+    : null;
   const applyPreset = (next: CameraView) => { setPreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
   useEffect(() => {
     if (!captureMenuOpen) return;
@@ -1375,7 +1378,7 @@ export function EngineeringViewer(props: ViewerProps) {
         </div>
         <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => setCaptureMenuOpen((current) => !current)} aria-expanded={captureMenuOpen} aria-haspopup="menu">Save view…</button>{captureMenuOpen && <div role="menu" aria-label="Save view format"><button autoFocus role="menuitem" onClick={() => { setCaptureFormat("png"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PNG image</button><button role="menuitem" onClick={() => { setCaptureFormat("jpg"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>JPG image</button><button role="menuitem" onClick={() => { setCaptureFormat("pdf"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PDF document</button></div>}</div></div>
       </div></FloatingToolbar>}
-      {panelSelection && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}`} apiUrl={props.apiUrl} room={props.room} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onClose={clearSelection} />}
+      {panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onClose={clearSelection} />}
       <Canvas key={projection} orthographic={projection === "parallel"} shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
         <Scene {...props} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} zoomPercent={zoomPercent} />
         <WheelZoom />

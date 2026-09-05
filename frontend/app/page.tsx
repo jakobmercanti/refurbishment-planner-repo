@@ -101,8 +101,8 @@ export default function Home() {
     invalidateAnalysis();
   }
 
-  function applyObstacles(obstacles: Obstacle[]) {
-    const target = resolveViewerRoom(demo);
+  function applyObstacles(obstacles: Obstacle[], roomId?: string) {
+    const target = roomId ? roomOptions(demo).find((room) => room.id === roomId) : resolveViewerRoom(demo);
     if (!target) return;
     const updated = { ...target, obstacles, version: target.version + 1 };
     setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);
@@ -110,16 +110,16 @@ export default function Home() {
     invalidateAnalysis();
   }
 
-  function applyFinishes(finishes: RoomFinishes) {
-    const target = resolveViewerRoom(demo);
+  function applyFinishes(finishes: RoomFinishes, roomId?: string) {
+    const target = roomId ? roomOptions(demo).find((room) => room.id === roomId) : resolveViewerRoom(demo);
     if (!target) return;
     const updated = { ...target, finishes };
     setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);
     setProjectRooms((rooms) => rooms.map((room) => room.id === target.id ? updated : room));
   }
 
-  function applyPerson(person: PersonMockup | null) {
-    const target = resolveViewerRoom(demo);
+  function applyPerson(person: PersonMockup | null, roomId?: string) {
+    const target = roomId ? roomOptions(demo).find((room) => room.id === roomId) : resolveViewerRoom(demo);
     if (!target) return;
     const updated = { ...target, person_mockup: person, version: target.version + 1 };
     setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);

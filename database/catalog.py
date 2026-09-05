@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
 from database.catalogue_assets import migrate_legacy_pictures
-from database.fixture_defaults import seed_fixture_defaults
+from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults
 
 
 def database_path() -> Path:
@@ -46,22 +46,6 @@ CATEGORIES = [
     ("toilets", "Toilets", "Wall-hung, compact and close-coupled toilets.", 30, 200.0, 400.0),
     ("storage", "Storage & furniture", "Cabinets, benches and freestanding bathroom furniture.", 40, 0.0, 0.0),
 ]
-
-SEED_ITEMS = [
-    ("showers", "SHOWER", "Corner enclosure 800 × 800", "Renovation Fit", "RF-SH-800", 800, 800, 1950, "#b9e1e8"),
-    ("showers", "SHOWER", "Corner enclosure 900 × 900", "Renovation Fit", "RF-SH-900", 900, 900, 2000, "#a8d5df"),
-    ("showers", "SHOWER", "Walk-in enclosure 1200 × 800", "Renovation Fit", "RF-SH-1200", 1200, 800, 2000, "#c6e7ec"),
-    ("basins", "BASIN", "Compact basin 450 × 350", "Renovation Fit", "RF-BA-450", 450, 350, 850, "#f1f0eb"),
-    ("basins", "BASIN", "Vanity basin 600 × 500", "Renovation Fit", "RF-VA-600", 600, 500, 850, "#9d8067"),
-    ("basins", "BASIN", "Double vanity 1200 × 500", "Renovation Fit", "RF-VA-1200", 1200, 500, 850, "#7f6653"),
-    ("toilets", "TOILET", "Wall-hung toilet 360 × 540", "Renovation Fit", "RF-WC-360", 360, 540, 400, "#f7f7f3"),
-    ("toilets", "TOILET", "Compact toilet 365 × 600", "Renovation Fit", "RF-WC-365", 365, 600, 780, "#e9ece9"),
-    ("toilets", "TOILET", "Close-coupled toilet 380 × 650", "Renovation Fit", "RF-WC-380", 380, 650, 800, "#f4f2e9"),
-    ("storage", "FURNITURE", "Base cabinet 600 × 450", "Renovation Fit", "RF-FU-600", 600, 450, 850, "#b99b77"),
-    ("storage", "FURNITURE", "Tall storage unit 400 × 350", "Renovation Fit", "RF-FU-400", 400, 350, 1800, "#7d927e"),
-    ("storage", "FURNITURE", "Bathroom bench 800 × 350", "Renovation Fit", "RF-BE-800", 800, 350, 450, "#a88762"),
-]
-
 
 def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tuple[str, str, str, int]], list[tuple[str, str, str, str, dict[str, object]]]]:
     root = Path(__file__).resolve().parents[1]
@@ -128,12 +112,18 @@ def _backfill_new_clearance_columns(session: Session, *, side_added: bool, front
                 category.default_front_clearance_mm = front
 
 
+def _archive_obsolete_default_items(session: Session) -> None:
+    for item in session.scalars(
+        select(FurnitureItemRecord).where(FurnitureItemRecord.default_key.in_(LEGACY_DEFAULT_KEYS))
+    ).all():
+        item.active = False
+        item.is_default = False
+
+
 def initialise_catalogue() -> None:
     Base.metadata.create_all(ENGINE)
     added_side_clearance = False
     added_front_clearance = False
-    added_subcategory = False
-    added_plan_shape = False
     with ENGINE.begin() as connection:
         existing_columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(furniture_items)").fetchall()
@@ -153,7 +143,6 @@ def initialise_catalogue() -> None:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN front_clearance_mm FLOAT")
         if "subcategory" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN subcategory VARCHAR(120) NOT NULL DEFAULT 'General'")
-            added_subcategory = True
         if "representation_key" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN representation_key VARCHAR(80) NOT NULL DEFAULT ''")
         if "plan_symbol_url" not in existing_columns:
@@ -162,7 +151,6 @@ def initialise_catalogue() -> None:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_symbol_data_url TEXT")
         if "plan_shape" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_shape VARCHAR(12) NOT NULL DEFAULT 'RECTANGLE'")
-            added_plan_shape = True
         if "image_data_json" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN image_data_json TEXT NOT NULL DEFAULT '[]'")
         category_columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(furniture_categories)").fetchall()}
@@ -188,36 +176,7 @@ def initialise_catalogue() -> None:
             )
             session.flush()
         _backfill_new_clearance_columns(session, side_added=added_side_clearance, front_added=added_front_clearance)
-        for item in SEED_ITEMS:
-            default_key = item[4]
-            existing = session.scalar(
-                select(FurnitureItemRecord).where(FurnitureItemRecord.default_key == default_key)
-            )
-            if existing is None:
-                existing = session.scalar(
-                    select(FurnitureItemRecord).where(
-                        FurnitureItemRecord.supplier == item[3],
-                        FurnitureItemRecord.sku == item[4],
-                    )
-                )
-            if existing is None:
-                session.add(FurnitureItemRecord(
-                    category_id=item[0], fixture_kind=item[1], name=item[2], supplier=item[3], sku=item[4],
-                    width_mm=item[5], depth_mm=item[6], height_mm=item[7], color_hex=item[8],
-                    description="Built-in bathroom catalogue object. Dimensions and appearance can be modified.",
-                    is_default=True, default_key=default_key, supplier_editable=True,
-                    subcategory={"showers": "Enclosures", "basins": "Basins and vanities", "toilets": "Toilets", "storage": "Storage"}[item[0]],
-                    plan_shape="ELLIPSE" if item[1] == "TOILET" else "RECTANGLE",
-                ))
-            else:
-                existing.is_default = True
-                existing.default_key = default_key
-                existing.active = True
-                existing.supplier_editable = True
-                if added_subcategory and (not existing.subcategory or existing.subcategory == "General"):
-                    existing.subcategory = {"showers": "Enclosures", "basins": "Basins and vanities", "toilets": "Toilets", "storage": "Storage"}[item[0]]
-                if added_plan_shape and existing.fixture_kind == "TOILET" and existing.plan_shape == "RECTANGLE":
-                    existing.plan_shape = "ELLIPSE"
+        _archive_obsolete_default_items(session)
         seed_fixture_defaults(session)
         _seed_materials(session)
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
