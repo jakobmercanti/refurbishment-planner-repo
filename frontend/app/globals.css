@@ -595,7 +595,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .traditional-floorplan .plan-grid { display: none; }
 .traditional-floorplan .canvas-background { fill: white; }
 .traditional-floorplan .wall-body, .traditional-floorplan .wall-line, .traditional-floorplan .opening-gap, .traditional-floorplan .opening-jamb, .traditional-floorplan .door-leaf, .traditional-floorplan .door-swing, .traditional-floorplan .window-frame, .traditional-floorplan .window-core, .traditional-floorplan .window-jamb { stroke: #151515; }
-.traditional-floorplan .wall-line { stroke: white; stroke-width: var(--wall-inner-stroke-width, 4px); }
+.traditional-floorplan .wall-line { stroke: #151515; stroke-width: var(--wall-inner-stroke-width, 4px); }
 .traditional-floorplan .wall-thickness-label { fill: #151515; }
 .traditional-floorplan .wall-line:hover, .traditional-floorplan .wall-line.selected { stroke: #f1b14b; stroke-width: var(--wall-inner-stroke-width, 4px); }
 .traditional-floorplan .vertex-layer { opacity: 0; }
