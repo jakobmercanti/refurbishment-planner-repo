@@ -1,0 +1,11 @@
+{
+  "name": "freefloorplan3d",
+  "main": "worker.generated.mjs",
+  "compatibility_date": "2026-09-05",
+  "account_id": "e7b15d4071cac7e990eee39776523c4f",
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "www.freefloorplan3d.com", "custom_domain": true },
+    { "pattern": "freefloorplan3d.com", "custom_domain": true }
+  ]
+}
