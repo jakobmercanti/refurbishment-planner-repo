@@ -130,6 +130,17 @@ class CatalogueItemInput(BaseModel):
     front_clearance_mm: float | None = Field(default=None, ge=0, le=5000)
     subcategory: str = Field(default="General", min_length=1, max_length=120)
     plan_shape: Literal["RECTANGLE", "ELLIPSE"] = "RECTANGLE"
+    representation_key: str = Field(default="", max_length=80)
+    plan_symbol_url: str = Field(default="", max_length=255, pattern=r"^(|/fixture-symbols/[a-z0-9-]+\.svg)$")
+    plan_symbol_data_url: str | None = Field(default=None, max_length=700_000)
+
+    @field_validator("plan_symbol_data_url")
+    @classmethod
+    def validate_plan_picture(cls, value: str | None) -> str | None:
+        if value:
+            CatalogueImage(data_url=value, alt="Floorplan symbol")
+        return value
+
     images: list[CatalogueImage] = Field(default_factory=list, max_length=3)
 
     @field_validator("color_hex")

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
 from database.catalogue_assets import migrate_legacy_pictures
+from database.fixture_defaults import seed_fixture_defaults
 
 
 def database_path() -> Path:
@@ -153,6 +154,12 @@ def initialise_catalogue() -> None:
         if "subcategory" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN subcategory VARCHAR(120) NOT NULL DEFAULT 'General'")
             added_subcategory = True
+        if "representation_key" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN representation_key VARCHAR(80) NOT NULL DEFAULT ''")
+        if "plan_symbol_url" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_symbol_url VARCHAR(255) NOT NULL DEFAULT ''")
+        if "plan_symbol_data_url" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_symbol_data_url TEXT")
         if "plan_shape" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_shape VARCHAR(12) NOT NULL DEFAULT 'RECTANGLE'")
             added_plan_shape = True
@@ -211,6 +218,7 @@ def initialise_catalogue() -> None:
                     existing.subcategory = {"showers": "Enclosures", "basins": "Basins and vanities", "toilets": "Toilets", "storage": "Storage"}[item[0]]
                 if added_plan_shape and existing.fixture_kind == "TOILET" and existing.plan_shape == "RECTANGLE":
                     existing.plan_shape = "ELLIPSE"
+        seed_fixture_defaults(session)
         _seed_materials(session)
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
             catalogue_item.image_data_json = migrate_legacy_pictures(catalogue_item.id, catalogue_item.image_data_json)

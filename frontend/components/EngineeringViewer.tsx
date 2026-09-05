@@ -1,5 +1,6 @@
 "use client";
 
+import { ParametricFixture } from "@/components/ParametricFixture";
 import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -525,30 +526,6 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   );
 }
 
-function TapAssembly({ height, depth }: { height: number; depth: number }) {
-  const baseY = height * 0.865;
-  const baseZ = -depth * 0.27;
-  const curve = useMemo(() => new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, baseY + 0.055, baseZ),
-    new THREE.Vector3(0, baseY + 0.14, baseZ),
-    new THREE.Vector3(0, baseY + 0.19, baseZ + 0.045),
-    new THREE.Vector3(0, baseY + 0.185, baseZ + 0.12),
-    new THREE.Vector3(0, baseY + 0.145, baseZ + 0.175),
-  ]), [baseY, baseZ]);
-  return <group>
-    <mesh position={[0, baseY + 0.006, baseZ]} castShadow><cylinderGeometry args={[0.038, 0.046, 0.012, 32]} /><meshPhysicalMaterial color="#e4e9e8" metalness={0.96} roughness={0.11} clearcoat={0.8} /></mesh>
-    <mesh position={[0, baseY + 0.047, baseZ]} castShadow><cylinderGeometry args={[0.025, 0.032, 0.082, 28]} /><meshPhysicalMaterial color="#dce3e1" metalness={0.96} roughness={0.1} clearcoat={0.9} /></mesh>
-    <mesh castShadow><tubeGeometry args={[curve, 48, 0.012, 18, false]} /><meshPhysicalMaterial color="#e5eae9" metalness={0.98} roughness={0.09} clearcoat={1} /></mesh>
-    <mesh position={[0, baseY + 0.126, baseZ + 0.176]} castShadow><cylinderGeometry args={[0.014, 0.012, 0.044, 20]} /><meshPhysicalMaterial color="#d7dedc" metalness={0.95} roughness={0.12} /></mesh>
-    <mesh position={[0, baseY + 0.103, baseZ + 0.176]} castShadow><cylinderGeometry args={[0.013, 0.013, 0.004, 20]} /><meshStandardMaterial color="#596563" metalness={0.7} roughness={0.25} /></mesh>
-    <group position={[0.041, baseY + 0.055, baseZ]} rotation={[0, 0, -0.28]}>
-      <mesh castShadow><sphereGeometry args={[0.018, 18, 14]} /><meshPhysicalMaterial color="#dce3e1" metalness={0.96} roughness={0.1} /></mesh>
-      <mesh position={[0, 0.04, 0]} castShadow><cylinderGeometry args={[0.008, 0.011, 0.075, 16]} /><meshPhysicalMaterial color="#e5eae9" metalness={0.98} roughness={0.09} /></mesh>
-      <RoundedBox args={[0.022, 0.012, 0.052]} radius={0.005} smoothness={3} position={[0, 0.08, 0.008]} rotation={[Math.PI / 2, 0, 0]} castShadow><meshPhysicalMaterial color="#e3e8e7" metalness={0.97} roughness={0.1} /></RoundedBox>
-    </group>
-  </group>;
-}
-
 function StlFixture({ obstacle, width, depth, height, colour }: { obstacle: Obstacle; width: number; depth: number; height: number; colour: string }) {
   const geometry = useMemo(() => {
     if (!obstacle.stl_base64) return null;
@@ -618,91 +595,8 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
     return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={customColour ?? "#b99b77"} /></group>;
   }
 
-  if (fixtureKind === "SHOWER") {
-    return (
-      <group position={position} rotation={rotation} {...interactionProps}>
-        {selectionRing}
-        <mesh position={[0, 0.035, 0]} castShadow receiveShadow>
-          <boxGeometry args={[width, 0.07, depth]} />
-          <meshStandardMaterial color={customColour ?? "#f7f8f6"} roughness={0.65} />
-        </mesh>
-        <mesh position={[0, height * 0.52, -depth / 2]} castShadow>
-          <boxGeometry args={[width, height * 0.96, 0.012]} />
-          <meshPhysicalMaterial color="#b9e1e8" transparent opacity={0.28} roughness={0.08} transmission={0.35} depthWrite={false} />
-        </mesh>
-        <mesh position={[-width / 2, height * 0.52, 0]} castShadow>
-          <boxGeometry args={[0.012, height * 0.96, depth]} />
-          <meshPhysicalMaterial color="#b9e1e8" transparent opacity={0.28} roughness={0.08} transmission={0.35} depthWrite={false} />
-        </mesh>
-        <mesh position={[width * 0.23, height * 0.52, depth / 2]} castShadow>
-          <boxGeometry args={[width * 0.54, height * 0.96, 0.012]} />
-          <meshPhysicalMaterial color="#c6e7ec" transparent opacity={0.22} roughness={0.06} transmission={0.42} depthWrite={false} />
-        </mesh>
-        <mesh position={[0, height - 0.018, -depth / 2]}>
-          <boxGeometry args={[width + 0.025, 0.03, 0.025]} />
-          <meshStandardMaterial color="#496a70" metalness={0.65} roughness={0.28} />
-        </mesh>
-        {[-width / 2, width / 2].map((xValue) => <mesh key={xValue} position={[xValue, height / 2, -depth / 2]}><cylinderGeometry args={[0.014, 0.014, height, 12]} /><meshStandardMaterial color="#52696c" metalness={0.75} roughness={0.22} /></mesh>)}
-        <mesh position={[0, 0.074, 0]} rotation={[-Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.045, 0.045, 0.008, 24]} /><meshStandardMaterial color="#667878" metalness={0.7} roughness={0.25} /></mesh>
-      </group>
-    );
-  }
-
-  if (fixtureKind === "BASIN") {
-    const isVanity = obstacle.name.toLowerCase().includes("vanity") || obstacle.model_id?.includes("vanity") || width >= 0.55;
-    const cabinetColour = customColour ?? "#9d8067";
-    return (
-      <group position={position} rotation={rotation} {...interactionProps}>
-        {selectionRing}
-        {isVanity ? <>
-          <RoundedBox args={[width * 0.92, height * 0.68, depth * 0.84]} radius={0.022} smoothness={4} position={[0, height * 0.42, -depth * 0.06]} castShadow>
-            <meshStandardMaterial color={cabinetColour} roughness={0.58} />
-          </RoundedBox>
-          <mesh position={[0, height * 0.095, depth * 0.02]} castShadow><boxGeometry args={[width * 0.8, height * 0.13, depth * 0.68]} /><meshStandardMaterial color="#594b40" roughness={0.78} /></mesh>
-          <mesh position={[0, height * 0.18, depth * 0.385]}><boxGeometry args={[width * 0.78, height * 0.12, 0.018]} /><meshStandardMaterial color="#3f3832" roughness={0.72} /></mesh>
-          {[-0.235, 0.235].map((side) => <group key={side} position={[width * side, height * 0.45, depth * 0.372]}>
-            <RoundedBox args={[width * 0.43, height * 0.49, 0.025]} radius={0.009} smoothness={3} castShadow><meshStandardMaterial color={cabinetColour} roughness={0.5} /></RoundedBox>
-            <mesh position={[side < 0 ? width * 0.14 : -width * 0.14, height * 0.04, 0.022]}><boxGeometry args={[0.07, 0.011, 0.012]} /><meshStandardMaterial color="#c3cbc9" metalness={0.82} roughness={0.18} /></mesh>
-          </group>)}
-          <RoundedBox args={[width, height * 0.065, depth]} radius={0.018} smoothness={4} position={[0, height * 0.805, 0]} castShadow>
-            <meshStandardMaterial color="#eeeae2" roughness={0.22} />
-          </RoundedBox>
-          <mesh position={[0, height * 0.84, -depth * 0.47]} castShadow><boxGeometry args={[width, height * 0.12, 0.025]} /><meshStandardMaterial color="#ece8df" roughness={0.26} /></mesh>
-        </> : <>
-          <mesh position={[0, height * 0.37, -depth * 0.08]} castShadow><cylinderGeometry args={[width * 0.18, width * 0.28, height * 0.72, 24]} /><meshStandardMaterial color={customColour ?? "#f1f0eb"} roughness={0.3} /></mesh>
-          <RoundedBox args={[width, height * 0.07, depth]} radius={0.025} smoothness={4} position={[0, height * 0.78, 0]} castShadow><meshStandardMaterial color="#f0eee8" roughness={0.26} /></RoundedBox>
-        </>}
-        <mesh position={[0, height * 0.86, depth * 0.035]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.64, depth * 0.6, 1]} castShadow>
-          <torusGeometry args={[0.5, 0.075, 18, 56]} />
-          <meshStandardMaterial color="#fbfaf6" roughness={0.2} />
-        </mesh>
-        <mesh position={[0, height * 0.847, depth * 0.035]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.54, depth * 0.49, 1]}>
-          <circleGeometry args={[0.5, 48]} />
-          <meshStandardMaterial color="#dfe5e3" roughness={0.18} />
-        </mesh>
-        <mesh position={[0, height * 0.855, depth * 0.035]}><cylinderGeometry args={[0.024, 0.024, 0.012, 24]} /><meshStandardMaterial color="#87908e" metalness={0.8} roughness={0.18} /></mesh>
-        <mesh position={[0, height * 0.89, -depth * 0.01]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.011, 0.011, 0.008, 16]} /><meshStandardMaterial color="#9ca5a2" metalness={0.72} roughness={0.2} /></mesh>
-        <TapAssembly height={height} depth={depth} />
-      </group>
-    );
-  }
-
-  if (fixtureKind === "TOILET") {
-    return (
-      <group position={position} rotation={rotation} {...interactionProps}>
-        {selectionRing}
-        <mesh position={[0, height * 0.3, depth * 0.08]} scale={[width * 0.9, height * 0.48, depth * 0.72]} castShadow>
-          <sphereGeometry args={[0.5, 32, 18]} />
-          <meshStandardMaterial color={customColour ?? "#f7f7f3"} roughness={0.3} />
-        </mesh>
-        <mesh position={[0, height * 0.7, -depth * 0.35]} castShadow>
-          <boxGeometry args={[width * 0.82, height * 0.56, depth * 0.3]} />
-          <meshStandardMaterial color="#f7f7f3" roughness={0.32} />
-        </mesh>
-        <mesh position={[0, height * 0.49, depth * 0.12]} rotation={[-Math.PI / 2, 0, 0]} scale={[width * 0.42, depth * 0.36, 1]}><torusGeometry args={[0.5, 0.075, 14, 36]} /><meshStandardMaterial color="#fafaf6" roughness={0.25} /></mesh>
-        <mesh position={[0, height * 0.985, -depth * 0.35]} rotation={[-Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.035, 0.035, 0.01, 20]} /><meshStandardMaterial color="#8b9391" metalness={0.55} roughness={0.3} /></mesh>
-      </group>
-    );
+  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind)) {
+    return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} /></group>;
   }
 
   if (fixtureKind === "FURNITURE") {

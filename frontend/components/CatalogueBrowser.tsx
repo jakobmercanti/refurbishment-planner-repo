@@ -218,6 +218,9 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
       side_clearance_mm: item.side_clearance_mm,
       front_clearance_mm: item.front_clearance_mm,
       subcategory: item.subcategory,
+      representation_key: item.representation_key,
+      plan_symbol_url: item.plan_symbol_url,
+      plan_symbol_data_url: item.plan_symbol_data_url,
       plan_shape: item.plan_shape,
       images: item.images,
     });
@@ -305,6 +308,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
       return;
     }
     const saved = normalizeCatalogueItem(await response.json() as CatalogueItem, apiUrl);
+    window.dispatchEvent(new Event("catalogue-changed"));
     setItems((current) => editingId ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved].sort((a, b) => a.name.localeCompare(b.name)));
     setNavigationItems((current) => editingId ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved].sort((a, b) => a.name.localeCompare(b.name)));
     setShowForm(false);
@@ -323,6 +327,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
       setError("The catalogue entry could not be removed.");
       return;
     }
+    window.dispatchEvent(new Event("catalogue-changed"));
     setItems((current) => current.filter((item) => item.id !== editingId));
     setShowForm(false);
     setEditingId(null);
@@ -357,8 +362,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
               <div className="catalogue-result-heading"><strong>{activeSubcategory || (categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects")}</strong><span>{items.length} result{items.length === 1 ? "" : "s"}</span></div>
               {categoryId && <button className="category-settings-button" onClick={(event) => openCategorySettings(categories.find((item) => item.id === categoryId) ?? null, event.currentTarget)}>Category settings…</button>}
               {items.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{items.map((item) => {
-                const preview = item.images?.[0]?.data_url;
-                return <article key={item.id}><div className={`catalogue-object-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${preview})` : undefined } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name} · {item.subcategory}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3><p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions"><button onClick={(event) => beginEdit(item, event.currentTarget)}>Edit entry</button><button className="catalogue-insert" onClick={() => { onInsert(item); onClose(); }}>Add to room</button></div></div></article>;
+                const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.svg` : undefined);
+                return <article key={item.id}><div className={`catalogue-object-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${preview})` : undefined } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name} · {item.subcategory}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3>{(item.plan_symbol_data_url || item.plan_symbol_url) && <a className="catalogue-plan-link" href={item.plan_symbol_data_url || item.plan_symbol_url} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Architectural plan symbol ↗</a>}<p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions"><button onClick={(event) => beginEdit(item, event.currentTarget)}>Edit entry</button><button className="catalogue-insert" onClick={() => { onInsert(item); onClose(); }}>Add to room</button></div></div></article>;
               })}</div>}
             </>}
           </div>
@@ -369,6 +374,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
           <label className="field"><span>Colour</span><input type="color" value={form.color_hex} onChange={(event) => setField("color_hex", event.target.value)} /></label>
           <label className="field"><span>Colour HEX</span><input value={form.color_hex.toUpperCase()} pattern="#[0-9A-Fa-f]{6}" onChange={(event) => setField("color_hex", event.target.value.toUpperCase())} /></label>
           <label className="field"><span>Subcategory</span><input required value={form.subcategory} onChange={(event) => setField("subcategory", event.target.value)} /></label>
+          <label className="field"><span>3D model and plan symbol</span><select value={form.representation_key ?? ""} onChange={event => { setField("representation_key", event.target.value); setField("plan_symbol_url", event.target.value ? `/fixture-symbols/${event.target.value}.svg` : ""); }}><option value="">Generic / uploaded model</option>{["shower-corner","shower-quadrant","shower-walk-in","shower-alcove","shower-freestanding","shower-wet-room","basin-wall-mounted","basin-pedestal","basin-countertop","basin-undermount","basin-vanity","basin-double-vanity","basin-corner","toilet-freestanding","toilet-wall-mounted","toilet-close-coupled","toilet-back-to-wall"].map(key => <option key={key} value={key}>{key.replaceAll("-", " ")}</option>)}</select></label>
+          <label className="field"><span>Manufacturer floorplan image (PNG, JPEG or WebP, max 500 KB)</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 500000) { setError("Plan image must be smaller than 500 KB."); return; } const reader = new FileReader(); reader.onload = () => setField("plan_symbol_data_url", String(reader.result)); reader.readAsDataURL(file); }} />{form.plan_symbol_data_url && <button type="button" onClick={() => setField("plan_symbol_data_url", null)}>Use generic symbol</button>}</label>
           <label className="field"><span>Floorplan shape</span><select value={form.plan_shape} onChange={(event) => setField("plan_shape", event.target.value as CatalogueItemInput["plan_shape"])}><option value="RECTANGLE">Rectangle / box</option><option value="ELLIPSE">Ellipse / cylinder</option></select></label>
           <label className="field span-two"><span>Object name</span><input value={form.name} onChange={(event) => setField("name", event.target.value)} /></label>
           <label className="field"><span>Supplier</span><input value={form.supplier} onChange={(event) => setField("supplier", event.target.value)} /></label>

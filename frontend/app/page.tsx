@@ -6,7 +6,7 @@ import { EngineeringViewer } from "@/components/EngineeringViewer";
 import { ApplicationMenuBar } from "@/components/ApplicationMenuBar";
 import { CatalogueBrowser } from "@/components/CatalogueBrowser";
 import { CatalogueManager } from "@/components/CatalogueManager";
-import { FixtureEditor } from "@/components/FixtureEditor";
+import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
 import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { FloatingToolbar } from "@/components/FloatingToolbar";
 import { PersonEditor } from "@/components/PersonEditor";
@@ -81,6 +81,12 @@ export default function Home() {
     setMode("ANALYSIS");
   }
 
+  function applyPlanRoom(room: Room) {
+    setProjectRooms(current => [...current.filter(item => item.source_floorplan_room_id !== room.source_floorplan_room_id), room]);
+    setDemo(current => current ? { ...current, room } : current);
+    invalidateAnalysis();
+  }
+
   function applyObstacles(obstacles: Obstacle[]) {
     setDemo((current) => current ? { ...current, room: { ...current.room, obstacles, version: current.room.version + 1 } } : current);
     setProjectRooms((rooms) => rooms.map((room) => room.id === demo?.room.id ? { ...room, obstacles, version: room.version + 1 } : room));
@@ -149,6 +155,10 @@ export default function Home() {
       verified: false,
       fixture_kind: item.fixture_kind,
       model_id: item.id,
+      plan_symbol_data_url: item.plan_symbol_data_url,
+      representation_key: item.representation_key,
+      plan_symbol_url: item.plan_symbol_url,
+      subcategory: item.subcategory,
       color_hex: item.color_hex,
       // New catalogue items should begin adjacent to a wall. Users can opt out
       // from the selected-element controls after placement.
@@ -196,15 +206,15 @@ export default function Home() {
         </nav>
       </header>
 
-      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} onOpenRoom={openDetectedRoom} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} /></section>
+      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} onOpenRoom={openDetectedRoom} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} /></section>
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
           <EngineeringViewer key={`engineering-viewer-${demo.room.id}`} apiUrl={API_URL} room={demo.room} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} />
           {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={{ side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={180} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={demo.room.id} onChange={(event) => { const room = projectRooms.find((item) => item.id === event.target.value); if (room) setDemo((current) => current ? { ...current, room: normalizeRoomPerson(room) } : current); }}>{(projectRooms.some((room) => room.id === demo.room.id) ? projectRooms : [...projectRooms, demo.room]).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div></FloatingToolbar>}
-          {toolbarVisibility["viewer-analysis"] && <FloatingToolbar title="Layout & fit analysis" defaultPosition={{ x: 18, y: 112 }} dock={{ side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-analysis")}><aside className="evidence-panel floating-evidence-panel">
+          {toolbarVisibility["viewer-analysis"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 18, y: 112 }} dock={{ side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-analysis")}><aside className="evidence-panel floating-evidence-panel">
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
-            <FixtureEditor room={demo.room} displayUnits={preferences.units} onChange={applyObstacles} />
+            <CatalogueFixtureEditor key={demo.room.id} apiUrl={API_URL} refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)} room={demo.room} displayUnits={preferences.units} onChange={applyObstacles} />
 
             {(!layoutResult || analysisIsStale) && (
               <div className="stale-analysis">

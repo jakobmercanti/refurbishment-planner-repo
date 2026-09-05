@@ -24,13 +24,13 @@ export const FLOORPLAN_TOOLBARS: ToolbarDefinition[] = [
   { id: "floorplan-import", name: "Import drawing" },
   { id: "floorplan-coordinates", name: "Coordinates" },
   { id: "floorplan-rooms", name: "Rooms & 3D viewer" },
-  { id: "floorplan-openings", name: "Doors & windows" },
+  { id: "floorplan-openings", name: "Add elements" },
   { id: "floorplan-view", name: "View properties" },
 ];
 
 export const VIEWER_TOOLBARS: ToolbarDefinition[] = [
   { id: "viewer-room", name: "Room selector" },
-  { id: "viewer-analysis", name: "Layout & fit analysis" },
+  { id: "viewer-analysis", name: "Add elements" },
   { id: "viewer-person", name: "Human mock-up" },
   { id: "viewer-view", name: "View properties" },
 ];

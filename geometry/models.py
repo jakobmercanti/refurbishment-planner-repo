@@ -211,6 +211,10 @@ class ObstacleDefinition(BaseModel):
     verified: bool = False
     fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE"] | None = None
     model_id: str | None = None
+    representation_key: str = ""
+    plan_symbol_url: str = ""
+    plan_symbol_data_url: str | None = Field(default=None, max_length=1_500_000)
+    subcategory: str = "General"
     color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     wall_lock: bool = False
     stl_filename: str | None = None

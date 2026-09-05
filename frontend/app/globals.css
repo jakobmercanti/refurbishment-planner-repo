@@ -85,7 +85,11 @@ button { font: inherit; }
 .catalogue-material-swatches span { width: 42px; height: 42px; border: 1px solid rgba(0,0,0,.16); border-radius: 6px; box-shadow: 0 2px 5px rgba(21,34,28,.1); }
 .catalogue-material-swatches small { min-width: 0; overflow: hidden; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .catalogue-object-preview { position: relative; height: 75px; display: grid; place-items: end center; padding: 12px; background: linear-gradient(145deg,#eef2ef,#e2e8e3); }
-.catalogue-object-preview[style*="background-image"] { background-position: center; background-size: cover; }
+.catalogue-object-preview[style*="background-image"] { height: 150px; background-position: center; background-size: contain; background-repeat: no-repeat; }
+.catalogue-object-preview[style*="background-image"] span { display: none; }
+.fixture-editor > .fixture-save { width: 100%; padding: 12px; border-radius: 8px; background: var(--deep); color: white; }
+.mode-switch.element-tabs { position: sticky; top: 0; z-index: 2; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 6px 0; background: white; }
+.catalogue-plan-link { font: 11px var(--font-mono); color: var(--deep); }
 .catalogue-object-preview.ellipse span { border-radius: 50%; }
 .catalogue-object-preview span { width: 54%; height: 42px; display: block; border-radius: 5px 5px 2px 2px; background: var(--object-colour); box-shadow: inset 0 -8px 0 rgba(0,0,0,.08), 0 8px 16px rgba(21,34,28,.16); }
 .catalogue-object-preview b { position: absolute; top: 7px; right: 7px; padding: 3px 5px; border-radius: 4px; background: var(--deep); color: white; font: 700 7px var(--font-mono); }
@@ -684,7 +688,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .full-plan-draft-node { fill: white; stroke: #2e8b70; stroke-width: 3; vector-effect: non-scaling-stroke; pointer-events: none; }
 .full-plan-side-column { align-content: start; min-width: 0; }
 .full-plan-rooms small { color: var(--muted); font-size: 9px; }
-.full-plan-openings-panel { max-height: min(62vh,620px); overflow-y: auto; }
+.full-plan-openings-panel { max-height: none; overflow: visible; }
 .full-opening-list { display: grid; gap: 5px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .full-opening-list > div { display: grid; grid-template-columns: auto minmax(0, 1fr) auto 28px; gap: 6px; align-items: center; padding: 5px; border: 1px solid var(--line); border-radius: 7px; }
 .full-opening-list > div.editing { border-color: #d89a37; background: #fff7e5; }

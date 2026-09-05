@@ -48,6 +48,10 @@ export interface Obstacle {
   verified: boolean;
   fixture_kind?: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE";
   model_id?: string;
+  plan_symbol_data_url?: string | null;
+  representation_key?: string;
+  plan_symbol_url?: string;
+  subcategory?: string;
   color_hex?: string;
   wall_lock?: boolean;
   stl_filename?: string;
@@ -69,6 +73,7 @@ export interface CatalogueItem {
   id: string;
   category_id: string;
   category_name: string;
+  plan_symbol_data_url?: string | null;
   fixture_kind: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE";
   name: string;
   supplier: string;
@@ -84,6 +89,8 @@ export interface CatalogueItem {
   side_clearance_mm?: number | null;
   front_clearance_mm?: number | null;
   subcategory: string;
+  representation_key?: string;
+  plan_symbol_url?: string;
   plan_shape: "RECTANGLE" | "ELLIPSE";
   images: Array<{ data_url: string; url?: string | null; filename?: string | null; content_type?: string | null; size_bytes?: number | null; alt: string }>;
   supplier_editable: boolean;

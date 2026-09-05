@@ -1,6 +1,9 @@
 "use client";
 
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
+import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
+import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
 import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
@@ -40,7 +43,7 @@ type FullOpening = {
 type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[]; wallThickness?: number; rooms?: NamedOutline[]; selectedRoomId?: string | null };
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
 type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number };
-interface Props { apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: "DEFAULT" | "TRADITIONAL"; exportRequest: number; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; onOpenRoom: (sourceRoomId: string, name: string, vertices: Point2D[], openings: Opening[], wallHeight: number, wallThickness: number, wallThicknessOverridesMm: Record<string, number>) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; }
+interface Props { projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: "DEFAULT" | "TRADITIONAL"; exportRequest: number; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; onOpenRoom: (sourceRoomId: string, name: string, vertices: Point2D[], openings: Opening[], wallHeight: number, wallThickness: number, wallThicknessOverridesMm: Record<string, number>) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; }
 
 const DEFAULT_SIZE = { width: 1100, height: 700 };
 const DEFAULT_SNAP_MM = 50;
@@ -475,7 +478,7 @@ function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultTh
   return overrides;
 }
 
-export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, exportRequest, activeSourceRoomId, fixtures = [], onFixturesChange, onOpenRoom, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey }: Props) {
+export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, apiUrl, displayUnits, floorplanStyle, exportRequest, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, onOpenRoom, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey }: Props) {
   const [walls, setWalls] = useState<Wall[]>([]);
   const [openings, setOpenings] = useState<FullOpening[]>([]);
   const [history, setHistory] = useState<Snapshot[]>([]);
@@ -513,6 +516,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const [roomValidation, setRoomValidation] = useState<RoomValidationResponse | null>(null);
   const [roomValidationError, setRoomValidationError] = useState<string | null>(null);
   const [roomSaving, setRoomSaving] = useState(false);
+  const [elementTab, setElementTab] = useState<"DOOR" | "WINDOW" | "FURNITURE">("DOOR");
   const [openingKind, setOpeningKind] = useState<"DOOR" | "WINDOW">("DOOR");
   const [openingParent, setOpeningParent] = useState("");
   const [openingOffset, setOpeningOffset] = useState(100);
@@ -567,7 +571,14 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   const selectedRoom = useMemo(() => rooms.find((room) => room.id === selectedRoomId) ?? rooms[0] ?? null, [rooms, selectedRoomId]);
-  const visibleFixtures = selectedRoom?.id === activeSourceRoomId ? fixtures : [];
+  const storedRoom = projectRooms.find(room => room.source_floorplan_room_id === selectedRoom?.id);
+  const fixtures = storedRoom?.obstacles ?? (selectedRoom?.id === activeSourceRoomId ? currentFixtures : []);
+  const visibleFixtures = [...projectRooms.filter(room => rooms.some(outline => outline.id === room.source_floorplan_room_id) && room.source_floorplan_room_id !== selectedRoom?.id).flatMap(room => room.obstacles), ...fixtures];
+  function onFixturesChange(next: Obstacle[]) {
+    const draft = selectedRoomDraft();
+    if (draft && onPlanRoomChange) onPlanRoomChange({ ...draft, ...storedRoom, id: storedRoom?.id ?? draft.id, source_floorplan_room_id: selectedRoom!.id, vertices: draft.vertices, openings: draft.openings, obstacles: next, version: (storedRoom?.version ?? 0) + 1 });
+    else currentOnFixturesChange?.(next);
+  }
   const segmentOptions = useMemo(() => walls.flatMap((wall, wallIndex) => wall.points.slice(0, -1).map((_, segmentIndex) => ({ key: parentKey(wall.id, segmentIndex), label: `Wall ${wallIndex + 1}.${segmentIndex + 1}`, wall, segmentIndex }))), [walls]);
   const selectedWall = selectedSegment ? walls.find((wall) => wall.id === selectedSegment.wallId) ?? null : null;
   const selectedPointWall = selectedPoint ? walls.find((wall) => wall.id === selectedPoint.wallId) ?? null : null;
@@ -842,8 +853,9 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
 
   function beginFixtureDrag(event: ReactPointerEvent<SVGElement>, fixture: Obstacle) {
     if (!onFixturesChange || event.button !== 0) return;
-    if (!window.confirm(`Move ${fixture.name} in the floorplan and update its position in the 3D viewer as well?`)) return;
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
+    if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
     fixtureDrag.current = { id: fixture.id, before: { ...fixture.center } };
   }
 
@@ -851,18 +863,24 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     const active = fixtureDrag.current;
     if (!active || !onFixturesChange) return false;
     const next = canvasPoint(event, false); const snapped = snapEnabled ? { x: Math.round(next.x / snapSize) * snapSize, y: Math.round(next.y / snapSize) * snapSize } : next;
-    onFixturesChange(fixtures.map((fixture) => fixture.id === active.id ? { ...fixture, center: snapped } : fixture));
+    onFixturesChange(fixtures.map((fixture) => fixture.id === active.id ? (fixture.wall_lock && selectedRoom ? alignObstacleToNearestWall({ ...fixture, center: snapped }, counterClockwiseVertices(selectedRoom.vertices), snapped) : { ...fixture, center: snapped }) : fixture));
     return true;
   }
 
   function openFixtureContextMenu(event: ReactMouseEvent<SVGElement>, fixture: Obstacle) {
     if (!onFixturesChange) return;
+    const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
+    if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
     event.preventDefault(); event.stopPropagation(); setFixtureContextMenu({ id: fixture.id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 244)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
   }
 
   function updateFixture(id: string, update: (fixture: Obstacle) => Obstacle) {
     if (!onFixturesChange) return;
-    onFixturesChange(fixtures.map((fixture) => fixture.id === id ? update(fixture) : fixture));
+    onFixturesChange(fixtures.map((fixture) => {
+      if (fixture.id !== id) return fixture;
+      const next = update(fixture);
+      return next.wall_lock && selectedRoom ? alignObstacleToNearestWall(next, counterClockwiseVertices(selectedRoom.vertices), next.center) : next;
+    }));
   }
 
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
@@ -1209,6 +1227,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   }
 
   function selectOpeningForEdit(opening: FullOpening) {
+    setElementTab(opening.kind);
     setTool("SELECT"); setLockedViewport(viewport); setSelectedOpeningId(opening.id); setSelectedPoint(null);
     setSelectedSegment({ wallId: opening.wallId, segmentIndex: opening.segmentIndex }); setOpeningParent(parentKey(opening.wallId, opening.segmentIndex));
     setOpeningKind(opening.kind); setOpeningOffset(opening.offset); setOpeningWidth(opening.width); setOpeningHeight(opening.height); setWindowSill(opening.sill);
@@ -1511,7 +1530,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
     if (!selectedRoom) return null;
     const roomId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(selectedRoom.id) ? selectedRoom.id : crypto.randomUUID();
     const normalizedRoom = { ...selectedRoom, vertices: counterClockwiseVertices(selectedRoom.vertices) };
-    return { id: roomId, name: normalizedRoom.name, version: 1, vertices: normalizedRoom.vertices, wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness_overrides_mm: roomWallThicknessOverrides(normalizedRoom, walls, wallThickness), openings: roomOpenings(normalizedRoom, openings, walls), obstacles: [], person_mockup: null };
+    return { id: roomId, name: normalizedRoom.name, version: 1, vertices: normalizedRoom.vertices, wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" }, wall_thickness_overrides_mm: roomWallThicknessOverrides(normalizedRoom, walls, wallThickness), openings: roomOpenings(normalizedRoom, openings, walls), obstacles: fixtures, person_mockup: storedRoom?.person_mockup ?? null };
   }
 
   async function validateSelectedRoom() {
@@ -1544,14 +1563,16 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
   const vertexCount = walls.reduce((total, wall) => total + wall.points.slice(0, samePoint(wall.points[0], wall.points.at(-1)!) ? -1 : undefined).filter((_, index) => !wall.attachments?.[index]?.hideCorner).length, 0);
   const sourceTopLeft = toScreen({ x: 0, y: canvasSize.height }); const sourceBottomRight = toScreen({ x: canvasSize.width, y: 0 });
 
-  const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Doors and windows">
+  const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add elements">
+    <div className="mode-switch element-tabs" role="tablist" aria-label="Element type">{(["DOOR", "WINDOW", "FURNITURE"] as const).map(tab => <button key={tab} role="tab" aria-selected={elementTab === tab} className={elementTab === tab ? "active" : ""} onClick={() => { setElementTab(tab); if (tab !== "FURNITURE") { setOpeningKind(tab); setOpeningHeight(tab === "DOOR" ? 2040 : 900); } }}>{tab[0] + tab.slice(1).toLowerCase()}</button>)}</div>
+    {elementTab === "FURNITURE" ? (selectedRoom ? <CatalogueFixtureEditor key={selectedRoom.id} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} /> : <p>Select or draw a closed room to add furniture.</p>) : <>
     <p className="tool-note">Choose a wall, then add or remove openings without leaving the plan.</p>
-    <div className="mode-switch" role="group" aria-label="Full floorplan opening type"><button className={openingKind === "DOOR" ? "active" : ""} onClick={() => { setOpeningKind("DOOR"); setOpeningHeight(2040); }}>Door</button><button className={openingKind === "WINDOW" ? "active" : ""} onClick={() => { setOpeningKind("WINDOW"); setOpeningHeight(900); }}>Window</button></div>
     <div className="coordinate-fields opening-fields"><label className="field"><span>Parent wall</span><select value={openingParent} onChange={(event) => setOpeningParent(event.target.value)}><option value="">Select a wall…</option>{segmentOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
     <label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label><label className="field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingHeight} units={displayUnits} onMmChange={setOpeningHeight} /></label><label className="field"><span>Width <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingWidth} units={displayUnits} onMmChange={setOpeningWidth} /></label>{openingKind === "WINDOW" && <label className="field"><span>Sill <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={windowSill} units={displayUnits} onMmChange={setWindowSill} /></label>}</div>
     {openingKind === "DOOR" && <><label className="check-row double-door-choice"><input type="checkbox" checked={doorType === "DOUBLE"} onChange={(event) => setDoorType(event.target.checked ? "DOUBLE" : "SINGLE")} /><span><strong>Double door</strong></span></label><div className="coordinate-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div></>}
     {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={saveOpening}>{selectedOpeningId ? `Update ${openingKind.toLowerCase()}` : `Add ${openingKind === "DOOR" ? doorType === "DOUBLE" ? "double door" : "door" : "window"}`}</button></div>
     {openings.length > 0 && <div className="full-opening-list">{openings.map((opening, index) => <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small>{`${opening.kind === "DOOR" ? "D" : "W"}${String(index + 1).padStart(3, "0")} · ${formatLength(opening.width, displayUnits)}`}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>)}</div>}
+    </>}
   </section>;
 
   function exportSvgMarkup(styleChoice: ExportStyle = exportStyle) {
@@ -1720,7 +1741,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
               const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
               const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
               const centre = toScreen(fixture.center); const label = `${formatLength(width, displayUnits)} × ${formatLength(depth, displayUnits)}`;
-              return <g key={`fixture-${fixture.id}`} className="floorplan-fixture" onPointerDown={(event) => event.stopPropagation()}>{fixture.kind === "CYLINDER" ? <ellipse cx={centre.x} cy={centre.y} rx={(bottomRight.x - topLeft.x) / 2} ry={(bottomRight.y - topLeft.y) / 2} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)} /> : <rect x={topLeft.x} y={topLeft.y} width={bottomRight.x - topLeft.x} height={bottomRight.y - topLeft.y} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)} />}<text x={centre.x} y={centre.y - 3}>{fixture.name}</text>{showMeasurements && <text className="floorplan-fixture-dimension" x={centre.x} y={centre.y + 10}>{label}</text>}</g>;
+              return <g key={`fixture-${fixture.id}`} className="floorplan-fixture" onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}><FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} /><text pointerEvents="none" x={centre.x} y={centre.y + (bottomRight.y - topLeft.y) / 2 + 12}>{fixture.name}</text>{showMeasurements && <text pointerEvents="none" className="floorplan-fixture-dimension" x={centre.x} y={centre.y + (bottomRight.y - topLeft.y) / 2 + 24}>{label}</text>}</g>;
             })}
             {walls.map((wall) => {
               const closed = samePoint(wall.points[0], wall.points.at(-1)!); const modelPoints = closed ? wall.points.slice(0, -1) : wall.points; const screenPoints = modelPoints.map(toScreen); const centre = screenPoints.reduce((total, point) => ({ x: total.x + point.x / screenPoints.length, y: total.y + point.y / screenPoints.length }), { x: 0, y: 0 });
@@ -1776,7 +1797,7 @@ export function FullFloorplanEditor({ apiUrl, displayUnits, floorplanStyle, expo
         {toolbarVisibility["floorplan-rooms"] && <FloatingToolbar title="Rooms & 3D viewer" defaultPosition={{ x: 1005, y: 58 }} dock={{ side: "RIGHT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={510} onClose={() => onToggleToolbar("floorplan-rooms")}>
         <section className="tool-section full-plan-rooms room-action-panel"><p className="tool-note">Closed rooms appear here automatically. Rename them on the plan or below, then choose which room to view in 3D.</p>{rooms.length === 0 ? <p className="inline-status">No closed rooms yet.</p> : <><label className="field"><span>Room to edit and view</span><select value={selectedRoom?.id ?? ""} onChange={(event) => { setSelectedRoomId(event.target.value); clearRoomValidation(); }}>{rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>{selectedRoom && <label className="field"><span>Room name</span><input value={selectedRoom.name} onChange={(event) => { setRooms((current) => current.map((room) => room.id === selectedRoom.id ? { ...room, name: event.target.value } : room)); setRoomValidation(null); }} /></label>}<div className="room-action-buttons" role="group" aria-label="Room actions"><button className="review-style-button" onClick={validateSelectedRoom}>Validate geometry</button><button className="review-style-button" disabled={!selectedRoom} onClick={() => selectedRoom && onOpenRoom(selectedRoom.id, selectedRoom.name, selectedRoom.vertices, roomOpenings(selectedRoom, openings, walls), wallHeight, wallThickness, roomWallThicknessOverrides({ ...selectedRoom, vertices: counterClockwiseVertices(selectedRoom.vertices) }, walls, wallThickness))}>Open selection in 3D</button><button className="review-style-button" onClick={clearRoomValidation}>Clear validation</button><button className="review-style-button" disabled={!roomValidation || roomSaving} onClick={saveSelectedRoom}>{roomSaving ? "Saving…" : "Save room revision"}</button></div>{roomValidationError && <div className="validation-fail"><strong>INVALID</strong><p>{roomValidationError}</p></div>}{roomValidation && <div className="validation-pass"><div><strong>VALID · CCW</strong><span>{formatArea(roomValidation.area_mm2, displayUnits)} · {formatLength(roomValidation.perimeter_mm, displayUnits)} perimeter</span></div><ul>{roomValidation.warnings.map((warning) => <li key={warning}>{formatMeasurementText(warning, displayUnits)}</li>)}</ul></div>}</>}</section>
         </FloatingToolbar>}
-        {toolbarVisibility["floorplan-openings"] && <FloatingToolbar title="Doors & windows" defaultPosition={{ x: 662, y: 370 }} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={520} onClose={() => onToggleToolbar("floorplan-openings")}>{openingPanel}</FloatingToolbar>}
+        {toolbarVisibility["floorplan-openings"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={520} onClose={() => onToggleToolbar("floorplan-openings")}>{openingPanel}</FloatingToolbar>}
       </aside>
     </div>
   </section>;
