@@ -5,6 +5,6 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node server.mjs",
-    "test": "node --test tests.mjs"
+    "test": "node --test tests.mjs contact.test.mjs"
   }
 }

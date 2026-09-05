@@ -4,11 +4,12 @@ Production: https://www.freefloorplan3d.com/
 
 This standalone marketing site is separate from the Renovation Fit editor and
 the existing PlannerBuild landing page. Node.js 22+ builds it without installing
-any packages. No visitor accounts, forms, analytics or storage are enabled.
+any packages. The contact form sends email through Cloudflare to the team's
+verified Gmail address. No visitor accounts, analytics or project storage are enabled.
 
 ## Development and checks
 
-Run `node build.mjs`, `node --test tests.mjs`, then `node server.mjs` from this
+Run `node build.mjs`, `node --test tests.mjs contact.test.mjs`, then `node server.mjs` from this
 directory. The preview is at http://localhost:4175. The build produces public
 HTML/assets in `dist/` and a Cloudflare module in `worker.generated.mjs`.
 
@@ -22,8 +23,34 @@ The apex and HTTP permanently redirect to HTTPS www. Unknown URLs return 404.
 
 Deploy the generated module through the Cloudflare connection as `main_module`
 with compatibility date 2026-09-05, or use Wrangler with `wrangler.jsonc`.
-The Worker bundles the small static site; there are no runtime bindings or
-secrets. Asset responses use ETags and one-hour caching. HTML revalidates.
+The Worker bundles the small static site and contact handler. Preserve the
+`CONTACT_EMAIL`, `CONTACT_RATE_LIMIT` and `TURNSTILE_SECRET` bindings on deploy.
+Asset responses use ETags and one-hour caching. HTML revalidates.
+
+## Contact form
+
+The homepage contact section and `/contact/` submit to `POST /api/contact`.
+The server validates fields, bounds request size, checks the exact origin,
+validates a one-use Turnstile token (hostname and `contact` action), and limits
+attempts to five per minute per network address at each Cloudflare location.
+Visitors sharing a network may share that limit. A honeypot rejects simple bots.
+
+`CONTACT_EMAIL` is restricted to `plannerbuildteam@gmail.com`, with sender
+`contact@freefloorplan3d.com`. The visitor's email is the Reply-To, never the
+envelope sender. Emails are plain text and the server ignores any client-supplied
+recipient. Success is returned only after Cloudflare accepts the send call.
+Message content is not stored in a website database or written to application
+logs. The privacy notice covers mailbox delivery and spam protection.
+
+Cloudflare Email Routing is enabled on freefloorplan3d.com. Preflight checks
+confirmed there was no existing MX/SPF or other mail setup before enabling it.
+The Gmail destination was already verified. No catch-all forwarding was added.
+
+Turnstile public sitekey: `0x4AAAAAAEpWnNwYy2OORIpg` (production www hostname).
+Its secret is stored only in Cloudflare as `TURNSTILE_SECRET`; do not put it in
+Git or public assets. Set it via the Cloudflare secret API or `wrangler secret put`.
+The local static preview intentionally cannot send mail. Unit tests mock both
+verification and mail delivery. Do not disable production spam protection for tests.
 
 ## Plugging in the future editor
 
@@ -44,7 +71,7 @@ review the content-security policy for the actual editor requirements; verify
 ## Search foundation
 
 Each page ships complete HTML, a distinct title/description, canonical URL,
-semantic headings and crawlable links. `/sitemap.xml` lists the seven indexable
+semantic headings and crawlable links. `/sitemap.xml` lists the eight indexable
 pages; `/robots.txt` references it. Structured data describes the organisation,
 website and pages, without fictional reviews, usage claims or active software
 offers. Text accurately states that the product is in development.

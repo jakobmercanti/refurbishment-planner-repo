@@ -1,3 +1,4 @@
+import {handleContact} from './contact.mjs';
 // The build injects the validated public files. No filesystem or Node runtime
 // is required in Cloudflare. Keep routing independent of the future editor.
 export function createWorker(files) {
@@ -7,15 +8,16 @@ export function createWorker(files) {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'X-Frame-Options': 'DENY',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
   };
   return {
-    async fetch(request) {
+    async fetch(request, env = {}) {
       const url = new URL(request.url);
       if (url.hostname === 'freefloorplan3d.com' || (url.hostname === canonical && url.protocol !== 'https:')) {
         url.hostname = canonical; url.protocol = 'https:';
         return Response.redirect(url.href, 301);
       }
+      if (url.pathname === '/api/contact') return handleContact(request, env);
       if (!['GET','HEAD'].includes(request.method)) return new Response('Method not allowed', {status:405, headers:{...security,Allow:'GET, HEAD'}});
       let path = url.pathname;
       if (path.endsWith('/index.html')) {

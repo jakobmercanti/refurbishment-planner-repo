@@ -28,5 +28,6 @@ const robots=`User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n`;
 for(const [path,data] of [['/sitemap.xml',sitemap],['/robots.txt',robots]]){await writeFile(new URL(path.slice(1),out),data);await record(path,data,types[extname(path)]);}
 if(!files['/assets/home-3d.webp']) throw new Error('Required hero artwork is missing');
 const worker=await readFile(new URL('./worker.mjs',import.meta.url),'utf8');
-await writeFile(new URL('./worker.generated.mjs',import.meta.url),worker+'\nconst files='+JSON.stringify(files)+';\nexport default createWorker(files);\n');
+const contact=await readFile(new URL('./contact.mjs',import.meta.url),'utf8');
+await writeFile(new URL('./worker.generated.mjs',import.meta.url),contact+'\n'+worker.replace("import {handleContact} from './contact.mjs';",'')+'\nconst files='+JSON.stringify(files)+';\nexport default createWorker(files);\n');
 console.log(`Built ${Object.keys(site).length} HTML pages and ${Object.keys(files).length} total routes; Worker ${(Buffer.byteLength(worker)+Buffer.byteLength(JSON.stringify(files)))/1024|0} KB.`);

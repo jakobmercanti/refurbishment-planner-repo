@@ -4,6 +4,8 @@
   "compatibility_date": "2026-09-05",
   "account_id": "e7b15d4071cac7e990eee39776523c4f",
   "workers_dev": false,
+  "send_email": [{"name":"CONTACT_EMAIL","destination_address":"plannerbuildteam@gmail.com","allowed_sender_addresses":["contact@freefloorplan3d.com"]}],
+  "ratelimits": [{"name":"CONTACT_RATE_LIMIT","namespace_id":"9052601","simple":{"limit":5,"period":60}}],
   "routes": [
     { "pattern": "www.freefloorplan3d.com", "custom_domain": true },
     { "pattern": "freefloorplan3d.com", "custom_domain": true }
