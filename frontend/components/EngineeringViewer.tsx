@@ -210,12 +210,21 @@ function wallVector(start: Point2D, end: Point2D) {
   return { dx: dx / length, dy: dy / length, length, angle: Math.atan2(dy, dx) };
 }
 
+function wallId(index: number): string {
+  return `wall-${String(index + 1).padStart(3, "0")}`;
+}
+
+function wallSegmentKey(start: Point2D, end: Point2D): string {
+  const pointKey = (point: Point2D) => `${Math.round(point.x * 1000)},${Math.round(point.y * 1000)}`;
+  return [pointKey(start), pointKey(end)].sort().join("|");
+}
+
 function cross(a: Point2D, b: Point2D) {
   return a.x * b.y - a.y * b.x;
 }
 
 function wallThickness(room: Room, index: number): number {
-  return room.wall_thickness_overrides_mm?.[`wall-${String(index + 1).padStart(3, "0")}`] ?? room.wall_thickness.value;
+  return room.wall_thickness_overrides_mm?.[wallId(index)] ?? room.wall_thickness.value;
 }
 
 function exteriorCorner(vertices: Point2D[], index: number, incomingThickness: number, outgoingThickness: number): Point2D {
@@ -370,10 +379,10 @@ function WallWithOpenings({
   const thickness = wallThickness(room, index);
   const outerStart = exteriorCorner(room.vertices, index, wallThickness(room, (index - 1 + room.vertices.length) % room.vertices.length), thickness);
   const outerEnd = exteriorCorner(room.vertices, (index + 1) % room.vertices.length, thickness, wallThickness(room, (index + 1) % room.vertices.length));
-  const wallId = `wall-${String(index + 1).padStart(3, "0")}`;
-  const colour = room.finishes?.wall_colors?.[wallId] ?? "#d9d4c8";
+  const currentWallId = wallId(index);
+  const colour = room.finishes?.wall_colors?.[currentWallId] ?? "#d9d4c8";
   const openings = room.openings
-    .filter((opening) => opening.parent_wall_id === wallId)
+    .filter((opening) => opening.parent_wall_id === currentWallId)
     .sort((a, b) => a.offset_mm - b.offset_mm);
   const pieces: React.ReactNode[] = [];
   let cursor = 0;
@@ -442,7 +451,7 @@ function WallWithOpenings({
   });
   pieces.push(
     <WallPiece
-      key={`${wallId}-after`}
+      key={`${currentWallId}-after`}
       start={start}
       end={end}
       from={cursor}
@@ -1023,6 +1032,20 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
   const roomTarget = useMemo<VectorTuple>(() => {
     return [(sceneBounds.minX + sceneBounds.maxX) * SCALE / 2, sceneBounds.wallHeight * SCALE / 2, -(sceneBounds.minY + sceneBounds.maxY) * SCALE / 2];
   }, [sceneBounds]);
+  const renderedWalls = useMemo(() => {
+    const wallsByKey = new Map<string, { room: Room; index: number; start: Point2D; end: Point2D }>();
+    renderedRooms.forEach((sceneRoom) => {
+      sceneRoom.vertices.forEach((start, index) => {
+        const end = sceneRoom.vertices[(index + 1) % sceneRoom.vertices.length];
+        const key = wallSegmentKey(start, end);
+        const current = wallsByKey.get(key);
+        const hasOpening = sceneRoom.openings.some((opening) => opening.parent_wall_id === wallId(index));
+        const currentHasOpening = current?.room.openings.some((opening) => opening.parent_wall_id === wallId(current.index)) ?? false;
+        if (!current || (hasOpening && !currentHasOpening)) wallsByKey.set(key, { room: sceneRoom, index, start, end });
+      });
+    });
+    return [...wallsByKey.values()];
+  }, [renderedRooms]);
   const roomSpan = useMemo<[number, number, number]>(() => [
     (sceneBounds.maxX - sceneBounds.minX) * SCALE,
     sceneBounds.wallHeight * SCALE,
@@ -1110,6 +1133,22 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
       <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey} zoomPercent={zoomPercent} />
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
+      {renderedWalls.map(({ room: wallRoom, index, start, end }) => {
+        if (wallMode === "INVISIBLE") return null;
+        const sceneInteractive = !multiRoom && wallRoom.id === room.id;
+        return (
+          <WallWithOpenings
+            key={`wall-${wallSegmentKey(start, end)}`}
+            index={index}
+            room={wallRoom}
+            start={start}
+            end={end}
+            wallMode={wallMode}
+            selected={sceneInteractive && selection?.type === "WALL" && selection.ids.includes(wallId(index))}
+            onSelect={sceneInteractive ? (additive) => selectWall(wallId(index), additive) : () => undefined}
+          />
+        );
+      })}
       {renderedRooms.map((sceneRoom) => {
         const sceneInteractive = !multiRoom && sceneRoom.id === room.id;
         const sceneObstacles = sceneRoom.id === room.id ? displayedObstacles : sceneRoom.obstacles;
@@ -1117,18 +1156,6 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
         return (
           <group key={`room-${sceneRoom.id}`}>
             <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR"} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR" }) : () => undefined} />
-            {sceneRoom.vertices.map((start, index) => wallMode !== "INVISIBLE" && (
-              <WallWithOpenings
-                key={`wall-${sceneRoom.id}-${index}`}
-                index={index}
-                room={sceneRoom}
-                start={start}
-                end={sceneRoom.vertices[(index + 1) % sceneRoom.vertices.length]}
-                wallMode={wallMode}
-                selected={sceneInteractive && selection?.type === "WALL" && selection.ids.includes(`wall-${String(index + 1).padStart(3, "0")}`)}
-                onSelect={sceneInteractive ? (additive) => selectWall(`wall-${String(index + 1).padStart(3, "0")}`, additive) : () => undefined}
-              />
-            ))}
             {sceneRoom.openings.map((opening) => <OpeningFixture key={`fixture-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} />)}
             {toggles.elements && sceneObstacles.map((obstacle) => (
               <FixtureMesh
