@@ -14,6 +14,7 @@ import { closedRooms as detectClosedRooms } from "@/lib/roomDetection";
 import { addRoomOutsideWall, removeRoomBoundary } from "@/lib/roomOperations";
 import { needsWallThicknessOverride } from "@/lib/wallThickness";
 import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import { FLOORPLAN_STYLE_OPTIONS, floorplanStyleClass, floorplanStyleCss, floorplanStyleLabel, type FloorplanStyle } from "@/lib/floorplanStyles";
 import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
 import type { Obstacle, Opening, Point2D, ProjectFloorplanResponse, Room } from "@/lib/types";
 import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
@@ -32,7 +33,7 @@ type MeasurementContextMenu = { id: string; custom: boolean; x: number; y: numbe
 type OpeningContextMenu = { id: string; x: number; y: number };
 type OpeningMeasurementContextMenu = { id: string; section: number; x: number; y: number };
 type FixtureContextMenu = { id: string; x: number; y: number };
-type ExportStyle = "CURRENT" | "TRADITIONAL" | "MODERN" | "CREATIVE";
+type ExportStyle = "CURRENT" | FloorplanStyle;
 type ExportFormat = "PDF" | "PNG" | "JPG";
 type SaveFileHandle = { createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> };
 type FullOpening = {
@@ -43,7 +44,7 @@ type FullOpening = {
 type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[]; wallThickness?: number; rooms?: NamedOutline[]; selectedRoomId?: string | null };
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
 type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number };
-interface Props { projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: "DEFAULT" | "TRADITIONAL"; exportRequest: number; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; }
+interface Props { projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; }
 
 const DEFAULT_SIZE = { width: 1100, height: 700 };
 const DEFAULT_SNAP_MM = 50;
@@ -119,14 +120,8 @@ const FLOORPLAN_EXPORT_BASE_CSS = `
 .vertex-layer,.full-room-highlight,.corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit{display:none}
 `;
 
-function floorplanExportCss(style: Exclude<ExportStyle, "CURRENT"> | "DEFAULT") {
-  if (style === "TRADITIONAL") return `${FLOORPLAN_EXPORT_BASE_CSS}
-.plan-grid{display:none}.canvas-background{fill:#fff}.wall-body{stroke:#151515}.wall-line{stroke:#151515;stroke-width:var(--wall-inner-stroke-width,5px)}.wall-thickness-label{fill:#151515}.vertex-layer{opacity:0}.vertex-label{display:none}.opening-dimension{display:none}.full-room-highlight polygon{display:none}.export-room-name{fill:#151515;font-family:Arial,sans-serif;font-size:9px;font-weight:700;letter-spacing:.02em}.opening-gap{stroke:#fff;stroke-width:var(--opening-gap-width,12px)}.opening-jamb{stroke:#151515;stroke-width:1.4}.door-closed-line{display:none}.door-leaf{stroke:#606060;stroke-width:1.15}.door-swing{stroke:#777;stroke-width:1;stroke-dasharray:none}.window-frame{stroke:#151515;stroke-width:1.25}.window-core{stroke:#777;stroke-width:.8}.window-jamb{stroke:#151515;stroke-width:1.2}`;
-  if (style === "MODERN") return `${FLOORPLAN_EXPORT_BASE_CSS}
-.canvas-background{fill:#edf6f5}.plan-grid line{stroke:#b8d8d4;stroke-width:.75}.room-polygon{fill:#fbfefd}.wall-body{stroke:#155d55}.wall-line{stroke:#fff}.wall-label,.wall-thickness-label{fill:#164e48;font-family:Arial,sans-serif}.vertex-handle{stroke:#155d55;fill:#f8fffe}.door-leaf,.door-swing{stroke:#168a79}.opening-dimension{color:#168a79}.opening-dimension-label{fill:#126e61}.window-frame,.window-jamb{stroke:#2c7dbc}.window-core{stroke:#84b8df}.window-dimension{color:#2c7dbc}.window-dimension .opening-dimension-label{fill:#246a9e}`;
-  if (style === "CREATIVE") return `${FLOORPLAN_EXPORT_BASE_CSS}
-.canvas-background{fill:#fff5e5}.plan-grid line{stroke:#e7cea0}.room-polygon{fill:#fffdf8}.wall-body{stroke:#75572d}.wall-line{stroke:#fff8eb}.wall-label,.wall-thickness-label{fill:#6c4d23;font-family:Georgia,serif}.vertex-handle{stroke:#b36b32;fill:#fff2d3}.door-leaf,.door-swing{stroke:#c56d3d}.opening-dimension{color:#b35c35}.opening-dimension-label{fill:#9d4b29}.window-frame,.window-jamb{stroke:#5d83a5}.window-core{stroke:#9ec0d5}.window-dimension{color:#5d83a5}.window-dimension .opening-dimension-label{fill:#426b8c}.full-room-highlight{display:inline}.full-room-highlight polygon{fill:#f0b761;fill-opacity:.22}`;
-  return FLOORPLAN_EXPORT_BASE_CSS;
+function floorplanExportCss(style: FloorplanStyle) {
+  return `${FLOORPLAN_EXPORT_BASE_CSS}\n${floorplanStyleCss(style)}`;
 }
 
 function floorplanPdfBlobFromJpeg(bytes: ArrayBuffer, width: number, height: number) {
@@ -1591,6 +1586,8 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
     clone.querySelectorAll(".corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit").forEach((element) => element.remove());
     const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
     const effectiveStyle = styleChoice === "CURRENT" ? floorplanStyle : styleChoice;
+    const styleClass = floorplanStyleClass(effectiveStyle);
+    if (styleClass) clone.classList.add(styleClass);
     // The preview sits inside the app's stylesheet; make this standalone export
     // stylesheet authoritative so it renders exactly like the saved SVG raster.
     style.textContent = floorplanExportCss(effectiveStyle).replace(/:([^;{}]+)([;}])/g, ":$1 !important$2");
@@ -1636,9 +1633,14 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
   }
 
   const exportPreviewMarkup = exportOpen ? exportSvgMarkup() : null;
+  const liveStyleCss = floorplanStyleCss(floorplanStyle);
+  const exportStyleLabel = exportStyle === "CURRENT"
+    ? `Current ${floorplanStyleLabel(floorplanStyle).toLowerCase()}`
+    : `${floorplanStyleLabel(exportStyle).replace(/ style$/, "")} drawing`;
 
-  return <section ref={editorRoot} className={`editor-page full-plan-page ${floorplanStyle === "TRADITIONAL" ? "traditional-floorplan" : ""}`}>
-    {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyle === "CURRENT" ? (floorplanStyle === "TRADITIONAL" ? "Current traditional view" : "Current default view") : `${exportStyle[0]}${exportStyle.slice(1).toLowerCase()} drawing`}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option><option value="TRADITIONAL">Traditional style</option><option value="MODERN">Modern style</option><option value="CREATIVE">Creative style</option></select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
+  return <section ref={editorRoot} className={`editor-page full-plan-page ${floorplanStyleClass(floorplanStyle)}`.trim()}>
+    {liveStyleCss && <style data-floorplan-style={floorplanStyle} dangerouslySetInnerHTML={{ __html: liveStyleCss }} />}
+    {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyleLabel}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option>{FLOORPLAN_STYLE_OPTIONS.filter((option) => option.value !== "DEFAULT").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
     {measurementContextMenu && <div className={`floorplan-context-menu ${measurementContextMenu.custom ? "" : "floorplan-value-menu measurement-value-menu"}`} role="menu" aria-label="Measurement actions" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{measurementContextMenu.custom ? "Measurement" : "Wall measurement"}</strong>
       {measurementContextMenu.custom && <><button type="button" role="menuitem" onClick={() => changeCustomMeasurementValue(measurementContextMenu.id)}>Change measurement value…</button>

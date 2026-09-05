@@ -592,27 +592,6 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .embedded-floorplan-importer { margin-top: 18px; border-top: 1px solid var(--line); }
 @media (max-width: 900px) { .full-floorplan-toolbar { align-items: flex-start; flex-direction: column; } .full-floorplan-workspace { grid-template-columns: 1fr; } .full-floorplan-rooms { border-left: 0; border-top: 1px solid var(--line); } }
 .full-plan-page { background: var(--paper); }
-.traditional-floorplan .plan-grid { display: none; }
-.traditional-floorplan .canvas-background { fill: white; }
-.traditional-floorplan .wall-body, .traditional-floorplan .wall-line, .traditional-floorplan .opening-gap, .traditional-floorplan .opening-jamb, .traditional-floorplan .door-leaf, .traditional-floorplan .door-swing, .traditional-floorplan .window-frame, .traditional-floorplan .window-core, .traditional-floorplan .window-jamb { stroke: #151515; }
-.traditional-floorplan .wall-line { stroke: #151515; stroke-width: var(--wall-inner-stroke-width, 4px); }
-.traditional-floorplan .wall-thickness-label { fill: #151515; }
-.traditional-floorplan .wall-line:hover, .traditional-floorplan .wall-line.selected { stroke: #f1b14b; stroke-width: var(--wall-inner-stroke-width, 4px); }
-.traditional-floorplan .vertex-layer { opacity: 0; }
-.traditional-floorplan .vertex-label { display: none; }
-.traditional-floorplan .wall-dimension { display: inline; }
-.traditional-floorplan .opening-dimension { display: none; }
-.traditional-floorplan .full-room-highlight polygon { display: none; }
-.traditional-floorplan .full-room-highlight { cursor: default; }
-.traditional-floorplan .room-name-editor input { color: #151515; font-family: Arial, sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
-.traditional-floorplan .opening-gap { stroke: white; stroke-width: var(--opening-gap-width, 14px); }
-.traditional-floorplan .opening-jamb { stroke-width: 1.4; }
-.traditional-floorplan .door-closed-line { display: none; }
-.traditional-floorplan .door-leaf { stroke: #606060; stroke-width: 1.15; }
-.traditional-floorplan .door-swing { stroke: #777; stroke-width: 1; stroke-dasharray: none; }
-.traditional-floorplan .window-frame { stroke: #151515; stroke-width: 1.25; }
-.traditional-floorplan .window-core { stroke: #777; stroke-width: .8; }
-.traditional-floorplan .window-jamb { stroke-width: 1.2; }
 .floorplan-export-dialog { width: min(420px,calc(100vw - 32px)); display: grid; gap: 13px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 20px 55px rgba(20,39,31,.24); }
 .floorplan-export-dialog header, .floorplan-export-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .floorplan-export-dialog h2 { margin: 3px 0 0; font-size: 18px; }
@@ -679,8 +658,6 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .floorplan-fixture rect:active, .floorplan-fixture ellipse:active { cursor: grabbing; }
 .floorplan-fixture text { fill: var(--deep); font: 700 8px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: white; stroke-width: 4px; pointer-events: none; }
 .floorplan-fixture .floorplan-fixture-dimension { fill: #3978b9; font-size: 7px; }
-.traditional-floorplan .floorplan-fixture rect { fill: white; stroke: #151515; }
-.traditional-floorplan .floorplan-fixture text { fill: #151515; }
 .inline-status { margin: 8px 0 0; padding: 8px; border-radius: 6px; background: #f2f5f2; color: var(--muted); font-size: 10px; }
 .full-wall-draft { fill: none; stroke: #2e8b70; stroke-width: 8; stroke-linecap: square; stroke-linejoin: miter; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
 .full-plan-canvas g.removable .wall-line { cursor: crosshair; }

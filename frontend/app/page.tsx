@@ -15,6 +15,7 @@ import { normalizeRoomPerson } from "@/lib/person";
 import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
 import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes, WallViewMode } from "@/lib/types";
 import { formatLength, formatMeasurementText } from "@/lib/units";
+import type { FloorplanStyle } from "@/lib/floorplanStyles";
 import { DEFAULT_TOOLBAR_VISIBILITY, FLOORPLAN_TOOLBARS, VIEWER_TOOLBARS, type ToolbarId } from "@/lib/toolbars";
 
 // Keep browser requests on the frontend origin. Next.js proxies these calls to
@@ -38,7 +39,7 @@ export default function Home() {
   const [catalogueManagerOpener, setCatalogueManagerOpener] = useState<HTMLElement | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
-  const [floorplanStyle, setFloorplanStyle] = useState<"DEFAULT" | "TRADITIONAL">("DEFAULT");
+  const [floorplanStyle, setFloorplanStyle] = useState<FloorplanStyle>("DEFAULT");
   const [floorplanExportRequest, setFloorplanExportRequest] = useState(0);
   const [preferences, setPreferences] = useState<AppPreferences>({ density: "COMFORTABLE", confirmBeforeOpen: true, units: "MM" });
   const [demoLoadRequest, setDemoLoadRequest] = useState(0);
