@@ -780,6 +780,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .analysis-workspace .viewer-room-selector { display: block; padding: 10px; background: transparent; }
 .analysis-workspace .viewer-room-selector label { display: grid; gap: 6px; }
 .analysis-workspace .viewer-room-selector select { width: 100%; min-width: 0; }
+.analysis-workspace .viewer-room-selector > .review-style-button { display: block; width: 100%; margin-top: 14px; }
 .analysis-workspace .person-editor { margin: 0; border: 0; border-radius: 0; }
 .analysis-workspace .viewer-warning { position: absolute; z-index: 7; left: 12px; right: 12px; bottom: 8px; margin: 0; border-radius: 7px; background: rgba(255,255,255,.86); pointer-events: none; }
 .viewer-toolbar.floating-view-controls { position: static; display: grid; gap: 7px; padding: 6px; pointer-events: auto; }
