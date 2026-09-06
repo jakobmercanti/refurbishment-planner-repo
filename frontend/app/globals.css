@@ -390,6 +390,8 @@ button { font: inherit; }
 .coordinate-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .coordinate-input-list { min-height: 0; display: block; }
 .coordinate-input-list > div, .coordinate-table-heading { min-height: 24px; display: grid; grid-template-columns: 60px minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 5px; }
+.coordinate-input-list > .coordinate-row.selected { border-radius: 5px; background: rgba(232,241,236,.9); box-shadow: inset 3px 0 0 var(--deep); }
+.coordinate-input-list > .coordinate-row.selected .coordinate-prefix { color: var(--deep); }
 .coordinate-table-heading { font-weight: 700; border-bottom: 1px solid var(--line); }
 .coordinate-table-heading > :not(:first-child) { text-align: right; }
 .coordinate-input-list input { min-width: 0; padding: 1px 2px; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; color: var(--ink); font: 700 11px var(--font-mono); text-align: right; box-shadow: none; }

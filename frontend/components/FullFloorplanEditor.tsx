@@ -544,6 +544,7 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
   const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const editorRoot = useRef<HTMLElement>(null);
+  const coordinateRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
   const wallDrag = useRef<WallDrag | null>(null);
   const draftStartAttachment = useRef<WallAttachment | null>(null);
@@ -613,6 +614,11 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
     const start = wallVertexStarts.get(wall.id) ?? 1;
     return points.map((point, pointIndex) => ({ point, pointIndex })).filter(({ pointIndex }) => !wall.attachments?.[pointIndex]?.hideCorner).map(({ point, pointIndex }, visibleIndex) => ({ wall, point, pointIndex, cornerNumber: wall.cornerNumbers?.[pointIndex] ?? start + visibleIndex }));
   });
+  const coordinatesToolbarOpen = toolbarVisibility["floorplan-coordinates"];
+  useEffect(() => {
+    if (!coordinatesToolbarOpen || !selectedPoint) return;
+    coordinateRowRefs.current.get(`${selectedPoint.wallId}:${selectedPoint.pointIndex}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [coordinatesToolbarOpen, selectedPoint]);
   const viewport = useMemo(() => {
     const geometry = [...walls.flatMap((wall) => wall.points), ...draft];
     const points = sourceUrl ? [...geometry, { x: 0, y: 0 }, { x: canvasSize.width, y: canvasSize.height }] : geometry;
@@ -1786,7 +1792,7 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
 
       <aside className="coordinate-panel full-plan-side-column">
         {toolbarVisibility["floorplan-coordinates"] && <FloatingToolbar title="Coordinates" defaultPosition={{ x: 662, y: 58 }} dock={{ side: "LEFT", slot: 3, slots: 4 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={450} onClose={() => onToggleToolbar("floorplan-coordinates")}>
-        <section className="tool-section"><p className="tool-note">Modify any X, Y corner coordinates here to update the drawing</p><div className="coordinate-input-list" aria-label={`Floorplan coordinates in ${UNIT_LABEL[displayUnits]}`}><div className="coordinate-table-heading"><span>Corner ID</span><span>X</span><span>Y</span></div>{coordinateEntries.map(({ wall, point, pointIndex, cornerNumber }) => <div key={`${wall.id}-coordinate-${pointIndex}`}><span className="coordinate-prefix">{cornerNumber}</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, x: value })} /><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, y: value })} /></div>)}</div></section>
+        <section className="tool-section"><p className="tool-note">Modify any X, Y corner coordinates here to update the drawing</p><div className="coordinate-input-list" aria-label={`Floorplan coordinates in ${UNIT_LABEL[displayUnits]}`}><div className="coordinate-table-heading"><span>Corner ID</span><span>X</span><span>Y</span></div>{coordinateEntries.map(({ wall, point, pointIndex, cornerNumber }) => { const rowKey = `${wall.id}:${pointIndex}`; const selected = selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex; return <div key={`${wall.id}-coordinate-${pointIndex}`} ref={(element) => { if (element) coordinateRowRefs.current.set(rowKey, element); else coordinateRowRefs.current.delete(rowKey); }} className={`coordinate-row ${selected ? "selected" : ""}`}><span className="coordinate-prefix">{cornerNumber}</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, x: value })} /><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, y: value })} /></div>; })}</div></section>
         </FloatingToolbar>}
         {toolbarVisibility["floorplan-openings"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={520} onClose={() => onToggleToolbar("floorplan-openings")}>{openingPanel}</FloatingToolbar>}
       </aside>
