@@ -746,7 +746,8 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .view-property-toggle-row + .view-property-toggle-row { margin-top: 3px; }
 .floating-canvas-navigation { flex-wrap: wrap; }
 .floating-canvas-navigation > .view-property-checkbox, .floating-canvas-navigation > strong { flex-basis: 100%; }
-.floating-canvas-navigation > .floorplan-background-action { flex-basis: 100%; width: 100%; margin-top: var(--toolbar-control-gap); }
+.floating-canvas-navigation > .floorplan-background-action { flex-basis: 100%; width: 100%; margin-top: var(--toolbar-control-gap); border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px; background: #f9faf8; color: var(--ink); font: 600 10px var(--font-mono); }
+.floating-canvas-navigation > .floorplan-background-action:hover:not(:disabled) { border-color: #aab5af; }
 .floating-canvas-navigation > .floorplan-background-action:disabled { opacity: .45; cursor: not-allowed; }
 
 .field-action-row { display: grid; grid-template-columns: minmax(60px, 1fr) minmax(0, 1.4fr); gap: 8px; align-items: stretch; }
