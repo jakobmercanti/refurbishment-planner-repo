@@ -9,6 +9,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { DULUX_PAINT_FAMILIES, type DuluxPaintShade } from "@/lib/duluxPalette";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutInteraction";
+import { buildWallFinishUpdates } from "@/lib/wallFinishes";
 import { buildRenderedWalls, type RenderedWall } from "@/lib/wallRendering";
 import type { MaterialCollection, Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 import { FloatingToolbar } from "@/components/FloatingToolbar";
@@ -1201,7 +1202,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
   );
 }
 
-function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishesChange, onClose }: Pick<ViewerProps, "apiUrl" | "room" | "onObstaclesChange" | "onFinishesChange"> & { selection: Selection; onClose: () => void }) {
+function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, onFinishesChange, onClose }: Pick<ViewerProps, "apiUrl" | "room" | "onObstaclesChange" | "onFinishesChange"> & { rooms: Room[]; selection: Selection; onClose: () => void }) {
   const [applyToAllWalls, setApplyToAllWalls] = useState(false);
   const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
   const [paintSearch, setPaintSearch] = useState("");
@@ -1224,21 +1225,8 @@ function ContextControls({ apiUrl, room, selection, onObstaclesChange, onFinishe
 
   function setWallColour(shade?: DuluxPaintShade) {
     if (selection?.type !== "WALL") return;
-    const wallColors = { ...(finishes.wall_colors ?? {}) };
-    const wallColorCodes = { ...(finishes.wall_color_codes ?? {}) };
-    const wallIds = applyToAllWalls
-      ? room.vertices.map((_item, index) => `wall-${String(index + 1).padStart(3, "0")}`)
-      : selection.ids;
-    wallIds.forEach((wallId) => {
-      if (shade) {
-        wallColors[wallId] = shade.colour;
-        wallColorCodes[wallId] = shade.name;
-      } else {
-        delete wallColors[wallId];
-        delete wallColorCodes[wallId];
-      }
-    });
-    onFinishesChange({ ...finishes, wall_colors: wallColors, wall_color_codes: wallColorCodes }, room.id);
+    buildWallFinishUpdates(rooms, room.id, selection.ids, applyToAllWalls, shade)
+      .forEach((update) => onFinishesChange(update.finishes, update.roomId));
   }
 
   function setFloorTile(tile?: TileStyle) {
@@ -1392,7 +1380,7 @@ export function EngineeringViewer(props: ViewerProps) {
         </div>
         <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => setCaptureMenuOpen((current) => !current)} aria-expanded={captureMenuOpen} aria-haspopup="menu">Save view…</button>{captureMenuOpen && <div role="menu" aria-label="Save view format"><button autoFocus role="menuitem" onClick={() => { setCaptureFormat("png"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PNG image</button><button role="menuitem" onClick={() => { setCaptureFormat("jpg"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>JPG image</button><button role="menuitem" onClick={() => { setCaptureFormat("pdf"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PDF document</button></div>}</div></div>
       </div></FloatingToolbar>}
-      {panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onClose={clearSelection} />}
+      {panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} onClose={clearSelection} />}
       <Canvas key={projection} orthographic={projection === "parallel"} shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
         <Scene {...props} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} zoomPercent={zoomPercent} />
         <WheelZoom />
