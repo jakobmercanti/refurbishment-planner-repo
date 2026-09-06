@@ -911,13 +911,15 @@ function setCameraZoom(camera: THREE.Camera, zoom: number) {
 
 function CameraPreset({ preset, projection, person, target, span, resetKey, zoomPercent }: { preset: CameraView; projection: ProjectionMode; person?: PersonMockup | null; target: VectorTuple; span: [number, number, number]; resetKey: number; zoomPercent: number }) {
   const { camera, size } = useThree();
+  const [targetX, targetY, targetZ] = target;
+  const [spanX, spanY, spanZ] = span;
   useEffect(() => {
-    const horizontalSpan = preset === "left" || preset === "right" ? span[2] : span[0];
-    const verticalSpan = preset === "top" || preset === "bottom" ? span[2] : span[1];
+    const horizontalSpan = preset === "left" || preset === "right" ? spanZ : spanX;
+    const verticalSpan = preset === "top" || preset === "bottom" ? spanZ : spanY;
     const aspect = Math.max(size.width / Math.max(size.height, 1), 0.1);
     const verticalFov = THREE.MathUtils.degToRad(camera instanceof THREE.PerspectiveCamera ? camera.fov : 50);
     const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
-    const boundingRadius = Math.sqrt(span[0] ** 2 + span[1] ** 2 + span[2] ** 2) / 2;
+    const boundingRadius = Math.sqrt(spanX ** 2 + spanY ** 2 + spanZ ** 2) / 2;
     const fitDistance = Math.max(0.1, boundingRadius / Math.sin(Math.min(verticalFov, horizontalFov) / 2)) * 1.15;
     if (preset === "eye" && person?.enabled) {
       camera.up.set(0, 1, 0);
@@ -930,26 +932,26 @@ function CameraPreset({ preset, projection, person, target, span, resetKey, zoom
         // screen-up so floors, walls, openings and placed items retain the same
         // top-view orientation as the floorplan.
         camera.up.set(0, 0, -1);
-        camera.position.set(target[0], target[1] + fitDistance, target[2]);
+        camera.position.set(targetX, targetY + fitDistance, targetZ);
       } else if (preset === "bottom") {
         camera.up.set(0, 0, 1);
-        camera.position.set(target[0], target[1] - fitDistance, target[2]);
+        camera.position.set(targetX, targetY - fitDistance, targetZ);
       } else if (preset === "left") {
         camera.up.set(0, 1, 0);
-        camera.position.set(target[0] - fitDistance, target[1], target[2]);
+        camera.position.set(targetX - fitDistance, targetY, targetZ);
       } else if (preset === "right") {
         camera.up.set(0, 1, 0);
-        camera.position.set(target[0] + fitDistance, target[1], target[2]);
+        camera.position.set(targetX + fitDistance, targetY, targetZ);
       } else {
         camera.up.set(0, 1, 0);
-        camera.position.set(target[0] + fitDistance, target[1] + fitDistance * 0.85, target[2] + fitDistance);
+        camera.position.set(targetX + fitDistance, targetY + fitDistance * 0.85, targetZ + fitDistance);
       }
-      camera.lookAt(...target);
+      camera.lookAt(targetX, targetY, targetZ);
     }
     const orthographicFit = Math.min(size.width / Math.max(horizontalSpan * 1.15, 0.001), size.height / Math.max(verticalSpan * 1.15, 0.001));
     setCameraZoom(camera, projection === "parallel" ? orthographicFit * zoomPercent / 100 : zoomPercent / 100);
     camera.updateProjectionMatrix();
-  }, [camera, person, preset, projection, resetKey, size.height, size.width, span, target, zoomPercent]);
+  }, [camera, person, preset, projection, resetKey, size.height, size.width, spanX, spanY, spanZ, targetX, targetY, targetZ, zoomPercent]);
   return null;
 }
 
