@@ -1,7 +1,7 @@
 "use client";
 
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { DEFAULT_FLOATING_WINDOW_WIDTH, resizeFloatingWindow, type FloatingWindowResizeEdge } from "@/lib/floatingWindowGeometry";
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { DEFAULT_FLOATING_WINDOW_WIDTH, MIN_FLOATING_WINDOW_HEIGHT, resizeFloatingWindow, type FloatingWindowResizeEdge } from "@/lib/floatingWindowGeometry";
 
 export interface ToolbarDock {
   side: "LEFT" | "RIGHT";
@@ -48,6 +48,18 @@ function getToolbarWorkspace(panel: HTMLElement) {
   return panel.offsetParent instanceof HTMLElement ? panel.offsetParent : panel.parentElement;
 }
 
+function getContentMinimumHeight(panel: HTMLElement, maxHeight: number) {
+  const titlebar = panel.querySelector<HTMLElement>(".floating-toolbar-titlebar");
+  const content = panel.querySelector<HTMLElement>(".floating-toolbar-content");
+  if (!titlebar || !content) return MIN_FLOATING_WINDOW_HEIGHT;
+  const contentStyles = window.getComputedStyle(content);
+  const panelStyles = window.getComputedStyle(panel);
+  const margins = Number.parseFloat(contentStyles.marginTop || "0") + Number.parseFloat(contentStyles.marginBottom || "0");
+  const borders = Number.parseFloat(panelStyles.borderTopWidth || "0") + Number.parseFloat(panelStyles.borderBottomWidth || "0");
+  const naturalHeight = titlebar.getBoundingClientRect().height + content.scrollHeight + margins + borders;
+  return Math.max(MIN_FLOATING_WINDOW_HEIGHT, Math.min(maxHeight, Math.ceil(naturalHeight)));
+}
+
 export function FloatingToolbar(props: FloatingToolbarProps) {
   return <FloatingToolbarWindow key={props.layoutResetKey ?? 0} {...props} />;
 }
@@ -55,12 +67,34 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
 function FloatingToolbarWindow({ title, children, className = "", defaultPosition, maxHeight = 560, dock, onClose }: FloatingToolbarProps) {
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<{ pointerX: number; pointerY: number; left: number; top: number; parentWidth: number; parentHeight: number; width: number; height: number } | null>(null);
-  const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number } | null>(null);
+  const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number; minimumHeight: number } | null>(null);
   const mouseDragRef = useRef(false);
   const [position, setPosition] = useState(defaultPosition);
   const [size, setSize] = useState<{ width: number; height: number | null }>({ width: DEFAULT_FLOATING_WINDOW_WIDTH, height: null });
+  const [minimumHeight, setMinimumHeight] = useState(MIN_FLOATING_WINDOW_HEIGHT);
   const [zIndex, setZIndex] = useState(20);
   const [isDocked, setIsDocked] = useState(Boolean(dock));
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const content = panel.querySelector<HTMLElement>(".floating-toolbar-content");
+    if (!content) return;
+    const updateMinimumHeight = () => {
+      const nextMinimumHeight = getContentMinimumHeight(panel, maxHeight);
+      setMinimumHeight((current) => current === nextMinimumHeight ? current : nextMinimumHeight);
+    };
+    updateMinimumHeight();
+    const resizeObserver = new ResizeObserver(updateMinimumHeight);
+    resizeObserver.observe(panel);
+    resizeObserver.observe(content);
+    const mutationObserver = new MutationObserver(updateMinimumHeight);
+    mutationObserver.observe(content, { childList: true, subtree: true, characterData: true });
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [maxHeight]);
 
   useEffect(() => {
     const panel = panelRef.current;
@@ -169,12 +203,14 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
     if (!parent) return;
     const panelBounds = panel.getBoundingClientRect();
     const parentBounds = parent.getBoundingClientRect();
+    const contentMinimumHeight = getContentMinimumHeight(panel, maxHeight);
     releaseDock(panelBounds, parentBounds);
     const left = panelBounds.left - parentBounds.left;
     const top = panelBounds.top - parentBounds.top;
     setPosition({ x: left, y: top });
     setSize({ width: panelBounds.width, height: panelBounds.height });
-    resizeRef.current = { edge, pointerX: event.clientX, pointerY: event.clientY, left, top, width: panelBounds.width, height: panelBounds.height, parentWidth: parentBounds.width, parentHeight: parentBounds.height };
+    setMinimumHeight(contentMinimumHeight);
+    resizeRef.current = { edge, pointerX: event.clientX, pointerY: event.clientY, left, top, width: panelBounds.width, height: panelBounds.height, parentWidth: parentBounds.width, parentHeight: parentBounds.height, minimumHeight: contentMinimumHeight };
     focusPanel();
     event.currentTarget.setPointerCapture(event.pointerId);
     event.stopPropagation();
@@ -189,6 +225,7 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
       resize.edge,
       { x: event.clientX - resize.pointerX, y: event.clientY - resize.pointerY },
       { width: resize.parentWidth, height: resize.parentHeight },
+      resize.minimumHeight,
     );
     setPosition({ x: next.left, y: next.top });
     setSize({ width: next.width, height: next.height });
@@ -207,12 +244,14 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
     : undefined;
   const docked = Boolean(dock && isDocked);
   const dockHeight = dock?.height ?? (dock?.fill ? slotHeight : undefined);
+  const appliedMinimumHeight = docked && size.height === null ? undefined : minimumHeight;
   const style = {
     left: docked ? (dock?.side === "LEFT" ? 8 : undefined) : position.x,
     right: docked && dock?.side === "RIGHT" ? 8 : undefined,
     top: docked ? (dock?.top ?? dockTop) : position.y,
     width: docked ? (dock?.width ?? size.width) : size.width,
     height: size.height ?? dockHeight,
+    minHeight: appliedMinimumHeight,
     maxHeight: size.height === null
       ? (docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `min(${maxHeight}px, calc(100% - 16px))`)
       : "calc(100% - 16px)",

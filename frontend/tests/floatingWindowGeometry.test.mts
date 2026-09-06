@@ -18,9 +18,17 @@ test("resizes dynamically from the lower edge", () => {
   assert.deepEqual(resizeFloatingWindow(windowBox, "BOTTOM", { x: 0, y: 180 }, workspace), { ...windowBox, height: 480 });
 });
 
+test("enforces the measured content minimum from the lower edge", () => {
+  assert.deepEqual(resizeFloatingWindow(windowBox, "BOTTOM", { x: 0, y: -280 }, workspace, 180), { ...windowBox, height: 180 });
+});
+
 test("resizes dynamically from the upper edge while keeping the lower edge fixed", () => {
   assert.deepEqual(resizeFloatingWindow(windowBox, "TOP", { x: 0, y: -80 }, workspace), { ...windowBox, top: 8, height: 372 });
   assert.deepEqual(resizeFloatingWindow(windowBox, "TOP", { x: 0, y: 120 }, workspace), { ...windowBox, top: 200, height: 180 });
+});
+
+test("enforces the measured content minimum from the upper edge", () => {
+  assert.deepEqual(resizeFloatingWindow(windowBox, "TOP", { x: 0, y: 200 }, workspace, 180), { ...windowBox, top: 200, height: 180 });
 });
 
 test("keeps a resized floating window inside its workspace", () => {

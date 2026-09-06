@@ -27,19 +27,20 @@ export function resizeFloatingWindow(
   edge: FloatingWindowResizeEdge,
   delta: { x: number; y: number },
   workspace: FloatingWindowWorkspace,
+  minimumHeight = MIN_FLOATING_WINDOW_HEIGHT,
 ): FloatingWindowBox {
   if (edge === "TOP") {
     const fixedBottom = box.top + box.height;
     const maximumHeight = Math.max(0, fixedBottom - FLOATING_WINDOW_MARGIN);
-    const minimumHeight = Math.min(MIN_FLOATING_WINDOW_HEIGHT, maximumHeight);
-    const height = clamp(box.height - delta.y, minimumHeight, maximumHeight);
+    const boundedMinimumHeight = Math.min(minimumHeight, maximumHeight);
+    const height = clamp(box.height - delta.y, boundedMinimumHeight, maximumHeight);
     return { ...box, top: fixedBottom - height, height };
   }
 
   if (edge === "BOTTOM") {
     const maximumHeight = Math.max(0, workspace.height - box.top - FLOATING_WINDOW_MARGIN);
-    const minimumHeight = Math.min(MIN_FLOATING_WINDOW_HEIGHT, maximumHeight);
-    return { ...box, height: clamp(box.height + delta.y, minimumHeight, maximumHeight) };
+    const boundedMinimumHeight = Math.min(minimumHeight, maximumHeight);
+    return { ...box, height: clamp(box.height + delta.y, boundedMinimumHeight, maximumHeight) };
   }
 
   if (edge === "RIGHT") {

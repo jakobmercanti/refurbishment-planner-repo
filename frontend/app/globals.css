@@ -274,7 +274,7 @@ button { font: inherit; }
 .viewer-save-menu > div button { padding: 7px 8px; color: var(--ink); text-align: left; text-transform: none; }
 .viewer-save-menu > div button:hover { background: #edf4ef; color: var(--deep); }
 .viewer-save-row { display: flex; padding-top: 8px; border-top: 1px solid var(--line); }
-.floating-toolbar.viewer-view-toolbar, .floating-toolbar.viewer-view-toolbar .floating-toolbar-content { overflow: visible; }
+.floating-toolbar.viewer-view-toolbar { overflow: visible; }
 .selected-colour-hex { display: flex; justify-content: space-between; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--muted); font: 650 8px var(--font-mono); }
 .selected-colour-hex code { color: var(--ink); font-size: 10px; user-select: text; }
 .viewer-toggle-checkbox { display: flex; align-items: center; gap: 5px; padding: 4px 6px; color: var(--muted); font: 600 8px var(--font-mono); cursor: pointer; white-space: nowrap; }
