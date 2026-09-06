@@ -3,6 +3,7 @@
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
 import { OpeningPreview } from "@/components/OpeningPreview";
+import { Popup } from "@/components/Popup";
 import { FloorPlanFixtureDimensions } from "@/components/FloorPlanFixtureDimensions";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
 import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
@@ -27,6 +28,7 @@ type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallI
 type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE" | "MEASURE" | "ADD_MEASURE";
 type SegmentSelection = { wallId: string; segmentIndex: number };
 type PointSelection = { wallId: string; pointIndex: number };
+type PendingOutlineAction = "EMPTY" | "RECTANGLE" | "L_SHAPE";
 type MeasurementReference = ({ kind: "WALL" } & SegmentSelection) | ({ kind: "POINT" } & PointSelection);
 type MeasurementDirection = "NORMAL" | "HORIZONTAL" | "VERTICAL";
 type CustomMeasurement = { id: string; first: MeasurementReference; second: MeasurementReference; offset: number; direction?: MeasurementDirection };
@@ -523,6 +525,7 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
   const [draft, setDraft] = useState<Point2D[]>([]);
   const [tool, setTool] = useState<Tool>("SELECT");
   const [lShapePickerOpen, setLShapePickerOpen] = useState(false);
+  const [pendingOutlineAction, setPendingOutlineAction] = useState<PendingOutlineAction | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [snapSize, setSnapSize] = useState(DEFAULT_SNAP_MM);
   const [squaredWalls, setSquaredWalls] = useState(false);
@@ -1360,6 +1363,19 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
     setDoorType(opening.doorType); setHingeSide(opening.hingeSide); setOpensInward(opening.opensInward); setOpeningError(null);
   }
 
+  function requestOutlineAction(action: PendingOutlineAction) {
+    setLShapePickerOpen(false);
+    setPendingOutlineAction(action);
+  }
+
+  function confirmOutlineAction() {
+    const action = pendingOutlineAction;
+    setPendingOutlineAction(null);
+    if (action === "EMPTY") newOutline();
+    else if (action === "RECTANGLE") applyTemplate(RECTANGLE_TEMPLATE);
+    else if (action === "L_SHAPE") setLShapePickerOpen(true);
+  }
+
   function openOpeningContextMenu(event: ReactMouseEvent<SVGGElement>, opening: FullOpening) {
     event.preventDefault(); event.stopPropagation(); selectOpeningForEdit(opening); setContextMenu(null); setMeasurementContextMenu(null);
     setOpeningContextMenu({ id: opening.id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
@@ -1772,6 +1788,7 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
 
   return <section ref={editorRoot} className={`editor-page full-plan-page ${floorplanStyleClass(floorplanStyle)}`.trim()}>
     {liveStyleCss && <style data-floorplan-style={floorplanStyle} dangerouslySetInnerHTML={{ __html: liveStyleCss }} />}
+    <Popup open={pendingOutlineAction !== null} title="Start a new outline?" message="This will delete everything in the current floorplan and start a new outline. Do you want to continue?" onConfirm={confirmOutlineAction} onCancel={() => setPendingOutlineAction(null)} />
     {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyleLabel}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option>{FLOORPLAN_STYLE_OPTIONS.filter((option) => option.value !== "DEFAULT").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
     {measurementContextMenu && <div className={`floorplan-context-menu ${measurementContextMenu.custom ? "" : "floorplan-value-menu measurement-value-menu"}`} role="menu" aria-label="Measurement actions" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{measurementContextMenu.custom ? "Measurement" : "Wall measurement"}</strong>
@@ -1807,10 +1824,10 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
         {toolbarVisibility["floorplan-build"] && <FloatingToolbar title="Build floorplan" defaultPosition={{ x: 16, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-build") : { side: "LEFT", slot: 0, slots: 4 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={Math.max(360, FLOOR_PLAN_CANVAS_HEIGHT - 74)} onClose={() => onToggleToolbar("floorplan-build")}>
         <section className="tool-section">
           <div className="button-grid">
-            <button onClick={newOutline}>New outline</button>
+            <button onClick={() => requestOutlineAction("EMPTY")}>New outline</button>
             <button className={tool === "SELECT" ? "active" : ""} onClick={() => { setTool("SELECT"); setDraft([]); setLockedViewport(null); }}>Modify</button>
-            <button onClick={() => applyTemplate(RECTANGLE_TEMPLATE)}>Rectangle</button>
-            <button className={lShapePickerOpen ? "active" : ""} aria-expanded={lShapePickerOpen} aria-controls="full-l-shape-picker" onClick={() => setLShapePickerOpen((current) => !current)}>L-shape</button>
+            <button onClick={() => requestOutlineAction("RECTANGLE")}>Rectangle</button>
+            <button className={lShapePickerOpen ? "active" : ""} aria-expanded={lShapePickerOpen} aria-controls="full-l-shape-picker" onClick={() => lShapePickerOpen ? setLShapePickerOpen(false) : requestOutlineAction("L_SHAPE")}>L-shape</button>
           </div>
           {lShapePickerOpen && <div className="l-shape-picker" id="full-l-shape-picker"><div><span>Choose the L orientation</span><button type="button" aria-label="Close L-shape chooser" onClick={() => setLShapePickerOpen(false)}>×</button></div><p>Select the position of the internal notch. You can reshape every wall afterwards.</p><div className="l-shape-options">{L_SHAPE_TEMPLATES.map((template) => <button key={template.id} type="button" onClick={() => applyTemplate(template.points)}><span className="l-shape-thumbnail"><i style={{ clipPath: template.preview }} /></span><strong>{template.name}</strong></button>)}</div></div>}
           <div className="button-grid full-plan-action-row" role="group" aria-label="Wall tools"><button className={tool === "DRAW" ? "active" : ""} onClick={() => { setTool("DRAW"); setDraft([]); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null); }}>Add wall</button><button className={tool === "REMOVE" ? "active danger-button" : "danger-button"} onClick={() => { if (selectedSegment) { removeSegment(selectedSegment.wallId, selectedSegment.segmentIndex); return; } setTool("REMOVE"); setDraft([]); setLockedViewport(null); setSelectedPoint(null); }}>Remove wall</button></div>

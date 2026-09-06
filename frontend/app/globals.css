@@ -41,6 +41,18 @@ button { font: inherit; }
 .modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(18,29,25,.48); backdrop-filter: blur(4px); }
 .catalogue-backdrop { z-index: 2100; }
 .modal-close { width: 34px; height: 34px; flex: none; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--muted); font-size: 20px; cursor: pointer; }
+.popup-backdrop { position: fixed; z-index: 2200; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(18,29,25,.48); backdrop-filter: blur(4px); }
+.popup { width: min(420px, calc(100vw - 32px)); overflow: hidden; border: 1px solid rgba(176,188,181,.96); border-radius: 10px; background: rgba(255,255,255,.98); box-shadow: 0 14px 34px rgba(20,39,31,.2); color: var(--ink); font: 500 9px/1.4 var(--font-mono); }
+.popup-titlebar { min-height: 31px; display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 4px; padding: 3px 5px; border-bottom: 1px solid var(--line); background: linear-gradient(#f9fbf9,#eef3ef); color: var(--deep); }
+.popup-titlebar > strong { overflow: hidden; font: 750 11px var(--font-mono); letter-spacing: .035em; text-overflow: ellipsis; white-space: nowrap; }
+.popup-drag { display: inline-grid; place-items: center; width: 27px; height: 25px; color: var(--muted); }
+.popup-content { padding: 16px; }
+.popup-content p { margin: 0; color: var(--ink); font: 550 10px/1.55 var(--font-mono); }
+.popup-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: #fbfcfa; }
+.popup-actions button { min-width: 84px; min-height: 30px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font: 650 9px var(--font-mono); cursor: pointer; }
+.popup-actions button:hover, .popup-actions button:focus-visible { border-color: var(--deep); outline: none; }
+.popup-actions button.primary { border-color: var(--deep); background: var(--deep); color: white; }
+.popup-actions button.primary:hover, .popup-actions button.primary:focus-visible { background: #245b4d; }
 .save-as-backdrop { z-index: 80; }
 .save-as-dialog { width: min(470px, 94vw); padding: 21px; border: 1px solid #b9c6bf; border-radius: 14px; background: white; box-shadow: 0 28px 80px rgba(12,24,19,.3); }
 .save-as-dialog header { display: flex; justify-content: space-between; align-items: start; }
