@@ -3,7 +3,7 @@ export const MIN_FLOATING_WINDOW_WIDTH = 220;
 export const MIN_FLOATING_WINDOW_HEIGHT = 96;
 export const FLOATING_WINDOW_MARGIN = 8;
 
-export type FloatingWindowResizeEdge = "LEFT" | "RIGHT" | "BOTTOM";
+export type FloatingWindowResizeEdge = "TOP" | "LEFT" | "RIGHT" | "BOTTOM";
 
 export interface FloatingWindowBox {
   left: number;
@@ -28,6 +28,14 @@ export function resizeFloatingWindow(
   delta: { x: number; y: number },
   workspace: FloatingWindowWorkspace,
 ): FloatingWindowBox {
+  if (edge === "TOP") {
+    const fixedBottom = box.top + box.height;
+    const maximumHeight = Math.max(0, fixedBottom - FLOATING_WINDOW_MARGIN);
+    const minimumHeight = Math.min(MIN_FLOATING_WINDOW_HEIGHT, maximumHeight);
+    const height = clamp(box.height - delta.y, minimumHeight, maximumHeight);
+    return { ...box, top: fixedBottom - height, height };
+  }
+
   if (edge === "BOTTOM") {
     const maximumHeight = Math.max(0, workspace.height - box.top - FLOATING_WINDOW_MARGIN);
     const minimumHeight = Math.min(MIN_FLOATING_WINDOW_HEIGHT, maximumHeight);
