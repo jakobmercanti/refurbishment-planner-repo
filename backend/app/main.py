@@ -15,7 +15,7 @@ from typing import Annotated, Any, Awaitable, Callable
 from urllib.parse import urljoin, urlparse
 from uuid import UUID, uuid4
 
-from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
@@ -35,7 +35,6 @@ from backend.app.schemas import (
     FitRequest,
     GeometryInvalidation,
     PolygonUpdate,
-    ProjectFloorplanResponse,
     ProjectCreate,
     ProjectResponse,
     RoomValidationResponse,
@@ -44,7 +43,6 @@ from backend.app.schemas import (
     MaterialFamilyResponse,
     MaterialItemResponse,
 )
-from backend.app.floorplan_recognition import recognise_rooms
 from cad.generator import generate_cad
 from database.catalog import catalogue_session, initialise_catalogue
 from database.catalogue_assets import (
@@ -73,7 +71,7 @@ class RequestBodyLimitMiddleware:
         if scope.get("type") != "http" or scope.get("method") not in {"POST", "PUT", "PATCH"}:
             await self.app(scope, receive, send)
             return
-        limit = 25_000_000 if scope.get("path") == "/project-floorplan/detect" else self.default_limit
+        limit = self.default_limit
         messages: list[dict[str, Any]] = []
         total = 0
         while True:
@@ -113,7 +111,7 @@ app.add_middleware(
     allow_origins=["http://localhost:3000"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Content-Type", "X-Filename", "X-Gap-Closure"],
+    allow_headers=["Content-Type"],
 )
 initialise_catalogue()
 
@@ -322,26 +320,6 @@ async def polygon_validation_error(_request: object, error: PolygonValidationErr
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "engine": "deterministic", "unit": "mm"}
-
-
-@app.post("/project-floorplan/detect", response_model=ProjectFloorplanResponse)
-def detect_project_floorplan(
-    document: bytes = Body(...),
-    filename: str = Header("floorplan", alias="X-Filename"),
-    gap_closure: float = Header(0.15, alias="X-Gap-Closure", ge=0.035, le=0.18),
-) -> ProjectFloorplanResponse:
-    if len(document) > 25_000_000:
-        raise HTTPException(status_code=413, detail="Floorplan files must be 25 MB or smaller.")
-    try:
-        width, height, rooms_detected = recognise_rooms(document, filename, gap_closure)
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    return ProjectFloorplanResponse(
-        source_width_px=width,
-        source_height_px=height,
-        rooms=[{"id": room.identifier, "name": room.name, "vertices": room.vertices, "area_px2": room.area_px2, "confidence": room.confidence} for room in rooms_detected],
-        warning="Detected outlines are drafts. Confirm the scale and edit the selected room before using it for fit decisions.",
-    )
 
 
 @app.post("/projects", response_model=ProjectResponse, status_code=201)

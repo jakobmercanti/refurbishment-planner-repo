@@ -224,18 +224,3 @@ export interface RoomValidationResponse {
   invalidations: GeometryInvalidation[];
   warnings: string[];
 }
-
-export interface DetectedProjectRoom {
-  id: string;
-  name: string;
-  vertices: Point2D[];
-  area_px2: number;
-  confidence: number;
-}
-
-export interface ProjectFloorplanResponse {
-  source_width_px: number;
-  source_height_px: number;
-  rooms: DetectedProjectRoom[];
-  warning: string;
-}

@@ -66,21 +66,6 @@ class CADResponse(BaseModel):
     evidence_label: str = "visualisation, not dimensional evidence"
 
 
-class DetectedProjectRoom(BaseModel):
-    id: str
-    name: str
-    vertices: list[Point2D] = Field(min_length=3)
-    area_px2: float
-    confidence: float = Field(ge=0, le=1)
-
-
-class ProjectFloorplanResponse(BaseModel):
-    source_width_px: int
-    source_height_px: int
-    rooms: list[DetectedProjectRoom]
-    warning: str
-
-
 class CatalogueCategoryResponse(BaseModel):
     id: str
     name: str
