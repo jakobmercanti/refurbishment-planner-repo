@@ -8,6 +8,9 @@ export interface ToolbarDock {
   slot: number;
   slots: number;
   fill?: boolean;
+  top?: CSSProperties["top"];
+  width?: CSSProperties["width"];
+  height?: CSSProperties["height"];
 }
 
 export function filledToolbarDock(side: ToolbarDock["side"], visibleIds: string[], activeId: string): ToolbarDock {
@@ -17,6 +20,10 @@ export function filledToolbarDock(side: ToolbarDock["side"], visibleIds: string[
     slots: Math.max(1, visibleIds.length),
     fill: true,
   };
+}
+
+export function positionedToolbarDock(side: ToolbarDock["side"], top: CSSProperties["top"], height: CSSProperties["height"], width?: CSSProperties["width"]): ToolbarDock {
+  return { side, slot: 0, slots: 1, top, height, width };
 }
 
 interface FloatingToolbarProps {
@@ -198,14 +205,16 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
   const dockTop = dock
     ? `calc(${(dockSlot * 100) / dockSlots}% + ${(dock.fill ? 8 - (16 * dockSlot) / dockSlots : 8 * (1 - dockSlot / dockSlots))}px)`
     : undefined;
+  const docked = Boolean(dock && isDocked);
+  const dockHeight = dock?.height ?? (dock?.fill ? slotHeight : undefined);
   const style = {
-    left: dock && isDocked ? (dock.side === "LEFT" ? 8 : undefined) : position.x,
-    right: dock && isDocked && dock.side === "RIGHT" ? 8 : undefined,
-    top: dock && isDocked ? dockTop : position.y,
-    width: size.width,
-    height: size.height ?? (dock && isDocked && dock.fill ? slotHeight : undefined),
+    left: docked ? (dock?.side === "LEFT" ? 8 : undefined) : position.x,
+    right: docked && dock?.side === "RIGHT" ? 8 : undefined,
+    top: docked ? (dock?.top ?? dockTop) : position.y,
+    width: docked ? (dock?.width ?? size.width) : size.width,
+    height: size.height ?? dockHeight,
     maxHeight: size.height === null
-      ? (dock && isDocked ? (dock.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`) : `min(${maxHeight}px, calc(100% - 16px))`)
+      ? (docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `min(${maxHeight}px, calc(100% - 16px))`)
       : "calc(100% - 16px)",
     zIndex,
   } as CSSProperties;

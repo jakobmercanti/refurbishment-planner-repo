@@ -12,7 +12,7 @@ import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutI
 import { buildWallFinishUpdates } from "@/lib/wallFinishes";
 import { buildRenderedWalls, type RenderedWall } from "@/lib/wallRendering";
 import type { MaterialCollection, Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
-import { filledToolbarDock, FloatingToolbar, type ToolbarDock } from "@/components/FloatingToolbar";
+import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type ToolbarDock } from "@/components/FloatingToolbar";
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
@@ -45,6 +45,7 @@ interface ViewerProps {
   onToggleToolbar: (id: ToolbarId) => void;
   toolbarLayoutResetKey: number;
   fillToolbarLayout: boolean;
+  fitRequest: number;
 }
 
 type Selection = { type: "ELEMENT"; id: string; roomId: string } | { type: "PERSON"; roomId: string } | { type: "WALL"; id: string; ids: string[]; roomId: string } | { type: "FLOOR"; roomId: string } | null;
@@ -1029,7 +1030,7 @@ function CaptureController({ request, format }: { request: number; format: Captu
   return null;
 }
 
-function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, zoomPercent }: ViewerProps & {
+function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, zoomPercent }: ViewerProps & {
   toggles: Toggles;
   preset: CameraView;
   projection: ProjectionMode;
@@ -1145,7 +1146,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
 
   return (
     <>
-      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey} zoomPercent={zoomPercent} />
+      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} />
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
       {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd }) => {
@@ -1354,11 +1355,15 @@ export function EngineeringViewer(props: ViewerProps) {
     ? props.sceneRooms?.find((sceneRoom) => sceneRoom.id === panelSelection.roomId) ?? (panelSelection.roomId === props.room.id ? props.room : null)
     : null;
   const selectedObjectPanelVisible = Boolean(panelSelection && panelRoom);
-  const viewerRightDockIds = [
-    ...(props.toolbarVisibility["viewer-view"] ? ["viewer-view"] : []),
-    ...(selectedObjectPanelVisible ? ["selected-object"] : []),
-  ];
-  const viewerDock = (activeId: string) => filledToolbarDock("RIGHT", viewerRightDockIds, activeId);
+  const viewerRightDockIds = selectedObjectPanelVisible ? ["selected-object"] : [];
+  const viewerLeftDock = (activeId: string): ToolbarDock => {
+    if (activeId === "viewer-view") return positionedToolbarDock("LEFT", "clamp(166px, 14%, 174px)", "clamp(300px, 43%, 494px)", 355);
+    return filledToolbarDock("LEFT", ["viewer-room", "viewer-view", "viewer-person"].filter((id) => props.toolbarVisibility[id as ToolbarId]), activeId);
+  };
+  const viewerRightDock = (activeId: string): ToolbarDock => {
+    if (!selectedObjectPanelVisible && activeId === "viewer-analysis") return positionedToolbarDock("RIGHT", 8, "calc(100% - 16px)", 355);
+    return filledToolbarDock("RIGHT", viewerRightDockIds, activeId);
+  };
   const applyPreset = (next: CameraView) => { setPreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
   useEffect(() => {
     if (!captureMenuOpen) return;
@@ -1368,7 +1373,7 @@ export function EngineeringViewer(props: ViewerProps) {
   }, [captureMenuOpen]);
   return (
     <div className="viewer-shell" onPointerDownCapture={(event) => { if (event.button === 2) rightPointerRef.current = { x: event.clientX, y: event.clientY, moved: false }; }} onPointerMoveCapture={(event) => { const pointer = rightPointerRef.current; if (pointer && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) pointer.moved = true; }} onPointerUpCapture={(event) => { if (event.button === 2 && rightPointerRef.current?.moved) window.setTimeout(() => { rightPointerRef.current = null; }, 0); }} onContextMenu={(event) => { if (!(event.target instanceof HTMLCanvasElement)) return; event.preventDefault(); const wasPan = rightPointerRef.current?.moved; rightPointerRef.current = null; if (wasPan) return; clearSelection(); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
-      {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={props.fillToolbarLayout ? viewerDock("viewer-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
+      {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={props.fillToolbarLayout ? viewerLeftDock("viewer-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
         <div className="viewer-view-control-group viewer-zoom-controls" role="group" aria-label="Zoom controls">
           <button type="button" aria-label="Zoom out" onClick={() => setZoomPercent((value) => Math.max(25, value - 10))}>−</button>
           <button type="button" aria-label="Reset zoom" onClick={() => { setZoomPercent(100); setCameraResetKey((value) => value + 1); }}>{zoomPercent}%</button>
@@ -1394,7 +1399,7 @@ export function EngineeringViewer(props: ViewerProps) {
         </div>
         <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => setCaptureMenuOpen((current) => !current)} aria-expanded={captureMenuOpen} aria-haspopup="menu">Save view…</button>{captureMenuOpen && <div role="menu" aria-label="Save view format"><button autoFocus role="menuitem" onClick={() => { setCaptureFormat("png"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PNG image</button><button role="menuitem" onClick={() => { setCaptureFormat("jpg"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>JPG image</button><button role="menuitem" onClick={() => { setCaptureFormat("pdf"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PDF document</button></div>}</div></div>
       </div></FloatingToolbar>}
-      {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={props.fillToolbarLayout ? viewerDock("selected-object") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
+      {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={props.fillToolbarLayout ? viewerRightDock("selected-object") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
       <Canvas key={projection} orthographic={projection === "parallel"} shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
         <Scene {...props} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} zoomPercent={zoomPercent} />
         <WheelZoom />
