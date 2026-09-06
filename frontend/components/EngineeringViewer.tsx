@@ -17,6 +17,7 @@ import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
 const SCALE = 0.001;
+const DEFAULT_WALL_COLOUR = "#c8c3b9";
 const DISABLED_MESH_RAYCAST: THREE.Mesh["raycast"] = () => undefined;
 
 interface Toggles {
@@ -340,7 +341,7 @@ function WallPiece({
         onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
       >
         <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
-        <meshStandardMaterial color="#d9d4c8" roughness={0.86} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
+        <meshStandardMaterial color={DEFAULT_WALL_COLOUR} roughness={0.86} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>}
       <mesh
         ref={paintMeshRef}
@@ -395,7 +396,7 @@ function WallWithOpenings({
     ? offsetPoint(end)
     : exteriorCorner(room.vertices, (index + 1) % room.vertices.length, thickness, wallThickness(room, (index + 1) % room.vertices.length));
   const currentWallId = wallId(index);
-  const colour = room.finishes?.wall_colors?.[currentWallId] ?? "#d9d4c8";
+  const colour = room.finishes?.wall_colors?.[currentWallId] ?? DEFAULT_WALL_COLOUR;
   const openings = room.openings
     .filter((opening) => opening.parent_wall_id === currentWallId)
     .map((opening) => {
@@ -1281,7 +1282,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
       {selection.type === "WALL" && <>
         <span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span>
         <strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong>
-        <output className="selected-colour-hex">HEX <code>{(finishes.wall_colors?.[selection.id] ?? "#FFFFFF").toUpperCase()}</code></output>
+        <output className="selected-colour-hex">HEX <code>{(finishes.wall_colors?.[selection.id] ?? DEFAULT_WALL_COLOUR).toUpperCase()}</code></output>
         <label className="paint-all-choice"><input type="checkbox" checked={applyToAllWalls} onChange={(event) => setApplyToAllWalls(event.target.checked)} /><span>Paint all walls together</span></label>
         <label className="field"><span>Paint collection</span><select value={paintCollectionId} onChange={(event) => { setPaintCollectionId(event.target.value); setPaintFamilyId(""); setPaintSearch(""); }}>{materialCollections.length ? materialCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="paints-dulux">Dulux paints</option>}</select></label>
         <div className="paint-family-picker" role="tablist" aria-label="Paint colour families">{paintFamilies.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => { setPaintFamilyId(family.id); setPaintSearch(""); }}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
