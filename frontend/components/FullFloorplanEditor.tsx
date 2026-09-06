@@ -120,6 +120,31 @@ const splitSegmentLengthOverride = (overrides: Record<number, number> | undefine
 const cloneOpenings = (openings: FullOpening[]) => openings.map((opening) => ({ ...opening }));
 const cloneMeasurements = (measurements: CustomMeasurement[]) => measurements.map((measurement) => ({ ...measurement, first: { ...measurement.first }, second: { ...measurement.second } }));
 const samePoint = (a: Point2D, b: Point2D, tolerance = 1) => Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
+type WallRenderSegment = { segmentIndex: number; start: Point2D; end: Point2D; thicknessMm: number; visualThicknessMm: number };
+type WallVisualRun = { segments: WallRenderSegment[]; points: Point2D[]; thicknessMm: number; closed: boolean };
+const sameVisualThickness = (first: WallRenderSegment, second: WallRenderSegment) => Math.abs(first.visualThicknessMm - second.visualThicknessMm) <= .001;
+function buildWallVisualRuns(segments: WallRenderSegment[], closed: boolean): WallVisualRun[] {
+  if (!segments.length) return [];
+  const runs: WallVisualRun[] = [];
+  let current: WallVisualRun = { segments: [segments[0]], points: [segments[0].start, segments[0].end], thicknessMm: segments[0].visualThicknessMm, closed: false };
+  segments.slice(1).forEach((segment) => {
+    if (sameVisualThickness(current.segments.at(-1)!, segment)) {
+      current.segments.push(segment);
+      current.points.push(segment.end);
+      return;
+    }
+    runs.push(current);
+    current = { segments: [segment], points: [segment.start, segment.end], thicknessMm: segment.visualThicknessMm, closed: false };
+  });
+  runs.push(current);
+  if (closed && runs.length > 1 && sameVisualThickness(runs[0].segments[0], runs.at(-1)!.segments.at(-1)!)) {
+    const first = runs.shift()!;
+    const last = runs.pop()!;
+    runs.unshift({ segments: [...last.segments, ...first.segments], points: [...last.points, ...first.points.slice(1)], thicknessMm: last.thicknessMm, closed: false });
+  }
+  if (closed && runs.length === 1) runs[0].closed = true;
+  return runs;
+}
 const MIN_ENCLOSED_AREA_MM2 = 10_000;
 const FLOORPLAN_EXPORT_WIDTH = 1640;
 const FLOORPLAN_EXPORT_HEIGHT = 1120;
@@ -127,14 +152,14 @@ const FLOORPLAN_EXPORT_HEIGHT = 1120;
 const FLOORPLAN_EXPORT_BASE_CSS = `
 .floor-canvas{display:block;width:100%;height:100%;min-height:0!important;background:#eef1ed}
 .canvas-background{fill:#eef1ed}.plan-grid line{stroke:#d9dfda;stroke-width:1}.room-polygon{fill:#fff;stroke:none}
-.wall-body{stroke:#183d34;stroke-width:var(--wall-stroke-width,10px);stroke-linecap:square}.wall-line{stroke:#fff;stroke-width:var(--wall-inner-stroke-width,4px);stroke-linecap:square}.wall-thickness-label{fill:#183d34;font:700 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:4px}
+ .wall-body{stroke:#183d34;stroke-width:var(--wall-stroke-width,10px);stroke-linecap:square}.wall-line{stroke:#fff;stroke-width:var(--wall-inner-stroke-width,4px);stroke-linecap:square}.wall-interaction-line{display:none}.wall-thickness-label{fill:#183d34;font:700 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:4px}
 .wall-dimension{color:#68756f}.wall-dimension.manual-measurement{color:#1678bd}.wall-dimension.manual-measurement .manual-measurement-value{fill:currentColor}.dimension-line,.dimension-extension,.dimension-tick{stroke:currentColor;stroke-width:1}.dimension-extension{opacity:.62}.dimension-tick{stroke-width:1.3}
 .wall-label{fill:#44514b;font:650 10px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:5px}
 .export-room-name{fill:#233e37;font:700 10px Arial,sans-serif;text-anchor:middle;dominant-baseline:central}
 .vertex-handle{fill:#fff;stroke:#183d34;stroke-width:4}.vertex-label{fill:#17221e;font:700 8px ui-monospace,monospace;text-anchor:middle}
 .opening-gap{stroke:#fff;stroke-width:var(--opening-gap-width,14px)}.opening-jamb{stroke:#233e37;stroke-width:2.5;stroke-linecap:square}.door-closed-line{stroke:#8e9a95;stroke-width:1.2;stroke-dasharray:4 3}.door-leaf{stroke:#4caf8a;stroke-width:3;stroke-linecap:square}.door-swing{fill:none;stroke:#4caf8a;stroke-width:1.5;stroke-dasharray:4 2}
 .opening-dimension{color:#4caf8a}.opening-dimension-label{fill:#328064;font:650 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:5px}.window-dimension{color:#2589d8}.window-dimension .opening-dimension-label{fill:#1672b8}.fixture-dimension{color:#b45309;pointer-events:none}.fixture-dimension-label{fill:currentColor;font:650 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:5px}.window-frame{stroke:#287fb8;stroke-width:2.6;stroke-linecap:square}.window-core{stroke:#76acd0;stroke-width:1.2}.window-jamb{stroke:#287fb8}
-.vertex-layer,.full-room-highlight,.corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit{display:none}
+ .vertex-layer,.full-room-highlight,.corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit,.wall-interaction-line{display:none}
 `;
 
 function floorplanExportCss(style: FloorplanStyle) {
@@ -1843,11 +1868,36 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
             })}
             {walls.map((wall) => {
               const closed = samePoint(wall.points[0], wall.points.at(-1)!); const modelPoints = closed ? wall.points.slice(0, -1) : wall.points; const screenPoints = modelPoints.map(toScreen); const centre = screenPoints.reduce((total, point) => ({ x: total.x + point.x / screenPoints.length, y: total.y + point.y / screenPoints.length }), { x: 0, y: 0 });
+              const wallSegments = wall.points.slice(0, -1).map((modelStart, segmentIndex): WallRenderSegment => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const thicknessMm = wallThicknessForSegment(wall, segmentIndex, wallThickness); return { segmentIndex, start, end, thicknessMm, visualThicknessMm: showWallThickness ? thicknessMm : 0 }; });
+              const visualRuns = buildWallVisualRuns(wallSegments, closed);
               const dimensions = wall.points.slice(0, -1).map((modelStart, segmentIndex) => {
                 const modelEnd = wall.points[segmentIndex + 1]; const length = wallLengthForSegment(wall, segmentIndex); const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const dimensionId = `${wall.id}:${segmentIndex}`; if (hiddenDimensions.includes(dimensionId)) return null; const offset = dimensionOffsets[dimensionId] ?? defaultMeasurementOffset(DEFAULT_WALL_DIMENSION_OFFSET_SCREEN, activeViewport.scale); const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * MEASUREMENT_LABEL_GAP_SCREEN, y: (first.y + second.y) / 2 + outward.y * MEASUREMENT_LABEL_GAP_SCREEN }; const manual = wall.lengthOverridesMm?.[segmentIndex] !== undefined;
                 return <g key={`${wall.id}-dimension-${segmentIndex}`} className={`wall-dimension measurement-item measurement-context-target ${manual ? "manual-measurement" : ""} ${tool === "MEASURE" ? "editable" : ""} ${selectedMeasurement === `auto:${dimensionId}` ? "selected" : ""}`} onPointerDown={(event) => beginMeasurementDrag(event, dimensionId, false, offset, outward)} onContextMenu={(event) => openAutoMeasurementContextMenu(event, { wallId: wall.id, segmentIndex })}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className={`wall-label ${manual ? "manual-measurement-value" : ""}`} x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
               });
-              return <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>{wall.points.slice(0, -1).map((modelStart, segmentIndex) => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const selection = { wallId: wall.id, segmentIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "WALL" && reference.wallId === wall.id && reference.segmentIndex === segmentIndex); const thicknessMm = wallThicknessForSegment(wall, segmentIndex, wallThickness); const isOverride = showMeasurements && showWallThickness && wall.thicknessOverridesMm?.[segmentIndex] !== undefined; const innerStrokeWidth = showWallThickness ? Math.max(0, thicknessMm * activeViewport.scale) : 4; const strokeWidth = innerStrokeWidth + 2; const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const normal = { x: -(end.y - start.y) / screenLength, y: (end.x - start.x) / screenLength }; const label = { x: (start.x + end.x) / 2 + normal.x * (strokeWidth / 2 + 14), y: (start.y + end.y) / 2 + normal.y * (strokeWidth / 2 + 14) }; const wallStyle = { "--wall-stroke-width": `${strokeWidth}px`, "--wall-inner-stroke-width": `${innerStrokeWidth}px` } as CSSProperties; return <g key={`${wall.id}-segment-${segmentIndex}`}><line className="wall-body" style={wallStyle} x1={start.x} y1={start.y} x2={end.x} y2={end.y} /><line className={`wall-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} style={wallStyle} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onContextMenu={(event) => openWallContextMenu(event, selection)} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_MEASURE") { addMeasurementReference({ kind: "WALL", ...selection }); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} />{isOverride && <text className="wall-thickness-label" x={label.x} y={label.y}>{`${formatLength(thicknessMm, displayUnits)} thick`}</text>}</g>; })}{showMeasurements && dimensions}</g>;
+              return (
+                <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>
+                  {visualRuns.map((run, runIndex) => {
+                    const innerStrokeWidth = showWallThickness ? Math.max(0, run.thicknessMm * activeViewport.scale) : 4;
+                    const strokeWidth = innerStrokeWidth + 2;
+                    const wallStyle = { "--wall-stroke-width": `${strokeWidth}px`, "--wall-inner-stroke-width": `${innerStrokeWidth}px` } as CSSProperties;
+                    const path = `${run.points.map((point, pointIndex) => `${pointIndex === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")}${run.closed ? " Z" : ""}`;
+                    return <g key={`${wall.id}-visual-run-${runIndex}`}><path className="wall-body" style={wallStyle} d={path} fill="none" strokeLinecap="square" strokeLinejoin="miter" /><path className="wall-line" style={wallStyle} d={path} fill="none" strokeLinecap="square" strokeLinejoin="miter" pointerEvents="none" /></g>;
+                  })}
+                  {wallSegments.map(({ segmentIndex, start, end, thicknessMm }) => {
+                    const selection = { wallId: wall.id, segmentIndex };
+                    const chosen = measurementDraft.some((reference) => reference.kind === "WALL" && reference.wallId === wall.id && reference.segmentIndex === segmentIndex);
+                    const isOverride = showMeasurements && showWallThickness && wall.thicknessOverridesMm?.[segmentIndex] !== undefined;
+                    const innerStrokeWidth = showWallThickness ? Math.max(0, thicknessMm * activeViewport.scale) : 4;
+                    const strokeWidth = innerStrokeWidth + 2;
+                    const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+                    const normal = { x: -(end.y - start.y) / screenLength, y: (end.x - start.x) / screenLength };
+                    const label = { x: (start.x + end.x) / 2 + normal.x * (strokeWidth / 2 + 14), y: (start.y + end.y) / 2 + normal.y * (strokeWidth / 2 + 14) };
+                    const wallStyle = { "--wall-stroke-width": `${strokeWidth}px`, "--wall-inner-stroke-width": `${innerStrokeWidth}px`, "--wall-hit-stroke-width": `${Math.max(strokeWidth, 16)}px` } as CSSProperties;
+                    return <g key={`${wall.id}-segment-${segmentIndex}`}><line className={`wall-interaction-line ${selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} style={wallStyle} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onContextMenu={(event) => openWallContextMenu(event, selection)} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_MEASURE") { addMeasurementReference({ kind: "WALL", ...selection }); return; } if (tool === "SELECT") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} />{isOverride && <text className="wall-thickness-label" x={label.x} y={label.y}>{`${formatLength(thicknessMm, displayUnits)} thick`}</text>}</g>;
+                  })}
+                  {showMeasurements && dimensions}
+                </g>
+              );
             })}
             {showMeasurements && measurements.map((measurement) => {
               const modelStart = resolveMeasurementReference(measurement.first); const modelEnd = resolveMeasurementReference(measurement.second);

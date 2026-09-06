@@ -425,6 +425,9 @@ button { font: inherit; }
 .room-polygon { fill: #fff; stroke: none; }
 .wall-body { stroke: var(--deep); stroke-width: var(--wall-stroke-width, 10px); stroke-linecap: square; pointer-events: none; }
 .wall-line { stroke: white; stroke-width: var(--wall-inner-stroke-width, 4px); stroke-linecap: square; cursor: grab; }
+.wall-interaction-line { stroke: transparent; stroke-width: var(--wall-hit-stroke-width, 16px); stroke-linecap: square; pointer-events: stroke; cursor: grab; }
+.wall-interaction-line:hover, .wall-interaction-line.selected { stroke: #f1b14b; stroke-width: var(--wall-inner-stroke-width, 4px); }
+.wall-interaction-line.measurement-chosen { stroke: #2f9b7c; stroke-width: var(--wall-inner-stroke-width, 4px); }
 .wall-thickness-label { fill: var(--deep); font: 700 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 4px; pointer-events: none; }
 .wall-line:active { cursor: grabbing; }
 .wall-line:hover, .wall-line.selected { stroke: #f1b14b; stroke-width: var(--wall-inner-stroke-width, 4px); }
