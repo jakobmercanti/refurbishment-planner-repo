@@ -1369,13 +1369,17 @@ export function EngineeringViewer(props: ViewerProps) {
   return (
     <div className="viewer-shell" onPointerDownCapture={(event) => { if (event.button === 2) rightPointerRef.current = { x: event.clientX, y: event.clientY, moved: false }; }} onPointerMoveCapture={(event) => { const pointer = rightPointerRef.current; if (pointer && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) pointer.moved = true; }} onPointerUpCapture={(event) => { if (event.button === 2 && rightPointerRef.current?.moved) window.setTimeout(() => { rightPointerRef.current = null; }, 0); }} onContextMenu={(event) => { if (!(event.target instanceof HTMLCanvasElement)) return; event.preventDefault(); const wasPan = rightPointerRef.current?.moved; rightPointerRef.current = null; if (wasPan) return; clearSelection(); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
       {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={props.fillToolbarLayout ? viewerDock("viewer-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
-        <div className="segmented">
-          <button className={projection === "perspective" ? "active" : ""} aria-pressed={projection === "perspective"} onClick={() => setProjection("perspective")}>Perspective</button>
-          <button className={projection === "parallel" ? "active" : ""} aria-pressed={projection === "parallel"} onClick={() => setProjection("parallel")}>Parallel</button>
+        <div className="viewer-view-control-group viewer-zoom-controls" role="group" aria-label="Zoom controls">
           <button type="button" aria-label="Zoom out" onClick={() => setZoomPercent((value) => Math.max(25, value - 10))}>−</button>
           <button type="button" aria-label="Reset zoom" onClick={() => { setZoomPercent(100); setCameraResetKey((value) => value + 1); }}>{zoomPercent}%</button>
           <button type="button" aria-label="Zoom in" onClick={() => setZoomPercent((value) => Math.min(300, value + 10))}>+</button>
           <button type="button" onClick={() => { setZoomPercent(100); setCameraResetKey((value) => value + 1); }}>Fit</button>
+        </div>
+        <div className="viewer-view-control-group viewer-projection-controls" role="group" aria-label="Projection">
+          <button className={projection === "perspective" ? "active" : ""} aria-pressed={projection === "perspective"} onClick={() => setProjection("perspective")}>Perspective</button>
+          <button className={projection === "parallel" ? "active" : ""} aria-pressed={projection === "parallel"} onClick={() => setProjection("parallel")}>Parallel</button>
+        </div>
+        <div className="viewer-view-control-group viewer-camera-controls" role="group" aria-label="Camera views">
           <button className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button>
           {props.room.person_mockup?.enabled && <button className={preset === "eye" ? "active" : ""} aria-pressed={preset === "eye"} onClick={() => applyPreset("eye")}>Eye level</button>}
           {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={preset === view ? "active" : ""} aria-pressed={preset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
