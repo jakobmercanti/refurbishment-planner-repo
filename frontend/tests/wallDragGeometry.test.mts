@@ -1,5 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { closedRooms } from "../lib/roomDetection.ts";
+
+test("wall 8-9 can extend beyond room 1's left side while keeping both rooms closed", () => {
+  const baseline = materializeWallIntersections([
+    {id:"main",points:[{x:0,y:0},{x:2400,y:0},{x:2400,y:1800},{x:0,y:1800},{x:0,y:0}]},
+    {id:"extension",points:[{x:2400,y:800},{x:4150,y:800},{x:4150,y:3050},{x:650,y:3050},{x:650,y:1800}],
+      attachments:{0:{wallId:"main",segmentIndex:1,along:800/1800},4:{wallId:"main",segmentIndex:2,along:1750/2400}}}
+  ]);
+  const requested = -2750;
+  assert.equal(constrainTranslatedWallDistance(baseline,"extension",3,requested,200),requested);
+  const candidate = baseline.map(wall => ({...wall,points:wall.points.map((point,index)=>
+    wall.id==="extension" && index>=3 ? {...point,x:point.x+requested} : {...point})}));
+  const anchored = reanchorAttachedWallEndpoints(candidate,"extension");
+  const result = retainDraggedWallConnections(baseline,anchored,"extension",3);
+  const moved = result.find(wall=>wall.id==="extension")!;
+  assert.equal(moved.points[3].x,-2100);
+  assert.equal(moved.points[4].x,-2100);
+  assert.equal(closedRooms(result).length,2);
+  assert.deepEqual(result.find(wall=>wall.id==="main")!.points,baseline.find(wall=>wall.id==="main")!.points);
+});
 import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type WallDragWall } from "../lib/wallDragGeometry.ts";
 
 const roomWall: WallDragWall = {
@@ -12,6 +32,31 @@ const roomWall: WallDragWall = {
     { x: 0, y: 2480 },
   ],
 };
+
+test("attached room sides slide both ways across host splits on repeated drags", () => {
+  let baseline = materializeWallIntersections([
+    { id: "main", points: [{x:0,y:0},{x:5550,y:0},{x:5550,y:3000},{x:0,y:3000},{x:0,y:0}] },
+    { id: "extension", points: [{x:5550,y:600},{x:6900,y:600},{x:6900,y:5100},{x:1700,y:5100},{x:1700,y:3000}],
+      attachments: { 0: {wallId:"main",segmentIndex:1,along:.2}, 4: {wallId:"main",segmentIndex:2,along:3850/5550} } },
+  ]);
+  for (const [segment, delta] of [[0,250],[0,-500],[0,250],[3,250],[3,-500],[3,250]]) {
+    const branch = baseline.find((wall) => wall.id === "extension")!;
+    const candidate = baseline.map((wall) => ({ ...wall, points: wall.points.map((point, index) =>
+      wall.id === branch.id && (index === segment || index === segment + 1)
+        ? {x:point.x + (segment === 3 ? delta : 0), y:point.y + (segment === 0 ? delta : 0)}
+        : {...point}) }));
+    const result = retainDraggedWallConnections(baseline, candidate, branch.id, segment);
+    const moved = result.find((wall) => wall.id === branch.id)!;
+    assert.deepEqual(moved.points[segment], candidate.find((wall) => wall.id === branch.id)!.points[segment]);
+    assert.deepEqual(moved.points[segment + 1], candidate.find((wall) => wall.id === branch.id)!.points[segment + 1]);
+    assert.equal(result.length, baseline.length, "no bridge walls created for an on-host slide");
+    assert.equal(closedRooms(result).length, 2, "both room boundaries stay closed");
+    assert.ok(result.every((wall) => wall.points.slice(0, -1).every((point, index) =>
+      point.x === wall.points[index + 1].x || point.y === wall.points[index + 1].y)), "no diagonal junctions");
+    assert.equal(result.find((wall) => wall.id === "main")!.points.length, baseline.find((wall) => wall.id === "main")!.points.length);
+    baseline = result;
+  }
+});
 
 test("a dragged branch slides across a split host junction instead of snapping back", () => {
   const host: WallDragWall = { id: "host", points: [{x:0,y:1800},{x:1500,y:1800},{x:2400,y:1800}] };

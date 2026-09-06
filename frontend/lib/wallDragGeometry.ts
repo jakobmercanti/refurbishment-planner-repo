@@ -1115,7 +1115,10 @@ export function reanchorAttachedWallEndpoints(walls: WallDragWall[], activelyDra
             return Math.abs(cross) <= .001 ? projectOnSegment(point, candidateStart, candidateEnd) : null;
           }).filter((candidate) => candidate !== null && candidate.distance <= .001)[0]
         : undefined;
-      const anchored = slidingHost?.point ?? (attachment.along <= .001 ? { ...start }
+      const hostLength = Math.hypot(end.x - start.x, end.y - start.y);
+      const extendsHost = wall.id === activelyDraggedWallId && hostLength > .001
+        && Math.abs((end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x)) / hostLength <= .001;
+      const anchored = (extendsHost ? point : slidingHost?.point) ?? (attachment.along <= .001 ? { ...start }
         : attachment.along >= .999 ? { ...end }
           : projectOnSegment(point, start, end).point);
       if (!samePoint(point, anchored, .001)) {
@@ -1734,7 +1737,33 @@ export function retainDraggedWallConnections(
       if (!candidateStart || !candidateEnd) return;
       const point = candidateWall.points[pointIndex];
       if (!point) return;
-      candidateWall.points[pointIndex] = projectOnSegment(point, candidateStart, candidateEnd).point;
+      // A split host is still one straight side. Project onto the side containing
+      // the requested point before clamping to the old attachment subsegment.
+      // Clamping first loses movement across the split in one direction.
+      const slidingSegment = candidateHost!.points.slice(0, -1).findIndex((start, index) => {
+        const end = candidateHost!.points[index + 1];
+        const dx = candidateEnd.x - candidateStart.x, dy = candidateEnd.y - candidateStart.y;
+        const length = Math.hypot(dx, dy);
+        return length > .001
+          && Math.abs(dx * (start.y - candidateStart.y) - dy * (start.x - candidateStart.x)) / length <= CONNECTION_TOLERANCE_MM
+          && Math.abs(dx * (end.y - candidateStart.y) - dy * (end.x - candidateStart.x)) / length <= CONNECTION_TOLERANCE_MM
+          && projectOnSegment(point, start, end).distance <= CONNECTION_TOLERANCE_MM;
+      });
+      if (slidingSegment >= 0) {
+        const projection = projectOnSegment(point, candidateHost!.points[slidingSegment], candidateHost!.points[slidingSegment + 1]);
+        candidateWall.points[pointIndex] = projection.point;
+        candidateWall.attachments = { ...candidateWall.attachments, [pointIndex]: {
+          ...candidateWall.attachments?.[pointIndex], wallId: connection.wallId, segmentIndex: slidingSegment, along: projection.along,
+        } };
+      } else {
+        const dx = candidateEnd.x - candidateStart.x, dy = candidateEnd.y - candidateStart.y;
+        const length = Math.hypot(dx, dy);
+        const extendsHost = baselineWall.id === draggedWallId && length > .001
+          && Math.abs(dx * (point.y - candidateStart.y) - dy * (point.x - candidateStart.x)) / length <= .001;
+        // Preserve an on-line extension so the bridge pass can join it back
+        // to the end of the room side without making the dragged wall diagonal.
+        if (!extendsHost) candidateWall.points[pointIndex] = projectOnSegment(point, candidateStart, candidateEnd).point;
+      }
     });
   });
 
