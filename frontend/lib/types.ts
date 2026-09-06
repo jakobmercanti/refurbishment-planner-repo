@@ -93,6 +93,7 @@ export interface CatalogueItem {
   plan_symbol_url?: string;
   plan_shape: "RECTANGLE" | "ELLIPSE";
   images: Array<{ data_url: string; url?: string | null; filename?: string | null; content_type?: string | null; size_bytes?: number | null; alt: string }>;
+  representation_version?: number;
   supplier_editable: boolean;
   active: boolean;
   created_at: string;

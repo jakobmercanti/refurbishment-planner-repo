@@ -147,6 +147,8 @@ def initialise_catalogue() -> None:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN subcategory VARCHAR(120) NOT NULL DEFAULT 'General'")
         if "representation_key" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN representation_key VARCHAR(80) NOT NULL DEFAULT ''")
+        if "representation_version" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN representation_version INTEGER NOT NULL DEFAULT 1")
         if "plan_symbol_url" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_symbol_url VARCHAR(255) NOT NULL DEFAULT ''")
         if "plan_symbol_data_url" not in existing_columns:
@@ -186,6 +188,8 @@ def initialise_catalogue() -> None:
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
             catalogue_item.image_data_json = migrate_legacy_pictures(catalogue_item.id, catalogue_item.image_data_json)
         session.commit()
+        from database.fixture_previews import install_fixture_previews
+        install_fixture_previews(session)
         session.execute(select(FurnitureItemRecord.id).limit(1)).all()
         session.connection().exec_driver_sql("PRAGMA optimize")
 

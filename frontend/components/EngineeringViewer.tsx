@@ -657,7 +657,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
     return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={customColour ?? "#b99b77"} /></group>;
   }
 
-  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind)) {
+  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || obstacle.representation_key === "furniture-storage-unit") {
     return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} /></group>;
   }
 

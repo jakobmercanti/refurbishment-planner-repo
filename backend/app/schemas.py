@@ -116,6 +116,7 @@ class CatalogueItemInput(BaseModel):
     subcategory: str = Field(default="General", min_length=1, max_length=120)
     plan_shape: Literal["RECTANGLE", "ELLIPSE"] = "RECTANGLE"
     representation_key: str = Field(default="", max_length=80)
+    representation_version: int = Field(default=1, ge=1, le=1000)
     plan_symbol_url: str = Field(default="", max_length=255, pattern=r"^(|/fixture-symbols/[a-z0-9-]+\.svg)$")
     plan_symbol_data_url: str | None = Field(default=None, max_length=700_000)
 

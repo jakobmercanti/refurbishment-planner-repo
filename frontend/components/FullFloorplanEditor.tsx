@@ -629,7 +629,9 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
       const enforced = preserveOrthogonal
         ? enforceWallLengthOverridesPreservingOrthogonality(proposed)
         : enforceWallLengthOverrides(proposed);
-      return enforced === null ? (keepProposedOnConflict ? proposed : current) : enforced as Wall[];
+      if (enforced === null) return keepProposedOnConflict ? proposed : current;
+      const nextWalls = enforced as Wall[];
+      return JSON.stringify(current) === JSON.stringify(nextWalls) ? current : nextWalls;
     });
   }
 
@@ -695,11 +697,12 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
   const planRooms = useMemo(() => rooms.map(roomDraftForOutline), [roomDraftForOutline, rooms]);
   const planRoomsSignature = useMemo(() => JSON.stringify(planRooms), [planRooms]);
   const publishedPlanRooms = useRef("");
+  const publishPlanRooms = useEffectEvent((next: Room[]) => onPlanRoomsChange?.(next));
   useEffect(() => {
-    if (!restored || !onPlanRoomsChange || publishedPlanRooms.current === planRoomsSignature) return;
+    if (!restored || publishedPlanRooms.current === planRoomsSignature) return;
     publishedPlanRooms.current = planRoomsSignature;
-    onPlanRoomsChange(planRooms);
-  }, [onPlanRoomsChange, planRooms, planRoomsSignature, restored]);
+    publishPlanRooms(planRooms);
+  }, [planRooms, planRoomsSignature, restored]);
   function onFixturesChange(next: Obstacle[]) {
     const draft = selectedRoomDraft();
     if (draft && onPlanRoomChange) onPlanRoomChange({ ...draft, ...storedRoom, id: storedRoom?.id ?? draft.id, source_floorplan_room_id: selectedRoom!.id, vertices: draft.vertices, openings: draft.openings, obstacles: next, version: (storedRoom?.version ?? 0) + 1 });

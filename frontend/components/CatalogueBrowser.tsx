@@ -212,6 +212,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
       front_clearance_mm: item.front_clearance_mm,
       subcategory: item.subcategory,
       representation_key: item.representation_key,
+      representation_version: item.representation_version,
       plan_symbol_url: item.plan_symbol_url,
       plan_symbol_data_url: item.plan_symbol_data_url,
       plan_shape: item.plan_shape,
@@ -355,7 +356,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
               <div className="catalogue-result-heading"><strong>{activeSubcategory || (categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects")}</strong><span>{items.length} result{items.length === 1 ? "" : "s"}</span></div>
               {categoryId && <button className="category-settings-button" onClick={(event) => openCategorySettings(categories.find((item) => item.id === categoryId) ?? null, event.currentTarget)}>Category settings…</button>}
               {items.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{items.map((item) => {
-                const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.svg` : undefined);
+                const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.png` : undefined);
                 const isOpening = item.fixture_kind === "DOOR" || item.fixture_kind === "WINDOW";
                 return <article key={item.id}><div className={`catalogue-object-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${preview})` : undefined } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name} · {item.subcategory}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3>{(item.plan_symbol_data_url || item.plan_symbol_url) && <a className="catalogue-plan-link" href={item.plan_symbol_data_url || item.plan_symbol_url} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Architectural plan symbol ↗</a>}<p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions"><button onClick={(event) => beginEdit(item, event.currentTarget)}>Edit entry</button><button className="catalogue-insert" disabled={isOpening} title={isOpening ? "Add this opening from the 2D Add elements window." : undefined} onClick={() => { if (!isOpening) { onInsert(item); onClose(); } }}>{isOpening ? "Use in 2D Add elements" : "Add to room"}</button></div></div></article>;
               })}</div>}

@@ -54,6 +54,38 @@ def test_representation_survives_room_serialisation():
     assert restored.obstacles[0].plan_symbol_data_url == obstacle.plan_symbol_data_url
 
 
+def test_rendered_previews_are_persisted_and_preserve_customisations(tmp_path, monkeypatch):
+    import json
+    import hashlib
+    from database.fixture_previews import install_fixture_previews
+    monkeypatch.setenv("RENOVATION_FIT_DATABASE", str(tmp_path / "catalogue.sqlite3"))
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        for category in FIXTURE_DEFAULTS:
+            session.add(FurnitureCategoryRecord(id=category, name=category, description="", sort_order=0))
+        seed_fixture_defaults(session)
+        session.commit()
+        items = session.scalars(select(FurnitureItemRecord)).all()
+        items[0].width_mm = 777
+        install_fixture_previews(session)
+        for item in items:
+            picture = json.loads(item.image_data_json)[0]
+            stored = tmp_path / "catalogue-assets" / item.id / picture["filename"]
+            assert hashlib.sha256(stored.read_bytes()).hexdigest() == picture["sha256"]
+            assert item.representation_version == 2
+            assert picture["generated_representation"] == 2
+        previous = {item.id: item.image_data_json for item in items}
+        install_fixture_previews(session)
+        assert {item.id: item.image_data_json for item in items} == previous
+        assert items[0].width_mm == 777
+        custom = '[{"url":"/supplier-photo.png","alt":"Supplier photograph"}]'
+        items[0].image_data_json = custom
+        session.commit()
+        install_fixture_previews(session)
+        assert items[0].image_data_json == custom
+
+
 def test_manufacturer_plan_image_and_generic_symbol_validation():
     values = dict(category_id="toilets", fixture_kind="TOILET", name="Supplier WC",
                   supplier="Example", sku="WC-1", width_mm=360, depth_mm=540,

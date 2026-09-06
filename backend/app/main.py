@@ -160,6 +160,7 @@ def catalogue_item_response(item: FurnitureItemRecord) -> CatalogueItemResponse:
         subcategory=item.subcategory,
         plan_shape=item.plan_shape,
         representation_key=item.representation_key,
+        representation_version=item.representation_version,
         plan_symbol_url=item.plan_symbol_url,
         plan_symbol_data_url=item.plan_symbol_data_url,
         images=images,
