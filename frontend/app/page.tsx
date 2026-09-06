@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { EngineeringViewer } from "@/components/EngineeringViewer";
 import { ApplicationMenuBar } from "@/components/ApplicationMenuBar";
@@ -41,11 +41,13 @@ export default function Home() {
   const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
   const [floorplanStyle, setFloorplanStyle] = useState<FloorplanStyle>("DEFAULT");
   const [floorplanExportRequest, setFloorplanExportRequest] = useState(0);
+  const [floorplanImportFile, setFloorplanImportFile] = useState<File | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>({ density: "COMFORTABLE", confirmBeforeOpen: true, units: "MM" });
   const [demoLoadRequest, setDemoLoadRequest] = useState(0);
   const [toolbarVisibility, setToolbarVisibility] = useState(DEFAULT_TOOLBAR_VISIBILITY);
   const [toolbarLayoutResetKey, setToolbarLayoutResetKey] = useState(0);
   const [fillToolbarLayout, setFillToolbarLayout] = useState(false);
+  const handleImportDrawing = useCallback((file: File) => setFloorplanImportFile(file), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,14 +253,14 @@ export default function Home() {
   return (
     <main className={preferences.density === "COMPACT" ? "density-compact" : ""}>
       <header className="topbar">
-        <div className="app-identity"><div className="brand"><Image className="brand-mark" src="/planner-build-icon.png" alt="PlannerBuild" width={34} height={34} priority /><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} mode={mode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
+        <div className="app-identity"><div className="brand"><Image className="brand-mark" src="/planner-build-icon.png" alt="PlannerBuild" width={34} height={34} priority /><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} mode={mode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
           <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => setMode("EDITOR")}>2D</button>
           <button aria-pressed={mode === "ANALYSIS"} className={mode === "ANALYSIS" ? "active" : ""} onClick={() => setMode("ANALYSIS")}>3D</button>
         </nav>
       </header>
 
-      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} /></section>
+      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} importFile={floorplanImportFile} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} /></section>
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
           <EngineeringViewer key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} />

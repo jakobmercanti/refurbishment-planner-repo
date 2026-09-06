@@ -590,7 +590,6 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .full-floorplan-rooms input { min-width: 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; font-weight: 650; }
 .full-floorplan-rooms small { color: var(--muted); }
 .full-floorplan-rooms button { width: 100%; margin-top: 8px; }
-.embedded-floorplan-importer { margin-top: 18px; border-top: 1px solid var(--line); }
 @media (max-width: 900px) { .full-floorplan-toolbar { align-items: flex-start; flex-direction: column; } .full-floorplan-workspace { grid-template-columns: 1fr; } .full-floorplan-rooms { border-left: 0; border-top: 1px solid var(--line); } }
 .full-plan-page { background: var(--paper); }
 .floorplan-export-dialog { width: min(420px,calc(100vw - 32px)); display: grid; gap: 13px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 20px 55px rgba(20,39,31,.24); }
@@ -637,6 +636,8 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .secondary-action { border-color: var(--line); background: #f9faf8; color: var(--ink); }
 .full-plan-drawing { min-width: 0; }
 .full-plan-canvas { position: relative; overflow: hidden; }
+.floorplan-import-status { position: absolute; z-index: 4; top: 12px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 12px; border: 1px solid #b9c9c1; border-radius: 8px; background: rgba(255,255,255,.94); color: var(--ink); font: 600 10px/1.35 var(--font-mono); box-shadow: 0 8px 20px rgba(28,45,38,.12); }
+.floorplan-import-status.error { border-color: #e5aaa4; color: var(--fail); }
 .full-plan-canvas > embed { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; border: 0; opacity: .38; pointer-events: none; }
 .full-plan-canvas > svg { position: relative; z-index: 1; }
 .canvas-background.underlay { fill: rgba(248,250,247,.28); }

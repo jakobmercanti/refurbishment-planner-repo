@@ -46,7 +46,7 @@ type FullOpening = {
 type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[]; wallThickness?: number; rooms?: NamedOutline[]; selectedRoomId?: string | null };
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
 type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number };
-interface Props { projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
+interface Props { projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
 
 const DEFAULT_SIZE = { width: 1100, height: 700 };
 const DEFAULT_SNAP_MM = 50;
@@ -475,7 +475,7 @@ function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultTh
   return overrides;
 }
 
-export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
+export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
   const [walls, setWalls] = useState<Wall[]>([]);
   const [openings, setOpenings] = useState<FullOpening[]>([]);
   const [history, setHistory] = useState<Snapshot[]>([]);
@@ -549,7 +549,6 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
   const [exportError, setExportError] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
   const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
   const editorRoot = useRef<HTMLElement>(null);
   const coordinateRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
@@ -1612,6 +1611,12 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
     finally { setImporting(false); }
   }
 
+  const processImportedDrawing = useEffectEvent((file: File) => importDrawing(file));
+  useEffect(() => {
+    if (!importFile) return;
+    queueMicrotask(() => { void processImportedDrawing(importFile); });
+  }, [importFile]);
+
   function selectedRoomDraft(): Room | null {
     return selectedRoom ? roomDraftForOutline(selectedRoom) : null;
   }
@@ -1708,7 +1713,7 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
   const exportStyleLabel = exportStyle === "CURRENT"
     ? `Current ${floorplanStyleLabel(floorplanStyle).toLowerCase()}`
     : `${floorplanStyleLabel(exportStyle).replace(/ style$/, "")} drawing`;
-  const floorplanLeftDockIds = ["floorplan-build", "floorplan-properties", "floorplan-import", "floorplan-coordinates"].filter((id) => toolbarVisibility[id as ToolbarId]);
+  const floorplanLeftDockIds = ["floorplan-build", "floorplan-properties", "floorplan-coordinates"].filter((id) => toolbarVisibility[id as ToolbarId]);
   const floorplanRightDockIds = ["floorplan-view", "floorplan-openings"].filter((id) => toolbarVisibility[id as ToolbarId]);
   const floorplanDock = (side: "LEFT" | "RIGHT", visibleIds: string[], activeId: string) => filledToolbarDock(side, visibleIds, activeId);
 
@@ -1777,15 +1782,12 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
           {toolbarVisibility["floorplan-properties"] && <FloatingToolbar title="Overall properties" defaultPosition={{ x: 364, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-properties") : { side: "LEFT", slot: 1, slots: 4 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={260} onClose={() => onToggleToolbar("floorplan-properties")}>
         <section className="tool-section"><div className="coordinate-fields room-measurements"><label className="field"><span>Wall height ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={100000} valueMm={wallHeight} units={displayUnits} onMmChange={setWallHeight} /></label></div><label className="field"><span>Default wall thickness ({UNIT_LABEL[displayUnits]})</span><div className="field-action-row default-wall-thickness-row"><DisplayNumberInput minMm={1} maxMm={2000} valueMm={defaultWallThicknessInput ?? wallThickness} units={displayUnits} onMmChange={setDefaultWallThicknessInput} /><button className="review-style-button" onClick={() => { record(); setWallThickness(defaultWallThicknessInput ?? wallThickness); setDefaultWallThicknessInput(null); }}>Define default</button></div></label></section>
         </FloatingToolbar>}
-        {toolbarVisibility["floorplan-import"] && <FloatingToolbar title="Import drawing" defaultPosition={{ x: 364, y: 260 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-import") : { side: "LEFT", slot: 2, slots: 4 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={260} onClose={() => onToggleToolbar("floorplan-import")}>
-        <section className="tool-section"><p className="tool-note">Use a PDF, PNG, JPG, or WEBP as an editable tracing reference.</p><button className="primary-small secondary-action" onClick={() => fileInput.current?.click()}>{importing ? "Importing…" : "Import PDF or image"}</button><input ref={fileInput} hidden type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => { void importDrawing(event.target.files?.[0]); event.target.value = ""; }} />{sourceFile && <><small>{sourceFile.name}</small><button className="danger-button secondary-action" type="button" onClick={clearImportedDrawing}>Remove imported drawing</button></>}{importError && <p className="project-error">{importError}</p>}</section>
-        </FloatingToolbar>}
       </aside>
 
       <main className="drawing-column full-plan-drawing">
         <div className="resizable-floorplan-window">
         {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={250} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-zoom" role="group" aria-label="Floorplan view properties"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button><button type="button" className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button></div><div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><label className="view-property-checkbox"><input type="checkbox" checked={showRoomNames} onChange={(event) => setShowRoomNames(event.target.checked)} /><span>Show/Hide room names</span></label><label className="view-property-checkbox"><input type="checkbox" checked={showMeasurements} onChange={(event) => setShowMeasurements(event.target.checked)} /><span>Show/Hide measurements</span></label></div><div className="view-property-toggle-row" role="group" aria-label="Opening and element measurement options"><label className="view-property-checkbox"><input type="checkbox" checked={showDoorWindowMeasurements} onChange={(event) => setShowDoorWindowMeasurements(event.target.checked)} /><span>Show/Hide Door and Windows measurements</span></label><label className="view-property-checkbox"><input type="checkbox" checked={showElementMeasurements} onChange={(event) => setShowElementMeasurements(event.target.checked)} /><span>Show/Hide Elements measurements</span></label></div><label className="view-property-checkbox"><input type="checkbox" checked={showWallThickness} onChange={(event) => setShowWallThickness(event.target.checked)} /><span>Show wall thickness</span></label><strong>{vertexCount} vertices · {walls.length} wall run{walls.length === 1 ? "" : "s"}</strong></div></FloatingToolbar>}
-        <div className="full-plan-canvas">{sourceUrl && sourceFile?.type === "application/pdf" && <embed src={sourceUrl} type="application/pdf" />}
+        <div className="full-plan-canvas">{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}{sourceUrl && sourceFile?.type === "application/pdf" && <embed src={sourceUrl} type="application/pdf" />}
           <FloorPlanCanvas className={`mode-${tool.toLowerCase()}`} showGrid={showGrid} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onPointerDownCapture={beginPan} onPointerMove={movePoint} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
             if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { if (event.target === event.currentTarget && tool === "SELECT") { setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setOpeningParent(""); setOpeningError(null); setSelectedMeasurement(null); } return; }

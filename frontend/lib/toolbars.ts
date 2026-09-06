@@ -1,7 +1,6 @@
 export type ToolbarId =
   | "floorplan-build"
   | "floorplan-properties"
-  | "floorplan-import"
   | "floorplan-coordinates"
   | "floorplan-openings"
   | "floorplan-view"
@@ -20,7 +19,6 @@ export type ToolbarVisibility = Record<ToolbarId, boolean>;
 export const FLOORPLAN_TOOLBARS: ToolbarDefinition[] = [
   { id: "floorplan-build", name: "Build floorplan" },
   { id: "floorplan-properties", name: "Overall properties" },
-  { id: "floorplan-import", name: "Import drawing" },
   { id: "floorplan-coordinates", name: "Coordinates" },
   { id: "floorplan-openings", name: "Add elements" },
   { id: "floorplan-view", name: "View properties" },
