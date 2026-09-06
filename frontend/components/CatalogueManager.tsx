@@ -5,8 +5,8 @@ import type { CatalogueCategory, CatalogueItem } from "@/lib/types";
 
 interface CatalogueManagerProps { apiUrl: string; open: boolean; opener: HTMLElement | null; onClose: () => void; }
 
-const KINDS: Record<string, "SHOWER" | "BASIN" | "TOILET" | "FURNITURE"> = {
-  showers: "SHOWER", basins: "BASIN", toilets: "TOILET", storage: "FURNITURE",
+const KINDS: Record<string, "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" | "DOOR" | "WINDOW"> = {
+  showers: "SHOWER", basins: "BASIN", toilets: "TOILET", storage: "FURNITURE", doors: "DOOR", windows: "WINDOW",
 };
 
 function trapFocus(event: React.KeyboardEvent<HTMLElement>) {

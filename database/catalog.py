@@ -45,6 +45,8 @@ CATEGORIES = [
     ("basins", "Basins & vanities", "Wall-mounted basins, vanity units and washstands.", 20, 0.0, 0.0),
     ("toilets", "Toilets", "Wall-hung, compact and close-coupled toilets.", 30, 200.0, 400.0),
     ("storage", "Storage & furniture", "Cabinets, benches and freestanding bathroom furniture.", 40, 0.0, 0.0),
+    ("doors", "Doors", "Single and double doors for the floorplan.", 50, 0.0, 0.0),
+    ("windows", "Windows", "Single-, double- and triple-pane windows for the floorplan.", 60, 0.0, 0.0),
 ]
 
 def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tuple[str, str, str, int]], list[tuple[str, str, str, str, dict[str, object]]]]:
@@ -169,12 +171,14 @@ def initialise_catalogue() -> None:
         ):
             connection.exec_driver_sql(f"DROP INDEX IF EXISTS {obsolete_index}")
     with SessionLocal() as session:
-        if session.scalar(select(FurnitureCategoryRecord.id).limit(1)) is None:
-            session.add_all(
-                FurnitureCategoryRecord(id=item[0], name=item[1], description=item[2], sort_order=item[3], default_side_clearance_mm=item[4], default_front_clearance_mm=item[5])
-                for item in CATEGORIES
-            )
-            session.flush()
+        # Keep catalogue upgrades additive. Existing installations may already
+        # contain custom category clearance settings, so only missing categories
+        # receive the defaults while existing records retain their settings.
+        for category_id, name, description, sort_order, side, front in CATEGORIES:
+            category = session.get(FurnitureCategoryRecord, category_id)
+            if category is None:
+                session.add(FurnitureCategoryRecord(id=category_id, name=name, description=description, sort_order=sort_order, default_side_clearance_mm=side, default_front_clearance_mm=front))
+        session.flush()
         _backfill_new_clearance_columns(session, side_added=added_side_clearance, front_added=added_front_clearance)
         _archive_obsolete_default_items(session)
         seed_fixture_defaults(session)

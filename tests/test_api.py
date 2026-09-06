@@ -232,12 +232,21 @@ def test_double_door_requires_door_fields() -> None:
 def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
     categories = client.get("/catalog/categories")
     assert categories.status_code == 200
-    assert {category["id"] for category in categories.json()} == {"showers", "basins", "toilets", "storage"}
+    assert {category["id"] for category in categories.json()} == {"showers", "basins", "toilets", "storage", "doors", "windows"}
     category_defaults = {category["id"]: category for category in categories.json()}
     assert category_defaults["toilets"]["default_side_clearance_mm"] == 200
     assert category_defaults["toilets"]["default_front_clearance_mm"] == 400
     assert category_defaults["showers"]["default_side_clearance_mm"] == 0
     assert category_defaults["showers"]["default_front_clearance_mm"] == 500
+
+    door_defaults = client.get("/catalog/items?category_id=doors")
+    assert door_defaults.status_code == 200
+    assert {item["subcategory"] for item in door_defaults.json()} == {"Single", "Double"}
+    assert all(item["fixture_kind"] == "DOOR" for item in door_defaults.json())
+    window_defaults = client.get("/catalog/items?category_id=windows")
+    assert window_defaults.status_code == 200
+    assert {item["subcategory"] for item in window_defaults.json()} == {"Single pane", "Double pane", "Triple pane"}
+    assert all(item["fixture_kind"] == "WINDOW" for item in window_defaults.json())
 
     paint_collections = client.get("/catalog/materials?kind=PAINT")
     assert paint_collections.status_code == 200

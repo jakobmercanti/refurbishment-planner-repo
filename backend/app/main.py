@@ -126,6 +126,8 @@ CATEGORY_KINDS = {
     "basins": "BASIN",
     "toilets": "TOILET",
     "storage": "FURNITURE",
+    "doors": "DOOR",
+    "windows": "WINDOW",
 }
 CatalogueSession = Annotated[Session, Depends(catalogue_session)]
 CatalogueSearch = Annotated[str | None, Query(max_length=100)]

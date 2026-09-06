@@ -22,7 +22,7 @@ def test_generic_catalogue_hierarchy_assets_and_idempotence():
         seed_fixture_defaults(session)
         session.commit()
         items = session.scalars(select(FurnitureItemRecord)).all()
-        assert len(items) == 18
+        assert len(items) == 23
         for category, (_, variants) in FIXTURE_DEFAULTS.items():
             assert 1 <= len(variants) <= 10
             assert {item.subcategory for item in items if item.category_id == category} == {v[1] for v in variants}
@@ -35,7 +35,7 @@ def test_generic_catalogue_hierarchy_assets_and_idempotence():
         session.commit()
         seed_fixture_defaults(session)
         session.commit()
-        assert len(session.scalars(select(FurnitureItemRecord)).all()) == 18
+        assert len(session.scalars(select(FurnitureItemRecord)).all()) == 23
         assert items[0].width_mm == 777
         assert items[0].name == "Edited default"
 

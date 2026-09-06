@@ -168,6 +168,9 @@ export default function Home() {
   }
 
   function insertCatalogueItem(item: CatalogueItem) {
+    // Openings need a parent wall and belong in the 2D Add elements editor;
+    // they are not room obstacles and must never be inserted as fixtures.
+    if (item.fixture_kind === "DOOR" || item.fixture_kind === "WINDOW") return;
     const target = resolveViewerRoom(demo);
     if (!target) return;
     const minX = Math.min(...target.vertices.map((point) => point.x));

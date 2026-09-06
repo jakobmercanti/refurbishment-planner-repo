@@ -7,6 +7,12 @@ import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
 import { UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type { CatalogueItem, Obstacle, Room } from "@/lib/types";
 
+const ROOM_FIXTURE_KINDS = new Set(["SHOWER", "BASIN", "TOILET", "FURNITURE"]);
+type RoomCatalogueItem = CatalogueItem & { fixture_kind: NonNullable<Obstacle["fixture_kind"]> };
+function isRoomFixture(item: CatalogueItem): item is RoomCatalogueItem {
+  return ROOM_FIXTURE_KINDS.has(item.fixture_kind);
+}
+
 export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, refreshKey = 0 }: {
   room: Room; displayUnits: DisplayUnits; onChange: (items: Obstacle[]) => void; apiUrl: string; refreshKey?: number;
 }) {
@@ -26,15 +32,16 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     refresh(); window.addEventListener("focus", refresh); window.addEventListener("catalogue-changed", refresh);
     return () => { controller.abort(); window.removeEventListener("focus", refresh); window.removeEventListener("catalogue-changed", refresh); };
   }, [apiUrl, refreshKey]);
-  const categories = [...new Map(items.map(item => [item.category_id, item.category_name])).entries()];
+  const fixtureItems = items.filter(isRoomFixture);
+  const categories = [...new Map(fixtureItems.map(item => [item.category_id, item.category_name])).entries()];
   const activeCategory = categories.some(([id]) => id === category) ? category : categories[0]?.[0];
-  const family = items.filter(item => item.category_id === activeCategory);
+  const family = fixtureItems.filter(item => item.category_id === activeCategory);
   const subcategories = [...new Set(family.map(item => item.subcategory))].sort();
   const activeSubcategory = subcategories.includes(subcategory) ? subcategory : subcategories[0];
   const objects = family.filter(item => item.subcategory === activeSubcategory).sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
   const selected = objects.find(item => item.id === objectId) ?? objects[0];
   const existing = room.obstacles.find(item => item.id === editingId);
-  function fromCatalogue(item: CatalogueItem): Obstacle {
+  function fromCatalogue(item: RoomCatalogueItem): Obstacle {
     const measured = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
     return {
       id: "draft", name: item.name,
@@ -55,7 +62,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     if (existing) onChange(room.obstacles.map(item => item.id === existing.id ? positioned : item));
     else setDraft(positioned);
   }
-  function choose(item?: CatalogueItem) {
+  function choose(item?: RoomCatalogueItem) {
     if (!item) return;
     setObjectId(item.id); const next = fromCatalogue(item);
     if (existing) change({ ...next, id: existing.id, center: existing.center, rotation_deg: existing.rotation_deg, wall_lock: existing.wall_lock });

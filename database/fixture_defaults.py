@@ -34,6 +34,15 @@ FIXTURE_DEFAULTS = {
     "storage": ("FURNITURE", [
         ("storage-unit", "Storage", 600, 450, 850),
     ]),
+    "doors": ("DOOR", [
+        ("single", "Single", 800, 100, 2040),
+        ("double", "Double", 1600, 100, 2040),
+    ]),
+    "windows": ("WINDOW", [
+        ("single-pane", "Single pane", 800, 100, 900),
+        ("double-pane", "Double pane", 800, 100, 900),
+        ("triple-pane", "Triple pane", 800, 100, 900),
+    ]),
 }
 
 DEFAULT_NAMES = {
@@ -62,6 +71,15 @@ DEFAULT_NAMES = {
     },
     "storage": {
         "storage-unit": "Default storage unit",
+    },
+    "doors": {
+        "single": "Default single door",
+        "double": "Default double door",
+    },
+    "windows": {
+        "single-pane": "Default single pane window",
+        "double-pane": "Default double pane window",
+        "triple-pane": "Default triple pane window",
     },
 }
 

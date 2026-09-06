@@ -115,7 +115,7 @@ class CatalogueImage(BaseModel):
 
 class CatalogueItemInput(BaseModel):
     category_id: str = Field(min_length=1, max_length=50)
-    fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE"]
+    fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE", "DOOR", "WINDOW"]
     name: str = Field(min_length=1, max_length=200)
     supplier: str = Field(min_length=1, max_length=200)
     sku: str = Field(min_length=1, max_length=120)
@@ -172,7 +172,7 @@ class CatalogueWebsiteImport(BaseModel):
     page: str = Field(default="", max_length=500)
     category_id: str = Field(min_length=1, max_length=50)
     subcategory: str = Field(min_length=1, max_length=120)
-    fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE"]
+    fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE", "DOOR", "WINDOW"]
     supplier: str = Field(min_length=1, max_length=200)
     fallback_name: str = Field(min_length=1, max_length=200)
     fallback_sku: str = Field(min_length=1, max_length=120)

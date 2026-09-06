@@ -74,7 +74,7 @@ export interface CatalogueItem {
   category_id: string;
   category_name: string;
   plan_symbol_data_url?: string | null;
-  fixture_kind: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE";
+  fixture_kind: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" | "DOOR" | "WINDOW";
   name: string;
   supplier: string;
   sku: string;

@@ -11,6 +11,7 @@ export type FloorPlanOpeningGraphic = {
   doorType?: "SINGLE" | "DOUBLE";
   hingeSide?: "START" | "END";
   opensInward?: boolean;
+  windowPaneCount?: 1 | 2 | 3;
 };
 
 type OpeningProps = {
@@ -60,13 +61,20 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   const style = { "--opening-gap-width": `${gapWidth}px` } as CSSProperties;
   const className = selected ? " selected" : "";
   if (opening.kind === "WINDOW") {
+    const paneCount = Math.max(1, Math.min(3, opening.windowPaneCount ?? 1));
+    const paneLines = Array.from({ length: paneCount - 1 }, (_, index) => {
+      const ratio = (index + 1) / paneCount;
+      const point = { x: start.x + (end.x - start.x) * ratio, y: start.y + (end.y - start.y) * ratio };
+      return <line key={`window-pane-${index}`} className="window-pane" x1={point.x - perpendicular.x * 6} y1={point.y - perpendicular.y * 6} x2={point.x + perpendicular.x * 6} y2={point.y + perpendicular.y * 6} />;
+    });
     return <g style={style} className={`opening-symbol window-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
-      <title>{`Window ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
+      <title>{`${paneCount}-pane window ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
       <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       <line className="window-frame" x1={start.x + perpendicular.x * 4} y1={start.y + perpendicular.y * 4} x2={end.x + perpendicular.x * 4} y2={end.y + perpendicular.y * 4} />
       <line className="window-frame" x1={start.x - perpendicular.x * 4} y1={start.y - perpendicular.y * 4} x2={end.x - perpendicular.x * 4} y2={end.y - perpendicular.y * 4} />
       <line className="window-core" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+      {paneLines}
       <line className="opening-jamb window-jamb" x1={start.x - perpendicular.x * jambHalf} y1={start.y - perpendicular.y * jambHalf} x2={start.x + perpendicular.x * jambHalf} y2={start.y + perpendicular.y * jambHalf} />
       <line className="opening-jamb window-jamb" x1={end.x - perpendicular.x * jambHalf} y1={end.y - perpendicular.y * jambHalf} x2={end.x + perpendicular.x * jambHalf} y2={end.y + perpendicular.y * jambHalf} />
     </g>;
