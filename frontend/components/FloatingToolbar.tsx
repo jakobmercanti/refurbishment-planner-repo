@@ -45,7 +45,15 @@ function claimNextFloatingZIndex() {
 }
 
 function getToolbarWorkspace(panel: HTMLElement) {
-  return panel.offsetParent instanceof HTMLElement ? panel.offsetParent : panel.parentElement;
+  if (panel.offsetParent instanceof HTMLElement) return panel.offsetParent;
+  let ancestor = panel.parentElement;
+  while (ancestor) {
+    const bounds = ancestor.getBoundingClientRect();
+    const styles = window.getComputedStyle(ancestor);
+    if (styles.display !== "contents" && styles.position !== "static" && bounds.width > 0 && bounds.height > 0) return ancestor;
+    ancestor = ancestor.parentElement;
+  }
+  return panel.parentElement;
 }
 
 function getContentMinimumHeight(panel: HTMLElement, maxHeight: number) {
