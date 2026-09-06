@@ -65,7 +65,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     <div className="fixture-heading"><h2>{existing ? "Edit element · live" : "Add element"}</h2><span>{room.obstacles.length} placed</span></div>
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
     <div className="fixture-selectors" style={{ gridTemplateColumns: "1fr" }}>
-      <label className="field"><span>Category</span><select value={activeCategory ?? ""} onChange={event => { setCategory(event.target.value); setSubcategory(""); setObjectId(""); setDraft(null); setEditingId(null); }}>{categories.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+      <label className="field"><span>Category</span><select value={activeCategory ?? ""} onChange={event => { setCategory(event.target.value); setSubcategory(""); setObjectId(""); setDraft(null); setEditingId(null); }}>{categories.map(([id, name]) => <option key={id} value={id}>{id === "storage" ? "Elements" : name}</option>)}</select></label>
       <label className="field"><span>Subcategory</span><select value={activeSubcategory ?? ""} onChange={event => { setSubcategory(event.target.value); setObjectId(""); setDraft(null); setEditingId(null); }}>{subcategories.map(name => <option key={name}>{name}</option>)}</select></label>
       <label className="field"><span>Object</span><select value={selected?.id ?? ""} onChange={event => choose(objects.find(item => item.id === event.target.value))}>{objects.map(item => <option key={item.id} value={item.id}>{item.name}{!item.is_default ? ` · ${item.supplier}` : ""}</option>)}</select></label>
     </div>

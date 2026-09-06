@@ -153,7 +153,7 @@ export function FixtureEditor({ room, displayUnits, onChange }: FixtureEditorPro
       {editingId && <p className="editing-notice">Editing the selected item. Update its model, position, rotation or dimensions below.</p>}
 
       <div className="fixture-selectors">
-        <label className="field"><span>Element</span><select value={kind} onChange={(event) => changeKind(event.target.value as FixtureKind)}><option value="SHOWER">Shower enclosure</option><option value="BASIN">Basin</option><option value="TOILET">Toilet</option><option value="FURNITURE">Furniture</option></select></label>
+        <label className="field"><span>Element</span><select value={kind} onChange={(event) => changeKind(event.target.value as FixtureKind)}><option value="SHOWER">Shower enclosure</option><option value="BASIN">Basin</option><option value="TOILET">Toilet</option><option value="FURNITURE">Elements</option></select></label>
         <label className="field"><span>Model</span><select value={modelId} onChange={(event) => { const model = availableModels.find((item) => item.id === event.target.value); if (model) applyModel(model); }}>{!availableModels.some((model) => model.id === modelId) && <option value={modelId}>{name} · catalogue</option>}{availableModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
       </div>
 

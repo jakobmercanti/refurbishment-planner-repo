@@ -656,7 +656,8 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .floorplan-fixture rect, .floorplan-fixture ellipse { fill: color-mix(in srgb, var(--deep) 18%, white); stroke: var(--deep); stroke-width: 2.5; stroke-dasharray: 5 3; cursor: grab; }
 .floorplan-fixture rect:active, .floorplan-fixture ellipse:active { cursor: grabbing; }
 .floorplan-fixture text { fill: var(--deep); font: 700 8px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: white; stroke-width: 4px; pointer-events: none; }
-.floorplan-fixture .floorplan-fixture-dimension { fill: #3978b9; font-size: 7px; }
+.floorplan-fixture .fixture-dimension { color: #b45309; pointer-events: none; }
+.floorplan-fixture .fixture-dimension-label { fill: currentColor; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
 .inline-status { margin: 8px 0 0; padding: 8px; border-radius: 6px; background: #f2f5f2; color: var(--muted); font-size: 10px; }
 .full-wall-draft { fill: none; stroke: #2e8b70; stroke-width: 8; stroke-linecap: square; stroke-linejoin: miter; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
 .full-plan-canvas g.removable .wall-line { cursor: crosshair; }
@@ -737,6 +738,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .view-property-checkbox input { accent-color: var(--deep); }
 .view-property-toggle-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex-basis: 100%; gap: 5px; padding-top: 3px; border-top: 1px solid var(--line); }
 .view-property-toggle-row .view-property-checkbox { min-width: 0; }
+.view-property-toggle-row + .view-property-toggle-row { margin-top: 3px; }
 .floating-canvas-navigation { flex-wrap: wrap; }
 .floating-canvas-navigation > .view-property-checkbox, .floating-canvas-navigation > strong { flex-basis: 100%; }
 

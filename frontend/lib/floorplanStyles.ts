@@ -50,6 +50,8 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .window-jamb{stroke-width:1.2}
 .${root} .floorplan-fixture rect{fill:#fff;stroke:#151515}
 .${root} .floorplan-fixture text{fill:#151515}
+.${root} .floorplan-fixture .fixture-dimension{color:#b45309}
+.${root} .floorplan-fixture .fixture-dimension-label{fill:currentColor}
 `;
 
   if (style === "MODERN") return `
@@ -70,6 +72,8 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .window-core{stroke:#84b8df}
 .${root} .window-dimension{color:#2c7dbc}
 .${root} .window-dimension .opening-dimension-label{fill:#246a9e}
+.${root} .floorplan-fixture .fixture-dimension{color:#b45309}
+.${root} .floorplan-fixture .fixture-dimension-label{fill:currentColor}
 `;
 
   return `
@@ -90,6 +94,8 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .window-core{stroke:#9ec0d5}
 .${root} .window-dimension{color:#5d83a5}
 .${root} .window-dimension .opening-dimension-label{fill:#426b8c}
+.${root} .floorplan-fixture .fixture-dimension{color:#b45309}
+.${root} .floorplan-fixture .fixture-dimension-label{fill:currentColor}
 .${root} .full-room-highlight{display:inline}
 .${root} .full-room-highlight polygon{fill:#f0b761;fill-opacity:.22}
 `;
