@@ -34,6 +34,7 @@ interface FloatingToolbarProps {
   maxHeight?: number;
   dock?: ToolbarDock;
   layoutResetKey?: number;
+  bringToFront?: boolean;
   onClose: () => void;
 }
 
@@ -72,7 +73,7 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
   return <FloatingToolbarWindow key={props.layoutResetKey ?? 0} {...props} />;
 }
 
-function FloatingToolbarWindow({ title, children, className = "", defaultPosition, maxHeight = 560, dock, onClose }: FloatingToolbarProps) {
+function FloatingToolbarWindow({ title, children, className = "", defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<{ pointerX: number; pointerY: number; left: number; top: number; parentWidth: number; parentHeight: number; width: number; height: number } | null>(null);
   const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number; minimumHeight: number } | null>(null);
@@ -263,7 +264,7 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
     maxHeight: size.height === null
       ? (docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `min(${maxHeight}px, calc(100% - 16px))`)
       : "calc(100% - 16px)",
-    zIndex,
+    zIndex: bringToFront ? 1000 : zIndex,
   } as CSSProperties;
   return <section ref={panelRef} className={`floating-toolbar ${className}`.trim()} style={style} onPointerDown={focusPanel}>
     <header className="floating-toolbar-titlebar" aria-label={`Move ${title}`} title={`Drag to move ${title}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onMouseDown={beginMouseDrag}>

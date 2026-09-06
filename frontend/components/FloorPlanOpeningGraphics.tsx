@@ -121,9 +121,9 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   </g>;
 }
 
-type DimensionProps = OpeningProps & { wallCentre: Point2D; lane: number; onMeasurementContextMenu?: (event: ReactMouseEvent<SVGGElement>, section: number) => void };
+type DimensionProps = OpeningProps & { wallCentre: Point2D; lane: number; onMeasurementContextMenu?: (event: ReactMouseEvent<SVGGElement>, section: number) => void; onMeasurementDoubleClick?: (event: ReactMouseEvent<SVGGElement>, section: number) => void };
 
-export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCentre, lane, toScreen, displayUnits, onMeasurementContextMenu }: DimensionProps) {
+export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCentre, lane, toScreen, displayUnits, onMeasurementContextMenu, onMeasurementDoubleClick }: DimensionProps) {
   const shape = geometry(opening, wallStart, wallEnd, toScreen);
   if (!shape) return null;
   const start = toScreen(wallStart); const end = toScreen(wallEnd); const centre = toScreen(wallCentre);
@@ -134,11 +134,11 @@ export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCe
   const rowOffset = 34 + lane * 20;
   const points = [start, shape.start, shape.end, end].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
   const values = [opening.offset, opening.width, Math.max(0, shape.wallLength - opening.offset - opening.width)];
-  return <g className={`opening-dimension ${opening.kind === "WINDOW" ? "window-dimension" : ""} ${onMeasurementContextMenu ? "measurement-context-target" : ""}`} aria-label={`${opening.kind === "WINDOW" ? "Window" : "Door"} dimensions`}>
+  return <g className={`opening-dimension ${opening.kind === "WINDOW" ? "window-dimension" : ""} ${onMeasurementContextMenu || onMeasurementDoubleClick ? "measurement-context-target" : ""}`} aria-label={`${opening.kind === "WINDOW" ? "Window" : "Door"} dimensions`}>
     {values.map((value, index) => {
       const first = points[index]; const second = points[index + 1];
       const label = { x: (first.x + second.x) / 2 + outward.x * 9, y: (first.y + second.y) / 2 + outward.y * 9 };
-      return <g key={index} onContextMenu={(event) => onMeasurementContextMenu?.(event, index)}><line className="dimension-extension" x1={first.x - outward.x * 5} y1={first.y - outward.y * 5} x2={first.x + outward.x * 3} y2={first.y + outward.y * 3} /><line className="dimension-extension" x1={second.x - outward.x * 5} y1={second.y - outward.y * 5} x2={second.x + outward.x * 3} y2={second.y + outward.y * 3} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - shape.tangent.x * 3 - outward.x * 3} y1={first.y - shape.tangent.y * 3 - outward.y * 3} x2={first.x + shape.tangent.x * 3 + outward.x * 3} y2={first.y + shape.tangent.y * 3 + outward.y * 3} /><line className="dimension-tick" x1={second.x - shape.tangent.x * 3 - outward.x * 3} y1={second.y - shape.tangent.y * 3 - outward.y * 3} x2={second.x + shape.tangent.x * 3 + outward.x * 3} y2={second.y + shape.tangent.y * 3 + outward.y * 3} /><text className="opening-dimension-label" x={label.x} y={label.y}>{formatLength(value, displayUnits)}</text></g>;
+      return <g key={index} onContextMenu={(event) => onMeasurementContextMenu?.(event, index)} onDoubleClick={(event) => onMeasurementDoubleClick?.(event, index)}><line className="dimension-extension" x1={first.x - outward.x * 5} y1={first.y - outward.y * 5} x2={first.x + outward.x * 3} y2={first.y + outward.y * 3} /><line className="dimension-extension" x1={second.x - outward.x * 5} y1={second.y - outward.y * 5} x2={second.x + outward.x * 3} y2={second.y + outward.y * 3} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - shape.tangent.x * 3 - outward.x * 3} y1={first.y - shape.tangent.y * 3 - outward.y * 3} x2={first.x + shape.tangent.x * 3 + outward.x * 3} y2={first.y + shape.tangent.y * 3 + outward.y * 3} /><line className="dimension-tick" x1={second.x - shape.tangent.x * 3 - outward.x * 3} y1={second.y - shape.tangent.y * 3 - outward.y * 3} x2={second.x + shape.tangent.x * 3 + outward.x * 3} y2={second.y + shape.tangent.y * 3 + outward.y * 3} /><text className="opening-dimension-label" x={label.x} y={label.y}>{formatLength(value, displayUnits)}</text></g>;
     })}
   </g>;
 }

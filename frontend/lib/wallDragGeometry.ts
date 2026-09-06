@@ -1088,7 +1088,7 @@ export function translateIncidentWallRunsForCorner(
  * that defines the intended junction and must not become a detached corner
  * merely because a fast pointer drag overshoots the host's clearance limit.
  */
-export function reanchorAttachedWallEndpoints(walls: WallDragWall[]): WallDragWall[] {
+export function reanchorAttachedWallEndpoints(walls: WallDragWall[], activelyDraggedWallId?: string): WallDragWall[] {
   return walls.map((wall) => {
     const isClosed = wall.points.length > 2 && samePoint(wall.points[0], wall.points.at(-1)!);
     if (wall.id.startsWith(AUTO_BRIDGE_PREFIX) || isClosed || !wall.attachments) return wall;
@@ -1106,9 +1106,18 @@ export function reanchorAttachedWallEndpoints(walls: WallDragWall[]): WallDragWa
       const start = host?.points[attachment.segmentIndex];
       const end = host?.points[attachment.segmentIndex + 1];
       if (!point || !host || !start || !end || host.id === wall.id) return;
-      const anchored = attachment.along <= .001 ? { ...start }
+      // A dragged branch may slide across a materialized junction on its host.
+      // Its old endpoint attachment must not pin it to that junction.
+      const slidingHost = wall.id === activelyDraggedWallId
+        ? host.points.slice(0, -1).map((candidateStart, index) => {
+            const candidateEnd = host.points[index + 1];
+            const cross = (end.x - start.x) * (candidateEnd.y - candidateStart.y) - (end.y - start.y) * (candidateEnd.x - candidateStart.x);
+            return Math.abs(cross) <= .001 ? projectOnSegment(point, candidateStart, candidateEnd) : null;
+          }).filter((candidate) => candidate !== null && candidate.distance <= .001)[0]
+        : undefined;
+      const anchored = slidingHost?.point ?? (attachment.along <= .001 ? { ...start }
         : attachment.along >= .999 ? { ...end }
-          : projectOnSegment(point, start, end).point;
+          : projectOnSegment(point, start, end).point);
       if (!samePoint(point, anchored, .001)) {
         points[pointIndex] = anchored;
         changed = true;

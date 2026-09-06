@@ -86,11 +86,13 @@ export function floorPlanFromClient(
 interface FloorPlanCanvasProps extends Omit<SVGProps<SVGSVGElement>, "viewBox"> {
   children: ReactNode;
   showGrid?: boolean;
+  gridSpacing?: number;
+  gridOrigin?: Point2D;
   underlay?: boolean;
 }
 
 /** Canonical SVG surface for the floorplan editor. */
-export function FloorPlanCanvas({ children, className = "", showGrid = true, underlay = false, ...props }: FloorPlanCanvasProps) {
+export function FloorPlanCanvas({ children, className = "", showGrid = true, gridSpacing, gridOrigin = { x: 0, y: 0 }, underlay = false, ...props }: FloorPlanCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [surfaceSize, setSurfaceSize] = useState({ width: FLOOR_PLAN_CANVAS_WIDTH, height: FLOOR_PLAN_CANVAS_HEIGHT });
   const canvasAspect = FLOOR_PLAN_CANVAS_WIDTH / FLOOR_PLAN_CANVAS_HEIGHT;
@@ -99,14 +101,14 @@ export function FloorPlanCanvas({ children, className = "", showGrid = true, und
   const viewBoxHeight = surfaceAspect < canvasAspect ? FLOOR_PLAN_CANVAS_WIDTH / surfaceAspect : FLOOR_PLAN_CANVAS_HEIGHT;
   const viewBoxX = (FLOOR_PLAN_CANVAS_WIDTH - viewBoxWidth) / 2;
   const viewBoxY = (FLOOR_PLAN_CANVAS_HEIGHT - viewBoxHeight) / 2;
-  const gridSpacing = FLOOR_PLAN_CANVAS_WIDTH / 16;
-  const gridLines = (start: number, end: number) => {
-    const first = Math.floor(start / gridSpacing) * gridSpacing;
-    const count = Math.ceil((end - first) / gridSpacing) + 1;
-    return Array.from({ length: count }, (_, index) => first + index * gridSpacing);
+  const resolvedGridSpacing = Number.isFinite(gridSpacing) && gridSpacing! > 0 ? gridSpacing! : FLOOR_PLAN_CANVAS_WIDTH / 16;
+  const gridLines = (start: number, end: number, origin: number) => {
+    const first = origin + Math.floor((start - origin) / resolvedGridSpacing) * resolvedGridSpacing;
+    const count = Math.ceil((end - first) / resolvedGridSpacing) + 1;
+    return Array.from({ length: count }, (_, index) => first + index * resolvedGridSpacing);
   };
-  const verticalLines = gridLines(viewBoxX, viewBoxX + viewBoxWidth);
-  const horizontalLines = gridLines(viewBoxY, viewBoxY + viewBoxHeight);
+  const verticalLines = gridLines(viewBoxX, viewBoxX + viewBoxWidth, gridOrigin.x);
+  const horizontalLines = gridLines(viewBoxY, viewBoxY + viewBoxHeight, gridOrigin.y);
 
   useEffect(() => {
     const svg = svgRef.current;

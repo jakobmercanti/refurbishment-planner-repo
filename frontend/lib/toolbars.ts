@@ -6,6 +6,7 @@ export type ToolbarId =
   | "floorplan-view"
   | "viewer-room"
   | "viewer-analysis"
+  | "viewer-layout-analysis"
   | "viewer-person"
   | "viewer-view";
 
@@ -27,6 +28,7 @@ export const FLOORPLAN_TOOLBARS: ToolbarDefinition[] = [
 export const VIEWER_TOOLBARS: ToolbarDefinition[] = [
   { id: "viewer-room", name: "Room selector" },
   { id: "viewer-analysis", name: "Add elements" },
+  { id: "viewer-layout-analysis", name: "Layout analysis" },
   { id: "viewer-person", name: "Human mock-up" },
   { id: "viewer-view", name: "View properties" },
 ];

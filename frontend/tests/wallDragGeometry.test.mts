@@ -13,6 +13,18 @@ const roomWall: WallDragWall = {
   ],
 };
 
+test("a dragged branch slides across a split host junction instead of snapping back", () => {
+  const host: WallDragWall = { id: "host", points: [{x:0,y:1800},{x:1500,y:1800},{x:2400,y:1800}] };
+  for (const x of [1300, 1700]) {
+    const branch: WallDragWall = { id: "branch", points: [{x,y:1800},{x,y:2750},{x:3300,y:2750}],
+      attachments: { 0: {wallId:"host",segmentIndex:0,along:1} } };
+    const result = reanchorAttachedWallEndpoints([host, branch], "branch");
+    assert.equal(result[1].points[0].x, x);
+    assert.equal(result[1].points[0].x, result[1].points[1].x);
+    assert.deepEqual(result[0], host);
+  }
+});
+
 test("keeps an edited wall measurement authoritative and attached at a shared endpoint", () => {
   const candidate: WallDragWall[] = [
     { id: "room", points: [{ x: 0, y: 0 }, { x: 2000, y: 0 }, { x: 2000, y: 1000 }], lengthOverridesMm: { 0: 1800 } },

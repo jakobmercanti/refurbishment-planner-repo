@@ -12,6 +12,80 @@ export interface RenderedWall {
   sourceLengthMm: number;
   capStart: boolean;
   capEnd: boolean;
+  paintOnly?: boolean;
+}
+
+/** The other room owns the finish on the far side of a deduplicated wall. */
+export function buildSharedWallFinishFaces(rooms: Room[], walls: RenderedWall[]): RenderedWall[] {
+  const faces = walls.flatMap((wall) => rooms.filter((room) => room.id !== wall.room.id).flatMap((room) =>
+    room.vertices.flatMap((start, index) => {
+      const end = room.vertices[(index + 1) % room.vertices.length];
+      if (!pointOnSegment(wall.start, start, end) || !pointOnSegment(wall.end, start, end)) return [];
+      const dx = wall.end.x - wall.start.x, dy = wall.end.y - wall.start.y;
+      const length = Math.hypot(dx, dy);
+      // Opposite room-facing directions identify the two sides of a partition.
+      if (dx * (end.x - start.x) + dy * (end.y - start.y) >= 0) return [];
+      const thickness = wall.room.wall_thickness_overrides_mm?.[`wall-${String(wall.index + 1).padStart(3, "0")}`] ?? wall.room.wall_thickness.value;
+      const shift = (point: Point2D) => ({ x: point.x + dy / length * thickness, y: point.y - dx / length * thickness });
+      const targetId = `wall-${String(index + 1).padStart(3, "0")}`;
+      const sourceId = `wall-${String(wall.index + 1).padStart(3, "0")}`;
+      const sourceOffsetMm = projection(wall.end, start, end) * distance(start, end);
+      const openings = wall.room.openings.filter((opening) => opening.parent_wall_id === sourceId).map((opening) => ({
+        ...opening, parent_wall_id: targetId,
+        offset_mm: sourceOffsetMm + length - (opening.offset_mm - wall.sourceOffsetMm) - opening.width.value,
+      }));
+      return [{ room: { ...room, openings }, index, start: shift(wall.end), end: shift(wall.start), originalStart: wall.end, originalEnd: wall.start,
+        sourceOffsetMm, sourceLengthMm: distance(start, end), capStart: true, capEnd: true, paintOnly: true }];
+    })
+  ));
+  // Offset finish planes must meet at their intersection, not stop at the
+  // original centreline corner and expose a strip of the solid wall.
+  return faces.map((face) => {
+    let start = face.start, end = face.end;
+    for (const neighbour of faces) {
+      if (neighbour === face || neighbour.room.id !== face.room.id) continue;
+      const joinsStart = distance(face.originalStart, neighbour.originalEnd) <= POINT_TOLERANCE_MM;
+      const joinsEnd = distance(face.originalEnd, neighbour.originalStart) <= POINT_TOLERANCE_MM;
+      if (!joinsStart && !joinsEnd) continue;
+      const dx = face.end.x - face.start.x, dy = face.end.y - face.start.y;
+      const nx = neighbour.end.x - neighbour.start.x, ny = neighbour.end.y - neighbour.start.y;
+      const denominator = dx * ny - dy * nx;
+      if (Math.abs(denominator) < PARAMETER_TOLERANCE) continue;
+      const along = ((neighbour.start.x - face.start.x) * ny - (neighbour.start.y - face.start.y) * nx) / denominator;
+      const intersection = pointAt(face.start, face.end, along);
+      if (joinsStart) start = intersection;
+      if (joinsEnd) end = intersection;
+    }
+    const length = distance(face.start, face.end);
+    const shift = ((start.x - face.start.x) * (face.end.x - face.start.x) + (start.y - face.start.y) * (face.end.y - face.start.y)) / length;
+    return { room: face.room, index: face.index, start, end,
+      sourceOffsetMm: face.sourceOffsetMm + shift, sourceLengthMm: face.sourceLengthMm,
+      capStart: true, capEnd: true, paintOnly: true };
+  });
+}
+
+/**
+ * Render every edge of a room that is being viewed on its own. There is no
+ * neighbouring room to deduplicate in this mode, so the room perimeter must
+ * remain a complete closed boundary even when two edges happen to overlap or
+ * share more than one point.
+ */
+export function buildIsolatedRoomWalls(room: Room): RenderedWall[] {
+  return room.vertices.flatMap((start, index) => {
+    const end = room.vertices[(index + 1) % room.vertices.length];
+    const length = distance(start, end);
+    if (length <= POINT_TOLERANCE_MM) return [];
+    return [{
+      room,
+      index,
+      start,
+      end,
+      sourceOffsetMm: 0,
+      sourceLengthMm: length,
+      capStart: false,
+      capEnd: false,
+    }];
+  });
 }
 
 interface CandidateWall {

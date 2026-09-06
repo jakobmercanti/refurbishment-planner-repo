@@ -1,16 +1,17 @@
 "use client";
 
 import { ParametricFixture } from "@/components/ParametricFixture";
+import { Popup } from "@/components/Popup";
 import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { DULUX_PAINT_FAMILIES, type DuluxPaintShade } from "@/lib/duluxPalette";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutInteraction";
 import { buildWallFinishUpdates } from "@/lib/wallFinishes";
-import { buildRenderedWalls, type RenderedWall } from "@/lib/wallRendering";
+import { buildSharedWallFinishFaces, buildIsolatedRoomWalls, buildRenderedWalls, type RenderedWall } from "@/lib/wallRendering";
 import type { MaterialCollection, Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type ToolbarDock } from "@/components/FloatingToolbar";
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
@@ -31,6 +32,22 @@ interface Toggles {
 type CameraView = "perspective" | "top" | "bottom" | "left" | "right" | "eye";
 type ProjectionMode = "perspective" | "parallel";
 type CaptureFormat = "png" | "jpg" | "pdf";
+
+interface SaveFileWritable {
+  write(data: Blob): Promise<void>;
+  close(): Promise<void>;
+}
+
+interface SaveFileHandle {
+  createWritable(): Promise<SaveFileWritable>;
+}
+
+interface SaveFilePickerOptions {
+  suggestedName?: string;
+  types?: Array<{ description: string; accept: Record<string, string[]> }>;
+}
+
+type SaveFilePicker = (options?: SaveFilePickerOptions) => Promise<SaveFileHandle>;
 
 interface ViewerProps {
   apiUrl: string;
@@ -270,6 +287,7 @@ function WallPiece({
   colour,
   wallMode,
   selected,
+  paintOnly = false,
   onSelect,
 }: {
   start: Point2D;
@@ -285,6 +303,7 @@ function WallPiece({
   colour: string;
   wallMode: WallViewMode;
   selected: boolean;
+  paintOnly?: boolean;
   onSelect: (additive: boolean) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -336,7 +355,7 @@ function WallPiece({
   const paintOffset = 0.0015;
   return (
     <group ref={groupRef}>
-      {wallMode !== "CUTAWAY_2D" && <mesh
+      {!paintOnly && wallMode !== "CUTAWAY_2D" && <mesh
         ref={solidMeshRef}
         position={[0, base * SCALE, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -374,6 +393,7 @@ function WallWithOpenings({
   capEnd,
   wallMode,
   selected,
+  paintOnly = false,
   onSelect,
 }: {
   index: number;
@@ -386,6 +406,7 @@ function WallWithOpenings({
   capEnd: boolean;
   wallMode: WallViewMode;
   selected: boolean;
+  paintOnly?: boolean;
   onSelect: (additive: boolean) => void;
 }) {
   const vector = wallVector(start, end);
@@ -430,6 +451,7 @@ function WallWithOpenings({
         colour={colour}
         wallMode={wallMode}
         selected={selected}
+        paintOnly={paintOnly}
         onSelect={onSelect}
       />,
     );
@@ -450,6 +472,7 @@ function WallWithOpenings({
           colour={colour}
           wallMode={wallMode}
           selected={selected}
+        paintOnly={paintOnly}
           onSelect={onSelect}
         />,
       );
@@ -471,6 +494,7 @@ function WallWithOpenings({
         colour={colour}
         wallMode={wallMode}
         selected={selected}
+        paintOnly={paintOnly}
         onSelect={onSelect}
       />,
     );
@@ -492,6 +516,7 @@ function WallWithOpenings({
       colour={colour}
       wallMode={wallMode}
       selected={selected}
+        paintOnly={paintOnly}
       onSelect={onSelect}
     />,
   );
@@ -1010,7 +1035,7 @@ function pdfBlobFromJpeg(bytes: ArrayBuffer, width: number, height: number) {
   return new Blob(parts, { type: "application/pdf" });
 }
 
-function CaptureController({ request, format }: { request: number; format: CaptureFormat }) {
+function CaptureController({ request, format, fileHandle, onError }: { request: number; format: CaptureFormat; fileHandle: SaveFileHandle | null; onError: (message: string) => void }) {
   const { camera, gl, scene } = useThree();
   useEffect(() => {
     if (request === 0) return;
@@ -1018,15 +1043,25 @@ function CaptureController({ request, format }: { request: number; format: Captu
     const mimeType = format === "jpg" || format === "pdf" ? "image/jpeg" : "image/png";
     gl.domElement.toBlob(async (blob) => {
       if (!blob) return;
-      const output = format === "pdf" ? pdfBlobFromJpeg(await blob.arrayBuffer(), gl.domElement.width, gl.domElement.height) : blob;
-      const url = URL.createObjectURL(output);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `renovation-fit-view-${request}.${format}`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      try {
+        const output = format === "pdf" ? pdfBlobFromJpeg(await blob.arrayBuffer(), gl.domElement.width, gl.domElement.height) : blob;
+        if (fileHandle) {
+          const writable = await fileHandle.createWritable();
+          await writable.write(output);
+          await writable.close();
+          return;
+        }
+        const url = URL.createObjectURL(output);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `renovation-fit-view-${request}.${format}`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (reason) {
+        onError(reason instanceof Error ? reason.message : "Unable to save the view.");
+      }
     }, mimeType, format === "jpg" || format === "pdf" ? 0.94 : undefined);
-  }, [camera, format, gl, request, scene]);
+  }, [camera, fileHandle, format, gl, onError, request, scene]);
   return null;
 }
 
@@ -1061,7 +1096,14 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
   const roomTarget = useMemo<VectorTuple>(() => {
     return [(sceneBounds.minX + sceneBounds.maxX) * SCALE / 2, sceneBounds.wallHeight * SCALE / 2, -(sceneBounds.minY + sceneBounds.maxY) * SCALE / 2];
   }, [sceneBounds]);
-  const renderedWalls = useMemo<RenderedWall[]>(() => buildRenderedWalls(renderedRooms), [renderedRooms]);
+  const renderedWalls = useMemo<RenderedWall[]>(
+    () => {
+      if (renderedRooms.length === 1) return buildIsolatedRoomWalls(renderedRooms[0]);
+      const solids = buildRenderedWalls(renderedRooms);
+      return [...solids, ...buildSharedWallFinishFaces(renderedRooms, solids)];
+    },
+    [renderedRooms],
+  );
   const roomSpan = useMemo<[number, number, number]>(() => [
     (sceneBounds.maxX - sceneBounds.minX) * SCALE,
     sceneBounds.wallHeight * SCALE,
@@ -1149,12 +1191,12 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
       <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} />
       <ambientLight intensity={1.3} />
       <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
-      {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd }) => {
+      {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd, paintOnly }) => {
         if (wallMode === "INVISIBLE") return null;
         const sceneInteractive = multiRoom || wallRoom.id === room.id;
         return (
           <WallWithOpenings
-            key={`wall-${wallSegmentKey(start, end)}`}
+            key={`wall-${wallRoom.id}-${index}-${Math.round(sourceOffsetMm)}-${wallSegmentKey(start, end)}`}
             index={index}
             room={wallRoom}
             start={start}
@@ -1163,6 +1205,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
             sourceLengthMm={sourceLengthMm}
             capStart={capStart}
             capEnd={capEnd}
+            paintOnly={paintOnly}
             wallMode={wallMode}
             selected={sceneInteractive && selection?.type === "WALL" && selection.roomId === wallRoom.id && selection.ids.includes(wallId(index))}
             onSelect={sceneInteractive ? (additive) => selectWall(wallRoom.id, wallId(index), additive) : () => undefined}
@@ -1270,7 +1313,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
   }))) ?? TILE_COLLECTION;
 
   return (
-    <FloatingToolbar title="Selected object controls" defaultPosition={{ x: 790, y: 452 }} dock={dock} layoutResetKey={layoutResetKey} maxHeight={650} onClose={onClose}>
+    <FloatingToolbar title="Selected object controls" defaultPosition={{ x: 790, y: 452 }} dock={dock} layoutResetKey={layoutResetKey} bringToFront maxHeight={650} onClose={onClose}>
     <aside className="context-controls" aria-label="Selected object controls">
       {selection.type === "ELEMENT" && selectedElement && <>
         <span className="eyebrow">Selected element</span>
@@ -1327,6 +1370,8 @@ export function EngineeringViewer(props: ViewerProps) {
   const [captureRequest, setCaptureRequest] = useState(0);
   const [captureFormat, setCaptureFormat] = useState<CaptureFormat>("png");
   const [captureMenuOpen, setCaptureMenuOpen] = useState(false);
+  const [captureFileHandle, setCaptureFileHandle] = useState<SaveFileHandle | null>(null);
+  const [captureError, setCaptureError] = useState<string | null>(null);
   const [cameraResetKey, setCameraResetKey] = useState(0);
   const [zoomPercent, setZoomPercent] = useState(100);
   const [showGrid, setShowGrid] = useState(true);
@@ -1355,16 +1400,40 @@ export function EngineeringViewer(props: ViewerProps) {
     ? props.sceneRooms?.find((sceneRoom) => sceneRoom.id === panelSelection.roomId) ?? (panelSelection.roomId === props.room.id ? props.room : null)
     : null;
   const selectedObjectPanelVisible = Boolean(panelSelection && panelRoom);
-  const viewerRightDockIds = selectedObjectPanelVisible ? ["selected-object"] : [];
   const viewerLeftDock = (activeId: string): ToolbarDock => {
     if (activeId === "viewer-view") return positionedToolbarDock("LEFT", "clamp(166px, 14%, 174px)", "clamp(300px, 43%, 494px)", 355);
     return filledToolbarDock("LEFT", ["viewer-room", "viewer-view", "viewer-person"].filter((id) => props.toolbarVisibility[id as ToolbarId]), activeId);
   };
-  const viewerRightDock = (activeId: string): ToolbarDock => {
-    if (!selectedObjectPanelVisible && activeId === "viewer-analysis") return positionedToolbarDock("RIGHT", 8, "calc(100% - 16px)", 355);
-    return filledToolbarDock("RIGHT", viewerRightDockIds, activeId);
-  };
   const applyPreset = (next: CameraView) => { setPreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
+  const handleCaptureError = useCallback((message: string) => { setCaptureError(message); setCaptureMenuOpen(true); }, []);
+  async function saveViewAs() {
+    setCaptureError(null);
+    const picker = (window as Window & { showSaveFilePicker?: SaveFilePicker }).showSaveFilePicker;
+    if (!picker) {
+      setCaptureFileHandle(null);
+      setCaptureMenuOpen(false);
+      setCaptureRequest(Date.now());
+      return;
+    }
+    const formatDetails: Record<CaptureFormat, { label: string; mimeType: string }> = {
+      png: { label: "PNG image", mimeType: "image/png" },
+      jpg: { label: "JPG image", mimeType: "image/jpeg" },
+      pdf: { label: "PDF document", mimeType: "application/pdf" },
+    };
+    const selected = formatDetails[captureFormat];
+    try {
+      const handle = await picker({
+        suggestedName: `renovation-fit-view.${captureFormat}`,
+        types: [{ description: selected.label, accept: { [selected.mimeType]: [`.${captureFormat}`] } }],
+      });
+      setCaptureFileHandle(handle);
+      setCaptureMenuOpen(false);
+      setCaptureRequest(Date.now());
+    } catch (reason) {
+      if (reason instanceof DOMException && reason.name === "AbortError") return;
+      setCaptureError(reason instanceof Error ? reason.message : "Unable to choose a save location.");
+    }
+  }
   useEffect(() => {
     if (!captureMenuOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") { setCaptureMenuOpen(false); saveViewButton.current?.focus(); } };
@@ -1385,11 +1454,11 @@ export function EngineeringViewer(props: ViewerProps) {
           <button className={projection === "parallel" ? "active" : ""} aria-pressed={projection === "parallel"} onClick={() => setProjection("parallel")}>Parallel</button>
         </div>
         <div className="viewer-view-control-group viewer-camera-controls" role="group" aria-label="Camera views">
-          <button className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button>
           {props.room.person_mockup?.enabled && <button className={preset === "eye" ? "active" : ""} aria-pressed={preset === "eye"} onClick={() => applyPreset("eye")}>Eye level</button>}
           {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={preset === view ? "active" : ""} aria-pressed={preset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
         </div>
         <div className="toggle-row">
+          <button className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button>
           {(["elements", "openingImprints", "collisions", "person"] as Array<keyof Toggles>).map((key) => (
             <button key={key} className={toggles[key] ? "active" : ""} onClick={() => flip(key)} aria-pressed={toggles[key]}>
               {key === "openingImprints" ? "opening imprint" : key}
@@ -1397,16 +1466,20 @@ export function EngineeringViewer(props: ViewerProps) {
           ))}
           <label className="viewer-toggle-checkbox"><input type="checkbox" checked={toggles.clearance} onChange={() => flip("clearance")} />Clearance envelope</label>
         </div>
-        <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => setCaptureMenuOpen((current) => !current)} aria-expanded={captureMenuOpen} aria-haspopup="menu">Save view…</button>{captureMenuOpen && <div role="menu" aria-label="Save view format"><button autoFocus role="menuitem" onClick={() => { setCaptureFormat("png"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PNG image</button><button role="menuitem" onClick={() => { setCaptureFormat("jpg"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>JPG image</button><button role="menuitem" onClick={() => { setCaptureFormat("pdf"); setCaptureRequest(Date.now()); setCaptureMenuOpen(false); }}>PDF document</button></div>}</div></div>
+        <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => { setCaptureError(null); setCaptureMenuOpen(true); }} aria-expanded={captureMenuOpen} aria-haspopup="dialog">Save view…</button></div></div>
       </div></FloatingToolbar>}
-      {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={props.fillToolbarLayout ? viewerRightDock("selected-object") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
+      {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
       <Canvas key={projection} orthographic={projection === "parallel"} shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
         <Scene {...props} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} zoomPercent={zoomPercent} />
         <WheelZoom />
-        <CaptureController request={captureRequest} format={captureFormat} />
+        <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} onError={handleCaptureError} />
       </Canvas>
       <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
       {toolbarContextMenu && <ToolbarContextMenu x={toolbarContextMenu.x} y={toolbarContextMenu.y} toolbars={VIEWER_TOOLBARS} visibility={props.toolbarVisibility} onToggle={props.onToggleToolbar} onClose={() => setToolbarContextMenu(null)} />}
+      <Popup open={captureMenuOpen} title="Save view" message="" confirmLabel="Save as…" onCancel={() => { setCaptureMenuOpen(false); setCaptureError(null); }} onConfirm={() => { void saveViewAs(); }}>
+        <label className="field save-view-format"><span>File format</span><select value={captureFormat} onChange={(event) => setCaptureFormat(event.target.value as CaptureFormat)}><option value="png">PNG image (.png)</option><option value="jpg">JPG image (.jpg)</option><option value="pdf">PDF document (.pdf)</option></select></label>
+        {captureError && <p className="inline-error">{captureError}</p>}
+      </Popup>
     </div>
   );
 }

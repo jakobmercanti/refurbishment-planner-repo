@@ -48,6 +48,7 @@ button { font: inherit; }
 .popup-drag { display: inline-grid; place-items: center; width: 27px; height: 25px; color: var(--muted); }
 .popup-content { padding: 16px; }
 .popup-content p { margin: 0; color: var(--ink); font: 550 10px/1.55 var(--font-mono); }
+.save-view-format { min-width: 0; }
 .popup-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: #fbfcfa; }
 .popup-actions button { min-width: 84px; min-height: 30px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font: 650 9px var(--font-mono); cursor: pointer; }
 .popup-actions button:hover, .popup-actions button:focus-visible { border-color: var(--deep); outline: none; }
@@ -448,7 +449,7 @@ button { font: inherit; }
 .measurement-context-target .measurement-hit,
 .measurement-context-target .dimension-extension,
 .measurement-context-target .dimension-tick,
-.measurement-context-target .wall-label { pointer-events: none; }
+.measurement-context-target .wall-label { pointer-events: all; }
 .measurement-item.editable, .measurement-item.editable * { pointer-events: all; cursor: grab; }
 .measurement-item.editable:active { cursor: grabbing; }
 .measurement-item.selected { color: #1678bd; }
@@ -457,6 +458,10 @@ button { font: inherit; }
 .custom-measurement { color: #3978b9; }
 .measurement-hit { stroke: transparent; stroke-width: 32; pointer-events: none; }
 .measurement-item.editable .measurement-hit { pointer-events: stroke; }
+.measurement-context-target .dimension-extension,
+.measurement-context-target .dimension-tick { pointer-events: none; }
+.measurement-context-target .measurement-hit { stroke-width: 12; pointer-events: stroke; }
+.measurement-context-target .wall-label { user-select: none; }
 .wall-line.measurement-chosen { stroke: #2f9b7c; stroke-width: var(--wall-inner-stroke-width, 4px); }
 .vertex-handle.measurement-chosen { fill: #d7f5e9; stroke: #2f9b7c; stroke-width: 5; }
 .dimension-line, .dimension-extension, .dimension-tick { stroke: currentColor; stroke-width: 1; vector-effect: non-scaling-stroke; }
@@ -481,6 +486,7 @@ button { font: inherit; }
 .door-leaf { stroke: #4caf8a; stroke-width: 3; stroke-linecap: square; pointer-events: none; }
 .door-swing { fill: none; stroke: #4caf8a; stroke-width: 1.5; stroke-dasharray: 4 2; pointer-events: none; }
 .opening-dimension { color: #4caf8a; pointer-events: none; }
+.opening-dimension.measurement-context-target { pointer-events: all; cursor: context-menu; }
 .opening-dimension-label { fill: #328064; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
 .window-dimension { color: #2589d8; }
 .window-dimension .opening-dimension-label { fill: #1672b8; }
@@ -629,6 +635,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .full-plan-mode-switch button { min-width: 0; padding-inline: 6px; }
 .full-plan-mode-switch button.danger.active { border-color: #9b3a34; background: #9b3a34; color: white; }
 .full-plan-action-row { margin-top: 8px; }
+.full-plan-action-divider { height: 1px; margin: 10px 3px 0; background: var(--line); }
 .full-plan-help { margin: 10px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .full-plan-help.danger-help { padding: 9px; border-left: 3px solid #b5524c; border-radius: 0 6px 6px 0; background: #fff1ef; color: #7d2c28; }
 .floorplan-context-menu { position: fixed; z-index: 1200; width: 176px; display: grid; gap: 5px; padding: 8px; border: 1px solid #b9c6bd; border-radius: 9px; background: rgba(255,255,255,.98); box-shadow: 0 12px 32px rgba(20,39,31,.2); }
@@ -675,6 +682,8 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .floorplan-fixture rect:active, .floorplan-fixture ellipse:active { cursor: grabbing; }
 .floorplan-fixture text { fill: var(--deep); font: 700 8px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: white; stroke-width: 4px; pointer-events: none; }
 .floorplan-fixture .fixture-dimension { color: #b45309; pointer-events: none; }
+.floorplan-fixture .fixture-dimension.measurement-context-target { pointer-events: all; cursor: context-menu; }
+.floorplan-fixture .fixture-dimension.measurement-context-target .fixture-dimension-label { pointer-events: all; }
 .floorplan-fixture .fixture-dimension-label { fill: currentColor; font: 650 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
 .inline-status { margin: 8px 0 0; padding: 8px; border-radius: 6px; background: #f2f5f2; color: var(--muted); font-size: 10px; }
 .full-wall-draft { fill: none; stroke: #2e8b70; stroke-width: 8; stroke-linecap: square; stroke-linejoin: miter; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
@@ -760,6 +769,15 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .view-property-toggle-row .view-property-checkbox { min-width: 0; }
 .view-property-toggle-row + .view-property-toggle-row { margin-top: 3px; }
 .floating-canvas-navigation { flex-wrap: wrap; }
+.view-property-grid-row { display: grid; grid-template-columns: minmax(72px, .7fr) minmax(0, 1.3fr); align-items: stretch; flex-basis: 100%; gap: 5px; padding-top: 3px; border-top: 1px solid var(--line); }
+.view-property-grid-row > button { min-width: 0; min-height: 29px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfa; color: var(--deep); font: 700 10px var(--font-mono); }
+.view-property-grid-row > button:hover, .view-property-grid-row > button:focus-visible { border-color: #aab5af; background: #edf3ef; outline: none; }
+.view-property-grid-row > button.active { border-color: var(--deep); background: var(--deep); color: white; }
+.view-property-grid-size { display: grid; grid-template-columns: minmax(0, 1fr) minmax(48px, .8fr); align-items: center; gap: 5px; min-width: 0; padding: 3px 5px 3px 7px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfa; color: var(--deep); font: 650 9px var(--font-mono); }
+.view-property-grid-size > span { min-width: 0; display: flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.view-property-grid-size small { color: var(--muted); font: 600 8px var(--font-mono); }
+.view-grid-size-input { width: 100% !important; min-width: 0 !important; padding: 5px 4px !important; border: 1px solid var(--line) !important; border-radius: 5px !important; background: white !important; color: var(--ink) !important; font: 650 9px var(--font-mono) !important; text-align: right; }
+.view-grid-size-input:focus { border-color: var(--deep) !important; outline: 2px solid rgba(24,61,52,.14); }
 .floating-canvas-navigation > .view-property-checkbox, .floating-canvas-navigation > strong { flex-basis: 100%; }
 .floating-canvas-navigation > .floorplan-background-action { flex-basis: 100%; width: 100%; margin-top: var(--toolbar-control-gap); border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px; background: #f9faf8; color: var(--ink); font: 600 10px var(--font-mono); }
 .floating-canvas-navigation > .floorplan-background-action:hover:not(:disabled) { border-color: #aab5af; }
@@ -797,7 +815,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .viewer-zoom-controls { grid-template-columns: 40px minmax(0, 1fr) 40px minmax(0, 1.15fr); }
 .viewer-zoom-controls button:nth-child(2) { background: #f0f4f1; color: var(--deep); }
 .viewer-projection-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.viewer-camera-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.viewer-camera-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .viewer-toolbar.floating-view-controls .toggle-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding: 6px; }
 .viewer-toolbar.floating-view-controls .viewer-toggle-checkbox { grid-column: 1 / -1; justify-content: flex-start; padding: 7px 3px 2px; border-top: 1px solid var(--line); font: 700 10px/1.1 var(--font-mono); }
 .viewer-toolbar.floating-view-controls .viewer-save-row { padding: 8px 2px 0; }
