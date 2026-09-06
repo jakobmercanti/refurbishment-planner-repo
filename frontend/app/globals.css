@@ -747,6 +747,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .floating-canvas-navigation > .view-property-checkbox, .floating-canvas-navigation > strong { flex-basis: 100%; }
 
 .field-action-row { display: grid; grid-template-columns: minmax(60px, 1fr) minmax(0, 1.4fr); gap: 8px; align-items: stretch; }
+.default-wall-thickness-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .field-action-row > button { width: 100%; min-width: 0; margin: 0; }
 .plan-constraint-controls .check-row { min-width: 0; align-items: center; }
 .plan-constraint-controls .measurement-mode-row { display: contents; }
