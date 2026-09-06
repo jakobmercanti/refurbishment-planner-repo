@@ -8,7 +8,7 @@ import { CatalogueBrowser } from "@/components/CatalogueBrowser";
 import { CatalogueManager } from "@/components/CatalogueManager";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
 import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
-import { FloatingToolbar } from "@/components/FloatingToolbar";
+import { filledToolbarDock, FloatingToolbar } from "@/components/FloatingToolbar";
 import { PersonEditor } from "@/components/PersonEditor";
 import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
 import { normalizeRoomPerson } from "@/lib/person";
@@ -45,6 +45,7 @@ export default function Home() {
   const [demoLoadRequest, setDemoLoadRequest] = useState(0);
   const [toolbarVisibility, setToolbarVisibility] = useState(DEFAULT_TOOLBAR_VISIBILITY);
   const [toolbarLayoutResetKey, setToolbarLayoutResetKey] = useState(0);
+  const [fillToolbarLayout, setFillToolbarLayout] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,12 +143,14 @@ export default function Home() {
 
   function showAllToolbars() {
     const toolbars = mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS;
+    setFillToolbarLayout(true);
     setToolbarVisibility((current) => ({ ...current, ...Object.fromEntries(toolbars.map((toolbar) => [toolbar.id, true])) }));
     setToolbarLayoutResetKey((current) => current + 1);
   }
 
   function hideAllToolbars() {
     const toolbars = mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS;
+    setFillToolbarLayout(false);
     setToolbarVisibility((current) => ({ ...current, ...Object.fromEntries(toolbars.map((toolbar) => [toolbar.id, false])) }));
   }
 
@@ -252,12 +255,12 @@ export default function Home() {
         </nav>
       </header>
 
-      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} /></section>
+      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} /></section>
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
-          <EngineeringViewer key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} />
-          {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={{ side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={240} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={pendingSelection} onChange={(event) => setPendingViewerRoomSelection(event.target.value)}><option value={FULL_FLOORPLAN_SELECTION}>Full floorplan</option>{projectRooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><button className="review-style-button" type="button" onClick={openViewerSelection}>Open selection in 3D</button></div></FloatingToolbar>}
-          {toolbarVisibility["viewer-analysis"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 18, y: 112 }} dock={{ side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-analysis")}><aside className="evidence-panel floating-evidence-panel">
+          <EngineeringViewer key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} />
+          {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={fillToolbarLayout ? filledToolbarDock("LEFT", ["viewer-room", "viewer-analysis", "viewer-person"].filter((id) => toolbarVisibility[id as ToolbarId]), "viewer-room") : { side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={240} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={pendingSelection} onChange={(event) => setPendingViewerRoomSelection(event.target.value)}><option value={FULL_FLOORPLAN_SELECTION}>Full floorplan</option>{projectRooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><button className="review-style-button" type="button" onClick={openViewerSelection}>Open selection in 3D</button></div></FloatingToolbar>}
+          {toolbarVisibility["viewer-analysis"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 18, y: 112 }} dock={fillToolbarLayout ? filledToolbarDock("LEFT", ["viewer-room", "viewer-analysis", "viewer-person"].filter((id) => toolbarVisibility[id as ToolbarId]), "viewer-analysis") : { side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-analysis")}><aside className="evidence-panel floating-evidence-panel">
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
             <CatalogueFixtureEditor key={demo.room.id} apiUrl={API_URL} refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)} room={demo.room} displayUnits={preferences.units} onChange={applyObstacles} />
@@ -296,7 +299,7 @@ export default function Home() {
               </>
             )}
           </aside></FloatingToolbar>}
-          {toolbarVisibility["viewer-person"] && <FloatingToolbar title="Human mock-up" defaultPosition={{ x: 430, y: 18 }} dock={{ side: "LEFT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={620} onClose={() => toggleToolbar("viewer-person")}><PersonEditor key={`person-editor-${demo.room.id}-${demo.room.version}`} room={demo.room} displayUnits={preferences.units} onChange={applyPerson} onVisibilityChange={applyPersonVisibility} /></FloatingToolbar>}
+          {toolbarVisibility["viewer-person"] && <FloatingToolbar title="Human mock-up" defaultPosition={{ x: 430, y: 18 }} dock={fillToolbarLayout ? filledToolbarDock("LEFT", ["viewer-room", "viewer-analysis", "viewer-person"].filter((id) => toolbarVisibility[id as ToolbarId]), "viewer-person") : { side: "LEFT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={620} onClose={() => toggleToolbar("viewer-person")}><PersonEditor key={`person-editor-${demo.room.id}-${demo.room.version}`} room={demo.room} displayUnits={preferences.units} onChange={applyPerson} onVisibilityChange={applyPersonVisibility} /></FloatingToolbar>}
           <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
         </section>
       ) : null}

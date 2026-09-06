@@ -7,6 +7,16 @@ export interface ToolbarDock {
   side: "LEFT" | "RIGHT";
   slot: number;
   slots: number;
+  fill?: boolean;
+}
+
+export function filledToolbarDock(side: ToolbarDock["side"], visibleIds: string[], activeId: string): ToolbarDock {
+  return {
+    side,
+    slot: Math.max(0, visibleIds.indexOf(activeId)),
+    slots: Math.max(1, visibleIds.length),
+    fill: true,
+  };
 }
 
 interface FloatingToolbarProps {
@@ -182,16 +192,20 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
-  const slotHeight = dock ? `calc(${100 / dock.slots}% - ${(8 * (dock.slots + 1)) / dock.slots}px)` : undefined;
-  const dockTop = dock ? `calc(${(dock.slot * 100) / dock.slots}% + ${8 * (1 - dock.slot / dock.slots)}px)` : undefined;
+  const dockSlots = Math.max(1, dock?.slots ?? 1);
+  const dockSlot = Math.max(0, Math.min(dockSlots - 1, dock?.slot ?? 0));
+  const slotHeight = dock ? `calc(${100 / dockSlots}% - ${((dock.fill ? 16 : 8 * (dockSlots + 1)) / dockSlots)}px)` : undefined;
+  const dockTop = dock
+    ? `calc(${(dockSlot * 100) / dockSlots}% + ${(dock.fill ? 8 - (16 * dockSlot) / dockSlots : 8 * (1 - dockSlot / dockSlots))}px)`
+    : undefined;
   const style = {
     left: dock && isDocked ? (dock.side === "LEFT" ? 8 : undefined) : position.x,
     right: dock && isDocked && dock.side === "RIGHT" ? 8 : undefined,
     top: dock && isDocked ? dockTop : position.y,
     width: size.width,
-    height: size.height ?? undefined,
+    height: size.height ?? (dock && isDocked && dock.fill ? slotHeight : undefined),
     maxHeight: size.height === null
-      ? (dock && isDocked ? `min(${maxHeight}px, ${slotHeight})` : `min(${maxHeight}px, calc(100% - 16px))`)
+      ? (dock && isDocked ? (dock.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`) : `min(${maxHeight}px, calc(100% - 16px))`)
       : "calc(100% - 16px)",
     zIndex,
   } as CSSProperties;
