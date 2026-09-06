@@ -907,6 +907,32 @@ test("moves the complete materialized host run when its junction corner is dragg
   assert.deepEqual(translated[0].points, [{ x: 0, y: 0 }, { x: 3000, y: 0 }, { x: 3000, y: 900 }, { x: 3000, y: 1800 }, { x: 0, y: 1800 }, { x: 0, y: 0 }]);
 });
 
+test("does not translate a straight room side when its junction moves along the side", () => {
+  const baseline: WallDragWall[] = [
+    // Corner 5 is materialized on Room 1's right side. Room 2 owns the
+    // perpendicular return from that same point.
+    { id: "room-1", points: [{ x: 0, y: 0 }, { x: 2350, y: 0 }, { x: 2350, y: 650 }, { x: 2350, y: 1700 }, { x: 0, y: 1700 }, { x: 0, y: 0 }] },
+    {
+      id: "room-2",
+      points: [{ x: 2350, y: 1700 }, { x: 1000, y: 1700 }, { x: 1000, y: 2100 }, { x: 2850, y: 2100 }, { x: 2850, y: 650 }, { x: 2350, y: 650 }, { x: 2350, y: 1700 }],
+      attachments: { 5: { wallId: "room-2", segmentIndex: 4, along: 1, hideCorner: true } },
+    },
+  ];
+  const candidate: WallDragWall[] = [
+    { ...baseline[0], points: baseline[0].points.map((point, index) => index === 2 ? { x: 2350, y: 400 } : { ...point }) },
+    baseline[1],
+  ];
+
+  const translatedRun = translateStraightWallRunForCorner(baseline, candidate, "room-1", 2);
+  const translated = translateHostSegmentWithDraggedEndpoint(baseline, translatedRun, "room-1", 2);
+
+  assert.deepEqual(translated.find((wall) => wall.id === "room-1")?.points, candidate[0].points);
+  assert.deepEqual(translated.find((wall) => wall.id === "room-2")?.points, [
+    { x: 2350, y: 1700 }, { x: 1000, y: 1700 }, { x: 1000, y: 2100 },
+    { x: 2850, y: 2100 }, { x: 2850, y: 400 }, { x: 2350, y: 400 }, { x: 2350, y: 1700 },
+  ]);
+});
+
 test("moves an attached wall with its materialized room-side junction corner", () => {
   const baseline: WallDragWall[] = [
     // Corner 5 has been materialized on Room 1's right side.

@@ -469,6 +469,19 @@ export function translateStraightWallRunForCorner(
   const previous = baselineWall.points[pointIndex - 1];
   const next = baselineWall.points[pointIndex + 1];
   if (!previous || !next || !parallelSegments(previous, baselinePoint, baselinePoint, next)) return candidateWalls;
+  const runLength = Math.hypot(baselinePoint.x - previous.x, baselinePoint.y - previous.y);
+  if (!runLength) return candidateWalls;
+  const runTangent = { x: (baselinePoint.x - previous.x) / runLength, y: (baselinePoint.y - previous.y) / runLength };
+  const runNormal = { x: -runTangent.y, y: runTangent.x };
+  const tangentialDistance = delta.x * runTangent.x + delta.y * runTangent.y;
+  const normalDistance = delta.x * runNormal.x + delta.y * runNormal.y;
+  // Moving a materialized junction along its existing straight side only
+  // changes the two adjacent lengths. Translating the complete run is valid
+  // when the side itself moves normally, but would move both neighbouring
+  // corners (and usually make the closing side diagonal) for a tangential
+  // drag such as lowering a point on a vertical wall.
+  if (Math.abs(tangentialDistance) > CONNECTION_TOLERANCE_MM
+    && Math.abs(tangentialDistance) > Math.abs(normalDistance) * .1) return candidateWalls;
   const pointIndices = straightRunPointIndices(baselineWall.points, pointIndex, previous, baselinePoint);
   if (pointIndices.length < 3) return candidateWalls;
   return candidateWalls.map((wall) => {
@@ -901,7 +914,13 @@ export function translateHostSegmentWithDraggedEndpoint(
   // translates wall 5-6 (both endpoints), instead of shortening it and
   // manufacturing a duplicate corner at the old junction.
   let draggedRunPointIndices: number[] = [];
-  if (hostClosed && movableHostConnection && connectionStart && connectionEnd) {
+  // A materialized point in a straight side of the dragged outline is only a
+  // junction marker, not a room corner. Translating that entire straight run
+  // when the other room's endpoint is dragged moves the neighbouring corners
+  // as well and can turn the room's closing side diagonal. Real corners still
+  // use the complete-branch behaviour below.
+  const draggedPointIsStraightRunJunction = roomRun.length >= 3;
+  if (hostClosed && movableHostConnection && !draggedPointIsStraightRunJunction && connectionStart && connectionEnd) {
     const hostLength = Math.hypot(connectionEnd.x - connectionStart.x, connectionEnd.y - connectionStart.y);
     if (hostLength > CONNECTION_TOLERANCE_MM) {
       const hostTangent = { x: (connectionEnd.x - connectionStart.x) / hostLength, y: (connectionEnd.y - connectionStart.y) / hostLength };
