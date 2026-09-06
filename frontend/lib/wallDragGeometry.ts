@@ -1816,9 +1816,19 @@ export function retainDraggedWallConnections(
       const candidateEnd = hostWall.points[candidateSegmentIndex + 1];
       if (!candidateEnd || candidateSegmentIndex === connection.segmentIndex) return null;
       const candidateProjection = projectOnSegment(movedPoint, candidateStart, candidateEnd);
-      if (candidateProjection.distance > CONNECTION_TOLERANCE_MM
+      const currentProjection = projectOnSegment(movedPoint, hostStart!, hostEnd!);
+      // Beyond a split straight host, connect to its nearer boundary rather
+      // than bridging over the old junction. Overlapping that abandoned split
+      // would expose a spurious corner and duplicate an existing wall span.
+      const collinear = [candidateStart, candidateEnd, movedPoint].every(point =>
+        Math.abs((point.x - hostStart!.x) * (hostEnd!.y - hostStart!.y)
+          - (point.y - hostStart!.y) * (hostEnd!.x - hostStart!.x))
+          <= ORTHOGONAL_TOLERANCE_MM * Math.max(1, Math.hypot(hostEnd!.x - hostStart!.x, hostEnd!.y - hostStart!.y)));
+      const nearerExtension = collinear
+        && candidateProjection.distance < currentProjection.distance - CONNECTION_TOLERANCE_MM;
+      if (!nearerExtension && (candidateProjection.distance > CONNECTION_TOLERANCE_MM
         || candidateProjection.along <= 1e-6
-        || candidateProjection.along >= 1 - 1e-6) return null;
+        || candidateProjection.along >= 1 - 1e-6)) return null;
       const baselineStart = baselineHostForLookup?.points[candidateSegmentIndex];
       const baselineEnd = baselineHostForLookup?.points[candidateSegmentIndex + 1];
       if (!baselineStart || !baselineEnd || projectOnSegment(originalPoint, baselineStart, baselineEnd).distance > CONNECTION_TOLERANCE_MM) return null;

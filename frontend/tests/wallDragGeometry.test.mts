@@ -13,12 +13,20 @@ test("wall 8-9 can extend beyond room 1's left side while keeping both rooms clo
   const candidate = baseline.map(wall => ({...wall,points:wall.points.map((point,index)=>
     wall.id==="extension" && index>=3 ? {...point,x:point.x+requested} : {...point})}));
   const anchored = reanchorAttachedWallEndpoints(candidate,"extension");
-  const result = retainDraggedWallConnections(baseline,anchored,"extension",3);
+  const result = materializeWallIntersections(reanchorAutoWallBridges(
+    retainDraggedWallConnections(baseline,anchored,"extension",3), "extension", false));
   const moved = result.find(wall=>wall.id==="extension")!;
   assert.equal(moved.points[3].x,-2100);
   assert.equal(moved.points[4].x,-2100);
   assert.equal(closedRooms(result).length,2);
   assert.deepEqual(result.find(wall=>wall.id==="main")!.points,baseline.find(wall=>wall.id==="main")!.points);
+  const bridges = result.filter(wall => wall.id.startsWith("auto-wall-bridge"));
+  assert.equal(bridges.length, 1);
+  assert.deepEqual(bridges[0].points, [{x:0,y:1800},{x:-2100,y:1800}], "bridge starts at the actual host boundary, not the abandoned junction");
+  assert.ok(bridges[0].attachments?.[0]?.hideCorner, "existing corner 4 remains the only handle at the bridge start");
+  assert.ok(result.every(wall => wall.points.every((point, index) =>
+    point.x !== 650 || point.y !== 1800 || wall.attachments?.[index]?.hideCorner)),
+  "the abandoned junction must not become corner 10");
 });
 import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type WallDragWall } from "../lib/wallDragGeometry.ts";
 
