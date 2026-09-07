@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { CatalogueCategory, CatalogueItem } from "@/lib/types";
 
-interface CatalogueManagerProps { apiUrl: string; open: boolean; opener: HTMLElement | null; onClose: () => void; }
+interface CatalogueManagerProps {
+  apiUrl: string;
+  open: boolean;
+  opener: HTMLElement | null;
+  layoutAnalysisToolbarVisible: boolean;
+  onLayoutAnalysisToolbarVisibleChange: (visible: boolean) => void;
+  onClose: () => void;
+}
 
 const KINDS: Record<string, "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" | "DOOR" | "WINDOW"> = {
   showers: "SHOWER", basins: "BASIN", toilets: "TOILET", storage: "FURNITURE", doors: "DOOR", windows: "WINDOW",
@@ -18,10 +25,14 @@ function trapFocus(event: React.KeyboardEvent<HTMLElement>) {
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 
-export function CatalogueManager({ apiUrl, open, opener, onClose }: CatalogueManagerProps) {
+type ManagerTab = "IMPORT" | "TOOLBARS";
+
+export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVisible, onLayoutAnalysisToolbarVisibleChange, onClose }: CatalogueManagerProps) {
   const [categories, setCategories] = useState<CatalogueCategory[]>([]);
   const [status, setStatus] = useState<string>("");
   const [pending, setPending] = useState(false);
+  const [settingsPending, setSettingsPending] = useState(false);
+  const [activeTab, setActiveTab] = useState<ManagerTab>("IMPORT");
   const closeRef = useRef<HTMLButtonElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const [form, setForm] = useState({ source_url: "", page: "", category_id: "storage", subcategory: "General", fixture_kind: "FURNITURE", supplier: "", fallback_name: "", fallback_sku: "", width_mm: 600, depth_mm: 450, height_mm: 850, color_hex: "#B99B77", plan_shape: "RECTANGLE" });
@@ -31,8 +42,11 @@ export function CatalogueManager({ apiUrl, open, opener, onClose }: CatalogueMan
     openerRef.current = opener?.isConnected ? opener : null;
     closeRef.current?.focus();
     fetch(`${apiUrl}/catalog/categories`).then((response) => response.ok ? response.json() : Promise.reject()).then(setCategories).catch(() => setStatus("Catalogue categories are unavailable."));
+    fetch(`${apiUrl}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean } }) => {
+      if (typeof settings.toolbars?.layout_analysis === "boolean") onLayoutAnalysisToolbarVisibleChange(settings.toolbars.layout_analysis);
+    }).catch(() => setStatus("Software settings are unavailable."));
     return () => { openerRef.current?.focus(); };
-  }, [apiUrl, open, opener]);
+  }, [apiUrl, onLayoutAnalysisToolbarVisibleChange, open, opener]);
 
   useEffect(() => {
     if (!open) return;
@@ -56,10 +70,27 @@ export function CatalogueManager({ apiUrl, open, opener, onClose }: CatalogueMan
     finally { setPending(false); }
   }
 
+  async function setLayoutAnalysisToolbarVisible(visible: boolean) {
+    setSettingsPending(true);
+    setStatus("Saving software settings…");
+    try {
+      const response = await fetch(`${apiUrl}/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toolbars: { layout_analysis: visible } }) });
+      const settings = await response.json() as { toolbars?: { layout_analysis?: boolean }; detail?: string };
+      if (!response.ok || typeof settings.toolbars?.layout_analysis !== "boolean") throw new Error(settings.detail ?? "Could not save software settings.");
+      onLayoutAnalysisToolbarVisibleChange(settings.toolbars.layout_analysis);
+      setStatus("Software settings saved.");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Could not save software settings."); }
+    finally { setSettingsPending(false); }
+  }
+
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="catalogue-manager-modal" role="dialog" aria-modal="true" aria-labelledby="catalogue-manager-title" onKeyDown={trapFocus}>
       <header><div><span className="eyebrow">Catalogue administration</span><h2 id="catalogue-manager-title">Object catalogue manager</h2></div><button ref={closeRef} className="modal-close" aria-label="Close catalogue manager" onClick={onClose}>×</button></header>
-      <h3>Import from website</h3><p>The server reads Product JSON-LD when available. Enter verified fallback geometry in millimetres; website images and text never determine fit dimensions.</p>
+      <div className="catalogue-manager-tabs" role="tablist" aria-label="Catalogue administration sections">
+        <button type="button" role="tab" id="catalogue-manager-import-tab" aria-controls="catalogue-manager-import-panel" aria-selected={activeTab === "IMPORT"} className={activeTab === "IMPORT" ? "active" : ""} onClick={() => setActiveTab("IMPORT")}>Import from website</button>
+        <button type="button" role="tab" id="catalogue-manager-toolbars-tab" aria-controls="catalogue-manager-toolbars-panel" aria-selected={activeTab === "TOOLBARS"} className={activeTab === "TOOLBARS" ? "active" : ""} onClick={() => setActiveTab("TOOLBARS")}>Toolbars activation</button>
+      </div>
+      {activeTab === "IMPORT" ? <section id="catalogue-manager-import-panel" role="tabpanel" aria-labelledby="catalogue-manager-import-tab" className="catalogue-manager-panel"><h3>Import from website</h3><p>The server reads Product JSON-LD when available. Enter verified fallback geometry in millimetres; website images and text never determine fit dimensions.</p>
       <form onSubmit={(event) => void submit(event)} className="catalogue-manager-form">
         <label className="field span-two"><span>Website / source URL</span><input required type="url" value={form.source_url} onChange={(event) => set("source_url", event.target.value)} placeholder="https://supplier.example" /></label>
         <label className="field span-two"><span>Page or path</span><input value={form.page} onChange={(event) => set("page", event.target.value)} placeholder="products/bathroom" /></label>
@@ -72,7 +103,8 @@ export function CatalogueManager({ apiUrl, open, opener, onClose }: CatalogueMan
         <label className="field"><span>Colour HEX</span><input required pattern="#[0-9A-Fa-f]{6}" value={form.color_hex} onChange={(event) => set("color_hex", event.target.value.toUpperCase())} /></label>
         <label className="field"><span>Floorplan shape</span><select value={form.plan_shape} onChange={(event) => set("plan_shape", event.target.value)}><option value="RECTANGLE">Rectangle / box</option><option value="ELLIPSE">Ellipse / cylinder</option></select></label>
         <div className="catalogue-manager-actions span-two"><button type="button" onClick={onClose}>Close</button><button className="primary" type="submit" disabled={pending}>{pending ? "Importing…" : "Import from website"}</button></div>
-      </form><p className="catalogue-manager-status" role="status" aria-live="polite">{status}</p>
+      </form></section> : <section id="catalogue-manager-toolbars-panel" role="tabpanel" aria-labelledby="catalogue-manager-toolbars-tab" className="catalogue-manager-panel"><h3>Toolbars activation</h3><p>Choose which administrator-configured toolbars are visible when the software starts. These settings are stored in <code>data/software_settings.json</code>.</p><label className="catalogue-manager-toggle"><input type="checkbox" checked={layoutAnalysisToolbarVisible} disabled={settingsPending} onChange={(event) => void setLayoutAnalysisToolbarVisible(event.target.checked)} /><span><strong>Layout analysis</strong><small>Show the Layout analysis toolbar in the 3D viewer.</small></span></label></section>}
+      <p className="catalogue-manager-status" role="status" aria-live="polite">{status}</p>
     </section>
   </div>;
 }

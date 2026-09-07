@@ -36,3 +36,7 @@ export const VIEWER_TOOLBARS: ToolbarDefinition[] = [
 export const DEFAULT_TOOLBAR_VISIBILITY = Object.fromEntries(
   [...FLOORPLAN_TOOLBARS, ...VIEWER_TOOLBARS].map((toolbar) => [toolbar.id, toolbar.id !== "viewer-person"]),
 ) as ToolbarVisibility;
+
+export const DEFAULT_TOOLBAR_AVAILABILITY = Object.fromEntries(
+  [...FLOORPLAN_TOOLBARS, ...VIEWER_TOOLBARS].map((toolbar) => [toolbar.id, true]),
+) as ToolbarVisibility;

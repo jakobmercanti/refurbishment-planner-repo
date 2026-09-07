@@ -188,6 +188,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   const activeCategory = categories.find((category) => category.id === form.category_id);
   const useCategoryClearances = form.side_clearance_mm === null && form.front_clearance_mm === null;
   const nestedDialogOpen = showForm || settingsCategory !== null;
+  const bathroomFixtureCategories = categories.filter((category) => !["doors", "windows"].includes(category.id));
+  const topLevelOpeningCategories = categories.filter((category) => ["doors", "windows"].includes(category.id));
 
   function setField<K extends keyof CatalogueItemInput>(key: K, value: CatalogueItemInput[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -327,6 +329,15 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     setEditingId(null);
   }
 
+  function renderCategoryTree(category: CatalogueCategory) {
+    const subcategories = [...new Set(navigationItems.filter((item) => item.category_id === category.id).map((item) => item.subcategory))];
+    const key = `category-${category.id}`;
+    return <div key={category.id} className="catalogue-tree-item">
+      <button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setCategoryId(category.id); setActiveSubcategory(""); setActiveMaterialId(null); }} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>
+      {(expanded[key] ?? false) && <div id={`${key}-children`} className="catalogue-branch nested">{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => { setCategoryId(category.id); setActiveSubcategory(subcategory); setActiveMaterialId(null); }}><span>{subcategory}</span></button>)}</div>}
+    </div>;
+  }
+
   return (
     <div className="modal-backdrop catalogue-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="catalogue-modal" role={nestedDialogOpen ? undefined : "dialog"} aria-modal={nestedDialogOpen ? undefined : "true"} aria-labelledby={nestedDialogOpen ? undefined : "catalogue-title"} onKeyDown={nestedDialogOpen ? undefined : trapFocus}>
@@ -337,15 +348,9 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
             <button className="catalogue-disclosure" aria-expanded={expanded.fixtures} aria-controls="catalogue-fixtures" onClick={() => setExpanded((current) => ({ ...current, fixtures: !current.fixtures }))}><strong>Bathroom fixtures</strong><span aria-hidden>{expanded.fixtures ? "−" : "+"}</span></button>
             {expanded.fixtures && <div id="catalogue-fixtures" className="catalogue-branch">
               <button className={!categoryId && !activeMaterial ? "active" : ""} onClick={() => { setCategoryId(""); setActiveSubcategory(""); setActiveMaterialId(null); }}><span>All objects</span><small>{categories.reduce((total, item) => total + item.item_count, 0)}</small></button>
-              {categories.map((category) => {
-                const subcategories = [...new Set(navigationItems.filter((item) => item.category_id === category.id).map((item) => item.subcategory))];
-                const key = `category-${category.id}`;
-                return <div key={category.id} className="catalogue-tree-item">
-                  <button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setCategoryId(category.id); setActiveSubcategory(""); setActiveMaterialId(null); }} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>
-                  {(expanded[key] ?? false) && <div id={`${key}-children`} className="catalogue-branch nested">{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => { setCategoryId(category.id); setActiveSubcategory(subcategory); setActiveMaterialId(null); }}><span>{subcategory}</span></button>)}</div>}
-                </div>;
-              })}
+              {bathroomFixtureCategories.map(renderCategoryTree)}
             </div>}
+            {topLevelOpeningCategories.map(renderCategoryTree)}
             {(["PAINT", "TILE"] as const).map((kind) => <div key={kind}><button className="catalogue-disclosure" aria-expanded={expanded[kind]} aria-controls={`catalogue-${kind}`} onClick={() => setExpanded((current) => ({ ...current, [kind]: !current[kind] }))}><strong>{kind === "PAINT" ? "Paints" : "Tiles"}</strong><span aria-hidden>{expanded[kind] ? "−" : "+"}</span></button>{expanded[kind] && <div id={`catalogue-${kind}`} className="catalogue-branch">{materialCollections.filter((collection) => collection.kind === kind).map((collection) => { const key = `material-${collection.id}`; return <div key={collection.id} className="catalogue-tree-item"><button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-families`} className={activeMaterialId === collection.id ? "active" : ""} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setActiveMaterialId(collection.id); setActiveMaterialFamilyId(null); setCategoryId(""); }}><span>{collection.name}</span><small>{collection.families.reduce((total, family) => total + family.items.length, 0)}</small></button>{(expanded[key] ?? false) && <div id={`${key}-families`} className="catalogue-branch nested">{collection.families.map((family) => <button key={family.id} className={activeMaterialFamilyId === family.id ? "active" : ""} aria-pressed={activeMaterialFamilyId === family.id} onClick={() => { setActiveMaterialId(collection.id); setActiveMaterialFamilyId(family.id); setCategoryId(""); document.getElementById(`family-${family.id}`)?.scrollIntoView({ block: "start" }); }}><span>{family.name}</span><small>{family.items.length}</small></button>)}</div>}</div>; })}</div>}</div>)}
           </nav>
           <div className="catalogue-results">

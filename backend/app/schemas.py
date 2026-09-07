@@ -66,6 +66,19 @@ class CADResponse(BaseModel):
     evidence_label: str = "visualisation, not dimensional evidence"
 
 
+class SoftwareToolbarSettings(BaseModel):
+    layout_analysis: bool = True
+
+
+class SoftwareSettingsResponse(BaseModel):
+    schema_version: Literal[1] = 1
+    toolbars: SoftwareToolbarSettings
+
+
+class SoftwareSettingsUpdate(BaseModel):
+    toolbars: SoftwareToolbarSettings
+
+
 class CatalogueCategoryResponse(BaseModel):
     id: str
     name: str

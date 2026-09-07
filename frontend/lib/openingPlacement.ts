@@ -32,7 +32,7 @@ export function isOpeningPlacementValid(
 ): boolean {
   if (width <= 0 || !inRange(offset, 0, length - width)) return false;
   if (cornerOffsets.some((cornerOffset) => !(offset + width <= cornerOffset - clearanceMm || offset >= cornerOffset + clearanceMm))) return false;
-  return otherOpenings.every((opening) => offset + width <= opening.offset || offset >= opening.offset + opening.width);
+  return otherOpenings.every((opening) => offset + width + clearanceMm <= opening.offset || offset >= opening.offset + opening.width + clearanceMm);
 }
 
 /** Find the closest permitted position while retaining the opening fully on its wall. */
@@ -49,7 +49,7 @@ export function closestValidOpeningOffset(
   const candidates = [
     Math.max(0, Math.min(maximum, requestedOffset)),
     ...cornerOffsets.flatMap((cornerOffset) => [cornerOffset - clearanceMm - width, cornerOffset + clearanceMm]),
-    ...otherOpenings.flatMap((opening) => [opening.offset - width, opening.offset + opening.width]),
+    ...otherOpenings.flatMap((opening) => [opening.offset - clearanceMm - width, opening.offset + opening.width + clearanceMm]),
   ].filter((value, index, values) => inRange(value, 0, maximum) && values.findIndex((candidate) => Math.abs(candidate - value) < .001) === index)
     .filter((value) => isOpeningPlacementValid(value, width, length, cornerOffsets, otherOpenings, clearanceMm));
   return candidates.sort((first, second) => Math.abs(first - requestedOffset) - Math.abs(second - requestedOffset))[0] ?? null;

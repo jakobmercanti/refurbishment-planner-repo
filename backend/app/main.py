@@ -38,6 +38,8 @@ from backend.app.schemas import (
     ProjectCreate,
     ProjectResponse,
     RoomValidationResponse,
+    SoftwareSettingsResponse,
+    SoftwareSettingsUpdate,
     WallSummary,
     MaterialCollectionResponse,
     MaterialFamilyResponse,
@@ -45,6 +47,7 @@ from backend.app.schemas import (
 )
 from cad.generator import generate_cad
 from database.catalog import catalogue_session, initialise_catalogue
+from database.software_settings import load_software_settings, update_software_settings
 from database.catalogue_assets import (
     PictureReplacement,
     asset_root,
@@ -114,6 +117,9 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 initialise_catalogue()
+# Keep the human-readable administrator configuration available from the
+# moment the API starts, including before the first browser request.
+load_software_settings()
 
 projects: dict[UUID, ProjectResponse] = {}
 rooms: dict[UUID, RoomDefinition] = {}
@@ -321,6 +327,16 @@ async def polygon_validation_error(_request: object, error: PolygonValidationErr
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "engine": "deterministic", "unit": "mm"}
+
+
+@app.get("/settings", response_model=SoftwareSettingsResponse)
+def get_software_settings() -> dict[str, object]:
+    return load_software_settings()
+
+
+@app.put("/settings", response_model=SoftwareSettingsResponse)
+def put_software_settings(payload: SoftwareSettingsUpdate) -> dict[str, object]:
+    return update_software_settings(layout_analysis_toolbar_visible=payload.toolbars.layout_analysis)
 
 
 @app.post("/projects", response_model=ProjectResponse, status_code=201)

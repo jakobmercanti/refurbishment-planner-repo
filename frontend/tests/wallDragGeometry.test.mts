@@ -1187,6 +1187,30 @@ test("corner 10 stops its attached vertical connector 200 mm before wall 2-5", (
   assert.deepEqual(constrained, { x: 1540, y: 3180 });
 });
 
+test("corner 12 stops 200 mm above the neighbouring corner 7", () => {
+  const walls: WallDragWall[] = [
+    {
+      id: "outer",
+      points: [
+        { x: 3000, y: 1000 }, // corner 8, shared with the neighbouring wall
+        { x: 6000, y: 1000 }, // corner 12, the dragged corner
+        { x: 6000, y: 4000 },
+        { x: 0, y: 4000 },
+        { x: 0, y: 1000 },
+      ],
+    },
+    { id: "room-2-right", points: [{ x: 3000, y: 0 }, { x: 3000, y: 1000 }] }, // wall 7-8
+  ];
+  const requestedTarget = { x: 6000, y: -500 };
+  const candidatePoints = walls[0].points.map((point) => ({ ...point }));
+  candidatePoints[0] = { x: 3000, y: requestedTarget.y };
+  candidatePoints[1] = { ...requestedTarget };
+
+  const constrained = constrainSquaredCornerTarget(walls, "outer", 1, candidatePoints, requestedTarget, 200);
+
+  assert.deepEqual(constrained, { x: 6000, y: 200 });
+});
+
 test("corner 5 stays 200 mm inside both neighbouring walls when dragged past the L-junction", () => {
   const walls: WallDragWall[] = [
     {

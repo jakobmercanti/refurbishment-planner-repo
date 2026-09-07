@@ -59,6 +59,7 @@ interface ViewerProps {
   onPersonChange: (person: PersonMockup | null, roomId?: string) => void;
   wallMode: WallViewMode;
   toolbarVisibility: ToolbarVisibility;
+  toolbarAvailability: ToolbarVisibility;
   onToggleToolbar: (id: ToolbarId) => void;
   toolbarLayoutResetKey: number;
   fillToolbarLayout: boolean;
@@ -954,15 +955,14 @@ function CameraPreset({ preset, projection, person, target, span, resetKey, zoom
       camera.lookAt(eyeTarget(person));
     } else {
       if (preset === "top") {
-        // Room data uses Cartesian plan coordinates (positive Y is floorplan-up),
-        // while every 3D item maps plan Y to negative world Z. Keep negative Z
-        // screen-up so floors, walls, openings and placed items retain the same
-        // top-view orientation as the floorplan.
-        camera.up.set(0, 0, -1);
-        camera.position.set(targetX, targetY + fitDistance, targetZ);
+        // OrbitControls uses camera.up as its rotation axis. Keep world Y
+        // consistent with the side views, just off the pole (the controls' .01
+        // polar limit), with negative Z screen-up as in the floorplan.
+        camera.up.set(0, 1, 0);
+        camera.position.set(targetX, targetY + fitDistance * Math.cos(0.01), targetZ + fitDistance * Math.sin(0.01));
       } else if (preset === "bottom") {
-        camera.up.set(0, 0, 1);
-        camera.position.set(targetX, targetY - fitDistance, targetZ);
+        camera.up.set(0, 1, 0);
+        camera.position.set(targetX, targetY - fitDistance * Math.cos(0.01), targetZ + fitDistance * Math.sin(0.01));
       } else if (preset === "left") {
         camera.up.set(0, 1, 0);
         camera.position.set(targetX - fitDistance, targetY, targetZ);
@@ -1459,7 +1459,7 @@ export function EngineeringViewer(props: ViewerProps) {
         </div>
         <div className="toggle-row">
           <button className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button>
-          {(["elements", "openingImprints", "collisions", "person"] as Array<keyof Toggles>).map((key) => (
+          {(["elements", "openingImprints", "collisions"] as Array<keyof Toggles>).map((key) => (
             <button key={key} className={toggles[key] ? "active" : ""} onClick={() => flip(key)} aria-pressed={toggles[key]}>
               {key === "openingImprints" ? "opening imprint" : key}
             </button>
@@ -1475,7 +1475,7 @@ export function EngineeringViewer(props: ViewerProps) {
         <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} onError={handleCaptureError} />
       </Canvas>
       <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
-      {toolbarContextMenu && <ToolbarContextMenu x={toolbarContextMenu.x} y={toolbarContextMenu.y} toolbars={VIEWER_TOOLBARS} visibility={props.toolbarVisibility} onToggle={props.onToggleToolbar} onClose={() => setToolbarContextMenu(null)} />}
+      {toolbarContextMenu && <ToolbarContextMenu x={toolbarContextMenu.x} y={toolbarContextMenu.y} toolbars={VIEWER_TOOLBARS.filter((toolbar) => props.toolbarAvailability[toolbar.id])} visibility={props.toolbarVisibility} onToggle={props.onToggleToolbar} onClose={() => setToolbarContextMenu(null)} />}
       <Popup open={captureMenuOpen} title="Save view" message="" confirmLabel="Save as…" onCancel={() => { setCaptureMenuOpen(false); setCaptureError(null); }} onConfirm={() => { void saveViewAs(); }}>
         <label className="field save-view-format"><span>File format</span><select value={captureFormat} onChange={(event) => setCaptureFormat(event.target.value as CaptureFormat)}><option value="png">PNG image (.png)</option><option value="jpg">JPG image (.jpg)</option><option value="pdf">PDF document (.pdf)</option></select></label>
         {captureError && <p className="inline-error">{captureError}</p>}

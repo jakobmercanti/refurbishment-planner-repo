@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 from io import BytesIO
 import shutil
 from uuid import uuid4
@@ -32,6 +33,21 @@ def test_health_declares_authoritative_units() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "engine": "deterministic", "unit": "mm"}
+
+
+def test_software_settings_are_readable_and_persist_layout_analysis_toolbar(tmp_path, monkeypatch) -> None:
+    settings_file = tmp_path / "software_settings.json"
+    monkeypatch.setenv("RENOVATION_FIT_SETTINGS_FILE", str(settings_file))
+
+    initial = client.get("/settings")
+    assert initial.status_code == 200
+    assert initial.json() == {"schema_version": 1, "toolbars": {"layout_analysis": True}}
+    assert settings_file.read_text(encoding="utf-8") == '{\n  "schema_version": 1,\n  "toolbars": {\n    "layout_analysis": true\n  }\n}\n'
+
+    updated = client.put("/settings", json={"toolbars": {"layout_analysis": False}})
+    assert updated.status_code == 200
+    assert updated.json()["toolbars"]["layout_analysis"] is False
+    assert json.loads(settings_file.read_text(encoding="utf-8")) == {"schema_version": 1, "toolbars": {"layout_analysis": False}}
 
 
 def test_demo_exposes_mandatory_three_outcomes() -> None:

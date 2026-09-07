@@ -146,15 +146,25 @@ button { font: inherit; }
 .catalogue-picture-list img { width: 70px; height: 54px; object-fit: cover; border-radius: 5px; }
 .catalogue-picture-list label { display: grid; gap: 3px; }
 .catalogue-picture-list > div > div { display: grid; gap: 4px; }
-.catalogue-manager-modal { width: min(760px, 95vw); max-height: 92vh; overflow-y: auto; padding: 20px; border: 1px solid var(--line); border-radius: 13px; background: white; box-shadow: 0 25px 70px rgba(12,25,19,.28); }
+.catalogue-manager-modal { width: min(760px, 95vw); height: min(760px, 92vh); max-height: 92vh; box-sizing: border-box; overflow-y: auto; padding: 20px; border: 1px solid var(--line); border-radius: 13px; background: white; box-shadow: 0 25px 70px rgba(12,25,19,.28); }
 .catalogue-manager-modal > header { display: flex; justify-content: space-between; align-items: start; }
-.catalogue-manager-modal h2 { margin: 4px 0 18px; }
-.catalogue-manager-modal > p { color: var(--muted); font-size: 10px; }
+.catalogue-manager-modal h2 { margin: 4px 0 16px; }
+.catalogue-manager-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 0 0 16px; padding: 6px; border: 1px solid var(--line); border-radius: 9px; background: #f7f9f7; }
+.catalogue-manager-tabs button, .catalogue-manager-actions button { min-height: 35px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font: 650 9px var(--font-mono); cursor: pointer; }
+.catalogue-manager-tabs button:hover, .catalogue-manager-tabs button:focus-visible, .catalogue-manager-actions button:hover, .catalogue-manager-actions button:focus-visible { border-color: var(--deep); outline: none; }
+.catalogue-manager-tabs button.active { border-color: var(--deep); background: var(--deep); color: white; }
+.catalogue-manager-panel > h3 { margin: 0; font-size: 15px; }
+.catalogue-manager-panel > p { margin: 6px 0 14px; color: var(--muted); font-size: 10px; }
+.catalogue-manager-panel > p code { padding: 2px 4px; border-radius: 4px; background: #edf1ee; color: var(--deep); font: 650 8px var(--font-mono); }
 .catalogue-manager-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .catalogue-manager-form .span-two { grid-column: 1 / -1; }
 .catalogue-manager-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.catalogue-manager-actions button { padding: 9px 13px; border: 1px solid var(--line); border-radius: 7px; background: white; }
 .catalogue-manager-actions .primary { border-color: var(--deep); background: var(--deep); color: white; }
+.catalogue-manager-toggle { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: #fafcf9; cursor: pointer; }
+.catalogue-manager-toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--deep); }
+.catalogue-manager-toggle span { display: grid; gap: 3px; }
+.catalogue-manager-toggle strong { font-size: 11px; }
+.catalogue-manager-toggle small { color: var(--muted); font-size: 9px; }
 .catalogue-manager-status { min-height: 18px; }
 .settings-dialog { width: min(470px, 94vw); padding: 20px; border: 1px solid var(--line); border-radius: 13px; background: white; box-shadow: 0 25px 70px rgba(12,25,19,.28); }
 .settings-dialog > header { display: flex; justify-content: space-between; align-items: start; }
@@ -438,9 +448,9 @@ button { font: inherit; }
 .room-polygon { fill: #fff; stroke: none; }
 .wall-body { stroke: var(--deep); stroke-width: var(--wall-stroke-width, 10px); stroke-linecap: square; pointer-events: none; }
 .wall-line { stroke: white; stroke-width: var(--wall-inner-stroke-width, 4px); stroke-linecap: square; cursor: grab; }
-.wall-interaction-line { stroke: transparent; stroke-width: var(--wall-hit-stroke-width, 16px); stroke-linecap: square; pointer-events: stroke; cursor: grab; }
-.wall-interaction-line:hover, .wall-interaction-line.selected { stroke: #f1b14b; stroke-width: var(--wall-inner-stroke-width, 4px); }
-.wall-interaction-line.measurement-chosen { stroke: #2f9b7c; stroke-width: var(--wall-inner-stroke-width, 4px); }
+.wall-interaction-line { stroke: transparent; stroke-width: var(--wall-hit-stroke-width, 24px); stroke-linecap: square; pointer-events: stroke; cursor: grab; }
+.wall-selection-line { stroke: #f1b14b; stroke-width: var(--wall-inner-stroke-width, 4px); stroke-linecap: square; pointer-events: none; }
+.wall-selection-line.measurement-chosen { stroke: #2f9b7c; }
 .wall-thickness-label { fill: var(--deep); font: 700 9px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 4px; pointer-events: none; }
 .wall-line:active { cursor: grabbing; }
 .wall-line:hover, .wall-line.selected { stroke: #f1b14b; stroke-width: var(--wall-inner-stroke-width, 4px); }

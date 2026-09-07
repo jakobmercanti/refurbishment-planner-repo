@@ -691,6 +691,15 @@ export function constrainSquaredCornerTarget(
   const originalPoint = wall?.points[pointIndex];
   if (!wall || !originalPoint) return requestedTarget;
   const axisTargets: Record<"x" | "y", number[]> = { x: [requestedTarget.x], y: [requestedTarget.y] };
+  const movedSourcePoints = wall.points.map((point, index) => {
+    const candidate = candidatePoints[index];
+    return candidate ? { point, delta: { x: candidate.x - point.x, y: candidate.y - point.y } } : null;
+  }).filter((entry): entry is { point: WallDragPoint; delta: WallDragPoint } => entry !== null && Math.hypot(entry.delta.x, entry.delta.y) > .001);
+  const movedDeltaFor = (point: WallDragPoint) => movedSourcePoints.find((entry) => samePoint(entry.point, point))?.delta;
+  const addAxisCorrection = (correction: WallDragPoint) => {
+    const axis = Math.abs(correction.x) >= Math.abs(correction.y) ? "x" : "y";
+    axisTargets[axis].push(requestedTarget[axis] + correction[axis]);
+  };
 
   // A squared corner drag resizes the two wall segments which meet at the
   // selected point.  Clearance against a parallel wall is not enough here:
@@ -729,6 +738,36 @@ export function constrainSquaredCornerTarget(
       axisTargets[axis].push(requestedTarget[axis] + boundedSelected - candidateSelected[axis]);
     });
   }
+
+  // A squared corner drag can move a shared point on a separate wall even
+  // though that wall is only resized tangentially. Keep that wall at least
+  // the minimum clearance long; otherwise an outer corner can be dragged past
+  // the neighbouring room's corner and the walls penetrate each other.
+  baselineWalls.forEach((connectedWall) => {
+    if (connectedWall.id === wallId) return;
+    connectedWall.points.slice(0, -1).forEach((start, segmentIndex) => {
+      const end = connectedWall.points[segmentIndex + 1];
+      if (!end) return;
+      const startDelta = movedDeltaFor(start);
+      const endDelta = movedDeltaFor(end);
+      if (!startDelta && !endDelta) return;
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (!length) return;
+      const tangent = { x: (end.x - start.x) / length, y: (end.y - start.y) / length };
+      const appliedStartDelta = startDelta ?? { x: 0, y: 0 };
+      const appliedEndDelta = endDelta ?? { x: 0, y: 0 };
+      const requestedLength = length
+        + (appliedEndDelta.x - appliedStartDelta.x) * tangent.x
+        + (appliedEndDelta.y - appliedStartDelta.y) * tangent.y;
+      if (requestedLength + .001 >= minimumClearance) return;
+      const correctionDistance = minimumClearance - requestedLength;
+      if (startDelta && !endDelta) {
+        addAxisCorrection({ x: -tangent.x * correctionDistance, y: -tangent.y * correctionDistance });
+      } else if (endDelta && !startDelta) {
+        addAxisCorrection({ x: tangent.x * correctionDistance, y: tangent.y * correctionDistance });
+      }
+    });
+  });
 
   wall.points.slice(0, -1).forEach((start, segmentIndex) => {
     const end = wall.points[segmentIndex + 1];
