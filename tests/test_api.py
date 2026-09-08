@@ -35,19 +35,24 @@ def test_health_declares_authoritative_units() -> None:
     assert response.json() == {"status": "ok", "engine": "deterministic", "unit": "mm"}
 
 
-def test_software_settings_are_readable_and_persist_layout_analysis_toolbar(tmp_path, monkeypatch) -> None:
+def test_software_settings_are_readable_and_persist_toolbar_visibility(tmp_path, monkeypatch) -> None:
     settings_file = tmp_path / "software_settings.json"
     monkeypatch.setenv("RENOVATION_FIT_SETTINGS_FILE", str(settings_file))
 
     initial = client.get("/settings")
     assert initial.status_code == 200
-    assert initial.json() == {"schema_version": 1, "toolbars": {"layout_analysis": True}}
-    assert settings_file.read_text(encoding="utf-8") == '{\n  "schema_version": 1,\n  "toolbars": {\n    "layout_analysis": true\n  }\n}\n'
+    assert initial.json() == {"schema_version": 1, "toolbars": {"layout_analysis": True, "human_mockup": False}}
+    assert settings_file.read_text(encoding="utf-8") == '{\n  "schema_version": 1,\n  "toolbars": {\n    "layout_analysis": true,\n    "human_mockup": false\n  }\n}\n'
 
-    updated = client.put("/settings", json={"toolbars": {"layout_analysis": False}})
+    updated = client.put("/settings", json={"toolbars": {"layout_analysis": False, "human_mockup": True}})
     assert updated.status_code == 200
     assert updated.json()["toolbars"]["layout_analysis"] is False
-    assert json.loads(settings_file.read_text(encoding="utf-8")) == {"schema_version": 1, "toolbars": {"layout_analysis": False}}
+    assert updated.json()["toolbars"]["human_mockup"] is True
+    assert json.loads(settings_file.read_text(encoding="utf-8")) == {"schema_version": 1, "toolbars": {"layout_analysis": False, "human_mockup": True}}
+
+    partial = client.put("/settings", json={"toolbars": {"layout_analysis": True}})
+    assert partial.status_code == 200
+    assert partial.json()["toolbars"] == {"layout_analysis": True, "human_mockup": True}
 
 
 def test_demo_exposes_mandatory_three_outcomes() -> None:

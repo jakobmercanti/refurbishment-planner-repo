@@ -19,6 +19,7 @@ DEFAULT_SOFTWARE_SETTINGS = {
     "schema_version": 1,
     "toolbars": {
         "layout_analysis": True,
+        "human_mockup": False,
     },
 }
 
@@ -45,6 +46,8 @@ def _normalise(raw: object) -> dict[str, Any]:
     toolbars = deepcopy(settings.get("toolbars")) if isinstance(settings.get("toolbars"), dict) else {}
     if not isinstance(toolbars.get("layout_analysis"), bool):
         toolbars["layout_analysis"] = DEFAULT_SOFTWARE_SETTINGS["toolbars"]["layout_analysis"]
+    if not isinstance(toolbars.get("human_mockup"), bool):
+        toolbars["human_mockup"] = DEFAULT_SOFTWARE_SETTINGS["toolbars"]["human_mockup"]
     settings["toolbars"] = toolbars
     return settings
 
@@ -76,7 +79,11 @@ def load_software_settings() -> dict[str, Any]:
         return settings
 
 
-def update_software_settings(*, layout_analysis_toolbar_visible: bool) -> dict[str, Any]:
+def update_software_settings(
+    *,
+    layout_analysis_toolbar_visible: bool | None = None,
+    human_mockup_toolbar_visible: bool | None = None,
+) -> dict[str, Any]:
     """Persist the manager-controlled settings and return the canonical document."""
 
     path = software_settings_path()
@@ -86,6 +93,9 @@ def update_software_settings(*, layout_analysis_toolbar_visible: bool) -> dict[s
         except (OSError, json.JSONDecodeError):
             raw = None
         settings = _normalise(raw)
-        settings["toolbars"]["layout_analysis"] = layout_analysis_toolbar_visible
+        if layout_analysis_toolbar_visible is not None:
+            settings["toolbars"]["layout_analysis"] = layout_analysis_toolbar_visible
+        if human_mockup_toolbar_visible is not None:
+            settings["toolbars"]["human_mockup"] = human_mockup_toolbar_visible
         _write(path, settings)
         return settings

@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "toolbars": {
-    "layout_analysis": false
+    "layout_analysis": false,
+    "human_mockup": false
   }
 }

@@ -57,6 +57,10 @@ export default function Home() {
     setToolbarAvailability((current) => current["viewer-layout-analysis"] === visible ? current : { ...current, "viewer-layout-analysis": visible });
     setToolbarVisibility((current) => current["viewer-layout-analysis"] === visible ? current : { ...current, "viewer-layout-analysis": visible });
   }, []);
+  const setHumanMockupToolbarVisible = useCallback((visible: boolean) => {
+    setToolbarAvailability((current) => current["viewer-person"] === visible ? current : { ...current, "viewer-person": visible });
+    setToolbarVisibility((current) => current["viewer-person"] === visible ? current : { ...current, "viewer-person": visible });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,11 +86,16 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(`${API_URL}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean } }) => {
+    void fetch(`${API_URL}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean; human_mockup?: boolean } }) => {
       const layoutAnalysisVisible = settings.toolbars?.layout_analysis;
+      const humanMockupVisible = settings.toolbars?.human_mockup;
       if (!cancelled && typeof layoutAnalysisVisible === "boolean") {
         setToolbarAvailability((current) => ({ ...current, "viewer-layout-analysis": layoutAnalysisVisible }));
         setToolbarVisibility((current) => ({ ...current, "viewer-layout-analysis": layoutAnalysisVisible }));
+      }
+      if (!cancelled && typeof humanMockupVisible === "boolean") {
+        setToolbarAvailability((current) => ({ ...current, "viewer-person": humanMockupVisible }));
+        setToolbarVisibility((current) => ({ ...current, "viewer-person": humanMockupVisible }));
       }
     }).catch(() => undefined);
     return () => { cancelled = true; };
@@ -337,7 +346,7 @@ export default function Home() {
         </section>
       ) : null}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
-      {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} onClose={() => setCatalogueManagerOpen(false)} />}
+          {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} humanMockupToolbarVisible={toolbarAvailability["viewer-person"]} onHumanMockupToolbarVisibleChange={setHumanMockupToolbarVisible} onClose={() => setCatalogueManagerOpen(false)} />}
       <SettingsDialog open={settingsOpen} preferences={preferences} onChange={setPreferences} onClose={() => setSettingsOpen(false)} />
     </main>
   );

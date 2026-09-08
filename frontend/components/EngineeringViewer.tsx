@@ -11,6 +11,7 @@ import { DULUX_PAINT_FAMILIES, type DuluxPaintShade } from "@/lib/duluxPalette";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutInteraction";
 import { buildWallFinishUpdates, type WallPaintScope } from "@/lib/wallFinishes";
+import { buildFloorFinishUpdates, type FloorTileScope } from "@/lib/floorFinishes";
 import { buildSharedWallFinishFaces, buildIsolatedRoomWalls, buildRenderedWalls, type RenderedWall } from "@/lib/wallRendering";
 import type { MaterialCollection, Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type ToolbarDock } from "@/components/FloatingToolbar";
@@ -1252,6 +1253,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
 
 function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, onFinishesChange, dock, layoutResetKey, onClose }: Pick<ViewerProps, "apiUrl" | "room" | "onObstaclesChange" | "onFinishesChange"> & { rooms: Room[]; selection: Selection; dock: ToolbarDock; layoutResetKey: number; onClose: () => void }) {
   const [wallPaintScope, setWallPaintScope] = useState<WallPaintScope>("SELECTED");
+  const [floorTileScope, setFloorTileScope] = useState<FloorTileScope>("SELECTED");
   const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
   const [paintSearch, setPaintSearch] = useState("");
   const [paintCollectionId, setPaintCollectionId] = useState("paints-dulux");
@@ -1278,19 +1280,19 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
   }
 
   function setFloorTile(tile?: TileStyle) {
-    onFinishesChange({
-      ...finishes,
+    buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => ({
+      ...current,
       floor_tile_id: tile?.id,
       floor_color: tile?.base,
       floor_pattern: tile?.pattern ?? "NONE",
-    }, room.id);
+    })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
   }
 
   function setFloorColours(tileId: string, colours: { base: string; accent: string; grout: string }) {
-    onFinishesChange({
-      ...finishes,
-      floor_tile_colours: { ...(finishes.floor_tile_colours ?? {}), [tileId]: colours },
-    }, room.id);
+    buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => ({
+      ...current,
+      floor_tile_colours: { ...(current.floor_tile_colours ?? {}), [tileId]: colours },
+    })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
   }
 
   function setWallLock(locked: boolean) {
@@ -1349,6 +1351,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
         <span className="eyebrow">Selected floor</span>
         <strong>Floor tile collection</strong>
         <output className="selected-colour-hex">HEX <code>{(finishes.floor_tile_colours?.[finishes.floor_tile_id ?? ""]?.base ?? finishes.floor_color ?? "#E8E1D6").toUpperCase()}</code></output>
+        <label className="field"><span>Tile options</span><select aria-label="Tile options" value={floorTileScope} onChange={(event) => setFloorTileScope(event.target.value as FloorTileScope)}><option value="SELECTED">Selected floor</option><option value="ROOM">Current room floor</option><option value="ALL">All floors</option></select></label>
         <label className="field"><span>Tile collection</span><select value={tileCollectionId} onChange={(event) => setTileCollectionId(event.target.value)}>{tileCollections.length ? tileCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="tiles-default">Default colours</option>}</select></label>
         <div className="tile-collection">{tiles.map((tile) => <button key={tile.id} type="button" className={finishes.floor_tile_id === tile.id ? "selected" : ""} onClick={() => setFloorTile(tile)}><span className="tile-swatch" style={{ background: tile.preview }} /><small>{tile.name}</small></button>)}</div>
         {(() => {

@@ -68,6 +68,12 @@ class CADResponse(BaseModel):
 
 class SoftwareToolbarSettings(BaseModel):
     layout_analysis: bool = True
+    human_mockup: bool = False
+
+
+class SoftwareToolbarSettingsUpdate(BaseModel):
+    layout_analysis: bool | None = None
+    human_mockup: bool | None = None
 
 
 class SoftwareSettingsResponse(BaseModel):
@@ -76,7 +82,7 @@ class SoftwareSettingsResponse(BaseModel):
 
 
 class SoftwareSettingsUpdate(BaseModel):
-    toolbars: SoftwareToolbarSettings
+    toolbars: SoftwareToolbarSettingsUpdate
 
 
 class CatalogueCategoryResponse(BaseModel):

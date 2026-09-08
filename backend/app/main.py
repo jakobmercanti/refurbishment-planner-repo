@@ -336,7 +336,10 @@ def get_software_settings() -> dict[str, object]:
 
 @app.put("/settings", response_model=SoftwareSettingsResponse)
 def put_software_settings(payload: SoftwareSettingsUpdate) -> dict[str, object]:
-    return update_software_settings(layout_analysis_toolbar_visible=payload.toolbars.layout_analysis)
+    return update_software_settings(
+        layout_analysis_toolbar_visible=payload.toolbars.layout_analysis,
+        human_mockup_toolbar_visible=payload.toolbars.human_mockup,
+    )
 
 
 @app.post("/projects", response_model=ProjectResponse, status_code=201)

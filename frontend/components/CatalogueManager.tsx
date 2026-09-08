@@ -9,6 +9,8 @@ interface CatalogueManagerProps {
   opener: HTMLElement | null;
   layoutAnalysisToolbarVisible: boolean;
   onLayoutAnalysisToolbarVisibleChange: (visible: boolean) => void;
+  humanMockupToolbarVisible: boolean;
+  onHumanMockupToolbarVisibleChange: (visible: boolean) => void;
   onClose: () => void;
 }
 
@@ -27,7 +29,7 @@ function trapFocus(event: React.KeyboardEvent<HTMLElement>) {
 
 type ManagerTab = "IMPORT" | "TOOLBARS";
 
-export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVisible, onLayoutAnalysisToolbarVisibleChange, onClose }: CatalogueManagerProps) {
+export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVisible, onLayoutAnalysisToolbarVisibleChange, humanMockupToolbarVisible, onHumanMockupToolbarVisibleChange, onClose }: CatalogueManagerProps) {
   const [categories, setCategories] = useState<CatalogueCategory[]>([]);
   const [status, setStatus] = useState<string>("");
   const [pending, setPending] = useState(false);
@@ -42,11 +44,12 @@ export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVi
     openerRef.current = opener?.isConnected ? opener : null;
     closeRef.current?.focus();
     fetch(`${apiUrl}/catalog/categories`).then((response) => response.ok ? response.json() : Promise.reject()).then(setCategories).catch(() => setStatus("Catalogue categories are unavailable."));
-    fetch(`${apiUrl}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean } }) => {
+    fetch(`${apiUrl}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean; human_mockup?: boolean } }) => {
       if (typeof settings.toolbars?.layout_analysis === "boolean") onLayoutAnalysisToolbarVisibleChange(settings.toolbars.layout_analysis);
+      if (typeof settings.toolbars?.human_mockup === "boolean") onHumanMockupToolbarVisibleChange(settings.toolbars.human_mockup);
     }).catch(() => setStatus("Software settings are unavailable."));
     return () => { openerRef.current?.focus(); };
-  }, [apiUrl, onLayoutAnalysisToolbarVisibleChange, open, opener]);
+  }, [apiUrl, onHumanMockupToolbarVisibleChange, onLayoutAnalysisToolbarVisibleChange, open, opener]);
 
   useEffect(() => {
     if (!open) return;
@@ -70,17 +73,26 @@ export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVi
     finally { setPending(false); }
   }
 
-  async function setLayoutAnalysisToolbarVisible(visible: boolean) {
+  async function saveToolbarSettings(next: { layout_analysis: boolean; human_mockup: boolean }) {
     setSettingsPending(true);
     setStatus("Saving software settings…");
     try {
-      const response = await fetch(`${apiUrl}/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toolbars: { layout_analysis: visible } }) });
-      const settings = await response.json() as { toolbars?: { layout_analysis?: boolean }; detail?: string };
-      if (!response.ok || typeof settings.toolbars?.layout_analysis !== "boolean") throw new Error(settings.detail ?? "Could not save software settings.");
+      const response = await fetch(`${apiUrl}/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ toolbars: next }) });
+      const settings = await response.json() as { toolbars?: { layout_analysis?: boolean; human_mockup?: boolean }; detail?: string };
+      if (!response.ok || typeof settings.toolbars?.layout_analysis !== "boolean" || typeof settings.toolbars?.human_mockup !== "boolean") throw new Error(settings.detail ?? "Could not save software settings.");
       onLayoutAnalysisToolbarVisibleChange(settings.toolbars.layout_analysis);
+      onHumanMockupToolbarVisibleChange(settings.toolbars.human_mockup);
       setStatus("Software settings saved.");
     } catch (error) { setStatus(error instanceof Error ? error.message : "Could not save software settings."); }
     finally { setSettingsPending(false); }
+  }
+
+  function setLayoutAnalysisToolbarVisible(visible: boolean) {
+    void saveToolbarSettings({ layout_analysis: visible, human_mockup: humanMockupToolbarVisible });
+  }
+
+  function setHumanMockupToolbarVisible(visible: boolean) {
+    void saveToolbarSettings({ layout_analysis: layoutAnalysisToolbarVisible, human_mockup: visible });
   }
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -103,7 +115,7 @@ export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVi
         <label className="field"><span>Colour HEX</span><input required pattern="#[0-9A-Fa-f]{6}" value={form.color_hex} onChange={(event) => set("color_hex", event.target.value.toUpperCase())} /></label>
         <label className="field"><span>Floorplan shape</span><select value={form.plan_shape} onChange={(event) => set("plan_shape", event.target.value)}><option value="RECTANGLE">Rectangle / box</option><option value="ELLIPSE">Ellipse / cylinder</option></select></label>
         <div className="catalogue-manager-actions span-two"><button type="button" onClick={onClose}>Close</button><button className="primary" type="submit" disabled={pending}>{pending ? "Importing…" : "Import from website"}</button></div>
-      </form></section> : <section id="catalogue-manager-toolbars-panel" role="tabpanel" aria-labelledby="catalogue-manager-toolbars-tab" className="catalogue-manager-panel"><h3>Toolbars activation</h3><p>Choose which administrator-configured toolbars are visible when the software starts. These settings are stored in <code>data/software_settings.json</code>.</p><label className="catalogue-manager-toggle"><input type="checkbox" checked={layoutAnalysisToolbarVisible} disabled={settingsPending} onChange={(event) => void setLayoutAnalysisToolbarVisible(event.target.checked)} /><span><strong>Layout analysis</strong><small>Show the Layout analysis toolbar in the 3D viewer.</small></span></label></section>}
+      </form></section> : <section id="catalogue-manager-toolbars-panel" role="tabpanel" aria-labelledby="catalogue-manager-toolbars-tab" className="catalogue-manager-panel"><h3>Toolbars activation</h3><p>Choose which administrator-configured toolbars are visible when the software starts. These settings are stored in <code>data/software_settings.json</code>.</p><label className="catalogue-manager-toggle"><input type="checkbox" checked={layoutAnalysisToolbarVisible} disabled={settingsPending} onChange={(event) => setLayoutAnalysisToolbarVisible(event.target.checked)} /><span><strong>Layout analysis</strong><small>Show the Layout analysis toolbar in the 3D viewer.</small></span></label><label className="catalogue-manager-toggle"><input type="checkbox" checked={humanMockupToolbarVisible} disabled={settingsPending} onChange={(event) => setHumanMockupToolbarVisible(event.target.checked)} /><span><strong>Human mock-up</strong><small>Show the Human mock-up toolbar in the 3D viewer.</small></span></label></section>}
       <p className="catalogue-manager-status" role="status" aria-live="polite">{status}</p>
     </section>
   </div>;
