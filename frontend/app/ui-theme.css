@@ -1,4 +1,6 @@
-/* Interface-only theme: SVG artwork and 3D material colours remain independent. */
+/* The interface theme also aligns the default editor's structural palette. Named
+   floorplan styles keep their own deliberate palettes, including Traditional's
+   black-and-white output. */
 .catalogue-manager-modal .catalogue-manager-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 body[data-ui-style="modern"] { background: var(--paper); color: var(--ink); }
 body[data-ui-style="modern"] :is(.topbar, .floating-toolbar, .popup, .catalogue-manager-modal, .catalogue-modal, .settings-dialog, .floorplan-export-dialog, .save-view-dialog, .software-dropdown, .toolbar-context-menu) {
@@ -23,3 +25,28 @@ body[data-ui-style="modern"] :is(button, input, select, textarea):focus-visible 
 body[data-ui-style="modern"] :is(.tool-section, .selected-properties, .fixture-editor, .person-editor, .catalogue-manager-toggle, .catalogue-manager-tabs, .tile-colour-editor, .context-controls, .viewer-toolbar) { background-color: var(--panel); border-color: var(--line); color: var(--ink); }
 body[data-ui-style="modern"] :is(.catalogue-manager-tabs, .catalogue-manager-toggle, .catalogue-sidebar, .catalogue-family.active) { background-color: var(--soft); }
 body[data-ui-style="modern"] :is(.eyebrow, .field > span, .tool-note) { color: var(--muted); }
+body[data-ui-style="modern"] .editor-intro h1 { color: var(--deep); }
+body[data-ui-style="modern"] .editor-intro .editor-context-help { color: var(--muted); }
+
+/* Keep the default floorplan's walls, dimensions, corners and labels in the
+   same navy as Modern buttons. Excluding named drawing styles preserves their
+   existing visual contracts and keeps Traditional black and white. */
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-body,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-thickness-label,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-label,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .vertex-handle,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .vertex-label,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .opening-dimension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .window-dimension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .fixture-dimension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .room-name-editor input { color: var(--deep); }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-body,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .vertex-handle { stroke: var(--deep); }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-thickness-label,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-label,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .vertex-label,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .opening-dimension-label,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .fixture-dimension-label { fill: var(--deep); }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .dimension-line,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .dimension-extension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .dimension-tick { stroke: var(--deep); }
