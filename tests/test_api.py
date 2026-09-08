@@ -41,18 +41,32 @@ def test_software_settings_are_readable_and_persist_toolbar_visibility(tmp_path,
 
     initial = client.get("/settings")
     assert initial.status_code == 200
-    assert initial.json() == {"schema_version": 1, "toolbars": {"layout_analysis": True, "human_mockup": False}}
-    assert settings_file.read_text(encoding="utf-8") == '{\n  "schema_version": 1,\n  "toolbars": {\n    "layout_analysis": true,\n    "human_mockup": false\n  }\n}\n'
+    assert initial.json()["toolbars"] == {"layout_analysis": True, "human_mockup": False}
+    assert initial.json()["ui"]["style"] == "DEFAULT"
+    assert set(initial.json()["ui"]["themes"]) == {"DEFAULT", "MODERN"}
+    assert json.loads(settings_file.read_text(encoding="utf-8")) == initial.json()
 
     updated = client.put("/settings", json={"toolbars": {"layout_analysis": False, "human_mockup": True}})
     assert updated.status_code == 200
     assert updated.json()["toolbars"]["layout_analysis"] is False
     assert updated.json()["toolbars"]["human_mockup"] is True
-    assert json.loads(settings_file.read_text(encoding="utf-8")) == {"schema_version": 1, "toolbars": {"layout_analysis": False, "human_mockup": True}}
+    assert json.loads(settings_file.read_text(encoding="utf-8"))["toolbars"] == {"layout_analysis": False, "human_mockup": True}
 
     partial = client.put("/settings", json={"toolbars": {"layout_analysis": True}})
     assert partial.status_code == 200
     assert partial.json()["toolbars"] == {"layout_analysis": True, "human_mockup": True}
+    modern = client.put("/settings", json={"ui": {"style": "MODERN"}})
+    assert modern.status_code == 200
+    assert modern.json()["toolbars"] == partial.json()["toolbars"]
+    assert client.get("/settings").json()["ui"]["style"] == "MODERN"
+    saved = json.loads(settings_file.read_text(encoding="utf-8"))
+    saved["ui"]["themes"]["MODERN"]["buttons"]["radius"] = "14px"
+    settings_file.write_text(json.dumps(saved), encoding="utf-8")
+    changed = client.put("/settings", json={"toolbars": {"layout_analysis": False}})
+    assert changed.json()["ui"]["style"] == "MODERN"
+    assert changed.json()["ui"]["themes"]["MODERN"]["buttons"]["radius"] == "14px"
+    assert client.put("/settings", json={"ui": {"style": "UNKNOWN"}}).status_code == 422
+    assert client.put("/settings", json={"ui": {"style": "DEFAULT"}}).json()["ui"]["style"] == "DEFAULT"
 
 
 def test_demo_exposes_mandatory_three_outcomes() -> None:

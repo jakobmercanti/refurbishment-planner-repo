@@ -3,5 +3,81 @@
   "toolbars": {
     "layout_analysis": false,
     "human_mockup": false
+  },
+  "ui": {
+    "style": "MODERN",
+    "themes": {
+      "DEFAULT": {
+        "name": "Default",
+        "stylesheet": "frontend/app/globals.css",
+        "colours": {
+          "ink": "#17211d",
+          "muted": "#68746e",
+          "line": "#d8ddd8",
+          "paper": "#f6f5f0",
+          "panel": "#ffffff",
+          "deep": "#183d34",
+          "accent": "#183d34",
+          "soft": "#edf3ef",
+          "fit": "#197a50",
+          "verify": "#a86600",
+          "fail": "#b73939"
+        },
+        "typography": {
+          "sans": "Manrope, Segoe UI, Arial, sans-serif",
+          "controls": "IBM Plex Mono, Cascadia Mono, Consolas, monospace"
+        },
+        "buttons": {
+          "radius": "7px",
+          "background": "#f7faf8",
+          "text": "#183d34",
+          "activeBackground": "#183d34",
+          "activeText": "#ffffff",
+          "hoverBackground": "#edf3ef"
+        },
+        "windows": {
+          "radius": "12px",
+          "headerBackground": "#f4f7f5",
+          "shadow": "0 14px 34px rgba(20,39,31,.2)",
+          "backdrop": "rgba(18,29,25,.48)"
+        }
+      },
+      "MODERN": {
+        "name": "Modern",
+        "stylesheet": "frontend/app/ui-theme.css",
+        "reference": "https://www.freefloorplan3d.com/",
+        "colours": {
+          "ink": "#112039",
+          "muted": "#607087",
+          "line": "#dbe5ee",
+          "paper": "#f7fafc",
+          "panel": "#ffffff",
+          "deep": "#061737",
+          "accent": "#0877e8",
+          "soft": "#eaf5ff",
+          "fit": "#197a50",
+          "verify": "#a86600",
+          "fail": "#b73939"
+        },
+        "typography": {
+          "sans": "Inter, Avenir, Segoe UI, Helvetica, Arial, sans-serif",
+          "controls": "Inter, Avenir, Segoe UI, Helvetica, Arial, sans-serif"
+        },
+        "buttons": {
+          "radius": "11px",
+          "background": "#f5f9fd",
+          "text": "#112039",
+          "activeBackground": "#061737",
+          "activeText": "#ffffff",
+          "hoverBackground": "#eaf5ff"
+        },
+        "windows": {
+          "radius": "18px",
+          "headerBackground": "#eaf5ff",
+          "shadow": "0 12px 40px rgba(13,35,65,.15)",
+          "backdrop": "rgba(6,23,55,.35)"
+        }
+      }
+    }
   }
 }

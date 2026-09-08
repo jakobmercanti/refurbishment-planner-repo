@@ -55,21 +55,30 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 `;
 
   if (style === "MODERN") return `
-.${root} .canvas-background{fill:#edf6f5}
-.${root} .plan-grid line{stroke:#b8d8d4;stroke-width:.75}
+.${root} .canvas-background{fill:#fff}
+.${root} .plan-grid{display:none}
+.${root} .styled-room-floors{display:inline!important}
+.${root} .coloured-fixture-symbol .symbol-default{display:none}
+.${root} .symbol-modern{display:inline!important}
+.${root} .furniture-material{fill:#dcc4a0;stroke:#89775e}
+.${root} .full-room-highlight{display:inline}
+.${root} .full-room-highlight polygon{fill:transparent;fill-opacity:0}
+.${root} .vertex-layer{opacity:0}
+.${root} .vertex-label{display:none}
 .${root} .room-polygon{fill:#fbfefd}
-.${root} .wall-body{stroke:#155d55}
-.${root} .wall-line{stroke:#fff}
+.${root} .wall-body{stroke:#323530}
+.${root} .wall-line{stroke:#323530}
 .${root} .wall-line:hover,.${root} .wall-line.selected{stroke:#f1b14b;stroke-width:var(--wall-inner-stroke-width,4px)}
 .${root} .wall-label,.${root} .wall-thickness-label{fill:#164e48;font-family:Arial,sans-serif}
 .${root} .room-name-editor input{color:#164e48;font-family:Arial,sans-serif}
 .${root} .export-room-name{fill:#164e48;font-family:Arial,sans-serif}
 .${root} .vertex-handle{stroke:#155d55;fill:#f8fffe}
-.${root} .door-leaf,.${root} .door-swing{stroke:#168a79}
+.${root} .door-leaf{stroke:#ae8760;stroke-width:2.5}
+.${root} .door-swing{stroke:#9eaa9f;stroke-dasharray:none;opacity:.7}
 .${root} .opening-dimension{color:#168a79}
 .${root} .opening-dimension-label{fill:#126e61}
 .${root} .window-frame,.${root} .window-jamb{stroke:#2c7dbc}
-.${root} .window-core{stroke:#84b8df}
+.${root} .window-core{stroke:#b7d9df;stroke-width:3}
 .${root} .window-dimension{color:#2c7dbc}
 .${root} .window-dimension .opening-dimension-label{fill:#246a9e}
 .${root} .floorplan-fixture .fixture-dimension{color:#b45309}
@@ -77,26 +86,33 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 `;
 
   return `
-.${root} .canvas-background{fill:#fff5e5}
-.${root} .plan-grid line{stroke:#e7cea0}
+.${root} .canvas-background{fill:#fffcf6}
+.${root} .plan-grid{display:none}
+.${root} .styled-room-floors,.${root} .creative-garden,.${root} .creative-floor-wash{display:inline!important}
+.${root} .coloured-fixture-symbol .symbol-default{display:none}
+.${root} .symbol-creative{display:inline!important}
+.${root} .furniture-material{fill:#ddd0b9;stroke:#9c947f}
+.${root} .vertex-layer{opacity:0}
+.${root} .vertex-label{display:none}
 .${root} .room-polygon{fill:#fffdf8}
-.${root} .wall-body{stroke:#75572d}
-.${root} .wall-line{stroke:#fff8eb}
+.${root} .wall-body{stroke:#57544b}
+.${root} .wall-line{stroke:#756f60}
 .${root} .wall-line:hover,.${root} .wall-line.selected{stroke:#f1b14b;stroke-width:var(--wall-inner-stroke-width,4px)}
 .${root} .wall-label,.${root} .wall-thickness-label{fill:#6c4d23;font-family:Georgia,serif}
 .${root} .room-name-editor input{color:#6c4d23;font-family:Georgia,serif}
 .${root} .export-room-name{fill:#6c4d23;font-family:Georgia,serif}
 .${root} .vertex-handle{stroke:#b36b32;fill:#fff2d3}
-.${root} .door-leaf,.${root} .door-swing{stroke:#c56d3d}
+.${root} .door-leaf{stroke:#bba083;stroke-width:2.5}
+.${root} .door-swing{stroke:#a9b09d;stroke-dasharray:none;opacity:.65}
 .${root} .opening-dimension{color:#b35c35}
 .${root} .opening-dimension-label{fill:#9d4b29}
 .${root} .window-frame,.${root} .window-jamb{stroke:#5d83a5}
-.${root} .window-core{stroke:#9ec0d5}
+.${root} .window-core{stroke:#bed5d0;stroke-width:3}
 .${root} .window-dimension{color:#5d83a5}
 .${root} .window-dimension .opening-dimension-label{fill:#426b8c}
 .${root} .floorplan-fixture .fixture-dimension{color:#b45309}
 .${root} .floorplan-fixture .fixture-dimension-label{fill:currentColor}
 .${root} .full-room-highlight{display:inline}
-.${root} .full-room-highlight polygon{fill:#f0b761;fill-opacity:.22}
+.${root} .full-room-highlight polygon{fill:transparent;fill-opacity:0}
 `;
 }

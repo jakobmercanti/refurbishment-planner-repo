@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CatalogueCategory, CatalogueItem } from "@/lib/types";
+import type { SoftwareUi } from "@/components/UiTheme";
 
 interface CatalogueManagerProps {
   apiUrl: string;
@@ -12,6 +13,8 @@ interface CatalogueManagerProps {
   humanMockupToolbarVisible: boolean;
   onHumanMockupToolbarVisibleChange: (visible: boolean) => void;
   onClose: () => void;
+  uiSettings: SoftwareUi | null;
+  onUiSettingsChange: (settings: SoftwareUi) => void;
 }
 
 const KINDS: Record<string, "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" | "DOOR" | "WINDOW"> = {
@@ -27,9 +30,9 @@ function trapFocus(event: React.KeyboardEvent<HTMLElement>) {
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 
-type ManagerTab = "IMPORT" | "TOOLBARS";
+type ManagerTab = "IMPORT" | "TOOLBARS" | "UI";
 
-export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVisible, onLayoutAnalysisToolbarVisibleChange, humanMockupToolbarVisible, onHumanMockupToolbarVisibleChange, onClose }: CatalogueManagerProps) {
+export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVisible, onLayoutAnalysisToolbarVisibleChange, humanMockupToolbarVisible, onHumanMockupToolbarVisibleChange, onClose, uiSettings, onUiSettingsChange }: CatalogueManagerProps) {
   const [categories, setCategories] = useState<CatalogueCategory[]>([]);
   const [status, setStatus] = useState<string>("");
   const [pending, setPending] = useState(false);
@@ -44,12 +47,13 @@ export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVi
     openerRef.current = opener?.isConnected ? opener : null;
     closeRef.current?.focus();
     fetch(`${apiUrl}/catalog/categories`).then((response) => response.ok ? response.json() : Promise.reject()).then(setCategories).catch(() => setStatus("Catalogue categories are unavailable."));
-    fetch(`${apiUrl}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean; human_mockup?: boolean } }) => {
+    fetch(`${apiUrl}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean; human_mockup?: boolean }; ui?: SoftwareUi }) => {
+      if (settings.ui) onUiSettingsChange(settings.ui);
       if (typeof settings.toolbars?.layout_analysis === "boolean") onLayoutAnalysisToolbarVisibleChange(settings.toolbars.layout_analysis);
       if (typeof settings.toolbars?.human_mockup === "boolean") onHumanMockupToolbarVisibleChange(settings.toolbars.human_mockup);
     }).catch(() => setStatus("Software settings are unavailable."));
     return () => { openerRef.current?.focus(); };
-  }, [apiUrl, onHumanMockupToolbarVisibleChange, onLayoutAnalysisToolbarVisibleChange, open, opener]);
+  }, [apiUrl, onHumanMockupToolbarVisibleChange, onLayoutAnalysisToolbarVisibleChange, onUiSettingsChange, open, opener]);
 
   useEffect(() => {
     if (!open) return;
@@ -95,14 +99,28 @@ export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVi
     void saveToolbarSettings({ layout_analysis: layoutAnalysisToolbarVisible, human_mockup: visible });
   }
 
+  async function saveUiStyle(style: SoftwareUi["style"]) {
+    setSettingsPending(true);
+    setStatus("Saving software settings…");
+    try {
+      const response = await fetch(`${apiUrl}/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ui: { style } }) });
+      const settings = await response.json();
+      if (!response.ok || !settings.ui?.themes) throw new Error("Could not save UI style.");
+      onUiSettingsChange(settings.ui);
+      setStatus("UI style saved. Applied across the software and on startup.");
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Could not save UI style."); }
+    finally { setSettingsPending(false); }
+  }
+
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="catalogue-manager-modal" role="dialog" aria-modal="true" aria-labelledby="catalogue-manager-title" onKeyDown={trapFocus}>
       <header><div><span className="eyebrow">Catalogue administration</span><h2 id="catalogue-manager-title">Object catalogue manager</h2></div><button ref={closeRef} className="modal-close" aria-label="Close catalogue manager" onClick={onClose}>×</button></header>
       <div className="catalogue-manager-tabs" role="tablist" aria-label="Catalogue administration sections">
         <button type="button" role="tab" id="catalogue-manager-import-tab" aria-controls="catalogue-manager-import-panel" aria-selected={activeTab === "IMPORT"} className={activeTab === "IMPORT" ? "active" : ""} onClick={() => setActiveTab("IMPORT")}>Import from website</button>
         <button type="button" role="tab" id="catalogue-manager-toolbars-tab" aria-controls="catalogue-manager-toolbars-panel" aria-selected={activeTab === "TOOLBARS"} className={activeTab === "TOOLBARS" ? "active" : ""} onClick={() => setActiveTab("TOOLBARS")}>Toolbars activation</button>
+        <button type="button" role="tab" id="catalogue-manager-ui-tab" aria-controls="catalogue-manager-ui-panel" aria-selected={activeTab === "UI"} className={activeTab === "UI" ? "active" : ""} onClick={() => setActiveTab("UI")}>UI style</button>
       </div>
-      {activeTab === "IMPORT" ? <section id="catalogue-manager-import-panel" role="tabpanel" aria-labelledby="catalogue-manager-import-tab" className="catalogue-manager-panel"><h3>Import from website</h3><p>The server reads Product JSON-LD when available. Enter verified fallback geometry in millimetres; website images and text never determine fit dimensions.</p>
+      {activeTab === "UI" ? <section id="catalogue-manager-ui-panel" role="tabpanel" aria-labelledby="catalogue-manager-ui-tab" className="catalogue-manager-panel"><h3>UI style</h3><p>Choose the appearance of buttons, menus, colours and windows across the software.</p><label className="field"><span>Interface style</span><select aria-label="Interface style" value={uiSettings?.style ?? "DEFAULT"} disabled={settingsPending || !uiSettings} onChange={(event) => void saveUiStyle(event.target.value as SoftwareUi["style"])}><option value="DEFAULT">Default</option><option value="MODERN">Modern</option></select></label><p>Default preserves the original appearance. Modern follows FreeFloorplan3D’s navy and blue design.</p><p>The selected style and both theme profiles are stored in <code>data/software_settings.json</code>.</p></section> : activeTab === "IMPORT" ? <section id="catalogue-manager-import-panel" role="tabpanel" aria-labelledby="catalogue-manager-import-tab" className="catalogue-manager-panel"><h3>Import from website</h3><p>The server reads Product JSON-LD when available. Enter verified fallback geometry in millimetres; website images and text never determine fit dimensions.</p>
       <form onSubmit={(event) => void submit(event)} className="catalogue-manager-form">
         <label className="field span-two"><span>Website / source URL</span><input required type="url" value={form.source_url} onChange={(event) => set("source_url", event.target.value)} placeholder="https://supplier.example" /></label>
         <label className="field span-two"><span>Page or path</span><input value={form.page} onChange={(event) => set("page", event.target.value)} placeholder="products/bathroom" /></label>

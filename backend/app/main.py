@@ -339,6 +339,7 @@ def put_software_settings(payload: SoftwareSettingsUpdate) -> dict[str, object]:
     return update_software_settings(
         layout_analysis_toolbar_visible=payload.toolbars.layout_analysis,
         human_mockup_toolbar_visible=payload.toolbars.human_mockup,
+        ui_style=payload.ui.style if payload.ui else None,
     )
 
 

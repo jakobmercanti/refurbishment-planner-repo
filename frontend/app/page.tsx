@@ -6,6 +6,7 @@ import { EngineeringViewer } from "@/components/EngineeringViewer";
 import { ApplicationMenuBar } from "@/components/ApplicationMenuBar";
 import { CatalogueBrowser } from "@/components/CatalogueBrowser";
 import { CatalogueManager } from "@/components/CatalogueManager";
+import { UiTheme, type SoftwareUi } from "@/components/UiTheme";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
 import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { FloatingToolbar, positionedToolbarDock } from "@/components/FloatingToolbar";
@@ -28,6 +29,7 @@ const FULL_FLOORPLAN_SELECTION = "__FULL_FLOORPLAN__";
 const CATALOGUE_MANAGER_AVAILABLE = process.env.NODE_ENV !== "production";
 
 export default function Home() {
+  const [uiSettings, setUiSettings] = useState<SoftwareUi | null>(null);
   const [demo, setDemo] = useState<DemoResponse | null>(null);
   const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
   const [projectRooms, setProjectRooms] = useState<Room[]>([]);
@@ -86,7 +88,8 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(`${API_URL}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean; human_mockup?: boolean } }) => {
+    void fetch(`${API_URL}/settings`).then((response) => response.ok ? response.json() : Promise.reject()).then((settings: { toolbars?: { layout_analysis?: boolean; human_mockup?: boolean }; ui?: SoftwareUi }) => {
+      if (!cancelled && settings.ui) setUiSettings(settings.ui);
       const layoutAnalysisVisible = settings.toolbars?.layout_analysis;
       const humanMockupVisible = settings.toolbars?.human_mockup;
       if (!cancelled && typeof layoutAnalysisVisible === "boolean") {
@@ -288,6 +291,7 @@ export default function Home() {
 
   return (
     <main className={preferences.density === "COMPACT" ? "density-compact" : ""}>
+      <UiTheme settings={uiSettings} />
       <header className="topbar">
         <div className="app-identity"><div className="brand"><Image className="brand-mark" src="/planner-build-icon.png" alt="PlannerBuild" width={34} height={34} priority /><span>Renovation Fit</span></div><ApplicationMenuBar room={demo.room} mode={mode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={toolbarVisibility} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
@@ -346,7 +350,7 @@ export default function Home() {
         </section>
       ) : null}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
-          {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} humanMockupToolbarVisible={toolbarAvailability["viewer-person"]} onHumanMockupToolbarVisibleChange={setHumanMockupToolbarVisible} onClose={() => setCatalogueManagerOpen(false)} />}
+      {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} humanMockupToolbarVisible={toolbarAvailability["viewer-person"]} onHumanMockupToolbarVisibleChange={setHumanMockupToolbarVisible} uiSettings={uiSettings} onUiSettingsChange={setUiSettings} onClose={() => setCatalogueManagerOpen(false)} />}
       <SettingsDialog open={settingsOpen} preferences={preferences} onChange={setPreferences} onClose={() => setSettingsOpen(false)} />
     </main>
   );

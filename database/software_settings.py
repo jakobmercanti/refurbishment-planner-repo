@@ -49,6 +49,21 @@ def _normalise(raw: object) -> dict[str, Any]:
     if not isinstance(toolbars.get("human_mockup"), bool):
         toolbars["human_mockup"] = DEFAULT_SOFTWARE_SETTINGS["toolbars"]["human_mockup"]
     settings["toolbars"] = toolbars
+    defaults = json.loads((Path(__file__).resolve().parents[1] / "data" / "ui_theme_defaults.json").read_text(encoding="utf-8"))
+    ui = settings.get("ui") if isinstance(settings.get("ui"), dict) else {}
+    # Merge additions while preserving administrator-edited theme profiles.
+    def merge(default: dict, saved: dict) -> dict:
+        result = deepcopy(default)
+        for key, value in saved.items():
+            if key in default and isinstance(default[key], dict):
+                if isinstance(value, dict):
+                    result[key] = merge(default[key], value)
+            elif isinstance(value, str):
+                result[key] = value
+        return result
+    settings["ui"] = merge(defaults, ui)
+    if settings["ui"]["style"] not in ("DEFAULT", "MODERN"):
+        settings["ui"]["style"] = "DEFAULT"
     return settings
 
 
@@ -83,6 +98,7 @@ def update_software_settings(
     *,
     layout_analysis_toolbar_visible: bool | None = None,
     human_mockup_toolbar_visible: bool | None = None,
+    ui_style: str | None = None,
 ) -> dict[str, Any]:
     """Persist the manager-controlled settings and return the canonical document."""
 
@@ -93,6 +109,8 @@ def update_software_settings(
         except (OSError, json.JSONDecodeError):
             raw = None
         settings = _normalise(raw)
+        if ui_style is not None:
+            settings["ui"]["style"] = ui_style
         if layout_analysis_toolbar_visible is not None:
             settings["toolbars"]["layout_analysis"] = layout_analysis_toolbar_visible
         if human_mockup_toolbar_visible is not None:

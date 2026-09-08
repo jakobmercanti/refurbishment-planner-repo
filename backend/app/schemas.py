@@ -79,10 +79,16 @@ class SoftwareToolbarSettingsUpdate(BaseModel):
 class SoftwareSettingsResponse(BaseModel):
     schema_version: Literal[1] = 1
     toolbars: SoftwareToolbarSettings
+    ui: dict
+
+
+class SoftwareUiUpdate(BaseModel):
+    style: Literal["DEFAULT", "MODERN"]
 
 
 class SoftwareSettingsUpdate(BaseModel):
-    toolbars: SoftwareToolbarSettingsUpdate
+    toolbars: SoftwareToolbarSettingsUpdate = Field(default_factory=SoftwareToolbarSettingsUpdate)
+    ui: SoftwareUiUpdate | None = None
 
 
 class CatalogueCategoryResponse(BaseModel):

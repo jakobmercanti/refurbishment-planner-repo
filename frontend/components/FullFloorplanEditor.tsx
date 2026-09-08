@@ -19,6 +19,7 @@ import { addRoomOutsideWall, removeRoomBoundary } from "@/lib/roomOperations";
 import { needsWallThicknessOverride } from "@/lib/wallThickness";
 import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import { FLOORPLAN_STYLE_OPTIONS, floorplanStyleClass, floorplanStyleCss, floorplanStyleLabel, type FloorplanStyle } from "@/lib/floorplanStyles";
+import { FloorplanAtmosphere } from "@/components/FloorplanAtmosphere";
 import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
 import type { CatalogueItem, Obstacle, Opening, Point2D, Room } from "@/lib/types";
 import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
@@ -1982,11 +1983,24 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
     }
     const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
     const effectiveStyle = styleChoice === "CURRENT" ? floorplanStyle : styleChoice;
+    clone.classList.remove(...FLOORPLAN_STYLE_OPTIONS.map((option) => floorplanStyleClass(option.value)).filter(Boolean));
+    clone.querySelectorAll(".coloured-fixture-symbol").forEach((symbol) => {
+      const selectedClass = effectiveStyle === "MODERN" ? "symbol-modern" : effectiveStyle === "CREATIVE" ? "symbol-creative" : "symbol-default";
+      symbol.querySelectorAll(".symbol-default,.symbol-modern,.symbol-creative").forEach((image) => {
+        if (!image.classList.contains(selectedClass)) image.remove();
+        else (image as SVGElement).style.display = "inline";
+      });
+      symbol.classList.remove("coloured-fixture-symbol");
+    });
+    clone.querySelectorAll(".styled-room-floors,.creative-garden,.creative-floor-wash").forEach((element) => {
+      if (effectiveStyle === "CREATIVE" || (effectiveStyle === "MODERN" && element.classList.contains("styled-room-floors"))) (element as SVGElement).style.display = "inline";
+      else element.remove();
+    });
     const styleClass = floorplanStyleClass(effectiveStyle);
     if (styleClass) clone.classList.add(styleClass);
     // The preview sits inside the app's stylesheet; make this standalone export
     // stylesheet authoritative so it renders exactly like the saved SVG raster.
-    style.textContent = floorplanExportCss(effectiveStyle).replace(/:([^;{}]+)([;}])/g, ":$1 !important$2");
+    style.textContent = floorplanExportCss(effectiveStyle).replace(/!important/g, "").replace(/:([^;{}]+)([;}])/g, ":$1 !important$2");
     clone.insertBefore(style, clone.firstChild);
     return new XMLSerializer().serializeToString(clone);
   }
@@ -2142,6 +2156,7 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
              {sourceUrl && !sourceIsPdf && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
             {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import a drawing as a background reference</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
             {detectedRooms.map((room) => { const outline = room.vertices.map(toScreen); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />; })}
+            <FloorplanAtmosphere rooms={planRooms} toScreen={toScreen} />
             {rooms.map((room, index) => {
               const outline = room.vertices.map(toScreen); const visualCentre = roomVisualCentre(room.vertices); const centre = toScreen(visualCentre);
               return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { if (tool !== "DRAW") { event.stopPropagation(); setSelectedRoomId(room.id); } }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className="room-name-editor" x={centre.x - 82} y={centre.y - 17} width="164" height="34"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { if (tool !== "DRAW") { event.stopPropagation(); setSelectedRoomId(room.id); } }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); }} /></foreignObject>}</g>;
