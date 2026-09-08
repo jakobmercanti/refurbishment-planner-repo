@@ -70,14 +70,17 @@ export function nearestFixtureWallSpan(obstacle: Obstacle, walls: BoundaryWall[]
 
 type FixtureDimensionProps = {
   span: FixtureWallSpan;
+  measurementId: string;
   lane?: number;
   toScreen: (point: Point2D) => Point2D;
   displayUnits: DisplayUnits;
+  hiddenMeasurementIds?: ReadonlyArray<string>;
+  onMeasurementPointerDown?: (event: ReactPointerEvent<SVGGElement>, section: number) => void;
   onMeasurementContextMenu?: (event: ReactMouseEvent<SVGGElement>, section: number) => void;
   onMeasurementDoubleClick?: (event: ReactMouseEvent<SVGGElement>, section: number) => void;
 };
 
-export function FloorPlanFixtureDimensions({ span, lane = 0, toScreen, displayUnits, onMeasurementContextMenu, onMeasurementDoubleClick }: FixtureDimensionProps) {
+export function FloorPlanFixtureDimensions({ span, measurementId, lane = 0, toScreen, displayUnits, hiddenMeasurementIds = [], onMeasurementPointerDown, onMeasurementContextMenu, onMeasurementDoubleClick }: FixtureDimensionProps) {
   const wallStart = toScreen(span.wallStart);
   const wallEnd = toScreen(span.wallEnd);
   const elementStart = toScreen(span.elementStart);
@@ -93,13 +96,15 @@ export function FloorPlanFixtureDimensions({ span, lane = 0, toScreen, displayUn
   const points = [wallStart, elementStart, elementEnd, wallEnd].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
   const values = [span.startOffsetMm, span.widthMm, span.endOffsetMm];
   const labels = ["Distance from wall start", "Element width", "Distance to wall end"];
-  const hasMeasurementActions = Boolean(onMeasurementContextMenu || onMeasurementDoubleClick);
+  const hasMeasurementActions = Boolean(onMeasurementPointerDown || onMeasurementContextMenu || onMeasurementDoubleClick);
 
-  return <g className={`fixture-dimension ${hasMeasurementActions ? "measurement-context-target" : ""}`} aria-label={`Element dimensions: ${labels.map((label, index) => `${label} ${formatLength(values[index], displayUnits)}`).join(", ")}`} onPointerDown={(event: ReactPointerEvent<SVGGElement>) => { if (hasMeasurementActions) event.stopPropagation(); }}>
+  return <g className={`fixture-dimension ${hasMeasurementActions ? "measurement-context-target" : ""} ${onMeasurementPointerDown ? "measurement-removal-target" : ""}`} aria-label={`Element dimensions: ${labels.map((label, index) => `${label} ${formatLength(values[index], displayUnits)}`).join(", ")}`} onPointerDown={(event: ReactPointerEvent<SVGGElement>) => { if (hasMeasurementActions) event.stopPropagation(); }}>
     {values.map((value, index) => {
+      const measurementKey = `fixture:${measurementId}:${index}`;
+      if (hiddenMeasurementIds.includes(measurementKey)) return null;
       const first = points[index]; const second = points[index + 1];
       const label = { x: (first.x + second.x) / 2 + outward.x * 9, y: (first.y + second.y) / 2 + outward.y * 9 };
-      return <g key={index} onContextMenu={(event) => onMeasurementContextMenu?.(event, index)} onDoubleClick={(event) => onMeasurementDoubleClick?.(event, index)}><line className="dimension-extension" x1={first.x - outward.x * 5} y1={first.y - outward.y * 5} x2={first.x + outward.x * 3} y2={first.y + outward.y * 3} /><line className="dimension-extension" x1={second.x - outward.x * 5} y1={second.y - outward.y * 5} x2={second.x + outward.x * 3} y2={second.y + outward.y * 3} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 3 - outward.x * 3} y1={first.y - tangent.y * 3 - outward.y * 3} x2={first.x + tangent.x * 3 + outward.x * 3} y2={first.y + tangent.y * 3 + outward.y * 3} /><line className="dimension-tick" x1={second.x - tangent.x * 3 - outward.x * 3} y1={second.y - tangent.y * 3 - outward.y * 3} x2={second.x + tangent.x * 3 + outward.x * 3} y2={second.y + tangent.y * 3 + outward.y * 3} /><text className="fixture-dimension-label" x={label.x} y={label.y}>{formatLength(value, displayUnits)}</text></g>;
+      return <g key={index} onPointerDown={(event) => onMeasurementPointerDown?.(event, index)} onContextMenu={(event) => onMeasurementContextMenu?.(event, index)} onDoubleClick={(event) => onMeasurementDoubleClick?.(event, index)}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={first.x - outward.x * 5} y1={first.y - outward.y * 5} x2={first.x + outward.x * 3} y2={first.y + outward.y * 3} /><line className="dimension-extension" x1={second.x - outward.x * 5} y1={second.y - outward.y * 5} x2={second.x + outward.x * 3} y2={second.y + outward.y * 3} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 3 - outward.x * 3} y1={first.y - tangent.y * 3 - outward.y * 3} x2={first.x + tangent.x * 3 + outward.x * 3} y2={first.y + tangent.y * 3 + outward.y * 3} /><line className="dimension-tick" x1={second.x - tangent.x * 3 - outward.x * 3} y1={second.y - tangent.y * 3 - outward.y * 3} x2={second.x + tangent.x * 3 + outward.x * 3} y2={second.y + tangent.y * 3 + outward.y * 3} /><text className="fixture-dimension-label" x={label.x} y={label.y}>{formatLength(value, displayUnits)}</text></g>;
     })}
   </g>;
 }

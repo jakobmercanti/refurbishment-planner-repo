@@ -393,8 +393,6 @@ button { font: inherit; }
 .plan-constraint-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: var(--toolbar-control-gap); padding-top: var(--toolbar-control-gap); border-top: 1px solid var(--line); }
 .plan-constraint-controls .check-row { margin: 0; font: 500 12px/1.25 var(--font-sans); }
 .plan-constraint-controls .check-row input { margin-top: 0; }
-.measurement-mode-row { display: grid; gap: 8px; margin-top: 2px; }
-.measurement-action-row { grid-template-columns: 1fr; }
 .snap-control-row { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font: 500 12px/1.25 var(--font-sans); white-space: nowrap; }
 .snap-control-row > input { margin: 0; accent-color: var(--deep); }
 .snap-control-row > span { display: inline-flex; align-items: center; gap: 3px; flex: 1; min-width: 0; white-space: nowrap; }
@@ -471,6 +469,7 @@ button { font: inherit; }
 .measurement-context-target .dimension-extension,
 .measurement-context-target .dimension-tick { pointer-events: none; }
 .measurement-context-target .measurement-hit { stroke-width: 12; pointer-events: stroke; }
+.measurement-removal-target .measurement-hit { stroke-width: 28; pointer-events: stroke; }
 .measurement-context-target .wall-label { user-select: none; }
 .wall-line.measurement-chosen { stroke: #2f9b7c; stroke-width: var(--wall-inner-stroke-width, 4px); }
 .vertex-handle.measurement-chosen { fill: #d7f5e9; stroke: #2f9b7c; stroke-width: 5; }
@@ -480,8 +479,11 @@ button { font: inherit; }
 .wall-label { fill: #44514b; font: 650 10px var(--font-mono); text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: white; stroke-width: 5px; }
 .vertex-handle { fill: white; stroke: var(--deep); stroke-width: 4; cursor: grab; }
 .vertex-handle:active { cursor: grabbing; }
+.vertex-handle:hover, .vertex-handle.hovered { fill: #fff0cf; stroke: #f1b14b; stroke-width: 5; }
 .vertex-handle.selected { fill: #ffcb71; stroke: #8d5700; }
 .vertex-handle.draw-connect-target { fill: #fff0cf; stroke: #f1b14b; stroke-width: 5; cursor: crosshair; }
+.corner-hover-hit { fill: transparent; stroke: transparent; pointer-events: all; cursor: grab; }
+.corner-hover-hit.draw-mode { cursor: crosshair; }
 .corner-connect-hit { fill: transparent; stroke: transparent; pointer-events: all; cursor: crosshair; }
 .vertex-label { fill: var(--ink); font: 700 8px var(--font-mono); text-anchor: middle; }
 .opening-symbol { pointer-events: auto; }
@@ -797,8 +799,6 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .default-wall-thickness-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .field-action-row > button { width: 100%; min-width: 0; margin: 0; }
 .plan-constraint-controls .check-row { min-width: 0; align-items: center; }
-.plan-constraint-controls .measurement-mode-row { display: contents; }
-.plan-constraint-controls .measurement-action-row { grid-column: 1 / -1; }
 .room-action-panel { display: grid; gap: var(--toolbar-control-gap); }
 .room-action-panel > button { width: 100%; margin: 0; }
 .room-action-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
