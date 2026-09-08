@@ -10,7 +10,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { DULUX_PAINT_FAMILIES, type DuluxPaintShade } from "@/lib/duluxPalette";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutInteraction";
-import { buildWallFinishUpdates } from "@/lib/wallFinishes";
+import { buildWallFinishUpdates, type WallPaintScope } from "@/lib/wallFinishes";
 import { buildSharedWallFinishFaces, buildIsolatedRoomWalls, buildRenderedWalls, type RenderedWall } from "@/lib/wallRendering";
 import type { MaterialCollection, Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type ToolbarDock } from "@/components/FloatingToolbar";
@@ -1251,7 +1251,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
 }
 
 function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, onFinishesChange, dock, layoutResetKey, onClose }: Pick<ViewerProps, "apiUrl" | "room" | "onObstaclesChange" | "onFinishesChange"> & { rooms: Room[]; selection: Selection; dock: ToolbarDock; layoutResetKey: number; onClose: () => void }) {
-  const [applyToAllWalls, setApplyToAllWalls] = useState(false);
+  const [wallPaintScope, setWallPaintScope] = useState<WallPaintScope>("SELECTED");
   const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
   const [paintSearch, setPaintSearch] = useState("");
   const [paintCollectionId, setPaintCollectionId] = useState("paints-dulux");
@@ -1273,7 +1273,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
 
   function setWallColour(shade?: DuluxPaintShade) {
     if (selection?.type !== "WALL") return;
-    buildWallFinishUpdates(rooms, room.id, selection.ids, applyToAllWalls, shade)
+    buildWallFinishUpdates(rooms, room.id, selection.ids, wallPaintScope, shade)
       .forEach((update) => onFinishesChange(update.finishes, update.roomId));
   }
 
@@ -1330,7 +1330,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
         <span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span>
         <strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong>
         <output className="selected-colour-hex">HEX <code>{(finishes.wall_colors?.[selection.id] ?? DEFAULT_WALL_COLOUR).toUpperCase()}</code></output>
-        <label className="paint-all-choice"><input type="checkbox" checked={applyToAllWalls} onChange={(event) => setApplyToAllWalls(event.target.checked)} /><span>Paint all walls together</span></label>
+        <label className="field"><span>Paint options</span><select aria-label="Paint options" value={wallPaintScope} onChange={(event) => setWallPaintScope(event.target.value as WallPaintScope)}><option value="SELECTED">Selected walls</option><option value="ROOM">Current room walls</option><option value="ALL">All walls</option></select></label>
         <label className="field"><span>Paint collection</span><select value={paintCollectionId} onChange={(event) => { setPaintCollectionId(event.target.value); setPaintFamilyId(""); setPaintSearch(""); }}>{materialCollections.length ? materialCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="paints-dulux">Dulux paints</option>}</select></label>
         <div className="paint-family-picker" role="tablist" aria-label="Paint colour families">{paintFamilies.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => { setPaintFamilyId(family.id); setPaintSearch(""); }}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
         <div className="paint-shade-panel">

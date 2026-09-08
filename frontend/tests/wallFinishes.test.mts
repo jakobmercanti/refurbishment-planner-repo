@@ -50,6 +50,16 @@ test("single-room wall updates remain scoped to the selected wall set", () => {
   assert.equal(updates[0].finishes.wall_colors?.["wall-004"], undefined);
 });
 
+test("current room wall updates include every perimeter wall in that room only", () => {
+  const updates = buildWallFinishUpdates(rooms, "room-2", ["wall-002"], "ROOM", { colour: "#fedcba", name: "Test orange" });
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].roomId, "room-2");
+  roomPerimeterWallIds(rooms[1]).forEach((wallId) => {
+    assert.equal(updates[0].finishes.wall_colors?.[wallId], "#fedcba");
+    assert.equal(updates[0].finishes.wall_color_codes?.[wallId], "Test orange");
+  });
+});
+
 test("removing an all-walls colour clears every perimeter colour and code", () => {
   const updates = buildWallFinishUpdates(rooms, "room-1", ["wall-001"], true);
   updates.forEach((update) => {

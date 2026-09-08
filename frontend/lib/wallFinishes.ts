@@ -10,6 +10,8 @@ export interface WallFinishUpdate {
   finishes: RoomFinishes;
 }
 
+export type WallPaintScope = "SELECTED" | "ROOM" | "ALL";
+
 export function roomPerimeterWallIds(room: Room): string[] {
   return room.vertices.map((_vertex, index) => `wall-${String(index + 1).padStart(3, "0")}`);
 }
@@ -23,12 +25,15 @@ export function buildWallFinishUpdates(
   rooms: Room[],
   selectedRoomId: string,
   selectedWallIds: string[],
-  applyToAllWalls: boolean,
+  scope: WallPaintScope | boolean,
   shade?: WallFinishShade,
 ): WallFinishUpdate[] {
-  const targets = applyToAllWalls ? rooms : rooms.filter((room) => room.id === selectedRoomId);
+  // Keep accepting the previous boolean shape for saved callers while the
+  // viewer exposes the clearer three-way scope selector.
+  const resolvedScope: WallPaintScope = typeof scope === "boolean" ? (scope ? "ALL" : "SELECTED") : scope;
+  const targets = resolvedScope === "ALL" ? rooms : rooms.filter((room) => room.id === selectedRoomId);
   return targets.map((room) => {
-    const wallIds = applyToAllWalls ? roomPerimeterWallIds(room) : selectedWallIds;
+    const wallIds = resolvedScope === "SELECTED" ? selectedWallIds : roomPerimeterWallIds(room);
     const wallColors = { ...(room.finishes?.wall_colors ?? {}) };
     const wallColorCodes = { ...(room.finishes?.wall_color_codes ?? {}) };
     wallIds.forEach((wallId) => {
