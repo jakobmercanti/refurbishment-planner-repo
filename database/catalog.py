@@ -8,7 +8,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -41,6 +41,20 @@ def configure_sqlite(connection: object, _record: object) -> None:
 
 
 CATEGORIES = [
+    ("kitchen-sinks", "Sinks", "Sinks for room planning.", 90, 0.0, 0.0),
+    ("kitchen-fridges", "Fridges", "Fridges for room planning.", 91, 0.0, 0.0),
+    ("kitchen-islands", "Kitchen islands", "Kitchen islands for room planning.", 92, 0.0, 0.0),
+    ("kitchen-storage", "Storage units", "Storage units for room planning.", 93, 0.0, 0.0),
+    ("kitchen-hobs", "Hobs", "Hobs for room planning.", 94, 0.0, 0.0),
+    ("kitchen-ovens", "Ovens", "Ovens for room planning.", 95, 0.0, 0.0),
+    ("kitchen-washing", "Washing machines", "Washing machines for room planning.", 96, 0.0, 0.0),
+    ("bedroom-wardrobes", "Wardrobes", "Wardrobes for room planning.", 97, 0.0, 0.0),
+    ("living-sofas", "Sofas", "Living Room sofas.", 70, 0.0, 0.0),
+    ("living-armchairs", "Arm chair", "Living Room armchairs.", 71, 0.0, 0.0),
+    ("living-tables", "Living Room tables", "Living Room coffee and dining tables.", 72, 0.0, 0.0),
+    ("bedroom-beds", "Bed", "Bedroom beds.", 80, 0.0, 0.0),
+    ("bedroom-chairs", "Chairs", "Bedroom chairs.", 81, 0.0, 0.0),
+    ("bedroom-tables", "Bedroom tables", "Bedroom tables.", 82, 0.0, 0.0),
     ("showers", "Shower enclosures", "Corner, walk-in and framed shower enclosures.", 10, 0.0, 500.0),
     ("basins", "Basins & vanities", "Wall-mounted basins, vanity units and washstands.", 20, 0.0, 0.0),
     ("toilets", "Toilets", "Wall-hung, compact and close-coupled toilets.", 30, 200.0, 400.0),
@@ -54,7 +68,6 @@ def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tupl
     collections = [
         ("paints-default", "PAINT", "Default colours", "https://www.ralcolorchart.com/", 10),
         ("paints-dulux", "PAINT", "Dulux paints", "https://www.dulux.co.uk/en/colour-details/filters", 20),
-        ("tiles-default", "TILE", "Default colours", None, 10),
     ]
     families: list[tuple[str, str, str, int]] = []
     items: list[tuple[str, str, str, str, dict[str, object]]] = []
@@ -72,9 +85,11 @@ def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tupl
         families.append((family_id, "paints-dulux", family["name"], index))
         for shade in family["shades"]:
             items.append((f"dulux-{family['id'].lower()}-{shade['id']}", family_id, shade["name"], shade["colour"], {"code": shade["name"], "ral_code": shade["ralCode"], "ral_name": shade["ralName"]}))
-    families.append(("tiles-default", "tiles-default", "Default tiles", 0))
-    for name, colour in (("Warm ivory", "#E8E1D6"), ("Soft grey", "#AAA69E"), ("Sage", "#879783"), ("Terracotta", "#B76E52")):
-        items.append((f"tile-default-{name.lower().replace(' ', '-')}", "tiles-default", name, colour, {"code": name}))
+    collections.append(("tile-materials", "PAINT", "Tiles materials", "", 30))
+    families.append(("tile-material-types", "tile-materials", "Tiles materials", 0))
+    for tile in json.loads((root / "frontend/lib/tileMaterials.json").read_text(encoding="utf8")):
+        items.append((f"tile-material-{tile['id']}", "tile-material-types", tile["name"], tile["colour"],
+                      {"tile_material_id": tile["id"], "finish": tile["finish"], "pattern": tile["pattern"]}))
     return collections, families, items
 
 
@@ -100,6 +115,13 @@ def _seed_materials(session: Session) -> None:
             session.add(MaterialItemRecord(id=row[0], family_id=row[1], name=row[2], code=row[4].get("code"), color_hex=row[3], metadata_json=row[4]))
         else:
             record.family_id, record.name, record.code, record.color_hex, record.metadata_json = row[1], row[2], row[4].get("code"), row[3], row[4]
+
+
+def _remove_legacy_default_tile_collection(session: Session) -> None:
+    family_ids = select(MaterialFamilyRecord.id).where(MaterialFamilyRecord.collection_id == "tiles-default")
+    session.execute(delete(MaterialItemRecord).where(MaterialItemRecord.family_id.in_(family_ids)))
+    session.execute(delete(MaterialFamilyRecord).where(MaterialFamilyRecord.collection_id == "tiles-default"))
+    session.execute(delete(MaterialCollectionRecord).where(MaterialCollectionRecord.id == "tiles-default"))
 
 
 def _backfill_new_clearance_columns(session: Session, *, side_added: bool, front_added: bool) -> None:
@@ -184,6 +206,7 @@ def initialise_catalogue() -> None:
         _backfill_new_clearance_columns(session, side_added=added_side_clearance, front_added=added_front_clearance)
         _archive_obsolete_default_items(session)
         seed_fixture_defaults(session)
+        _remove_legacy_default_tile_collection(session)
         _seed_materials(session)
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
             catalogue_item.image_data_json = migrate_legacy_pictures(catalogue_item.id, catalogue_item.image_data_json)

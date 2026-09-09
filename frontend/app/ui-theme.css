@@ -10,10 +10,10 @@ body[data-ui-style="modern"] :is([role="dialog"], .floating-toolbar) { backgroun
 body[data-ui-style="modern"] .topbar { border-radius: 0 0 var(--ui-window-radius) var(--ui-window-radius); }
 body[data-ui-style="modern"] :is(.floating-toolbar-titlebar, .popup-titlebar, [role="dialog"] > header) { background: var(--ui-window-headerBackground); color: var(--deep); border-color: var(--line); }
 body[data-ui-style="modern"] :is(.modal-backdrop, .popup-backdrop) { background: var(--ui-window-backdrop); }
-body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize):not(.paint-shades button):not(.paint-family-picker button):not(.tile-palette-presets button)) {
+body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize):not(.paint-shades button):not(.paint-family-picker button):not(.tile-palette-presets button):not(.catalogue-material-entry)) {
   font-family: var(--font-sans); border-radius: var(--ui-button-radius); background-color: var(--ui-button-background); color: var(--ui-button-text); border-color: var(--line);
 }
-body[data-ui-style="modern"] button:hover:not(:disabled):not(.floating-toolbar-resize) { background-color: var(--ui-button-hoverBackground); }
+body[data-ui-style="modern"] button:hover:not(:disabled):not(.floating-toolbar-resize):not(.catalogue-material-entry) { background-color: var(--ui-button-hoverBackground); }
 body[data-ui-style="modern"] button:is(.active, .primary, .primary-small, .fixture-save, .person-update, .validate-button, [aria-selected="true"], [aria-pressed="true"]) {
   background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); border-color: var(--ui-button-activeBackground);
 }

@@ -1,5 +1,7 @@
 "use client";
 import { RoundedBox } from "@react-three/drei";
+import { RoomFurniture } from "@/components/RoomFurniture";
+import { KitchenFurniture } from "@/components/KitchenFurniture";
 import { Vector2, Vector3, CatmullRomCurve3, DoubleSide, Shape, Path } from "three";
 import { fixtureRepresentation } from "@/components/FixturePlanSymbol";
 import type { Obstacle } from "@/lib/types";
@@ -36,6 +38,8 @@ function Block({ position, size, colour = "#f4f3ef" }: { position: [number, numb
 /** Normalised render-only geometry: world millimetres are converted by the caller. */
 export function ParametricFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
   const key = fixtureRepresentation(obstacle);
+  if (/^furniture-(kitchen-|wardrobe-)/.test(key)) return <KitchenFurniture representation={key} colour={obstacle.color_hex ?? "#C7B69C"} width={width} depth={depth} height={height} />;
+  if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(key)) return <RoomFurniture representation={key} colour={obstacle.color_hex ?? "#b99b77"} width={width} depth={depth} height={height} />;
   const kind = obstacle.fixture_kind ?? key.split("-")[0].toUpperCase();
   const chrome = <meshStandardMaterial color="#bac4c3" metalness={.92} roughness={.16} />;
   const glass = <meshPhysicalMaterial color="#d5e8e8" transparent opacity={.25} roughness={.06} metalness={.05} depthWrite={false} side={DoubleSide} />;

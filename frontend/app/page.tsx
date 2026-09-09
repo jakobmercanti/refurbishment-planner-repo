@@ -54,6 +54,7 @@ export default function Home() {
   const [toolbarLayoutResetKey, setToolbarLayoutResetKey] = useState(0);
   const [fillToolbarLayout, setFillToolbarLayout] = useState(false);
   const [viewerFitRequest, setViewerFitRequest] = useState(0);
+  const [viewerElementEditRequest, setViewerElementEditRequest] = useState<{ id: string; roomId: string; requestId: number } | null>(null);
   const handleImportDrawing = useCallback((file: File) => setFloorplanImportFile(file), []);
   const setLayoutAnalysisToolbarVisible = useCallback((visible: boolean) => {
     setToolbarAvailability((current) => current["viewer-layout-analysis"] === visible ? current : { ...current, "viewer-layout-analysis": visible });
@@ -176,6 +177,15 @@ export default function Home() {
     if (!toolbarAvailability[id]) return;
     setToolbarVisibility((current) => ({ ...current, [id]: !current[id] }));
   }
+
+  const handleViewerElementSelected = useCallback((selection: { id: string; roomId: string } | null) => {
+    if (!selection) {
+      setViewerElementEditRequest(null);
+      return;
+    }
+    setViewerElementEditRequest((current) => ({ ...selection, requestId: (current?.requestId ?? 0) + 1 }));
+    setToolbarVisibility((current) => current["viewer-analysis"] ? current : { ...current, "viewer-analysis": true });
+  }, []);
 
   function enterViewer() {
     setMode("ANALYSIS");
@@ -305,12 +315,12 @@ export default function Home() {
       <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} importFile={floorplanImportFile} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={toolbarVisibility} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} /></section>
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
-          <EngineeringViewer key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} wallMode={wallMode} toolbarVisibility={toolbarVisibility} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} fitRequest={viewerFitRequest} />
+          <EngineeringViewer key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} onElementSelected={handleViewerElementSelected} wallMode={wallMode} toolbarVisibility={toolbarVisibility} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} fitRequest={viewerFitRequest} />
           {toolbarVisibility["viewer-room"] && <FloatingToolbar title="Room selector" defaultPosition={{ x: 18, y: 18 }} dock={fillToolbarLayout ? positionedToolbarDock("LEFT", 8, 158, 355) : { side: "LEFT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={240} onClose={() => toggleToolbar("viewer-room")}><div className="viewer-room-selector"><label>Room <select value={pendingSelection} onChange={(event) => setPendingViewerRoomSelection(event.target.value)}><option value={FULL_FLOORPLAN_SELECTION}>Full floorplan</option>{projectRooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label><button className="review-style-button" type="button" onClick={openViewerSelection}>Open selection in 3D</button></div></FloatingToolbar>}
           {toolbarVisibility["viewer-analysis"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 18, y: 112 }} dock={fillToolbarLayout ? positionedToolbarDock("RIGHT", 8, "calc(50% - 12px)", 355) : { side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-analysis")}><aside className="evidence-panel floating-evidence-panel">
             <p className="product-name">Add and check only the elements that belong in this bathroom.</p>
 
-            <CatalogueFixtureEditor key={demo.room.id} apiUrl={API_URL} refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)} room={demo.room} displayUnits={preferences.units} onChange={applyObstacles} />
+            <CatalogueFixtureEditor key={demo.room.id} apiUrl={API_URL} refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)} room={demo.room} displayUnits={preferences.units} onChange={applyObstacles} elementEditRequest={viewerElementEditRequest} />
           </aside></FloatingToolbar>}
           {toolbarVisibility["viewer-layout-analysis"] && <FloatingToolbar title="Layout analysis" defaultPosition={{ x: 380, y: 112 }} dock={fillToolbarLayout ? positionedToolbarDock("RIGHT", "calc(50% + 4px)", "calc(50% - 12px)", 355) : { side: "RIGHT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-layout-analysis")}><aside className="evidence-panel floating-evidence-panel">
             {(!layoutResult || analysisIsStale) && (

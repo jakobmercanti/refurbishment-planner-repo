@@ -4,10 +4,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { FixturePreview } from "@/components/FixturePreview";
 import { FlooringPreview } from "@/components/FlooringControls";
 import { defaultFloorDesign, FLOORING_COLLECTIONS, type FlooringPattern } from "@/lib/flooring";
 import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
-import type { CatalogueCategory, CatalogueItem, CatalogueItemInput, MaterialCollection } from "@/lib/types";
+import type { CatalogueCategory, CatalogueItem, CatalogueItemInput, MaterialCollection, MaterialFamily, MaterialItem } from "@/lib/types";
 
 interface CatalogueBrowserProps {
   apiUrl: string;
@@ -17,7 +18,23 @@ interface CatalogueBrowserProps {
   onInsert: (item: CatalogueItem) => void;
 }
 
+type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "living" | "bedroom" | "kitchen";
+type CatalogueDetailSelection =
+  | { type: "object"; item: CatalogueItem }
+  | { type: "material"; item: MaterialItem; family: MaterialFamily; collection: MaterialCollection };
+type CatalogueContextMenu = { x: number; y: number };
+
 const CATEGORY_KINDS: Record<string, CatalogueItemInput["fixture_kind"]> = {
+  "living-sofas": "FURNITURE", "living-armchairs": "FURNITURE", "living-tables": "FURNITURE",
+  "kitchen-sinks": "FURNITURE",
+  "kitchen-fridges": "FURNITURE",
+  "kitchen-islands": "FURNITURE",
+  "kitchen-storage": "FURNITURE",
+  "kitchen-hobs": "FURNITURE",
+  "kitchen-ovens": "FURNITURE",
+  "kitchen-washing": "FURNITURE",
+  "bedroom-wardrobes": "FURNITURE",
+  "bedroom-beds": "FURNITURE", "bedroom-chairs": "FURNITURE", "bedroom-tables": "FURNITURE",
   showers: "SHOWER",
   basins: "BASIN",
   toilets: "TOILET",
@@ -74,6 +91,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   const [navigationItems, setNavigationItems] = useState<CatalogueItem[]>([]);
   const [categoryId, setCategoryIdState] = useState<string>("");
   const [activeSubcategory, setActiveSubcategory] = useState("");
+  const [activeObjectGroup, setActiveObjectGroup] = useState<CatalogueObjectGroup>("bathroom");
   const [activeMaterialId, setActiveMaterialId] = useState<string | null>(null);
   const [activeMaterialFamilyId, setActiveMaterialFamilyId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -82,7 +100,9 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ fixtures: true, PAINT: true, TILE: true });
+  const [catalogueContextMenu, setCatalogueContextMenu] = useState<CatalogueContextMenu | null>(null);
   const [settingsCategory, setSettingsCategory] = useState<CatalogueCategory | null>(null);
+  const [detailEntry, setDetailEntry] = useState<CatalogueDetailSelection | null>(null);
   const [picturePending, setPicturePending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formStatus, setFormStatus] = useState("");
@@ -96,6 +116,9 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   const settingsDialog = useRef<HTMLFormElement>(null);
   const settingsFirstControl = useRef<HTMLInputElement>(null);
   const settingsOpener = useRef<HTMLElement | null>(null);
+  const detailDialog = useRef<HTMLElement>(null);
+  const detailCloseButton = useRef<HTMLButtonElement>(null);
+  const detailOpener = useRef<HTMLElement | null>(null);
   const setCategoryId = (value: string) => {
     setCategoryIdState(value);
     if (!value) setActiveSubcategory("");
@@ -109,11 +132,20 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   }, [open]);
 
   useEffect(() => {
-    if (!open || showForm || settingsCategory) return;
+    if (!open || showForm || settingsCategory || detailEntry) return;
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [onClose, open, settingsCategory, showForm]);
+  }, [detailEntry, onClose, open, settingsCategory, showForm]);
+
+  useEffect(() => {
+    if (!catalogueContextMenu) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setCatalogueContextMenu(null); };
+    const closeOnPointerDown = () => setCatalogueContextMenu(null);
+    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    return () => { document.removeEventListener("keydown", closeOnEscape); document.removeEventListener("pointerdown", closeOnPointerDown); };
+  }, [catalogueContextMenu]);
 
   useEffect(() => {
     if (!open) return;
@@ -178,9 +210,18 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     return () => { document.removeEventListener("keydown", keepFocusInside, true); if (settingsOpener.current?.isConnected) settingsOpener.current.focus(); };
   }, [settingsCategoryId]);
 
+  const detailEntryId = detailEntry ? `${detailEntry.type}:${detailEntry.item.id}` : null;
+  useEffect(() => {
+    if (!detailEntryId) return;
+    detailCloseButton.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); setDetailEntry(null); } };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => { document.removeEventListener("keydown", closeOnEscape); if (detailOpener.current?.isConnected) detailOpener.current.focus(); };
+  }, [detailEntryId]);
+
   if (!open) return null;
 
-  const catalogueMaterials = [...FLOORING_COLLECTIONS, ...materialCollections];
+  const catalogueMaterials = [...FLOORING_COLLECTIONS, ...materialCollections.filter((collection) => !(collection.kind === "TILE" && collection.id === "tiles-default"))];
   const activeMaterial = catalogueMaterials.find((collection) => collection.id === activeMaterialId);
   const activeMaterialFamily = activeMaterial?.families.find((family) => family.id === activeMaterialFamilyId);
   const visibleMaterialFamilies = activeMaterial
@@ -190,9 +231,59 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     : [];
   const activeCategory = categories.find((category) => category.id === form.category_id);
   const useCategoryClearances = form.side_clearance_mm === null && form.front_clearance_mm === null;
-  const nestedDialogOpen = showForm || settingsCategory !== null;
-  const bathroomFixtureCategories = categories.filter((category) => !["doors", "windows"].includes(category.id));
+  const nestedDialogOpen = showForm || settingsCategory !== null || detailEntry !== null;
+  const bathroomFixtureCategories = categories.filter((category) => ["showers", "basins", "toilets", "storage"].includes(category.id));
   const topLevelOpeningCategories = categories.filter((category) => ["doors", "windows"].includes(category.id));
+  const objectGroupCategories: Record<CatalogueObjectGroup, CatalogueCategory[]> = {
+    bathroom: bathroomFixtureCategories,
+    doors: categories.filter((category) => category.id === "doors"),
+    windows: categories.filter((category) => category.id === "windows"),
+    kitchen: categories.filter((category) => category.id.startsWith("kitchen-")),
+    living: categories.filter((category) => category.id.startsWith("living-")),
+    bedroom: categories.filter((category) => category.id.startsWith("bedroom-")),
+  };
+  const activeObjectGroupCategoryIds = new Set(objectGroupCategories[activeObjectGroup].map((category) => category.id));
+  const visibleObjectItems = items.filter((item) => activeObjectGroupCategoryIds.has(item.category_id));
+
+  function setAllCatalogueBranchesExpanded(value: boolean) {
+    // Keep this list derived from the same data that renders the navigation, so
+    // newly added catalogue sections are included in the bulk actions by default.
+    const branchKeys = [
+      "fixtures",
+      "doors",
+      "windows",
+      "kitchen",
+      "living",
+      "bedroom",
+      "PAINT",
+      "TILE",
+      ...categories.flatMap((category) => [
+        `category-${category.id}`,
+        `category-${category.id}-family`,
+      ]),
+      ...catalogueMaterials.map((collection) => `material-${collection.id}`),
+    ];
+    setExpanded((current) => Object.fromEntries([
+      ...Object.entries(current),
+      ...branchKeys.map((key) => [key, value]),
+    ]));
+    setCatalogueContextMenu(null);
+  }
+
+  function activateCatalogueMenuAction(event: React.SyntheticEvent<HTMLButtonElement>, value: boolean) {
+    event.preventDefault();
+    event.stopPropagation();
+    setAllCatalogueBranchesExpanded(value);
+  }
+
+  function openCatalogueContextMenu(event: React.MouseEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setCatalogueContextMenu({
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 180)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 105)),
+    });
+  }
 
   function setField<K extends keyof CatalogueItemInput>(key: K, value: CatalogueItemInput[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -233,6 +324,16 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     if (!category) return;
     settingsOpener.current = control;
     setSettingsCategory(category);
+  }
+
+  function openObjectDetails(item: CatalogueItem, control: HTMLElement) {
+    detailOpener.current = control;
+    setDetailEntry({ type: "object", item });
+  }
+
+  function openMaterialDetails(item: MaterialItem, family: MaterialFamily, collection: MaterialCollection, control: HTMLElement) {
+    detailOpener.current = control;
+    setDetailEntry({ type: "material", item, family, collection });
   }
 
   function importPictures(files: FileList | null) {
@@ -332,25 +433,103 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     setEditingId(null);
   }
 
-  function renderCategoryTree(category: CatalogueCategory) {
+  function selectObjectGroup(group: CatalogueObjectGroup, nextCategoryId = "", subcategory = "") {
+    setActiveObjectGroup(group);
+    setCategoryId(nextCategoryId);
+    setActiveSubcategory(subcategory);
+    setActiveMaterialId(null);
+    setActiveMaterialFamilyId(null);
+  }
+
+  function renderGroupAll(group: CatalogueObjectGroup) {
+    const groupCategories = objectGroupCategories[group];
+    const selected = activeObjectGroup === group && !categoryId && !activeSubcategory && !activeMaterial;
+    return <button className={selected ? "active" : ""} onClick={() => selectObjectGroup(group)}><span>All objects</span><small>{groupCategories.reduce((total, category) => total + category.item_count, 0)}</small></button>;
+  }
+
+  function renderCategoryTree(category: CatalogueCategory, group: CatalogueObjectGroup) {
     const subcategories = [...new Set(navigationItems.filter((item) => item.category_id === category.id).map((item) => item.subcategory))];
     const key = `category-${category.id}`;
     return <div key={category.id} className="catalogue-tree-item">
-      <button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setCategoryId(category.id); setActiveSubcategory(""); setActiveMaterialId(null); }} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>
-      {(expanded[key] ?? false) && <div id={`${key}-children`} className="catalogue-branch nested">{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => { setCategoryId(category.id); setActiveSubcategory(subcategory); setActiveMaterialId(null); }}><span>{subcategory}</span></button>)}</div>}
+      <button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); selectObjectGroup(group, category.id); }} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>
+      {(expanded[key] ?? false) && <div id={`${key}-children`} className="catalogue-branch nested">{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => selectObjectGroup(group, category.id, subcategory)}><span>{subcategory}</span></button>)}</div>}
     </div>;
   }
 
-  function renderOpeningCategory(category: CatalogueCategory) {
+  function renderOpeningCategory(category: CatalogueCategory, group: CatalogueObjectGroup) {
     const subcategories = [...new Set(navigationItems.filter((item) => item.category_id === category.id).map((item) => item.subcategory))];
     const key = `category-${category.id}`;
+    const familyKey = `${key}-family`;
+    const familyName = category.id === "doors" ? "Internal doors" : "Casement window";
     return <div key={category.id} className="catalogue-opening-category">
       <button className="catalogue-disclosure" aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) }))} title={category.description}><strong>{category.name}</strong><span aria-hidden>{expanded[key] ? "−" : "+"}</span></button>
       {expanded[key] && <div id={`${key}-children`} className="catalogue-branch">
-        <button className={categoryId === category.id && !activeSubcategory && !activeMaterial ? "active" : ""} onClick={() => { setCategoryId(category.id); setActiveSubcategory(""); setActiveMaterialId(null); }}><span>All objects</span><small>{category.item_count}</small></button>
-        {subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => { setCategoryId(category.id); setActiveSubcategory(subcategory); setActiveMaterialId(null); }}><span>{subcategory}</span></button>)}
+        {renderGroupAll(group)}
+        <div className="catalogue-opening-family">
+          <button className="catalogue-opening-family-toggle" aria-expanded={expanded[familyKey] ?? false} aria-controls={`${familyKey}-children`} onClick={() => { setExpanded((current) => ({ ...current, [familyKey]: !(current[familyKey] ?? false) })); selectObjectGroup(group, category.id); }}><strong>{familyName}</strong><span aria-hidden>{expanded[familyKey] ? "−" : "+"}</span></button>
+          {expanded[familyKey] && <div id={`${familyKey}-children`} className="catalogue-branch nested">{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => selectObjectGroup(group, category.id, subcategory)}><span>{subcategory}</span></button>)}</div>}
+        </div>
       </div>}
     </div>;
+  }
+
+  function renderDetailDialog() {
+    if (!detailEntry) return null;
+    if (detailEntry.type === "object") {
+      const { item } = detailEntry;
+      const category = categories.find((candidate) => candidate.id === item.category_id);
+      const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${/^(living|bedroom|kitchen)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
+      const isCabinet = /^furniture-(kitchen-|wardrobe-)/.test(item.representation_key ?? "");
+      const previewObstacle = { id: item.id, name: item.name, kind: "BOX" as const, fixture_kind: "FURNITURE" as const, representation_key: item.representation_key ?? undefined, center: { x: 0, y: 0 }, dimensions: { width: { value: item.width_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, depth: { value: item.depth_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, height: { value: item.height_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const } }, rotation_deg: 0, base_z_mm: 0, color_hex: item.color_hex, verified: false, source_type: "USER_MEASURED" as const };
+      const sideClearance = item.side_clearance_mm == null ? `${category?.default_side_clearance_mm ?? 0} mm (category default)` : `${item.side_clearance_mm} mm (entry override)`;
+      const frontClearance = item.front_clearance_mm == null ? `${category?.default_front_clearance_mm ?? 0} mm (category default)` : `${item.front_clearance_mm} mm (entry override)`;
+      return <div className="catalogue-form-backdrop catalogue-detail-backdrop"><section ref={detailDialog} className="catalogue-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="catalogue-detail-title" onKeyDown={trapFocus}>
+        <div className="catalogue-form-heading"><div><span className="eyebrow">Catalogue entry</span><h3 id="catalogue-detail-title">{item.name}</h3><p>{item.category_name} · {item.subcategory}</p></div><button ref={detailCloseButton} type="button" aria-label="Close catalogue entry details" onClick={() => setDetailEntry(null)}>×</button></div>
+        <div className="catalogue-detail-hero"><div className={`catalogue-detail-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${preview})` : undefined } as React.CSSProperties}>{!preview && <span />}{item.stl_filename && <b>STL</b>}</div><div><strong>{item.fixture_kind}</strong><p>{item.description || "No description provided."}</p></div></div>
+        {isCabinet && <section className="catalogue-detail-section"><h4>3D representation</h4><FixturePreview obstacle={previewObstacle} /><h4>2D plan representation</h4><img src={item.plan_symbol_url ?? undefined} alt={`${item.name} architectural plan`} style={{ width: "100%", maxHeight: 240, objectFit: "contain" }} /></section>}
+        <dl className="catalogue-detail-grid">
+          <div><dt>Database ID</dt><dd><code>{item.id}</code></dd></div>
+          <div><dt>Category</dt><dd>{item.category_name}</dd></div>
+          <div><dt>Subcategory</dt><dd>{item.subcategory}</dd></div>
+          <div><dt>Supplier</dt><dd>{item.supplier || "Not specified"}</dd></div>
+          <div><dt>SKU</dt><dd><code>{item.sku || "Not specified"}</code></dd></div>
+          <div><dt>Dimensions</dt><dd>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</dd></div>
+          <div><dt>Colour</dt><dd><span className="catalogue-detail-colour" style={{ background: item.color_hex }} /> <code>{item.color_hex.toUpperCase()}</code></dd></div>
+          <div><dt>Plan shape</dt><dd>{item.plan_shape}</dd></div>
+          <div><dt>Side clearance</dt><dd>{sideClearance}</dd></div>
+          <div><dt>Front clearance</dt><dd>{frontClearance}</dd></div>
+          <div><dt>Representation</dt><dd>{item.representation_key || "Generic / uploaded model"}{item.representation_version ? ` · v${item.representation_version}` : ""}</dd></div>
+          <div><dt>STL model</dt><dd>{item.stl_filename || (item.stl_base64 ? "Embedded model" : "Not provided")}</dd></div>
+          <div><dt>Status</dt><dd>{item.is_default ? "Built-in default" : "Supplier entry"} · {item.active ? "Active" : "Inactive"} · {item.supplier_editable ? "Editable" : "Read-only"}</dd></div>
+          <div><dt>Created</dt><dd>{new Date(item.created_at).toLocaleString()}</dd></div>
+          <div><dt>Updated</dt><dd>{new Date(item.updated_at).toLocaleString()}</dd></div>
+        </dl>
+        {(item.plan_symbol_data_url || item.plan_symbol_url) && <p className="catalogue-detail-link"><a href={item.plan_symbol_data_url || item.plan_symbol_url} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Open architectural plan symbol ↗</a>{item.plan_symbol_data_url && " · embedded in this entry"}</p>}
+        {item.images.length > 0 && <section className="catalogue-detail-section"><h4>Pictures</h4><div className="catalogue-detail-pictures">{item.images.map((image, index) => <img key={`${image.data_url}-${index}`} src={image.data_url} alt={image.alt} />)}</div></section>}
+        <div className="catalogue-form-actions"><button type="button" onClick={(event) => { const current = detailEntry; if (current?.type !== "object") return; setDetailEntry(null); beginEdit(current.item, event.currentTarget); }}>Edit entry</button><button type="button" className="catalogue-insert" onClick={() => setDetailEntry(null)}>Close</button></div>
+      </section></div>;
+    }
+
+    const { item, family, collection } = detailEntry;
+    const flooringPattern = typeof item.metadata.flooring_pattern === "string" ? item.metadata.flooring_pattern as FlooringPattern : null;
+    const tileMaterialId = typeof item.metadata.tile_material_id === "string" ? item.metadata.tile_material_id : undefined;
+    const woodId = typeof item.metadata.wood_id === "string" ? item.metadata.wood_id : undefined;
+    return <div className="catalogue-form-backdrop catalogue-detail-backdrop"><section ref={detailDialog} className="catalogue-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="catalogue-detail-title" onKeyDown={trapFocus}>
+      <div className="catalogue-form-heading"><div><span className="eyebrow">Material entry</span><h3 id="catalogue-detail-title">{item.name}</h3><p>{collection.name} · {family.name}</p></div><button ref={detailCloseButton} type="button" aria-label="Close material details" onClick={() => setDetailEntry(null)}>×</button></div>
+      <div className="catalogue-detail-hero"><div className="catalogue-detail-material-preview">{flooringPattern || woodId || tileMaterialId ? <FlooringPreview design={{ ...defaultFloorDesign(flooringPattern ?? (woodId ? "wood-plank" : "tile-square")), tile_material_id: tileMaterialId, tile_colour: item.color_hex, ...(woodId ? { wood_id: woodId } : {}) }} /> : <span style={{ background: item.color_hex }} />}</div><div><strong>{collection.kind === "TILE" ? "Flooring finish" : "Colour"}</strong><p>{collection.source_url ? "Sourced catalogue material." : "Built-in catalogue material."}</p></div></div>
+      <dl className="catalogue-detail-grid">
+        <div><dt>Database ID</dt><dd><code>{item.id}</code></dd></div>
+        <div><dt>Collection</dt><dd>{collection.name}</dd></div>
+        <div><dt>Family</dt><dd>{family.name}</dd></div>
+        <div><dt>Kind</dt><dd>{collection.kind}</dd></div>
+        <div><dt>Name</dt><dd>{item.name}</dd></div>
+        <div><dt>Code</dt><dd><code>{item.code || "Not specified"}</code></dd></div>
+        <div><dt>Colour HEX</dt><dd><span className="catalogue-detail-colour" style={{ background: item.color_hex }} /> <code>{item.color_hex.toUpperCase()}</code></dd></div>
+        <div><dt>Source</dt><dd>{collection.source_url ? <a href={collection.source_url} target="_blank" rel="noreferrer">Open source ↗</a> : "Built-in"}</dd></div>
+      </dl>
+      <section className="catalogue-detail-section"><h4>Stored metadata</h4><dl className="catalogue-detail-grid catalogue-detail-metadata">{Object.entries(item.metadata).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{typeof value === "object" ? JSON.stringify(value) : String(value)}</code></dd></div>)}</dl></section>
+      <div className="catalogue-form-actions"><button type="button" className="catalogue-insert" onClick={() => setDetailEntry(null)}>Close</button></div>
+    </section></div>;
   }
 
   return (
@@ -359,31 +538,41 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
         <header className="catalogue-header" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}><div><h2 id="catalogue-title">Object catalogue</h2><p>Browse fixtures, paints, wood colours and flooring. Apply finishes in Selected object controls.</p></div><button ref={closeButton} className="modal-close" onClick={onClose} aria-label="Close catalogue">×</button></header>
         {!activeMaterial && <div className="catalogue-toolbar" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}><label><span>Search catalogue</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, supplier or SKU" /></label></div>}
         <div className="catalogue-layout" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}>
-          <nav className="catalogue-categories" aria-label="Catalogue categories">
+          <nav className="catalogue-categories" aria-label="Catalogue categories" onContextMenu={openCatalogueContextMenu}>
             <button className="catalogue-disclosure" aria-expanded={expanded.fixtures} aria-controls="catalogue-fixtures" onClick={() => setExpanded((current) => ({ ...current, fixtures: !current.fixtures }))}><strong>Bathroom fixtures</strong><span aria-hidden>{expanded.fixtures ? "−" : "+"}</span></button>
             {expanded.fixtures && <div id="catalogue-fixtures" className="catalogue-branch">
-              <button className={!categoryId && !activeMaterial ? "active" : ""} onClick={() => { setCategoryId(""); setActiveSubcategory(""); setActiveMaterialId(null); }}><span>All objects</span><small>{categories.reduce((total, item) => total + item.item_count, 0)}</small></button>
-              {bathroomFixtureCategories.map(renderCategoryTree)}
+              {renderGroupAll("bathroom")}
+              {bathroomFixtureCategories.map((category) => renderCategoryTree(category, "bathroom"))}
             </div>}
-            {topLevelOpeningCategories.map(renderOpeningCategory)}
+            {topLevelOpeningCategories.map((category) => renderOpeningCategory(category, category.id as "doors" | "windows"))}
+            {(["kitchen", "living", "bedroom"] as const).map((group) => <div key={group}>
+              <button className="catalogue-disclosure" aria-expanded={expanded[group] ?? false} onClick={() => setExpanded((current) => ({ ...current, [group]: !current[group] }))}><strong>{group === "kitchen" ? "Kitchen" : group === "living" ? "Living Room" : "Bedroom"}</strong><span aria-hidden>{expanded[group] ? "−" : "+"}</span></button>
+              {expanded[group] && <div className="catalogue-branch">{renderGroupAll(group)}{categories.filter((category) => category.id.startsWith(group + "-")).map((category) => renderCategoryTree(category, group))}</div>}
+            </div>)}
             {(["PAINT", "TILE"] as const).map((kind) => <div key={kind}><button className="catalogue-disclosure" aria-expanded={expanded[kind]} aria-controls={`catalogue-${kind}`} onClick={() => setExpanded((current) => ({ ...current, [kind]: !current[kind] }))}><strong>{kind === "PAINT" ? "Paints & Colours" : "Flooring"}</strong><span aria-hidden>{expanded[kind] ? "−" : "+"}</span></button>{expanded[kind] && <div id={`catalogue-${kind}`} className="catalogue-branch">{catalogueMaterials.filter((collection) => collection.kind === kind).map((collection) => { const key = `material-${collection.id}`; return <div key={collection.id} className="catalogue-tree-item"><button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-families`} className={activeMaterialId === collection.id ? "active" : ""} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setActiveMaterialId(collection.id); setActiveMaterialFamilyId(null); setCategoryId(""); }}><span>{collection.name}</span><small>{collection.families.reduce((total, family) => total + family.items.length, 0)}</small></button>{(expanded[key] ?? false) && <div id={`${key}-families`} className="catalogue-branch nested">{collection.families.map((family) => <button key={family.id} className={activeMaterialFamilyId === family.id ? "active" : ""} aria-pressed={activeMaterialFamilyId === family.id} onClick={() => { setActiveMaterialId(collection.id); setActiveMaterialFamilyId(family.id); setCategoryId(""); document.getElementById(`family-${family.id}`)?.scrollIntoView({ block: "start" }); }}><span>{family.name}</span><small>{family.items.length}</small></button>)}</div>}</div>; })}</div>}</div>)}
           </nav>
+          {catalogueContextMenu && <div className="floorplan-context-menu catalogue-context-menu" role="menu" aria-label="Catalogue menu actions" style={{ left: catalogueContextMenu.x, top: catalogueContextMenu.y }} onPointerDown={(event) => event.stopPropagation()} onContextMenu={(event) => event.preventDefault()}>
+            <strong>Catalogue menu</strong>
+            <button type="button" role="menuitem" onPointerDown={(event) => activateCatalogueMenuAction(event, false)} onClick={(event) => activateCatalogueMenuAction(event, false)}>Collapse all</button>
+            <button type="button" role="menuitem" onPointerDown={(event) => activateCatalogueMenuAction(event, true)} onClick={(event) => activateCatalogueMenuAction(event, true)}>Expand all</button>
+          </div>}
           <div className="catalogue-results">
             {activeMaterial ? <>
               <div className="catalogue-result-heading"><strong>{activeMaterialFamily?.name ?? activeMaterial.name}</strong><span>{visibleMaterialFamilies.reduce((total, family) => total + family.items.length, 0)} {activeMaterial.kind === "TILE" ? "finishes" : "colours"}</span></div>
-              <div className={`catalogue-grid ${activeMaterial.id.startsWith("flooring-") ? "catalogue-flooring-grid" : ""}`}>{visibleMaterialFamilies.map((family) => <section id={`family-${family.id}`} key={family.id} className="catalogue-material-family"><h3>{family.name}</h3><div className="catalogue-material-swatches">{family.items.map((item) => <div key={item.id} className={item.metadata.flooring_pattern || item.metadata.wood_id ? "catalogue-pattern-swatch" : undefined} title={item.code ?? item.name}>{item.metadata.flooring_pattern || item.metadata.wood_id ? <FlooringPreview design={{ ...defaultFloorDesign((item.metadata.flooring_pattern as FlooringPattern) ?? "wood-plank"), ...(item.metadata.wood_id ? { wood_id: String(item.metadata.wood_id) } : {}) }} /> : <span style={{ background: item.color_hex }} />}<small>{item.name}</small><code>{item.color_hex.toUpperCase()}</code></div>)}</div></section>)}</div>
+              <div className={`catalogue-grid ${activeMaterial.id.startsWith("flooring-") ? "catalogue-flooring-grid" : ""}`}>{visibleMaterialFamilies.map((family) => <section id={`family-${family.id}`} key={family.id} className="catalogue-material-family"><h3>{family.name}</h3><div className="catalogue-material-swatches">{family.items.map((item) => { const pattern = item.metadata.flooring_pattern || item.metadata.wood_id; return <button type="button" key={item.id} className={`catalogue-material-entry ${pattern ? "catalogue-pattern-swatch" : ""}`} title={item.code ?? item.name} aria-label={`View details for ${item.name}`} onClick={(event) => openMaterialDetails(item, family, activeMaterial, event.currentTarget)}>{pattern ? <><FlooringPreview design={{ ...defaultFloorDesign((item.metadata.flooring_pattern as FlooringPattern) ?? "wood-plank"), ...(item.metadata.wood_id ? { wood_id: String(item.metadata.wood_id) } : {}) }} /><small>{item.name}</small><code>{item.color_hex.toUpperCase()}</code></> : <><span style={{ background: item.color_hex }} /><div className="catalogue-material-text"><small>{item.name}</small><code>{item.color_hex.toUpperCase()}</code></div></>}</button>; })}</div></section>)}</div>
             </> : <>
-              <div className="catalogue-result-heading"><strong>{activeSubcategory || (categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects")}</strong><span>{items.length} result{items.length === 1 ? "" : "s"}</span></div>
+              <div className="catalogue-result-heading"><strong>{activeSubcategory || (categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects")}</strong><span>{visibleObjectItems.length} result{visibleObjectItems.length === 1 ? "" : "s"}</span></div>
               {categoryId && <button className="category-settings-button" onClick={(event) => openCategorySettings(categories.find((item) => item.id === categoryId) ?? null, event.currentTarget)}>Category settings…</button>}
-              {items.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{items.map((item) => {
-                const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.png` : undefined);
+              {visibleObjectItems.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{visibleObjectItems.map((item) => {
+                const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${/^(living|bedroom|kitchen)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
                 const isOpening = item.fixture_kind === "DOOR" || item.fixture_kind === "WINDOW";
-                return <article key={item.id}><div className={`catalogue-object-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${preview})` : undefined } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name} · {item.subcategory}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3>{(item.plan_symbol_data_url || item.plan_symbol_url) && <a className="catalogue-plan-link" href={item.plan_symbol_data_url || item.plan_symbol_url} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Architectural plan symbol ↗</a>}<p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions"><button onClick={(event) => beginEdit(item, event.currentTarget)}>Edit entry</button><button className="catalogue-insert" disabled={isOpening} title={isOpening ? "Add this opening from the 2D Add elements window." : undefined} onClick={() => { if (!isOpening) { onInsert(item); onClose(); } }}>{isOpening ? "Use in 2D Add elements" : "Add to room"}</button></div></div></article>;
+                return <article key={item.id} tabIndex={0} role="button" aria-label={`View details for ${item.name}`} onClick={(event) => { if ((event.target as HTMLElement).closest("button, a")) return; openObjectDetails(item, event.currentTarget); }} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openObjectDetails(item, event.currentTarget); } }}><div className={`catalogue-object-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${preview})` : undefined } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name} · {item.subcategory}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3>{(item.plan_symbol_data_url || item.plan_symbol_url) && <a className="catalogue-plan-link" href={item.plan_symbol_data_url || item.plan_symbol_url} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Architectural plan symbol ↗</a>}<p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions"><button onClick={(event) => beginEdit(item, event.currentTarget)}>Edit entry</button><button className="catalogue-insert" disabled={isOpening} title={isOpening ? "Add this opening from the 2D Add elements window." : undefined} onClick={() => { if (!isOpening) { onInsert(item); onClose(); } }}>{isOpening ? "Use in 2D Add elements" : "Add to room"}</button></div></div></article>;
               })}</div>}
             </>}
           </div>
         </div>
 
+        {renderDetailDialog()}
         {showForm && <div className="catalogue-form-backdrop"><form ref={supplierDialog} className="catalogue-form" role="dialog" aria-modal="true" aria-labelledby="supplier-catalogue-title" onSubmit={(event) => { event.preventDefault(); void saveEntry(); }}><div className="catalogue-form-heading"><div><span className="eyebrow">Supplier catalogue</span><h3 id="supplier-catalogue-title">{editingId ? "Modify entry" : "Add new entry"}</h3></div><button type="button" aria-label="Close supplier catalogue form" onClick={() => setShowForm(false)}>×</button></div><div className="catalogue-form-grid">
           <label className="field"><span>Category</span><select ref={supplierFirstControl} value={form.category_id} onChange={(event) => { const next = event.target.value; setForm((current) => ({ ...current, category_id: next, fixture_kind: CATEGORY_KINDS[next] })); }}>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
           <label className="field"><span>Colour</span><input type="color" value={form.color_hex} onChange={(event) => setField("color_hex", event.target.value)} /></label>

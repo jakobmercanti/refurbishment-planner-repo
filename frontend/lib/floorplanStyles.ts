@@ -43,8 +43,8 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .opening-gap{stroke:#fff;stroke-width:var(--opening-gap-width,14px)}
 .${root} .opening-jamb{stroke-width:1.4}
 .${root} .door-closed-line{display:none}
-.${root} .door-leaf{stroke:#606060;stroke-width:1.15}
-.${root} .door-swing{stroke:#777;stroke-width:1;stroke-dasharray:none}
+.${root} .door-leaf{stroke:var(--door-colour,#606060);stroke-width:1.15}
+.${root} .door-swing{stroke:var(--door-colour,#777);stroke-width:1;stroke-dasharray:none}
 .${root} .window-frame{stroke:#151515;stroke-width:1.25}
 .${root} .window-core{stroke:#777;stroke-width:.8}
 .${root} .window-jamb{stroke-width:1.2}
@@ -73,8 +73,8 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .room-name-editor input{color:#164e48;font-family:Arial,sans-serif}
 .${root} .export-room-name{fill:#164e48;font-family:Arial,sans-serif}
 .${root} .vertex-handle{stroke:#155d55;fill:#f8fffe}
-.${root} .door-leaf{stroke:#ae8760;stroke-width:2.5}
-.${root} .door-swing{stroke:#9eaa9f;stroke-dasharray:none;opacity:.7}
+.${root} .door-leaf{stroke:var(--door-colour,#ae8760);stroke-width:2.5}
+.${root} .door-swing{stroke:var(--door-colour,#9eaa9f);stroke-dasharray:none;opacity:.7}
 .${root} .opening-dimension{color:#168a79}
 .${root} .opening-dimension-label{fill:#126e61}
 .${root} .window-frame,.${root} .window-jamb{stroke:#2c7dbc}
@@ -102,8 +102,8 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .room-name-editor input{color:#6c4d23;font-family:Georgia,serif}
 .${root} .export-room-name{fill:#6c4d23;font-family:Georgia,serif}
 .${root} .vertex-handle{stroke:#b36b32;fill:#fff2d3}
-.${root} .door-leaf{stroke:#bba083;stroke-width:2.5}
-.${root} .door-swing{stroke:#a9b09d;stroke-dasharray:none;opacity:.65}
+.${root} .door-leaf{stroke:var(--door-colour,#bba083);stroke-width:2.5}
+.${root} .door-swing{stroke:var(--door-colour,#a9b09d);stroke-dasharray:none;opacity:.65}
 .${root} .opening-dimension{color:#b35c35}
 .${root} .opening-dimension-label{fill:#9d4b29}
 .${root} .window-frame,.${root} .window-jamb{stroke:#5d83a5}

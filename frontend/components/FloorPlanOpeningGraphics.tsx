@@ -11,6 +11,7 @@ export type FloorPlanOpeningGraphic = {
   doorType?: "SINGLE" | "DOUBLE";
   hingeSide?: "START" | "END";
   opensInward?: boolean;
+  colorHex?: string;
   windowPaneCount?: 1 | 2 | 3;
 };
 
@@ -58,7 +59,7 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   if (!shape) return null;
   const { startModel, endModel, start, end, perpendicular, modelNormal } = shape;
   const { gapWidth, jambHalf } = openingRenderWidths(wallThicknessScreen);
-  const style = { "--opening-gap-width": `${gapWidth}px` } as CSSProperties;
+  const style = { "--opening-gap-width": `${gapWidth}px`, ...(opening.colorHex ? { "--door-colour": opening.colorHex } : {}) } as CSSProperties;
   const className = selected ? " selected" : "";
   if (opening.kind === "WINDOW") {
     const paneCount = Math.max(1, Math.min(3, opening.windowPaneCount ?? 1));

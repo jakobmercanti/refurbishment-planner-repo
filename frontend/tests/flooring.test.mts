@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultFloorDesign, flooringSwatch, floorDesignColour, normalizeFloorDesign, WOOD_COLOURS, FLOORING_PATTERNS, FLOORING_COLLECTIONS } from "../lib/flooring.ts";
+import { defaultFloorDesign, flooringSwatch, floorDesignColour, normalizeFloorDesign, WOOD_COLOURS, FLOORING_PATTERNS, FLOORING_COLLECTIONS, TILE_MATERIALS } from "../lib/flooring.ts";
+
+test("all twenty tile materials survive saving and produce distinct deterministic textures", () => {
+  assert.equal(TILE_MATERIALS.length, 20);
+  const textures = TILE_MATERIALS.map((tile) => {
+    const design = normalizeFloorDesign({ ...defaultFloorDesign(), tile_material_id: tile.id, tile_colour: tile.colour });
+    assert.deepEqual(normalizeFloorDesign(JSON.parse(JSON.stringify(design))), design);
+    const swatch = flooringSwatch(design);
+    assert.equal(swatch.svg, flooringSwatch(design).svg);
+    assert.ok(!/NaN|Infinity/.test(swatch.svg));
+    return swatch.svg;
+  });
+  assert.equal(new Set(textures).size, 20);
+  assert.ok(!("tile_material_id" in normalizeFloorDesign({ ...defaultFloorDesign(), tile_material_id: "missing" })));
+});
 
 test("catalogue supplies fifteen distinct woods and all requested flooring shapes", () => {
   assert.equal(WOOD_COLOURS.length, 15);

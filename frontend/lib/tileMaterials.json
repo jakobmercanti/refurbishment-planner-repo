@@ -1,0 +1,142 @@
+[
+  {
+    "id": "terracotta",
+    "name": "Terracotta · matt",
+    "colour": "#B66B49",
+    "finish": "matt",
+    "pattern": "mottle"
+  },
+  {
+    "id": "natural-stone",
+    "name": "Natural stone · honed",
+    "colour": "#ABA394",
+    "finish": "honed",
+    "pattern": "vein"
+  },
+  {
+    "id": "quartz",
+    "name": "Quartz · polished",
+    "colour": "#DFDCD3",
+    "finish": "polished",
+    "pattern": "speckle"
+  },
+  {
+    "id": "clay-brown",
+    "name": "Clay brown · rustic",
+    "colour": "#885C46",
+    "finish": "rustic",
+    "pattern": "mottle"
+  },
+  {
+    "id": "soft-taupe",
+    "name": "Soft taupe · satin",
+    "colour": "#B4A496",
+    "finish": "satin",
+    "pattern": "mottle"
+  },
+  {
+    "id": "limestone",
+    "name": "Limestone · honed",
+    "colour": "#D5C9AC",
+    "finish": "honed",
+    "pattern": "speckle"
+  },
+  {
+    "id": "travertine",
+    "name": "Travertine · tumbled",
+    "colour": "#C9AD87",
+    "finish": "tumbled",
+    "pattern": "vein"
+  },
+  {
+    "id": "slate",
+    "name": "Slate charcoal · textured",
+    "colour": "#4C5355",
+    "finish": "textured",
+    "pattern": "vein"
+  },
+  {
+    "id": "checkerboard",
+    "name": "Checkerboard · satin",
+    "colour": "#F0EADF",
+    "finish": "satin",
+    "pattern": "checker"
+  },
+  {
+    "id": "heritage",
+    "name": "Heritage blue & cream · matt",
+    "colour": "#E8DDC5",
+    "finish": "matt",
+    "pattern": "heritage"
+  },
+  {
+    "id": "marble-white",
+    "name": "White marble · polished",
+    "colour": "#EDEDE8",
+    "finish": "polished",
+    "pattern": "vein"
+  },
+  {
+    "id": "marble-black",
+    "name": "Black marble · polished",
+    "colour": "#303333",
+    "finish": "polished",
+    "pattern": "vein"
+  },
+  {
+    "id": "granite",
+    "name": "Grey granite · polished",
+    "colour": "#949995",
+    "finish": "polished",
+    "pattern": "speckle"
+  },
+  {
+    "id": "terrazzo",
+    "name": "Ivory terrazzo · honed",
+    "colour": "#DDD5C4",
+    "finish": "honed",
+    "pattern": "speckle"
+  },
+  {
+    "id": "concrete",
+    "name": "Concrete grey · matt",
+    "colour": "#A5A39D",
+    "finish": "matt",
+    "pattern": "mottle"
+  },
+  {
+    "id": "porcelain-white",
+    "name": "White porcelain · gloss",
+    "colour": "#F5F4EE",
+    "finish": "gloss",
+    "pattern": "plain"
+  },
+  {
+    "id": "porcelain-cream",
+    "name": "Cream porcelain · satin",
+    "colour": "#E7D9BF",
+    "finish": "satin",
+    "pattern": "plain"
+  },
+  {
+    "id": "sandstone",
+    "name": "Sandstone · textured",
+    "colour": "#CCB184",
+    "finish": "textured",
+    "pattern": "mottle"
+  },
+  {
+    "id": "heritage-green",
+    "name": "Heritage green & ivory · matt",
+    "colour": "#E9E2CD",
+    "finish": "matt",
+    "pattern": "heritage"
+  },
+  {
+    "id": "ceramic-blue",
+    "name": "Blue ceramic · glazed",
+    "colour": "#486D85",
+    "finish": "gloss",
+    "pattern": "mottle"
+  }
+]

@@ -267,7 +267,13 @@ def test_double_door_requires_door_fields() -> None:
 def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
     categories = client.get("/catalog/categories")
     assert categories.status_code == 200
-    assert {category["id"] for category in categories.json()} == {"showers", "basins", "toilets", "storage", "doors", "windows"}
+    assert {category["id"] for category in categories.json()} == {
+        "showers", "basins", "toilets", "storage", "doors", "windows",
+        "living-sofas", "living-armchairs", "living-tables",
+        "bedroom-beds", "bedroom-chairs", "bedroom-tables",
+        "bedroom-wardrobes", "kitchen-sinks", "kitchen-fridges", "kitchen-islands",
+        "kitchen-storage", "kitchen-hobs", "kitchen-ovens", "kitchen-washing",
+    }
     category_defaults = {category["id"]: category for category in categories.json()}
     assert category_defaults["toilets"]["default_side_clearance_mm"] == 200
     assert category_defaults["toilets"]["default_front_clearance_mm"] == 400
@@ -287,11 +293,14 @@ def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
     assert paint_collections.status_code == 200
     paints = {collection["id"]: collection for collection in paint_collections.json()}
     assert {"paints-default", "paints-dulux"}.issubset(paints)
+    tile_materials = [item for family in paints["tile-materials"]["families"] for item in family["items"]]
+    assert len(tile_materials) == 20
+    assert len({item["metadata"]["tile_material_id"] for item in tile_materials}) == 20
     assert sum(len(family["items"]) for family in paints["paints-default"]["families"]) >= 200
     assert sum(len(family["items"]) for family in paints["paints-dulux"]["families"]) > 0
     tiles = client.get("/catalog/materials?kind=TILE")
     assert tiles.status_code == 200
-    assert tiles.json()[0]["id"] == "tiles-default"
+    assert tiles.json() == []
 
     suffix = uuid4().hex[:8]
     payload = {

@@ -1,4 +1,6 @@
 import type { MaterialCollection } from "./types";
+import tileMaterials from "./tileMaterials.json" with { type: "json" };
+export const TILE_MATERIALS = tileMaterials;
 
 export const WOOD_COLOURS = [
   { id: "natural-oak", name: "Natural oak", base: "#b89a70", grain: "#786044", seed: 11 },
@@ -31,6 +33,7 @@ export const FLOORING_PATTERNS = [
 ] as const;
 export type FlooringPattern = typeof FLOORING_PATTERNS[number]["id"];
 export interface FloorDesign {
+  tile_material_id?: string;
   pattern: FlooringPattern;
   width_mm: number;
   length_mm: number;
@@ -51,7 +54,9 @@ const colour = (value: string, fallback: string) => /^#[\da-f]{6}$/i.test(value)
 export function normalizeFloorDesign(input: FloorDesign): FloorDesign {
   const fallback = defaultFloorDesign(input.pattern);
   const width = bounded(input.width_mm, fallback.width_mm, 20, 3000);
-  return { ...fallback, ...input, pattern: fallback.pattern,
+  const { tile_material_id, ...settings } = input;
+  return { ...fallback, ...settings, pattern: fallback.pattern,
+    ...(TILE_MATERIALS.some((tile) => tile.id === tile_material_id) ? { tile_material_id } : {}),
     width_mm: width, length_mm: fallback.pattern === "tile-square" || fallback.pattern === "wood-hexagonal" ? width : bounded(input.length_mm, fallback.length_mm, width, 6000),
     rotation_deg: ((bounded(input.rotation_deg, 0, -36000, 36000) % 360) + 360) % 360,
     wood_id: WOOD_COLOURS.some((w) => w.id === input.wood_id) ? input.wood_id : fallback.wood_id,
@@ -71,6 +76,7 @@ export function flooringSwatch(input: FloorDesign): { width: number; height: num
   const d = normalizeFloorDesign(input), w = d.width_mm, l = d.length_mm;
   const wood = d.pattern.startsWith("wood-") ? WOOD_COLOURS.find((c) => c.id === d.wood_id)! : null;
   const base = wood?.base ?? d.tile_colour;
+  const tile = !wood ? TILE_MATERIALS.find((tile) => tile.id === d.tile_material_id) : undefined;
   let width = l, height = w * 2;
   const shapes: string[] = [];
   let serial = 0;
@@ -91,7 +97,15 @@ export function flooringSwatch(input: FloorDesign): { width: number; height: num
       return `<path d="M${-length} ${gy} C${length * .2} ${gy + bend} ${length * .23} ${gy - bend} ${length * .5} ${gy} S${length * .8} ${gy + bend} ${length * 2} ${gy + bend}" fill="none" stroke="${wood.grain}" stroke-opacity="${.16 + j % 3 * .08}" stroke-width="${Math.max(.4, breadth / 130)}"/>`;
     }).join("") : "";
     const knot = wood && seed % 3 === 0 ? `<ellipse cx="${length * .37}" cy="${breadth * .55}" rx="${Math.min(length * .1, breadth * .35)}" ry="${breadth * .09}" fill="none" stroke="${wood.grain}" stroke-opacity=".3" stroke-width="${breadth / 90}"/>` : "";
-    shapes.push(`<g transform="translate(${x} ${y}) rotate(${angle})"><defs><clipPath id="b${n}">${outline}/></clipPath></defs>${outline} fill="${base}"/><g clip-path="url(#b${n})"><g transform="rotate(${grainAngle} ${length / 2} ${breadth / 2})">${grain}${knot}</g><rect width="${length}" height="${breadth}" fill="${seed % 2 ? "#fff" : "#000"}" opacity="${wood ? .025 + (seed % 5) * .012 : .012}"/></g>${outline} fill="none" stroke="${d.grout_colour}" stroke-width="${d.grout_mm}"/></g>`);
+    let texture = "";
+    const accent = tile?.id === "heritage-green" ? "#49675A" : "#365573";
+    if (tile?.pattern === "checker" && (variation ?? n) % 2 !== 0) texture = `<rect width="${length}" height="${breadth}" fill="#303437"/>`;
+    if (tile?.pattern === "heritage") texture = `<path d="M${length/2} 0 L${length} ${breadth/2} L${length/2} ${breadth} L0 ${breadth/2} Z" fill="none" stroke="${accent}" stroke-width="${breadth*.08}"/><circle cx="${length/2}" cy="${breadth/2}" r="${Math.min(length,breadth)*.19}" fill="${accent}"/>`;
+    if (tile && ["vein", "speckle", "mottle"].includes(tile.pattern)) texture = Array.from({length: 36}, (_, j) => {
+      const px = ((j*73+seed*11)%997)/997*length, py = ((j*137+seed*17)%991)/991*breadth;
+      return tile.pattern === "vein" ? `<path d="M0 ${py} Q${length*.4} ${py+breadth*.18} ${length} ${py-breadth*.08}" fill="none" stroke="#786F63" stroke-opacity=".17" stroke-width="${breadth*.004}"/>` : `<circle cx="${px}" cy="${py}" r="${breadth*(tile.pattern === "speckle" ? .014 : .08)}" fill="${j%2 ? "#fff" : "#625B51"}" opacity="${tile.pattern === "speckle" ? .3 : .04}"/>`;
+    }).join("");
+    shapes.push(`<g transform="translate(${x} ${y}) rotate(${angle})"><defs><clipPath id="b${n}">${outline}/></clipPath></defs>${outline} fill="${base}"/><g clip-path="url(#b${n})"><g transform="rotate(${grainAngle} ${length / 2} ${breadth / 2})">${grain}${knot}${texture}</g><rect width="${length}" height="${breadth}" fill="${seed % 2 ? "#fff" : "#000"}" opacity="${wood ? .025 + (seed % 5) * .012 : .012}"/></g>${outline} fill="none" stroke="${d.grout_colour}" stroke-width="${d.grout_mm}"/></g>`);
   }
   if (diagonal) {
     // Basis (w,-w), (l,l) tiles for ANY board aspect ratio. Consumers undo
@@ -137,7 +151,8 @@ export function flooringSwatch(input: FloorDesign): { width: number; height: num
     }
   } else {
     const stagger = d.pattern === "wood-plank";
-    for (let row = 0; row < 2; row++) for (let col = -1; col < 2; col++) board(col * l + (stagger && row % 2 ? l / 2 : 0), row * w, l, w, 0, undefined, 0, row);
+    if (tile?.pattern === "checker") width = l * 2;
+    for (let row = 0; row < 2; row++) for (let col = -1; col < 3; col++) board(col * l + (stagger && row % 2 ? l / 2 : 0), row * w, l, w, 0, undefined, 0, tile?.pattern === "checker" ? Math.abs(row + col) : row);
   }
   const svg = `<svg preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" width="${Math.max(64, Math.round(1024 * width / Math.max(width, height)))}" height="${Math.max(64, Math.round(1024 * height / Math.max(width, height)))}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${base}"/><g${diagonal ? ' transform="matrix(.5 .5 -.5 .5 0 0)"' : ""}>${shapes.join("")}</g></svg>`.replace(/-?\d+\.\d{4,}/g, (value) => Number(value).toFixed(3));
   return { width, height, svg, url: `data:image/svg+xml,${encodeURIComponent(svg)}`, diagonal };

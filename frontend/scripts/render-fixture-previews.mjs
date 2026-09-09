@@ -14,7 +14,7 @@ const browser = await chromium.launch({headless:true, channel:process.env.PREVIE
 try {
   const page = await browser.newPage({viewport:{width:640,height:640},deviceScaleFactor:1});
   page.on("pageerror", error => { throw error; });
-  for (const item of items.filter(item => item.is_default && item.representation_key)) {
+  for (const item of items.filter(item => item.is_default && item.representation_key && (!process.env.PREVIEW_KEY_PREFIX || item.representation_key.startsWith(process.env.PREVIEW_KEY_PREFIX)))) {
     const query = new URLSearchParams({key:item.representation_key,width:String(item.width_mm),depth:String(item.depth_mm),height:String(item.height_mm)});
     await page.goto(`${origin}/fixture-studio?${query}`,{waitUntil:"networkidle"});
     await page.locator("canvas").waitFor();

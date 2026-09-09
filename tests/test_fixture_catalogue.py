@@ -22,7 +22,7 @@ def test_generic_catalogue_hierarchy_assets_and_idempotence():
         seed_fixture_defaults(session)
         session.commit()
         items = session.scalars(select(FurnitureItemRecord)).all()
-        assert len(items) == 23
+        assert len(items) == 57
         for category, (_, variants) in FIXTURE_DEFAULTS.items():
             assert 1 <= len(variants) <= 10
             assert {item.subcategory for item in items if item.category_id == category} == {v[1] for v in variants}
@@ -35,7 +35,7 @@ def test_generic_catalogue_hierarchy_assets_and_idempotence():
         session.commit()
         seed_fixture_defaults(session)
         session.commit()
-        assert len(session.scalars(select(FurnitureItemRecord)).all()) == 23
+        assert len(session.scalars(select(FurnitureItemRecord)).all()) == 57
         assert items[0].width_mm == 777
         assert items[0].name == "Edited default"
 
@@ -70,6 +70,9 @@ def test_rendered_previews_are_persisted_and_preserve_customisations(tmp_path, m
         items[0].width_mm = 777
         install_fixture_previews(session)
         for item in items:
+            if not (Path("frontend/public/fixture-previews") / f"{item.representation_key}.png").is_file():
+                assert (Path("frontend/public/fixture-previews") / f"{item.representation_key}.svg").is_file()
+                continue
             picture = json.loads(item.image_data_json)[0]
             stored = tmp_path / "catalogue-assets" / item.id / picture["filename"]
             assert hashlib.sha256(stored.read_bytes()).hexdigest() == picture["sha256"]

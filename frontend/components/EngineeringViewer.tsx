@@ -3,8 +3,9 @@
 import { ParametricFixture } from "@/components/ParametricFixture";
 import { Popup } from "@/components/Popup";
 import { FlooringControls } from "@/components/FlooringControls";
+import { RoomFurniture } from "@/components/RoomFurniture";
 import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
-import { floorDesignColour, flooringSwatch, normalizeFloorDesign } from "@/lib/flooring";
+import { floorDesignColour, flooringSwatch, normalizeFloorDesign, TILE_MATERIALS } from "@/lib/flooring";
 import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -36,6 +37,8 @@ interface Toggles {
 type CameraView = "perspective" | "top" | "bottom" | "left" | "right" | "eye";
 type ProjectionMode = "perspective" | "parallel";
 type CaptureFormat = "png" | "jpg" | "pdf";
+type LightingSettings = { intensity: number; shadows: number; direction: number; elevation: number };
+const DEFAULT_LIGHTING: LightingSettings = { intensity: 100, shadows: 100, direction: 109, elevation: 55 };
 
 interface SaveFileWritable {
   write(data: Blob): Promise<void>;
@@ -61,6 +64,7 @@ interface ViewerProps {
   onObstaclesChange: (obstacles: Obstacle[], roomId?: string) => void;
   onFinishesChange: (finishes: RoomFinishes, roomId?: string) => void;
   onPersonChange: (person: PersonMockup | null, roomId?: string) => void;
+  onElementSelected?: (selection: { id: string; roomId: string } | null) => void;
   wallMode: WallViewMode;
   toolbarVisibility: ToolbarVisibility;
   toolbarAvailability: ToolbarVisibility;
@@ -362,6 +366,8 @@ function WallPiece({
     <group ref={groupRef}>
       {!paintOnly && wallMode !== "CUTAWAY_2D" && <mesh
         ref={solidMeshRef}
+        castShadow={wallMode !== "TRANSPARENT"}
+        receiveShadow
         position={[0, base * SCALE, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
@@ -377,11 +383,12 @@ function WallPiece({
           -innerCentre.y * SCALE - vector.dx * paintOffset,
         ]}
         rotation={[0, vector.angle, 0]}
+        castShadow={wallMode !== "TRANSPARENT"}
         receiveShadow
         onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
       >
         <planeGeometry args={[length * SCALE, height * SCALE]} />
-        <meshBasicMaterial color={selected ? "#b76d16" : colour} toneMapped={false} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
+        <meshStandardMaterial color={colour} roughness={0.88} metalness={0} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>
     </group>
   );
@@ -584,7 +591,7 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
         <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
-        {swatch ? <ProceduralFloorMaterial url={swatch.url} selected={selected} /> : renderedTile ? (
+        {swatch ? <ProceduralFloorMaterial url={swatch.url} selected={selected} roughness={design && !design.pattern.startsWith("wood-") ? ({ polished: .18, gloss: .12, satin: .4, honed: .6, matt: .8, textured: .95, rustic: .9, tumbled: .9 }[TILE_MATERIALS.find((tile) => tile.id === design.tile_material_id)?.finish ?? "matt"] ?? .78) : .78} /> : renderedTile ? (
           <shaderMaterial
             uniforms={tileUniforms}
             vertexShader={FLOOR_VERTEX_SHADER}
@@ -676,6 +683,9 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
   }
 
   if (fixtureKind === "FURNITURE") {
+    if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(obstacle.representation_key ?? "")) {
+      return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<RoomFurniture representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} width={width} depth={depth} height={height} /></group>;
+    }
     const isBench = obstacle.model_id?.includes("bench");
     return (
       <group position={position} rotation={rotation} {...interactionProps}>
@@ -716,11 +726,13 @@ function DoorSwingLeaf({
   initial,
   direction,
   radius,
+  colour,
 }: {
   hinge: Point2D;
   initial: number;
   direction: number;
   radius: number;
+  colour: string;
 }) {
   const shape = new THREE.Shape();
   shape.moveTo(hinge.x * SCALE, hinge.y * SCALE);
@@ -735,7 +747,7 @@ function DoorSwingLeaf({
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.018, 0]}>
       <shapeGeometry args={[shape]} />
-      <meshStandardMaterial color="#e5a51b" transparent opacity={0.28} side={THREE.DoubleSide} depthWrite={false} />
+      <meshStandardMaterial color={colour} transparent opacity={0.28} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   );
 }
@@ -750,11 +762,12 @@ function DoorSwing({ room, door }: { room: Room; door: Opening }) {
   const endX = startX + vector.dx * door.width.value;
   const endY = startY + vector.dy * door.width.value;
   const inward = door.opens_inward !== false;
+  const colour = typeof door.metadata?.color_hex === "string" && /^#[\da-f]{6}$/i.test(door.metadata.color_hex) ? door.metadata.color_hex : "#e5a51b";
   if (door.door_type === "DOUBLE") {
     return (
       <>
-        <DoorSwingLeaf hinge={{ x: startX, y: startY }} initial={vector.angle} direction={inward ? 1 : -1} radius={door.width.value / 2} />
-        <DoorSwingLeaf hinge={{ x: endX, y: endY }} initial={vector.angle + Math.PI} direction={inward ? -1 : 1} radius={door.width.value / 2} />
+        <DoorSwingLeaf hinge={{ x: startX, y: startY }} initial={vector.angle} direction={inward ? 1 : -1} radius={door.width.value / 2} colour={colour} />
+        <DoorSwingLeaf hinge={{ x: endX, y: endY }} initial={vector.angle + Math.PI} direction={inward ? -1 : 1} radius={door.width.value / 2} colour={colour} />
       </>
     );
   }
@@ -762,7 +775,7 @@ function DoorSwing({ room, door }: { room: Room; door: Opening }) {
   const hinge = hingeStart ? { x: startX, y: startY } : { x: endX, y: endY };
   const initial = Math.atan2(hingeStart ? vector.dy : -vector.dy, hingeStart ? vector.dx : -vector.dx);
   const direction = hingeStart ? (inward ? 1 : -1) : (inward ? -1 : 1);
-  return <DoorSwingLeaf hinge={hinge} initial={initial} direction={direction} radius={door.width.value} />;
+  return <DoorSwingLeaf hinge={hinge} initial={initial} direction={direction} radius={door.width.value} colour={colour} />;
 }
 
 type VectorTuple = [number, number, number];
@@ -782,7 +795,8 @@ function OpeningFixture({ room, opening }: { room: Room; opening: Opening }) {
     x: start.x + vector.dx * (opening.offset_mm + opening.width.value / 2),
     y: start.y + vector.dy * (opening.offset_mm + opening.width.value / 2),
   };
-  const frameMaterial = <meshStandardMaterial color={opening.kind === "DOOR" ? "#5b4330" : "#455756"} roughness={0.46} metalness={opening.kind === "WINDOW" ? 0.38 : 0.06} />;
+  const doorColour = typeof opening.metadata?.color_hex === "string" && /^#[\da-f]{6}$/i.test(opening.metadata.color_hex) ? opening.metadata.color_hex : "#5b4330";
+  const frameMaterial = <meshStandardMaterial color={opening.kind === "DOOR" ? doorColour : "#455756"} roughness={0.46} metalness={opening.kind === "WINDOW" ? 0.38 : 0.06} />;
   const framePieces = <>
     <mesh position={[-width / 2 + frame / 2, sill + height / 2, 0]} castShadow><boxGeometry args={[frame, height, depth]} />{frameMaterial}</mesh>
     <mesh position={[width / 2 - frame / 2, sill + height / 2, 0]} castShadow><boxGeometry args={[frame, height, depth]} />{frameMaterial}</mesh>
@@ -795,9 +809,9 @@ function OpeningFixture({ room, opening }: { room: Room; opening: Opening }) {
     <group position={[centreX, sill, 0.002]}>
       <mesh position={[0, leafHeight / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[leafWidthValue, leafHeight, Math.min(depth * 0.28, 0.052)]} />
-        <meshStandardMaterial color="#f6f6f3" roughness={0.5} />
+        <meshStandardMaterial color={doorColour} roughness={0.5} />
       </mesh>
-      {[0.24, 0.67].flatMap((vertical, row) => [-0.24, 0.24].map((horizontal, column) => <mesh key={`${row}-${column}`} position={[horizontal * leafWidthValue, vertical * leafHeight, depth * 0.17 + 0.004]} castShadow><boxGeometry args={[leafWidthValue * 0.38, leafHeight * 0.28, 0.018]} /><meshStandardMaterial color="#ecece8" roughness={0.58} /></mesh>))}
+      {[0.24, 0.67].flatMap((vertical, row) => [-0.24, 0.24].map((horizontal, column) => <mesh key={`${row}-${column}`} position={[horizontal * leafWidthValue, vertical * leafHeight, depth * 0.17 + 0.004]} castShadow><boxGeometry args={[leafWidthValue * 0.38, leafHeight * 0.28, 0.018]} /><meshStandardMaterial color={doorColour} roughness={0.58} /></mesh>))}
       <mesh position={[leafWidthValue * 0.36, leafHeight * 0.5, depth * 0.2]} castShadow>
         <sphereGeometry args={[0.025, 14, 10]} />
         <meshStandardMaterial color="#c8cccd" metalness={0.82} roughness={0.2} />
@@ -1078,7 +1092,8 @@ function CaptureController({ request, format, fileHandle, onError }: { request: 
   return null;
 }
 
-function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, zoomPercent }: ViewerProps & {
+function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, zoomPercent, lighting }: ViewerProps & {
+  lighting: LightingSettings;
   toggles: Toggles;
   preset: CameraView;
   projection: ProjectionMode;
@@ -1122,6 +1137,18 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
     sceneBounds.wallHeight * SCALE,
     (sceneBounds.maxY - sceneBounds.minY) * SCALE,
   ], [sceneBounds]);
+  // Fit the light and its shadow camera to the complete plan, including plans
+  // positioned far from the origin. The oblique key separates adjacent faces.
+  const lightTarget = useMemo(() => {
+    const target = new THREE.Object3D();
+    target.position.set(...roomTarget);
+    return target;
+  }, [roomTarget]);
+  const shadowExtent = Math.max(3, Math.hypot(...roomSpan) * 0.65);
+  const lightAzimuth = THREE.MathUtils.degToRad(lighting.direction);
+  const lightElevation = THREE.MathUtils.degToRad(lighting.elevation);
+  const lightDistance = shadowExtent * 2;
+  const lightPower = lighting.intensity / 100;
   const orbitTarget: [number, number, number] = preset === "eye" && !multiRoom && room.person_mockup?.enabled
     ? eyeTarget(room.person_mockup).toArray()
     : roomTarget;
@@ -1202,8 +1229,25 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
   return (
     <>
       <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} />
-      <ambientLight intensity={1.3} />
-      <directionalLight position={[4, 7, 3]} intensity={2.2} castShadow />
+      <ambientLight intensity={0.3 * lightPower} />
+      <hemisphereLight args={["#F4F7FF", "#B6AA96", 0.65 * lightPower]} />
+      <primitive object={lightTarget} />
+      <directionalLight
+        target={lightTarget}
+        position={[
+          roomTarget[0] + lightDistance * Math.cos(lightElevation) * Math.sin(lightAzimuth),
+          roomTarget[1] + lightDistance * Math.sin(lightElevation),
+          roomTarget[2] - lightDistance * Math.cos(lightElevation) * Math.cos(lightAzimuth),
+        ]}
+        color="#FFF5E6" intensity={2.6 * lightPower} castShadow
+        shadow-intensity={lighting.shadows / 100}
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-shadowExtent} shadow-camera-right={shadowExtent}
+        shadow-camera-top={shadowExtent} shadow-camera-bottom={-shadowExtent}
+        shadow-camera-near={0.1} shadow-camera-far={shadowExtent * 5}
+        shadow-bias={-0.0001} shadow-normalBias={0.003} shadow-radius={3}
+      />
+      <directionalLight target={lightTarget} position={[roomTarget[0] - shadowExtent, roomTarget[1] + shadowExtent * 0.7, roomTarget[2] - shadowExtent]} color="#DFE9FF" intensity={0.35 * lightPower} />
       {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd, paintOnly }) => {
         if (wallMode === "INVISIBLE") return null;
         const sceneInteractive = multiRoom || wallRoom.id === room.id;
@@ -1271,7 +1315,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
   const [paintCollectionId, setPaintCollectionId] = useState("paints-dulux");
   const [materialCollections, setMaterialCollections] = useState<MaterialCollection[]>([]);
   const [tileCollections, setTileCollections] = useState<MaterialCollection[]>([]);
-  const [tileCollectionId, setTileCollectionId] = useState("tiles-default");
+  const [tileCollectionId, setTileCollectionId] = useState("");
   useEffect(() => { void fetch(`${apiUrl}/catalog/materials?kind=PAINT`).then((response) => response.ok ? response.json() as Promise<MaterialCollection[]> : []).then(setMaterialCollections).catch(() => setMaterialCollections([])); }, [apiUrl]);
   useEffect(() => { void fetch(`${apiUrl}/catalog/materials?kind=TILE`).then((response) => response.ok ? response.json() as Promise<MaterialCollection[]> : []).then(setTileCollections).catch(() => setTileCollections([])); }, [apiUrl]);
   if (!selection) return null;
@@ -1308,6 +1352,14 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
     })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
   }
 
+  function resetFloorColours(tileId: string) {
+    buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => {
+      const colours = { ...(current.floor_tile_colours ?? {}) };
+      delete colours[tileId];
+      return { ...current, floor_tile_colours: Object.keys(colours).length ? colours : undefined };
+    }).forEach((update) => onFinishesChange(update.finishes, update.roomId));
+  }
+
   function setWallLock(locked: boolean) {
     if (!selectedElement) return;
     const unlocked = { ...selectedElement, wall_lock: locked };
@@ -1315,7 +1367,9 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
     onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? updated : item), room.id);
   }
 
-  const selectedTileCollection = tileCollections.find((collection) => collection.id === tileCollectionId);
+  const availableTileCollections = tileCollections.filter((collection) => !(collection.kind === "TILE" && collection.id === "tiles-default"));
+  const activeTileCollectionId = availableTileCollections.some((collection) => collection.id === tileCollectionId) ? tileCollectionId : availableTileCollections[0]?.id ?? "";
+  const selectedTileCollection = availableTileCollections.find((collection) => collection.id === activeTileCollectionId);
   const tiles = selectedTileCollection?.families.flatMap((family) => family.items.map((item) => ({
     id: item.id,
     name: item.name,
@@ -1358,7 +1412,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
           {!visiblePaintShades.length && <p className="paint-empty">No shades match this search.</p>}
           <p className="paint-code-note">Screen colours come from the selected catalogue collection. Confirm with a physical sample before ordering.</p>
         </div>
-        <button className="remove-finish" type="button" onClick={() => setWallColour()}>Remove colour</button>
+        <button className="review-style-button colour-reset-button" type="button" onClick={() => setWallColour()}>Reset to default</button>
       </>}
       {selection.type === "FLOOR" && <>
         <span className="eyebrow">Selected floor</span>
@@ -1368,16 +1422,16 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
         <FlooringControls design={finishes.floor_design} onChange={(floor_design) => {
           buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => ({ ...current, floor_design, floor_color: floorDesignColour(floor_design), floor_tile_id: undefined, floor_pattern: "NONE" })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
         }} />
-        <details><summary>Existing tile collections</summary>
-        <label className="field"><span>Tile collection</span><select value={tileCollectionId} onChange={(event) => setTileCollectionId(event.target.value)}>{tileCollections.length ? tileCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="tiles-default">Default colours</option>}</select></label>
+        {availableTileCollections.length > 0 && <details><summary>Existing tile collections</summary>
+        <label className="field"><span>Tile collection</span><select value={activeTileCollectionId} onChange={(event) => setTileCollectionId(event.target.value)}>{availableTileCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label>
         <div className="tile-collection">{tiles.map((tile) => <button key={tile.id} type="button" className={finishes.floor_tile_id === tile.id ? "selected" : ""} onClick={() => setFloorTile(tile)}><span className="tile-swatch" style={{ background: tile.preview }} /><small>{tile.name}</small></button>)}</div>
         {(() => {
           const selectedTile = tiles.find((tile) => tile.id === finishes.floor_tile_id);
           if (!selectedTile) return null;
           const current = finishes.floor_tile_colours?.[selectedTile.id] ?? { base: selectedTile.base, accent: selectedTile.accent, grout: selectedTile.grout };
-          return <div className="tile-colour-editor"><strong>{selectedTile.name} colours</strong><div className="tile-palette-presets">{(TILE_PALETTES[selectedTile.pattern] ?? []).map((palette) => <button key={palette.name} type="button" title={palette.name} aria-label={`Use ${palette.name} colours`} style={{ background: `linear-gradient(135deg, ${palette.base} 0 45%, ${palette.grout} 45% 55%, ${palette.accent} 55% 100%)` }} onClick={() => setFloorColours(selectedTile.id, palette)} />)}</div><div className="tile-custom-colours"><label><span>Primary</span><input type="color" value={current.base} onChange={(event) => setFloorColours(selectedTile.id, { ...current, base: event.target.value })} /></label><label><span>Accent</span><input type="color" value={current.accent} onChange={(event) => setFloorColours(selectedTile.id, { ...current, accent: event.target.value })} /></label><label><span>Grout</span><input type="color" value={current.grout} onChange={(event) => setFloorColours(selectedTile.id, { ...current, grout: event.target.value })} /></label></div></div>;
+          return <div className="tile-colour-editor"><strong>{selectedTile.name} colours</strong><div className="tile-palette-presets">{(TILE_PALETTES[selectedTile.pattern] ?? []).map((palette) => <button key={palette.name} type="button" title={palette.name} aria-label={`Use ${palette.name} colours`} style={{ background: `linear-gradient(135deg, ${palette.base} 0 45%, ${palette.grout} 45% 55%, ${palette.accent} 55% 100%)` }} onClick={() => setFloorColours(selectedTile.id, palette)} />)}</div><div className="tile-custom-colours"><label><span>Primary</span><input type="color" value={current.base} onChange={(event) => setFloorColours(selectedTile.id, { ...current, base: event.target.value })} /></label><label><span>Accent</span><input type="color" value={current.accent} onChange={(event) => setFloorColours(selectedTile.id, { ...current, accent: event.target.value })} /></label><label><span>Grout</span><input type="color" value={current.grout} onChange={(event) => setFloorColours(selectedTile.id, { ...current, grout: event.target.value })} /></label></div><button type="button" className="review-style-button colour-reset-button" onClick={() => resetFloorColours(selectedTile.id)}>Reset colours to default</button></div>;
         })()}
-        </details>
+        </details>}
         <button className="remove-finish" type="button" onClick={() => setFloorTile()}>Remove floor finish</button>
       </>}
     </aside>
@@ -1386,6 +1440,8 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
 }
 
 export function EngineeringViewer(props: ViewerProps) {
+  const [lighting, setLighting] = useState<LightingSettings>(DEFAULT_LIGHTING);
+  const [lightingExpanded, setLightingExpanded] = useState(false);
   const [preset, setPreset] = useState<CameraView>("perspective");
   const [projection, setProjection] = useState<ProjectionMode>("parallel");
   const [captureRequest, setCaptureRequest] = useState(0);
@@ -1411,11 +1467,18 @@ export function EngineeringViewer(props: ViewerProps) {
   const flip = (key: keyof Toggles) => setToggles((current) => ({ ...current, [key]: !current[key] }));
   const selectObject = (nextSelection: Selection) => {
     setSelection(nextSelection);
+    if (nextSelection?.type === "ELEMENT") {
+      setPanelSelection(null);
+      props.onElementSelected?.(nextSelection);
+      return;
+    }
     setPanelSelection(nextSelection);
+    props.onElementSelected?.(null);
   };
   const clearSelection = () => {
     setSelection(null);
     setPanelSelection(null);
+    props.onElementSelected?.(null);
   };
   const panelRoom = panelSelection
     ? props.sceneRooms?.find((sceneRoom) => sceneRoom.id === panelSelection.roomId) ?? (panelSelection.roomId === props.room.id ? props.room : null)
@@ -1487,11 +1550,31 @@ export function EngineeringViewer(props: ViewerProps) {
           ))}
           <label className="viewer-toggle-checkbox"><input type="checkbox" checked={toggles.clearance} onChange={() => flip("clearance")} />Clearance envelope</label>
         </div>
+        <div className="viewer-view-control-group viewer-lighting-controls" role="group" aria-label="Lighting">
+          <button type="button" className="viewer-lighting-toggle" aria-expanded={lightingExpanded} onClick={() => setLightingExpanded((current) => !current)}>
+            <strong>Lighting</strong><span aria-hidden>{lightingExpanded ? "−" : "+"}</span>
+          </button>
+          {lightingExpanded && <>{([
+            { key: "intensity", label: "Light intensity", min: 0, max: 200, unit: "%" },
+            { key: "shadows", label: "Shadow strength", min: 0, max: 100, unit: "%" },
+            { key: "direction", label: "Light direction", min: 0, max: 360, unit: "°" },
+            { key: "elevation", label: "Light elevation", min: 5, max: 90, unit: "°" },
+          ] as const).map(({ key, label, min, max, unit }) => <label className="viewer-lighting-field" key={key}>
+            <span>{label}<output>{lighting[key]}{unit}</output></span>
+            <input aria-label={label} aria-valuetext={`${lighting[key]}${unit}`} type="range" min={min} max={max} step={1} value={lighting[key]} onChange={(event) => {
+              const value = event.currentTarget.valueAsNumber;
+              if (Number.isFinite(value)) setLighting((current) => ({ ...current, [key]: Math.min(max, Math.max(min, value)) }));
+            }} />
+          </label>)}
+          <small>Direction is measured clockwise from the top of the floorplan (0°). Lower elevation creates longer shadows.</small>
+          <button type="button" className="review-style-button" onClick={() => setLighting({ ...DEFAULT_LIGHTING })}>Reset lighting</button>
+          </>}
+        </div>
         <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => { setCaptureError(null); setCaptureMenuOpen(true); }} aria-expanded={captureMenuOpen} aria-haspopup="dialog">Save view…</button></div></div>
       </div></FloatingToolbar>}
       {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
-      <Canvas key={projection} orthographic={projection === "parallel"} shadows gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
-        <Scene {...props} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} zoomPercent={zoomPercent} />
+      <Canvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
+        <Scene {...props} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} zoomPercent={zoomPercent} />
         <WheelZoom />
         <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} onError={handleCaptureError} />
       </Canvas>
