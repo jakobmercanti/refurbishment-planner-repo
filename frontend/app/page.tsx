@@ -205,6 +205,8 @@ export default function Home() {
       throw new Error(payload.detail ?? "The room geometry is invalid.");
     }
     setDemo((current) => current ? { ...current, room: normalizedRoom } : current);
+    // A matching restored outline must not override the finishes just opened from file.
+    setProjectRooms((current) => current.map((existing) => existing.id === normalizedRoom.id || (normalizedRoom.source_floorplan_room_id && existing.source_floorplan_room_id === normalizedRoom.source_floorplan_room_id) ? normalizedRoom : existing));
     invalidateAnalysis();
   }
 

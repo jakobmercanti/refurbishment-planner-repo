@@ -2,6 +2,9 @@
 
 import { ParametricFixture } from "@/components/ParametricFixture";
 import { Popup } from "@/components/Popup";
+import { FlooringControls } from "@/components/FlooringControls";
+import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
+import { floorDesignColour, flooringSwatch, normalizeFloorDesign } from "@/lib/flooring";
 import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -546,17 +549,26 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   const tile = selectedTile ?? legacyTile;
   const savedColours = tile ? room.finishes?.floor_tile_colours?.[room.finishes?.floor_tile_id ?? tile.id] : undefined;
   const renderedTile = useMemo(() => tile ? { ...tile, ...savedColours } : null, [savedColours, tile]);
+  const savedDesign = room.finishes?.floor_design;
+  const design = useMemo(() => savedDesign ? normalizeFloorDesign(savedDesign) : null, [savedDesign]);
+  const swatch = useMemo(() => design ? flooringSwatch(design) : null, [design]);
   const floorGeometry = useMemo(() => {
     const geometry = new THREE.ShapeGeometry(shape);
     const position = geometry.getAttribute("position");
     const uv = geometry.getAttribute("uv");
     const tileSizeMetres = (renderedTile?.tileSize ?? 500) * SCALE;
     for (let index = 0; index < position.count; index += 1) {
-      uv.setXY(index, position.getX(index) / tileSizeMetres, position.getY(index) / tileSizeMetres);
+      if (design && swatch) {
+        const angle = design.rotation_deg * Math.PI / 180;
+        const px = position.getX(index) / SCALE, py = position.getY(index) / SCALE;
+        const x = px * Math.cos(angle) + py * Math.sin(angle), y = -px * Math.sin(angle) + py * Math.cos(angle);
+        uv.setXY(index, (swatch.diagonal ? (x - y) / 2 : x) / swatch.width, 1 - (swatch.diagonal ? (x + y) / 2 : y) / swatch.height);
+      } else uv.setXY(index, position.getX(index) / tileSizeMetres, position.getY(index) / tileSizeMetres);
     }
     uv.needsUpdate = true;
     return geometry;
-  }, [renderedTile?.tileSize, shape]);
+  }, [renderedTile?.tileSize, shape, design, swatch]);
+  useEffect(() => () => floorGeometry.dispose(), [floorGeometry]);
   const tileUniforms = useMemo(() => ({
     baseColour: { value: new THREE.Color(renderedTile?.base ?? colour) },
     accentColour: { value: new THREE.Color(renderedTile?.accent ?? colour) },
@@ -572,7 +584,7 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
         <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
       </mesh>
       <mesh geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
-        {renderedTile ? (
+        {swatch ? <ProceduralFloorMaterial url={swatch.url} selected={selected} /> : renderedTile ? (
           <shaderMaterial
             uniforms={tileUniforms}
             vertexShader={FLOOR_VERTEX_SHADER}
@@ -1283,6 +1295,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
     buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => ({
       ...current,
       floor_tile_id: tile?.id,
+      floor_design: undefined,
       floor_color: tile?.base,
       floor_pattern: tile?.pattern ?? "NONE",
     })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
@@ -1349,9 +1362,13 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
       </>}
       {selection.type === "FLOOR" && <>
         <span className="eyebrow">Selected floor</span>
-        <strong>Floor tile collection</strong>
+        <strong>Flooring</strong>
         <output className="selected-colour-hex">HEX <code>{(finishes.floor_tile_colours?.[finishes.floor_tile_id ?? ""]?.base ?? finishes.floor_color ?? "#E8E1D6").toUpperCase()}</code></output>
         <label className="field"><span>Tile options</span><select aria-label="Tile options" value={floorTileScope} onChange={(event) => setFloorTileScope(event.target.value as FloorTileScope)}><option value="SELECTED">Selected floor</option><option value="ROOM">Current room floor</option><option value="ALL">All floors</option></select></label>
+        <FlooringControls design={finishes.floor_design} onChange={(floor_design) => {
+          buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => ({ ...current, floor_design, floor_color: floorDesignColour(floor_design), floor_tile_id: undefined, floor_pattern: "NONE" })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
+        }} />
+        <details><summary>Existing tile collections</summary>
         <label className="field"><span>Tile collection</span><select value={tileCollectionId} onChange={(event) => setTileCollectionId(event.target.value)}>{tileCollections.length ? tileCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="tiles-default">Default colours</option>}</select></label>
         <div className="tile-collection">{tiles.map((tile) => <button key={tile.id} type="button" className={finishes.floor_tile_id === tile.id ? "selected" : ""} onClick={() => setFloorTile(tile)}><span className="tile-swatch" style={{ background: tile.preview }} /><small>{tile.name}</small></button>)}</div>
         {(() => {
@@ -1360,6 +1377,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
           const current = finishes.floor_tile_colours?.[selectedTile.id] ?? { base: selectedTile.base, accent: selectedTile.accent, grout: selectedTile.grout };
           return <div className="tile-colour-editor"><strong>{selectedTile.name} colours</strong><div className="tile-palette-presets">{(TILE_PALETTES[selectedTile.pattern] ?? []).map((palette) => <button key={palette.name} type="button" title={palette.name} aria-label={`Use ${palette.name} colours`} style={{ background: `linear-gradient(135deg, ${palette.base} 0 45%, ${palette.grout} 45% 55%, ${palette.accent} 55% 100%)` }} onClick={() => setFloorColours(selectedTile.id, palette)} />)}</div><div className="tile-custom-colours"><label><span>Primary</span><input type="color" value={current.base} onChange={(event) => setFloorColours(selectedTile.id, { ...current, base: event.target.value })} /></label><label><span>Accent</span><input type="color" value={current.accent} onChange={(event) => setFloorColours(selectedTile.id, { ...current, accent: event.target.value })} /></label><label><span>Grout</span><input type="color" value={current.grout} onChange={(event) => setFloorColours(selectedTile.id, { ...current, grout: event.target.value })} /></label></div></div>;
         })()}
+        </details>
         <button className="remove-finish" type="button" onClick={() => setFloorTile()}>Remove floor finish</button>
       </>}
     </aside>

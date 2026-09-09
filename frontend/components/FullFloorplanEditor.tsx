@@ -21,7 +21,7 @@ import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import { FLOORPLAN_STYLE_OPTIONS, floorplanStyleClass, floorplanStyleCss, floorplanStyleLabel, type FloorplanStyle } from "@/lib/floorplanStyles";
 import { FloorplanAtmosphere } from "@/components/FloorplanAtmosphere";
 import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
-import type { CatalogueItem, Obstacle, Opening, Point2D, Room } from "@/lib/types";
+import type { CatalogueItem, Obstacle, Opening, Point2D, Room, RoomFinishes } from "@/lib/types";
 import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
 type WallAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean };
@@ -50,7 +50,7 @@ type FullOpening = {
 };
 type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[]; wallThickness?: number; rooms?: NamedOutline[]; selectedRoomId?: string | null };
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
-type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number };
+type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number; roomFinishes?: Record<string, RoomFinishes> };
 interface Props { projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
 
 const DEFAULT_SIZE = { width: 1100, height: 700 };
@@ -612,6 +612,7 @@ function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultTh
 
 export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
   const [walls, setWalls] = useState<Wall[]>([]);
+  const [restoredFinishes, setRestoredFinishes] = useState<Record<string, RoomFinishes>>({});
   const [openings, setOpenings] = useState<FullOpening[]>([]);
   const [history, setHistory] = useState<Snapshot[]>([]);
   const [future, setFuture] = useState<Snapshot[]>([]);
@@ -786,9 +787,9 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
       openings: roomOpenings(normalized, openings, walls),
       obstacles: stored?.obstacles ?? (outline.id === activeSourceRoomId ? currentFixtures : []),
       person_mockup: stored?.person_mockup ?? null,
-      finishes: stored?.finishes,
+      finishes: stored?.finishes ?? restoredFinishes[outline.id],
     };
-  }, [activeSourceRoomId, currentFixtures, openings, projectRooms, wallHeight, wallThickness, walls]);
+  }, [activeSourceRoomId, currentFixtures, openings, projectRooms, restoredFinishes, wallHeight, wallThickness, walls]);
   const planRooms = useMemo(() => rooms.map(roomDraftForOutline), [roomDraftForOutline, rooms]);
   const planRoomsSignature = useMemo(() => JSON.stringify(planRooms), [planRooms]);
   const publishedPlanRooms = useRef("");
@@ -853,6 +854,7 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as PersistedFloorplan;
+        setRestoredFinishes(saved.roomFinishes ?? {});
         const savedSquaredWalls = saved.squaredWalls ?? false;
         const savedWalls = cloneWalls(saved.walls ?? []);
         setWallsRespectingMeasurements(savedSquaredWalls ? savedWalls.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) })) : savedWalls, savedSquaredWalls, savedSquaredWalls);
@@ -869,9 +871,10 @@ export function FullFloorplanEditor({ projectRooms = [], onPlanRoomChange, onPla
   }, []);
   useEffect(() => {
     if (!restored) return;
-    const value: PersistedFloorplan = { walls, openings, measurements, dimensionOffsets, hiddenDimensions, canvasSize, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness };
+    const roomFinishes = Object.fromEntries(planRooms.filter((room) => room.finishes).map((room) => [room.source_floorplan_room_id ?? room.id, room.finishes!]));
+    const value: PersistedFloorplan = { walls, openings, measurements, dimensionOffsets, hiddenDimensions, canvasSize, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, roomFinishes };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-  }, [canvasSize, dimensionOffsets, hiddenDimensions, measurements, openings, restored, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, walls]);
+  }, [canvasSize, dimensionOffsets, hiddenDimensions, measurements, openings, planRooms, restored, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, walls]);
 
   useEffect(() => {
     if (!restored) return;

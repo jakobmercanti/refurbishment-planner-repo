@@ -1,6 +1,7 @@
 import { useId } from "react";
 import type { Point2D, Room } from "@/lib/types";
 import { appearanceSeed, gardenClear, roomAppearances } from "@/lib/floorplanAppearance";
+import { FlooringPatternDefinition } from "@/components/FlooringControls";
 
 /** SVG-only materials and planting, also embedded in offline image/PDF exports. */
 export function FloorplanAtmosphere({ rooms, toScreen }: { rooms: Room[]; toScreen: (point: Point2D) => Point2D }) {
@@ -61,6 +62,11 @@ export function FloorplanAtmosphere({ rooms, toScreen }: { rooms: Room[]; toScre
         const id = `${prefix}-floor-${index}`;
         const size = Math.max(3, (pattern === "SQUARE_300" ? 300 : pattern === "WOOD" ? 1000 : 600) * scale);
         const points = polygons[index].map((p) => `${p.x},${p.y}`).join(" ");
+        if (appearance.room.finishes?.floor_design) return <g key={appearance.room.id}>
+          <defs><FlooringPatternDefinition id={id} design={appearance.room.finishes.floor_design} scale={scale} origin={toScreen({ x: 0, y: 0 })} flipY={toScreen({ x: 0, y: 1 }).y < toScreen({ x: 0, y: 0 }).y} /></defs>
+          <polygon points={points} fill={`url(#${id})`} />
+          <polygon className="creative-floor-wash" style={{ display: "none" }} points={points} fill="#fffaf0" opacity=".19" />
+        </g>;
         return <g key={appearance.room.id}>
           <defs><pattern id={id} patternUnits="userSpaceOnUse" width={size} height={pattern === "WOOD" ? size / 4 : size}>
             <rect width={size} height={size} fill={base} />

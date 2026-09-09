@@ -98,6 +98,12 @@ button { font: inherit; }
 .catalogue-material-swatches code { grid-column: 2; color: var(--ink); font-size: 9px; user-select: text; }
 .catalogue-material-swatches span { width: 42px; height: 42px; border: 1px solid rgba(0,0,0,.16); border-radius: 6px; box-shadow: 0 2px 5px rgba(21,34,28,.1); }
 .catalogue-material-swatches small { min-width: 0; overflow: hidden; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.catalogue-material-swatches > .catalogue-pattern-swatch { grid-template-columns: 1fr; gap: 8px; }
+.catalogue-material-swatches > .catalogue-pattern-swatch code { grid-column: 1; }
+.catalogue-pattern-swatch svg { max-width: 220px; border: 1px solid var(--line); }
+.catalogue-flooring-grid .catalogue-material-family { grid-column: auto; }
+.flooring-controls { display: grid; gap: 10px; }
+.flooring-controls > small { color: var(--muted); line-height: 1.5; }
 .catalogue-object-preview { position: relative; height: 75px; display: grid; place-items: end center; padding: 12px; background: linear-gradient(145deg,#eef2ef,#e2e8e3); }
 .catalogue-object-preview[style*="background-image"] { height: 150px; background-position: center; background-size: contain; background-repeat: no-repeat; }
 .catalogue-object-preview[style*="background-image"] span { display: none; }
