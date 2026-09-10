@@ -1,4 +1,6 @@
 "use client";
+import { DoorFixture } from "@/components/DoorFixture";
+import { StaircaseFixture, WindowFixture } from "@/components/ArchitecturalFixtures";
 import { RoundedBox } from "@react-three/drei";
 import { RoomFurniture } from "@/components/RoomFurniture";
 import { KitchenFurniture } from "@/components/KitchenFurniture";
@@ -38,6 +40,9 @@ function Block({ position, size, colour = "#f4f3ef" }: { position: [number, numb
 /** Normalised render-only geometry: world millimetres are converted by the caller. */
 export function ParametricFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
   const key = fixtureRepresentation(obstacle);
+  if (key.startsWith("door-")) return <DoorFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
+  if (key.startsWith("furniture-stair-")) return <StaircaseFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
+  if (key.startsWith("window-")) return <WindowFixture representation={key} width={width} depth={depth} height={height} />;
   if (/^furniture-(kitchen-|wardrobe-)/.test(key)) return <KitchenFurniture representation={key} colour={obstacle.color_hex ?? "#C7B69C"} width={width} depth={depth} height={height} />;
   if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(key)) return <RoomFurniture representation={key} colour={obstacle.color_hex ?? "#b99b77"} width={width} depth={depth} height={height} />;
   const kind = obstacle.fixture_kind ?? key.split("-")[0].toUpperCase();

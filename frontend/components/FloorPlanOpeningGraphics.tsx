@@ -2,6 +2,9 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as Reac
 import { openingRenderWidths } from "@/lib/openingRendering";
 import { formatLength, type DisplayUnits } from "@/lib/units";
 import type { Point2D } from "@/lib/types";
+import { windowPlanVertices } from "@/lib/architecturalModels";
+import { doorRepresentation } from "@/lib/doorModels";
+import doorPlanSymbols from "@/lib/doorPlanSymbols.json";
 
 export type FloorPlanOpeningGraphic = {
   id: string;
@@ -13,6 +16,8 @@ export type FloorPlanOpeningGraphic = {
   opensInward?: boolean;
   colorHex?: string;
   windowPaneCount?: 1 | 2 | 3;
+  representationKey?: string;
+  windowDepthMm?: number;
 };
 
 type OpeningProps = {
@@ -62,6 +67,25 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   const style = { "--opening-gap-width": `${gapWidth}px`, ...(opening.colorHex ? { "--door-colour": opening.colorHex } : {}) } as CSSProperties;
   const className = selected ? " selected" : "";
   if (opening.kind === "WINDOW") {
+    const family = opening.representationKey ?? "window-single-pane";
+    if (family === "window-bay" || family === "window-bow") {
+      const scale = Math.hypot(end.x - start.x, end.y - start.y) / opening.width;
+      const depth = Math.max(1, opening.windowDepthMm ?? (family === "window-bay" ? 650 : 700)) * scale;
+      const span = opening.width * scale;
+      const vertices = windowPlanVertices(family, span, depth);
+      const points = (shift: number) => vertices.map(([x, z]) => {
+        const along = x + span / 2, outward = z - depth / 2 + shift;
+        return `${start.x + shape.tangent.x * along + perpendicular.x * outward},${start.y + shape.tangent.y * along + perpendicular.y * outward}`;
+      }).join(" ");
+      return <g style={style} className={`opening-symbol window-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
+        <title>{`${family.slice(7)} window ${formatLength(opening.width, displayUnits)}`}</title>
+        <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+        <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+        <polygon points={points(0)} fill="white" stroke="none" />
+        {[-2, 0, 2].map(shift => <polyline key={shift} points={points(shift)} fill="none" stroke="currentColor" strokeWidth={shift === 0 ? .6 : 1.2} />)}
+        {vertices.map(([x, z], i) => <circle key={i} cx={start.x + shape.tangent.x * (x + span / 2) + perpendicular.x * (z - depth / 2)} cy={start.y + shape.tangent.y * (x + span / 2) + perpendicular.y * (z - depth / 2)} r={2} fill="currentColor" />)}
+      </g>;
+    }
     const paneCount = Math.max(1, Math.min(3, opening.windowPaneCount ?? 1));
     const paneLines = Array.from({ length: paneCount - 1 }, (_, index) => {
       const ratio = (index + 1) / paneCount;
@@ -76,11 +100,32 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
       <line className="window-frame" x1={start.x - perpendicular.x * 4} y1={start.y - perpendicular.y * 4} x2={end.x - perpendicular.x * 4} y2={end.y - perpendicular.y * 4} />
       <line className="window-core" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
       {paneLines}
+      {family === "window-sash" && <line className="window-core" x1={start.x + perpendicular.x * 2} y1={start.y + perpendicular.y * 2} x2={end.x + perpendicular.x * 2} y2={end.y + perpendicular.y * 2} />}
+      {family === "window-casement" && <>
+        <path d={`M${start.x} ${start.y} l${(end.x-start.x)*.4 + perpendicular.x*12} ${(end.y-start.y)*.4 + perpendicular.y*12} M${end.x} ${end.y} l${(start.x-end.x)*.4 + perpendicular.x*12} ${(start.y-end.y)*.4 + perpendicular.y*12}`} fill="none" stroke="currentColor" strokeWidth="1" />
+      </>}
       <line className="opening-jamb window-jamb" x1={start.x - perpendicular.x * jambHalf} y1={start.y - perpendicular.y * jambHalf} x2={start.x + perpendicular.x * jambHalf} y2={start.y + perpendicular.y * jambHalf} />
       <line className="opening-jamb window-jamb" x1={end.x - perpendicular.x * jambHalf} y1={end.y - perpendicular.y * jambHalf} x2={end.x + perpendicular.x * jambHalf} y2={end.y + perpendicular.y * jambHalf} />
     </g>;
   }
 
+  if (opening.representationKey?.startsWith("door-")) {
+    const key = doorRepresentation(opening.representationKey, opening.doorType);
+    const drawing = (doorPlanSymbols as Record<string, { height: number; paths: { d: string; fill: string; dash: boolean; weight: number }[] }>)[key];
+    const normalEnd = toScreen({ x: startModel.x + modelNormal.x * opening.width, y: startModel.y + modelNormal.y * opening.width });
+    const mirror = opening.hingeSide === "END" ? -1 : 1;
+    return <g style={style} className={`opening-symbol door-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
+      <title>{`${key.replaceAll("-", " ")} ${formatLength(opening.width, displayUnits)}`}</title>
+      <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+      <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
+      <g transform={`matrix(${(end.x-start.x)/1000} ${(end.y-start.y)/1000} ${(normalEnd.x-start.x)/1000} ${(normalEnd.y-start.y)/1000} ${start.x} ${start.y})`}>
+        <g transform={mirror < 0 ? "translate(1000 0) scale(-1 1)" : undefined}>
+          <rect x={0} y={-30} width={1000} height={drawing.height + 40} fill="transparent" stroke="none" />
+          {drawing.paths.map((path, i) => <path key={i} d={path.d} fill={path.fill} stroke="currentColor" strokeWidth={path.weight} strokeDasharray={path.dash ? "22 14" : undefined} />)}
+        </g>
+      </g>
+    </g>;
+  }
   const centre = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   if (opening.doorType === "DOUBLE") {
     const half = opening.width / 2;

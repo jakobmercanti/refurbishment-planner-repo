@@ -126,6 +126,7 @@ export interface PersonMockup {
 export type TilePattern = "NONE" | "SQUARE_300" | "SQUARE_600" | "HERRINGBONE" | "CHECKERBOARD" | "DIAMOND" | "KITKAT" | "TERRAZZO" | "HEXAGON" | "MARBLE";
 
 export interface RoomFinishes {
+  skirting_board?: import("./skirting").SkirtingBoardSettings;
   floor_design?: import("./flooring").FloorDesign;
   wall_colors?: Record<string, string>;
   wall_color_codes?: Record<string, string>;

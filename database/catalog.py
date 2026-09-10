@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
 from database.catalogue_assets import migrate_legacy_pictures
-from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults
+from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults, DOOR_FAMILIES
 
 
 def database_path() -> Path:
@@ -41,6 +41,7 @@ def configure_sqlite(connection: object, _record: object) -> None:
 
 
 CATEGORIES = [
+    ("staircases-main", "Staircase types", "Parametric staircases with architectural plan symbols.", 100, 0.0, 0.0),
     ("kitchen-sinks", "Sinks", "Sinks for room planning.", 90, 0.0, 0.0),
     ("kitchen-fridges", "Fridges", "Fridges for room planning.", 91, 0.0, 0.0),
     ("kitchen-islands", "Kitchen islands", "Kitchen islands for room planning.", 92, 0.0, 0.0),
@@ -59,9 +60,12 @@ CATEGORIES = [
     ("basins", "Basins & vanities", "Wall-mounted basins, vanity units and washstands.", 20, 0.0, 0.0),
     ("toilets", "Toilets", "Wall-hung, compact and close-coupled toilets.", 30, 200.0, 400.0),
     ("storage", "Storage & furniture", "Cabinets, benches and freestanding bathroom furniture.", 40, 0.0, 0.0),
-    ("doors", "Doors", "Single and double doors for the floorplan.", 50, 0.0, 0.0),
+    ("doors", "Internal doors", "Internal single, double, flush and shaker doors.", 50, 0.0, 0.0),
     ("windows", "Windows", "Single-, double- and triple-pane windows for the floorplan.", 60, 0.0, 0.0),
 ]
+
+CATEGORIES.extend((family, name, f"{name} with parametric leaves and matching plan symbols.", 51 + index, 0.0, 0.0)
+                  for index, (family, name) in enumerate(DOOR_FAMILIES.items()) if family != "doors")
 
 def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tuple[str, str, str, int]], list[tuple[str, str, str, str, dict[str, object]]]]:
     root = Path(__file__).resolve().parents[1]
@@ -90,6 +94,14 @@ def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tupl
     for tile in json.loads((root / "frontend/lib/tileMaterials.json").read_text(encoding="utf8")):
         items.append((f"tile-material-{tile['id']}", "tile-material-types", tile["name"], tile["colour"],
                       {"tile_material_id": tile["id"], "finish": tile["finish"], "pattern": tile["pattern"]}))
+    for material, title in (("tile", "Tiles"), ("wood", "Wooden flooring")):
+        collection_id = f"flooring-{material}"
+        collections.append((collection_id, "TILE", title, "", 40 if material == "tile" else 50))
+        patterns = json.loads((root / "frontend/lib/flooringPatterns.json").read_text(encoding="utf8"))
+        for index, entry in enumerate(p for p in patterns if p["material"] == material):
+            families.append((entry["id"], collection_id, entry["name"], index))
+            items.append((entry["id"], entry["id"], entry["name"], "#b89a70" if material == "wood" else "#d8d4c9",
+                          {"flooring_pattern": entry["id"], "width_mm": entry["width"], "length_mm": entry["length"]}))
     return collections, families, items
 
 
@@ -200,6 +212,8 @@ def initialise_catalogue() -> None:
         # receive the defaults while existing records retain their settings.
         for category_id, name, description, sort_order, side, front in CATEGORIES:
             category = session.get(FurnitureCategoryRecord, category_id)
+            if category is not None and category_id == "doors" and category.name == "Doors":
+                category.name = "Internal doors"
             if category is None:
                 session.add(FurnitureCategoryRecord(id=category_id, name=name, description=description, sort_order=sort_order, default_side_clearance_mm=side, default_front_clearance_mm=front))
         session.flush()

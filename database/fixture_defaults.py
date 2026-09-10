@@ -4,10 +4,27 @@ Representation keys identify versioned parametric models and their matching plan
 symbols. Manufacturer products can reuse a key and supply their own dimensions,
 photographs and STL without changing the category/subcategory hierarchy.
 """
+import json
+from pathlib import Path
 from sqlalchemy import select
 from database.models import FurnitureItemRecord
 
+DOOR_MODELS = json.loads((Path(__file__).resolve().parents[1] / "frontend/lib/doorModels.json").read_text(encoding="utf8"))
+DOOR_FAMILIES = {model["family"]: model["familyName"] for model in DOOR_MODELS}
+
 FIXTURE_DEFAULTS = {
+    "staircases-main": ("FURNITURE", [
+        ("stair-straight", "Straight closed riser", 1000, 4000, 3700),
+        ("stair-open", "Straight open riser", 1000, 4000, 3700),
+        ("stair-l-left", "L-shaped left landing", 3000, 3000, 3700),
+        ("stair-l-right", "L-shaped right landing", 3000, 3000, 3700),
+        ("stair-u-landing", "U-shaped half landing", 2200, 3000, 3700),
+        ("stair-u-winder", "U-shaped winders", 2200, 3000, 3700),
+        ("stair-quarter-winder", "Quarter-turn winders", 3000, 3000, 3700),
+        ("stair-spiral", "Spiral with centre column", 2000, 2000, 3700),
+        ("stair-curved", "Curved sweeping stair", 3000, 3000, 3700),
+        ("stair-bifurcated", "Bifurcated double return", 4000, 3500, 3700),
+    ]),
     "kitchen-sinks": ("FURNITURE", [
         ("kitchen-sink-single", "Single sink", 600, 600, 1100),
         ("kitchen-sink-double", "Double sink unit", 1200, 600, 1100),
@@ -101,11 +118,24 @@ FIXTURE_DEFAULTS = {
         ("double", "Double", 1600, 100, 2040),
     ]),
     "windows": ("WINDOW", [
+        ("bay", "Bay windows", 2400, 650, 1500),
+        ("bow", "Bow windows", 3000, 700, 1500),
+        ("sash", "Sash windows", 1000, 180, 1500),
+        ("casement", "Casement windows", 1200, 160, 1200),
         ("single-pane", "Single pane", 800, 100, 900),
         ("double-pane", "Double pane", 800, 100, 900),
         ("triple-pane", "Triple pane", 800, 100, 900),
     ]),
 }
+
+# Keep existing identifiers, dimensions and user customisations on upgrades.
+for family in DOOR_FAMILIES:
+    FIXTURE_DEFAULTS[family] = ("DOOR", [
+        (model["key"].removeprefix("door-"),
+         {"door-single": "Single", "door-double": "Double"}.get(model["key"], model["name"]),
+         model["width"], model["depth"], model["height"])
+        for model in DOOR_MODELS if model["family"] == family
+    ])
 
 DEFAULT_NAMES = {
     "showers": {
@@ -162,7 +192,8 @@ LEGACY_DEFAULT_KEYS = frozenset(LEGACY)
 
 
 def fixture_default_name(category: str, slug: str, subcategory: str) -> str:
-    return DEFAULT_NAMES.get(category, {}).get(slug, f"Default {subcategory.lower()}")
+    door = next((model for model in DOOR_MODELS if model["key"] == f"door-{slug}"), None) if category in DOOR_FAMILIES else None
+    return f"Default {door['name'].lower()}" if door else DEFAULT_NAMES.get(category, {}).get(slug, f"Default {subcategory.lower()}")
 
 
 def seed_fixture_defaults(session):
@@ -193,6 +224,6 @@ def seed_fixture_defaults(session):
                 sku=f"GENERIC-{key.upper()}", subcategory=subcategory, representation_key=key,
                 plan_symbol_url=f"/fixture-symbols/{key}.svg",
                 width_mm=width, depth_mm=depth, height_mm=height, color_hex="#F4F3EE",
-                description="Generic parametric fixture with matching architectural plan symbol. Set dimensions for your design; not a certified manufacturer drawing.",
+                description=("Generic staircase: 2800 mm floor-to-floor rise plus 900 mm guarding at default size. Overall height includes guarding. Plan shows UP direction and dashed flight above the cut line. Adjust overall dimensions for your project; structural design and headroom need separate assessment." if category == "staircases-main" else "Generic parametric fixture with matching architectural plan symbol. Set dimensions for your design; not a certified manufacturer drawing."),
                 supplier_editable=True, plan_shape="RECTANGLE",
             ))

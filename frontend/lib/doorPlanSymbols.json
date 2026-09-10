@@ -1,0 +1,474 @@
+{
+  "door-single": {
+    "height": 1000,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 V1000 H18 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M1000 0 A1000 1000 0 0 1 0 1000",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      }
+    ]
+  },
+  "door-double": {
+    "height": 500,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 V500 H18 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M500 0 A500 500 0 0 1 0 500",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M1000 0 V500 H982 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M500 0 A500 500 0 0 0 1000 500",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      }
+    ]
+  },
+  "door-internal-flush": {
+    "height": 1000,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 V1000 H18 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M1000 0 A1000 1000 0 0 1 0 1000",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      }
+    ]
+  },
+  "door-internal-shaker": {
+    "height": 1000,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 V1000 H18 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M1000 0 A1000 1000 0 0 1 0 1000",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      }
+    ]
+  },
+  "door-french-classic": {
+    "height": 500,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 V500 H18 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M500 0 A500 500 0 0 1 0 500",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M1000 0 V500 H982 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M500 0 A500 500 0 0 0 1000 500",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M9 55 V445",
+        "dash": false,
+        "fill": "none",
+        "weight": 3
+      },
+      {
+        "d": "M991 55 V445",
+        "dash": false,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
+  },
+  "door-french-modern": {
+    "height": 500,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 V500 H18 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M500 0 A500 500 0 0 1 0 500",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M1000 0 V500 H982 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M500 0 A500 500 0 0 0 1000 500",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M9 55 V445",
+        "dash": false,
+        "fill": "none",
+        "weight": 3
+      },
+      {
+        "d": "M991 55 V445",
+        "dash": false,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
+  },
+  "door-sliding-pocket": {
+    "height": 180,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -30 H1000 M0 45 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M0.0 0 h1000.0 v18 h-1000.0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M700.0 125 h-400.0 m40 -25 l-40 25 l40 25",
+        "dash": false,
+        "fill": "none",
+        "weight": 6
+      },
+      {
+        "d": "M0 -50 H500 V-110 H0",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      }
+    ]
+  },
+  "door-sliding-patio": {
+    "height": 180,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -30 H1000 M0 45 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M0.0 0 h500.0 v18 h-500.0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M350.0 125 h-200.0 m40 -25 l-40 25 l40 25",
+        "dash": false,
+        "fill": "none",
+        "weight": 6
+      },
+      {
+        "d": "M500.0 24 h500.0 v18 h-500.0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M650.0 125 h200.0 m-40 -25 l40 25 l-40 25",
+        "dash": false,
+        "fill": "none",
+        "weight": 6
+      }
+    ]
+  },
+  "door-bifold-two": {
+    "height": 315.0,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0.0 0 L500.0 275.0",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M500.0 275.0 L1000.0 0",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 H1000",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      }
+    ]
+  },
+  "door-bifold-four": {
+    "height": 177.5,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0.0 0 L250.0 137.5",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M250.0 137.5 L500.0 0",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M500.0 0 L750.0 137.5",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M750.0 137.5 L1000.0 0",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 H1000",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      }
+    ]
+  },
+  "door-external-panelled": {
+    "height": 1000,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 V1000 H18 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M1000 0 A1000 1000 0 0 1 0 1000",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M0 -12 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 5
+      }
+    ]
+  },
+  "door-external-glazed": {
+    "height": 1000,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 0 V1000 H18 V0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M1000 0 A1000 1000 0 0 1 0 1000",
+        "dash": true,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M9 55 V945",
+        "dash": false,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
+  },
+  "door-barn-single": {
+    "height": 180,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -30 H1000 M0 45 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M0.0 0 h1000.0 v18 h-1000.0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M700.0 125 h-400.0 m40 -25 l-40 25 l40 25",
+        "dash": false,
+        "fill": "none",
+        "weight": 6
+      }
+    ]
+  },
+  "door-barn-double": {
+    "height": 180,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -30 H1000 M0 45 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 5
+      },
+      {
+        "d": "M0.0 0 h500.0 v18 h-500.0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M350.0 125 h-200.0 m40 -25 l-40 25 l40 25",
+        "dash": false,
+        "fill": "none",
+        "weight": 6
+      },
+      {
+        "d": "M500.0 24 h500.0 v18 h-500.0 Z",
+        "dash": false,
+        "fill": "white",
+        "weight": 8
+      },
+      {
+        "d": "M650.0 125 h200.0 m-40 -25 l40 25 l-40 25",
+        "dash": false,
+        "fill": "none",
+        "weight": 6
+      }
+    ]
+  }
+}

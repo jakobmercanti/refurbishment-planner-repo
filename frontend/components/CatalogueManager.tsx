@@ -1,4 +1,5 @@
 "use client";
+import { DOOR_MODELS } from "@/lib/doorModels";
 
 import { useEffect, useRef, useState } from "react";
 import type { CatalogueCategory, CatalogueItem } from "@/lib/types";
@@ -18,7 +19,8 @@ interface CatalogueManagerProps {
 }
 
 const KINDS: Record<string, "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" | "DOOR" | "WINDOW"> = {
-  showers: "SHOWER", basins: "BASIN", toilets: "TOILET", storage: "FURNITURE", doors: "DOOR", windows: "WINDOW",
+  ...Object.fromEntries(DOOR_MODELS.map(model => [model.family, "DOOR" as const])),
+  "staircases-main": "FURNITURE", showers: "SHOWER", basins: "BASIN", toilets: "TOILET", storage: "FURNITURE", doors: "DOOR", windows: "WINDOW",
 };
 
 function trapFocus(event: React.KeyboardEvent<HTMLElement>) {

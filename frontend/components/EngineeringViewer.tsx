@@ -1,8 +1,13 @@
 "use client";
 
+import { doorRepresentation } from "@/lib/doorModels";
+import { DoorFixture } from "@/components/DoorFixture";
+import { WindowFixture } from "@/components/ArchitecturalFixtures";
 import { ParametricFixture } from "@/components/ParametricFixture";
 import { Popup } from "@/components/Popup";
 import { FlooringControls } from "@/components/FlooringControls";
+import { SkirtingControls } from "@/components/SkirtingControls";
+import { SkirtingBoards } from "@/components/SkirtingBoards";
 import { RoomFurniture } from "@/components/RoomFurniture";
 import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
 import { floorDesignColour, flooringSwatch, normalizeFloorDesign, TILE_MATERIALS } from "@/lib/flooring";
@@ -678,7 +683,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
     return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={customColour ?? "#b99b77"} /></group>;
   }
 
-  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || obstacle.representation_key === "furniture-storage-unit") {
+  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-"))) {
     return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} /></group>;
   }
 
@@ -790,47 +795,20 @@ function OpeningFixture({ room, opening }: { room: Room; opening: Opening }) {
   const height = opening.height.value * SCALE;
   const sill = opening.sill_height_mm * SCALE;
   const depth = Math.max((opening.reveal_depth_mm ?? wallThickness(room, wallIndex)) * SCALE, 0.06);
-  const frame = Math.min(Math.max(width * 0.055, 0.028), 0.065);
   const centre = {
     x: start.x + vector.dx * (opening.offset_mm + opening.width.value / 2),
     y: start.y + vector.dy * (opening.offset_mm + opening.width.value / 2),
   };
+  const windowKey = typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : "window-single-pane";
+  const windowDepth = typeof opening.metadata?.window_depth_mm === "number" && Number.isFinite(opening.metadata.window_depth_mm) && opening.metadata.window_depth_mm > 0 ? opening.metadata.window_depth_mm * SCALE : depth;
+  const windowProjection = windowKey === "window-bay" || windowKey === "window-bow";
   const doorColour = typeof opening.metadata?.color_hex === "string" && /^#[\da-f]{6}$/i.test(opening.metadata.color_hex) ? opening.metadata.color_hex : "#5b4330";
-  const frameMaterial = <meshStandardMaterial color={opening.kind === "DOOR" ? doorColour : "#455756"} roughness={0.46} metalness={opening.kind === "WINDOW" ? 0.38 : 0.06} />;
-  const framePieces = <>
-    <mesh position={[-width / 2 + frame / 2, sill + height / 2, 0]} castShadow><boxGeometry args={[frame, height, depth]} />{frameMaterial}</mesh>
-    <mesh position={[width / 2 - frame / 2, sill + height / 2, 0]} castShadow><boxGeometry args={[frame, height, depth]} />{frameMaterial}</mesh>
-    <mesh position={[0, sill + height - frame / 2, 0]} castShadow><boxGeometry args={[width, frame, depth]} />{frameMaterial}</mesh>
-    {opening.kind === "WINDOW" && <mesh position={[0, sill + frame / 2, 0]} castShadow><boxGeometry args={[width, frame, depth]} />{frameMaterial}</mesh>}
-  </>;
-  const leafHeight = Math.max(height, 0.1);
-  const leafWidth = Math.max(width, 0.1);
-  const makeDoorLeaf = (centreX: number, leafWidthValue: number) => (
-    <group position={[centreX, sill, 0.002]}>
-      <mesh position={[0, leafHeight / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[leafWidthValue, leafHeight, Math.min(depth * 0.28, 0.052)]} />
-        <meshStandardMaterial color={doorColour} roughness={0.5} />
-      </mesh>
-      {[0.24, 0.67].flatMap((vertical, row) => [-0.24, 0.24].map((horizontal, column) => <mesh key={`${row}-${column}`} position={[horizontal * leafWidthValue, vertical * leafHeight, depth * 0.17 + 0.004]} castShadow><boxGeometry args={[leafWidthValue * 0.38, leafHeight * 0.28, 0.018]} /><meshStandardMaterial color={doorColour} roughness={0.58} /></mesh>))}
-      <mesh position={[leafWidthValue * 0.36, leafHeight * 0.5, depth * 0.2]} castShadow>
-        <sphereGeometry args={[0.025, 14, 10]} />
-        <meshStandardMaterial color="#c8cccd" metalness={0.82} roughness={0.2} />
-      </mesh>
-    </group>
-  );
   return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]}>
     {opening.kind === "DOOR" ? (
-      opening.door_type === "DOUBLE"
-        ? <>{makeDoorLeaf(-leafWidth / 4, leafWidth / 2)}{makeDoorLeaf(leafWidth / 4, leafWidth / 2)}</>
-        : makeDoorLeaf(0, leafWidth)
-    ) : <>
-        {framePieces}
-        <mesh position={[0, sill + height / 2, 0]} receiveShadow>
-          <boxGeometry args={[Math.max(width - frame * 2, 0.1), Math.max(height - frame * 2, 0.1), 0.012]} />
-          <meshPhysicalMaterial color="#98c8d5" transparent opacity={0.52} roughness={0.08} metalness={0.1} transmission={0.12} />
-        </mesh>
-        <mesh position={[0, sill + height / 2, depth * 0.012]}><boxGeometry args={[frame * 0.48, Math.max(height - frame * 2, 0.1), depth * 0.12]} />{frameMaterial}</mesh>
-      </>}
+      <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
+    ) : <group position={[0, sill, windowProjection ? -windowDepth * .44 : 0]}>
+      <WindowFixture representation={windowKey} width={width} height={height} depth={windowDepth} />
+    </group>}
   </group>;
 }
 
@@ -1269,6 +1247,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
           />
         );
       })}
+      <SkirtingBoards walls={renderedWalls} wallMode={wallMode} defaultWallColour={DEFAULT_WALL_COLOUR} />
       {renderedRooms.map((sceneRoom) => {
         const sceneInteractive = multiRoom || sceneRoom.id === room.id;
         const sceneObstacles = sceneRoom.id === room.id ? displayedObstacles : sceneRoom.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
@@ -1413,6 +1392,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
           <p className="paint-code-note">Screen colours come from the selected catalogue collection. Confirm with a physical sample before ordering.</p>
         </div>
         <button className="review-style-button colour-reset-button" type="button" onClick={() => setWallColour()}>Reset to default</button>
+        <SkirtingControls value={finishes.skirting_board} onChange={skirting_board => onFinishesChange({ ...finishes, skirting_board }, room.id)} />
       </>}
       {selection.type === "FLOOR" && <>
         <span className="eyebrow">Selected floor</span>

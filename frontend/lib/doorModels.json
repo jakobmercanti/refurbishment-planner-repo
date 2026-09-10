@@ -1,0 +1,16 @@
+[
+  {"key":"door-single","family":"doors","familyName":"Internal doors","name":"Six-panel single","style":"six-panel","operation":"HINGED","leaves":1,"width":800,"depth":100,"height":2040},
+  {"key":"door-double","family":"doors","familyName":"Internal doors","name":"Six-panel double","style":"six-panel","operation":"HINGED","leaves":2,"width":1600,"depth":100,"height":2040},
+  {"key":"door-internal-flush","family":"doors","familyName":"Internal doors","name":"Flush single","style":"flush","operation":"HINGED","leaves":1,"width":800,"depth":100,"height":2040},
+  {"key":"door-internal-shaker","family":"doors","familyName":"Internal doors","name":"Three-panel shaker","style":"shaker","operation":"HINGED","leaves":1,"width":800,"depth":100,"height":2040},
+  {"key":"door-french-classic","family":"doors-french","familyName":"French doors","name":"Classic divided-light pair","style":"french-classic","operation":"HINGED","leaves":2,"width":1600,"depth":140,"height":2100},
+  {"key":"door-french-modern","family":"doors-french","familyName":"French doors","name":"Contemporary glazed pair","style":"glazed","operation":"HINGED","leaves":2,"width":1800,"depth":140,"height":2100},
+  {"key":"door-sliding-pocket","family":"doors-sliding","familyName":"Sliding doors","name":"Single pocket door","style":"shaker","operation":"SLIDING","leaves":1,"width":900,"depth":140,"height":2100},
+  {"key":"door-sliding-patio","family":"doors-sliding","familyName":"Sliding doors","name":"Two-panel glazed patio","style":"glazed","operation":"SLIDING","leaves":2,"width":2400,"depth":160,"height":2100},
+  {"key":"door-bifold-two","family":"doors-bifold","familyName":"Bifold doors","name":"Two-panel timber bifold","style":"shaker","operation":"FOLDING","leaves":2,"width":1000,"depth":120,"height":2040},
+  {"key":"door-bifold-four","family":"doors-bifold","familyName":"Bifold doors","name":"Four-panel glazed bifold","style":"glazed","operation":"FOLDING","leaves":4,"width":3200,"depth":160,"height":2200},
+  {"key":"door-external-panelled","family":"doors-external","familyName":"External entrance doors","name":"Traditional panelled entrance","style":"entrance","operation":"HINGED","leaves":1,"width":950,"depth":160,"height":2100},
+  {"key":"door-external-glazed","family":"doors-external","familyName":"External entrance doors","name":"Glazed entrance with lower panel","style":"entrance-glazed","operation":"HINGED","leaves":1,"width":1000,"depth":160,"height":2100},
+  {"key":"door-barn-single","family":"doors-barn","familyName":"Barn doors","name":"Single braced plank door","style":"barn","operation":"SLIDING","leaves":1,"width":1000,"depth":140,"height":2100},
+  {"key":"door-barn-double","family":"doors-barn","familyName":"Barn doors","name":"Double braced plank doors","style":"barn","operation":"SLIDING","leaves":2,"width":2000,"depth":140,"height":2100}
+]

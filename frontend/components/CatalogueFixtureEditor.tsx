@@ -9,13 +9,14 @@ import { UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type { CatalogueItem, Obstacle, Room } from "@/lib/types";
 
 const ROOM_FIXTURE_KINDS = new Set(["SHOWER", "BASIN", "TOILET", "FURNITURE"]);
-const MACRO_CATEGORY_ORDER = ["bathroom", "kitchen", "living", "bedroom", "other"] as const;
+const MACRO_CATEGORY_ORDER = ["bathroom", "kitchen", "living", "bedroom", "staircases", "other"] as const;
 type MacroCategoryId = typeof MACRO_CATEGORY_ORDER[number];
 const MACRO_CATEGORY_LABELS: Record<MacroCategoryId, string> = {
   bathroom: "Bathroom fixtures",
   kitchen: "Kitchen",
   living: "Living Room",
   bedroom: "Bedroom",
+  staircases: "Staircases",
   other: "Other",
 };
 type RoomCatalogueItem = CatalogueItem & { fixture_kind: NonNullable<Obstacle["fixture_kind"]> };
@@ -28,6 +29,7 @@ function macroCategoryForCategoryId(categoryId: string): MacroCategoryId {
   if (categoryId.startsWith("kitchen-")) return "kitchen";
   if (categoryId.startsWith("living-")) return "living";
   if (categoryId.startsWith("bedroom-")) return "bedroom";
+  if (categoryId.startsWith("staircases-")) return "staircases";
   return "other";
 }
 

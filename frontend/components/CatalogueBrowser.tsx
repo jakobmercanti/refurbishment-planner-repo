@@ -1,4 +1,6 @@
 "use client";
+import { DOOR_MODELS } from "@/lib/doorModels";
+import { STAIRCASE_KEYS } from "@/lib/architecturalModels";
 /* Catalogue previews are local capped data URLs, so Next image optimisation is not applicable. */
 /* eslint-disable @next/next/no-img-element */
 
@@ -18,13 +20,14 @@ interface CatalogueBrowserProps {
   onInsert: (item: CatalogueItem) => void;
 }
 
-type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "living" | "bedroom" | "kitchen";
+type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "living" | "bedroom" | "kitchen" | "staircases";
 type CatalogueDetailSelection =
   | { type: "object"; item: CatalogueItem }
   | { type: "material"; item: MaterialItem; family: MaterialFamily; collection: MaterialCollection };
 type CatalogueContextMenu = { x: number; y: number };
 
 const CATEGORY_KINDS: Record<string, CatalogueItemInput["fixture_kind"]> = {
+  ...Object.fromEntries(DOOR_MODELS.map(model => [model.family, "DOOR" as const])),
   "living-sofas": "FURNITURE", "living-armchairs": "FURNITURE", "living-tables": "FURNITURE",
   "kitchen-sinks": "FURNITURE",
   "kitchen-fridges": "FURNITURE",
@@ -41,6 +44,7 @@ const CATEGORY_KINDS: Record<string, CatalogueItemInput["fixture_kind"]> = {
   storage: "FURNITURE",
   doors: "DOOR",
   windows: "WINDOW",
+  "staircases-main": "FURNITURE",
 };
 
 function blankEntry(): CatalogueItemInput {
@@ -221,7 +225,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
 
   if (!open) return null;
 
-  const catalogueMaterials = [...FLOORING_COLLECTIONS, ...materialCollections.filter((collection) => !(collection.kind === "TILE" && collection.id === "tiles-default"))];
+  const catalogueMaterials = [...FLOORING_COLLECTIONS, ...materialCollections.filter((collection) => !FLOORING_COLLECTIONS.some((builtIn) => builtIn.id === collection.id) && !(collection.kind === "TILE" && collection.id === "tiles-default"))];
   const activeMaterial = catalogueMaterials.find((collection) => collection.id === activeMaterialId);
   const activeMaterialFamily = activeMaterial?.families.find((family) => family.id === activeMaterialFamilyId);
   const visibleMaterialFamilies = activeMaterial
@@ -235,8 +239,9 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   const bathroomFixtureCategories = categories.filter((category) => ["showers", "basins", "toilets", "storage"].includes(category.id));
   const topLevelOpeningCategories = categories.filter((category) => ["doors", "windows"].includes(category.id));
   const objectGroupCategories: Record<CatalogueObjectGroup, CatalogueCategory[]> = {
+    staircases: categories.filter((category) => category.id.startsWith("staircases-")),
     bathroom: bathroomFixtureCategories,
-    doors: categories.filter((category) => category.id === "doors"),
+    doors: categories.filter((category) => category.id === "doors" || category.id.startsWith("doors-")),
     windows: categories.filter((category) => category.id === "windows"),
     kitchen: categories.filter((category) => category.id.startsWith("kitchen-")),
     living: categories.filter((category) => category.id.startsWith("living-")),
@@ -255,12 +260,15 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
       "kitchen",
       "living",
       "bedroom",
+      "staircases",
       "PAINT",
       "TILE",
       ...categories.flatMap((category) => [
         `category-${category.id}`,
         `category-${category.id}-family`,
       ]),
+      ...objectGroupCategories.doors.map(category => `category-doors-family-${category.id === "doors" ? "Internal doors" : category.name}`),
+      ...["Casement", "Bay", "Bow", "Sash"].map(family => `category-windows-family-${family} windows`),
       ...catalogueMaterials.map((collection) => `material-${collection.id}`),
     ];
     setExpanded((current) => Object.fromEntries([
@@ -457,18 +465,23 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   }
 
   function renderOpeningCategory(category: CatalogueCategory, group: CatalogueObjectGroup) {
-    const subcategories = [...new Set(navigationItems.filter((item) => item.category_id === category.id).map((item) => item.subcategory))];
     const key = `category-${category.id}`;
-    const familyKey = `${key}-family`;
-    const familyName = category.id === "doors" ? "Internal doors" : "Casement window";
+    const windowFamily = (item: CatalogueItem) => /^window-(bay|bow|sash)$/.test(item.representation_key ?? "") ? `${item.representation_key!.slice(7)[0].toUpperCase()}${item.representation_key!.slice(8)} windows` : "Casement windows";
+    const families = group === "doors"
+      ? objectGroupCategories.doors.map(family => ({ id: family.id, label: family.id === "doors" ? "Internal doors" : family.name, items: navigationItems.filter(item => item.category_id === family.id) }))
+      : [...new Set(navigationItems.filter(item => item.category_id === category.id).map(windowFamily))].map(label => ({ id: category.id, label, items: navigationItems.filter(item => item.category_id === category.id && windowFamily(item) === label) }));
     return <div key={category.id} className="catalogue-opening-category">
-      <button className="catalogue-disclosure" aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) }))} title={category.description}><strong>{category.name}</strong><span aria-hidden>{expanded[key] ? "−" : "+"}</span></button>
+      <button className="catalogue-disclosure" aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => setExpanded(current => ({ ...current, [key]: !current[key] }))}><strong>{group === "doors" ? "Doors" : "Windows"}</strong><span aria-hidden>{expanded[key] ? "−" : "+"}</span></button>
       {expanded[key] && <div id={`${key}-children`} className="catalogue-branch">
         {renderGroupAll(group)}
-        <div className="catalogue-opening-family">
-          <button className="catalogue-opening-family-toggle" aria-expanded={expanded[familyKey] ?? false} aria-controls={`${familyKey}-children`} onClick={() => { setExpanded((current) => ({ ...current, [familyKey]: !(current[familyKey] ?? false) })); selectObjectGroup(group, category.id); }}><strong>{familyName}</strong><span aria-hidden>{expanded[familyKey] ? "−" : "+"}</span></button>
-          {expanded[familyKey] && <div id={`${familyKey}-children`} className="catalogue-branch nested">{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => selectObjectGroup(group, category.id, subcategory)}><span>{subcategory}</span></button>)}</div>}
-        </div>
+        {families.map(family => {
+          const familyKey = `${key}-family-${family.label}`;
+          const options = [...new Set(family.items.map(item => item.subcategory))];
+          return <div key={familyKey} className="catalogue-opening-family">
+            <button className="catalogue-opening-family-toggle" aria-expanded={expanded[familyKey] ?? false} onClick={() => { setExpanded(current => ({ ...current, [familyKey]: !current[familyKey] })); selectObjectGroup(group, family.id); }}><strong>{family.label}</strong><span aria-hidden>{expanded[familyKey] ? "−" : "+"}</span></button>
+            {expanded[familyKey] && <div className="catalogue-branch nested">{options.map(option => <button key={option} className={categoryId === family.id && activeSubcategory === option ? "active" : ""} onClick={() => selectObjectGroup(group, family.id, option)}>{option}</button>)}</div>}
+          </div>;
+        })}
       </div>}
     </div>;
   }
@@ -479,14 +492,14 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
       const { item } = detailEntry;
       const category = categories.find((candidate) => candidate.id === item.category_id);
       const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${/^(living|bedroom|kitchen)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
-      const isCabinet = /^furniture-(kitchen-|wardrobe-)/.test(item.representation_key ?? "");
+      const hasLiveRepresentation = /^(furniture-(kitchen-|wardrobe-|stair-)|window-|door-)/.test(item.representation_key ?? "");
       const previewObstacle = { id: item.id, name: item.name, kind: "BOX" as const, fixture_kind: "FURNITURE" as const, representation_key: item.representation_key ?? undefined, center: { x: 0, y: 0 }, dimensions: { width: { value: item.width_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, depth: { value: item.depth_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, height: { value: item.height_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const } }, rotation_deg: 0, base_z_mm: 0, color_hex: item.color_hex, verified: false, source_type: "USER_MEASURED" as const };
       const sideClearance = item.side_clearance_mm == null ? `${category?.default_side_clearance_mm ?? 0} mm (category default)` : `${item.side_clearance_mm} mm (entry override)`;
       const frontClearance = item.front_clearance_mm == null ? `${category?.default_front_clearance_mm ?? 0} mm (category default)` : `${item.front_clearance_mm} mm (entry override)`;
       return <div className="catalogue-form-backdrop catalogue-detail-backdrop"><section ref={detailDialog} className="catalogue-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="catalogue-detail-title" onKeyDown={trapFocus}>
         <div className="catalogue-form-heading"><div><span className="eyebrow">Catalogue entry</span><h3 id="catalogue-detail-title">{item.name}</h3><p>{item.category_name} · {item.subcategory}</p></div><button ref={detailCloseButton} type="button" aria-label="Close catalogue entry details" onClick={() => setDetailEntry(null)}>×</button></div>
         <div className="catalogue-detail-hero"><div className={`catalogue-detail-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${preview})` : undefined } as React.CSSProperties}>{!preview && <span />}{item.stl_filename && <b>STL</b>}</div><div><strong>{item.fixture_kind}</strong><p>{item.description || "No description provided."}</p></div></div>
-        {isCabinet && <section className="catalogue-detail-section"><h4>3D representation</h4><FixturePreview obstacle={previewObstacle} /><h4>2D plan representation</h4><img src={item.plan_symbol_url ?? undefined} alt={`${item.name} architectural plan`} style={{ width: "100%", maxHeight: 240, objectFit: "contain" }} /></section>}
+        {hasLiveRepresentation && <section className="catalogue-detail-section"><h4>3D representation</h4><FixturePreview obstacle={previewObstacle} /><h4>2D plan representation</h4><img src={item.plan_symbol_url ?? undefined} alt={`${item.name} architectural plan`} style={{ width: "100%", maxHeight: 240, objectFit: "contain" }} /></section>}
         <dl className="catalogue-detail-grid">
           <div><dt>Database ID</dt><dd><code>{item.id}</code></dd></div>
           <div><dt>Category</dt><dd>{item.category_name}</dd></div>
@@ -545,8 +558,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
               {bathroomFixtureCategories.map((category) => renderCategoryTree(category, "bathroom"))}
             </div>}
             {topLevelOpeningCategories.map((category) => renderOpeningCategory(category, category.id as "doors" | "windows"))}
-            {(["kitchen", "living", "bedroom"] as const).map((group) => <div key={group}>
-              <button className="catalogue-disclosure" aria-expanded={expanded[group] ?? false} onClick={() => setExpanded((current) => ({ ...current, [group]: !current[group] }))}><strong>{group === "kitchen" ? "Kitchen" : group === "living" ? "Living Room" : "Bedroom"}</strong><span aria-hidden>{expanded[group] ? "−" : "+"}</span></button>
+            {(["kitchen", "living", "bedroom", "staircases"] as const).map((group) => <div key={group}>
+              <button className="catalogue-disclosure" aria-expanded={expanded[group] ?? false} onClick={() => setExpanded((current) => ({ ...current, [group]: !current[group] }))}><strong>{group === "kitchen" ? "Kitchen" : group === "living" ? "Living Room" : group === "staircases" ? "Staircases" : "Bedroom"}</strong><span aria-hidden>{expanded[group] ? "−" : "+"}</span></button>
               {expanded[group] && <div className="catalogue-branch">{renderGroupAll(group)}{categories.filter((category) => category.id.startsWith(group + "-")).map((category) => renderCategoryTree(category, group))}</div>}
             </div>)}
             {(["PAINT", "TILE"] as const).map((kind) => <div key={kind}><button className="catalogue-disclosure" aria-expanded={expanded[kind]} aria-controls={`catalogue-${kind}`} onClick={() => setExpanded((current) => ({ ...current, [kind]: !current[kind] }))}><strong>{kind === "PAINT" ? "Paints & Colours" : "Flooring"}</strong><span aria-hidden>{expanded[kind] ? "−" : "+"}</span></button>{expanded[kind] && <div id={`catalogue-${kind}`} className="catalogue-branch">{catalogueMaterials.filter((collection) => collection.kind === kind).map((collection) => { const key = `material-${collection.id}`; return <div key={collection.id} className="catalogue-tree-item"><button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-families`} className={activeMaterialId === collection.id ? "active" : ""} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setActiveMaterialId(collection.id); setActiveMaterialFamilyId(null); setCategoryId(""); }}><span>{collection.name}</span><small>{collection.families.reduce((total, family) => total + family.items.length, 0)}</small></button>{(expanded[key] ?? false) && <div id={`${key}-families`} className="catalogue-branch nested">{collection.families.map((family) => <button key={family.id} className={activeMaterialFamilyId === family.id ? "active" : ""} aria-pressed={activeMaterialFamilyId === family.id} onClick={() => { setActiveMaterialId(collection.id); setActiveMaterialFamilyId(family.id); setCategoryId(""); document.getElementById(`family-${family.id}`)?.scrollIntoView({ block: "start" }); }}><span>{family.name}</span><small>{family.items.length}</small></button>)}</div>}</div>; })}</div>}</div>)}
@@ -578,7 +591,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
           <label className="field"><span>Colour</span><input type="color" value={form.color_hex} onChange={(event) => setField("color_hex", event.target.value)} /></label>
           <label className="field"><span>Colour HEX</span><input value={form.color_hex.toUpperCase()} pattern="#[0-9A-Fa-f]{6}" onChange={(event) => setField("color_hex", event.target.value.toUpperCase())} /></label>
           <label className="field"><span>Subcategory</span><input required value={form.subcategory} onChange={(event) => setField("subcategory", event.target.value)} /></label>
-          <label className="field"><span>3D model and plan symbol</span><select value={form.representation_key ?? ""} onChange={event => { setField("representation_key", event.target.value); setField("plan_symbol_url", event.target.value ? `/fixture-symbols/${event.target.value}.svg` : ""); }}><option value="">Generic / uploaded model</option>{["shower-corner","shower-quadrant","shower-walk-in","shower-alcove","shower-freestanding","shower-wet-room","basin-wall-mounted","basin-pedestal","basin-countertop","basin-undermount","basin-vanity","basin-double-vanity","basin-corner","toilet-freestanding","toilet-wall-mounted","toilet-close-coupled","toilet-back-to-wall","door-single","door-double","window-single-pane","window-double-pane","window-triple-pane"].map(key => <option key={key} value={key}>{key.replaceAll("-", " ")}</option>)}</select></label>
+          <label className="field"><span>3D model and plan symbol</span><select value={form.representation_key ?? ""} onChange={event => { setField("representation_key", event.target.value); setField("plan_symbol_url", event.target.value ? `/fixture-symbols/${event.target.value}.svg` : ""); }}><option value="">Generic / uploaded model</option>{["shower-corner","shower-quadrant","shower-walk-in","shower-alcove","shower-freestanding","shower-wet-room","basin-wall-mounted","basin-pedestal","basin-countertop","basin-undermount","basin-vanity","basin-double-vanity","basin-corner","toilet-freestanding","toilet-wall-mounted","toilet-close-coupled","toilet-back-to-wall",...DOOR_MODELS.map(model => model.key),"window-single-pane","window-double-pane","window-triple-pane","window-bay","window-bow","window-sash","window-casement",...STAIRCASE_KEYS].map(key => <option key={key} value={key}>{key.replaceAll("-", " ")}</option>)}</select></label>
           <label className="field"><span>Manufacturer floorplan image (PNG, JPEG or WebP, max 500 KB)</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 500000) { setError("Plan image must be smaller than 500 KB."); return; } const reader = new FileReader(); reader.onload = () => setField("plan_symbol_data_url", String(reader.result)); reader.readAsDataURL(file); }} />{form.plan_symbol_data_url && <button type="button" onClick={() => setField("plan_symbol_data_url", null)}>Use generic symbol</button>}</label>
           <label className="field"><span>Floorplan shape</span><select value={form.plan_shape} onChange={(event) => setField("plan_shape", event.target.value as CatalogueItemInput["plan_shape"])}><option value="RECTANGLE">Rectangle / box</option><option value="ELLIPSE">Ellipse / cylinder</option></select></label>
           <label className="field span-two"><span>Object name</span><input value={form.name} onChange={(event) => setField("name", event.target.value)} /></label>

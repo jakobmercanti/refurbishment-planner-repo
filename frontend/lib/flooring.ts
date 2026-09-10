@@ -1,3 +1,4 @@
+import flooringPatterns from "./flooringPatterns.json" with { type: "json" };
 import type { MaterialCollection } from "./types";
 import tileMaterials from "./tileMaterials.json" with { type: "json" };
 export const TILE_MATERIALS = tileMaterials;
@@ -20,18 +21,8 @@ export const WOOD_COLOURS = [
   { id: "grey-oak", name: "Grey oak", base: "#a9a397", grain: "#6f695e", seed: 163 },
 ] as const;
 
-export const FLOORING_PATTERNS = [
-  { id: "tile-square", name: "Square", material: "tile", width: 600, length: 600 },
-  { id: "tile-rectangle", name: "Rectangle", material: "tile", width: 300, length: 600 },
-  { id: "tile-herringbone", name: "Herringbone", material: "tile", width: 100, length: 400 },
-  { id: "wood-plank", name: "Plank", material: "wood", width: 180, length: 1200 },
-  { id: "wood-herringbone", name: "Herringbone", material: "wood", width: 120, length: 600 },
-  { id: "wood-chevron", name: "Chevron", material: "wood", width: 120, length: 600 },
-  { id: "wood-weave", name: "Continuous Versailles Weave", material: "wood", width: 120, length: 600 },
-  { id: "wood-hexagonal", name: "Hexagonal", material: "wood", width: 400, length: 400 },
-  { id: "wood-versailles", name: "Tile parquet the Versailles", material: "wood", width: 100, length: 800 },
-] as const;
-export type FlooringPattern = typeof FLOORING_PATTERNS[number]["id"];
+export type FlooringPattern = "tile-square" | "tile-rectangle" | "tile-herringbone" | "tile-chevron" | "tile-double-herringbone" | "wood-plank" | "wood-herringbone" | "wood-chevron" | "wood-weave" | "wood-hexagonal" | "wood-versailles" | "wood-mosaic" | "wood-chantilly" | "wood-double-basket-weave";
+export const FLOORING_PATTERNS = flooringPatterns as { id: FlooringPattern; name: string; material: "wood" | "tile"; width: number; length: number }[];
 export interface FloorDesign {
   tile_material_id?: string;
   pattern: FlooringPattern;
@@ -110,14 +101,19 @@ export function flooringSwatch(input: FloorDesign): { width: number; height: num
   if (diagonal) {
     // Basis (w,-w), (l,l) tiles for ANY board aspect ratio. Consumers undo
     // the SVG's basis transform, preserving entered physical board dimensions.
-    width = 2 * w; height = 2 * l;
-    const count = Math.ceil((2 * l + w) / w) + 2;
+    const pair = d.pattern === "tile-double-herringbone" ? 2 : 1;
+    const band = pair * w;
+    width = 2 * band; height = 2 * l;
+    const count = Math.ceil((2 * l + band) / band) + 2;
     for (let a = -count; a <= count; a++) for (let b = -2; b <= 3; b++) {
-      const x = a * w + b * l, y = -a * w + b * l;
+      const x = a * band + b * l, y = -a * band + b * l;
       const variation = ((a % 2 + 2) % 2) * 2 + ((b % 2 + 2) % 2) * 4;
-      board(x, y, l, w, 0, undefined, 0, variation); board(x + l + w, y, l, w, 90, undefined, 0, variation + 1);
+      for (let j = 0; j < pair; j++) {
+        board(x, y + j * w, l, w, 0, undefined, 0, variation + j);
+        board(x + l + band - j * w, y, l, w, 90, undefined, 0, variation + j + 2);
+      }
     }
-  } else if (d.pattern === "wood-chevron") {
+  } else if (d.pattern.endsWith("chevron")) {
     width = l * Math.SQRT2; height = w * Math.SQRT2;
     const half = width / 2;
     for (let j = -Math.ceil(l / w); j <= 1; j++) {
@@ -125,7 +121,30 @@ export function flooringSwatch(input: FloorDesign): { width: number; height: num
       board(0, y, half, half + height, 0, `0,0 ${half},${half} ${half},${half + height} 0,${height}`, 45, 0);
       board(half, y, half, half + height, 0, `0,${half} ${half},0 ${half},${height} 0,${half + height}`, -45, 1);
     }
-  } else if (d.pattern === "wood-weave" || d.pattern === "wood-versailles") {
+  } else if (d.pattern === "wood-chantilly") {
+    width = height = l;
+    const border = Math.min(w, l / 8), cell = (l - 2 * border) / 3, rail = cell / 4;
+    for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
+      const x = border + col * cell, y = border + row * cell;
+      board(x, y, cell - rail, cell - rail, 0, undefined, (row + col) % 2 ? 90 : 0);
+      board(x + cell, y, cell, rail, 90);
+      board(x, y + cell - rail, cell - rail, rail);
+    }
+    board(0, 0, l, border); board(0, l - border, l, border);
+    board(border, border, l - 2 * border, border, 90); board(l, border, l - 2 * border, border, 90);
+  } else if (d.pattern === "wood-double-basket-weave") {
+    width = height = 2 * l;
+    for (let row = -2; row < 4; row++) for (let col = -2; col < 4; col++) {
+      for (let j = 0; j < 2; j++) {
+        if ((row + col) % 2) board((col + 1) * l - j * l / 2, row * l, l, l / 2, 90);
+        else board(col * l, row * l + j * l / 2, l, l / 2);
+      }
+    }
+    const weave = shapes.join(""); shapes.length = 0;
+    // A square repeat in the rotated lattice, without seams at the swatch edge.
+    width = height = Math.SQRT2 * l;
+    shapes.push(`<g transform="rotate(45) scale(1)">${weave}</g>`);
+  } else if (d.pattern === "wood-mosaic" || d.pattern === "wood-weave" || d.pattern === "wood-versailles") {
     const framed = d.pattern === "wood-versailles", border = framed ? Math.min(w, l / 5) : 0;
     width = height = framed ? l : 2 * l;
     const cell = framed ? (l - border * 2) / 2 : l;

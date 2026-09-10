@@ -25,7 +25,8 @@ def install_fixture_previews(session):
             path = Path(__file__).resolve().parents[1] / "frontend/public/fixture-previews" / f"{item.representation_key}.png"
             if not path.is_file():
                 continue
-            item.representation_version = REPRESENTATION_VERSION
+            version = 3 if item.representation_key.startswith("door-") or item.representation_key in {"window-casement", "window-single-pane", "window-double-pane", "window-triple-pane"} else REPRESENTATION_VERSION
+            item.representation_version = version
             previous = json.loads(item.image_data_json or "[]")
             if previous and not all(record.get("generated_representation") for record in previous):
                 continue
@@ -36,7 +37,7 @@ def install_fixture_previews(session):
             validated, mime, extension = decode_picture("data:image/png;base64," + base64.b64encode(data).decode("ascii"))
             replacement = stage_item_picture_replacement(item.id, [(validated, mime, extension, f"{item.name} — rendered model preview")])
             replacements.append(replacement)
-            replacement.metadata[0].update(generated_representation=REPRESENTATION_VERSION, sha256=digest)
+            replacement.metadata[0].update(generated_representation=version, sha256=digest)
             item.image_data_json = json.dumps(replacement.metadata)
         session.commit()
     except Exception:
