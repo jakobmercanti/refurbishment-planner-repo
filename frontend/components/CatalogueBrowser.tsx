@@ -477,9 +477,9 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
         {families.map(family => {
           const familyKey = `${key}-family-${family.label}`;
           const options = [...new Set(family.items.map(item => item.subcategory))];
-          return <div key={familyKey} className="catalogue-opening-family">
-            <button className="catalogue-opening-family-toggle" aria-expanded={expanded[familyKey] ?? false} onClick={() => { setExpanded(current => ({ ...current, [familyKey]: !current[familyKey] })); selectObjectGroup(group, family.id); }}><strong>{family.label}</strong><span aria-hidden>{expanded[familyKey] ? "−" : "+"}</span></button>
-            {expanded[familyKey] && <div className="catalogue-branch nested">{options.map(option => <button key={option} className={categoryId === family.id && activeSubcategory === option ? "active" : ""} onClick={() => selectObjectGroup(group, family.id, option)}>{option}</button>)}</div>}
+          return <div key={familyKey} className="catalogue-tree-item">
+            <button aria-expanded={expanded[familyKey] ?? false} aria-controls={`${familyKey}-children`} onClick={() => { setExpanded(current => ({ ...current, [familyKey]: !current[familyKey] })); selectObjectGroup(group, family.id); }} title={category.description}><span>{family.label}</span><small>{family.items.length}</small></button>
+            {(expanded[familyKey] ?? false) && <div id={`${familyKey}-children`} className="catalogue-branch nested">{options.map(option => <button key={option} className={categoryId === family.id && activeSubcategory === option ? "active" : ""} onClick={() => selectObjectGroup(group, family.id, option)}><span>{option}</span></button>)}</div>}
           </div>;
         })}
       </div>}
