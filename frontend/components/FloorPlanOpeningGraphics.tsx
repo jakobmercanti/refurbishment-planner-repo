@@ -64,7 +64,7 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   if (!shape) return null;
   const { startModel, endModel, start, end, perpendicular, modelNormal } = shape;
   const { gapWidth, jambHalf } = openingRenderWidths(wallThicknessScreen);
-  const style = { "--opening-gap-width": `${gapWidth}px`, ...(opening.colorHex ? { "--door-colour": opening.colorHex } : {}) } as CSSProperties;
+  const style = { "--opening-gap-width": `${gapWidth}px`, ...(opening.colorHex ? { "--door-colour": opening.colorHex, "--window-colour": opening.colorHex, ...(opening.kind === "WINDOW" ? { color: opening.colorHex } : {}) } : {}) } as CSSProperties;
   const className = selected ? " selected" : "";
   if (opening.kind === "WINDOW") {
     const family = opening.representationKey ?? "window-single-pane";

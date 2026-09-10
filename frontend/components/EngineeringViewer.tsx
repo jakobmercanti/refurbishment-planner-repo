@@ -69,6 +69,7 @@ interface ViewerProps {
   onObstaclesChange: (obstacles: Obstacle[], roomId?: string) => void;
   onFinishesChange: (finishes: RoomFinishes, roomId?: string) => void;
   onPersonChange: (person: PersonMockup | null, roomId?: string) => void;
+  onOpeningSelected?: (selection: { id: string; roomId: string } | null) => void;
   onElementSelected?: (selection: { id: string; roomId: string } | null) => void;
   wallMode: WallViewMode;
   toolbarVisibility: ToolbarVisibility;
@@ -79,7 +80,7 @@ interface ViewerProps {
   fitRequest: number;
 }
 
-type Selection = { type: "ELEMENT"; id: string; roomId: string } | { type: "PERSON"; roomId: string } | { type: "WALL"; id: string; ids: string[]; roomId: string } | { type: "FLOOR"; roomId: string } | null;
+type Selection = { type: "OPENING"; id: string; roomId: string } | { type: "ELEMENT"; id: string; roomId: string } | { type: "PERSON"; roomId: string } | { type: "WALL"; id: string; ids: string[]; roomId: string } | { type: "FLOOR"; roomId: string } | null;
 
 interface TileStyle {
   id: string;
@@ -683,7 +684,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
     return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={customColour ?? "#b99b77"} /></group>;
   }
 
-  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-"))) {
+  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
     return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} /></group>;
   }
 
@@ -785,7 +786,7 @@ function DoorSwing({ room, door }: { room: Room; door: Opening }) {
 
 type VectorTuple = [number, number, number];
 
-function OpeningFixture({ room, opening }: { room: Room; opening: Opening }) {
+function OpeningFixture({ room, opening, selected, onSelect }: { room: Room; opening: Opening; selected: boolean; onSelect?: () => void }) {
   const wallIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
   const start = room.vertices[wallIndex];
   const end = room.vertices[(wallIndex + 1) % room.vertices.length];
@@ -803,11 +804,12 @@ function OpeningFixture({ room, opening }: { room: Room; opening: Opening }) {
   const windowDepth = typeof opening.metadata?.window_depth_mm === "number" && Number.isFinite(opening.metadata.window_depth_mm) && opening.metadata.window_depth_mm > 0 ? opening.metadata.window_depth_mm * SCALE : depth;
   const windowProjection = windowKey === "window-bay" || windowKey === "window-bow";
   const doorColour = typeof opening.metadata?.color_hex === "string" && /^#[\da-f]{6}$/i.test(opening.metadata.color_hex) ? opening.metadata.color_hex : "#5b4330";
-  return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]}>
+  return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
+    {selected && <Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} />}
     {opening.kind === "DOOR" ? (
       <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
     ) : <group position={[0, sill, windowProjection ? -windowDepth * .44 : 0]}>
-      <WindowFixture representation={windowKey} width={width} height={height} depth={windowDepth} />
+      <WindowFixture representation={windowKey} width={width} height={height} depth={windowDepth} colour={typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE"} />
     </group>}
   </group>;
 }
@@ -826,7 +828,8 @@ function OpeningImprint({ room, opening }: { room: Room; opening: Opening }) {
     y: start.y + vector.dy * (opening.offset_mm + opening.width.value / 2),
   };
   const points: VectorTuple[] = [[-width / 2, sill, 0.035], [width / 2, sill, 0.035], [width / 2, sill + height, 0.035], [-width / 2, sill + height, 0.035], [-width / 2, sill, 0.035]];
-  return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]}>
+  return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
+    {selected && <Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} />}
     <Line points={points} color={opening.kind === "DOOR" ? "#e5a51b" : "#4a9cb8"} lineWidth={1.2} dashed dashSize={0.045} gapSize={0.025} />
   </group>;
 }
@@ -1255,7 +1258,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
         return (
           <group key={`room-${sceneRoom.id}`}>
             <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id }) : () => undefined} />
-            {sceneRoom.openings.map((opening) => <OpeningFixture key={`fixture-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} />)}
+            {sceneRoom.openings.map((opening) => <OpeningFixture key={`fixture-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} selected={selection?.type === "OPENING" && selection.id === opening.id && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "OPENING", id: opening.id, roomId: sceneRoom.id }) : undefined} />)}
             {toggles.elements && sceneObstacles.map((obstacle) => (
               <FixtureMesh
                 key={`${sceneRoom.id}-${obstacle.id}`}
@@ -1451,6 +1454,8 @@ export function EngineeringViewer(props: ViewerProps) {
   const flip = (key: keyof Toggles) => setToggles((current) => ({ ...current, [key]: !current[key] }));
   const selectObject = (nextSelection: Selection) => {
     setSelection(nextSelection);
+    props.onOpeningSelected?.(nextSelection?.type === "OPENING" ? nextSelection : null);
+    if (nextSelection?.type === "OPENING") { setPanelSelection(null); props.onElementSelected?.(null); return; }
     if (nextSelection?.type === "ELEMENT") {
       setPanelSelection(null);
       props.onElementSelected?.(nextSelection);
@@ -1461,6 +1466,7 @@ export function EngineeringViewer(props: ViewerProps) {
   };
   const clearSelection = () => {
     setSelection(null);
+    props.onOpeningSelected?.(null);
     setPanelSelection(null);
     props.onElementSelected?.(null);
   };

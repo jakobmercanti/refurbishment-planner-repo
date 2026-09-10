@@ -20,6 +20,9 @@ interface CatalogueManagerProps {
 
 const KINDS: Record<string, "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" | "DOOR" | "WINDOW"> = {
   ...Object.fromEntries(DOOR_MODELS.map(model => [model.family, "DOOR" as const])),
+  "radiators-horizontal": "FURNITURE", "radiators-vertical": "FURNITURE", "radiators-bathroom": "FURNITURE",
+  "baths": "FURNITURE", "kitchen-cabinets": "FURNITURE",
+  ...Object.fromEntries(["straight", "l-shape", "u-shape", "spiral", "curved", "bifurcated"].map(family => [`staircases-${family}`, "FURNITURE" as const])),
   "staircases-main": "FURNITURE", showers: "SHOWER", basins: "BASIN", toilets: "TOILET", storage: "FURNITURE", doors: "DOOR", windows: "WINDOW",
 };
 

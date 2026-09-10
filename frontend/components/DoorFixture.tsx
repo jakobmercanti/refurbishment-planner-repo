@@ -1,4 +1,5 @@
 "use client";
+import { OpeningFinishMaterial } from "@/components/OpeningFinishMaterial";
 import { useEffect, useMemo } from "react";
 import { CatmullRomCurve3, DataTexture, RGBAFormat, SRGBColorSpace, Path, Shape, Vector3 } from "three";
 import { doorModel } from "@/lib/doorModels";
@@ -8,7 +9,7 @@ function rectangle(x: number, y: number, w: number, h: number) {
   const shape = new Shape(); shape.moveTo(x, y); shape.lineTo(x + w, y); shape.lineTo(x + w, y + h); shape.lineTo(x, y + h); shape.closePath(); return shape;
 }
 function Box({ at, size, colour, metal = false }: { at: [number, number, number]; size: [number, number, number]; colour: string; metal?: boolean }) {
-  return <mesh position={at} castShadow receiveShadow><boxGeometry args={size} /><meshStandardMaterial color={colour} roughness={metal ? .28 : .42} metalness={metal ? .78 : 0} /></mesh>;
+  return <mesh position={at} castShadow receiveShadow><boxGeometry args={size} />{metal ? <meshStandardMaterial color={colour} roughness={.28} metalness={.78} /> : <OpeningFinishMaterial colour={colour} />}</mesh>;
 }
 
 /** A leaf built from pierced stiles/rails, recessed infills and bevelled mouldings. */
@@ -40,7 +41,7 @@ function DoorLeaf({ width: w, height: h, thickness: t, style, colour, handleSide
   const hardware = style === "six-panel" || style === "entrance" ? "#ad8644" : "#7c8588";
   const lever = useMemo(() => new CatmullRomCurve3([new Vector3(0, 0, 0), new Vector3(-handleSide * h * .016, h * .004, h * .006), new Vector3(-handleSide * h * .042, h * .001, h * .008), new Vector3(-handleSide * h * .050, h * .005, h * .008)]), [h, handleSide]);
   return <group>
-    <mesh position={[0, 0, -t / 2]} castShadow receiveShadow><extrudeGeometry args={[slab, { depth: t, bevelEnabled: false }]} /><meshStandardMaterial color={colour} map={grain} roughness={.43} /></mesh>
+    <mesh position={[0, 0, -t / 2]} castShadow receiveShadow><extrudeGeometry args={[slab, { depth: t, bevelEnabled: false }]} />{grain ? <meshStandardMaterial color={colour} map={grain} roughness={.43} /> : <OpeningFinishMaterial colour={colour} />}</mesh>
     {panels.map((p, index) => {
       const pw = p.w * w, ph = p.h * h, trim = Math.min(w * .035, h * .014), x = (p.x + p.w / 2) * w, y = (p.y + p.h / 2) * h;
       const inset = rectangle(-pw / 2 + trim, -ph / 2 + trim, pw - trim * 2, ph - trim * 2);
@@ -54,8 +55,8 @@ function DoorLeaf({ width: w, height: h, thickness: t, style, colour, handleSide
             <Box at={[0, 0, t * .12]} size={[trim * .8, ph, t * .3]} colour={colour} />
             {[1, 2, 3, 4].map(row => <Box key={row} at={[0, -ph / 2 + ph * row / 5, t * .12]} size={[pw, trim * .8, t * .3]} colour={colour} />)}
           </>}
-        </> : <mesh position={[0, 0, -t * .09]} castShadow receiveShadow><extrudeGeometry args={[inset, { depth: t * .18, bevelEnabled: style !== "shaker", bevelSize: trim * .25, bevelThickness: t * .10, bevelSegments: 3 }]} /><meshStandardMaterial color={colour} roughness={.48} /></mesh>}
-        {[-1, 1].map(side => <mesh key={side} position={[0, 0, side * t * .32]} rotation={[side < 0 ? Math.PI : 0, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[ring, { depth: t * .14, bevelEnabled: style !== "shaker", bevelSize: trim * .4, bevelThickness: t * .10, bevelSegments: 3 }]} /><meshStandardMaterial color={colour} roughness={.35} /></mesh>)}
+        </> : <mesh position={[0, 0, -t * .09]} castShadow receiveShadow><extrudeGeometry args={[inset, { depth: t * .18, bevelEnabled: style !== "shaker", bevelSize: trim * .25, bevelThickness: t * .10, bevelSegments: 3 }]} /><OpeningFinishMaterial colour={colour} /></mesh>}
+        {[-1, 1].map(side => <mesh key={side} position={[0, 0, side * t * .32]} rotation={[side < 0 ? Math.PI : 0, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[ring, { depth: t * .14, bevelEnabled: style !== "shaker", bevelSize: trim * .4, bevelThickness: t * .10, bevelSegments: 3 }]} /><OpeningFinishMaterial colour={colour} /></mesh>)}
       </group>;
     })}
     {style === "barn" && <>
@@ -110,7 +111,7 @@ export function DoorFixture({ representation, width, depth, height, colour = "#f
           const profile = new Shape();
           profile.moveTo(-inner - casing, 0); profile.lineTo(-inner - casing, top + casing); profile.lineTo(inner + casing, top + casing); profile.lineTo(inner + casing, 0);
           profile.lineTo(inner, 0); profile.lineTo(inner, top); profile.lineTo(-inner, top); profile.lineTo(-inner, 0); profile.closePath();
-          return <mesh key={layer} position={[0, 0, projection]} rotation={[0, face < 0 ? Math.PI : 0, 0]} castShadow receiveShadow><extrudeGeometry args={[profile, { depth: unit * 8, bevelEnabled: true, bevelSize: unit * .8, bevelThickness: unit * .8, bevelSegments: 2 }]} /><meshStandardMaterial color={colour} roughness={.38} /></mesh>;
+          return <mesh key={layer} position={[0, 0, projection]} rotation={[0, face < 0 ? Math.PI : 0, 0]} castShadow receiveShadow><extrudeGeometry args={[profile, { depth: unit * 8, bevelEnabled: true, bevelSize: unit * .8, bevelThickness: unit * .8, bevelSegments: 2 }]} /><OpeningFinishMaterial colour={colour} /></mesh>;
         })}
       </group>)}
     </>}

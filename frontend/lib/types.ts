@@ -53,6 +53,9 @@ export interface Obstacle {
   plan_symbol_url?: string;
   subcategory?: string;
   color_hex?: string;
+  handrail_color_hex?: string;
+  secondary_color_hex?: string;
+  hardware_color_hex?: string;
   wall_lock?: boolean;
   stl_filename?: string;
   stl_base64?: string;

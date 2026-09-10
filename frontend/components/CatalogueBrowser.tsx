@@ -1,6 +1,8 @@
 "use client";
 import { DOOR_MODELS } from "@/lib/doorModels";
 import { STAIRCASE_KEYS } from "@/lib/architecturalModels";
+import { RADIATOR_KEYS } from "@/lib/radiators";
+import { BATH_KEYS, CABINET_KEYS } from "@/lib/roomFixtureOptions";
 /* Catalogue previews are local capped data URLs, so Next image optimisation is not applicable. */
 /* eslint-disable @next/next/no-img-element */
 
@@ -20,7 +22,7 @@ interface CatalogueBrowserProps {
   onInsert: (item: CatalogueItem) => void;
 }
 
-type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "living" | "bedroom" | "kitchen" | "staircases";
+type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "living" | "bedroom" | "kitchen" | "staircases" | "radiators";
 type CatalogueDetailSelection =
   | { type: "object"; item: CatalogueItem }
   | { type: "material"; item: MaterialItem; family: MaterialFamily; collection: MaterialCollection };
@@ -44,7 +46,12 @@ const CATEGORY_KINDS: Record<string, CatalogueItemInput["fixture_kind"]> = {
   storage: "FURNITURE",
   doors: "DOOR",
   windows: "WINDOW",
+  "baths": "FURNITURE", "kitchen-cabinets": "FURNITURE",
+  ...Object.fromEntries(["straight", "l-shape", "u-shape", "spiral", "curved", "bifurcated"].map(family => [`staircases-${family}`, "FURNITURE" as const])),
   "staircases-main": "FURNITURE",
+  "radiators-horizontal": "FURNITURE",
+  "radiators-vertical": "FURNITURE",
+  "radiators-bathroom": "FURNITURE",
 };
 
 function blankEntry(): CatalogueItemInput {
@@ -236,9 +243,10 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
   const activeCategory = categories.find((category) => category.id === form.category_id);
   const useCategoryClearances = form.side_clearance_mm === null && form.front_clearance_mm === null;
   const nestedDialogOpen = showForm || settingsCategory !== null || detailEntry !== null;
-  const bathroomFixtureCategories = categories.filter((category) => ["showers", "basins", "toilets", "storage"].includes(category.id));
+  const bathroomFixtureCategories = categories.filter((category) => ["showers", "basins", "toilets", "baths", "storage"].includes(category.id));
   const topLevelOpeningCategories = categories.filter((category) => ["doors", "windows"].includes(category.id));
   const objectGroupCategories: Record<CatalogueObjectGroup, CatalogueCategory[]> = {
+    radiators: categories.filter((category) => category.id.startsWith("radiators-")),
     staircases: categories.filter((category) => category.id.startsWith("staircases-")),
     bathroom: bathroomFixtureCategories,
     doors: categories.filter((category) => category.id === "doors" || category.id.startsWith("doors-")),
@@ -261,6 +269,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
       "living",
       "bedroom",
       "staircases",
+      "radiators",
       "PAINT",
       "TILE",
       ...categories.flatMap((category) => [
@@ -491,8 +500,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     if (detailEntry.type === "object") {
       const { item } = detailEntry;
       const category = categories.find((candidate) => candidate.id === item.category_id);
-      const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${/^(living|bedroom|kitchen)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
-      const hasLiveRepresentation = /^(furniture-(kitchen-|wardrobe-|stair-)|window-|door-)/.test(item.representation_key ?? "");
+      const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${(BATH_KEYS.includes(item.representation_key) || CABINET_KEYS.includes(item.representation_key)) ? "png" : /^(living|bedroom|kitchen|radiators|staircases)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
+      const hasLiveRepresentation = /^(furniture-(kitchen-|wardrobe-|stair-|radiator-|bath-)|window-|door-)/.test(item.representation_key ?? "");
       const previewObstacle = { id: item.id, name: item.name, kind: "BOX" as const, fixture_kind: "FURNITURE" as const, representation_key: item.representation_key ?? undefined, center: { x: 0, y: 0 }, dimensions: { width: { value: item.width_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, depth: { value: item.depth_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, height: { value: item.height_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const } }, rotation_deg: 0, base_z_mm: 0, color_hex: item.color_hex, verified: false, source_type: "USER_MEASURED" as const };
       const sideClearance = item.side_clearance_mm == null ? `${category?.default_side_clearance_mm ?? 0} mm (category default)` : `${item.side_clearance_mm} mm (entry override)`;
       const frontClearance = item.front_clearance_mm == null ? `${category?.default_front_clearance_mm ?? 0} mm (category default)` : `${item.front_clearance_mm} mm (entry override)`;
@@ -558,8 +567,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
               {bathroomFixtureCategories.map((category) => renderCategoryTree(category, "bathroom"))}
             </div>}
             {topLevelOpeningCategories.map((category) => renderOpeningCategory(category, category.id as "doors" | "windows"))}
-            {(["kitchen", "living", "bedroom", "staircases"] as const).map((group) => <div key={group}>
-              <button className="catalogue-disclosure" aria-expanded={expanded[group] ?? false} onClick={() => setExpanded((current) => ({ ...current, [group]: !current[group] }))}><strong>{group === "kitchen" ? "Kitchen" : group === "living" ? "Living Room" : group === "staircases" ? "Staircases" : "Bedroom"}</strong><span aria-hidden>{expanded[group] ? "−" : "+"}</span></button>
+            {(["kitchen", "living", "bedroom", "staircases", "radiators"] as const).map((group) => <div key={group}>
+              <button className="catalogue-disclosure" aria-expanded={expanded[group] ?? false} onClick={() => setExpanded((current) => ({ ...current, [group]: !current[group] }))}><strong>{group === "kitchen" ? "Kitchen" : group === "living" ? "Living Room" : group === "staircases" ? "Staircases" : group === "radiators" ? "Radiators" : "Bedroom"}</strong><span aria-hidden>{expanded[group] ? "−" : "+"}</span></button>
               {expanded[group] && <div className="catalogue-branch">{renderGroupAll(group)}{categories.filter((category) => category.id.startsWith(group + "-")).map((category) => renderCategoryTree(category, group))}</div>}
             </div>)}
             {(["PAINT", "TILE"] as const).map((kind) => <div key={kind}><button className="catalogue-disclosure" aria-expanded={expanded[kind]} aria-controls={`catalogue-${kind}`} onClick={() => setExpanded((current) => ({ ...current, [kind]: !current[kind] }))}><strong>{kind === "PAINT" ? "Paints & Colours" : "Flooring"}</strong><span aria-hidden>{expanded[kind] ? "−" : "+"}</span></button>{expanded[kind] && <div id={`catalogue-${kind}`} className="catalogue-branch">{catalogueMaterials.filter((collection) => collection.kind === kind).map((collection) => { const key = `material-${collection.id}`; return <div key={collection.id} className="catalogue-tree-item"><button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-families`} className={activeMaterialId === collection.id ? "active" : ""} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setActiveMaterialId(collection.id); setActiveMaterialFamilyId(null); setCategoryId(""); }}><span>{collection.name}</span><small>{collection.families.reduce((total, family) => total + family.items.length, 0)}</small></button>{(expanded[key] ?? false) && <div id={`${key}-families`} className="catalogue-branch nested">{collection.families.map((family) => <button key={family.id} className={activeMaterialFamilyId === family.id ? "active" : ""} aria-pressed={activeMaterialFamilyId === family.id} onClick={() => { setActiveMaterialId(collection.id); setActiveMaterialFamilyId(family.id); setCategoryId(""); document.getElementById(`family-${family.id}`)?.scrollIntoView({ block: "start" }); }}><span>{family.name}</span><small>{family.items.length}</small></button>)}</div>}</div>; })}</div>}</div>)}
@@ -577,7 +586,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
               <div className="catalogue-result-heading"><strong>{activeSubcategory || (categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects")}</strong><span>{visibleObjectItems.length} result{visibleObjectItems.length === 1 ? "" : "s"}</span></div>
               {categoryId && <button className="category-settings-button" onClick={(event) => openCategorySettings(categories.find((item) => item.id === categoryId) ?? null, event.currentTarget)}>Category settings…</button>}
               {visibleObjectItems.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{visibleObjectItems.map((item) => {
-                const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${/^(living|bedroom|kitchen)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
+                const preview = item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${(BATH_KEYS.includes(item.representation_key) || CABINET_KEYS.includes(item.representation_key)) ? "png" : /^(living|bedroom|kitchen|radiators|staircases)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
                 const isOpening = item.fixture_kind === "DOOR" || item.fixture_kind === "WINDOW";
                 return <article key={item.id} tabIndex={0} role="button" aria-label={`View details for ${item.name}`} onClick={(event) => { if ((event.target as HTMLElement).closest("button, a")) return; openObjectDetails(item, event.currentTarget); }} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openObjectDetails(item, event.currentTarget); } }}><div className={`catalogue-object-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${preview})` : undefined } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name} · {item.subcategory}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default · editable</span>}<h3>{item.name}</h3>{(item.plan_symbol_data_url || item.plan_symbol_url) && <a className="catalogue-plan-link" href={item.plan_symbol_data_url || item.plan_symbol_url} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Architectural plan symbol ↗</a>}<p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions"><button onClick={(event) => beginEdit(item, event.currentTarget)}>Edit entry</button><button className="catalogue-insert" disabled={isOpening} title={isOpening ? "Add this opening from the 2D Add elements window." : undefined} onClick={() => { if (!isOpening) { onInsert(item); onClose(); } }}>{isOpening ? "Use in 2D Add elements" : "Add to room"}</button></div></div></article>;
               })}</div>}
@@ -591,7 +600,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
           <label className="field"><span>Colour</span><input type="color" value={form.color_hex} onChange={(event) => setField("color_hex", event.target.value)} /></label>
           <label className="field"><span>Colour HEX</span><input value={form.color_hex.toUpperCase()} pattern="#[0-9A-Fa-f]{6}" onChange={(event) => setField("color_hex", event.target.value.toUpperCase())} /></label>
           <label className="field"><span>Subcategory</span><input required value={form.subcategory} onChange={(event) => setField("subcategory", event.target.value)} /></label>
-          <label className="field"><span>3D model and plan symbol</span><select value={form.representation_key ?? ""} onChange={event => { setField("representation_key", event.target.value); setField("plan_symbol_url", event.target.value ? `/fixture-symbols/${event.target.value}.svg` : ""); }}><option value="">Generic / uploaded model</option>{["shower-corner","shower-quadrant","shower-walk-in","shower-alcove","shower-freestanding","shower-wet-room","basin-wall-mounted","basin-pedestal","basin-countertop","basin-undermount","basin-vanity","basin-double-vanity","basin-corner","toilet-freestanding","toilet-wall-mounted","toilet-close-coupled","toilet-back-to-wall",...DOOR_MODELS.map(model => model.key),"window-single-pane","window-double-pane","window-triple-pane","window-bay","window-bow","window-sash","window-casement",...STAIRCASE_KEYS].map(key => <option key={key} value={key}>{key.replaceAll("-", " ")}</option>)}</select></label>
+          <label className="field"><span>3D model and plan symbol</span><select value={form.representation_key ?? ""} onChange={event => { setField("representation_key", event.target.value); setField("plan_symbol_url", event.target.value ? `/fixture-symbols/${event.target.value}.svg` : ""); }}><option value="">Generic / uploaded model</option>{["shower-corner","shower-quadrant","shower-walk-in","shower-alcove","shower-freestanding","shower-wet-room","basin-wall-mounted","basin-pedestal","basin-countertop","basin-undermount","basin-vanity","basin-double-vanity","basin-corner","toilet-freestanding","toilet-wall-mounted","toilet-close-coupled","toilet-back-to-wall",...DOOR_MODELS.map(model => model.key),"window-single-pane","window-double-pane","window-triple-pane","window-bay","window-bow","window-sash","window-casement",...STAIRCASE_KEYS,...RADIATOR_KEYS,...BATH_KEYS,...CABINET_KEYS].map(key => <option key={key} value={key}>{key.replaceAll("-", " ")}</option>)}</select></label>
           <label className="field"><span>Manufacturer floorplan image (PNG, JPEG or WebP, max 500 KB)</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 500000) { setError("Plan image must be smaller than 500 KB."); return; } const reader = new FileReader(); reader.onload = () => setField("plan_symbol_data_url", String(reader.result)); reader.readAsDataURL(file); }} />{form.plan_symbol_data_url && <button type="button" onClick={() => setField("plan_symbol_data_url", null)}>Use generic symbol</button>}</label>
           <label className="field"><span>Floorplan shape</span><select value={form.plan_shape} onChange={(event) => setField("plan_shape", event.target.value as CatalogueItemInput["plan_shape"])}><option value="RECTANGLE">Rectangle / box</option><option value="ELLIPSE">Ellipse / cylinder</option></select></label>
           <label className="field span-two"><span>Object name</span><input value={form.name} onChange={(event) => setField("name", event.target.value)} /></label>

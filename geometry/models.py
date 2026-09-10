@@ -216,6 +216,9 @@ class ObstacleDefinition(BaseModel):
     plan_symbol_data_url: str | None = Field(default=None, max_length=1_500_000)
     subcategory: str = "General"
     color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    handrail_color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    secondary_color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    hardware_color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     wall_lock: bool = False
     stl_filename: str | None = None
     stl_base64: str | None = None

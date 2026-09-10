@@ -26,6 +26,8 @@ def install_fixture_previews(session):
             if not path.is_file():
                 continue
             version = 3 if item.representation_key.startswith("door-") or item.representation_key in {"window-casement", "window-single-pane", "window-double-pane", "window-triple-pane"} else REPRESENTATION_VERSION
+            if item.representation_key.startswith(("furniture-bath-", "furniture-kitchen-cabinet-")):
+                version = 4
             item.representation_version = version
             previous = json.loads(item.image_data_json or "[]")
             if previous and not all(record.get("generated_representation") for record in previous):

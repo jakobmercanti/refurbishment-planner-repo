@@ -12,18 +12,23 @@ from database.models import FurnitureItemRecord
 DOOR_MODELS = json.loads((Path(__file__).resolve().parents[1] / "frontend/lib/doorModels.json").read_text(encoding="utf8"))
 DOOR_FAMILIES = {model["family"]: model["familyName"] for model in DOOR_MODELS}
 
+STAIRCASE_DEFAULTS = json.loads((Path(__file__).resolve().parents[1] / "frontend/lib/staircaseModels.json").read_text(encoding="utf8"))
+STAIRCASE_FAMILIES = {"straight": "Straight", "l-shape": "L-shape", "u-shape": "U-shape", "spiral": "Spiral", "curved": "Curved", "bifurcated": "Bifurcated"}
+
 FIXTURE_DEFAULTS = {
-    "staircases-main": ("FURNITURE", [
-        ("stair-straight", "Straight closed riser", 1000, 4000, 3700),
-        ("stair-open", "Straight open riser", 1000, 4000, 3700),
-        ("stair-l-left", "L-shaped left landing", 3000, 3000, 3700),
-        ("stair-l-right", "L-shaped right landing", 3000, 3000, 3700),
-        ("stair-u-landing", "U-shaped half landing", 2200, 3000, 3700),
-        ("stair-u-winder", "U-shaped winders", 2200, 3000, 3700),
-        ("stair-quarter-winder", "Quarter-turn winders", 3000, 3000, 3700),
-        ("stair-spiral", "Spiral with centre column", 2000, 2000, 3700),
-        ("stair-curved", "Curved sweeping stair", 3000, 3000, 3700),
-        ("stair-bifurcated", "Bifurcated double return", 4000, 3500, 3700),
+    "baths": ("FURNITURE", [
+        ("bath-oval", "Freestanding oval", 1700, 800, 600),
+        ("bath-slipper", "Slipper bath with feet", 1700, 750, 750),
+        ("bath-alcove", "Straight inset bath", 1700, 700, 560),
+        ("bath-corner", "Corner bath", 1400, 1400, 600),
+    ]),
+    "kitchen-cabinets": ("FURNITURE", [
+        ("kitchen-cabinet-single", "Single wall cabinet - 600 mm", 600, 350, 720),
+        ("kitchen-cabinet-double", "Double wall cabinet - 1200 mm", 1200, 350, 720),
+        ("kitchen-cabinet-glass-single", "Glazed wall cabinet - 600 mm", 600, 350, 720),
+        ("kitchen-cabinet-glass-double", "Glazed double wall cabinet - 1200 mm", 1200, 350, 720),
+        ("kitchen-cabinet-open", "Open shelf cabinet - 600 mm", 600, 350, 720),
+        ("kitchen-cabinet-bridge", "Bridge cabinet - 900 mm", 900, 350, 360),
     ]),
     "kitchen-sinks": ("FURNITURE", [
         ("kitchen-sink-single", "Single sink", 600, 600, 1100),
@@ -128,7 +133,25 @@ FIXTURE_DEFAULTS = {
     ]),
 }
 
+for family in STAIRCASE_FAMILIES:
+    FIXTURE_DEFAULTS[f"staircases-{family}"] = ("FURNITURE", [
+        (key.removeprefix("furniture-"), model["name"], model["width"], model["depth"], model["height"])
+        for key, model in STAIRCASE_DEFAULTS.items() if model["family"] == family
+    ])
+
 # Keep existing identifiers, dimensions and user customisations on upgrades.
+for family, widths, height in [
+    ("horizontal", (600, 900, 1200), 600),
+    ("vertical", (300, 450, 600), 1800),
+    ("bathroom", (400, 500, 600), 1200),
+]:
+    FIXTURE_DEFAULTS[f"radiators-{family}"] = ("FURNITURE", [
+        (f"radiator-{family}-{rows}-{width}",
+         f"{width} mm wide · {rows} {'row' if rows == 1 else 'rows'} · {depth} mm deep",
+         width, depth, height)
+        for rows, depth in [(1, 70), (2, 120)] for width in widths
+    ])
+
 for family in DOOR_FAMILIES:
     FIXTURE_DEFAULTS[family] = ("DOOR", [
         (model["key"].removeprefix("door-"),
@@ -199,6 +222,8 @@ def fixture_default_name(category: str, slug: str, subcategory: str) -> str:
 def seed_fixture_defaults(session):
     session.flush()
     for item in session.scalars(select(FurnitureItemRecord)).all():
+        if item.category_id == "staircases-main" and item.representation_key in STAIRCASE_DEFAULTS:
+            item.category_id = f"staircases-{STAIRCASE_DEFAULTS[item.representation_key]['family']}"
         if item.representation_key and not item.plan_symbol_url:
             item.plan_symbol_url = f"/fixture-symbols/{item.representation_key}.svg"
         if item.default_key in LEGACY and not item.representation_key:
@@ -223,7 +248,7 @@ def seed_fixture_defaults(session):
                 category_id=category, fixture_kind=kind, name=fixture_default_name(category, slug, subcategory), supplier="Renovation Fit",
                 sku=f"GENERIC-{key.upper()}", subcategory=subcategory, representation_key=key,
                 plan_symbol_url=f"/fixture-symbols/{key}.svg",
-                width_mm=width, depth_mm=depth, height_mm=height, color_hex="#F4F3EE",
-                description=("Generic staircase: 2800 mm floor-to-floor rise plus 900 mm guarding at default size. Overall height includes guarding. Plan shows UP direction and dashed flight above the cut line. Adjust overall dimensions for your project; structural design and headroom need separate assessment." if category == "staircases-main" else "Generic parametric fixture with matching architectural plan symbol. Set dimensions for your design; not a certified manufacturer drawing."),
+                width_mm=width, depth_mm=depth, height_mm=height, color_hex="#FFFFFF" if category.startswith("radiators-") else "#F4F3EE",
+                description=("Generic staircase: 2800 mm floor-to-floor rise plus 900 mm guarding at default size. Overall height includes guarding. Plan shows UP direction and dashed flight above the cut line. Adjust overall dimensions for your project; structural design and headroom need separate assessment." if category.startswith("staircases-") else "Generic parametric fixture with matching architectural plan symbol. Set dimensions for your design; not a certified manufacturer drawing."),
                 supplier_editable=True, plan_shape="RECTANGLE",
             ))

@@ -1,5 +1,7 @@
 "use client";
 import { DoorFixture } from "@/components/DoorFixture";
+import { BathFixture } from "@/components/BathFixture";
+import { RadiatorFixture } from "@/components/RadiatorFixture";
 import { StaircaseFixture, WindowFixture } from "@/components/ArchitecturalFixtures";
 import { RoundedBox } from "@react-three/drei";
 import { RoomFurniture } from "@/components/RoomFurniture";
@@ -40,10 +42,12 @@ function Block({ position, size, colour = "#f4f3ef" }: { position: [number, numb
 /** Normalised render-only geometry: world millimetres are converted by the caller. */
 export function ParametricFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
   const key = fixtureRepresentation(obstacle);
+  if (key.startsWith("furniture-bath-")) return <BathFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} interiorColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} />;
+  if (key.startsWith("furniture-radiator-")) return <RadiatorFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
   if (key.startsWith("door-")) return <DoorFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
-  if (key.startsWith("furniture-stair-")) return <StaircaseFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
-  if (key.startsWith("window-")) return <WindowFixture representation={key} width={width} depth={depth} height={height} />;
-  if (/^furniture-(kitchen-|wardrobe-)/.test(key)) return <KitchenFurniture representation={key} colour={obstacle.color_hex ?? "#C7B69C"} width={width} depth={depth} height={height} />;
+  if (key.startsWith("furniture-stair-")) return <StaircaseFixture handrailColour={obstacle.handrail_color_hex} wallColour={obstacle.secondary_color_hex} supportColour={obstacle.hardware_color_hex} representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
+  if (key.startsWith("window-")) return <WindowFixture colour={obstacle.color_hex} representation={key} width={width} depth={depth} height={height} />;
+  if (/^furniture-(kitchen-|wardrobe-)/.test(key)) return <KitchenFurniture secondaryColour={obstacle.secondary_color_hex ?? (key.includes("cabinet-") ? "#F4F3EE" : undefined)} hardwareColour={obstacle.hardware_color_hex} representation={key} colour={obstacle.color_hex ?? "#C7B69C"} width={width} depth={depth} height={height} />;
   if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(key)) return <RoomFurniture representation={key} colour={obstacle.color_hex ?? "#b99b77"} width={width} depth={depth} height={height} />;
   const kind = obstacle.fixture_kind ?? key.split("-")[0].toUpperCase();
   const chrome = <meshStandardMaterial color="#bac4c3" metalness={.92} roughness={.16} />;

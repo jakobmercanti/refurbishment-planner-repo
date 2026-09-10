@@ -3,6 +3,8 @@
 Coordinates and nominal bounds are millimetres. These illustrations do not replace
 the geometry kernel's conservative placement envelopes or certify stair design.
 """
+import copy
+import sys
 import json
 import math
 from pathlib import Path
@@ -132,6 +134,54 @@ for args in [("straight", 1000, 4000, "straight"), ("open", 1000, 4000, "straigh
     build(*args)
 
 
+
+# Keep original keys stable while expanding the catalogue into named families.
+FAMILIES = {
+    "straight": ("straight", "Straight · filled underneath"), "open": ("straight", "Straight · open underneath"),
+    "l-left": ("l-shape", "L-shape left · filled underneath"), "l-right": ("l-shape", "L-shape right · filled underneath"),
+    "quarter-winder": ("l-shape", "Quarter-turn winders · filled underneath"),
+    "u-landing": ("u-shape", "U-shape landing · filled underneath"), "u-winder": ("u-shape", "U-shape winders · filled underneath"),
+    "spiral": ("spiral", "Spiral · centre column"), "curved": ("curved", "Curved sweeping stair"),
+    "bifurcated": ("bifurcated", "Bifurcated double return"),
+}
+for slug, (family, name) in FAMILIES.items():
+    MODELS[f"furniture-stair-{slug}"].update(family=family, name=name, glass=False)
+
+VARIANTS = [
+    ("straight-glass-filled", "straight", "Straight · glass · filled underneath", False, True, 1),
+    ("straight-glass-open", "open", "Straight · glass · open underneath", True, True, 1),
+    ("straight-wide-open", "open", "Wide straight · open underneath", True, False, 1.2),
+    ("l-left-open", "l-left", "L-shape left · open underneath", True, False, 1),
+    ("l-right-open", "l-right", "L-shape right · open underneath", True, False, 1),
+    ("l-glass-filled", "l-left", "L-shape left · glass · filled underneath", False, True, 1),
+    ("l-glass-open", "l-right", "L-shape right · glass · open underneath", True, True, 1),
+    ("u-open", "u-landing", "U-shape landing · open underneath", True, False, 1),
+    ("u-glass", "u-landing", "U-shape landing · glass", True, True, 1),
+    ("u-winder-glass", "u-winder", "U-shape winders · glass", False, True, 1),
+    ("spiral-compact", "spiral", "Compact spiral · 1600 mm", True, False, .8),
+    ("spiral-glass", "spiral", "Spiral · curved glass", True, True, 1),
+    ("spiral-wide", "spiral", "Wide spiral · 2400 mm", True, False, 1.2),
+    ("curved-compact", "curved", "Compact sweeping stair", True, False, .85),
+    ("curved-glass", "curved", "Sweeping stair · curved glass", True, True, 1),
+    ("curved-filled", "curved", "Sweeping stair · filled underneath", False, False, 1),
+    ("bifurcated-open", "bifurcated", "Double return · open underneath", True, False, 1),
+    ("bifurcated-glass", "bifurcated", "Double return · glass", False, True, 1),
+    ("bifurcated-wide", "bifurcated", "Wide double return", False, False, 1.15),
+]
+for slug, base, name, open_underneath, glass, scale in VARIANTS:
+    model = copy.deepcopy(MODELS[f"furniture-stair-{base}"])
+    model.update(name=name, open=open_underneath, glass=glass)
+    model["width"] = round(model["width"] * scale)
+    model["depth"] = round(model["depth"] * scale)
+    for step in model["steps"]:
+        step["points"] = [[x * scale, z * scale] for x, z in step["points"]]
+    for rail in model["rails"]:
+        for end in ("a", "b"):
+            rail[end][0] *= scale
+            rail[end][1] *= scale
+    MODELS[f"furniture-stair-{slug}"] = model
+
+
 def points_text(points):
     return " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
 
@@ -143,7 +193,7 @@ for key, model in MODELS.items():
         dashed = ' stroke-dasharray="65 40"' if step["top"] > 1200 else ""
         plan.append(f'<polygon points="{points_text(step["points"])}" fill="white" stroke="#222" stroke-width="12"{dashed}/>')
     centres = [[sum(p[0] for p in s["points"]) / len(s["points"]), sum(p[1] for p in s["points"]) / len(s["points"])] for s in model["steps"]]
-    if key.endswith("bifurcated"):
+    if model["family"] == "bifurcated":
         centres = centres[:8] + centres[8::2]
     route = centres[:min(len(centres), 12)]
     plan.append(f'<polyline points="{points_text(route)}" fill="none" stroke="#111" stroke-width="18" marker-end="url(#up)"/>')
@@ -154,7 +204,7 @@ for key, model in MODELS.items():
     a, b = step["points"][0], step["points"][-1]
     plan.append(f'<path d="M{a[0]} {a[1]-35} L{(a[0]+b[0])/2-60} {(a[1]+b[1])/2-100} l120 130 L{b[0]} {b[1]+35}" fill="none" stroke="white" stroke-width="45"/>')
     plan.append(f'<path d="M{a[0]} {a[1]-35} L{(a[0]+b[0])/2-60} {(a[1]+b[1])/2-100} l120 130 L{b[0]} {b[1]+35}" fill="none" stroke="#111" stroke-width="16"/>')
-    svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {d}"><title>{key.removeprefix("furniture-").replace("-", " ")} — lower floor plan</title><defs><marker id="up" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0 L10 4 L0 8" fill="none" stroke="#111"/></marker></defs>{"".join(plan)}</svg>'
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {d}"><title>{key.removeprefix("furniture-").replace("-", " ")} - lower floor plan</title><defs><marker id="up" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0 L10 4 L0 8" fill="none" stroke="#111"/></marker></defs>{"".join(plan)}</svg>'
     (PUBLIC / "fixture-symbols" / f"{key}.svg").write_text(svg, encoding="utf8")
 
     def project(x, z, y):
@@ -173,6 +223,9 @@ for key, model in MODELS.items():
         a, b = rail["a"], rail["b"]
         p, q = project(a[0], a[1], a[2] + 870), project(b[0], b[1], b[2] + 870)
         faces.append(f'<polyline points="{points_text([p,q])}" stroke="#343d40" stroke-width="30" fill="none"/>')
+        if model["glass"]:
+            glass_points = [project(a[0], a[1], a[2] + 70), project(b[0], b[1], b[2] + 70), q, p]
+            faces.append(f'<polygon points="{points_text(glass_points)}" fill="#b7dbe0" fill-opacity=".3" stroke="#8daeb4" stroke-width="8"/>')
         if rail["post"]:
             faces.append(f'<polyline points="{points_text([project(*a),p])}" stroke="#535a5a" stroke-width="18"/>')
     bounds = [project(x, z, y) for x in (0, w) for z in (0, d) for y in (0, 3700)]
@@ -182,6 +235,9 @@ for key, model in MODELS.items():
     (PUBLIC / "fixture-previews" / f"{key}.svg").write_text(preview, encoding="utf8")
 
 (ROOT / "frontend/lib/staircaseModels.json").write_text(json.dumps(MODELS, separators=(",", ":")), encoding="utf8")
+
+if "--stairs-only" in sys.argv:
+    sys.exit(0)
 
 # Conventional horizontal sections: jambs, glazing lines and frame posts. Sash
 # leaves slide vertically, so no door-style swing arc is drawn on their plan.

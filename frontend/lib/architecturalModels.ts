@@ -1,6 +1,7 @@
 import staircaseModels from "./staircaseModels.json";
 
 export interface StaircaseModel {
+  family: string; name: string; glass: boolean;
   width: number; depth: number; height: number; open: boolean; column: boolean;
   steps: { points: number[][]; top: number }[];
   rails: { a: number[]; b: number[]; post: boolean; guard_a: number; guard_b: number }[];

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
 from database.catalogue_assets import migrate_legacy_pictures
-from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults, DOOR_FAMILIES
+from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults, DOOR_FAMILIES, STAIRCASE_FAMILIES
 
 
 def database_path() -> Path:
@@ -41,7 +41,12 @@ def configure_sqlite(connection: object, _record: object) -> None:
 
 
 CATEGORIES = [
-    ("staircases-main", "Staircase types", "Parametric staircases with architectural plan symbols.", 100, 0.0, 0.0),
+    ("radiators-horizontal", "Horizontal", "Horizontal radiators in one and two rows.", 110, 0.0, 0.0),
+    ("radiators-vertical", "Vertical", "Tall vertical radiators in one and two rows.", 111, 0.0, 0.0),
+    ("radiators-bathroom", "Bathroom radiators", "Ladder towel radiators in one and two rows.", 112, 0.0, 0.0),
+    *[(f"staircases-{family}", name, "Parametric staircases with architectural plan symbols.", 100 + index, 0.0, 0.0) for index, (family, name) in enumerate(STAIRCASE_FAMILIES.items())],
+    ("baths", "Baths", "Freestanding, slipper, inset and corner baths.", 35, 0.0, 0.0),
+    ("kitchen-cabinets", "Cabinets", "Upper wall cabinets in matching base-unit widths.", 98, 0.0, 0.0),
     ("kitchen-sinks", "Sinks", "Sinks for room planning.", 90, 0.0, 0.0),
     ("kitchen-fridges", "Fridges", "Fridges for room planning.", 91, 0.0, 0.0),
     ("kitchen-islands", "Kitchen islands", "Kitchen islands for room planning.", 92, 0.0, 0.0),
@@ -220,6 +225,10 @@ def initialise_catalogue() -> None:
         _backfill_new_clearance_columns(session, side_added=added_side_clearance, front_added=added_front_clearance)
         _archive_obsolete_default_items(session)
         seed_fixture_defaults(session)
+        session.flush()
+        obsolete_stair_category = session.get(FurnitureCategoryRecord, "staircases-main")
+        if obsolete_stair_category and not session.scalar(select(FurnitureItemRecord.id).where(FurnitureItemRecord.category_id == "staircases-main").limit(1)):
+            session.delete(obsolete_stair_category)
         _remove_legacy_default_tile_collection(session)
         _seed_materials(session)
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
