@@ -1380,6 +1380,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
         <output className="selected-colour-hex">HEX <code>{(finishes.wall_colors?.[selection.id] ?? DEFAULT_WALL_COLOUR).toUpperCase()}</code></output>
         <label className="field"><span>Paint options</span><select aria-label="Paint options" value={wallPaintScope} onChange={(event) => setWallPaintScope(event.target.value as WallPaintScope)}><option value="SELECTED">Selected walls</option><option value="ROOM">Current room walls</option><option value="ALL">All walls</option></select></label>
         <label className="field"><span>Paint collection</span><select value={paintCollectionId} onChange={(event) => { setPaintCollectionId(event.target.value); setPaintFamilyId(""); setPaintSearch(""); }}>{materialCollections.length ? materialCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="paints-dulux">Dulux paints</option>}</select></label>
+        <SkirtingControls value={finishes.skirting_board} onChange={skirting_board => onFinishesChange({ ...finishes, skirting_board }, room.id)} />
         <div className="paint-family-picker" role="tablist" aria-label="Paint colour families">{paintFamilies.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => { setPaintFamilyId(family.id); setPaintSearch(""); }}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
         <div className="paint-shade-panel">
           <div className="paint-shade-heading"><strong>{paintFamily.name}</strong><small>{paintFamily.shades.length} shades</small></div>
@@ -1392,7 +1393,6 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
           <p className="paint-code-note">Screen colours come from the selected catalogue collection. Confirm with a physical sample before ordering.</p>
         </div>
         <button className="review-style-button colour-reset-button" type="button" onClick={() => setWallColour()}>Reset to default</button>
-        <SkirtingControls value={finishes.skirting_board} onChange={skirting_board => onFinishesChange({ ...finishes, skirting_board }, room.id)} />
       </>}
       {selection.type === "FLOOR" && <>
         <span className="eyebrow">Selected floor</span>
