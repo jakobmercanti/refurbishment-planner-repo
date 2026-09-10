@@ -12,7 +12,7 @@ const near = (a: Point2D, b: Point2D) => Math.hypot(a.x - b.x, a.y - b.y) < .5;
 
 function SkirtingWall({ wall, walls, wallMode, defaultWallColour }: { wall: RenderedWall; walls: RenderedWall[]; wallMode: WallViewMode; defaultWallColour: string }) {
   const settings = normalizeSkirting(wall.room.finishes?.skirting_board);
-  const wood = settings.colour_mode === "WOOD" ? WOOD_COLOURS.find(item => item.id === settings.wood_id)! : undefined;
+  const wood = settings.colour_mode === "WOOD" ? WOOD_COLOURS.find(item => item.id === settings.wood_id) : undefined;
   const texture = useMemo(() => {
     if (!wood) return null;
     const base = new THREE.Color(wood.base), grain = new THREE.Color(wood.grain);
@@ -26,7 +26,7 @@ function SkirtingWall({ wall, walls, wallMode, defaultWallColour }: { wall: Rend
     const result = new THREE.DataTexture(data, 256, 64, THREE.RGBAFormat);
     result.colorSpace = THREE.SRGBColorSpace; result.wrapS = result.wrapT = THREE.RepeatWrapping; result.magFilter = THREE.LinearFilter; result.minFilter = THREE.LinearFilter; result.needsUpdate = true;
     return result;
-  }, [wood]);
+  }, [wood?.base, wood?.grain, wood?.seed]);
   useEffect(() => () => texture?.dispose(), [texture]);
   const geometry = useMemo(() => {
     const { height_mm: h, thickness_mm: t } = normalizeSkirting(wall.room.finishes?.skirting_board);
@@ -68,8 +68,12 @@ function SkirtingWall({ wall, walls, wallMode, defaultWallColour }: { wall: Rend
   }, [wall, walls]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   const colour = wood ? "#ffffff" : settings.colour_mode === "WALL" ? wall.room.finishes?.wall_colors?.[`wall-${String(wall.index + 1).padStart(3, "0")}`] ?? defaultWallColour : settings.custom_colour;
+  // Key the material to the selected wood so React Three Fiber replaces the
+  // material/map pair when the wood dropdown changes instead of retaining the
+  // previous GPU texture on the existing material instance.
+  const materialKey = `${settings.colour_mode}-${settings.wood_id}`;
   return <mesh geometry={geometry} raycast={noRaycast} castShadow={wallMode !== "TRANSPARENT"} receiveShadow>
-    <meshStandardMaterial color={colour} map={texture} roughness={wood ? .48 : .32} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? .28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
+    <meshStandardMaterial key={materialKey} color={colour} map={texture} roughness={wood ? .48 : .32} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? .28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
   </mesh>;
 }
 
