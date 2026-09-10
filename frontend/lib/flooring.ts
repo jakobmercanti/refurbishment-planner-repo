@@ -21,7 +21,7 @@ export const WOOD_COLOURS = [
   { id: "grey-oak", name: "Grey oak", base: "#a9a397", grain: "#6f695e", seed: 163 },
 ] as const;
 
-export type FlooringPattern = "tile-square" | "tile-rectangle" | "tile-herringbone" | "tile-chevron" | "tile-double-herringbone" | "wood-plank" | "wood-herringbone" | "wood-chevron" | "wood-weave" | "wood-hexagonal" | "wood-versailles" | "wood-mosaic" | "wood-chantilly" | "wood-double-basket-weave";
+export type FlooringPattern = "tile-square" | "tile-rectangle" | "tile-herringbone" | "tile-chevron" | "tile-double-herringbone" | "wood-plank" | "wood-herringbone" | "wood-double-herringbone" | "wood-chevron" | "wood-weave" | "wood-hexagonal" | "wood-versailles" | "wood-mosaic" | "wood-chantilly" | "wood-double-basket-weave";
 export const FLOORING_PATTERNS = flooringPatterns as { id: FlooringPattern; name: string; material: "wood" | "tile"; width: number; length: number }[];
 export interface FloorDesign {
   tile_material_id?: string;
@@ -101,7 +101,7 @@ export function flooringSwatch(input: FloorDesign): { width: number; height: num
   if (diagonal) {
     // Basis (w,-w), (l,l) tiles for ANY board aspect ratio. Consumers undo
     // the SVG's basis transform, preserving entered physical board dimensions.
-    const pair = d.pattern === "tile-double-herringbone" ? 2 : 1;
+    const pair = d.pattern === "tile-double-herringbone" || d.pattern === "wood-double-herringbone" ? 2 : 1;
     const band = pair * w;
     width = 2 * band; height = 2 * l;
     const count = Math.ceil((2 * l + band) / band) + 2;
