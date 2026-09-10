@@ -350,6 +350,11 @@ button { font: inherit; }
 .context-controls > strong { display: block; margin-top: 5px; font-size: 12px; }
 .context-controls > p { margin: 6px 0 10px; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .viewer-lock-choice { display: flex; align-items: center; gap: 8px; color: var(--ink); font: 600 9px var(--font-mono); cursor: pointer; }
+.skirting-summary { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0; border: 0; background: transparent; color: var(--ink); font: 600 9px var(--font-mono); text-align: left; cursor: pointer; }
+.skirting-summary-title { display: inline-flex; align-items: center; gap: 8px; }
+.skirting-summary-check { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 3px; background: var(--deep); color: #fff; font-size: 11px; }
+.skirting-summary-action { color: var(--muted); font-size: 8px; }
+.skirting-summary:hover .skirting-summary-action { color: var(--deep); }
 .paint-all-choice { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; padding: 8px; border: 1px solid #c9d7d0; border-radius: 7px; background: #f2f7f4; color: var(--ink); font: 650 9px var(--font-mono); cursor: pointer; }
 .paint-all-choice input { width: 17px; height: 17px; margin: 0; accent-color: var(--deep); }
 .paint-family-picker { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin: 7px 0; }

@@ -1289,6 +1289,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
 function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, onFinishesChange, dock, layoutResetKey, onClose }: Pick<ViewerProps, "apiUrl" | "room" | "onObstaclesChange" | "onFinishesChange"> & { rooms: Room[]; selection: Selection; dock: ToolbarDock; layoutResetKey: number; onClose: () => void }) {
   const [wallPaintScope, setWallPaintScope] = useState<WallPaintScope>("SELECTED");
   const [floorTileScope, setFloorTileScope] = useState<FloorTileScope>("SELECTED");
+  const [skirtingCollapsed, setSkirtingCollapsed] = useState(false);
   const [paintFamilyId, setPaintFamilyId] = useState("WHITE");
   const [paintSearch, setPaintSearch] = useState("");
   const [paintCollectionId, setPaintCollectionId] = useState("paints-dulux");
@@ -1362,7 +1363,10 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
 
   return (
     <FloatingToolbar title="Selected object controls" defaultPosition={{ x: 790, y: 452 }} dock={dock} layoutResetKey={layoutResetKey} bringToFront maxHeight={650} onClose={onClose}>
-    <aside className="context-controls" aria-label="Selected object controls">
+    <aside className="context-controls" aria-label="Selected object controls" onPointerDown={(event) => {
+      const skirtingSection = event.currentTarget.querySelector<HTMLElement>("[data-skirting-controls]");
+      if (skirtingSection && !skirtingSection.contains(event.target as Node)) setSkirtingCollapsed(true);
+    }}>
       {selection.type === "ELEMENT" && selectedElement && <>
         <span className="eyebrow">Selected element</span>
         <strong>{selectedElement.name}</strong>
@@ -1380,7 +1384,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
         <output className="selected-colour-hex">HEX <code>{(finishes.wall_colors?.[selection.id] ?? DEFAULT_WALL_COLOUR).toUpperCase()}</code></output>
         <label className="field"><span>Paint options</span><select aria-label="Paint options" value={wallPaintScope} onChange={(event) => setWallPaintScope(event.target.value as WallPaintScope)}><option value="SELECTED">Selected walls</option><option value="ROOM">Current room walls</option><option value="ALL">All walls</option></select></label>
         <label className="field"><span>Paint collection</span><select value={paintCollectionId} onChange={(event) => { setPaintCollectionId(event.target.value); setPaintFamilyId(""); setPaintSearch(""); }}>{materialCollections.length ? materialCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="paints-dulux">Dulux paints</option>}</select></label>
-        <SkirtingControls value={finishes.skirting_board} onChange={skirting_board => onFinishesChange({ ...finishes, skirting_board }, room.id)} />
+        <SkirtingControls value={finishes.skirting_board} collapsed={skirtingCollapsed} onToggleCollapsed={setSkirtingCollapsed} onChange={skirting_board => { if (skirting_board.enabled) setSkirtingCollapsed(false); onFinishesChange({ ...finishes, skirting_board }, room.id); }} />
         <div className="paint-family-picker" role="tablist" aria-label="Paint colour families">{paintFamilies.map((family) => <button key={family.id} type="button" role="tab" aria-selected={paintFamily.id === family.id} title={family.name} className={paintFamily.id === family.id ? "selected" : ""} onClick={() => { setPaintFamilyId(family.id); setPaintSearch(""); }}><span style={{ background: family.colour }} /><small>{family.name}</small></button>)}</div>
         <div className="paint-shade-panel">
           <div className="paint-shade-heading"><strong>{paintFamily.name}</strong><small>{paintFamily.shades.length} shades</small></div>
