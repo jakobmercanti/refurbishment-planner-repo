@@ -24,15 +24,15 @@ export function FixturePlanSymbol({ obstacle, x, y, width, depth }: { obstacle: 
     fetch(url, { signal: controller.signal }).then(response => { if (!response.ok) throw new Error("Missing symbol"); return response.text(); }).then(svg => {
       if (!/<svg\b/i.test(svg)) return;
       const dataUrl = (text: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`;
-      setEmbedded({ url, data: dataUrl(svg), modern: dataUrl(colouredFixtureSymbol(svg, key, false)), creative: dataUrl(colouredFixtureSymbol(svg, key, true)) });
+      setEmbedded({ url, data: dataUrl(svg), modern: dataUrl(colouredFixtureSymbol(svg, key, false, obstacle.color_hex)), creative: dataUrl(colouredFixtureSymbol(svg, key, true, obstacle.color_hex)) });
     }).catch(() => {});
     return () => controller.abort();
-  }, [key, url, obstacle.plan_symbol_data_url, obstacle.plan_symbol_url]);
+  }, [key, url, obstacle.color_hex, obstacle.plan_symbol_data_url, obstacle.plan_symbol_url]);
   return <g className={embedded?.url === url ? "coloured-fixture-symbol" : undefined} transform={`translate(${x} ${y}) rotate(${-obstacle.rotation_deg})`}>
     <rect x={-width / 2} y={-depth / 2} width={width} height={depth} style={{fill: "transparent", stroke: "none", cursor: "grab"}} />
     {(obstacle.plan_symbol_data_url || key !== "furniture") ? <>
       <image className="symbol-default" href={obstacle.plan_symbol_data_url || (embedded?.url === url ? embedded.data : url)} x={-width / 2} y={-depth / 2} width={width} height={depth} preserveAspectRatio="none" pointerEvents="none" />
       {embedded?.url === url && ["modern", "creative"].map((style) => <image key={style} className={`symbol-${style}`} style={{ display: "none" }} href={embedded[style as "modern" | "creative"]} x={-width / 2} y={-depth / 2} width={width} height={depth} preserveAspectRatio="none" pointerEvents="none" />)}
-    </> : <rect className="furniture-material" x={-width / 2} y={-depth / 2} width={width} height={depth} fill="white" stroke="#222" />}
+    </> : <rect className="furniture-material" x={-width / 2} y={-depth / 2} width={width} height={depth} style={{ fill: obstacle.color_hex ?? "#b99b77" }} stroke="#222" />}
   </g>;
 }
