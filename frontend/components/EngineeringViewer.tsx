@@ -65,6 +65,11 @@ interface ViewerProps {
   apiUrl: string;
   room: Room;
   sceneRooms?: Room[];
+  roomSelection: string;
+  roomSelectionOptions: Room[];
+  fullFloorplanSelection: string;
+  onRoomSelectionChange: (selection: string) => void;
+  onOpenRoomSelection: () => void;
   collisionIds: string[];
   onObstaclesChange: (obstacles: Obstacle[], roomId?: string) => void;
   onFinishesChange: (finishes: RoomFinishes, roomId?: string) => void;
@@ -690,7 +695,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
 
   if (fixtureKind === "FURNITURE") {
     if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(obstacle.representation_key ?? "")) {
-      return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<RoomFurniture representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} width={width} depth={depth} height={height} /></group>;
+      return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<RoomFurniture representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} /></group>;
     }
     const isBench = obstacle.model_id?.includes("bench");
     return (
@@ -828,8 +833,7 @@ function OpeningImprint({ room, opening }: { room: Room; opening: Opening }) {
     y: start.y + vector.dy * (opening.offset_mm + opening.width.value / 2),
   };
   const points: VectorTuple[] = [[-width / 2, sill, 0.035], [width / 2, sill, 0.035], [width / 2, sill + height, 0.035], [-width / 2, sill + height, 0.035], [-width / 2, sill, 0.035]];
-  return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
-    {selected && <Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} />}
+  return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]}>
     <Line points={points} color={opening.kind === "DOOR" ? "#e5a51b" : "#4a9cb8"} lineWidth={1.2} dashed dashSize={0.045} gapSize={0.025} />
   </group>;
 }
@@ -1429,6 +1433,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
 export function EngineeringViewer(props: ViewerProps) {
   const [lighting, setLighting] = useState<LightingSettings>(DEFAULT_LIGHTING);
   const [lightingExpanded, setLightingExpanded] = useState(false);
+  const [roomSelectorExpanded, setRoomSelectorExpanded] = useState(false);
   const [preset, setPreset] = useState<CameraView>("perspective");
   const [projection, setProjection] = useState<ProjectionMode>("parallel");
   const [captureRequest, setCaptureRequest] = useState(0);
@@ -1476,7 +1481,7 @@ export function EngineeringViewer(props: ViewerProps) {
   const selectedObjectPanelVisible = Boolean(panelSelection && panelRoom);
   const viewerLeftDock = (activeId: string): ToolbarDock => {
     if (activeId === "viewer-view") return positionedToolbarDock("LEFT", "clamp(166px, 14%, 174px)", "clamp(300px, 43%, 494px)", 355);
-    return filledToolbarDock("LEFT", ["viewer-room", "viewer-view", "viewer-person"].filter((id) => props.toolbarVisibility[id as ToolbarId]), activeId);
+    return filledToolbarDock("LEFT", ["viewer-view", "viewer-person"].filter((id) => props.toolbarVisibility[id as ToolbarId]), activeId);
   };
   const applyPreset = (next: CameraView) => { setPreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
   const handleCaptureError = useCallback((message: string) => { setCaptureError(message); setCaptureMenuOpen(true); }, []);
@@ -1559,6 +1564,20 @@ export function EngineeringViewer(props: ViewerProps) {
           <small>Direction is measured clockwise from the top of the floorplan (0°). Lower elevation creates longer shadows.</small>
           <button type="button" className="review-style-button" onClick={() => setLighting({ ...DEFAULT_LIGHTING })}>Reset lighting</button>
           </>}
+        </div>
+        <div className="viewer-view-control-group viewer-room-selector-controls" role="group" aria-label="Room selector">
+          <button type="button" className="viewer-room-selector-toggle" aria-expanded={roomSelectorExpanded} onClick={() => setRoomSelectorExpanded((current) => !current)}>
+            <strong>Room selector</strong><span aria-hidden>{roomSelectorExpanded ? "−" : "+"}</span>
+          </button>
+          {roomSelectorExpanded && <div className="viewer-room-selector-content">
+            <label>Room
+              <select value={props.roomSelection} onChange={(event) => props.onRoomSelectionChange(event.target.value)}>
+                <option value={props.fullFloorplanSelection}>Full floorplan</option>
+                {props.roomSelectionOptions.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+              </select>
+            </label>
+            <button className="review-style-button" type="button" onClick={props.onOpenRoomSelection}>Open selection in 3D</button>
+          </div>}
         </div>
         <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => { setCaptureError(null); setCaptureMenuOpen(true); }} aria-expanded={captureMenuOpen} aria-haspopup="dialog">Save view…</button></div></div>
       </div></FloatingToolbar>}

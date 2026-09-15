@@ -14,7 +14,7 @@ export function fixtureRepresentation(obstacle: Pick<Obstacle, "representation_k
 }
 
 /** The local symbol faces down the sheet (negative world Y), as the 3D model does. */
-export function FixturePlanSymbol({ obstacle, x, y, width, depth }: { obstacle: Obstacle; x: number; y: number; width: number; depth: number }) {
+export function FixturePlanSymbol({ obstacle, x, y, width, depth, selected = false }: { obstacle: Obstacle; x: number; y: number; width: number; depth: number; selected?: boolean }) {
   const key = fixtureRepresentation(obstacle);
   const url = obstacle.plan_symbol_data_url || obstacle.plan_symbol_url || `/fixture-symbols/${key}.svg`;
   const [embedded, setEmbedded] = useState<{url: string; data: string; modern: string; creative: string} | null>(null);
@@ -33,6 +33,7 @@ export function FixturePlanSymbol({ obstacle, x, y, width, depth }: { obstacle: 
     {(obstacle.plan_symbol_data_url || key !== "furniture") ? <>
       <image className="symbol-default" href={obstacle.plan_symbol_data_url || (embedded?.url === url ? embedded.data : url)} x={-width / 2} y={-depth / 2} width={width} height={depth} preserveAspectRatio="none" pointerEvents="none" />
       {embedded?.url === url && ["modern", "creative"].map((style) => <image key={style} className={`symbol-${style}`} style={{ display: "none" }} href={embedded[style as "modern" | "creative"]} x={-width / 2} y={-depth / 2} width={width} height={depth} preserveAspectRatio="none" pointerEvents="none" />)}
-    </> : <rect className="furniture-material" x={-width / 2} y={-depth / 2} width={width} height={depth} style={{ fill: obstacle.color_hex ?? "#b99b77" }} stroke="#222" />}
+    </> : <rect className="furniture-material" x={-width / 2} y={-depth / 2} width={width} height={depth} style={{ fill: selected ? "#f6b768" : obstacle.color_hex ?? "#b99b77", stroke: selected ? "#d27a18" : "#222" }} />}
+    {selected && <rect className="fixture-selection-overlay" x={-width / 2} y={-depth / 2} width={width} height={depth} />}
   </g>;
 }

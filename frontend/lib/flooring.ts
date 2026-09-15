@@ -21,7 +21,7 @@ export const WOOD_COLOURS = [
   { id: "grey-oak", name: "Grey oak", base: "#a9a397", grain: "#6f695e", seed: 163 },
 ] as const;
 
-export type FlooringPattern = "tile-square" | "tile-rectangle" | "tile-herringbone" | "tile-chevron" | "tile-double-herringbone" | "wood-plank" | "wood-herringbone" | "wood-double-herringbone" | "wood-chevron" | "wood-weave" | "wood-hexagonal" | "wood-versailles" | "wood-mosaic" | "wood-chantilly" | "wood-double-basket-weave";
+export type FlooringPattern = "tile-half-offset" | "tile-diamond" | "tile-parquet" | "tile-pinwheel" | "tile-third-offset" | "tile-square" | "tile-rectangle" | "tile-herringbone" | "tile-chevron" | "tile-double-herringbone" | "wood-plank" | "wood-herringbone" | "wood-double-herringbone" | "wood-chevron" | "wood-weave" | "wood-hexagonal" | "wood-versailles" | "wood-mosaic" | "wood-chantilly" | "wood-double-basket-weave";
 export const FLOORING_PATTERNS = flooringPatterns as { id: FlooringPattern; name: string; material: "wood" | "tile"; width: number; length: number }[];
 export interface FloorDesign {
   tile_material_id?: string;
@@ -48,7 +48,7 @@ export function normalizeFloorDesign(input: FloorDesign): FloorDesign {
   const { tile_material_id, ...settings } = input;
   return { ...fallback, ...settings, pattern: fallback.pattern,
     ...(TILE_MATERIALS.some((tile) => tile.id === tile_material_id) ? { tile_material_id } : {}),
-    width_mm: width, length_mm: fallback.pattern === "tile-square" || fallback.pattern === "wood-hexagonal" ? width : bounded(input.length_mm, fallback.length_mm, width, 6000),
+    width_mm: width, length_mm: ["tile-parquet", "tile-pinwheel"].includes(fallback.pattern) ? width * 2 : ["tile-square", "tile-diamond", "wood-hexagonal"].includes(fallback.pattern) ? width : bounded(input.length_mm, fallback.length_mm, width, 6000),
     rotation_deg: ((bounded(input.rotation_deg, 0, -36000, 36000) % 360) + 360) % 360,
     wood_id: WOOD_COLOURS.some((w) => w.id === input.wood_id) ? input.wood_id : fallback.wood_id,
     tile_colour: colour(input.tile_colour, fallback.tile_colour), grout_colour: colour(input.grout_colour, fallback.grout_colour),
@@ -120,6 +120,36 @@ export function flooringSwatch(input: FloorDesign): { width: number; height: num
       const y = j * height;
       board(0, y, half, half + height, 0, `0,0 ${half},${half} ${half},${half + height} 0,${height}`, 45, 0);
       board(half, y, half, half + height, 0, `0,${half} ${half},0 ${half},${height} 0,${half + height}`, -45, 1);
+    }
+  } else if (d.pattern === "tile-half-offset" || d.pattern === "tile-third-offset") {
+    const third = d.pattern === "tile-third-offset";
+    width = third ? 3 * w : l; height = third ? l : 2 * w;
+    for (let band = 0; band < (third ? 3 : 2); band++) for (let tileIndex = -1; tileIndex < 2; tileIndex++) {
+      const offset = tileIndex * l + band * l / (third ? 3 : 2);
+      if (third) board(band * w, offset, w, l);
+      else board(offset, band * w, l, w);
+    }
+  } else if (d.pattern === "tile-parquet") {
+    width = height = 2 * l;
+    for (let row = 0; row < 2; row++) for (let col = 0; col < 2; col++) for (let j = 0; j < 2; j++) {
+      if ((row + col) % 2) board(col * l, row * l + j * l / 2, l, l / 2);
+      else board(col * l + j * l / 2, row * l, l / 2, l);
+    }
+  } else if (d.pattern === "tile-pinwheel") {
+    const s = l / 2;
+    width = height = 3 * s;
+    board(0, 0, 2 * s, s); board(2 * s, 0, s, 2 * s);
+    board(s, 2 * s, 2 * s, s); board(0, s, s, 2 * s); board(s, s, s, s);
+  } else if (d.pattern === "tile-diamond") {
+    const r = w, h = Math.sqrt(3) * r;
+    width = 3 * r; height = h;
+    for (let col = -1; col <= 2; col++) for (let row = -1; row <= 1; row++) {
+      const x = col * 1.5 * r, y = row * h + (col % 2 ? h / 2 : 0);
+      const vertices = Array.from({ length: 6 }, (_, j) => [r + r * Math.cos(j * Math.PI / 3), h / 2 + r * Math.sin(j * Math.PI / 3)]);
+      for (let face = 0; face < 3; face++) {
+        const points = [[r, h / 2], vertices[face * 2], vertices[(face * 2 + 1) % 6], vertices[(face * 2 + 2) % 6]].map(p => p.join(",")).join(" ");
+        board(x - r, y - h / 2, 2 * r, h, 0, points, 0, face);
+      }
     }
   } else if (d.pattern === "wood-chantilly") {
     width = height = l;

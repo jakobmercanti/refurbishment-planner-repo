@@ -16,6 +16,9 @@ $env:Path = $pathValue
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $frontendRoot = Join-Path $projectRoot "frontend"
 $logRoot = Join-Path $projectRoot ".local-logs"
+$frontendPort = 3000
+$frontendHealthUri = "http://127.0.0.1:$frontendPort/healthz"
+$frontendHomeUri = "http://127.0.0.1:$frontendPort/"
 
 function Test-BackendHealthy {
   try {
@@ -28,11 +31,42 @@ function Test-BackendHealthy {
 
 function Test-FrontendHealthy {
   try {
-    $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:3000" -TimeoutSec 2
-    return $response.StatusCode -ge 200 -and $response.StatusCode -lt 500
+    # A TCP listener or a generic Next.js 404 is not enough: the old launcher
+    # accepted both as healthy and could report success while the app showed a
+    # 404 page. Require our own route and the actual application route.
+    $health = Invoke-WebRequest -UseBasicParsing -Uri $frontendHealthUri -TimeoutSec 2
+    if ($health.StatusCode -ne 200 -or $health.Headers["X-Renovation-Fit-Frontend"] -ne "ok") {
+      return $false
+    }
+    $homeResponse = Invoke-WebRequest -UseBasicParsing -Uri $frontendHomeUri -TimeoutSec 2
+    return $homeResponse.StatusCode -eq 200
   } catch {
     return $false
   }
+}
+
+function Remove-StaleFrontendDevLock {
+  $lockPath = Join-Path $frontendRoot ".next\dev\lock"
+  if (!(Test-Path -LiteralPath $lockPath)) { return }
+
+  # A lock file can remain after a killed Next process. Only remove it after
+  # obtaining an exclusive handle; this never steals a lock from a live
+  # server that may be listening on a fallback port.
+  for ($attempt = 0; $attempt -lt 20; $attempt += 1) {
+    $stream = $null
+    try {
+      $stream = [IO.File]::Open($lockPath, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+      $stream.Dispose()
+      Remove-Item -LiteralPath $lockPath -Force -ErrorAction Stop
+      Write-Host "Removed stale Next.js development lock."
+      return
+    } catch {
+      if ($stream) { $stream.Dispose() }
+      Start-Sleep -Milliseconds 250
+    }
+  }
+
+  throw "The frontend development lock is still held. Stop the existing Renovation Fit frontend, then run this launcher again."
 }
 
 function Get-PortListener {
@@ -256,7 +290,7 @@ New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 if ($RestartExisting) {
   Write-Host "Refreshing existing local services..."
   Stop-ExistingService -Port 8000 -Service "backend"
-  Stop-ExistingService -Port 3000 -Service "frontend"
+  Stop-ExistingService -Port $frontendPort -Service "frontend"
 }
 
 $nodePath = Find-CommandPath "node" @(
@@ -304,13 +338,14 @@ if (!$backendReady) {
 }
 
 if (Test-FrontendHealthy) {
-  Write-Host "Frontend already running at http://localhost:3000"
+  Write-Host "Frontend already running at http://localhost:$frontendPort"
 } else {
-  $frontendListener = Get-PortListener 3000
+  $frontendListener = Get-PortListener $frontendPort
   if ($frontendListener) {
     $owner = Get-ProcessDescription $frontendListener.OwningProcess
-    throw "Port 3000 is already used by $owner, but it is not a healthy Renovation Fit frontend. Close that process, then run this launcher again."
+    throw "Port $frontendPort is already used by $owner, but it is not a healthy Renovation Fit frontend. Close that process, then run this launcher again."
   }
+  Remove-StaleFrontendDevLock
   $nextBinaryRelative = "node_modules\next\dist\bin\next"
   $nextBinary = Join-Path $frontendRoot $nextBinaryRelative
   if (!(Test-Path -LiteralPath $nextBinary)) {
@@ -321,8 +356,8 @@ if (Test-FrontendHealthy) {
   }
   # Use a path relative to the working directory so Start-Process does not split
   # the project path when its folder name contains spaces.
-  $frontendProcess = Start-LoggedProcess -FilePath $nodePath -ArgumentList @($nextBinaryRelative, "dev") -WorkingDirectory $frontendRoot -OutputLog $frontendOutputLog -ErrorLog $frontendErrorLog
-  Write-Host "Starting frontend at http://localhost:3000"
+  $frontendProcess = Start-LoggedProcess -FilePath $nodePath -ArgumentList @($nextBinaryRelative, "dev", "--hostname", "0.0.0.0", "--port", $frontendPort) -WorkingDirectory $frontendRoot -OutputLog $frontendOutputLog -ErrorLog $frontendErrorLog
+  Write-Host "Starting frontend at http://localhost:$frontendPort"
 }
 
 $frontendReady = $false

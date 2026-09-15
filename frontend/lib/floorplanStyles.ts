@@ -15,6 +15,16 @@ export function floorplanStyleLabel(style: FloorplanStyle): string {
   return FLOORPLAN_STYLE_OPTIONS.find((option) => option.value === style)?.label ?? "Default view";
 }
 
+function selectedFixtureStyleCss(root: string): string {
+  return `
+.${root} .floorplan-fixture .fixture-selection-overlay{fill:#f6b768;fill-opacity:.34;stroke:#d27a18;stroke-width:3;stroke-dasharray:none;pointer-events:none}
+.${root} .floorplan-fixture.selected .furniture-material{fill:#f6b768!important;stroke:#d27a18!important}
+.${root} .floorplan-fixture.selected .fixture-dimension{color:#9a4604}
+.${root} .floorplan-fixture.selected .fixture-dimension-label{fill:currentColor}
+.${root} .floorplan-fixture.selected .fixture-dimension .dimension-line,.${root} .floorplan-fixture.selected .fixture-dimension .dimension-extension,.${root} .floorplan-fixture.selected .fixture-dimension .dimension-tick{stroke:currentColor}
+`;
+}
+
 /**
  * Shared style overrides for the live SVG and standalone export SVG.
  * The root of both SVGs receives the matching style class so a selected
@@ -35,7 +45,6 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .vertex-layer{opacity:0}
 .${root} .vertex-label{display:none}
 .${root} .wall-dimension{display:inline}
-.${root} .opening-dimension{display:none}
 .${root} .full-room-highlight polygon{display:none}
 .${root} .full-room-highlight{cursor:default}
 .${root} .room-name-editor input{color:#151515;font-family:Arial,sans-serif;font-size:9px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
@@ -52,6 +61,7 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .floorplan-fixture text{fill:#151515}
 .${root} .floorplan-fixture .fixture-dimension{color:#b45309}
 .${root} .floorplan-fixture .fixture-dimension-label{fill:currentColor}
+${selectedFixtureStyleCss(root)}
 `;
 
   if (style === "MODERN") return `
@@ -75,14 +85,15 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .vertex-handle{stroke:#155d55;fill:#f8fffe}
 .${root} .door-leaf{stroke:var(--door-colour,#ae8760);stroke-width:2.5}
 .${root} .door-swing{stroke:var(--door-colour,#9eaa9f);stroke-dasharray:none;opacity:.7}
-.${root} .opening-dimension{color:#168a79}
-.${root} .opening-dimension-label{fill:#126e61}
+.${root} .opening-dimension{color:#9a4604}
+.${root} .opening-dimension-label{fill:currentColor}
 .${root} .window-frame,.${root} .window-jamb{stroke:#2c7dbc}
 .${root} .window-core{stroke:#b7d9df;stroke-width:3}
-.${root} .window-dimension{color:#2c7dbc}
-.${root} .window-dimension .opening-dimension-label{fill:#246a9e}
+.${root} .window-dimension{color:#9a4604}
+.${root} .window-dimension .opening-dimension-label{fill:currentColor}
 .${root} .floorplan-fixture .fixture-dimension{color:#b45309}
 .${root} .floorplan-fixture .fixture-dimension-label{fill:currentColor}
+${selectedFixtureStyleCss(root)}
 `;
 
   return `
@@ -104,14 +115,15 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .vertex-handle{stroke:#b36b32;fill:#fff2d3}
 .${root} .door-leaf{stroke:var(--door-colour,#bba083);stroke-width:2.5}
 .${root} .door-swing{stroke:var(--door-colour,#a9b09d);stroke-dasharray:none;opacity:.65}
-.${root} .opening-dimension{color:#b35c35}
-.${root} .opening-dimension-label{fill:#9d4b29}
+.${root} .opening-dimension{color:#9a4604}
+.${root} .opening-dimension-label{fill:currentColor}
 .${root} .window-frame,.${root} .window-jamb{stroke:#5d83a5}
 .${root} .window-core{stroke:#bed5d0;stroke-width:3}
-.${root} .window-dimension{color:#5d83a5}
-.${root} .window-dimension .opening-dimension-label{fill:#426b8c}
+.${root} .window-dimension{color:#9a4604}
+.${root} .window-dimension .opening-dimension-label{fill:currentColor}
 .${root} .floorplan-fixture .fixture-dimension{color:#b45309}
 .${root} .floorplan-fixture .fixture-dimension-label{fill:currentColor}
+${selectedFixtureStyleCss(root)}
 .${root} .full-room-highlight{display:inline}
 .${root} .full-room-highlight polygon{fill:transparent;fill-opacity:0}
 `;

@@ -2,21 +2,24 @@
 import { RoundedBox } from "@react-three/drei";
 
 /** Render-only proportions, scaled to the authoritative obstacle dimensions by the caller. */
-export function RoomFurniture({ representation, colour, width, depth, height }: {
-  representation: string; colour: string; width: number; depth: number; height: number;
+export function RoomFurniture({ representation, colour, secondaryColour, hardwareColour, width, depth, height }: {
+  representation: string; colour: string; secondaryColour?: string; hardwareColour?: string; width: number; depth: number; height: number;
 }) {
+  const legsColour = hardwareColour ?? "#715840";
+  const beddingColour = secondaryColour ?? "#f2eee5";
   const part = (key: string, x: number, y: number, z: number, w: number, h: number, d: number, tint = colour) =>
     <RoundedBox key={key} position={[x, y, z]} args={[w, h, d]} radius={Math.min(w, h, d) * .15} smoothness={3} castShadow receiveShadow><meshStandardMaterial color={tint} roughness={0.75} /></RoundedBox>;
-  const legs = [-1, 1].flatMap((x) => [-1, 1].map((z) => part(`leg-${x}-${z}`, x * .42, .42, z * .4, .06, .84, .06, "#715840")));
+  const legs = [-1, 1].flatMap((x) => [-1, 1].map((z) => part(`leg-${x}-${z}`, x * .42, .42, z * .4, .06, .84, .06, legsColour)));
   let parts;
   if (representation.includes("table-")) {
     parts = [...legs, part("top", 0, .94, 0, 1, .12, 1)];
   } else if (representation.includes("bed-")) {
     const pillows = representation.includes("single") ? [0] : [-.24, .24];
-    parts = [part("frame", 0, .24, 0, 1, .32, 1), part("mattress", 0, .49, .025, .96, .18, .95, "#f2eee5"),
+    const bedLegs = [-1, 1].flatMap((x) => [-1, 1].map((z) => part(`bed-leg-${x}-${z}`, x * .42, .08, z * .4, .06, .16, .06, legsColour)));
+    parts = [...bedLegs, part("frame", 0, .24, 0, 1, .32, 1), part("mattress", 0, .49, .025, .96, .18, .95, beddingColour),
       part("headboard", 0, .5, -.47, 1, 1, .06),
-      part("blanket", 0, .60, .15, .94, .04, .63),
-      ...pillows.map((x, i) => part(`pillow-${i}`, x, .62, -.31, pillows.length === 1 ? .7 : .4, .09, .22, "#fffaf0"))];
+      part("blanket", 0, .60, .15, .94, .04, .63, beddingColour),
+      ...pillows.map((x, i) => part(`pillow-${i}`, x, .62, -.31, pillows.length === 1 ? .7 : .4, .09, .22, beddingColour))];
   } else {
     const chair = representation.includes("chair-") && !representation.includes("armchair");
     const corner = representation.includes("corner");

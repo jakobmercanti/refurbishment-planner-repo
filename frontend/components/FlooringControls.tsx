@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import { defaultFloorDesign, FLOORING_PATTERNS, flooringSwatch, normalizeFloorDesign, WOOD_COLOURS, TILE_MATERIALS, type FloorDesign, type FlooringPattern } from "@/lib/flooring";
 
 export function FlooringPatternDefinition({ id, design, scale = 1, origin = { x: 0, y: 0 }, flipY = false }: {
@@ -30,6 +30,8 @@ function DimensionInput({ label, value, min, max, onChange }: { label: string; v
 
 export function FlooringControls({ design: saved, onChange }: { design?: FloorDesign; onChange: (design: FloorDesign) => void }) {
   const design = saved ? normalizeFloorDesign(saved) : defaultFloorDesign();
+  const [coloursExpanded, setColoursExpanded] = useState(false);
+  const coloursPanelId = useId();
   const wood = design.pattern.startsWith("wood-");
   const flooringType = wood ? "wood" : "tile";
   const availablePatterns = FLOORING_PATTERNS.filter((pattern) => pattern.material === flooringType);
@@ -40,25 +42,32 @@ export function FlooringControls({ design: saved, onChange }: { design?: FloorDe
       const next = defaultFloorDesign(FLOORING_PATTERNS.find((pattern) => pattern.material === type)!.id);
       onChange({ ...next, rotation_deg: design.rotation_deg, wood_id: design.wood_id, tile_colour: design.tile_colour, tile_material_id: design.tile_material_id });
     }}><option value="" disabled>Choose a flooring type</option><option value="tile">Tiles</option><option value="wood">Wooden flooring</option></select></label>
-    <label className="field"><span>Flooring pattern</span><select aria-label="Flooring pattern" value={saved ? design.pattern : ""} onChange={(event) => {
-      const next = defaultFloorDesign(event.target.value as FlooringPattern);
-      onChange({ ...next, rotation_deg: design.rotation_deg, wood_id: design.wood_id, tile_colour: design.tile_colour, tile_material_id: design.tile_material_id });
-    }}><option value="" disabled>Choose a flooring pattern</option>{availablePatterns.map((pattern) => <option key={pattern.id} value={pattern.id}>{pattern.name}</option>)}</select></label>
     {saved && <>
-      {!wood && <label className="field"><span>Tile material</span><select aria-label="Tile material" value={design.tile_material_id ?? ""} onChange={(event) => {
-        const material = TILE_MATERIALS.find((tile) => tile.id === event.target.value);
-        update({ tile_material_id: material?.id, ...(material ? { tile_colour: material.colour } : {}) });
-      }}><option value="">Custom colour</option>{TILE_MATERIALS.map((tile) => <option key={tile.id} value={tile.id}>{tile.name}</option>)}</select></label>}
+      <div className="fixture-colours-controls flooring-colours-controls" role="group" aria-label="Colours and patterns">
+        <button type="button" className="fixture-colours-toggle" aria-expanded={coloursExpanded} aria-controls={coloursPanelId} onClick={() => setColoursExpanded(current => !current)}>
+          <strong>Colours and patterns</strong><span aria-hidden>{coloursExpanded ? "−" : "+"}</span>
+        </button>
+        {coloursExpanded && <div id={coloursPanelId} className="fixture-colours-fields">
+          <label className="field"><span>Flooring pattern</span><select aria-label="Flooring pattern" value={design.pattern} onChange={(event) => {
+            const next = defaultFloorDesign(event.target.value as FlooringPattern);
+            onChange({ ...next, rotation_deg: design.rotation_deg, wood_id: design.wood_id, tile_colour: design.tile_colour, tile_material_id: design.tile_material_id });
+          }}><option value="" disabled>Choose a flooring pattern</option>{availablePatterns.map((pattern) => <option key={pattern.id} value={pattern.id}>{pattern.name}</option>)}</select></label>
+          {!wood && <label className="field"><span>Tile material</span><select aria-label="Tile material" value={design.tile_material_id ?? ""} onChange={(event) => {
+            const material = TILE_MATERIALS.find((tile) => tile.id === event.target.value);
+            update({ tile_material_id: material?.id, ...(material ? { tile_colour: material.colour } : {}) });
+          }}><option value="">Custom colour</option>{TILE_MATERIALS.map((tile) => <option key={tile.id} value={tile.id}>{tile.name}</option>)}</select></label>}
+          {wood ? <label className="field"><span>Wood colour</span><select aria-label="Wood colour" value={design.wood_id} onChange={(event) => update({ wood_id: event.target.value })}>{WOOD_COLOURS.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label> : <label className="field"><span>Tile colour</span><input aria-label="Tile colour" type="color" value={design.tile_colour} onChange={(event) => update({ tile_colour: event.target.value })} /></label>}
+          <label className="field"><span>{wood ? "Joint colour" : "Grout colour"}</span><input aria-label={wood ? "Joint colour" : "Grout colour"} type="color" value={design.grout_colour} onChange={(event) => update({ grout_colour: event.target.value })} /></label>
+          <button type="button" className="review-style-button colour-reset-button" onClick={() => {
+            const defaults = defaultFloorDesign(design.pattern);
+            update({ wood_id: defaults.wood_id, tile_colour: defaults.tile_colour, grout_colour: defaults.grout_colour });
+          }}>Reset colours to default</button>
+        </div>}
+      </div>
       <div style={{ maxWidth: 190, margin: "12px auto" }}><FlooringPreview design={design} /></div>
       <DimensionInput label="Rotation (degrees)" value={design.rotation_deg} min={-36000} max={36000} onChange={(rotation_deg) => update({ rotation_deg })} />
       {design.pattern !== "wood-double-basket-weave" && <DimensionInput label={design.pattern === "wood-hexagonal" ? "Hexagon point-to-point size (mm)" : ["wood-versailles", "wood-chantilly"].includes(design.pattern) ? "Border / board width (mm)" : "Element width (mm)"} value={design.width_mm} min={20} max={3000} onChange={(width_mm) => update({ width_mm })} />}
-      {!["tile-square", "wood-hexagonal"].includes(design.pattern) && <DimensionInput label={["wood-versailles", "wood-chantilly", "wood-mosaic", "wood-double-basket-weave"].includes(design.pattern) ? "Panel / module size (mm)" : "Element length (mm)"} value={design.length_mm} min={design.width_mm} max={6000} onChange={(length_mm) => update({ length_mm })} />}
-      {wood ? <label className="field"><span>Wood colour</span><select aria-label="Wood colour" value={design.wood_id} onChange={(event) => update({ wood_id: event.target.value })}>{WOOD_COLOURS.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label> : <label className="field"><span>Tile colour</span><input aria-label="Tile colour" type="color" value={design.tile_colour} onChange={(event) => update({ tile_colour: event.target.value })} /></label>}
-      <label className="field"><span>{wood ? "Joint colour" : "Grout colour"}</span><input aria-label={wood ? "Joint colour" : "Grout colour"} type="color" value={design.grout_colour} onChange={(event) => update({ grout_colour: event.target.value })} /></label>
-      <button type="button" className="review-style-button colour-reset-button" onClick={() => {
-        const defaults = defaultFloorDesign(design.pattern);
-        update({ wood_id: defaults.wood_id, tile_colour: defaults.tile_colour, grout_colour: defaults.grout_colour });
-      }}>Reset colours to default</button>
+      {!["tile-square", "tile-diamond", "tile-parquet", "tile-pinwheel", "wood-hexagonal"].includes(design.pattern) && <DimensionInput label={["wood-versailles", "wood-chantilly", "wood-mosaic", "wood-double-basket-weave"].includes(design.pattern) ? "Panel / module size (mm)" : "Element length (mm)"} value={design.length_mm} min={design.width_mm} max={6000} onChange={(length_mm) => update({ length_mm })} />}
       <DimensionInput label={wood ? "Joint width (mm)" : "Grout width (mm)"} value={design.grout_mm} min={0} max={Math.min(20, design.width_mm / 4)} onChange={(grout_mm) => update({ grout_mm })} />
       <small>Sizes are in millimetres. Edge pieces are cut to fit; wood shades and grain are illustrative.</small>
     </>}

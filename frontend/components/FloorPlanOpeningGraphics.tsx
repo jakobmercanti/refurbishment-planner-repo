@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { openingRenderWidths } from "@/lib/openingRendering";
+import { openingRenderWidths, outwardNormalForRoom } from "@/lib/openingRendering";
 import { formatLength, type DisplayUnits } from "@/lib/units";
 import type { Point2D } from "@/lib/types";
 import { windowPlanVertices } from "@/lib/architecturalModels";
@@ -24,6 +24,7 @@ type OpeningProps = {
   opening: FloorPlanOpeningGraphic;
   wallStart: Point2D;
   wallEnd: Point2D;
+  roomCentre?: Point2D;
   toScreen: (point: Point2D) => Point2D;
   displayUnits: DisplayUnits;
   selected?: boolean;
@@ -59,12 +60,14 @@ function geometry(opening: FloorPlanOpeningGraphic, wallStart: Point2D, wallEnd:
   return { wallLength, unit, startModel, endModel, start, end, tangent, perpendicular, modelNormal };
 }
 
-export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, displayUnits, selected = false, wallThicknessScreen, onPointerDown, onContextMenu }: OpeningProps) {
+export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, roomCentre, toScreen, displayUnits, selected = false, wallThicknessScreen, onPointerDown, onContextMenu }: OpeningProps) {
   const shape = geometry(opening, wallStart, wallEnd, toScreen);
   if (!shape) return null;
   const { startModel, endModel, start, end, perpendicular, modelNormal } = shape;
   const { gapWidth, jambHalf } = openingRenderWidths(wallThicknessScreen);
-  const style = { "--opening-gap-width": `${gapWidth}px`, ...(opening.colorHex ? { "--door-colour": opening.colorHex, "--window-colour": opening.colorHex, ...(opening.kind === "WINDOW" ? { color: opening.colorHex } : {}) } : {}) } as CSSProperties;
+  const defaultWindowFinish = !opening.colorHex || ["#F4F3EE", "#FFFFFF"].includes(opening.colorHex.toUpperCase());
+  const windowPlanColour = defaultWindowFinish ? "#287fb8" : opening.colorHex;
+  const style = { "--opening-gap-width": `${gapWidth}px`, ...(opening.colorHex ? { "--door-colour": opening.colorHex, "--window-colour": opening.colorHex, ...(opening.kind === "WINDOW" ? { color: opening.colorHex } : {}) } : {}), ...(opening.kind === "WINDOW" ? { "--window-plan-colour": windowPlanColour } : {}) } as CSSProperties;
   const className = selected ? " selected" : "";
   if (opening.kind === "WINDOW") {
     const family = opening.representationKey ?? "window-single-pane";
@@ -73,17 +76,21 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
       const depth = Math.max(1, opening.windowDepthMm ?? (family === "window-bay" ? 650 : 700)) * scale;
       const span = opening.width * scale;
       const vertices = windowPlanVertices(family, span, depth);
+      const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+      const roomPoint = roomCentre ? toScreen(roomCentre) : null;
+      const outsideNormal = outwardNormalForRoom(perpendicular, midpoint, roomPoint ?? undefined);
       const points = (shift: number) => vertices.map(([x, z]) => {
-        const along = x + span / 2, outward = z - depth / 2 + shift;
-        return `${start.x + shape.tangent.x * along + perpendicular.x * outward},${start.y + shape.tangent.y * along + perpendicular.y * outward}`;
+        const along = x + span / 2, distanceFromWall = depth / 2 - z + shift;
+        return `${start.x + shape.tangent.x * along + outsideNormal.x * distanceFromWall},${start.y + shape.tangent.y * along + outsideNormal.y * distanceFromWall}`;
       }).join(" ");
       return <g style={style} className={`opening-symbol window-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
         <title>{`${family.slice(7)} window ${formatLength(opening.width, displayUnits)}`}</title>
         <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
         <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
         <polygon points={points(0)} fill="white" stroke="none" />
-        {[-2, 0, 2].map(shift => <polyline key={shift} points={points(shift)} fill="none" stroke="currentColor" strokeWidth={shift === 0 ? .6 : 1.2} />)}
-        {vertices.map(([x, z], i) => <circle key={i} cx={start.x + shape.tangent.x * (x + span / 2) + perpendicular.x * (z - depth / 2)} cy={start.y + shape.tangent.y * (x + span / 2) + perpendicular.y * (z - depth / 2)} r={2} fill="currentColor" />)}
+        {[-2, 0, 2].map(shift => <polyline key={shift} className="window-projecting-frame" points={points(shift)} fill="none" strokeWidth={shift === 0 ? .6 : 1.2} />)}
+        <line className="opening-jamb window-jamb" x1={start.x - perpendicular.x * jambHalf} y1={start.y - perpendicular.y * jambHalf} x2={start.x + perpendicular.x * jambHalf} y2={start.y + perpendicular.y * jambHalf} />
+        <line className="opening-jamb window-jamb" x1={end.x - perpendicular.x * jambHalf} y1={end.y - perpendicular.y * jambHalf} x2={end.x + perpendicular.x * jambHalf} y2={end.y + perpendicular.y * jambHalf} />
       </g>;
     }
     const paneCount = Math.max(1, Math.min(3, opening.windowPaneCount ?? 1));
@@ -131,7 +138,7 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
     const half = opening.width / 2;
     const firstLeaf = toScreen({ x: startModel.x + modelNormal.x * half, y: startModel.y + modelNormal.y * half });
     const secondLeaf = toScreen({ x: endModel.x + modelNormal.x * half, y: endModel.y + modelNormal.y * half });
-    return <g style={style} className={`opening-symbol double-door-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
+    return <g style={style} className={`opening-symbol door-symbol double-door-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
       <title>{`Double door ${formatLength(opening.width, displayUnits)} — drag along or between walls`}</title>
       <path className="opening-hit-area" d={`${sectorPath(start, centre, firstLeaf)} ${sectorPath(end, centre, secondLeaf)}`} />
       <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
@@ -167,9 +174,9 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, toScreen, 
   </g>;
 }
 
-type DimensionProps = OpeningProps & { wallCentre: Point2D; lane: number; hiddenMeasurementIds?: ReadonlyArray<string>; onMeasurementPointerDown?: (event: ReactPointerEvent<SVGGElement>, section: number) => void; onMeasurementContextMenu?: (event: ReactMouseEvent<SVGGElement>, section: number) => void; onMeasurementDoubleClick?: (event: ReactMouseEvent<SVGGElement>, section: number) => void };
+type DimensionProps = OpeningProps & { wallCentre: Point2D; wallDimensionOffset?: number; lane: number; hiddenMeasurementIds?: ReadonlyArray<string>; onMeasurementPointerDown?: (event: ReactPointerEvent<SVGGElement>, section: number) => void; onMeasurementContextMenu?: (event: ReactMouseEvent<SVGGElement>, section: number) => void; onMeasurementDoubleClick?: (event: ReactMouseEvent<SVGGElement>, section: number) => void };
 
-export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCentre, lane, toScreen, displayUnits, hiddenMeasurementIds = [], onMeasurementPointerDown, onMeasurementContextMenu, onMeasurementDoubleClick }: DimensionProps) {
+export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCentre, wallDimensionOffset = 32, lane, toScreen, displayUnits, hiddenMeasurementIds = [], onMeasurementPointerDown, onMeasurementContextMenu, onMeasurementDoubleClick }: DimensionProps) {
   const shape = geometry(opening, wallStart, wallEnd, toScreen);
   if (!shape) return null;
   const start = toScreen(wallStart); const end = toScreen(wallEnd); const centre = toScreen(wallCentre);
@@ -177,7 +184,7 @@ export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCe
   const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y;
   const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y };
-  const rowOffset = 34 + lane * 20;
+  const rowOffset = Math.max(56, wallDimensionOffset + 28) + lane * 20;
   const points = [start, shape.start, shape.end, end].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
   const values = [opening.offset, opening.width, Math.max(0, shape.wallLength - opening.offset - opening.width)];
   const hasMeasurementActions = Boolean(onMeasurementPointerDown || onMeasurementContextMenu || onMeasurementDoubleClick);

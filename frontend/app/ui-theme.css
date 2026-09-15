@@ -17,7 +17,13 @@ body[data-ui-style="modern"] button:hover:not(:disabled):not(.floating-toolbar-r
 body[data-ui-style="modern"] button:is(.active, .primary, .primary-small, .fixture-save, .person-update, .validate-button, [aria-selected="true"], [aria-pressed="true"]) {
   background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); border-color: var(--ui-button-activeBackground);
 }
-body[data-ui-style="modern"] button:is(.active, .primary, .primary-small, .fixture-save, .person-update, .validate-button, [aria-selected="true"], [aria-pressed="true"]):hover:not(:disabled) { background: var(--accent); color: #fff; }
+body[data-ui-style="modern"] button:is(.active, .primary, .primary-small, .fixture-save, .person-update, .validate-button, [aria-selected="true"], [aria-pressed="true"]):hover:not(:disabled) {
+  background: #062857;
+  background: color-mix(in srgb, var(--ui-button-activeBackground) 82%, var(--accent) 18%);
+  color: var(--ui-button-activeText);
+  border-color: #062857;
+  border-color: color-mix(in srgb, var(--ui-button-activeBackground) 82%, var(--accent) 18%);
+}
 body[data-ui-style="modern"] button:is(.danger-button, .remove-finish) { background: var(--fail-soft); color: var(--fail); }
 body[data-ui-style="modern"] button:disabled { opacity: .45; }
 body[data-ui-style="modern"] :is(input, select, textarea):not([type="color"]):not([type="checkbox"]):not([type="radio"]):not(.room-name-editor input) { background-color: var(--panel); color: var(--ink); border-color: var(--line); border-radius: var(--ui-button-radius); font-family: var(--font-sans); }
@@ -25,19 +31,15 @@ body[data-ui-style="modern"] :is(button, input, select, textarea):focus-visible 
 body[data-ui-style="modern"] :is(.tool-section, .selected-properties, .fixture-editor, .person-editor, .catalogue-manager-toggle, .catalogue-manager-tabs, .tile-colour-editor, .context-controls, .viewer-toolbar) { background-color: var(--panel); border-color: var(--line); color: var(--ink); }
 body[data-ui-style="modern"] :is(.catalogue-manager-tabs, .catalogue-manager-toggle, .catalogue-sidebar, .catalogue-family.active) { background-color: var(--soft); }
 body[data-ui-style="modern"] :is(.eyebrow, .field > span, .tool-note) { color: var(--muted); }
-body[data-ui-style="modern"] .editor-intro h1 { color: var(--deep); }
-body[data-ui-style="modern"] .editor-intro .editor-context-help { color: var(--muted); }
-
-/* Keep the default floorplan's walls, dimensions, corners and labels in the
-   same navy as Modern buttons. Excluding named drawing styles preserves their
+/* Keep the default floorplan's walls, wall dimensions, corners and labels in
+   the same navy as Modern buttons. Opening dimensions keep their semantic
+   dark-orange colour. Excluding named drawing styles preserves their
    existing visual contracts and keeps Traditional black and white. */
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-body,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-thickness-label,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-label,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .vertex-handle,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .vertex-label,
-body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .opening-dimension,
-body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .window-dimension,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .fixture-dimension,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .room-name-editor input { color: var(--deep); }
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-body,
@@ -45,8 +47,29 @@ body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.mo
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-thickness-label,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .wall-label,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .vertex-label,
-body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .opening-dimension-label,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .fixture-dimension-label { fill: var(--deep); }
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .dimension-line,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .dimension-extension,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .dimension-tick { stroke: var(--deep); }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .opening-dimension .dimension-line,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .opening-dimension .dimension-extension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .opening-dimension .dimension-tick { stroke: currentColor; }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .floorplan-fixture.selected .fixture-dimension { color: #9a4604; }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .floorplan-fixture.selected .fixture-dimension-label { fill: currentColor; }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .floorplan-fixture.selected .fixture-dimension .dimension-line,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .floorplan-fixture.selected .fixture-dimension .dimension-extension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .floorplan-fixture.selected .fixture-dimension .dimension-tick { stroke: currentColor; }
+/* A user-defined measurement is an intentional override, so keep its blue
+   reminder colour even though the default view uses navy for regular
+   dimensions. Apply the colour to the value and every dimension line. */
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected { color: #1678bd; }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement .manual-measurement-value,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.custom-measurement .wall-label,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected .wall-label { fill: currentColor; }
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement .dimension-line,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement .dimension-extension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement .dimension-tick,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected .dimension-line,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected .dimension-extension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected .dimension-tick { stroke: currentColor; }

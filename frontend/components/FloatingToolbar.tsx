@@ -83,6 +83,8 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
   const [minimumHeight, setMinimumHeight] = useState(MIN_FLOATING_WINDOW_HEIGHT);
   const [zIndex, setZIndex] = useState(20);
   const [isDocked, setIsDocked] = useState(Boolean(dock));
+  const [heightMaximized, setHeightMaximized] = useState(false);
+  const heightMaximizeRestoreRef = useRef<{ position: { x: number; y: number }; size: { width: number; height: number | null }; isDocked: boolean } | null>(null);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
@@ -152,6 +154,36 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
 
   function focusPanel() {
     setZIndex(claimNextFloatingZIndex());
+  }
+
+  function toggleHeightMaximized(event: ReactMouseEvent<HTMLElement>) {
+    if (event.target instanceof Element && event.target.closest(".floating-toolbar-close")) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const parent = getToolbarWorkspace(panel);
+    if (!parent) return;
+    const panelBounds = panel.getBoundingClientRect();
+    const parentBounds = parent.getBoundingClientRect();
+    event.preventDefault();
+    event.stopPropagation();
+    focusPanel();
+
+    if (heightMaximized) {
+      const restore = heightMaximizeRestoreRef.current;
+      if (restore) {
+        setPosition(restore.position);
+        setSize(restore.size);
+        setIsDocked(restore.isDocked);
+      }
+      heightMaximizeRestoreRef.current = null;
+      setHeightMaximized(false);
+      return;
+    }
+
+    heightMaximizeRestoreRef.current = { position, size, isDocked };
+    setPosition({ x: Math.max(8, panelBounds.left - parentBounds.left), y: 8 });
+    setIsDocked(false);
+    setHeightMaximized(true);
   }
 
   function releaseDock(panelBounds: DOMRect, parentBounds: DOMRect) {
@@ -257,17 +289,17 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
   const style = {
     left: docked ? (dock?.side === "LEFT" ? 8 : undefined) : position.x,
     right: docked && dock?.side === "RIGHT" ? 8 : undefined,
-    top: docked ? (dock?.top ?? dockTop) : position.y,
+    top: heightMaximized ? 8 : docked ? (dock?.top ?? dockTop) : position.y,
     width: docked ? (dock?.width ?? size.width) : size.width,
-    height: size.height ?? dockHeight,
-    minHeight: appliedMinimumHeight,
-    maxHeight: size.height === null
+    height: heightMaximized ? "calc(100% - 16px)" : size.height ?? dockHeight,
+    minHeight: heightMaximized ? undefined : appliedMinimumHeight,
+    maxHeight: heightMaximized ? "calc(100% - 16px)" : size.height === null
       ? (docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `min(${maxHeight}px, calc(100% - 16px))`)
       : "calc(100% - 16px)",
     zIndex: bringToFront ? 1000 : zIndex,
   } as CSSProperties;
   return <section ref={panelRef} className={`floating-toolbar ${className}`.trim()} style={style} onPointerDown={focusPanel}>
-    <header className="floating-toolbar-titlebar" aria-label={`Move ${title}`} title={`Drag to move ${title}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onMouseDown={beginMouseDrag}>
+    <header className="floating-toolbar-titlebar" aria-label={`Move ${title}`} title={`${heightMaximized ? "Double-click to restore" : "Double-click to maximise height"} · Drag to move ${title}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onMouseDown={beginMouseDrag} onDoubleClick={toggleHeightMaximized}>
       <span className="floating-toolbar-drag" aria-hidden>⠿</span>
       <strong>{title}</strong>
       <button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button>

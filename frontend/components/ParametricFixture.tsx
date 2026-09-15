@@ -42,15 +42,16 @@ function Block({ position, size, colour = "#f4f3ef" }: { position: [number, numb
 /** Normalised render-only geometry: world millimetres are converted by the caller. */
 export function ParametricFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
   const key = fixtureRepresentation(obstacle);
-  if (key.startsWith("furniture-bath-")) return <BathFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} interiorColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} />;
+  if (key.startsWith("furniture-bath-")) return <BathFixture representation={key} width={width} depth={depth} height={height} colour="#F4F3EE" interiorColour="#FFFFFF" hardwareColour={obstacle.hardware_color_hex} />;
   if (key.startsWith("furniture-radiator-")) return <RadiatorFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
   if (key.startsWith("door-")) return <DoorFixture representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
   if (key.startsWith("furniture-stair-")) return <StaircaseFixture handrailColour={obstacle.handrail_color_hex} wallColour={obstacle.secondary_color_hex} supportColour={obstacle.hardware_color_hex} representation={key} width={width} depth={depth} height={height} colour={obstacle.color_hex} />;
   if (key.startsWith("window-")) return <WindowFixture colour={obstacle.color_hex} representation={key} width={width} depth={depth} height={height} />;
   if (/^furniture-(kitchen-|wardrobe-)/.test(key)) return <KitchenFurniture secondaryColour={obstacle.secondary_color_hex ?? (key.includes("cabinet-") ? "#F4F3EE" : undefined)} hardwareColour={obstacle.hardware_color_hex} representation={key} colour={obstacle.color_hex ?? "#C7B69C"} width={width} depth={depth} height={height} />;
-  if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(key)) return <RoomFurniture representation={key} colour={obstacle.color_hex ?? "#b99b77"} width={width} depth={depth} height={height} />;
+  if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(key)) return <RoomFurniture representation={key} colour={obstacle.color_hex ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} />;
   const kind = obstacle.fixture_kind ?? key.split("-")[0].toUpperCase();
-  const chrome = <meshStandardMaterial color="#bac4c3" metalness={.92} roughness={.16} />;
+  const hardwareColour = obstacle.hardware_color_hex ?? "#bac4c3";
+  const chrome = <meshStandardMaterial color={hardwareColour} metalness={.92} roughness={.16} />;
   const glass = <meshPhysicalMaterial color="#d5e8e8" transparent opacity={.25} roughness={.06} metalness={.05} depthWrite={false} side={DoubleSide} />;
   return <group scale={[width, height, depth]}>
     {kind === "TOILET" && (() => {
@@ -66,7 +67,7 @@ export function ParametricFixture({ obstacle, width, depth, height }: { obstacle
         <mesh position={[0,top*.40,centre]} scale={[.96,top*1.22,bowlDepth]} castShadow receiveShadow><latheGeometry args={[wcProfile,96]} /><meshPhysicalMaterial color="#faf9f5" roughness={.14} clearcoat={.65} side={DoubleSide} /></mesh>
         <mesh position={[0,top,centre]} scale={[.99,cistern ? .6 : 1,bowlDepth*1.03]} castShadow receiveShadow><latheGeometry args={[seatProfile,96]} /><meshPhysicalMaterial color="#ffffff" roughness={.23} clearcoat={.4} /></mesh>
         <mesh position={[0,top*.555,centre]} rotation={[-Math.PI/2,0,0]} scale={[.17,.20,1]}><circleGeometry args={[1,48]} /><meshPhysicalMaterial color="#b6d4d4" roughness={.08} metalness={.15} /></mesh>
-        {[-.19,.19].map(x => <Block key={x} position={[x,top+.005,centre-bowlDepth*.39]} size={[.105,.018,.06]} colour="#b4bcbd" />)}
+        {[-.19,.19].map(x => <Block key={x} position={[x,top+.005,centre-bowlDepth*.39]} size={[.105,.018,.06]} colour={hardwareColour} />)}
         {cistern && <><Block position={[0,.705,-.345]} size={[.88,.51,.30]} /><Block position={[0,.969,-.345]} size={[.91,.032,.31]} /><mesh position={[.18,.99,-.345]}>{chrome}<cylinderGeometry args={[.043,.043,.006,32]} /></mesh></>}
       </>;
     })()}
@@ -79,7 +80,7 @@ export function ParametricFixture({ obstacle, width, depth, height }: { obstacle
           {[-.455,.455].map(x => <Block key={x} position={[x,.45,0]} size={[.035,.86,.94]} colour="#a78d70" />)}
           <Block position={[0,.45,-.455]} size={[.88,.86,.035]} colour="#a78d70" />
           <Block position={[0,.03,0]} size={[.88,.04,.94]} colour="#a78d70" />
-          {[-.24,.24].map(x => <group key={x}><Block position={[x,.45,.475]} size={[.455,.84,.03]} colour={obstacle.color_hex === "#F4F3EE" ? "#b7a187" : obstacle.color_hex ?? "#b7a187"} /><Block position={[x,.73,.496]} size={[.20,.012,.008]} colour="#76827c" /></group>)}
+          {[-.24,.24].map(x => <group key={x}><Block position={[x,.45,.475]} size={[.455,.84,.03]} colour={obstacle.color_hex === "#F4F3EE" ? "#b7a187" : obstacle.color_hex ?? "#b7a187"} /><Block position={[x,.73,.496]} size={[.20,.012,.008]} colour={hardwareColour} /></group>)}
           <mesh position={[0,.88,0]} rotation={[-Math.PI/2,0,0]} castShadow receiveShadow><extrudeGeometry args={[double ? decks.double : decks.single,{depth:.025,bevelEnabled:false,curveSegments:64}]} /><meshStandardMaterial color="#f4f3ef" roughness={.22} /></mesh>
         </>}
         {key.includes("pedestal") && <mesh position={[0, .36, -.04]} castShadow><cylinderGeometry args={[.18, .26, .72, 48]} /><meshStandardMaterial color="#f4f3ef" roughness={.2} /></mesh>}
@@ -89,7 +90,7 @@ export function ParametricFixture({ obstacle, width, depth, height }: { obstacle
         {(double ? [-.25, .25] : [0]).map(x => <group key={x}>
           <Bowl x={key.includes("corner") ? -.10 : x} y={.71} z={key.includes("corner") ? -.10 : .07} width={double ? .44 : key.includes("corner") ? .68 : .98} depth={key.includes("corner") ? .66 : .83} height={.20} />
           <mesh position={[x, .86, -.38]}>{chrome}<cylinderGeometry args={[.024, .026, .24, 20]} /></mesh>
-          <Block position={[x, .974, -.29]} size={[.05, .045, .23]} colour="#aebbb9" />
+          <Block position={[x, .974, -.29]} size={[.05, .045, .23]} colour={hardwareColour} />
         </group>)}
       </>;
     })()}
@@ -103,11 +104,11 @@ export function ParametricFixture({ obstacle, width, depth, height }: { obstacle
       </>}
       {key.includes("freestanding") && <mesh position={[0, .515, -.492]}><boxGeometry args={[1, .96, .012]} />{glass}</mesh>}
       <mesh position={[0, .58, -.46]}>{chrome}<cylinderGeometry args={[.014, .014, .66, 16]} /></mesh>
-      <Block position={[0, .91, -.34]} size={[.025, .012, .24]} colour="#b0bbba" />
+      <Block position={[0, .91, -.34]} size={[.025, .012, .24]} colour={hardwareColour} />
       <mesh position={[0, .905, -.23]}>{chrome}<cylinderGeometry args={[.12, .12, .015, 40]} /></mesh>
-      <Block position={[0, .44, -.45]} size={[.20, .035, .06]} colour="#b0bbba" />
+      <Block position={[0, .44, -.45]} size={[.20, .035, .06]} colour={hardwareColour} />
       {!key.includes("wet-room") && !key.includes("quadrant") && [-.48,.48].map(x => <Block key={x} position={[x,.51,.48]} size={[.016,.95,.02]} colour="#aeb8b8" />)}
-      {!key.includes("walk-in") && !key.includes("wet-room") && <Block position={key.includes("quadrant") ? [.20,.51,.20] : [.12,.51,.493]} size={[.016,.12,.026]} colour="#919d9e" />}
+      {!key.includes("walk-in") && !key.includes("wet-room") && <Block position={key.includes("quadrant") ? [.20,.51,.20] : [.12,.51,.493]} size={[.016,.12,.026]} colour={hardwareColour} />}
     </>}
     {kind === "FURNITURE" && <><Block position={[0,.48,0]} size={[.97,.94,.94]} colour={obstacle.color_hex === "#F4F3EE" ? "#b59b7d" : obstacle.color_hex ?? "#b59b7d"} /><Block position={[0,.967,0]} size={[1,.036,1]} />{[-.235,.235].map(x => <group key={x}><Block position={[x,.48,.48]} size={[.455,.89,.035]} colour="#c5af94" /><Block position={[x>0 ? .08 : -.08,.67,.505]} size={[.025,.16,.025]} colour="#788488" /></group>)}</>}
     {(kind === "DOOR" || kind === "WINDOW") && (() => {
