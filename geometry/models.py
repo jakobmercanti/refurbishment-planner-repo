@@ -219,6 +219,16 @@ class ObstacleDefinition(BaseModel):
     handrail_color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     secondary_color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     hardware_color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    # Appearance only; these values never participate in fit calculations.
+    component_colors: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("component_colors")
+    @classmethod
+    def validate_component_colors(cls, value: dict[str, str]) -> dict[str, str]:
+        import re
+        if len(value) > 32 or any(not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", key) or not re.fullmatch(r"#[0-9A-Fa-f]{6}", colour) for key, colour in value.items()):
+            raise ValueError("component colours must be named parts with six-digit hex colours")
+        return value
     wall_lock: bool = False
     stl_filename: str | None = None
     stl_base64: str | None = None

@@ -260,6 +260,7 @@ button { font: inherit; }
 .fixture-colours-toggle > strong { font-size: 11px; }
 .fixture-colours-toggle > span { font-size: 16px; line-height: 1; }
 .fixture-colours-fields { display: grid; gap: var(--toolbar-control-gap); }
+.fixture-colours-fields input[type="color"] { width: 100%; height: 36px; min-height: 36px; padding: 3px; cursor: pointer; }
 .fixture-colours-fields > .fixture-field-group { margin-top: 0; }
 .fixture-colours-fields > .fixture-lock-choice { margin-top: 0; }
 .fixture-field-group { display: grid; gap: 6px; margin-top: var(--toolbar-control-gap); padding-top: 10px; border-top: 1px solid var(--line); }

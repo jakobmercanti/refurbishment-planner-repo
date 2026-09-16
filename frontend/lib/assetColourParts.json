@@ -1,0 +1,1336 @@
+{
+  "profiles": {
+    "table": [
+      {
+        "id": "legs",
+        "label": "Legs",
+        "default_color_hex": "#715840",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "top",
+        "label": "Table top",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      }
+    ],
+    "bed": [
+      {
+        "id": "legs",
+        "label": "Legs",
+        "default_color_hex": "#715840",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "frame",
+        "label": "Frame and headboard",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "bedding",
+        "label": "Bedding and pillows",
+        "default_color_hex": "#F2EEE5",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "blanket",
+        "label": "Blanket",
+        "default_color_hex": "#F2EEE5",
+        "legacy_field": "secondary_color_hex"
+      }
+    ],
+    "seating": [
+      {
+        "id": "frame",
+        "label": "Frame and arms",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "cushions",
+        "label": "Seat cushions",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "back",
+        "label": "Back upholstery",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "legs",
+        "label": "Legs",
+        "default_color_hex": "#715840",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "chair": [
+      {
+        "id": "frame",
+        "label": "Frame and back",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "cushions",
+        "label": "Seat cushion",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "legs",
+        "label": "Legs",
+        "default_color_hex": "#715840",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "storage": [
+      {
+        "id": "body",
+        "label": "Cabinet body",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Doors and drawers",
+        "default_color_hex": "#C5AF94"
+      },
+      {
+        "id": "top",
+        "label": "Top",
+        "default_color_hex": "#F4F3EF"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "cabinet-open": [
+      {
+        "id": "body",
+        "label": "Cabinet structure",
+        "default_color_hex": "#F4F3EE",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "shelves",
+        "label": "Shelves",
+        "default_color_hex": "#F4F3EE",
+        "legacy_field": "secondary_color_hex"
+      }
+    ],
+    "cabinet": [
+      {
+        "id": "body",
+        "label": "Cabinet structure",
+        "default_color_hex": "#F4F3EE",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "shelves",
+        "label": "Shelves",
+        "default_color_hex": "#F4F3EE",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Door fronts",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "cabinet-glass": [
+      {
+        "id": "body",
+        "label": "Cabinet structure",
+        "default_color_hex": "#F4F3EE",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "shelves",
+        "label": "Shelves",
+        "default_color_hex": "#F4F3EE",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Door fronts",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#D2E4E6"
+      }
+    ],
+    "kitchen": [
+      {
+        "id": "body",
+        "label": "Cabinet body",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Door fronts",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "top",
+        "label": "Worktop",
+        "default_color_hex": "#77736B",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "plinth",
+        "label": "Plinth",
+        "default_color_hex": "#5B554C"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "wardrobe": [
+      {
+        "id": "body",
+        "label": "Carcass and top",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Doors",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "plinth",
+        "label": "Plinth",
+        "default_color_hex": "#5B554C"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "fridge": [
+      {
+        "id": "body",
+        "label": "Carcass and top",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Doors",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "plinth",
+        "label": "Plinth",
+        "default_color_hex": "#5B554C"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "display",
+        "label": "Display and trim",
+        "default_color_hex": "#20282D"
+      }
+    ],
+    "sink": [
+      {
+        "id": "body",
+        "label": "Cabinet body",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Door fronts",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "plinth",
+        "label": "Plinth",
+        "default_color_hex": "#5B554C"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "sink",
+        "label": "Sink and drainer",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "tap",
+        "label": "Tap",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "drain",
+        "label": "Waste outlet",
+        "default_color_hex": "#20282D"
+      }
+    ],
+    "hob": [
+      {
+        "id": "body",
+        "label": "Cabinet body",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Door fronts",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "top",
+        "label": "Worktop",
+        "default_color_hex": "#77736B",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "plinth",
+        "label": "Plinth",
+        "default_color_hex": "#5B554C"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Hob surface",
+        "default_color_hex": "#141B20"
+      },
+      {
+        "id": "rings",
+        "label": "Cooking zone markings",
+        "default_color_hex": "#BBC0C3"
+      }
+    ],
+    "hob-electric": [
+      {
+        "id": "body",
+        "label": "Cabinet body",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Door fronts",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "top",
+        "label": "Worktop",
+        "default_color_hex": "#77736B",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "plinth",
+        "label": "Plinth",
+        "default_color_hex": "#5B554C"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Hob surface",
+        "default_color_hex": "#141B20"
+      },
+      {
+        "id": "rings",
+        "label": "Cooking zone markings",
+        "default_color_hex": "#797C7D"
+      }
+    ],
+    "oven": [
+      {
+        "id": "body",
+        "label": "Cabinet body",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "top",
+        "label": "Worktop",
+        "default_color_hex": "#77736B",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "plinth",
+        "label": "Plinth",
+        "default_color_hex": "#5B554C"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Appliance front",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Door glass",
+        "default_color_hex": "#20282D"
+      },
+      {
+        "id": "controls",
+        "label": "Control knobs",
+        "default_color_hex": "#20282D"
+      }
+    ],
+    "washing": [
+      {
+        "id": "body",
+        "label": "Cabinet body",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "top",
+        "label": "Worktop",
+        "default_color_hex": "#77736B",
+        "legacy_field": "secondary_color_hex"
+      },
+      {
+        "id": "plinth",
+        "label": "Plinth",
+        "default_color_hex": "#5B554C"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "fronts",
+        "label": "Appliance front",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Door glass",
+        "default_color_hex": "#283B44"
+      },
+      {
+        "id": "controls",
+        "label": "Control knobs",
+        "default_color_hex": "#20282D"
+      }
+    ],
+    "bath": [
+      {
+        "id": "body",
+        "label": "Outer shell and apron",
+        "default_color_hex": "#F4F3EE"
+      },
+      {
+        "id": "interior",
+        "label": "Inner bowl and rim",
+        "default_color_hex": "#FFFFFF"
+      },
+      {
+        "id": "hardware",
+        "label": "Taps and waste",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "bath-feet": [
+      {
+        "id": "body",
+        "label": "Outer shell and apron",
+        "default_color_hex": "#F4F3EE"
+      },
+      {
+        "id": "interior",
+        "label": "Inner bowl and rim",
+        "default_color_hex": "#FFFFFF"
+      },
+      {
+        "id": "hardware",
+        "label": "Taps and waste",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "legs",
+        "label": "Feet",
+        "default_color_hex": "#B6BEC1",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "radiator": [
+      {
+        "id": "body",
+        "label": "Radiator body",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "brackets",
+        "label": "Mounting brackets",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "valves",
+        "label": "Valve fittings",
+        "default_color_hex": "#B6BFC2"
+      },
+      {
+        "id": "caps",
+        "label": "Valve caps",
+        "default_color_hex": "#EEEEEB"
+      }
+    ],
+    "toilet": [
+      {
+        "id": "body",
+        "label": "Ceramic bowl and base",
+        "default_color_hex": "#FAF9F5"
+      },
+      {
+        "id": "seat",
+        "label": "Seat",
+        "default_color_hex": "#FFFFFF"
+      },
+      {
+        "id": "hardware",
+        "label": "Hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "toilet-cistern": [
+      {
+        "id": "body",
+        "label": "Ceramic bowl and base",
+        "default_color_hex": "#FAF9F5"
+      },
+      {
+        "id": "seat",
+        "label": "Seat",
+        "default_color_hex": "#FFFFFF"
+      },
+      {
+        "id": "hardware",
+        "label": "Hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "cistern",
+        "label": "Cistern and lid",
+        "default_color_hex": "#F4F3EF"
+      },
+      {
+        "id": "flush",
+        "label": "Flush button",
+        "default_color_hex": "#BAC4C3",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "basin": [
+      {
+        "id": "basin",
+        "label": "Basin and ceramic supports",
+        "default_color_hex": "#FAFAF7"
+      },
+      {
+        "id": "tap",
+        "label": "Tap",
+        "default_color_hex": "#BAC4C3",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "drain",
+        "label": "Waste outlet",
+        "default_color_hex": "#89928F"
+      }
+    ],
+    "basin-countertop": [
+      {
+        "id": "basin",
+        "label": "Basin and ceramic supports",
+        "default_color_hex": "#FAFAF7"
+      },
+      {
+        "id": "tap",
+        "label": "Tap",
+        "default_color_hex": "#BAC4C3",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "drain",
+        "label": "Waste outlet",
+        "default_color_hex": "#89928F"
+      },
+      {
+        "id": "top",
+        "label": "Countertop",
+        "default_color_hex": "#A78D70"
+      }
+    ],
+    "vanity": [
+      {
+        "id": "basin",
+        "label": "Basin and ceramic supports",
+        "default_color_hex": "#FAFAF7"
+      },
+      {
+        "id": "tap",
+        "label": "Tap",
+        "default_color_hex": "#BAC4C3",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "drain",
+        "label": "Waste outlet",
+        "default_color_hex": "#89928F"
+      },
+      {
+        "id": "body",
+        "label": "Cabinet structure",
+        "default_color_hex": "#A78D70"
+      },
+      {
+        "id": "fronts",
+        "label": "Cabinet fronts",
+        "default_color_hex": "#B7A187",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "top",
+        "label": "Countertop",
+        "default_color_hex": "#F4F3EF"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and fittings",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "shower": [
+      {
+        "id": "tray",
+        "label": "Shower tray",
+        "default_color_hex": "#F4F3EF"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#D5E8E8"
+      },
+      {
+        "id": "tap",
+        "label": "Shower head and mixer",
+        "default_color_hex": "#BAC4C3",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "drain",
+        "label": "Waste outlet",
+        "default_color_hex": "#737F7C"
+      }
+    ],
+    "shower-frame": [
+      {
+        "id": "tray",
+        "label": "Shower tray",
+        "default_color_hex": "#F4F3EF"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#D5E8E8"
+      },
+      {
+        "id": "tap",
+        "label": "Shower head and mixer",
+        "default_color_hex": "#BAC4C3",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "drain",
+        "label": "Waste outlet",
+        "default_color_hex": "#737F7C"
+      },
+      {
+        "id": "frame",
+        "label": "Enclosure frame",
+        "default_color_hex": "#AEB8B8"
+      },
+      {
+        "id": "hardware",
+        "label": "Door handle",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "shower-quadrant": [
+      {
+        "id": "tray",
+        "label": "Shower tray",
+        "default_color_hex": "#F4F3EF"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#D5E8E8"
+      },
+      {
+        "id": "tap",
+        "label": "Shower head and mixer",
+        "default_color_hex": "#BAC4C3",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "drain",
+        "label": "Waste outlet",
+        "default_color_hex": "#737F7C"
+      },
+      {
+        "id": "hardware",
+        "label": "Door handle",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "door": [
+      {
+        "id": "leaf",
+        "label": "Door leaf",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "frame",
+        "label": "Frame and architrave",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "door-panel": [
+      {
+        "id": "leaf",
+        "label": "Door leaf",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "frame",
+        "label": "Frame and architrave",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "panels",
+        "label": "Panels and mouldings",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      }
+    ],
+    "door-glass": [
+      {
+        "id": "leaf",
+        "label": "Door leaf",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "frame",
+        "label": "Frame and architrave",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "panels",
+        "label": "Panels and mouldings",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#BAD1D7"
+      }
+    ],
+    "door-barn": [
+      {
+        "id": "leaf",
+        "label": "Door leaf",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "frame",
+        "label": "Frame and architrave",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "panels",
+        "label": "Bracing and rails",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "track",
+        "label": "Track and rollers",
+        "default_color_hex": "#303639"
+      }
+    ],
+    "door-sliding": [
+      {
+        "id": "leaf",
+        "label": "Door leaf",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "frame",
+        "label": "Frame and architrave",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "track",
+        "label": "Track",
+        "default_color_hex": "#5A6061"
+      }
+    ],
+    "door-sliding-glass": [
+      {
+        "id": "leaf",
+        "label": "Door leaf",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "frame",
+        "label": "Frame and architrave",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "panels",
+        "label": "Panels and mouldings",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#BAD1D7"
+      },
+      {
+        "id": "track",
+        "label": "Track",
+        "default_color_hex": "#5A6061"
+      }
+    ],
+    "window": [
+      {
+        "id": "frame",
+        "label": "Frame",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "sash",
+        "label": "Sashes and glazing bars",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "sill",
+        "label": "Sill",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#B8D0D7"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "seals",
+        "label": "Seals and vent",
+        "default_color_hex": "#414747"
+      }
+    ],
+    "window-projected": [
+      {
+        "id": "frame",
+        "label": "Frame",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "sash",
+        "label": "Sashes and glazing bars",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "sill",
+        "label": "Sill",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#B8D0D7"
+      }
+    ],
+    "whole": [
+      {
+        "id": "body",
+        "label": "Whole object",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      }
+    ],
+    "stair-filled": [
+      {
+        "id": "treads",
+        "label": "Treads",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "handrail",
+        "label": "Handrails",
+        "default_color_hex": "#725236",
+        "legacy_field": "handrail_color_hex"
+      },
+      {
+        "id": "balusters",
+        "label": "Balusters and lower rails",
+        "default_color_hex": "#725236",
+        "legacy_field": "handrail_color_hex"
+      },
+      {
+        "id": "infill",
+        "label": "Wall and risers",
+        "default_color_hex": "#E5DED2",
+        "legacy_field": "secondary_color_hex"
+      }
+    ],
+    "stair-filled-glass": [
+      {
+        "id": "treads",
+        "label": "Treads",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Glass guarding tint",
+        "default_color_hex": "#C2E0E3"
+      },
+      {
+        "id": "clamps",
+        "label": "Glass clamps",
+        "default_color_hex": "#AFB8BB"
+      },
+      {
+        "id": "infill",
+        "label": "Wall and risers",
+        "default_color_hex": "#E5DED2",
+        "legacy_field": "secondary_color_hex"
+      }
+    ],
+    "stair-open": [
+      {
+        "id": "treads",
+        "label": "Treads",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "handrail",
+        "label": "Handrails",
+        "default_color_hex": "#725236",
+        "legacy_field": "handrail_color_hex"
+      },
+      {
+        "id": "balusters",
+        "label": "Balusters and lower rails",
+        "default_color_hex": "#725236",
+        "legacy_field": "handrail_color_hex"
+      },
+      {
+        "id": "structure",
+        "label": "Supporting structure",
+        "default_color_hex": "#465052",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "stair-open-glass": [
+      {
+        "id": "treads",
+        "label": "Treads",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Glass guarding tint",
+        "default_color_hex": "#C2E0E3"
+      },
+      {
+        "id": "clamps",
+        "label": "Glass clamps",
+        "default_color_hex": "#AFB8BB"
+      },
+      {
+        "id": "structure",
+        "label": "Supporting structure",
+        "default_color_hex": "#465052",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "stair-open-column": [
+      {
+        "id": "treads",
+        "label": "Treads",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "handrail",
+        "label": "Handrails",
+        "default_color_hex": "#725236",
+        "legacy_field": "handrail_color_hex"
+      },
+      {
+        "id": "balusters",
+        "label": "Balusters and lower rails",
+        "default_color_hex": "#725236",
+        "legacy_field": "handrail_color_hex"
+      },
+      {
+        "id": "structure",
+        "label": "Supporting structure",
+        "default_color_hex": "#465052",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "stair-open-column-glass": [
+      {
+        "id": "treads",
+        "label": "Treads",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "glass",
+        "label": "Glass guarding tint",
+        "default_color_hex": "#C2E0E3"
+      },
+      {
+        "id": "clamps",
+        "label": "Glass clamps",
+        "default_color_hex": "#AFB8BB"
+      },
+      {
+        "id": "structure",
+        "label": "Supporting structure",
+        "default_color_hex": "#465052",
+        "legacy_field": "hardware_color_hex"
+      }
+    ],
+    "shower-walk-in": [
+      {
+        "id": "tray",
+        "label": "Shower tray",
+        "default_color_hex": "#F4F3EF"
+      },
+      {
+        "id": "glass",
+        "label": "Glass tint",
+        "default_color_hex": "#D5E8E8"
+      },
+      {
+        "id": "tap",
+        "label": "Shower head and mixer",
+        "default_color_hex": "#BAC4C3",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "drain",
+        "label": "Waste outlet",
+        "default_color_hex": "#737F7C"
+      },
+      {
+        "id": "frame",
+        "label": "Enclosure frame",
+        "default_color_hex": "#AEB8B8"
+      }
+    ],
+    "door-sliding-panel": [
+      {
+        "id": "leaf",
+        "label": "Door leaf",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "frame",
+        "label": "Frame and architrave",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "hardware",
+        "label": "Handles and hinges",
+        "default_color_hex": "#B6BABB",
+        "legacy_field": "hardware_color_hex"
+      },
+      {
+        "id": "panels",
+        "label": "Panels and mouldings",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex"
+      },
+      {
+        "id": "track",
+        "label": "Track",
+        "default_color_hex": "#5A6061"
+      }
+    ]
+  },
+  "representations": {
+    "basin-corner": "basin",
+    "basin-countertop": "basin-countertop",
+    "basin-double-vanity": "vanity",
+    "basin-pedestal": "basin",
+    "basin-undermount": "vanity",
+    "basin-vanity": "vanity",
+    "basin-wall-mounted": "basin",
+    "door-barn-double": "door-barn",
+    "door-barn-single": "door-barn",
+    "door-bifold-four": "door-sliding-glass",
+    "door-bifold-two": "door-sliding-panel",
+    "door-double": "door-panel",
+    "door-external-glazed": "door-glass",
+    "door-external-panelled": "door-panel",
+    "door-french-classic": "door-glass",
+    "door-french-modern": "door-glass",
+    "door-internal-flush": "door",
+    "door-internal-shaker": "door-panel",
+    "door-single": "door-panel",
+    "door-sliding-patio": "door-sliding-glass",
+    "door-sliding-pocket": "door-sliding-panel",
+    "furniture-armchair-classic": "seating",
+    "furniture-armchair-modern": "seating",
+    "furniture-bath-alcove": "bath",
+    "furniture-bath-corner": "bath",
+    "furniture-bath-oval": "bath",
+    "furniture-bath-slipper": "bath-feet",
+    "furniture-bed-double": "bed",
+    "furniture-bed-king": "bed",
+    "furniture-bed-single": "bed",
+    "furniture-chair-classic": "chair",
+    "furniture-chair-modern": "chair",
+    "furniture-kitchen-cabinet-bridge": "cabinet",
+    "furniture-kitchen-cabinet-double": "cabinet",
+    "furniture-kitchen-cabinet-glass-double": "cabinet-glass",
+    "furniture-kitchen-cabinet-glass-single": "cabinet-glass",
+    "furniture-kitchen-cabinet-open": "cabinet-open",
+    "furniture-kitchen-cabinet-single": "cabinet",
+    "furniture-kitchen-fridge-double": "fridge",
+    "furniture-kitchen-fridge-single": "fridge",
+    "furniture-kitchen-hob-electric": "hob-electric",
+    "furniture-kitchen-hob-induction": "hob",
+    "furniture-kitchen-island-big": "kitchen",
+    "furniture-kitchen-island-small": "kitchen",
+    "furniture-kitchen-oven-single": "oven",
+    "furniture-kitchen-sink-double": "sink",
+    "furniture-kitchen-sink-single": "sink",
+    "furniture-kitchen-storage-double": "kitchen",
+    "furniture-kitchen-storage-single": "kitchen",
+    "furniture-kitchen-washing-machine": "washing",
+    "furniture-radiator-bathroom-1-400": "radiator",
+    "furniture-radiator-bathroom-1-500": "radiator",
+    "furniture-radiator-bathroom-1-600": "radiator",
+    "furniture-radiator-bathroom-2-400": "radiator",
+    "furniture-radiator-bathroom-2-500": "radiator",
+    "furniture-radiator-bathroom-2-600": "radiator",
+    "furniture-radiator-horizontal-1-1200": "radiator",
+    "furniture-radiator-horizontal-1-600": "radiator",
+    "furniture-radiator-horizontal-1-900": "radiator",
+    "furniture-radiator-horizontal-2-1200": "radiator",
+    "furniture-radiator-horizontal-2-600": "radiator",
+    "furniture-radiator-horizontal-2-900": "radiator",
+    "furniture-radiator-vertical-1-300": "radiator",
+    "furniture-radiator-vertical-1-450": "radiator",
+    "furniture-radiator-vertical-1-600": "radiator",
+    "furniture-radiator-vertical-2-300": "radiator",
+    "furniture-radiator-vertical-2-450": "radiator",
+    "furniture-radiator-vertical-2-600": "radiator",
+    "furniture-sofa-2": "seating",
+    "furniture-sofa-3": "seating",
+    "furniture-sofa-4": "seating",
+    "furniture-sofa-corner-4": "seating",
+    "furniture-sofa-corner-left-3": "seating",
+    "furniture-sofa-corner-right-3": "seating",
+    "furniture-stair-bifurcated": "stair-filled",
+    "furniture-stair-bifurcated-glass": "stair-filled-glass",
+    "furniture-stair-bifurcated-open": "stair-open",
+    "furniture-stair-bifurcated-wide": "stair-filled",
+    "furniture-stair-curved": "stair-open",
+    "furniture-stair-curved-compact": "stair-open",
+    "furniture-stair-curved-filled": "stair-filled",
+    "furniture-stair-curved-glass": "stair-open-glass",
+    "furniture-stair-l-glass-filled": "stair-filled-glass",
+    "furniture-stair-l-glass-open": "stair-open-glass",
+    "furniture-stair-l-left": "stair-filled",
+    "furniture-stair-l-left-open": "stair-open",
+    "furniture-stair-l-right": "stair-filled",
+    "furniture-stair-l-right-open": "stair-open",
+    "furniture-stair-open": "stair-open",
+    "furniture-stair-quarter-winder": "stair-filled",
+    "furniture-stair-spiral": "stair-open-column",
+    "furniture-stair-spiral-compact": "stair-open-column",
+    "furniture-stair-spiral-glass": "stair-open-column-glass",
+    "furniture-stair-spiral-wide": "stair-open-column",
+    "furniture-stair-straight": "stair-filled",
+    "furniture-stair-straight-glass-filled": "stair-filled-glass",
+    "furniture-stair-straight-glass-open": "stair-open-glass",
+    "furniture-stair-straight-wide-open": "stair-open",
+    "furniture-stair-u-glass": "stair-open-glass",
+    "furniture-stair-u-landing": "stair-filled",
+    "furniture-stair-u-open": "stair-open",
+    "furniture-stair-u-winder": "stair-filled",
+    "furniture-stair-u-winder-glass": "stair-filled-glass",
+    "furniture-storage-unit": "storage",
+    "furniture-table-bedroom-big": "table",
+    "furniture-table-bedroom-small": "table",
+    "furniture-table-coffee-big": "table",
+    "furniture-table-coffee-small": "table",
+    "furniture-table-dining-4": "table",
+    "furniture-table-dining-6": "table",
+    "furniture-table-dining-8": "table",
+    "furniture-wardrobe-double": "wardrobe",
+    "furniture-wardrobe-single": "wardrobe",
+    "shower-alcove": "shower-frame",
+    "shower-corner": "shower-frame",
+    "shower-freestanding": "shower-frame",
+    "shower-quadrant": "shower-quadrant",
+    "shower-walk-in": "shower-walk-in",
+    "shower-wet-room": "shower",
+    "toilet-back-to-wall": "toilet",
+    "toilet-close-coupled": "toilet-cistern",
+    "toilet-freestanding": "toilet",
+    "toilet-wall-mounted": "toilet",
+    "window-bay": "window-projected",
+    "window-bow": "window-projected",
+    "window-casement": "window",
+    "window-double-pane": "window",
+    "window-sash": "window-projected",
+    "window-single-pane": "window",
+    "window-triple-pane": "window"
+  }
+}

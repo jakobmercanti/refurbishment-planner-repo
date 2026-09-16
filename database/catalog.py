@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
 from database.catalogue_assets import migrate_legacy_pictures
+from database.colour_parts import colour_parts_for
 from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults, DOOR_FAMILIES, STAIRCASE_FAMILIES
 
 
@@ -169,6 +170,8 @@ def initialise_catalogue() -> None:
         existing_columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(furniture_items)").fetchall()
         }
+        if "colour_parts" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN colour_parts JSON NOT NULL DEFAULT '[]'")
         if "is_default" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT 0")
         if "default_key" not in existing_columns:
@@ -232,6 +235,8 @@ def initialise_catalogue() -> None:
         _remove_legacy_default_tile_collection(session)
         _seed_materials(session)
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
+            if not catalogue_item.colour_parts:
+                catalogue_item.colour_parts = colour_parts_for(catalogue_item.representation_key, catalogue_item.color_hex, imported_mesh=bool(catalogue_item.stl_base64))
             catalogue_item.image_data_json = migrate_legacy_pictures(catalogue_item.id, catalogue_item.image_data_json)
         session.commit()
         from database.fixture_previews import install_fixture_previews

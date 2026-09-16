@@ -36,6 +36,13 @@ export interface Opening {
   metadata?: Record<string, unknown>;
 }
 
+export interface ColourPart {
+  id: string;
+  label: string;
+  default_color_hex: string;
+  legacy_field?: string | null;
+}
+
 export interface Obstacle {
   id: string;
   name: string;
@@ -56,6 +63,7 @@ export interface Obstacle {
   handrail_color_hex?: string;
   secondary_color_hex?: string;
   hardware_color_hex?: string;
+  component_colors?: Record<string, string>;
   wall_lock?: boolean;
   stl_filename?: string;
   stl_base64?: string;
@@ -73,6 +81,7 @@ export interface CatalogueCategory {
 }
 
 export interface CatalogueItem {
+  colour_parts?: ColourPart[];
   id: string;
   category_id: string;
   category_name: string;
@@ -103,7 +112,7 @@ export interface CatalogueItem {
   updated_at: string;
 }
 
-export type CatalogueItemInput = Omit<CatalogueItem, "id" | "category_name" | "is_default" | "supplier_editable" | "active" | "created_at" | "updated_at">;
+export type CatalogueItemInput = Omit<CatalogueItem, "id" | "category_name" | "is_default" | "supplier_editable" | "active" | "created_at" | "updated_at" | "colour_parts">;
 
 export interface MaterialItem { id: string; name: string; code?: string | null; color_hex: string; metadata: Record<string, unknown>; }
 export interface MaterialFamily { id: string; name: string; items: MaterialItem[]; }

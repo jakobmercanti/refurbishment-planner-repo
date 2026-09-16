@@ -1,6 +1,7 @@
 "use client";
 
 import { doorRepresentation } from "@/lib/doorModels";
+import { componentColoursFromMetadata, resolvedPartColours } from "@/lib/assetColours";
 import { DoorFixture } from "@/components/DoorFixture";
 import { WindowFixture } from "@/components/ArchitecturalFixtures";
 import { ParametricFixture } from "@/components/ParametricFixture";
@@ -686,7 +687,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
   ) : null;
 
   if (obstacle.stl_base64) {
-    return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={customColour ?? "#b99b77"} /></group>;
+    return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={resolvedPartColours(obstacle).body ?? customColour ?? "#b99b77"} /></group>;
   }
 
   if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
@@ -695,7 +696,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
 
   if (fixtureKind === "FURNITURE") {
     if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(obstacle.representation_key ?? "")) {
-      return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<RoomFurniture representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} /></group>;
+      return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<RoomFurniture colours={resolvedPartColours(obstacle)} representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} /></group>;
     }
     const isBench = obstacle.model_id?.includes("bench");
     return (
@@ -812,9 +813,9 @@ function OpeningFixture({ room, opening, selected, onSelect }: { room: Room; ope
   return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
     {selected && <Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} />}
     {opening.kind === "DOOR" ? (
-      <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
+      <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture colours={resolvedPartColours({ representation_key: doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type), color_hex: doorColour, component_colors: componentColoursFromMetadata(opening.metadata) })} representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
     ) : <group position={[0, sill, windowProjection ? -windowDepth * .44 : 0]}>
-      <WindowFixture representation={windowKey} width={width} height={height} depth={windowDepth} colour={typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE"} />
+      <WindowFixture colours={resolvedPartColours({ representation_key: windowKey, color_hex: typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE", component_colors: componentColoursFromMetadata(opening.metadata) })} representation={windowKey} width={width} height={height} depth={windowDepth} colour={typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE"} />
     </group>}
   </group>;
 }

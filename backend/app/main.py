@@ -157,6 +157,7 @@ def catalogue_item_response(item: FurnitureItemRecord) -> CatalogueItemResponse:
         depth_mm=item.depth_mm,
         height_mm=item.height_mm,
         color_hex=item.color_hex,
+        colour_parts=item.colour_parts,
         description=item.description,
         is_default=item.is_default,
         stl_filename=item.stl_filename,
@@ -188,7 +189,8 @@ def validate_catalogue_category(session: Session, payload: CatalogueItemInput) -
 
 
 def catalogue_item_values(payload: CatalogueItemInput) -> dict[str, object]:
-    return payload.model_dump(exclude={"images"})
+    from database.colour_parts import colour_parts_for
+    return {**payload.model_dump(exclude={"images"}), "colour_parts": colour_parts_for(payload.representation_key, payload.color_hex, imported_mesh=bool(payload.stl_base64))}
 
 
 def resolved_catalogue_pictures(item_id: str, payload: CatalogueItemInput, existing_json: str | None = None) -> list[tuple[bytes, str, str, str]]:

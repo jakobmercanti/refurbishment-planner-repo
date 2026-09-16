@@ -11,7 +11,7 @@ function Bar({ a, b, radius = .012, colour = "#394449" }: { a: [number, number, 
   return <mesh position={start.add(end).multiplyScalar(.5)} quaternion={rotation} castShadow><cylinderGeometry args={[radius, radius, delta.length(), 12]} /><meshStandardMaterial color={colour} roughness={.32} metalness={.65} /></mesh>;
 }
 
-function GlassRail({ a, b, guardA, guardB, unit }: { a: [number, number, number]; b: [number, number, number]; guardA: number; guardB: number; unit: number }) {
+function GlassRail({ a, b, guardA, guardB, unit, colours }: { a: [number, number, number]; b: [number, number, number]; guardA: number; guardB: number; unit: number; colours: Record<string, string> }) {
   const length = Math.hypot(b[0] - a[0], b[2] - a[2]), rise = b[1] - a[1];
   const shape = useMemo(() => {
     const panel = new Shape();
@@ -20,12 +20,16 @@ function GlassRail({ a, b, guardA, guardB, unit }: { a: [number, number, number]
     return panel;
   }, [length, rise, guardA, guardB, unit]);
   return <group position={a} rotation={[0, -Math.atan2(b[2] - a[2], b[0] - a[0]), 0]}>
-    <mesh position={[0, 0, -6 * unit]} castShadow><extrudeGeometry args={[shape, { depth: 12 * unit, bevelEnabled: true, bevelSize: unit, bevelThickness: unit, bevelSegments: 2 }]} /><meshPhysicalMaterial color="#c2e0e3" transparent opacity={.3} transmission={.3} roughness={.08} metalness={.04} depthWrite={false} /></mesh>
-    {[.15, .85].map(t => <mesh key={t} position={[length * t, rise * t + 80 * unit, 0]}><boxGeometry args={[Math.min(35 * unit, length * .18), 45 * unit, 24 * unit]} /><meshStandardMaterial color="#afb8bb" metalness={.85} roughness={.24} /></mesh>)}
+    <mesh position={[0, 0, -6 * unit]} castShadow><extrudeGeometry args={[shape, { depth: 12 * unit, bevelEnabled: true, bevelSize: unit, bevelThickness: unit, bevelSegments: 2 }]} /><meshPhysicalMaterial color={colours.glass ?? "#c2e0e3"} transparent opacity={.3} transmission={.3} roughness={.08} metalness={.04} depthWrite={false} /></mesh>
+    {[.15, .85].map(t => <mesh key={t} position={[length * t, rise * t + 80 * unit, 0]}><boxGeometry args={[Math.min(35 * unit, length * .18), 45 * unit, 24 * unit]} /><meshStandardMaterial color={colours.clamps ?? "#afb8bb"} metalness={.85} roughness={.24} /></mesh>)}
   </group>;
 }
 
-export function StaircaseFixture({ representation, width, depth, height, colour, handrailColour = "#725236", wallColour = "#e5ded2", supportColour = "#465052" }: { representation: string; width: number; depth: number; height: number; colour?: string; handrailColour?: string; wallColour?: string; supportColour?: string }) {
+export function StaircaseFixture({ representation, width, depth, height, colour: defaultColour, handrailColour: defaultHandrailColour = "#725236", wallColour: defaultWallColour = "#e5ded2", supportColour: defaultSupportColour = "#465052", colours = {}, explicitTreadColour = false }: { representation: string; width: number; depth: number; height: number; colour?: string; handrailColour?: string; wallColour?: string; supportColour?: string; colours?: Record<string, string>; explicitTreadColour?: boolean }) {
+  const colour = colours.treads ?? defaultColour;
+  const handrailColour = colours.handrail ?? defaultHandrailColour;
+  const wallColour = colours.infill ?? defaultWallColour;
+  const supportColour = colours.structure ?? defaultSupportColour;
   const model = STAIRCASE_MODELS[representation];
   const oak = useMemo(() => {
     const pixels = new Uint8Array(128 * 128 * 4);
@@ -50,15 +54,15 @@ export function StaircaseFixture({ representation, width, depth, height, colour,
   const point = (p: number[], guard = 0): [number, number, number] => [(p[0] / model.width - .5) * width, (p[2] + guard) * sy, (p[1] / model.depth - .5) * depth];
   return <group>
     {treads.map(({ shape, top }, i) => <group key={i}>
-      <mesh position={[0, top - thickness, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[shape, { depth: thickness, bevelEnabled: false }]} />{colour && colour.toUpperCase() !== "#F4F3EE" ? <OpeningFinishMaterial colour={colour} /> : <meshStandardMaterial map={oak} color="#ffffff" roughness={.48} />}</mesh>
+      <mesh position={[0, top - thickness, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[shape, { depth: thickness, bevelEnabled: false }]} />{colour && (explicitTreadColour || colour.toUpperCase() !== "#F4F3EE") ? <OpeningFinishMaterial colour={colour} /> : <meshStandardMaterial map={oak} color="#ffffff" roughness={.48} />}</mesh>
       {!model.open && <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[shape, { depth: Math.max(thickness, top - thickness), bevelEnabled: false }]} /><meshStandardMaterial color={wallColour} roughness={.75} /></mesh>}
       {model.open && <mesh position={[0, top - thickness * 2, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow><extrudeGeometry args={[shape, { depth: thickness, bevelEnabled: false }]} /><meshStandardMaterial color={supportColour} roughness={.38} metalness={.65} /></mesh>}
     </group>)}
     {model.rails.map((rail, i) => <group key={i}>
-      {model.glass ? <GlassRail a={point(rail.a)} b={point(rail.b)} guardA={rail.guard_a * sy} guardB={rail.guard_b * sy} unit={sy} /> : <>
+      {model.glass ? <GlassRail colours={colours} a={point(rail.a)} b={point(rail.b)} guardA={rail.guard_a * sy} guardB={rail.guard_b * sy} unit={sy} /> : <>
         <Bar a={point(rail.a, rail.guard_a)} b={point(rail.b, rail.guard_b)} radius={20 * sy} colour={handrailColour} />
-        <Bar a={point(rail.a, rail.guard_a - 440)} b={point(rail.b, rail.guard_b - 440)} radius={8 * sy} colour={handrailColour} />
-        {rail.post && <Bar a={point(rail.a)} b={point(rail.a, rail.guard_a)} radius={12 * sy} colour={handrailColour} />}
+        <Bar a={point(rail.a, rail.guard_a - 440)} b={point(rail.b, rail.guard_b - 440)} radius={8 * sy} colour={colours.balusters ?? handrailColour} />
+        {rail.post && <Bar a={point(rail.a)} b={point(rail.a, rail.guard_a)} radius={12 * sy} colour={colours.balusters ?? handrailColour} />}
       </>}
     </group>)}
     {model.open && !model.column && model.steps.slice(0, -1).map((step, i) => {
@@ -73,7 +77,8 @@ export function StaircaseFixture({ representation, width, depth, height, colour,
   </group>;
 }
 
-export function WindowFixture({ representation, width, depth, height, colour = "#F4F3EE" }: { colour?: string; representation: string; width: number; depth: number; height: number }) {
+export function WindowFixture({ representation, width, depth, height, colour: defaultColour = "#F4F3EE", colours = {} }: { colours?: Record<string, string>; colour?: string; representation: string; width: number; depth: number; height: number }) {
+  const colour = colours.frame ?? defaultColour;
   const vertices = windowPlanVertices(representation, width * .95, depth * .88);
   const sillShape = useMemo(() => {
     const shape = new Shape();
@@ -81,12 +86,12 @@ export function WindowFixture({ representation, width, depth, height, colour = "
     shape.closePath();
     return shape;
   }, [representation, width, depth]);
-  if (["window-single-pane", "window-double-pane", "window-triple-pane", "window-casement"].includes(representation)) return <CasementWindow colour={colour} representation={representation} width={width} depth={depth} height={height} />;
+  if (["window-single-pane", "window-double-pane", "window-triple-pane", "window-casement"].includes(representation)) return <CasementWindow colours={colours} colour={colour} representation={representation} width={width} depth={depth} height={height} />;
   const frame = Math.min(width * .035, height * .035, depth * .28);
   const projected = representation === "window-bay" || representation === "window-bow";
   const count = representation.includes("triple") ? 3 : representation.includes("double") || representation === "window-casement" ? 2 : 1;
-  function block(x: number, y: number, z: number, w: number, h: number, d: number) {
-    return <mesh position={[x, y, z]} castShadow receiveShadow><boxGeometry args={[w, h, d]} /><OpeningFinishMaterial colour={colour} /></mesh>;
+  function block(x: number, y: number, z: number, w: number, h: number, d: number, tint = colour) {
+    return <mesh position={[x, y, z]} castShadow receiveShadow><boxGeometry args={[w, h, d]} /><OpeningFinishMaterial colour={tint} /></mesh>;
   }
   return <group>
     {vertices.slice(0, -1).map(([x, z], i) => {
@@ -99,17 +104,17 @@ export function WindowFixture({ representation, width, depth, height, colour = "
           const panes = projected ? 1 : count, pw = (length - frame * 2) / panes, ph = sash ? (height - frame * 2) / 2 : height - frame * 2;
           const px = sash ? 0 : -length / 2 + frame + pw * (pane + .5), py = sash ? frame + ph * (pane + .5) : height / 2, pz = sash ? (pane ? -1 : 1) * frame * .35 : 0;
           return <group key={pane}>
-            <mesh position={[px, py, pz]}><boxGeometry args={[sash ? length - frame * 2 : pw, ph, frame * .12]} /><meshPhysicalMaterial color="#a6cad7" transparent opacity={.36} roughness={.05} metalness={.08} depthWrite={false} /></mesh>
-            {block(px, py, pz, sash ? length - frame * 2 : frame * .45, sash ? frame * .4 : ph, frame * .6)}
-            {sash && block(0, py, pz, frame * .4, ph, frame * .6)}
-            {sash && [-1, 1].map(side => <group key={side}>{block(0, py + side * ph / 2, pz, length - frame * 2, frame * .8, frame)}</group>)}
-            {!sash && !projected && block(px + pw * .35, height * .48, frame, frame * .35, height * .055, frame * .6)}
+            <mesh position={[px, py, pz]}><boxGeometry args={[sash ? length - frame * 2 : pw, ph, frame * .12]} /><meshPhysicalMaterial color={colours.glass ?? "#a6cad7"} transparent opacity={.36} roughness={.05} metalness={.08} depthWrite={false} /></mesh>
+            {block(px, py, pz, sash ? length - frame * 2 : frame * .45, sash ? frame * .4 : ph, frame * .6, colours.sash ?? colour)}
+            {sash && block(0, py, pz, frame * .4, ph, frame * .6, colours.sash ?? colour)}
+            {sash && [-1, 1].map(side => <group key={side}>{block(0, py + side * ph / 2, pz, length - frame * 2, frame * .8, frame, colours.sash ?? colour)}</group>)}
+            {!sash && !projected && block(px + pw * .35, height * .48, frame, frame * .35, height * .055, frame * .6, colours.sash ?? colour)}
           </group>;
         })}
         {!sash && !projected && count > 1 && block(0, height / 2, 0, frame, height - frame * 2, frame * 1.5)}
-        {block(0, frame * .2, frame * .3, length + frame, frame * .4, frame * 3)}
+        {block(0, frame * .2, frame * .3, length + frame, frame * .4, frame * 3, colours.sill ?? colour)}
       </group>;
     })}
-    {projected && <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colour} /></mesh>}
+    {projected && <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colours.sill ?? colour} /></mesh>}
   </group>;
 }

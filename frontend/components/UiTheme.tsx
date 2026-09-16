@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import "@/app/ui-theme.css";
 
 export interface SoftwareUi {
   style: "DEFAULT" | "MODERN";

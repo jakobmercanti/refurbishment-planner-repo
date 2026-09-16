@@ -109,6 +109,7 @@ class FurnitureItemRecord(Base):
     depth_mm: Mapped[float] = mapped_column(Float)
     height_mm: Mapped[float] = mapped_column(Float)
     color_hex: Mapped[str] = mapped_column(String(7), default="#b99b77")
+    colour_parts: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
     description: Mapped[str] = mapped_column(Text, default="")
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     default_key: Mapped[str | None] = mapped_column(String(120), nullable=True, unique=True)

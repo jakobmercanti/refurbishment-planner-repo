@@ -3,7 +3,7 @@ import { useEffect, useMemo } from "react";
 import { CatmullRomCurve3, LatheGeometry, Path, Shape, Vector2, Vector3 } from "three";
 
 /** Hollow sanitary shell with a rolled rim, inner basin, waste and tap hardware. */
-export function BathFixture({ representation, width, depth, height, colour = "#F4F3EE", interiorColour = "#FFFFFF", hardwareColour = "#b6bec1" }: { representation: string; width: number; depth: number; height: number; colour?: string; interiorColour?: string; hardwareColour?: string }) {
+export function BathFixture({ representation, width, depth, height, colour = "#F4F3EE", interiorColour = "#FFFFFF", hardwareColour = "#b6bec1", legsColour = hardwareColour }: { representation: string; width: number; depth: number; height: number; colour?: string; interiorColour?: string; hardwareColour?: string; legsColour?: string }) {
   const slipper = representation.endsWith("slipper"), inset = representation.endsWith("alcove"), corner = representation.endsWith("corner");
   const shell = useMemo(() => {
     const outerProfile = [[0, .07], [.28, .07], [.34, .1], [.40, .25], [.46, .62], [.49, .87], [.49, .91], [.48, .94], [.46, .95], [.44, .93]];
@@ -54,8 +54,8 @@ export function BathFixture({ representation, width, depth, height, colour = "#F
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .02, 0]} castShadow><extrudeGeometry args={[apron, { depth: .82, bevelEnabled: false, curveSegments: 64 }]} /><meshStandardMaterial color={colour} roughness={.3} /></mesh></>}
     </>}
     {slipper && [-1, 1].flatMap(x => [-1, 1].map(z => <group key={`${x}-${z}`} position={[x * .29, .07, z * .28]}>
-      <mesh castShadow rotation={[z * .15, 0, -x * .2]}><cylinderGeometry args={[.025, .045, .14, 20]} /><meshStandardMaterial color={hardwareColour} metalness={.85} roughness={.22} /></mesh>
-      <mesh position={[x * .015, -.045, z * .015]} scale={[1.6, .5, 1]} castShadow><sphereGeometry args={[.035, 20, 12]} /><meshStandardMaterial color={hardwareColour} metalness={.85} roughness={.22} /></mesh>
+      <mesh castShadow rotation={[z * .15, 0, -x * .2]}><cylinderGeometry args={[.025, .045, .14, 20]} /><meshStandardMaterial color={legsColour} metalness={.85} roughness={.22} /></mesh>
+      <mesh position={[x * .015, -.045, z * .015]} scale={[1.6, .5, 1]} castShadow><sphereGeometry args={[.035, 20, 12]} /><meshStandardMaterial color={legsColour} metalness={.85} roughness={.22} /></mesh>
     </group>))}
     <mesh position={[0, lift + .18 * (slipper ? .78 : 1) * bodyScale + .003, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.025, 32]} /><meshStandardMaterial color={hardwareColour} metalness={.9} roughness={.18} /></mesh>
     <mesh castShadow><tubeGeometry args={[tap, 40, .012, 12, false]} /><meshStandardMaterial color={hardwareColour} metalness={.9} roughness={.18} /></mesh>

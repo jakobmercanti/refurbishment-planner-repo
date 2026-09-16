@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { STAIRCASE_MODELS } from "@/lib/architecturalModels";
+import { ComponentColours } from "@/components/ComponentColours";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { EditableNumberInput } from "@/components/EditableNumberInput";
 import { FixturePreview } from "@/components/FixturePreview";
 import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
-import { CUSTOM_FINISH_ID, finishChoiceForColour, woodFinishOptions } from "@/lib/finishOptions";
 import { UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import type { CatalogueItem, Obstacle, Room } from "@/lib/types";
 
@@ -23,31 +23,6 @@ const MACRO_CATEGORY_LABELS: Record<MacroCategoryId, string> = {
 };
 type RoomCatalogueItem = CatalogueItem & { fixture_kind: NonNullable<Obstacle["fixture_kind"]> };
 type ElementEditRequest = { id: string; roomId: string; requestId: number };
-type ComponentColourTarget = "LEGS" | "TABLE_TOP" | "BED_FRAME" | "BEDDING" | "CABINET_STRUCTURE" | "CABINET_FRONT";
-type ComponentColourField = "color_hex" | "secondary_color_hex" | "hardware_color_hex";
-
-function componentColourOptionsFor(representationKey?: string): Array<{ id: ComponentColourTarget; label: string }> {
-  if (representationKey?.startsWith("furniture-table-")) return [{ id: "LEGS", label: "Legs" }, { id: "TABLE_TOP", label: "Table top" }];
-  if (representationKey?.startsWith("furniture-bed-")) return [{ id: "LEGS", label: "Legs" }, { id: "BED_FRAME", label: "Frame" }, { id: "BEDDING", label: "Bedding" }];
-  if (representationKey?.startsWith("furniture-kitchen-cabinet-")) return [{ id: "CABINET_STRUCTURE", label: "Structure" }, { id: "CABINET_FRONT", label: "Doors front" }];
-  return [];
-}
-
-function componentColourFieldFor(target: ComponentColourTarget): ComponentColourField {
-  if (target === "LEGS") return "hardware_color_hex";
-  if (target === "TABLE_TOP" || target === "BED_FRAME" || target === "CABINET_FRONT") return "color_hex";
-  return "secondary_color_hex";
-}
-
-function defaultComponentColourFor(target: ComponentColourTarget, catalogueColour?: string): string {
-  if (target === "TABLE_TOP") return catalogueColour ?? "#b99b77";
-  if (target === "BED_FRAME") return catalogueColour ?? "#b99b77";
-  if (target === "CABINET_FRONT") return catalogueColour ?? "#C7B69C";
-  if (target === "BEDDING") return "#f2eee5";
-  if (target === "CABINET_STRUCTURE") return "#F4F3EE";
-  return "#715840";
-}
-
 function isRoomFixture(item: CatalogueItem): item is RoomCatalogueItem {
   return ROOM_FIXTURE_KINDS.has(item.fixture_kind);
 }
@@ -72,9 +47,6 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const [macroCategory, setMacroCategory] = useState<MacroCategoryId>("bathroom");
   const [category, setCategory] = useState("showers");
   const [objectId, setObjectId] = useState("");
-  const [finishChoice, setFinishChoice] = useState(CUSTOM_FINISH_ID);
-  const [coloursExpanded, setColoursExpanded] = useState(false);
-  const [componentColourTarget, setComponentColourTarget] = useState<ComponentColourTarget>("TABLE_TOP");
   const [positionDimensionsExpanded, setPositionDimensionsExpanded] = useState(false);
   const [draft, setDraft] = useState<Obstacle | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -98,9 +70,6 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
         setMacroCategory(macroCategoryForCategoryId(roomProduct.category_id));
         setCategory(roomProduct.category_id);
         setObjectId(roomProduct.id);
-        const componentOptions = componentColourOptionsFor(roomProduct.representation_key);
-        if (componentOptions[0]) setComponentColourTarget(componentOptions[0].id);
-        setFinishChoice(roomProduct.fixture_kind === "FURNITURE" ? finishChoiceForColour(item.color_hex) : CUSTOM_FINISH_ID);
       }
       setEditingId(item.id);
       setDraft(null);
@@ -134,13 +103,6 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const objects = [...family].sort((a, b) => a.subcategory.localeCompare(b.subcategory) || Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
   const selected = objects.find(item => item.id === objectId) ?? objects[0];
   const existing = room.obstacles.find(item => item.id === editingId);
-  const woodColourOptions = woodFinishOptions();
-  const currentValue = valueForFixture(existing, draft, selected);
-  const bathroomFixture = ["SHOWER", "BASIN", "TOILET"].includes(currentValue?.fixture_kind ?? "") || currentValue?.representation_key?.startsWith("furniture-bath-") === true;
-  const showFinishSelector = currentValue?.fixture_kind === "FURNITURE" && !/^furniture-(radiator|bath)-/.test(currentValue?.representation_key ?? "");
-  function valueForFixture(current: Obstacle | undefined, pending: Obstacle | null, catalogueItem?: RoomCatalogueItem) {
-    return current ?? pending ?? catalogueItem;
-  }
   function fromCatalogue(item: RoomCatalogueItem): Obstacle {
     const measured = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
     return {
@@ -157,16 +119,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const value = existing ?? draft ?? (selected ? fromCatalogue(selected) : null);
   const stairModel = value?.representation_key ? STAIRCASE_MODELS[value.representation_key] : undefined;
   const cabinet = value?.representation_key?.startsWith("furniture-kitchen-cabinet-");
-  const kitchen = value?.representation_key?.startsWith("furniture-kitchen-");
-  const componentColourOptions = componentColourOptionsFor(value?.representation_key);
-  const activeComponentColourTarget = componentColourOptions.some(option => option.id === componentColourTarget) ? componentColourTarget : componentColourOptions[0]?.id;
   const baseUnits = room.obstacles.filter(item => item.id !== value?.id && item.representation_key?.startsWith("furniture-kitchen-") && !item.representation_key.includes("cabinet-"));
-  function componentColourFor(target: ComponentColourTarget): string {
-    const field = componentColourFieldFor(target);
-    return value?.[field] ?? defaultComponentColourFor(target, selected?.color_hex);
-  }
-  const selectedComponentColour = activeComponentColourTarget ? componentColourFor(activeComponentColourTarget) : (value?.color_hex ?? "#F4F3EE");
-  const selectedFinishChoice = activeComponentColourTarget ? finishChoiceForColour(selectedComponentColour) : finishChoice;
   function change(next: Obstacle) {
     if (next.base_z_mm < 0 || ![next.base_z_mm, next.center.x, next.center.y, next.rotation_deg, ...Object.values(next.dimensions).map(d => d.value)].every(Number.isFinite)
       || Object.values(next.dimensions).some(d => d.value <= 0)) return;
@@ -176,61 +129,24 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   }
   function choose(item?: RoomCatalogueItem) {
     if (!item) return;
-    setObjectId(item.id); setFinishChoice(finishChoiceForColour(item.color_hex));
-    const componentOptions = componentColourOptionsFor(item.representation_key);
-    if (componentOptions[0]) setComponentColourTarget(componentOptions[0].id);
+    setObjectId(item.id);
     const next = fromCatalogue(item);
     if (existing) change({ ...next, id: existing.id, center: existing.center, rotation_deg: existing.rotation_deg, wall_lock: existing.wall_lock });
     else setDraft(next);
   }
-  function changeComponentColour(nextColour: string) {
-    if (!value) return;
-    if (!activeComponentColourTarget) { change({ ...value, color_hex: nextColour }); return; }
-    const field = componentColourFieldFor(activeComponentColourTarget);
-    change({ ...value, [field]: nextColour });
-  }
-  function resetComponentColour() {
-    if (!value) return;
-    const defaultColour = activeComponentColourTarget ? defaultComponentColourFor(activeComponentColourTarget, selected?.color_hex) : (selected?.color_hex ?? "#F4F3EE");
-    setFinishChoice(finishChoiceForColour(defaultColour));
-    changeComponentColour(defaultColour);
-  }
   return <section className="fixture-editor" aria-label="Add elements">
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
     <div className="fixture-selectors" style={{ gridTemplateColumns: "1fr" }}>
-      <label className="field"><span>Category</span><select value={activeMacroCategory ?? ""} onChange={event => { const nextMacro = event.target.value as MacroCategoryId; const nextCategories = categoriesByMacro.get(nextMacro) ?? []; setMacroCategory(nextMacro); setCategory(nextCategories[0]?.[0] ?? ""); setObjectId(""); setFinishChoice(CUSTOM_FINISH_ID); setDraft(null); setEditingId(null); }}>{availableMacroCategories.map(id => <option key={id} value={id}>{MACRO_CATEGORY_LABELS[id]}</option>)}</select></label>
-      <label className="field"><span>Subcategory</span><select value={activeCategory ?? ""} onChange={event => { setCategory(event.target.value); setObjectId(""); setFinishChoice(CUSTOM_FINISH_ID); setDraft(null); setEditingId(null); }}>{macroCategories.map(([id, name]) => <option key={id} value={id}>{id === "storage" ? "Elements" : name}</option>)}</select></label>
+      <label className="field"><span>Category</span><select value={activeMacroCategory ?? ""} onChange={event => { const nextMacro = event.target.value as MacroCategoryId; const nextCategories = categoriesByMacro.get(nextMacro) ?? []; setMacroCategory(nextMacro); setCategory(nextCategories[0]?.[0] ?? ""); setObjectId(""); setDraft(null); setEditingId(null); }}>{availableMacroCategories.map(id => <option key={id} value={id}>{MACRO_CATEGORY_LABELS[id]}</option>)}</select></label>
+      <label className="field"><span>Subcategory</span><select value={activeCategory ?? ""} onChange={event => { setCategory(event.target.value); setObjectId(""); setDraft(null); setEditingId(null); }}>{macroCategories.map(([id, name]) => <option key={id} value={id}>{id === "storage" ? "Elements" : name}</option>)}</select></label>
       <label className="field"><span>Object</span><select value={selected?.id ?? ""} onChange={event => choose(objects.find(item => item.id === event.target.value))}>{objects.map(item => <option key={item.id} value={item.id}>{item.subcategory} · {item.name}{!item.is_default ? ` · ${item.supplier}` : ""}</option>)}</select></label>
     </div>
     {value && <>
-      <div className="fixture-colours-controls" role="group" aria-label="Colours">
-        <button type="button" className="fixture-colours-toggle" aria-expanded={coloursExpanded} onClick={() => setColoursExpanded(current => !current)}>
-          <strong>Colours</strong><span aria-hidden>{coloursExpanded ? "−" : "+"}</span>
-        </button>
-        {coloursExpanded && <div className="fixture-colours-fields">
-          {componentColourOptions.length > 0 && <label className="field"><span>Component</span><select aria-label="Colour component" value={activeComponentColourTarget ?? componentColourOptions[0].id} onChange={event => setComponentColourTarget(event.target.value as ComponentColourTarget)}>{componentColourOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}
-          {!bathroomFixture && (showFinishSelector ? <label className="field"><span>{componentColourOptions.length > 0 ? "Colour" : stairModel ? "Treads" : cabinet ? "Cabinet fronts" : "Colour"}</span><select aria-label="Element colour" value={selectedFinishChoice} onChange={(event) => {
-            const nextChoice = event.target.value;
-            setFinishChoice(nextChoice);
-            if (nextChoice === CUSTOM_FINISH_ID) return;
-            const nextColour = woodColourOptions.find((option) => option.id === nextChoice)?.colorHex;
-            if (nextColour) changeComponentColour(nextColour);
-          }}><option value={CUSTOM_FINISH_ID}>Custom colour</option>{woodColourOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label> : <>
-            <label className="field"><span>{stairModel ? "Treads" : "Colour"}</span><input type="color" value={selectedComponentColour} onChange={event => changeComponentColour(event.target.value)} /></label>
-            <button type="button" className="review-style-button colour-reset-button" onClick={resetComponentColour}>Reset to default</button>
-          </>)}
-          {bathroomFixture ? <label className="field"><span>Taps and faucets</span><input type="color" value={value.hardware_color_hex ?? "#B6BABB"} onChange={event => change({ ...value, hardware_color_hex: event.target.value })} /></label> : (stairModel || (kitchen && !cabinet)) && <div className="fixture-field-group"><span>Component colours</span>
-            {stairModel && !stairModel.glass && <label className="field"><span>Handrail and balusters</span><input type="color" value={value.handrail_color_hex ?? "#725236"} onChange={event => change({ ...value, handrail_color_hex: event.target.value })} /></label>}
-            {stairModel?.glass && <p>Clear glass guarding remains uncoloured.</p>}
-            {(!stairModel || !stairModel.open) && <label className="field"><span>{stairModel ? "Wall below staircase" : "Worktop"}</span><input type="color" value={value.secondary_color_hex ?? (stairModel ? "#e5ded2" : "#77736B")} onChange={event => change({ ...value, secondary_color_hex: event.target.value })} /></label>}
-            <label className="field"><span>{stairModel ? "Stair structure" : "Handles and metal fittings"}</span><input type="color" value={value.hardware_color_hex ?? (stairModel ? "#465052" : "#B6BABB")} onChange={event => change({ ...value, hardware_color_hex: event.target.value })} /></label>
-          </div>}
-          {!bathroomFixture && showFinishSelector && selectedFinishChoice === CUSTOM_FINISH_ID && <>
-            <label className="field"><span>Custom colour</span><input aria-label="Custom colour" type="color" value={selectedComponentColour} onChange={event => changeComponentColour(event.target.value)} /></label>
-            <button type="button" className="review-style-button colour-reset-button" onClick={resetComponentColour}>Reset to default</button>
-          </>}
-        </div>}
-      </div>
+      <ComponentColours source={{ ...value, colour_parts: items.find(item => item.id === value.model_id)?.colour_parts }} onChange={component_colors => {
+        const next = { ...value, component_colors };
+        if (existing) onChange(room.obstacles.map(item => item.id === existing.id ? next : item));
+        else setDraft(next);
+      }} />
       {!value.stl_base64 && <FixturePreview obstacle={value} />}
       <div className="fixture-colours-controls fixture-position-controls" role="group" aria-label="Position and dimensions">
         <button type="button" className="fixture-colours-toggle" aria-expanded={positionDimensionsExpanded} onClick={() => setPositionDimensionsExpanded(current => !current)}>
@@ -269,7 +185,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       }}>{existing ? "Done" : "Add element"}</button>
     </>}
     <div className="fixture-list">{room.obstacles.map(item => <article key={item.id} data-element-id={item.id} className={item.id === editingId ? "editing" : ""}>
-      <strong>{item.name}</strong><button onClick={() => { const product = items.find(p => p.id === item.model_id); if (product && isRoomFixture(product)) { setMacroCategory(macroCategoryForCategoryId(product.category_id)); setCategory(product.category_id); setObjectId(product.id); setFinishChoice(product.fixture_kind === "FURNITURE" ? finishChoiceForColour(item.color_hex) : CUSTOM_FINISH_ID); } setEditingId(item.id); }}>Edit</button>
+      <strong>{item.name}</strong><button onClick={() => { const product = items.find(p => p.id === item.model_id); if (product && isRoomFixture(product)) { setMacroCategory(macroCategoryForCategoryId(product.category_id)); setCategory(product.category_id); setObjectId(product.id); } setEditingId(item.id); }}>Edit</button>
       <button aria-label={`Remove ${item.name}`} onClick={() => { onChange(room.obstacles.filter(p => p.id !== item.id)); if (item.id === editingId) setEditingId(null); }}>×</button>
     </article>)}</div>
   </section>;

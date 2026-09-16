@@ -3,34 +3,119 @@
    black-and-white output. */
 .catalogue-manager-modal .catalogue-manager-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 body[data-ui-style="modern"] { background: var(--paper); color: var(--ink); }
-body[data-ui-style="modern"] :is(.topbar, .floating-toolbar, .popup, .catalogue-manager-modal, .catalogue-modal, .settings-dialog, .floorplan-export-dialog, .save-view-dialog, .software-dropdown, .toolbar-context-menu) {
+body[data-ui-style="modern"] :is(.topbar, .floating-toolbar, [role="dialog"], .software-dropdown, .toolbar-context-menu, .toolbar-context-submenu, .floorplan-context-menu, .viewer-save-menu > div) {
   background: var(--panel); color: var(--ink); border-color: var(--line); border-radius: var(--ui-window-radius); box-shadow: var(--ui-window-shadow);
 }
-body[data-ui-style="modern"] :is([role="dialog"], .floating-toolbar) { background: var(--panel); color: var(--ink); border-color: var(--line); border-radius: var(--ui-window-radius); box-shadow: var(--ui-window-shadow); }
-body[data-ui-style="modern"] .topbar { border-radius: 0 0 var(--ui-window-radius) var(--ui-window-radius); }
+body[data-ui-style="modern"] .topbar { border-radius: 0; box-shadow: 0 1px 8px rgb(13 35 65 / 6%); }
 body[data-ui-style="modern"] :is(.floating-toolbar-titlebar, .popup-titlebar, [role="dialog"] > header) { background: var(--ui-window-headerBackground); color: var(--deep); border-color: var(--line); }
 body[data-ui-style="modern"] :is(.modal-backdrop, .popup-backdrop) { background: var(--ui-window-backdrop); }
-body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize):not(.paint-shades button):not(.paint-family-picker button):not(.tile-palette-presets button):not(.catalogue-material-entry)) {
-  font-family: var(--font-sans); border-radius: var(--ui-button-radius); background-color: var(--ui-button-background); color: var(--ui-button-text); border-color: var(--line);
+body[data-ui-style="modern"] .modal-backdrop:not(.catalogue-detail-backdrop) { z-index: 2100; }
+/* One palette contract for controls. Component selectors (especially the 3D
+   toolbar) otherwise override only half of a foreground/background pair.
+   Limit importance to these theme-owned properties; dimensions and layout
+   remain component-owned. Swatch backgrounds represent actual materials. */
+body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize, .finish-palette button, .tile-palette-presets button, .catalogue-material-entry)) {
+  --control-bg: var(--ui-button-background);
+  --control-text: var(--ui-button-text);
+  --control-border: var(--line);
+  --control-hover-bg: var(--ui-button-hoverBackground);
+  --control-hover-text: var(--ui-button-text);
+  --control-hover-border: color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: var(--control-bg) !important;
+  color: var(--control-text) !important;
+  border-color: var(--control-border) !important;
+  border-radius: var(--ui-button-radius) !important;
+  font-family: var(--font-sans) !important;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+
+  &:where(:not(:disabled)) { cursor: pointer; }
+  &:hover:not(:disabled) {
+    background: var(--control-hover-bg) !important;
+    color: var(--control-hover-text) !important;
+    border-color: var(--control-hover-border) !important;
+  }
+  &:is(.active, .selected, .primary, .primary-small, .fixture-save, .person-update, .validate-button, .save-button, .settings-done, .catalogue-insert, .catalogue-toolbar > button, .full-floorplan-rooms button, [aria-selected="true"], [aria-pressed="true"]) {
+    --control-bg: var(--ui-button-activeBackground);
+    --control-text: var(--ui-button-activeText);
+    --control-border: var(--ui-button-activeBackground);
+    --control-hover-bg: color-mix(in srgb, var(--ui-button-activeBackground) 82%, var(--accent));
+    --control-hover-text: var(--ui-button-activeText);
+    --control-hover-border: var(--control-hover-bg);
+  }
+  &:is(.danger, .danger-button, .remove-finish, .catalogue-archive, .full-opening-list button) {
+    --control-bg: var(--fail-soft);
+    --control-text: var(--fail);
+    --control-border: color-mix(in srgb, var(--fail) 25%, var(--panel));
+    --control-hover-bg: color-mix(in srgb, var(--fail) 14%, var(--panel));
+    --control-hover-text: var(--fail);
+    --control-hover-border: var(--fail);
+  }
+  &:is(.danger, .danger-button).active {
+    --control-bg: var(--fail);
+    --control-text: #fff;
+    --control-border: var(--fail);
+    --control-hover-bg: color-mix(in srgb, var(--fail) 85%, #000);
+    --control-hover-text: #fff;
+  }
+  &:disabled { opacity: .5; cursor: not-allowed; }
 }
-body[data-ui-style="modern"] button:hover:not(:disabled):not(.floating-toolbar-resize):not(.catalogue-material-entry) { background-color: var(--ui-button-hoverBackground); }
-body[data-ui-style="modern"] button:is(.active, .primary, .primary-small, .fixture-save, .person-update, .validate-button, [aria-selected="true"], [aria-pressed="true"]) {
-  background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); border-color: var(--ui-button-activeBackground);
-}
-body[data-ui-style="modern"] button:is(.active, .primary, .primary-small, .fixture-save, .person-update, .validate-button, [aria-selected="true"], [aria-pressed="true"]):hover:not(:disabled) {
-  background: #062857;
-  background: color-mix(in srgb, var(--ui-button-activeBackground) 82%, var(--accent) 18%);
-  color: var(--ui-button-activeText);
-  border-color: #062857;
-  border-color: color-mix(in srgb, var(--ui-button-activeBackground) 82%, var(--accent) 18%);
-}
-body[data-ui-style="modern"] button:is(.danger-button, .remove-finish) { background: var(--fail-soft); color: var(--fail); }
-body[data-ui-style="modern"] button:disabled { opacity: .45; }
 body[data-ui-style="modern"] :is(input, select, textarea):not([type="color"]):not([type="checkbox"]):not([type="radio"]):not(.room-name-editor input) { background-color: var(--panel); color: var(--ink); border-color: var(--line); border-radius: var(--ui-button-radius); font-family: var(--font-sans); }
-body[data-ui-style="modern"] :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body[data-ui-style="modern"] :is(button, input, select, textarea, summary, a, [tabindex="0"]):focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
 body[data-ui-style="modern"] :is(.tool-section, .selected-properties, .fixture-editor, .person-editor, .catalogue-manager-toggle, .catalogue-manager-tabs, .tile-colour-editor, .context-controls, .viewer-toolbar) { background-color: var(--panel); border-color: var(--line); color: var(--ink); }
 body[data-ui-style="modern"] :is(.catalogue-manager-tabs, .catalogue-manager-toggle, .catalogue-sidebar, .catalogue-family.active) { background-color: var(--soft); }
 body[data-ui-style="modern"] :is(.eyebrow, .field > span, .tool-note) { color: var(--muted); }
+
+/* Shared window chrome, with compact tool windows retaining their geometry. */
+body[data-ui-style="modern"] :is(.software-dropdown, .toolbar-context-menu, .toolbar-context-submenu, .floorplan-context-menu, .viewer-save-menu > div) {
+  padding: 6px;
+  border-radius: 12px;
+}
+body[data-ui-style="modern"] :is(.settings-dialog, .save-as-dialog, .catalogue-manager-modal, .catalogue-detail-dialog, .floorplan-export-dialog) {
+  padding: 20px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+body[data-ui-style="modern"] :is(.settings-dialog, .save-as-dialog, .catalogue-manager-modal, .floorplan-export-dialog) > header,
+body[data-ui-style="modern"] .catalogue-detail-dialog > .catalogue-form-heading {
+  margin: -20px -20px 16px;
+  padding: 18px 20px;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--ui-window-radius) var(--ui-window-radius) 0 0;
+  background: var(--ui-window-headerBackground);
+}
+body[data-ui-style="modern"] :is([role="dialog"] h2, .catalogue-detail-dialog > .catalogue-form-heading h3) {
+  margin: 4px 0 0;
+  color: var(--deep);
+  font-size: 20px;
+  line-height: 1.3;
+  letter-spacing: -.025em;
+}
+body[data-ui-style="modern"] .settings-dialog > header + .settings-section { margin-top: 0; padding-top: 0; border-top: 0; }
+body[data-ui-style="modern"] :is(.floating-toolbar-titlebar, .popup-titlebar) > strong { letter-spacing: .01em; font-weight: 650; }
+body[data-ui-style="modern"] :is(.popup-actions, .catalogue-toolbar, .catalogue-detail-hero, .catalogue-form, .full-plan-overall-content, .viewer-view-control-group, .fixture-colours-controls, .fixture-lock-choice, .paint-shade-panel, .save-as-dialog label strong) {
+  background-color: var(--paper);
+  border-color: var(--line);
+}
+body[data-ui-style="modern"] :is(.catalogue-results, .catalogue-sidebar, .app-nav) { background-color: var(--paper); }
+body[data-ui-style="modern"] .catalogue-branch { border-color: var(--line); }
+body[data-ui-style="modern"] .catalogue-categories small { background: rgb(96 112 135 / 12%); }
+body[data-ui-style="modern"] :is(.catalogue-object-body code, .catalogue-plan-link) { color: var(--muted); }
+body[data-ui-style="modern"] .floating-toolbar .floating-toolbar-content :where(button, input, select, textarea, p, label, small) { font-size: 11px; }
+body[data-ui-style="modern"] :is(.software-dropdown button, .toolbar-context-submenu button, .floorplan-context-menu button, .settings-choice button, .settings-done, .popup-actions button, .catalogue-manager-tabs button, .catalogue-manager-actions button, .catalogue-card-actions button, .catalogue-form-actions button) {
+  min-height: 32px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+body[data-ui-style="modern"] :is(.settings-section > p, .popup-content p, .catalogue-manager-panel > p) { font-size: 12px; line-height: 1.6; }
+body[data-ui-style="modern"] :is(.floating-toolbar-content, .catalogue-results, .catalogue-categories, [role="dialog"]) { scrollbar-color: var(--line) transparent; }
+body[data-ui-style="modern"] :is(input, select, textarea):disabled { opacity: .55; cursor: not-allowed; }
+body[data-ui-style="modern"] :is(input, textarea)::placeholder { color: var(--muted); opacity: 1; }
+body[data-ui-style="modern"] :is(input[type="checkbox"], input[type="radio"], input[type="range"]) { accent-color: var(--accent); }
+body[data-ui-style="modern"] :is(.finish-palette, .tile-palette-presets) button:hover:not(:disabled) { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  body[data-ui-style="modern"] button { transition: none; }
+}
 /* Keep the default floorplan's walls, wall dimensions, corners and labels in
    the same navy as Modern buttons. Opening dimensions keep their semantic
    dark-orange colour. Excluding named drawing styles preserves their

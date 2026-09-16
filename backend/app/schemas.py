@@ -160,7 +160,15 @@ class CatalogueItemInput(BaseModel):
         return value.upper()
 
 
+class ColourPartResponse(BaseModel):
+    id: str
+    label: str
+    default_color_hex: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    legacy_field: str | None = None
+
+
 class CatalogueItemResponse(CatalogueItemInput):
+    colour_parts: list[ColourPartResponse] = Field(default_factory=list)
     id: str
     category_name: str
     is_default: bool
