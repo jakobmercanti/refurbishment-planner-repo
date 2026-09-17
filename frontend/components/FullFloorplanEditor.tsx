@@ -2713,7 +2713,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
     {toolbarContextMenu && <ToolbarContextMenu x={toolbarContextMenu.x} y={toolbarContextMenu.y} toolbars={FLOORPLAN_TOOLBARS} visibility={toolbarVisibility} onToggle={onToggleToolbar} onClose={() => setToolbarContextMenu(null)} />}
     <div className="editor-layout full-plan-layout">
       <aside className="editor-tools full-plan-controls">
-        {toolbarVisibility["floorplan-build"] && <FloatingToolbar title="Build floorplan" defaultPosition={{ x: 16, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-build") : { side: "LEFT", slot: 0, slots: 2 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={Math.max(360, FLOOR_PLAN_CANVAS_HEIGHT - 74)} onClose={() => onToggleToolbar("floorplan-build")}>
+        {toolbarVisibility["floorplan-build"] && <FloatingToolbar title="Build floorplan" className="full-plan-build-toolbar" defaultPosition={{ x: 16, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-build") : { side: "LEFT", slot: 0, slots: 2 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={Math.max(360, FLOOR_PLAN_CANVAS_HEIGHT - 74)} onClose={() => onToggleToolbar("floorplan-build")}>
         <section className="tool-section">
           <div className="button-grid">
             <button type="button" aria-haspopup="dialog" aria-expanded={outlineMenuOpen} onClick={() => { onElementSelected?.(null); setLShapePickerOpen(false); setPendingOutlineAction("RECTANGLE"); setOutlineMenuOpen(true); }}>New outline</button>

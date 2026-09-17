@@ -854,6 +854,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .environment-screen, .analysis-workspace { position: relative; width: 100%; height: calc(100vh - 68px); min-height: 0; overflow: hidden; background: var(--paper); }
 .environment-screen[hidden] { display: none; }
 .floating-toolbar { position: absolute; display: flex; flex-direction: column; min-width: 220px; max-width: calc(100% - 16px); max-height: calc(100% - 16px); overflow: hidden; border: 1px solid rgba(176,188,181,.96); border-radius: 10px; background: rgba(255,255,255,.96); box-shadow: 0 14px 34px rgba(20,39,31,.2); backdrop-filter: blur(10px); color: var(--ink); font: 500 9px/1.4 var(--font-mono); }
+.floating-toolbar.full-plan-build-toolbar { min-width: min(360px, calc(100vw - 16px)); }
 .floating-toolbar-titlebar { flex: 0 0 auto; min-height: 31px; display: grid; grid-template-columns: 28px 1fr 28px; align-items: center; gap: 4px; padding: 3px 5px; border-bottom: 1px solid var(--line); background: linear-gradient(#f9fbf9,#eef3ef); color: var(--deep); cursor: grab; touch-action: none; user-select: none; }
 .floating-toolbar-titlebar:active { cursor: grabbing; }
 .floating-toolbar-titlebar > strong { overflow: hidden; font: 750 11px var(--font-mono); letter-spacing: .035em; text-overflow: ellipsis; white-space: nowrap; }
