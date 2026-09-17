@@ -69,8 +69,11 @@ FIXTURE_DEFAULTS = {
         ("sofa-corner-4", "Corner 4 seaters", 2900, 1800, 850),
     ]),
     "living-armchairs": ("FURNITURE", [
-        ("armchair-classic", "Classic arm chair", 850, 850, 950),
-        ("armchair-modern", "Modern arm chair", 800, 800, 800),
+        ("armchair-classic", "Wingback armchair", 850, 850, 950),
+        ("armchair-modern", "Contemporary lounge armchair", 800, 800, 800),
+        ("armchair-tub", "Curved tub armchair", 780, 760, 780),
+        ("armchair-scandi", "Timber lounge armchair", 740, 820, 820),
+        ("armchair-club", "Rolled-arm club chair", 900, 880, 840),
     ]),
     "living-tables": ("FURNITURE", [
         ("table-coffee-small", "Small coffee table", 800, 500, 420),
@@ -84,9 +87,12 @@ FIXTURE_DEFAULTS = {
         ("bed-double", "Double", 1400, 2000, 900),
         ("bed-king", "King", 1600, 2100, 1000),
     ]),
-    "bedroom-chairs": ("FURNITURE", [
-        ("chair-classic", "Classic chair", 480, 520, 900),
-        ("chair-modern", "Modern chair", 500, 520, 820),
+    "living-chairs": ("FURNITURE", [
+        ("chair-classic", "Spindle-back chair", 480, 520, 900),
+        ("chair-modern", "Moulded plywood chair", 500, 520, 820),
+        ("chair-wishbone", "Wishbone chair", 550, 540, 780),
+        ("chair-ladder", "Ladder-back chair", 480, 520, 920),
+        ("chair-crossback", "Cross-back chair", 500, 540, 870),
     ]),
     "bedroom-tables": ("FURNITURE", [
         ("table-bedroom-small", "Small bedroom table", 450, 400, 550),
@@ -238,6 +244,14 @@ def seed_fixture_defaults(session):
             default_key = f"generic-{key}"
             existing = session.scalar(select(FurnitureItemRecord).where(FurnitureItemRecord.default_key == default_key))
             if existing:
+                if category in ("living-chairs", "living-armchairs"):
+                    if existing.category_id == "bedroom-chairs":
+                        existing.category_id = "living-chairs"
+                    if existing.subcategory in ("Classic chair", "Modern chair", "Classic arm chair", "Modern arm chair"):
+                        existing.subcategory = subcategory
+                    if existing.name in ("Default classic chair", "Default modern chair", "Default classic arm chair", "Default modern arm chair"):
+                        existing.name = fixture_default_name(category, slug, subcategory)
+                    existing.representation_version = 5
                 existing.active = True
                 existing.is_default = True
                 if existing.name == "Default":

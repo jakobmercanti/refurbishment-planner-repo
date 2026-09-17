@@ -22,6 +22,13 @@ def install_fixture_previews(session):
                 continue
             if item.representation_key not in KNOWN_KEYS:
                 continue
+            if item.representation_key.startswith(("furniture-chair-", "furniture-armchair-")):
+                item.representation_version = 5
+                # Retire generated pictures of the old models, preserving supplier photographs.
+                pictures = json.loads(item.image_data_json or "[]")
+                if pictures and all(picture.get("generated_representation") for picture in pictures):
+                    item.image_data_json = "[]"
+                continue
             path = Path(__file__).resolve().parents[1] / "frontend/public/fixture-previews" / f"{item.representation_key}.png"
             if not path.is_file():
                 continue

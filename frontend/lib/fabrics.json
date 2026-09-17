@@ -1,0 +1,14 @@
+[
+  {"id":"linen","name":"Linen","description":"Airy plain weave with naturally uneven slub yarns.","pattern":"plain","scale_mm":2.8,"roughness":0.94,"sheen":0.2,"relief":0.3},
+  {"id":"cotton","name":"Cotton","description":"Fine, soft plain weave for sheets and everyday upholstery.","pattern":"plain","scale_mm":1.5,"roughness":0.88,"sheen":0.15,"relief":0.18},
+  {"id":"boucle","name":"Bouclé","description":"Irregular looped yarn with a soft, pebbled surface.","pattern":"loops","scale_mm":5.5,"roughness":1,"sheen":0.35,"relief":0.65},
+  {"id":"velvet","name":"Velvet","description":"Dense short pile with a gentle directional sheen.","pattern":"pile","scale_mm":1.8,"roughness":0.7,"sheen":0.9,"relief":0.12},
+  {"id":"chenille","name":"Chenille","description":"Soft fuzzy yarns woven into subtle, irregular ribs.","pattern":"rib","scale_mm":3.2,"roughness":0.95,"sheen":0.55,"relief":0.4},
+  {"id":"wool","name":"Wool","description":"Soft felted fibres with a mottled, warm surface.","pattern":"felt","scale_mm":3,"roughness":1,"sheen":0.35,"relief":0.25},
+  {"id":"tweed","name":"Tweed","description":"Textured twill with small tonal flecks.","pattern":"twill","scale_mm":3.8,"roughness":0.98,"sheen":0.25,"relief":0.45},
+  {"id":"herringbone","name":"Herringbone","description":"A repeating broken twill with understated chevrons.","pattern":"herringbone","scale_mm":4.2,"roughness":0.92,"sheen":0.25,"relief":0.3},
+  {"id":"corduroy","name":"Corduroy","description":"Rounded parallel wales separated by soft channels.","pattern":"cord","scale_mm":5,"roughness":0.92,"sheen":0.5,"relief":0.6},
+  {"id":"canvas","name":"Canvas","description":"Substantial basket weave with visible crossing yarns.","pattern":"basket","scale_mm":3,"roughness":0.98,"sheen":0.1,"relief":0.4},
+  {"id":"satin","name":"Satin","description":"Smooth close weave with a soft lustre for bedding.","pattern":"satin","scale_mm":1.3,"roughness":0.48,"sheen":0.8,"relief":0.08},
+  {"id":"knit","name":"Chunky knit","description":"Interlocking stitches with gentle yarn variation for throws.","pattern":"knit","scale_mm":8,"roughness":0.98,"sheen":0.35,"relief":0.65}
+]

@@ -1,10 +1,16 @@
 "use client";
 import { RoundedBox } from "@react-three/drei";
+import { FabricMaterial } from "@/components/FabricMaterial";
+import { SeatingFurniture } from "@/components/SeatingFurniture";
+import { resolvedPartFabrics } from "@/lib/fabrics";
 
 /** Render-only proportions, scaled to the authoritative obstacle dimensions by the caller. */
-export function RoomFurniture({ representation, colour, secondaryColour, hardwareColour, width, depth, height, colours = {} }: {
+export function RoomFurniture({ representation, colour, secondaryColour, hardwareColour, width, depth, height, colours = {}, materials = {}, physicalSize = [1000, 1000, 1000] }: {
+  materials?: Record<string, string>; physicalSize?: [number, number, number];
   colours?: Record<string, string>; representation: string; colour: string; secondaryColour?: string; hardwareColour?: string; width: number; depth: number; height: number;
 }) {
+  const fabrics = resolvedPartFabrics({ representation_key: representation, component_materials: materials });
+  if (/^furniture-(chair|armchair)-/.test(representation)) return <SeatingFurniture representation={representation} colours={colours} fabrics={fabrics} colour={colour} width={width} height={height} depth={depth} physicalSize={physicalSize} />;
   const legsColour = hardwareColour ?? "#715840";
   const beddingColour = secondaryColour ?? "#f2eee5";
   const partId = (key: string) => {
@@ -17,7 +23,7 @@ export function RoomFurniture({ representation, colour, secondaryColour, hardwar
     return "frame";
   };
   const part = (key: string, x: number, y: number, z: number, w: number, h: number, d: number, tint = colour) =>
-    <RoundedBox key={key} position={[x, y, z]} args={[w, h, d]} radius={Math.min(w, h, d) * .15} smoothness={3} castShadow receiveShadow><meshStandardMaterial color={colours[partId(key)] ?? tint} roughness={0.75} /></RoundedBox>;
+    <RoundedBox key={key} position={[x, y, z]} args={[w, h, d]} radius={Math.min(w, h, d) * .15} smoothness={3} castShadow receiveShadow><FabricMaterial fabricId={fabrics[partId(key)]} colour={colours[partId(key)] ?? tint} physicalSize={physicalSize} /></RoundedBox>;
   const legs = [-1, 1].flatMap((x) => [-1, 1].map((z) => part(`leg-${x}-${z}`, x * .42, .42, z * .4, .06, .84, .06, legsColour)));
   let parts;
   if (representation.includes("table-")) {

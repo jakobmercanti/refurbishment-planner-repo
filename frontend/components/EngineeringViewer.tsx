@@ -12,16 +12,17 @@ import { SkirtingBoards } from "@/components/SkirtingBoards";
 import { RoomFurniture } from "@/components/RoomFurniture";
 import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
 import { floorDesignColour, flooringSwatch, normalizeFloorDesign, TILE_MATERIALS } from "@/lib/flooring";
-import { Grid, Line, OrbitControls, RoundedBox } from "@react-three/drei";
+import { Grid, Html, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { DULUX_PAINT_FAMILIES, type DuluxPaintShade } from "@/lib/duluxPalette";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
-import { alignObstacleToNearestWall, constrainPersonToRoom } from "@/lib/layoutInteraction";
-import { buildWallFinishUpdates, type WallPaintScope } from "@/lib/wallFinishes";
+import { constrainPersonToRoom } from "@/lib/layoutInteraction";
+import { constrainObstacleToRoom, resolveObstaclePlacement, resolvePlacement, type PlacementCandidate, type PlacementProps, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
+import { DULUX_PAINT_FAMILIES, type DuluxPaintShade } from "@/lib/duluxPalette";
 import { buildFloorFinishUpdates, type FloorTileScope } from "@/lib/floorFinishes";
+import { buildWallFinishUpdates, type WallPaintScope } from "@/lib/wallFinishes";
 import { buildSharedWallFinishFaces, buildIsolatedRoomWalls, buildRenderedWalls, type RenderedWall } from "@/lib/wallRendering";
 import type { MaterialCollection, Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type ToolbarDock } from "@/components/FloatingToolbar";
@@ -46,6 +47,21 @@ type CaptureFormat = "png" | "jpg" | "pdf";
 type LightingSettings = { intensity: number; shadows: number; direction: number; elevation: number };
 const DEFAULT_LIGHTING: LightingSettings = { intensity: 100, shadows: 100, direction: 109, elevation: 55 };
 
+type CameraQuaternionTuple = [number, number, number, number];
+interface CameraViewSnapshot {
+  position: VectorTuple;
+  quaternion: CameraQuaternionTuple;
+  up: VectorTuple;
+  target: VectorTuple;
+  zoom: number;
+  distance: number;
+  viewHeight: number;
+}
+interface ProjectionRestore extends CameraViewSnapshot {
+  sourceProjection: ProjectionMode;
+  token: number;
+}
+
 interface SaveFileWritable {
   write(data: Blob): Promise<void>;
   close(): Promise<void>;
@@ -62,7 +78,7 @@ interface SaveFilePickerOptions {
 
 type SaveFilePicker = (options?: SaveFilePickerOptions) => Promise<SaveFileHandle>;
 
-interface ViewerProps {
+interface ViewerProps extends PlacementProps {
   apiUrl: string;
   room: Room;
   sceneRooms?: Room[];
@@ -387,6 +403,8 @@ function WallPiece({
         <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
         <meshStandardMaterial color={DEFAULT_WALL_COLOUR} roughness={0.86} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>}
+      {/* Paint is a thin overlay on the solid wall; shadow mapping it causes
+          perspective self-shadow acne along the coplanar wall surfaces. */}
       <mesh
         ref={paintMeshRef}
         position={[
@@ -395,8 +413,8 @@ function WallPiece({
           -innerCentre.y * SCALE - vector.dx * paintOffset,
         ]}
         rotation={[0, vector.angle, 0]}
-        castShadow={wallMode !== "TRANSPARENT"}
-        receiveShadow
+        castShadow={false}
+        receiveShadow={false}
         onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
       >
         <planeGeometry args={[length * SCALE, height * SCALE]} />
@@ -682,7 +700,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
   const selectionRing = selected ? (
     <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[Math.max(width, depth) * 0.62, Math.max(width, depth) * 0.68, 48]} />
-      <meshBasicMaterial color="#d88416" transparent opacity={0.9} side={THREE.DoubleSide} />
+      <meshBasicMaterial color="#b8640c" transparent opacity={0.9} side={THREE.DoubleSide} />
     </mesh>
   ) : null;
 
@@ -696,7 +714,7 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
 
   if (fixtureKind === "FURNITURE") {
     if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(obstacle.representation_key ?? "")) {
-      return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<RoomFurniture colours={resolvedPartColours(obstacle)} representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} /></group>;
+      return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<RoomFurniture materials={obstacle.component_materials} physicalSize={[obstacle.dimensions.width.value, obstacle.dimensions.height.value, obstacle.dimensions.depth.value]} colours={resolvedPartColours(obstacle)} representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} /></group>;
     }
     const isBench = obstacle.model_id?.includes("bench");
     return (
@@ -950,13 +968,117 @@ function setCameraZoom(camera: THREE.Camera, zoom: number) {
   if ("zoom" in camera) (camera as THREE.OrthographicCamera | THREE.PerspectiveCamera).zoom = zoom;
 }
 
-function CameraPreset({ preset, projection, person, target, span, resetKey, zoomPercent }: { preset: CameraView; projection: ProjectionMode; person?: PersonMockup | null; target: VectorTuple; span: [number, number, number]; resetKey: number; zoomPercent: number }) {
+function cameraTuple(vector: THREE.Vector3): VectorTuple {
+  return [vector.x, vector.y, vector.z];
+}
+
+function cameraQuaternionTuple(quaternion: THREE.Quaternion): CameraQuaternionTuple {
+  return [quaternion.x, quaternion.y, quaternion.z, quaternion.w];
+}
+
+function cameraViewHeight(camera: THREE.Camera, distance: number) {
+  if (camera instanceof THREE.PerspectiveCamera) {
+    const fov = THREE.MathUtils.degToRad(camera.fov);
+    return (2 * Math.tan(fov / 2) * distance) / Math.max(camera.zoom, 0.0001);
+  }
+  if (camera instanceof THREE.OrthographicCamera) {
+    const frustumHeight = Math.abs(camera.top - camera.bottom);
+    return frustumHeight > 0 ? frustumHeight / Math.max(camera.zoom, 0.0001) : 1;
+  }
+  return 1;
+}
+
+function controlsTarget(controls: THREE.EventDispatcher | null) {
+  const target = (controls as (THREE.EventDispatcher & { target?: THREE.Vector3 }) | null)?.target;
+  return target instanceof THREE.Vector3 ? target : null;
+}
+
+function presetBaseZoom(projection: ProjectionMode, preset: CameraView, size: { width: number; height: number }, span: [number, number, number]) {
+  if (projection !== "parallel") return 1;
+  const horizontalSpan = preset === "left" || preset === "right" ? span[2] : span[0];
+  const verticalSpan = preset === "top" || preset === "bottom" ? span[2] : span[1];
+  return Math.min(size.width / Math.max(horizontalSpan * 1.15, 0.001), size.height / Math.max(verticalSpan * 1.15, 0.001));
+}
+
+function sceneBoundsCorners(center: VectorTuple, span: [number, number, number]) {
+  const [cx, cy, cz] = center;
+  const [spanX, spanY, spanZ] = span;
+  const halfX = spanX / 2;
+  const halfY = spanY / 2;
+  const halfZ = spanZ / 2;
+  return [-1, 1].flatMap((xSign) => [-1, 1].flatMap((ySign) => [-1, 1].map((zSign) => new THREE.Vector3(cx + xSign * halfX, cy + ySign * halfY, cz + zSign * halfZ))));
+}
+
+function fitZoomForCurrentView(camera: THREE.Camera, size: { width: number; height: number }, center: VectorTuple, span: [number, number, number]) {
+  camera.updateMatrixWorld(true);
+  const corners = sceneBoundsCorners(center, span);
+  const inverse = camera.matrixWorldInverse;
+  const fitPadding = 0.96;
+
+  if (camera instanceof THREE.OrthographicCamera) {
+    const frustumHalfWidth = Math.abs(camera.right - camera.left) / 2;
+    const frustumHalfHeight = Math.abs(camera.top - camera.bottom) / 2;
+    const frustumCentreX = (camera.left + camera.right) / 2;
+    const frustumCentreY = (camera.top + camera.bottom) / 2;
+    let maxX = 0;
+    let maxY = 0;
+    corners.forEach((corner) => {
+      const local = corner.applyMatrix4(inverse);
+      maxX = Math.max(maxX, Math.abs(local.x - frustumCentreX));
+      maxY = Math.max(maxY, Math.abs(local.y - frustumCentreY));
+    });
+    if (maxX <= 0 || maxY <= 0) return camera.zoom;
+    return THREE.MathUtils.clamp(Math.min(frustumHalfWidth / maxX, frustumHalfHeight / maxY) * fitPadding, 0.0001, 1_000_000);
+  }
+
+  if (camera instanceof THREE.PerspectiveCamera) {
+    const aspect = camera.aspect > 0 ? camera.aspect : Math.max(size.width / Math.max(size.height, 1), 0.1);
+    const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
+    const verticalTangent = Math.tan(verticalFov / 2);
+    const horizontalTangent = Math.tan(horizontalFov / 2);
+    let maxRatio = 0;
+    let hasBehindPoint = false;
+    corners.forEach((corner) => {
+      const local = corner.applyMatrix4(inverse);
+      const depth = -local.z;
+      if (depth <= 0.001) {
+        hasBehindPoint = true;
+        return;
+      }
+      maxRatio = Math.max(maxRatio, Math.abs(local.x) / (depth * horizontalTangent), Math.abs(local.y) / (depth * verticalTangent));
+    });
+    // A camera inside the bounds cannot show every corner by changing zoom
+    // alone. Use the widest useful view while preserving the current pose.
+    if (hasBehindPoint) return 0.05;
+    if (maxRatio <= 0) return camera.zoom;
+    return THREE.MathUtils.clamp(fitPadding / maxRatio, 0.05, 10);
+  }
+
+  return "zoom" in camera ? (camera as THREE.OrthographicCamera | THREE.PerspectiveCamera).zoom : 1;
+}
+
+function CameraPreset({ preset, projection, person, target, span, resetKey, zoomPercent, restoreView }: { preset: CameraView; projection: ProjectionMode; person?: PersonMockup | null; target: VectorTuple; span: [number, number, number]; resetKey: number; zoomPercent: number; restoreView: ProjectionRestore | null }) {
   const { camera, size } = useThree();
+  const restoredToken = useRef<number | null>(null);
+  const skipZoomAfterRestore = useRef(false);
   const [targetX, targetY, targetZ] = target;
   const [spanX, spanY, spanZ] = span;
   useEffect(() => {
-    const horizontalSpan = preset === "left" || preset === "right" ? spanZ : spanX;
-    const verticalSpan = preset === "top" || preset === "bottom" ? spanZ : spanY;
+    // A projection toggle remounts the Canvas so that R3F can create the
+    // correct camera type. The current camera is restored by CameraViewSync;
+    // skip the normal preset fit for that transition.
+    if (restoreView) {
+      restoredToken.current = restoreView.token;
+      return;
+    }
+    // Clearing the one-shot restore request must not immediately run the
+    // preset effect and overwrite the restored pose.
+    if (restoredToken.current !== null) {
+      restoredToken.current = null;
+      skipZoomAfterRestore.current = true;
+      return;
+    }
     const aspect = Math.max(size.width / Math.max(size.height, 1), 0.1);
     const verticalFov = THREE.MathUtils.degToRad(camera instanceof THREE.PerspectiveCamera ? camera.fov : 50);
     const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
@@ -988,21 +1110,107 @@ function CameraPreset({ preset, projection, person, target, span, resetKey, zoom
       }
       camera.lookAt(targetX, targetY, targetZ);
     }
-    const orthographicFit = Math.min(size.width / Math.max(horizontalSpan * 1.15, 0.001), size.height / Math.max(verticalSpan * 1.15, 0.001));
-    setCameraZoom(camera, projection === "parallel" ? orthographicFit * zoomPercent / 100 : zoomPercent / 100);
     camera.updateProjectionMatrix();
-  }, [camera, person, preset, projection, resetKey, size.height, size.width, spanX, spanY, spanZ, targetX, targetY, targetZ, zoomPercent]);
+  }, [camera, person, preset, projection, resetKey, restoreView, size.height, size.width, spanX, spanY, spanZ, targetX, targetY, targetZ]);
+  useEffect(() => {
+    if (restoreView) return;
+    if (skipZoomAfterRestore.current) {
+      skipZoomAfterRestore.current = false;
+      return;
+    }
+    const baseZoom = presetBaseZoom(projection, preset, size, [spanX, spanY, spanZ]);
+    setCameraZoom(camera, baseZoom * zoomPercent / 100);
+    camera.updateProjectionMatrix();
+  }, [camera, preset, projection, restoreView, size.height, size.width, spanX, spanY, spanZ, zoomPercent]);
+  return null;
+}
+
+function CameraFit({ request, preset, projection, center, span, onFit }: { request: number; preset: CameraView; projection: ProjectionMode; center: VectorTuple; span: [number, number, number]; onFit?: (zoomPercent: number) => void }) {
+  const { camera, size } = useThree();
+  const handledRequest = useRef(request);
+  const [centerX, centerY, centerZ] = center;
+  const [spanX, spanY, spanZ] = span;
+  useEffect(() => {
+    if (request === handledRequest.current) return;
+    handledRequest.current = request;
+    const nextZoom = fitZoomForCurrentView(camera, size, [centerX, centerY, centerZ], [spanX, spanY, spanZ]);
+    setCameraZoom(camera, nextZoom);
+    camera.updateProjectionMatrix();
+    const baseZoom = presetBaseZoom(projection, preset, size, [spanX, spanY, spanZ]);
+    if (Number.isFinite(nextZoom) && nextZoom > 0 && Number.isFinite(baseZoom) && baseZoom > 0) onFit?.(nextZoom / baseZoom * 100);
+  }, [camera, centerX, centerY, centerZ, onFit, preset, projection, request, size.height, size.width, spanX, spanY, spanZ]);
+  return null;
+}
+
+function CameraViewSync({ restoreView, fallbackTarget, stateRef, onRestored }: { restoreView: ProjectionRestore | null; fallbackTarget: VectorTuple; stateRef: { current: CameraViewSnapshot | null }; onRestored: (token: number) => void }) {
+  const camera = useThree((state) => state.camera);
+  const controls = useThree((state) => state.controls);
+  const restoredToken = useRef<number | null>(null);
+  const fallbackTargetVector = useMemo(() => new THREE.Vector3(...fallbackTarget), [fallbackTarget]);
+
+  useEffect(() => {
+    if (!restoreView || restoredToken.current === restoreView.token) return;
+    const targetControl = controlsTarget(controls);
+    // OrbitControls owns the target used for orbiting and panning. Wait for
+    // makeDefault to install it before completing the restore.
+    if (!targetControl) return;
+
+    const target = new THREE.Vector3(...restoreView.target);
+    const savedQuaternion = new THREE.Quaternion(...restoreView.quaternion);
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(savedQuaternion).normalize();
+    const sourceIsParallel = restoreView.sourceProjection === "parallel";
+    const targetIsParallel = camera instanceof THREE.OrthographicCamera;
+    camera.up.fromArray(restoreView.up);
+    camera.quaternion.copy(savedQuaternion);
+
+    if (sourceIsParallel === targetIsParallel) {
+      camera.position.fromArray(restoreView.position);
+      setCameraZoom(camera, restoreView.zoom);
+    } else if (targetIsParallel && camera instanceof THREE.OrthographicCamera) {
+      camera.position.copy(target).addScaledVector(forward, -Math.max(0.001, restoreView.distance));
+      const frustumHeight = Math.abs(camera.top - camera.bottom);
+      setCameraZoom(camera, frustumHeight / Math.max(restoreView.viewHeight, 0.0001));
+    } else if (!targetIsParallel && camera instanceof THREE.PerspectiveCamera) {
+      const fov = THREE.MathUtils.degToRad(camera.fov);
+      const distance = Math.max(0.001, restoreView.viewHeight * 0.5 / Math.tan(fov / 2));
+      camera.position.copy(target).addScaledVector(forward, -distance);
+      setCameraZoom(camera, 1);
+    }
+
+    camera.updateProjectionMatrix();
+    targetControl.copy(target);
+    const orbit = controls as THREE.EventDispatcher & { update?: () => void };
+    orbit.update?.();
+    restoredToken.current = restoreView.token;
+    onRestored(restoreView.token);
+  }, [camera, controls, onRestored, restoreView]);
+
+  useFrame(() => {
+    if (restoreView && restoredToken.current !== restoreView.token) return;
+    const target = controlsTarget(controls) ?? fallbackTargetVector;
+    const distance = camera.position.distanceTo(target);
+    stateRef.current = {
+      position: cameraTuple(camera.position),
+      quaternion: cameraQuaternionTuple(camera.quaternion),
+      up: cameraTuple(camera.up),
+      target: cameraTuple(target),
+      zoom: camera.zoom,
+      distance,
+      viewHeight: cameraViewHeight(camera, distance),
+    };
+  });
   return null;
 }
 
 /** Keep wheel input tied to the rendered camera in every projection mode. */
-function WheelZoom() {
+function WheelZoom({ onManualViewChange }: { onManualViewChange?: () => void }) {
   const { camera, gl } = useThree();
   useEffect(() => {
     const canvas = gl.domElement;
     const zoomWithWheel = (event: WheelEvent) => {
       event.preventDefault();
       if (event.deltaY === 0) return;
+      onManualViewChange?.();
       const factor = event.deltaY > 0 ? 0.9 : 1.1;
       camera.zoom = camera instanceof THREE.OrthographicCamera
         ? THREE.MathUtils.clamp(camera.zoom * factor, 0.0001, 1_000_000)
@@ -1011,7 +1219,7 @@ function WheelZoom() {
     };
     canvas.addEventListener("wheel", zoomWithWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", zoomWithWheel);
-  }, [camera, gl]);
+  }, [camera, gl, onManualViewChange]);
   return null;
 }
 
@@ -1078,7 +1286,93 @@ function CaptureController({ request, format, fileHandle, onError }: { request: 
   return null;
 }
 
-function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, zoomPercent, lighting }: ViewerProps & {
+function PlacementCursor({ request, rooms, walls, onCommit, onCancel }: { request: PlacementRequest; rooms: Room[]; walls: PlacementWall[]; onCommit?: (candidate: PlacementCandidate)=>void; onCancel?: ()=>void }) {
+  const { gl, camera }=useThree();
+  const [point,setPoint]=useState<Point2D | null>(null);
+  const client=useRef<{x:number;y:number}|null>(null);
+  const previousPoint=useRef<Point2D|null>(null);
+  const raycaster=useMemo(()=>new THREE.Raycaster(),[]);
+  const pointAt=useCallback((x:number,y:number) => {
+    const rect=gl.domElement.getBoundingClientRect();
+    if (x<rect.left || x>rect.right || y<rect.top || y>rect.bottom) return null;
+    raycaster.setFromCamera(new THREE.Vector2((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1),camera);
+    if (request.opening) {
+      const hits=rooms.flatMap(room=>room.vertices.flatMap((a,index)=>{
+        const b=room.vertices[(index+1)%room.vertices.length], length=Math.hypot(b.x-a.x,b.y-a.y);
+        if (!length) return [];
+        const normal=new THREE.Vector3((b.y-a.y)/length,0,(b.x-a.x)/length);
+        const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(normal,new THREE.Vector3(a.x*SCALE,0,-a.y*SCALE));
+        const hit=raycaster.ray.intersectPlane(plane,new THREE.Vector3());
+        if (!hit || hit.y<0 || hit.y>room.wall_height.value*SCALE) return [];
+        const p={x:hit.x/SCALE,y:-hit.z/SCALE},t=((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/(length*length);
+        return t>=0 && t<=1 ? [{point:p,distance:raycaster.ray.origin.distanceTo(hit)}] : [];
+      }));
+      const first=hits.sort((a,b)=>a.distance-b.distance)[0];
+      if (first) return first.point;
+    }
+    const hit=raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),0),new THREE.Vector3());
+    return hit ? {x:hit.x/SCALE,y:-hit.z/SCALE} : null;
+  },[camera,gl,raycaster,request.opening,rooms]);
+  const candidate=useMemo(()=>{
+    const next=point?resolvePlacement(request,point,rooms,walls):null;
+    return next?.roomId && !rooms.some(room=>room.id===next.roomId) ? null : next;
+  },[point,request,rooms,walls]);
+  useFrame(()=>{
+    const mouse=client.current, next=mouse?pointAt(mouse.x,mouse.y):null, previous=previousPoint.current;
+    if ((!next)!==(!previous) || (next && previous && Math.hypot(next.x-previous.x,next.y-previous.y)>.01)) {
+      previousPoint.current=next; setPoint(next);
+    }
+  });
+  useEffect(()=>{
+    const canvas=gl.domElement, cursor=canvas.style.cursor;
+    canvas.style.cursor="crosshair";
+    let down: {x:number;y:number}|null=null;
+    const move=(event:PointerEvent)=>{ event.stopImmediatePropagation(); client.current={x:event.clientX,y:event.clientY}; };
+    const press=(event:PointerEvent)=>{
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (event.button===2) return; // Cancel in the context-menu event, before any menu can open.
+      if (event.button===0) { down={x:event.clientX,y:event.clientY}; canvas.setPointerCapture(event.pointerId); }
+    };
+    const release=(event:PointerEvent)=>{
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      const start=down; down=null;
+      if (event.type==="pointercancel" || event.button!==0 || !start || Math.hypot(event.clientX-start.x,event.clientY-start.y)>5) return;
+      const p=pointAt(event.clientX,event.clientY), next=p?resolvePlacement(request,p,rooms,walls):null;
+      if (next && (!next.roomId || rooms.some(room=>room.id===next.roomId))) {
+        // Do not let the click generated after this pointer-up select a surface
+        // beneath the preview once the placement controller has unmounted.
+        const swallow=(click:MouseEvent)=>{click.preventDefault();click.stopImmediatePropagation();};
+        canvas.addEventListener("click",swallow,{capture:true,once:true});
+        window.setTimeout(()=>canvas.removeEventListener("click",swallow,true),0);
+        onCommit?.(next);
+      }
+    };
+    const leave=()=>{ client.current=null; };
+    const context=(event:MouseEvent)=>{ event.preventDefault(); event.stopImmediatePropagation(); onCancel?.(); };
+    canvas.addEventListener("pointermove",move,true); canvas.addEventListener("pointerdown",press,true);
+    canvas.addEventListener("pointerup",release,true); canvas.addEventListener("pointercancel",release,true);
+    canvas.addEventListener("pointerleave",leave); canvas.addEventListener("contextmenu",context,true);
+    return ()=>{
+      canvas.style.cursor=cursor;
+      canvas.removeEventListener("pointermove",move,true); canvas.removeEventListener("pointerdown",press,true);
+      canvas.removeEventListener("pointerup",release,true); canvas.removeEventListener("pointercancel",release,true);
+      canvas.removeEventListener("pointerleave",leave); canvas.removeEventListener("contextmenu",context,true);
+    };
+  },[gl,pointAt,request,rooms,walls,onCommit,onCancel]);
+  if (!point) return null;
+  const obstacle=candidate?.obstacle??{...request.obstacle,center:point};
+  const width=obstacle.dimensions.width.value*SCALE, depth=obstacle.dimensions.depth.value*SCALE, height=obstacle.dimensions.height.value*SCALE;
+  return <group>
+    {candidate?.openingModel ? <OpeningFixture room={candidate.openingModel.room} opening={candidate.openingModel.opening} selected={false}/> : request.opening ? <group position={[obstacle.center.x*SCALE,obstacle.base_z_mm*SCALE,-obstacle.center.y*SCALE]} rotation={[0,obstacle.rotation_deg*Math.PI/180,0]}><ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height}/></group> : <FixtureMesh obstacle={obstacle} selected={false}/>}
+    <mesh position={[obstacle.center.x*SCALE,(obstacle.base_z_mm*SCALE)+height/2,-obstacle.center.y*SCALE]} rotation={[0,obstacle.rotation_deg*Math.PI/180,0]} renderOrder={1000}>
+      <boxGeometry args={[width+.006,height+.006,depth+.006]}/><meshBasicMaterial color={candidate?"#2cb887":"#e25b55"} wireframe depthTest={false} transparent opacity={.75}/>
+    </mesh>
+    <Html position={[obstacle.center.x*SCALE,(obstacle.base_z_mm*SCALE)+height+.12,-obstacle.center.y*SCALE]} center style={{pointerEvents:"none",whiteSpace:"nowrap"}}><span className={candidate?"placement-label":"placement-label invalid"}>{candidate?"Click to place":request.opening?"Move to a free wall":"Move inside a room with enough space"}</span></Html>
+  </group>;
+}
+
+function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete }: ViewerProps & {
   lighting: LightingSettings;
   toggles: Toggles;
   preset: CameraView;
@@ -1087,9 +1381,34 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
   onSelectionChange: (selection: Selection) => void;
   showGrid: boolean;
   cameraResetKey: number;
+  fitViewRequest: number;
   zoomPercent: number;
+  onManualViewChange: () => void;
+  restoreView: ProjectionRestore | null;
+  cameraStateRef: { current: CameraViewSnapshot | null };
+  onCameraViewRestored: (token: number) => void;
+  onFitComplete: (zoomPercent: number) => void;
 }) {
-  const [dragging, setDragging] = useState<{ id: string; offset: Point2D } | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; offset: Point2D; original: Obstacle } | null>(null);
+  const dragCandidate = useRef<PlacementCandidate | null>(null);
+  const dragCapture = useRef<{ target: { releasePointerCapture: (id: number)=>void }; pointerId: number } | null>(null);
+  const orbitInteraction = useRef(false);
+  const { gl } = useThree();
+  useEffect(() => {
+    const cancel = () => {
+      if (dragCapture.current) {
+        try { dragCapture.current.target.releasePointerCapture(dragCapture.current.pointerId); } catch {}
+      }
+      dragCapture.current=null; dragCandidate.current=null;
+      setDragging(null); setPreviewObstacles({});
+    };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") cancel(); };
+    const canvas=gl.domElement;
+    canvas.addEventListener("pointercancel",cancel);
+    window.addEventListener("keydown",key);
+    window.addEventListener("blur",cancel);
+    return () => { canvas.removeEventListener("pointercancel",cancel); window.removeEventListener("keydown",key); window.removeEventListener("blur",cancel); };
+  }, [gl]);
   const [personDragging, setPersonDragging] = useState<{ offset: Point2D } | null>(null);
   const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const [previewPerson, setPreviewPerson] = useState<PersonMockup | null>(null);
@@ -1145,12 +1464,15 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
   }
 
   function startDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, obstacle: Obstacle) {
+    if (event.button !== 0 || placement) return;
     event.stopPropagation();
     onSelectionChange({ type: "ELEMENT", id: obstacle.id, roomId: sceneRoom.id });
     const point = floorPoint(event);
     if (!point) return;
     (event.target as EventTarget & { setPointerCapture(pointerId: number): void }).setPointerCapture(event.pointerId);
-    setDragging({ id: obstacle.id, offset: { x: obstacle.center.x - point.x, y: obstacle.center.y - point.y } });
+    dragCandidate.current=null;
+    dragCapture.current={target:event.target as EventTarget & {releasePointerCapture: (id:number)=>void},pointerId:event.pointerId};
+    setDragging({ id: obstacle.id, original:obstacle, offset: { x: obstacle.center.x - point.x, y: obstacle.center.y - point.y } });
   }
 
   function moveDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, obstacle: Obstacle) {
@@ -1159,17 +1481,25 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
     const point = floorPoint(event);
     if (!point) return;
     const requested = { x: point.x + dragging.offset.x, y: point.y + dragging.offset.y };
-    const preview = obstacle.wall_lock
-      ? alignObstacleToNearestWall(obstacle, sceneRoom.vertices, requested)
-      : { ...obstacle, center: requested };
-    setPreviewObstacles((current) => ({ ...current, [obstacle.id]: preview }));
+    const candidate = resolveObstaclePlacement(dragging.original,requested,renderedRooms,placementWalls,dragCandidate.current?.roomId ?? sceneRoom.id);
+    if (candidate) {
+      dragCandidate.current=candidate;
+      setPreviewObstacles((current) => ({ ...current, [obstacle.id]: candidate.obstacle }));
+    }
   }
 
   function endDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, obstacle: Obstacle) {
     if (dragging?.id !== obstacle.id) return;
     event.stopPropagation();
-    const updated = previewObstacles[obstacle.id] ?? obstacle;
-    onObstaclesChange(sceneRoom.obstacles.map((item) => item.id === obstacle.id ? updated : item), sceneRoom.id);
+    const candidate = dragCandidate.current;
+    if (candidate?.roomId) {
+      if (onTransferObstacle) onTransferObstacle(candidate.obstacle,candidate.roomId);
+      else onObstaclesChange(sceneRoom.obstacles.map(item=>item.id===obstacle.id?candidate.obstacle:item),sceneRoom.id);
+      onSelectionChange({type:"ELEMENT",id:obstacle.id,roomId:candidate.roomId});
+    }
+    const captured=dragCapture.current;
+    dragCapture.current=null; dragCandidate.current=null;
+    if (captured) { try { captured.target.releasePointerCapture(captured.pointerId); } catch {} }
     setPreviewObstacles({});
     setDragging(null);
   }
@@ -1214,7 +1544,8 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
 
   return (
     <>
-      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} />
+      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} restoreView={restoreView} />
+      <CameraFit request={fitViewRequest} preset={preset} projection={projection} center={roomTarget} span={roomSpan} onFit={onFitComplete} />
       <ambientLight intensity={0.3 * lightPower} />
       <hemisphereLight args={["#F4F7FF", "#B6AA96", 0.65 * lightPower]} />
       <primitive object={lightTarget} />
@@ -1231,7 +1562,7 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
         shadow-camera-left={-shadowExtent} shadow-camera-right={shadowExtent}
         shadow-camera-top={shadowExtent} shadow-camera-bottom={-shadowExtent}
         shadow-camera-near={0.1} shadow-camera-far={shadowExtent * 5}
-        shadow-bias={-0.0001} shadow-normalBias={0.003} shadow-radius={3}
+        shadow-bias={0.001} shadow-normalBias={0.006} shadow-radius={3}
       />
       <directionalLight target={lightTarget} position={[roomTarget[0] - shadowExtent, roomTarget[1] + shadowExtent * 0.7, roomTarget[2] - shadowExtent]} color="#DFE9FF" intensity={0.35 * lightPower} />
       {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd, paintOnly }) => {
@@ -1289,7 +1620,9 @@ function Scene({ room, sceneRooms, collisionIds, onObstaclesChange, onPersonChan
         );
       })}
       {showGrid && <Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />}
-      <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!dragging && !personDragging} target={orbitTarget} />
+      {placement && <PlacementCursor key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} />}
+      <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
+      <CameraViewSync restoreView={restoreView} fallbackTarget={orbitTarget} stateRef={cameraStateRef} onRestored={onCameraViewRestored} />
     </>
   );
 }
@@ -1351,7 +1684,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
   function setWallLock(locked: boolean) {
     if (!selectedElement) return;
     const unlocked = { ...selectedElement, wall_lock: locked };
-    const updated = locked ? alignObstacleToNearestWall(unlocked, room.vertices, unlocked.center) : unlocked;
+    const updated = constrainObstacleToRoom(unlocked,room) ?? selectedElement;
     onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? updated : item), room.id);
   }
 
@@ -1444,6 +1777,11 @@ export function EngineeringViewer(props: ViewerProps) {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [cameraResetKey, setCameraResetKey] = useState(0);
   const [zoomPercent, setZoomPercent] = useState(100);
+  const [fitViewRequest, setFitViewRequest] = useState(0);
+  const [activePreset, setActivePreset] = useState<CameraView | null>(null);
+  const cameraStateRef = useRef<CameraViewSnapshot | null>(null);
+  const projectionRestoreToken = useRef(0);
+  const [projectionRestore, setProjectionRestore] = useState<ProjectionRestore | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [selection, setSelection] = useState<Selection>(null);
   const [panelSelection, setPanelSelection] = useState<Selection>(null);
@@ -1484,7 +1822,22 @@ export function EngineeringViewer(props: ViewerProps) {
     if (activeId === "viewer-view") return positionedToolbarDock("LEFT", "clamp(166px, 14%, 174px)", "clamp(300px, 43%, 494px)", 355);
     return filledToolbarDock("LEFT", ["viewer-view", "viewer-person"].filter((id) => props.toolbarVisibility[id as ToolbarId]), activeId);
   };
-  const applyPreset = (next: CameraView) => { setPreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
+  const clearActivePreset = useCallback(() => setActivePreset(null), []);
+  const switchProjection = useCallback((next: ProjectionMode) => {
+    if (next === projection) return;
+    const snapshot = cameraStateRef.current;
+    const token = projectionRestoreToken.current + 1;
+    projectionRestoreToken.current = token;
+    setProjectionRestore(snapshot ? { ...snapshot, sourceProjection: projection, token } : null);
+    setProjection(next);
+  }, [projection]);
+  const handleCameraViewRestored = useCallback((token: number) => {
+    setProjectionRestore((current) => current?.token === token ? null : current);
+  }, []);
+  const handleFitComplete = useCallback((nextZoomPercent: number) => {
+    setZoomPercent(Math.max(1, Math.round(nextZoomPercent)));
+  }, []);
+  const applyPreset = (next: CameraView) => { setProjectionRestore(null); setPreset(next); setActivePreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
   const handleCaptureError = useCallback((message: string) => { setCaptureError(message); setCaptureMenuOpen(true); }, []);
   async function saveViewAs() {
     setCaptureError(null);
@@ -1525,17 +1878,17 @@ export function EngineeringViewer(props: ViewerProps) {
       {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={props.fillToolbarLayout ? viewerLeftDock("viewer-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
         <div className="viewer-view-control-group viewer-zoom-controls" role="group" aria-label="Zoom controls">
           <button type="button" aria-label="Zoom out" onClick={() => setZoomPercent((value) => Math.max(25, value - 10))}>−</button>
-          <button type="button" aria-label="Reset zoom" onClick={() => { setZoomPercent(100); setCameraResetKey((value) => value + 1); }}>{zoomPercent}%</button>
+          <button type="button" aria-label="Reset zoom" onClick={() => { setProjectionRestore(null); setZoomPercent(100); setCameraResetKey((value) => value + 1); }}>{zoomPercent}%</button>
           <button type="button" aria-label="Zoom in" onClick={() => setZoomPercent((value) => Math.min(300, value + 10))}>+</button>
-          <button type="button" onClick={() => { setZoomPercent(100); setCameraResetKey((value) => value + 1); }}>Fit</button>
+          <button type="button" onClick={() => { setProjectionRestore(null); setActivePreset(null); setFitViewRequest((value) => value + 1); }}>Fit</button>
         </div>
         <div className="viewer-view-control-group viewer-projection-controls" role="group" aria-label="Projection">
-          <button className={projection === "perspective" ? "active" : ""} aria-pressed={projection === "perspective"} onClick={() => setProjection("perspective")}>Perspective</button>
-          <button className={projection === "parallel" ? "active" : ""} aria-pressed={projection === "parallel"} onClick={() => setProjection("parallel")}>Parallel</button>
+          <button className={projection === "perspective" ? "active" : ""} aria-pressed={projection === "perspective"} onClick={() => switchProjection("perspective")}>Perspective</button>
+          <button className={projection === "parallel" ? "active" : ""} aria-pressed={projection === "parallel"} onClick={() => switchProjection("parallel")}>Parallel</button>
         </div>
         <div className="viewer-view-control-group viewer-camera-controls" role="group" aria-label="Camera views">
-          {props.room.person_mockup?.enabled && <button className={preset === "eye" ? "active" : ""} aria-pressed={preset === "eye"} onClick={() => applyPreset("eye")}>Eye level</button>}
-          {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={preset === view ? "active" : ""} aria-pressed={preset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
+          {props.room.person_mockup?.enabled && <button className={activePreset === "eye" ? "active" : ""} aria-pressed={activePreset === "eye"} onClick={() => applyPreset("eye")}>Eye level</button>}
+          {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={activePreset === view ? "active" : ""} aria-pressed={activePreset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
         </div>
         <div className="toggle-row">
           <button className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button>
@@ -1580,12 +1933,12 @@ export function EngineeringViewer(props: ViewerProps) {
             <button className="review-style-button" type="button" onClick={props.onOpenRoomSelection}>Open selection in 3D</button>
           </div>}
         </div>
-        <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" onClick={() => { setCaptureError(null); setCaptureMenuOpen(true); }} aria-expanded={captureMenuOpen} aria-haspopup="dialog">Save view…</button></div></div>
+        <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" disabled={Boolean(props.placement)} onClick={() => { setCaptureError(null); setCaptureMenuOpen(true); }} aria-expanded={captureMenuOpen} aria-haspopup="dialog">Save view…</button></div></div>
       </div></FloatingToolbar>}
       {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
       <Canvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
-        <Scene {...props} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} zoomPercent={zoomPercent} />
-        <WheelZoom />
+        <Scene {...props} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} />
+        <WheelZoom onManualViewChange={clearActivePreset} />
         <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} onError={handleCaptureError} />
       </Canvas>
       <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>

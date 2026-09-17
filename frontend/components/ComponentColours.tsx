@@ -1,27 +1,83 @@
 "use client";
 
-import { useId, useState } from "react";
-import { colourForPart, colourPartsFor, type ColourSource } from "@/lib/assetColours";
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { colourForPart, colourPartsFor, FULL_PART_ID, type ColourSource } from "@/lib/assetColours";
 import { woodFinishOptions } from "@/lib/finishOptions";
+import { FABRICS, fabricById, fabricSwatchStyle, resolvedPartFabrics } from "@/lib/fabrics";
+import { Popup } from "@/components/Popup";
+import { FixturePreview } from "@/components/FixturePreview";
+import type { Obstacle } from "@/lib/types";
 
 /** The same database-driven part picker is used by both element windows. */
-export function ComponentColours({ source, onChange }: { source: ColourSource; onChange: (colours: Record<string, string>) => void }) {
+export function ComponentColours({ source, onChange, onMaterialsChange, onAppearanceChange, compact = false, previewObstacle }: { source: ColourSource; onChange: (colours: Record<string, string>) => void; onMaterialsChange?: (materials: Record<string, string>) => void; onAppearanceChange?: (colours: Record<string, string>, materials: Record<string, string>) => void; compact?: boolean; previewObstacle?: Obstacle }) {
   const [expanded, setExpanded] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [selected, setSelected] = useState("");
+  const snapshot = useRef<{ colours: Record<string, string>; materials: Record<string, string> } | null>(null);
   const id = useId();
   const parts = colourPartsFor(source);
+  const sourceRecord = source as ColourSource & { id?: string; model_id?: string };
+  const sourceIdentity = `${sourceRecord.id ?? sourceRecord.model_id ?? ""}|${source.representation_key ?? ""}|${source.fixture_kind ?? ""}|${source.color_hex ?? ""}`;
+  useEffect(() => { setSelected(FULL_PART_ID); }, [sourceIdentity]);
   const part = parts.find(part => part.id === selected) ?? parts[0];
+  if (!part) return null;
   const colour = colourForPart(source, part);
-  const setColour = (next: string) => onChange({ ...source.component_colors, [part.id]: next });
-  return <div className="fixture-colours-controls" role="group" aria-label="Colours">
-    <button type="button" className="fixture-colours-toggle" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)}><strong>Colours</strong><span aria-hidden>{expanded ? "−" : "+"}</span></button>
-    {expanded && <div id={id} className="fixture-colours-fields">
-      <label className="field"><span>Component</span><select aria-label="Colour component" value={part.id} onChange={event => setSelected(event.target.value)}>{parts.map(part => <option key={part.id} value={part.id}>{part.label}</option>)}</select></label>
-      <label className="field"><span>{part.label} colour</span><input aria-label={`${part.label} colour`} type="color" value={colour} onChange={event => setColour(event.target.value)} /></label>
-      <label className="field"><span>Hex colour</span><input key={`${part.id}-${colour}`} aria-label={`${part.label} hex colour`} defaultValue={colour.toUpperCase()} maxLength={7} pattern="#[0-9A-Fa-f]{6}" onBlur={event => { if (/^#[0-9a-f]{6}$/i.test(event.target.value)) setColour(event.target.value); else event.target.value = colour.toUpperCase(); }} /></label>
-      <label className="field"><span>Colour preset</span><select aria-label={`${part.label} colour preset`} value="" onChange={event => { if (event.target.value) setColour(event.target.value); }}><option value="">Choose a preset…</option>{woodFinishOptions().map(option => <option key={option.id} value={option.colorHex}>{option.label}</option>)}</select></label>
-      <button type="button" className="review-style-button colour-reset-button" onClick={() => setColour(part.default_color_hex)}>Reset {part.label.toLowerCase()} to default</button>
-      {part.id === "glass" && /tint/i.test(part.label) && <small>Changes the tint; glass remains transparent.</small>}
+  const updateAppearance = (colours: Record<string, string>, materials: Record<string, string> = { ...source.component_materials }) => {
+    if (onAppearanceChange) onAppearanceChange(colours, materials);
+    else {
+      onChange(colours);
+      if (onMaterialsChange) onMaterialsChange(materials);
+    }
+  };
+  const isFullPart = part.id === FULL_PART_ID;
+  const setColour = (next: string) => {
+    const colours = { ...source.component_colors, [part.id]: next };
+    if (isFullPart) parts.filter(candidate => candidate.id !== FULL_PART_ID).forEach(candidate => { colours[candidate.id] = next; });
+    updateAppearance(colours);
+  };
+  const textile = part.material_type === "textile";
+  const fabricId = resolvedPartFabrics(source)[part.id] ?? "plain";
+  const fabric = fabricById(fabricId);
+  const showWoodPreset = part.material_type === "wood" || (!textile && part.material_type == null);
+  const woodPreset = showWoodPreset ? woodFinishOptions().find(option => option.colorHex.toLowerCase() === colour.toLowerCase()) : undefined;
+  const materialLabel = textile ? (fabric?.name ?? "Plain finish") : (woodPreset?.label ?? "Custom colour");
+  const summarySwatchStyle = textile && fabricId !== "plain" ? fabricSwatchStyle(fabricId, colour) : { backgroundColor: colour };
+
+  function openEditor() {
+    snapshot.current = { colours: { ...source.component_colors }, materials: { ...source.component_materials } };
+    setEditorOpen(true);
+  }
+
+  function closeEditor(commit: boolean) {
+    if (!commit && snapshot.current) {
+      updateAppearance(snapshot.current.colours, snapshot.current.materials);
+    }
+    snapshot.current = null;
+    setEditorOpen(false);
+  }
+
+  const editorFields = <div id={id} className={`fixture-colours-fields ${compact ? "appearance-editor-fields" : ""}`}>
+      {compact && <div className="appearance-preview-card"><i style={summarySwatchStyle} aria-hidden /><div><strong>{part.label}</strong><span>{materialLabel}</span><code>{colour.toUpperCase()}</code></div></div>}
+      <label className="field"><span>{compact ? "Part" : "Component"}</span><select aria-label="Colour component" value={part.id} onChange={event => setSelected(event.target.value)}>{parts.map(part => <option key={part.id} value={part.id}>{part.label}</option>)}</select></label>
+    {textile && (onMaterialsChange || onAppearanceChange) && <div className="fabric-finish-picker">
+      <label className="field"><span>Fabric</span><select aria-label={part.label + " fabric"} value={fabricId} onChange={event => { const materials = { ...source.component_materials, [part.id]: event.target.value }; if (isFullPart) parts.filter(candidate => candidate.id !== FULL_PART_ID && candidate.material_type === "textile").forEach(candidate => { materials[candidate.id] = event.target.value; }); updateAppearance({ ...source.component_colors }, materials); }}><option value="plain">Plain finish</option>{FABRICS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <div className="fabric-finish-preview" style={fabricId === "plain" ? { backgroundColor: colour } : fabricSwatchStyle(fabricId, colour)} aria-label={(fabric?.name ?? "Plain finish") + " in " + colour} />
+      <small>{fabric?.description ?? "Smooth colour without a fabric texture."} Choose any colour below.</small>
     </div>}
+    {showWoodPreset && <label className="field"><span>{compact ? "Material" : "Wood colours"}</span><select aria-label={`${part.label} colour preset`} value="" onChange={event => { if (event.target.value) setColour(event.target.value); }}><option value="">{compact ? "Choose a finish…" : "Choose a preset…"}</option>{woodFinishOptions().map(option => <option key={option.id} value={option.colorHex}>{option.label}</option>)}</select></label>}
+    <label className={`field ${compact ? "appearance-colour-field" : ""}`}><span>{compact ? "Colour" : `${part.label} colour`}</span>{compact ? <span className="appearance-colour-value"><input aria-label={`${part.label} colour`} type="color" value={colour} onChange={event => setColour(event.target.value)} /><code>{colour.toUpperCase()}</code></span> : <input aria-label={`${part.label} colour`} type="color" value={colour} onChange={event => setColour(event.target.value)} />}</label>
+    <button type="button" className="review-style-button colour-reset-button" onClick={() => { const colours = { ...source.component_colors }; const materials = { ...source.component_materials }; if (isFullPart) parts.forEach(candidate => { delete colours[candidate.id]; delete materials[candidate.id]; }); else { colours[part.id] = part.default_color_hex; if (textile) delete materials[part.id]; } updateAppearance(colours, materials); }}>{compact ? "Reset appearance ↺" : `Reset ${part.label.toLowerCase()} to default`}</button>
+    {!compact && textile && (onMaterialsChange || onAppearanceChange) && <button type="button" className="review-style-button colour-reset-button" onClick={() => { const next = { ...source.component_materials }; delete next[part.id]; updateAppearance({ ...source.component_colors }, next); }}>Reset fabric to default</button>}
+    {part.id === "glass" && /tint/i.test(part.label) && <small>Changes the tint; glass remains transparent.</small>}
+  </div>;
+
+  return <div className={`fixture-colours-controls ${compact ? "fixture-colours-compact" : ""}`} role="group" aria-label={compact ? "Appearance" : "Colours"}>
+    <button type="button" className="fixture-colours-toggle" aria-expanded={compact ? editorOpen : expanded} aria-controls={compact ? undefined : id} onClick={() => compact ? openEditor() : setExpanded(value => !value)}>
+      {compact ? <span className="appearance-summary"><strong>Appearance</strong><span className="appearance-summary-detail"><i className="appearance-summary-swatch" style={summarySwatchStyle} aria-hidden /><span><b>{part.label}</b><small>{materialLabel}</small></span></span></span> : <strong>Colours</strong>}
+      <span aria-hidden>{compact ? "›" : expanded ? "−" : "+"}</span>
+    </button>
+    {!compact && expanded && editorFields}
+    {compact && editorOpen && typeof document !== "undefined" && createPortal(<Popup open className="appearance-popup" title="Appearance" message="" confirmLabel="Done" onCancel={() => closeEditor(false)} onConfirm={() => closeEditor(true)}><div className={`appearance-popup-grid${previewObstacle ? "" : " appearance-popup-grid-without-preview"}`}><div className="appearance-popup-form">{editorFields}</div>{previewObstacle && <div className="appearance-popup-preview"><div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div><FixturePreview obstacle={previewObstacle} /></div>}</div></Popup>, document.body)}
   </div>;
 }

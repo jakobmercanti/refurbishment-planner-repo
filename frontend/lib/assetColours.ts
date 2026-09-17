@@ -9,22 +9,67 @@ export interface ColourSource {
   hardware_color_hex?: string;
   handrail_color_hex?: string;
   component_colors?: Record<string, string>;
+  component_materials?: Record<string, string>;
   colour_parts?: ColourPart[];
   stl_base64?: string | null;
 }
 
+/** Stable id for the synthetic option that colours every renderable part. */
+export const FULL_PART_ID = "full";
+
+function fullPartFor(source: ColourSource, parts: ColourPart[]): ColourPart {
+  const textileParts = parts.filter(part => part.material_type === "textile");
+  const woodParts = parts.filter(part => part.material_type === "wood");
+  // A full-part finish can still offer Fabric when an object contains any
+  // upholstered regions; the colour itself is applied to every region,
+  // while the material choice is scoped to those textile regions.
+  const materialType = textileParts.length > 0
+    ? "textile"
+    : parts.length > 0 && woodParts.length === parts.length
+      ? "wood"
+      : parts.some(part => part.material_type) ? "mixed" : null;
+  const defaultFabricId = textileParts.find(part => part.default_fabric_id)?.default_fabric_id ?? null;
+  const defaultColour = typeof source.color_hex === "string" && source.color_hex.length > 0
+    ? source.color_hex
+    : parts.find(part => part.legacy_field === "color_hex")?.default_color_hex ?? parts[0]?.default_color_hex ?? "#F4F3EE";
+  return {
+    id: FULL_PART_ID,
+    label: "Full part",
+    default_color_hex: defaultColour === "$catalogue" ? "#F4F3EE" : defaultColour,
+    material_type: materialType,
+    default_fabric_id: defaultFabricId,
+  };
+}
+
 export function colourPartsFor(source: ColourSource): ColourPart[] {
-  if (source.colour_parts?.length) return source.colour_parts;
+  if (source.colour_parts?.length) {
+    const parts = source.colour_parts
+      .filter(part => part.id !== FULL_PART_ID)
+      .map(part => ({ ...part, default_color_hex: part.default_color_hex === "$catalogue" ? source.color_hex ?? "#F4F3EE" : part.default_color_hex }));
+    const distinctParts = parts.length === 1 && /whole object/i.test(parts[0].label) ? [] : parts;
+    return [fullPartFor(source, distinctParts), ...distinctParts];
+  }
   const representations: Record<string, string> = manifest.representations;
   const profiles: Record<string, ColourPart[]> = manifest.profiles;
   const key = source.representation_key ?? ({ SHOWER: "shower-corner", BASIN: "basin-vanity", TOILET: "toilet-close-coupled", FURNITURE: "furniture-storage-unit", DOOR: "door-single", WINDOW: "window-casement" }[source.fixture_kind ?? ""] ?? "");
   const profile = source.stl_base64 ? "whole" : representations[key] ?? "whole";
-  return profiles[profile].map(part => ({ ...part, default_color_hex: part.default_color_hex === "$catalogue" ? source.color_hex ?? "#F4F3EE" : part.default_color_hex }));
+  const parts = profiles[profile].map(part => ({ ...part, default_color_hex: part.default_color_hex === "$catalogue" ? source.color_hex ?? "#F4F3EE" : part.default_color_hex }));
+  const distinctParts = profile === "whole" ? [] : parts;
+  return [fullPartFor(source, distinctParts), ...distinctParts];
 }
 
 export function colourForPart(source: ColourSource, part: ColourPart): string {
   const override = source.component_colors?.[part.id];
   if (override) return override;
+  // A saved Full part override is also a fallback for older records that did
+  // not expand the value across every individual part.
+  if (part.id !== FULL_PART_ID) {
+    const fullOverride = source.component_colors?.[FULL_PART_ID];
+    if (fullOverride) return fullOverride;
+  }
+  if (part.id === FULL_PART_ID) return source.color_hex ?? part.default_color_hex;
+  // The remade timber chair unifies the old seat cushion into the seat/back finish.
+  if (part.id === "frame" && source.representation_key?.startsWith("furniture-chair-") && source.component_colors?.cushions) return source.component_colors.cushions;
   const legacy = part.legacy_field ? source[part.legacy_field as keyof ColourSource] : undefined;
   // The original vanity used this catalogue placeholder as its timber finish.
   if (part.id === "fronts" && source.representation_key?.startsWith("basin-") && typeof legacy === "string" && legacy.toUpperCase() === "#F4F3EE") return part.default_color_hex;
@@ -32,7 +77,11 @@ export function colourForPart(source: ColourSource, part: ColourPart): string {
 }
 
 export function resolvedPartColours(source: ColourSource): Record<string, string> {
-  return Object.fromEntries(colourPartsFor(source).map(part => [part.id, colourForPart(source, part)]));
+  const resolved = Object.fromEntries(colourPartsFor(source).map(part => [part.id, colourForPart(source, part)]));
+  // Parametric STL rendering historically reads `body`; retain that alias
+  // while exposing the clearer Full part choice in the editor.
+  if (resolved[FULL_PART_ID] && !resolved.body) resolved.body = resolved[FULL_PART_ID];
+  return resolved;
 }
 
 /** Opening metadata is also loaded from user-supplied saved project files. */

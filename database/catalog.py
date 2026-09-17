@@ -57,7 +57,8 @@ CATEGORIES = [
     ("kitchen-washing", "Washing machines", "Washing machines for room planning.", 96, 0.0, 0.0),
     ("bedroom-wardrobes", "Wardrobes", "Wardrobes for room planning.", 97, 0.0, 0.0),
     ("living-sofas", "Sofas", "Living Room sofas.", 70, 0.0, 0.0),
-    ("living-armchairs", "Arm chair", "Living Room armchairs.", 71, 0.0, 0.0),
+    ("living-chairs", "Living Room chairs", "Living Room timber chairs.", 73, 0.0, 0.0),
+    ("living-armchairs", "Armchairs", "Living Room armchairs.", 71, 0.0, 0.0),
     ("living-tables", "Living Room tables", "Living Room coffee and dining tables.", 72, 0.0, 0.0),
     ("bedroom-beds", "Bed", "Bedroom beds.", 80, 0.0, 0.0),
     ("bedroom-chairs", "Chairs", "Bedroom chairs.", 81, 0.0, 0.0),
@@ -95,6 +96,11 @@ def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tupl
         families.append((family_id, "paints-dulux", family["name"], index))
         for shade in family["shades"]:
             items.append((f"dulux-{family['id'].lower()}-{shade['id']}", family_id, shade["name"], shade["colour"], {"code": shade["name"], "ral_code": shade["ralCode"], "ral_name": shade["ralName"]}))
+    collections.append(("fabric", "PAINT", "Fabric", "", 35))
+    families.append(("fabric-types", "fabric", "Fabric types", 0))
+    for fabric in json.loads((root / "frontend/lib/fabrics.json").read_text(encoding="utf8")):
+        items.append((f"fabric-{fabric['id']}", "fabric-types", fabric["name"], "#C4B8A7",
+                      {**fabric, "fabric_id": fabric["id"], "custom_colour": True}))
     collections.append(("tile-materials", "PAINT", "Tiles materials", "", 30))
     families.append(("tile-material-types", "tile-materials", "Tiles materials", 0))
     for tile in json.loads((root / "frontend/lib/tileMaterials.json").read_text(encoding="utf8")):
@@ -222,6 +228,8 @@ def initialise_catalogue() -> None:
             category = session.get(FurnitureCategoryRecord, category_id)
             if category is not None and category_id == "doors" and category.name == "Doors":
                 category.name = "Internal doors"
+            if category is not None and category_id == "living-armchairs" and category.name == "Arm chair":
+                category.name = "Armchairs"
             if category is None:
                 session.add(FurnitureCategoryRecord(id=category_id, name=name, description=description, sort_order=sort_order, default_side_clearance_mm=side, default_front_clearance_mm=front))
         session.flush()
@@ -235,7 +243,8 @@ def initialise_catalogue() -> None:
         _remove_legacy_default_tile_collection(session)
         _seed_materials(session)
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
-            if not catalogue_item.colour_parts:
+            # Definitions are application-owned; refresh finish eligibility on upgrades.
+            if not catalogue_item.colour_parts or catalogue_item.representation_key.startswith(("furniture-bed-", "furniture-sofa-", "furniture-armchair-", "furniture-chair-", "furniture-table-")):
                 catalogue_item.colour_parts = colour_parts_for(catalogue_item.representation_key, catalogue_item.color_hex, imported_mesh=bool(catalogue_item.stl_base64))
             catalogue_item.image_data_json = migrate_legacy_pictures(catalogue_item.id, catalogue_item.image_data_json)
         session.commit()

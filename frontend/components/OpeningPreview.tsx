@@ -14,12 +14,12 @@ type OpeningPreviewProps = {
   componentColors?: Record<string, string>;
 };
 
-export function OpeningPreview({ item, kind, doorType = "SINGLE", width, height, colorHex, componentColors }: OpeningPreviewProps) {
+export function openingPreviewObstacle({ item, kind, doorType = "SINGLE", width, height, colorHex, componentColors }: OpeningPreviewProps): Obstacle {
   const label = `${item?.subcategory ?? ""} ${item?.name ?? ""}`.toLowerCase();
   const panes = label.includes("triple") ? "triple" : label.includes("double") ? "double" : "single";
   const representation = kind === "DOOR" ? doorRepresentation(item?.representation_key, doorType) : item?.representation_key || `window-${panes}-pane`;
   const measured = (value: number) => ({ value: Math.max(1, value), uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" });
-  const obstacle: Obstacle = {
+  return {
     id: "opening-preview", name: item?.name ?? (kind === "DOOR" ? "Door" : "Window"),
     component_colors: componentColors, representation_key: representation, color_hex: colorHex ?? item?.color_hex,
     center: { x: 0, y: 0 }, base_z_mm: 0, rotation_deg: 0, verified: false,
@@ -29,5 +29,10 @@ export function OpeningPreview({ item, kind, doorType = "SINGLE", width, height,
       height: measured(height ?? item?.height_mm ?? (kind === "DOOR" ? 2040 : 900)),
     },
   };
-  return <><FixturePreview obstacle={obstacle} /><svg viewBox="0 0 200 100" role="img" aria-label={`${obstacle.name} plan symbol`} style={{ width: "100%", height: 100, background: "white" }}><title>{obstacle.name} plan symbol</title><image href={`/fixture-symbols/${representation}.svg`} width={200} height={100} preserveAspectRatio="xMidYMid meet" /></svg></>;
+}
+
+export function OpeningPreview({ item, kind, doorType = "SINGLE", width, height, colorHex, componentColors }: OpeningPreviewProps) {
+  const obstacle = openingPreviewObstacle({ item, kind, doorType, width, height, colorHex, componentColors });
+  const representation = obstacle.representation_key ?? (kind === "DOOR" ? "door-single" : "window-single-pane");
+  return <><FixturePreview obstacle={obstacle} compact /><svg viewBox="0 0 200 100" role="img" aria-label={`${obstacle.name} plan symbol`} style={{ width: "100%", height: 100, background: "white" }}><title>{obstacle.name} plan symbol</title><image href={`/fixture-symbols/${representation}.svg`} width={200} height={100} preserveAspectRatio="xMidYMid meet" /></svg></>;
 }

@@ -165,6 +165,8 @@ class ColourPartResponse(BaseModel):
     label: str
     default_color_hex: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     legacy_field: str | None = None
+    material_type: str | None = None
+    default_fabric_id: str | None = None
 
 
 class CatalogueItemResponse(CatalogueItemInput):

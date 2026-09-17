@@ -144,10 +144,11 @@ body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.mo
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .floorplan-fixture.selected .fixture-dimension .dimension-line,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .floorplan-fixture.selected .fixture-dimension .dimension-extension,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .floorplan-fixture.selected .fixture-dimension .dimension-tick { stroke: currentColor; }
-/* A user-defined measurement is an intentional override, so keep its blue
-   reminder colour even though the default view uses navy for regular
-   dimensions. Apply the colour to the value and every dimension line. */
+/* User-defined measurements stay visibly lighter than the navy used for
+   automatic dimensions in the default view. Keep selected measurements
+   stronger so the active item remains easy to follow. */
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.custom-measurement { color: #49a3dd; }
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected { color: #1678bd; }
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement .manual-measurement-value,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.custom-measurement .wall-label,
@@ -155,6 +156,9 @@ body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.mo
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement .dimension-line,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement .dimension-extension,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.manual-measurement .dimension-tick,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.custom-measurement .dimension-line,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.custom-measurement .dimension-extension,
+body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.custom-measurement .dimension-tick,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected .dimension-line,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected .dimension-extension,
 body[data-ui-style="modern"] .full-plan-page:not(.traditional-floorplan):not(.modern-floorplan):not(.creative-floorplan) .measurement-item.selected .dimension-tick { stroke: currentColor; }

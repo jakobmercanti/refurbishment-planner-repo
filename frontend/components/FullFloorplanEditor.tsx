@@ -5,13 +5,14 @@ import { doorModel } from "@/lib/doorModels";
 
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
-import { OpeningPreview } from "@/components/OpeningPreview";
+import { OpeningPreview, openingPreviewObstacle } from "@/components/OpeningPreview";
 import { Popup } from "@/components/Popup";
 import { calibratedDrawingSize, orthogonalCalibrationPoint } from "@/lib/drawingCalibration";
 import { renderPdfDrawing } from "@/lib/pdfDrawing";
-import { FloorPlanFixtureDimensions, type FixtureDimensionSection } from "@/components/FloorPlanFixtureDimensions";
+import { FloorPlanFixtureDimensions, FloorPlanFixtureRoomSpacingDimensions, FloorPlanFixtureSpacingDimensions, nearestFixtureWallSpan, type FixtureDimensionSection } from "@/components/FloorPlanFixtureDimensions";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
-import { alignObstacleToNearestWall } from "@/lib/layoutInteraction";
+import { constrainObstacleToRoom, containsPoint, resolveObstaclePlacement, resolvePlacement, type PlacementCandidate, type PlacementProps } from "@/lib/elementPlacement";
+import { PlacementPreview2D } from "@/components/PlacementPreview2D";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
 import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
@@ -61,7 +62,7 @@ type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMe
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
 type RoomLabelDrag = { roomId: string; before: Snapshot; pointerStart: Point2D; labelStart: Point2D; moved: boolean };
 type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number; roomFinishes?: Record<string, RoomFinishes>; viewSettings?: PersistedViewSettings };
-interface Props { viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
+interface Props extends PlacementProps { viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
 
 const DEFAULT_SIZE = { width: 1100, height: 700 };
 const isPdfFile = (file: File) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -169,7 +170,7 @@ const FLOORPLAN_EXPORT_BASE_CSS = `
 .floor-canvas{display:block;width:100%;height:100%;min-height:0!important;background:#eef1ed}
 .canvas-background{fill:#eef1ed}.plan-grid line{stroke:#d9dfda;stroke-width:1}.room-polygon{fill:#fff;stroke:none}
  .wall-body{stroke:#183d34;stroke-width:var(--wall-stroke-width,10px);stroke-linecap:square}.wall-line{stroke:#fff;stroke-width:var(--wall-inner-stroke-width,4px);stroke-linecap:square}.wall-interaction-line{display:none}.wall-thickness-label{fill:#183d34;font:700 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:4px}
-.wall-dimension{color:#68756f}.wall-dimension.manual-measurement{color:#1678bd}.wall-dimension.manual-measurement .manual-measurement-value{fill:currentColor}.wall-dimension.custom-measurement .wall-label{fill:currentColor}.dimension-line,.dimension-extension,.dimension-tick{stroke:currentColor;stroke-width:1}.dimension-extension{opacity:.62}.dimension-tick{stroke-width:1.3}
+.wall-dimension{color:#68756f}.wall-dimension.manual-measurement{color:#49a3dd}.wall-dimension.custom-measurement{color:#49a3dd}.wall-dimension.selected{color:#1678bd}.wall-dimension.manual-measurement .manual-measurement-value{fill:currentColor}.wall-dimension.custom-measurement .wall-label{fill:currentColor}.dimension-line,.dimension-extension,.dimension-tick{stroke:currentColor;stroke-width:1}.dimension-extension{opacity:.62}.dimension-tick{stroke-width:1.3}
 .wall-label{fill:#44514b;font:650 10px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:5px}
 .export-room-name{fill:#233e37;font:700 10px Arial,sans-serif;text-anchor:middle;dominant-baseline:central}
 .vertex-handle{fill:#fff;stroke:#183d34;stroke-width:4}.vertex-label{fill:#17221e;font:700 8px ui-monospace,monospace;text-anchor:middle}
@@ -302,6 +303,18 @@ function hasOnlyOrthogonalSegments(points: Point2D[]): boolean {
 const segmentLength = (wall: Wall, index: number) => Math.hypot(wall.points[index + 1].x - wall.points[index].x, wall.points[index + 1].y - wall.points[index].y);
 const wallLengthForSegment = (wall: Wall, index: number) => wall.lengthOverridesMm?.[index] ?? segmentLength(wall, index);
 const parentKey = (wallId: string, segmentIndex: number) => `${wallId}::${segmentIndex}`;
+
+function wallLengthOverridesSatisfied(walls: Wall[]): boolean {
+  return walls.every((wall) => Object.entries(wall.lengthOverridesMm ?? {}).every(([rawSegmentIndex, targetLength]) => {
+    const segmentIndex = Number(rawSegmentIndex);
+    const closed = wall.points.length > 2 && samePoint(wall.points[0], wall.points.at(-1)!);
+    const endIndex = closed && segmentIndex + 1 === wall.points.length - 1 ? 0 : segmentIndex + 1;
+    const start = wall.points[segmentIndex];
+    const end = wall.points[endIndex];
+    if (!start || !end || !Number.isFinite(targetLength) || targetLength <= 0) return false;
+    return Math.abs(Math.hypot(end.x - start.x, end.y - start.y) - targetLength) <= 0.01;
+  }));
+}
 
 function redundantHeightDimensionIds(walls: Wall[], roomCount: number): Set<string> {
   if (roomCount < 2) return new Set();
@@ -604,7 +617,9 @@ function roomOpenings(room: NamedOutline, openings: FullOpening[], walls: Wall[]
     if (!edge) return [];
     const edgeDx = edge.end.x - edge.start.x; const edgeDy = edge.end.y - edge.start.y; const segmentDx = end.x - start.x; const segmentDy = end.y - start.y;
     const edgeLength = Math.hypot(edgeDx, edgeDy); const startProjection = pointOnSegment(openingStart, edge.start, edge.end);
-    const offset = edgeDx * segmentDx + edgeDy * segmentDy >= 0 ? startProjection.along * edgeLength : edgeLength - startProjection.along * edgeLength - opening.width;
+    // Projection is already measured from this room's wall start. Reverse only
+    // the opening interval, otherwise the 3D preview jumps to the opposite end.
+    const offset = startProjection.along * edgeLength - (edgeDx * segmentDx + edgeDy * segmentDy >= 0 ? 0 : opening.width);
     const catalogueItem = catalogue.find(item => item.id === opening.catalogueItemId);
     const metadata = { component_colors: opening.componentColors ?? {}, representation_key: opening.representationKey ?? catalogueItem?.representation_key, window_depth_mm: opening.windowDepthMm ?? catalogueItem?.depth_mm, ...(opening.catalogueItemId ? { catalogue_item_id: opening.catalogueItemId } : {}), ...(opening.colorHex ? { color_hex: opening.colorHex } : {}) };
     return [{ id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(edge.index + 1).padStart(3, "0")}`, offset_mm: Math.max(0, offset), width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0, ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}), ...(Object.keys(metadata).length ? { metadata } : {}) }];
@@ -630,7 +645,7 @@ function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultTh
   return overrides;
 }
 
-export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
+export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
   const [walls, setWalls] = useState<Wall[]>([]);
   const [restoredFinishes, setRestoredFinishes] = useState<Record<string, RoomFinishes>>({});
   const [openings, setOpenings] = useState<FullOpening[]>([]);
@@ -639,7 +654,9 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   const [draft, setDraft] = useState<Point2D[]>([]);
   const [tool, setTool] = useState<Tool>("SELECT");
   const [lShapePickerOpen, setLShapePickerOpen] = useState(false);
+  const [outlineMenuOpen, setOutlineMenuOpen] = useState(false);
   const [pendingOutlineAction, setPendingOutlineAction] = useState<PendingOutlineAction | null>(null);
+  const [outlineOrientation, setOutlineOrientation] = useState(L_SHAPE_TEMPLATES[0].id);
   const [pendingRoomRemovalId, setPendingRoomRemovalId] = useState<string | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [snapSize, setSnapSize] = useState(DEFAULT_SNAP_MM);
@@ -728,7 +745,17 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
   const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
   const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
-  const fixtureDrag = useRef<{ id: string; before: Point2D } | null>(null);
+  const fixtureDrag = useRef<{ id: string; original: Obstacle; offset: Point2D; candidate: PlacementCandidate | null } | null>(null);
+  const [fixturePreview, setFixturePreview] = useState<Obstacle | null>(null);
+  const [placementPoint, setPlacementPoint] = useState<Point2D | null>(null);
+  const placementPress = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && fixtureDrag.current) { fixtureDrag.current = null; setFixturePreview(null); }
+    };
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, []);
   const roomLabelDrag = useRef<RoomLabelDrag | null>(null);
   const backgroundImportId = useRef(0);
 
@@ -749,13 +776,22 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     return () => { controller.abort(); window.removeEventListener("focus", refresh); window.removeEventListener("catalogue-changed", refresh); };
   }, [apiUrl]);
 
-  function setWallsRespectingMeasurements(next: Wall[] | ((current: Wall[]) => Wall[]), preserveOrthogonal = squaredWalls, keepProposedOnConflict = false) {
+  function setWallsRespectingMeasurements(next: Wall[] | ((current: Wall[]) => Wall[]), preserveOrthogonal = squaredWalls, keepProposedOnConflict = false, allowProposedIfOverridesSatisfied = false) {
     setWalls((current) => {
       const proposed = typeof next === "function" ? next(current) : next;
       const enforced = preserveOrthogonal
         ? enforceWallLengthOverridesPreservingOrthogonality(proposed)
         : enforceWallLengthOverrides(proposed);
-      if (enforced === null) return keepProposedOnConflict ? proposed : current;
+      if (enforced === null) {
+        // A corner drag can leave the edited span valid while a connected
+        // endpoint makes the broad reconciliation pass briefly non-orthogonal.
+        // Keep that safe drag candidate instead of making the handle appear
+        // locked; explicit length overrides are still checked above.
+        const proposedIsSafe = allowProposedIfOverridesSatisfied
+          && wallLengthOverridesSatisfied(proposed)
+          && (!preserveOrthogonal || proposed.every((wall) => hasOnlyOrthogonalSegments(wall.points)));
+        return keepProposedOnConflict || proposedIsSafe ? proposed : current;
+      }
       const nextWalls = enforced as Wall[];
       return JSON.stringify(current) === JSON.stringify(nextWalls) ? current : nextWalls;
     });
@@ -805,6 +841,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     setDoorCustomColour(item.color_hex);
   }
   function selectOpeningKind(kind: "DOOR" | "WINDOW") {
+    onElementSelected?.(null);
     setOpeningComponentColours({});
     setElementTab(kind);
     setOpeningKind(kind);
@@ -842,6 +879,11 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     };
   }, [activeSourceRoomId, currentFixtures, openingCatalogueItems, openings, projectRooms, restoredFinishes, wallHeight, wallThickness, walls]);
   const planRooms = useMemo(() => rooms.map(roomDraftForOutline), [roomDraftForOutline, rooms]);
+  const placementGeometry = useRef({ walls, openings, planRooms, viewerOpeningRoom });
+  useEffect(() => { placementGeometry.current = { walls, openings, planRooms, viewerOpeningRoom }; }, [walls, openings, planRooms, viewerOpeningRoom]);
+  const planPlacementWalls = useMemo(()=>walls.flatMap(wall=>wall.points.slice(0,-1).map((start,index)=>({start,end:wall.points[index+1],thickness:wallThicknessForSegment(wall,index,wallThickness)}))),[walls,wallThickness]);
+  useEffect(()=>{ onPlacementWallsChange?.(planPlacementWalls); },[onPlacementWallsChange,planPlacementWalls]);
+  const placementCandidate = placement && placementPoint ? resolvePlacement(placement, placementPoint, planRooms,planPlacementWalls) : null;
   const planRoomsSignature = useMemo(() => JSON.stringify(planRooms), [planRooms]);
   const publishedPlanRooms = useRef("");
   const publishPlanRooms = useEffectEvent((next: Room[]) => onPlanRoomsChange?.(next));
@@ -852,6 +894,12 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   }, [planRooms, planRoomsSignature, restored]);
   function onFixturesChange(next: Obstacle[]) {
     const draft = selectedRoomDraft();
+    if (draft) next = next.flatMap(obstacle => {
+      const previous = draft.obstacles.find(item => item.id === obstacle.id);
+      const unchanged = previous && JSON.stringify([previous.center,previous.dimensions,previous.rotation_deg,previous.wall_lock]) === JSON.stringify([obstacle.center,obstacle.dimensions,obstacle.rotation_deg,obstacle.wall_lock]);
+      const bounded = unchanged ? obstacle : constrainObstacleToRoom(obstacle,draft,obstacle.center,planPlacementWalls);
+      return bounded ? [bounded] : previous ? [previous] : [];
+    });
     if (draft && onPlanRoomChange) onPlanRoomChange({ ...draft, ...storedRoom, id: storedRoom?.id ?? draft.id, source_floorplan_room_id: selectedRoom!.id, vertices: draft.vertices, openings: draft.openings, obstacles: next, version: (storedRoom?.version ?? 0) + 1 });
     else currentOnFixturesChange?.(next);
   }
@@ -1028,7 +1076,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
   function snapshot(): Snapshot { return { wallThickness, rooms: rooms.map((room) => ({ ...room, vertices: room.vertices.map((point) => ({ ...point })), labelPosition: room.labelPosition ? { ...room.labelPosition } : undefined })), selectedRoomId, walls: cloneWalls(walls), openings: cloneOpenings(openings), measurements: cloneMeasurements(measurements), dimensionOffsets: { ...dimensionOffsets }, hiddenDimensions: [...hiddenDimensions] }; }
   function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); }
-  function restore(value: Snapshot) { setDefaultWallThicknessInput(null); setWallThicknessInput(null); setWalls(cloneWalls(value.walls)); if (value.wallThickness !== undefined) setWallThickness(value.wallThickness); if (value.rooms) setRooms(value.rooms); setSelectedRoomId(value.selectedRoomId ?? null); setOpenings(cloneOpenings(value.openings)); setMeasurements(cloneMeasurements(value.measurements ?? [])); setDimensionOffsets({ ...(value.dimensionOffsets ?? {}) }); setHiddenDimensions([...(value.hiddenDimensions ?? [])]); setDraft([]); setMeasurementDraft([]); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); }
+  function restore(value: Snapshot) { setDefaultWallThicknessInput(null); setWallThicknessInput(null); setWalls(cloneWalls(value.walls)); if (value.wallThickness !== undefined) setWallThickness(value.wallThickness); if (value.rooms) setRooms(value.rooms); setSelectedRoomId(value.selectedRoomId ?? null); setOpenings(cloneOpenings(value.openings)); setMeasurements(cloneMeasurements(value.measurements ?? [])); setDimensionOffsets({ ...(value.dimensionOffsets ?? {}) }); setHiddenDimensions([...(value.hiddenDimensions ?? [])]); setDraft([]); setMeasurementDraft([]); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); }
   function undo() { const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous); }
   function redo() { const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next); }
 
@@ -1098,12 +1146,14 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     if (!measurementEditEnabled || event.button !== 0) return;
     const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    onElementSelected?.(null);
     measurementDrag.current = { id, custom, offset, normal, pointerStart: screenPointFromClient(event.clientX, event.clientY, svg), before: snapshot() };
     setSelectedMeasurement(`${custom ? "custom" : "auto"}:${id}`);
   }
 
   function openMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, id: string) {
     event.preventDefault(); event.stopPropagation();
+    onElementSelected?.(null);
     setContextMenu(null); setOpeningMeasurementContextMenu(null); setFixtureMeasurementContextMenu(null); setMeasurementLengthInput(null); setSelectedMeasurement(`custom:${id}`);
     setMeasurementContextMenu({ id, custom: true, x: event.clientX, y: event.clientY });
   }
@@ -1118,6 +1168,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
   function openAutoMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, selection: SegmentSelection) {
     event.preventDefault(); event.stopPropagation(); setContextMenu(null); setOpeningMeasurementContextMenu(null); setFixtureMeasurementContextMenu(null);
+    onElementSelected?.(null);
     const wall = walls.find((item) => item.id === selection.wallId);
     setMeasurementLengthInput(wall ? Math.round(wallLengthForSegment(wall, selection.segmentIndex) * 10) / 10 : null);
     setSelectedMeasurement(`auto:${selection.wallId}:${selection.segmentIndex}`);
@@ -1194,13 +1245,16 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   }
 
   function beginFixtureDrag(event: ReactPointerEvent<SVGElement>, fixture: Obstacle) {
-    if (event.button !== 0) return;
-    setSelectedFixtureId(fixture.id); setSelectedOpeningId(null); setSelectedSegment(null); setSelectedPoint(null); setSelectedMeasurement(null);
-    if (!onFixturesChange) return;
-    event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.button !== 0 || placement) return;
     const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
+    selectFixtureForEdit(fixture, owner);
+    event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
-    fixtureDrag.current = { id: fixture.id, before: { ...fixture.center } };
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    svg.setPointerCapture(event.pointerId);
+    const pointer = floorPlanFromClient(event.clientX,event.clientY,svg,activeViewport);
+    fixtureDrag.current = { id: fixture.id, original: fixture, offset: { x: fixture.center.x-pointer.x, y: fixture.center.y-pointer.y }, candidate: null };
   }
 
   function moveRoomLabel(event: ReactPointerEvent<SVGSVGElement>): boolean {
@@ -1219,17 +1273,32 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   function moveFixture(event: ReactPointerEvent<SVGSVGElement>): boolean {
     const active = fixtureDrag.current;
     if (!active || !onFixturesChange) return false;
-    const next = canvasPoint(event, false); const snapped = snapEnabled ? { x: Math.round(next.x / snapSize) * snapSize, y: Math.round(next.y / snapSize) * snapSize } : next;
-    onFixturesChange(fixtures.map((fixture) => fixture.id === active.id ? (fixture.wall_lock && selectedRoom ? alignObstacleToNearestWall({ ...fixture, center: snapped }, counterClockwiseVertices(selectedRoom.vertices), snapped) : { ...fixture, center: snapped }) : fixture));
+    const pointer = canvasPoint(event, false);
+    const requested = { x:pointer.x+active.offset.x, y:pointer.y+active.offset.y };
+    const snapped = snapEnabled ? {x:Math.round(requested.x/snapSize)*snapSize,y:Math.round(requested.y/snapSize)*snapSize} : requested;
+    const candidate = resolveObstaclePlacement(active.original,snapped,planRooms,planPlacementWalls,active.candidate?.roomId ?? planRooms.find(room=>room.obstacles.some(item=>item.id===active.id))?.id);
+    if (candidate) { active.candidate = candidate; setFixturePreview(candidate.obstacle); }
     return true;
   }
 
   function openFixtureContextMenu(event: ReactMouseEvent<SVGElement>, fixture: Obstacle) {
-    setSelectedFixtureId(fixture.id); setSelectedOpeningId(null); setSelectedSegment(null); setSelectedPoint(null); setSelectedMeasurement(null);
-    if (!onFixturesChange) return;
+    if (placement) return;
     const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
+    selectFixtureForEdit(fixture, owner);
     if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
     event.preventDefault(); event.stopPropagation(); setFixtureMeasurementContextMenu(null); setFixtureContextMenu({ id: fixture.id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 244)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
+  }
+
+  function selectFixtureForEdit(fixture: Obstacle, owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id))) {
+    const roomId = owner?.id ?? selectedRoomDraft()?.id;
+    setTool("SELECT");
+    setElementTab("FURNITURE");
+    setSelectedFixtureId(fixture.id);
+    setSelectedOpeningId(null);
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedMeasurement(null);
+    if (roomId) onElementSelected?.({ id: fixture.id, roomId });
   }
 
   function fixtureMeasurementValue(fixture: Obstacle, section: FixtureDimensionSection): number {
@@ -1253,7 +1322,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     onFixturesChange(fixtures.map((fixture) => {
       if (fixture.id !== id) return fixture;
       const next = update(fixture);
-      return next.wall_lock && selectedRoom ? alignObstacleToNearestWall(next, counterClockwiseVertices(selectedRoom.vertices), next.center) : next;
+      return selectedRoomDraft() ? constrainObstacleToRoom(next, selectedRoomDraft()!,next.center,planPlacementWalls) ?? fixture : fixture;
     }));
   }
 
@@ -1272,6 +1341,16 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   }
 
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
+    if (placement) {
+      event.preventDefault(); event.stopPropagation();
+      if (event.button === 2) return; // The context-menu event cancels without opening a menu.
+      if (event.button === 0) {
+        placementPress.current = {x:event.clientX,y:event.clientY};
+        setPlacementPoint(canvasPoint(event,false));
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      return;
+    }
     if (event.button !== 1) return;
     event.preventDefault(); event.stopPropagation();
     panDrag.current = { clientX: event.clientX, clientY: event.clientY, pan: { ...pan } };
@@ -1401,6 +1480,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
   function applyTemplate(points: Point2D[]) {
     record();
+    onElementSelected?.(null);
     clearImportedDrawing();
     const outline = [...points.map((point) => ({ ...point })), { ...points[0] }];
     setWallsRespectingMeasurements([{ id: crypto.randomUUID(), points: squaredWalls ? squareWallPoints(outline) : outline }]);
@@ -1409,11 +1489,13 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
   function newOutline() {
     record();
+    onElementSelected?.(null);
     clearImportedDrawing();
     setWallsRespectingMeasurements([]); setOpenings([]); setMeasurements([]); setDimensionOffsets({}); setHiddenDimensions([]); setRooms([]); setSelectedRoomId(null); setDraft([]); setTool("DRAW"); setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); setLShapePickerOpen(false);
   }
 
   function removeSegment(wallId: string, segmentIndex: number) {
+    onElementSelected?.(null);
     const wall = walls.find((item) => item.id === wallId);
     if (!wall || !wall.points[segmentIndex + 1]) return;
     const closed = samePoint(wall.points[0], wall.points.at(-1)!);
@@ -1486,6 +1568,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     setSelectedPoint(null);
     setSelectedOpeningId(null);
     setSelectedFixtureId(null);
+    onElementSelected?.(null);
     setOpeningParent("");
     setOpeningError(null);
     setSelectedMeasurement(null);
@@ -1495,6 +1578,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     const room = pendingRoomRemovalId ? rooms.find((item) => item.id === pendingRoomRemovalId) : null;
     setPendingRoomRemovalId(null);
     if (!room) return;
+    onElementSelected?.(null);
     const result = removeRoomBoundary(walls, room.vertices);
     const remapReference = (reference: MeasurementReference): MeasurementReference | null => {
       if (reference.kind === "POINT") { const mapped = result.pointMap[`${reference.wallId}:${reference.pointIndex}`]; return mapped ? { kind: "POINT", ...mapped } : null; }
@@ -1577,6 +1661,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   }
 
   function deletePointAt(selection: PointSelection) {
+    onElementSelected?.(null);
     const wall = walls.find((item) => item.id === selection.wallId); if (!wall) return;
     const closed = samePoint(wall.points[0], wall.points.at(-1)!); const unique = closed ? wall.points.length - 1 : wall.points.length;
     if (unique <= (closed ? 3 : 2)) return;
@@ -1599,21 +1684,21 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
   function openWallContextMenu(event: ReactMouseEvent<SVGLineElement>, selection: SegmentSelection) {
     event.preventDefault(); event.stopPropagation();
-    setSelectedSegment(selection); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); setWallLengthInput(null);
+    setSelectedSegment(selection); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setWallLengthInput(null);
     setOpeningParent(parentKey(selection.wallId, selection.segmentIndex));
     setContextMenu({ kind: "WALL", ...selection, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
   }
 
   function openPointContextMenu(event: ReactMouseEvent<SVGCircleElement>, selection: PointSelection) {
     event.preventDefault(); event.stopPropagation();
-    setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null);
+    setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null);
     setContextMenu({ kind: "POINT", ...selection, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
   }
 
   function beginPointDrag(event: ReactPointerEvent<SVGCircleElement>, selection: PointSelection) {
     if ((tool !== "SELECT" && tool !== "MEASURE") || event.button !== 0) return;
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
-    pointDrag.current = { selection, before: snapshot() }; setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null);
+    pointDrag.current = { selection, before: snapshot() }; setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null);
   }
 
   function beginWallDrag(event: ReactPointerEvent<SVGLineElement>, wall: Wall, segmentIndex: number) {
@@ -1640,16 +1725,17 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
       setWallsRespectingMeasurements(cloneWalls(before.walls)); setOpenings(cloneOpenings(before.openings)); setMeasurements(cloneMeasurements(before.measurements));
       setDimensionOffsets({ ...before.dimensionOffsets }); setHiddenDimensions([...before.hiddenDimensions]);
     }
-    setLockedViewport(viewport); setSelectedSegment({ wallId: wall.id, segmentIndex: separatedEnd.segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); setWallLengthInput(null); setOpeningParent(parentKey(wall.id, separatedEnd.segmentIndex));
+    setLockedViewport(viewport); setSelectedSegment({ wallId: wall.id, segmentIndex: separatedEnd.segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setWallLengthInput(null); setOpeningParent(parentKey(wall.id, separatedEnd.segmentIndex));
   }
 
   function beginOpeningDrag(event: ReactPointerEvent<SVGElement>, opening: FullOpening) {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || placement) return;
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     openingDrag.current = { openingId: opening.id, before: snapshot() }; selectOpeningForEdit(opening);
   }
 
   function selectOpeningForEdit(opening: FullOpening) {
+    onElementSelected?.(null);
     setElementTab(opening.kind);
     setTool("SELECT"); setLockedViewport(viewport); setSelectedOpeningId(opening.id); setSelectedFixtureId(null); setSelectedPoint(null); setSelectedMeasurement(null); setHoveredSegment(null);
     setSelectedSegment(null); setOpeningParent(parentKey(opening.wallId, opening.segmentIndex));
@@ -1675,20 +1761,53 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     if (openingEditRequest) editOpeningFromViewer();
   }, [openingEditRequest]);
 
+  // A furniture selection can originate in either viewer. Keep the 2D editor
+  // on the matching Elements tab and let the catalogue editor open that row.
+  const editElementFromViewer = useEffectEvent(() => {
+    if (!elementEditRequest) return;
+    const owner = projectRooms.find(room => room.id === elementEditRequest.roomId || room.obstacles.some(item => item.id === elementEditRequest.id));
+    const fixture = owner?.obstacles.find(item => item.id === elementEditRequest.id) ?? fixtures.find(item => item.id === elementEditRequest.id);
+    if (!fixture) return;
+    if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
+    setElementTab("FURNITURE");
+    setSelectedFixtureId(fixture.id);
+    setSelectedOpeningId(null);
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedMeasurement(null);
+  });
+  useEffect(() => {
+    if (elementEditRequest) editElementFromViewer();
+  }, [elementEditRequest]);
+
   function requestOutlineAction(action: PendingOutlineAction) {
-    setLShapePickerOpen(false);
+    onElementSelected?.(null);
+    setLShapePickerOpen(action === "L_SHAPE");
     setPendingOutlineAction(action);
+  }
+
+  function activateModifyTool() {
+    onElementSelected?.(null);
+    setOutlineMenuOpen(false);
+    setAddRoomPanelOpen(false);
+    setTool("SELECT");
+    setDraft([]);
+    setLockedViewport(null);
   }
 
   function confirmOutlineAction() {
     const action = pendingOutlineAction;
+    if (!action) return;
+    setOutlineMenuOpen(false);
+    setLShapePickerOpen(false);
     setPendingOutlineAction(null);
     if (action === "EMPTY") newOutline();
     else if (action === "RECTANGLE") applyTemplate(RECTANGLE_TEMPLATE);
-    else if (action === "L_SHAPE") setLShapePickerOpen(true);
+    else if (action === "L_SHAPE") applyTemplate((L_SHAPE_TEMPLATES.find(template => template.id === outlineOrientation) ?? L_SHAPE_TEMPLATES[0]).points);
   }
 
   function openOpeningContextMenu(event: ReactMouseEvent<SVGGElement>, opening: FullOpening) {
+    if (placement) return;
     event.preventDefault(); event.stopPropagation(); selectOpeningForEdit(opening); setContextMenu(null); setMeasurementContextMenu(null);
     setOpeningContextMenu({ id: opening.id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
   }
@@ -1704,6 +1823,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   function openOpeningMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, opening: FullOpening, section: number) {
     if (!measurementEditEnabled) return;
     event.preventDefault(); event.stopPropagation();
+    selectOpeningForEdit(opening);
     setContextMenu(null); setMeasurementContextMenu(null); setOpeningContextMenu(null); setFixtureMeasurementContextMenu(null); setOpeningMeasurementError(null);
     setOpeningMeasurementValueInput(openingMeasurementValue(opening, section));
     setOpeningMeasurementContextMenu({ id: opening.id, section, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 250)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
@@ -1795,6 +1915,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   }
 
   function movePoint(event: ReactPointerEvent<SVGSVGElement>) {
+    if (placement) { setPlacementPoint(canvasPoint(event,false)); return; }
     const panStart = panDrag.current;
     if (panStart) {
       const rect = event.currentTarget.getBoundingClientRect();
@@ -1938,10 +2059,28 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     // otherwise closed rooms. The repair pass preserves direct junctions and
     // creates a short bridging wall only when an endpoint has genuinely moved
     // off the wall it was attached to.
-    setWallsRespectingMeasurements(() => moveCornerPreservingTopology(activePoint.before.walls, selection, next));
+    const proposed = moveCornerPreservingTopology(activePoint.before.walls, selection, next);
+    setWallsRespectingMeasurements(() => proposed, squaredWalls, false, true);
   }
 
-  function finishPointDrag() {
+  function finishPointDrag(event?: ReactPointerEvent<SVGSVGElement>) {
+    if (placement && event) {
+      const down=placementPress.current; placementPress.current=null;
+      if (event.type!=="pointercancel" && event.button===0 && down && Math.hypot(event.clientX-down.x,event.clientY-down.y)<5) {
+        const point=canvasPoint(event,false), candidate=resolvePlacement(placement,point,planRooms,planPlacementWalls);
+        if (candidate) {
+          onCommitPlacement?.(candidate);
+          if (!placement.opening && candidate.roomId) {
+            setElementTab("FURNITURE");
+            setSelectedFixtureId(candidate.obstacle.id);
+            const target = planRooms.find(room => room.id === candidate.roomId);
+            if (target?.source_floorplan_room_id) setSelectedRoomId(target.source_floorplan_room_id);
+            onElementSelected?.({ id: candidate.obstacle.id, roomId: candidate.roomId });
+          }
+        }
+      }
+      return;
+    }
     if (panDrag.current) { panDrag.current = null; return; }
     if (roomLabelDrag.current) {
       const active = roomLabelDrag.current;
@@ -1951,7 +2090,16 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
       return;
     }
     if (measurementDrag.current) { const before = measurementDrag.current.before; measurementDrag.current = null; record(before); return; }
-    if (fixtureDrag.current) { fixtureDrag.current = null; return; }
+    if (fixtureDrag.current) {
+      const candidate = fixtureDrag.current.candidate;
+      fixtureDrag.current = null; setFixturePreview(null);
+      if (event?.type !== "pointercancel" && candidate?.roomId) {
+        onTransferObstacle?.(candidate.obstacle,candidate.roomId);
+        const destination=planRooms.find(room=>room.id===candidate.roomId);
+        if (destination?.source_floorplan_room_id) setSelectedRoomId(destination.source_floorplan_room_id);
+      }
+      return;
+    }
     if (openingDrag.current) { const before = openingDrag.current.before; openingDrag.current = null; setLockedViewport(null); record(before); return; }
     if (wallDrag.current) { const before = wallDrag.current.historyBefore; wallDrag.current = null; setLockedViewport(null); record(before); return; }
     if (!pointDrag.current) return;
@@ -1961,9 +2109,9 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
   function selectSegment(wallId: string, segmentIndex: number) {
     if (tool === "REMOVE") { removeSegment(wallId, segmentIndex); return; }
-    if (tool === "ADD_CORNERS") { setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); return; }
+    if (tool === "ADD_CORNERS") { setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); return; }
     if (tool !== "SELECT") return;
-    setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); setWallLengthInput(null); setOpeningParent(parentKey(wallId, segmentIndex));
+    setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setWallLengthInput(null); setOpeningParent(parentKey(wallId, segmentIndex));
   }
 
   function updateCoordinatePoint(wallId: string, pointIndex: number, next: Point2D, lengthOverride?: { segmentIndex: number; lengthMm: number }) {
@@ -1983,11 +2131,77 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     setOpeningParent(selectedSegment ? parentKey(selectedSegment.wallId, selectedSegment.segmentIndex) : "");
   }
 
+  function beginOpeningPlacement() {
+    if (!onBeginPlacement) return;
+    const standalone = Boolean(openingEditorTarget && viewerOpeningRoom && !planRooms.some(room=>room.id===viewerOpeningRoom.id));
+    const context = () => {
+      const current=placementGeometry.current, room=standalone?current.viewerOpeningRoom:null;
+      if (!room) return current;
+      const roomWalls: Wall[]=room.vertices.map((start,index)=>({id:`wall-${String(index+1).padStart(3,"0")}`,points:[start,room.vertices[(index+1)%room.vertices.length]],thicknessOverridesMm:{0:room.wall_thickness_overrides_mm?.[`wall-${String(index+1).padStart(3,"0")}`]??room.wall_thickness.value}}));
+      const roomOpenings: FullOpening[]=room.openings.filter(item=>item.kind!=="GENERIC").map(item=>({id:item.id,kind:item.kind as "DOOR"|"WINDOW",wallId:item.parent_wall_id,segmentIndex:0,offset:item.offset_mm,width:item.width.value,height:item.height.value,sill:item.sill_height_mm,hingeSide:item.hinge_side??"START",doorType:item.door_type??"SINGLE",opensInward:item.opens_inward??true}));
+      return {...current,walls:roomWalls,openings:roomOpenings,planRooms:[room]};
+    };
+    if (!context().walls.length) { setOpeningError("Draw a wall or open a room before placing an opening."); return; }
+    const id = crypto.randomUUID();
+    const settings = { kind: openingKind, width: openingWidth, height: openingHeight, sill: openingKind === "WINDOW" ? windowSill : 0,
+      hingeSide, doorType, opensInward, catalogueItemId: activeOpeningCatalogueItem?.id, representationKey: activeOpeningCatalogueItem?.representation_key,
+      windowDepthMm: activeOpeningCatalogueItem?.depth_mm, colorHex: doorColour, componentColors: { ...openingComponentColours } };
+    const measured = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
+    const ghost: Obstacle = { id: "opening-preview", name: activeOpeningCatalogueItem?.name ?? openingKind.toLowerCase(), center: {x:0,y:0},
+      dimensions: {width:measured(openingWidth),depth:measured(activeOpeningCatalogueItem?.depth_mm ?? wallThickness),height:measured(openingHeight)},
+      base_z_mm:settings.sill, rotation_deg:0, verified:false, color_hex:doorColour, component_colors:settings.componentColors,
+      representation_key:settings.representationKey ?? (openingKind === "DOOR" ? "door-single" : "window-casement") };
+    onBeginPlacement({ id, obstacle:ghost, opening:{kind:openingKind,hingeSide,doorType,opensInward},
+      resolve: point => {
+        const current=context();
+        const points=current.walls.flatMap(wall=>wall.points);
+        const candidates=current.walls.flatMap(wall=>wall.points.slice(0,-1).flatMap((start,segmentIndex)=>{
+          const end=wall.points[segmentIndex+1], projected=pointOnSegment(point,start,end), length=segmentLength(wall,segmentIndex);
+          const blockers=current.openings.filter(item=>item.wallId===wall.id && item.segmentIndex===segmentIndex);
+          const offset=closestValidOpeningOffset(projected.along*length-settings.width/2,settings.width,length,cornerOffsetsOnWallSegment(start,end,points),blockers,OPENING_CORNER_CLEARANCE_MM);
+          if (offset===null) return [];
+          const center={x:start.x+(end.x-start.x)*(offset+settings.width/2)/length,y:start.y+(end.y-start.y)*(offset+settings.width/2)/length};
+          const distance=Math.hypot(center.x-point.x,center.y-point.y);
+          if (distance>Math.max(400,settings.width*.6)) return [];
+          const owner=current.planRooms.find(room=>containsPoint(center,room.vertices));
+          if (owner && settings.sill+settings.height>owner.wall_height.value) return [];
+          const renderedOpening=owner ? roomOpenings({id:owner.id,name:owner.name,vertices:owner.vertices,sourceWallId:wall.id},[{...settings,id,wallId:wall.id,segmentIndex,offset}],current.walls,openingCatalogueItems)[0] : undefined;
+          return [{ obstacle:{...ghost,center,rotation_deg:Math.atan2(end.y-start.y,end.x-start.x)*180/Math.PI},roomId:owner?.id,
+            openingModel:owner && renderedOpening ? {room:owner,opening:renderedOpening} : undefined,
+            opening:{wallId:wall.id,segmentIndex,offset,start,end,thickness:wallThicknessForSegment(wall,segmentIndex,wallThickness)},distance }];
+        }));
+        return candidates.sort((a,b)=>a.distance-b.distance)[0]??null;
+      },
+      commit: candidate => {
+        if (!candidate.opening) return false;
+        const target=candidate.opening, current=context();
+        const next={...settings,id,wallId:target.wallId,segmentIndex:target.segmentIndex,offset:target.offset};
+        if (!openingPlacementIsValid(next,current.walls,current.openings)) return false;
+        if (standalone && current.viewerOpeningRoom && onStandaloneRoomChange) {
+          const room=current.viewerOpeningRoom;
+          if (room.openings.some(item=>item.id===id)) return true;
+          const opening: Opening={id,kind:settings.kind,parent_wall_id:target.wallId,offset_mm:target.offset,width:measured(settings.width),height:measured(settings.height),sill_height_mm:settings.sill,
+            hinge_side:settings.hingeSide,door_type:settings.doorType,opens_inward:settings.opensInward,swing_angle_deg:90,metadata:{catalogue_item_id:settings.catalogueItemId,representation_key:settings.representationKey,window_depth_mm:settings.windowDepthMm,color_hex:settings.colorHex,component_colors:settings.componentColors}};
+          onStandaloneRoomChange({...room,version:room.version+1,openings:[...room.openings,opening]});
+          return true;
+        }
+        record();
+        setOpenings(previous=>previous.some(item=>item.id===id)?previous:[...previous,next]);
+        setSelectedOpeningId(null); setOpeningParent(""); setSelectedSegment(null);
+        return true;
+      }
+    });
+    setTool("SELECT"); setDraft([]); setPlacementPoint(null);
+  }
+
   function saveOpening() {
     setOpeningError(null);
     const option = segmentOptions.find((item) => item.key === openingParent);
-    if (!option) { setOpeningError("Select a wall in the drawing first."); return; }
-    if (![openingWidth, openingHeight, openingOffset, windowSill].every(Number.isFinite) || openingHeight <= 0 || (openingKind === "WINDOW" ? windowSill : 0) + openingHeight > wallHeight || (openingKind === "WINDOW" && windowSill < 0)) { setOpeningError("The opening height and sill must fit within the wall height."); return; }
+    const availableHeight=openingEditorTarget && viewerOpeningRoom ? viewerOpeningRoom.wall_height.value : wallHeight;
+    if (![openingWidth, openingHeight, openingOffset, windowSill].every(Number.isFinite) || openingHeight <= 0 || (openingKind === "WINDOW" ? windowSill : 0) + openingHeight > availableHeight || (openingKind === "WINDOW" && windowSill < 0)) { setOpeningError("The opening height and sill must fit within the wall height."); return; }
+    if (openingWidth <= 0) { setOpeningError("Enter an opening width greater than zero."); return; }
+    if (!selectedOpeningId && (!option || (openingEditorTarget && !openingEditRequest))) { beginOpeningPlacement(); return; }
+    if (!option) { setOpeningError("Select a wall for this opening."); return; }
     const length = segmentLength(option.wall, option.segmentIndex);
     const corners = openingCornerOffsets(option.wall, option.segmentIndex);
     const blockers = openings.filter((item) => item.id !== selectedOpeningId && item.wallId === option.wall.id && item.segmentIndex === option.segmentIndex);
@@ -2008,6 +2222,14 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     setOpeningParent(option.key);
     setOpeningOffset(closestValidOpeningOffset(offset + openingWidth, openingWidth, length, corners, [...blockers, nextOpening], OPENING_CORNER_CLEARANCE_MM) ?? offset);
   }
+
+  const prepareOpeningAddition = useEffectEvent(() => {
+    onElementSelected?.(null);
+    setSelectedOpeningId(null); resetOpeningForm("DOOR"); setOpeningParent(""); setElementTab("DOOR");
+  });
+  useEffect(() => {
+    if (openingEditorTarget && !openingEditRequest) prepareOpeningAddition();
+  }, [openingEditorTarget, openingEditRequest]);
 
   function cancelOpeningEdit() {
     const parent = openingParent;
@@ -2063,14 +2285,15 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
   const sourceTopLeft = toScreen({ x: 0, y: canvasSize.height }); const sourceBottomRight = toScreen({ x: canvasSize.width, y: 0 }); const sourceIsPdf = sourceFile ? isPdfFile(sourceFile) : false;
 
   const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add elements">
-    <div className="mode-switch element-tabs" role="tablist" aria-label="Element type">{(["DOOR", "WINDOW", "FURNITURE"] as const).map(tab => <button key={tab} role="tab" aria-selected={elementTab === tab} className={elementTab === tab ? "active" : ""} onClick={() => tab === "FURNITURE" ? setElementTab(tab) : selectOpeningKind(tab)}>{tab === "FURNITURE" ? "Elements" : tab[0] + tab.slice(1).toLowerCase()}</button>)}</div>
-    {elementTab === "FURNITURE" ? (selectedRoom ? <CatalogueFixtureEditor key={selectedRoom.id} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} /> : <p>Select or draw a closed room to add elements.</p>) : <>
-    <p className="tool-note">Choose a wall, select a catalogue variant, then add or remove openings without leaving the plan.</p>
-    <div className="opening-catalogue-selectors">
-      <label className="field"><span>{openingKind === "DOOR" ? "Door category" : "Window category"}</span><select aria-label={openingKind === "DOOR" ? "Door category" : "Window category"} value={activeOpeningCategory?.id ?? ""} onChange={(event) => { const category = openingCatalogueCategories.find((candidate) => candidate.id === event.target.value); applyOpeningCatalogueItem(category?.items.find((item) => item.is_default) ?? category?.items[0]); }}>{openingCatalogueCategories.length === 0 && <option value="">Loading catalogue categories…</option>}{openingCatalogueCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
-      <label className="field"><span>{openingKind === "DOOR" ? "Door object" : "Window object"}</span><select aria-label={openingKind === "DOOR" ? "Door object" : "Window object"} value={activeOpeningCatalogueItem?.id ?? ""} onChange={(event) => applyOpeningCatalogueItem(activeOpeningCategory?.items.find((item) => item.id === event.target.value))}>{activeOpeningCategory?.items.map((item) => <option key={item.id} value={item.id}>{item.subcategory}</option>)}{openingCatalogueForKind.length === 0 && <option value="">Loading catalogue objects…</option>}</select></label>
+    <div className="mode-switch element-tabs" role="tablist" aria-label="Element type">{(["DOOR", "WINDOW", "FURNITURE"] as const).filter(tab => !openingEditorTarget || tab !== "FURNITURE").map(tab => <button key={tab} role="tab" aria-selected={elementTab === tab} className={elementTab === tab ? "active" : ""} onClick={() => tab === "FURNITURE" ? setElementTab(tab) : selectOpeningKind(tab)}>{tab === "FURNITURE" ? "Elements" : tab[0] + tab.slice(1).toLowerCase()}</button>)}</div>
+    {elementTab === "FURNITURE" && !openingEditorTarget ? (selectedRoom ? <CatalogueFixtureEditor key={`${selectedRoom.id}-${elementEditRequest?.requestId ?? "new"}`} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={elementEditRequest} onEditEnd={() => onElementSelected?.(null)} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={onBeginPlacement} /> : <p>Select or draw a closed room to add elements.</p>) : <>
+    <p className="tool-note">Choose a variant and click Add. Select a wall first to use its offset, or place the preview on a wall with the cursor.</p>
+    <div className="opening-catalogue-selectors compact-catalogue-selectors">
+      <label className="field"><span>Category</span><select aria-label={openingKind === "DOOR" ? "Door category" : "Window category"} value={activeOpeningCategory?.id ?? ""} onChange={(event) => { const category = openingCatalogueCategories.find((candidate) => candidate.id === event.target.value); applyOpeningCatalogueItem(category?.items.find((item) => item.is_default) ?? category?.items[0]); }}>{openingCatalogueCategories.length === 0 && <option value="">Loading catalogue categories…</option>}{openingCatalogueCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
+      <label className="field"><span>Object</span><select aria-label={openingKind === "DOOR" ? "Door object" : "Window object"} value={activeOpeningCatalogueItem?.id ?? ""} onChange={(event) => applyOpeningCatalogueItem(activeOpeningCategory?.items.find((item) => item.id === event.target.value))}>{activeOpeningCategory?.items.map((item) => <option key={item.id} value={item.id}>{item.subcategory}</option>)}{openingCatalogueForKind.length === 0 && <option value="">Loading catalogue objects…</option>}</select></label>
+      {activeOpeningCatalogueItem && <small className="catalogue-selection-caption">{activeOpeningCatalogueItem.subcategory}</small>}
     </div>
-    <ComponentColours source={{ ...activeOpeningCatalogueItem, fixture_kind: openingKind, color_hex: doorColour, component_colors: openingComponentColours }} onChange={setOpeningComponentColours} />
+    <ComponentColours compact previewObstacle={activeOpeningCatalogueItem ? openingPreviewObstacle({ item: activeOpeningCatalogueItem, kind: openingKind, doorType, width: openingWidth, height: openingHeight, colorHex: doorColour, componentColors: openingComponentColours }) : undefined} source={{ ...activeOpeningCatalogueItem, fixture_kind: openingKind, color_hex: doorColour, component_colors: openingComponentColours }} onChange={setOpeningComponentColours} />
     {activeOpeningCatalogueItem && <OpeningPreview item={activeOpeningCatalogueItem} kind={openingKind} doorType={doorType} width={openingWidth} height={openingHeight} colorHex={doorColour} componentColors={openingComponentColours} />}
     {openingCatalogueError && <p className="inline-error">{openingCatalogueError}</p>}
     <div className="coordinate-fields opening-fields"><label className="field"><span>Parent wall</span><select value={openingParent} onChange={(event) => setOpeningParent(event.target.value)}><option value="">Select a wall…</option>{segmentOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
@@ -2085,6 +2308,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
     const source = Array.from(editorRoot.current?.querySelectorAll<SVGSVGElement>(".floor-canvas") ?? []).find((canvas) => !canvas.closest(".export-svg-preview"));
     if (!source) return null;
     const clone = source.cloneNode(true) as SVGSVGElement;
+    clone.querySelectorAll(".placement-preview").forEach(element=>element.remove());
     const effectiveStyle = styleChoice === "CURRENT" ? floorplanStyle : styleChoice;
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     clone.setAttribute("width", String(FLOORPLAN_EXPORT_WIDTH));
@@ -2258,7 +2482,28 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
   return <section ref={editorRoot} className={`editor-page full-plan-page ${floorplanStyleClass(floorplanStyle)}`.trim()}>
     {liveStyleCss && <style data-floorplan-style={floorplanStyle} dangerouslySetInnerHTML={{ __html: liveStyleCss }} />}
-    <Popup open={pendingOutlineAction !== null} title="Start a new outline?" message="This will delete everything in the current floorplan and start a new outline. Do you want to continue?" onConfirm={confirmOutlineAction} onCancel={() => setPendingOutlineAction(null)} />
+    <Popup open={outlineMenuOpen} title="New outline" message="" confirmLabel="Ok" confirmDisabled={!pendingOutlineAction} onConfirm={confirmOutlineAction} onCancel={() => setOutlineMenuOpen(false)}>
+      <div className="outline-menu-content">
+        <p>Choose a starting point. Clicking Ok will overwrite the current floorplan.</p>
+        <div className="outline-menu-options" role="group" aria-label="Outline starting points">
+          <button type="button" className="outline-menu-option" aria-pressed={pendingOutlineAction === "EMPTY"} onClick={() => requestOutlineAction("EMPTY") }>
+            <strong>Empty floorplan</strong>
+            <span>Start with a blank canvas</span>
+          </button>
+          <button type="button" className="outline-menu-option" aria-pressed={pendingOutlineAction === "RECTANGLE"} onClick={() => requestOutlineAction("RECTANGLE") }>
+            <strong>Rectangle</strong>
+            <span>Use a rectangular outline</span>
+          </button>
+          <button type="button" className="outline-menu-option outline-menu-option-with-arrow" aria-pressed={pendingOutlineAction === "L_SHAPE"} onClick={() => requestOutlineAction("L_SHAPE") }>
+            <span><strong>L-shape</strong><small>Choose a notch orientation</small></span>
+            <span className="outline-menu-arrow" aria-hidden>›</span>
+          </button>
+
+        </div>
+          {lShapePickerOpen && <div className="l-shape-picker" id="full-l-shape-picker"><div><span>Choose the L orientation</span><button type="button" aria-label="Close L-shape chooser" onClick={() => setLShapePickerOpen(false)}>×</button></div><p>Select the position of the internal notch. You can reshape every wall afterwards.</p><div className="l-shape-options">{L_SHAPE_TEMPLATES.map((template) => <button key={template.id} type="button" aria-pressed={outlineOrientation === template.id} onClick={() => setOutlineOrientation(template.id)}><span className="l-shape-thumbnail"><i style={{ clipPath: template.preview }} /></span><strong>{template.name}</strong></button>)}</div></div>}
+      </div>
+    </Popup>
+
     <Popup open={pendingRoomRemovalId !== null} title="Remove room?" message={`${rooms.find((room) => room.id === pendingRoomRemovalId)?.name ?? "This room"} will be removed. Shared walls belonging to neighbouring rooms will be kept.`} confirmLabel="Remove room" onConfirm={removeSelectedRoom} onCancel={() => setPendingRoomRemovalId(null)} />
     <Popup open={defaultWallThicknessConfirmOpen} title="Define default wall thickness?" message="Do you want to define a new default wall thickness? Walls with a custom wall thickness will not be affected." confirmLabel="Ok" onConfirm={confirmDefaultWallThickness} onCancel={cancelDefaultWallThickness} />
     {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyleLabel}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option>{FLOORPLAN_STYLE_OPTIONS.filter((option) => option.value !== "DEFAULT").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
@@ -2295,17 +2540,15 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
         {toolbarVisibility["floorplan-build"] && <FloatingToolbar title="Build floorplan" defaultPosition={{ x: 16, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-build") : { side: "LEFT", slot: 0, slots: 2 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={Math.max(360, FLOOR_PLAN_CANVAS_HEIGHT - 74)} onClose={() => onToggleToolbar("floorplan-build")}>
         <section className="tool-section">
           <div className="button-grid">
-            <button onClick={() => requestOutlineAction("EMPTY")}>New outline</button>
-            <button className={tool === "SELECT" && !addRoomPanelOpen ? "active" : ""} onClick={() => { setAddRoomPanelOpen(false); setTool("SELECT"); setDraft([]); setLockedViewport(null); }}>Modify</button>
-            <button onClick={() => requestOutlineAction("RECTANGLE")}>Rectangle</button>
-            <button className={lShapePickerOpen ? "active" : ""} aria-expanded={lShapePickerOpen} aria-controls="full-l-shape-picker" onClick={() => lShapePickerOpen ? setLShapePickerOpen(false) : requestOutlineAction("L_SHAPE")}>L-shape</button>
+            <button type="button" aria-haspopup="dialog" aria-expanded={outlineMenuOpen} onClick={() => { onElementSelected?.(null); setLShapePickerOpen(false); setPendingOutlineAction("RECTANGLE"); setOutlineMenuOpen(true); }}>New outline</button>
+            <button type="button" className={tool === "SELECT" ? "active" : ""} onClick={activateModifyTool}>Modify</button>
           </div>
-          {lShapePickerOpen && <div className="l-shape-picker" id="full-l-shape-picker"><div><span>Choose the L orientation</span><button type="button" aria-label="Close L-shape chooser" onClick={() => setLShapePickerOpen(false)}>×</button></div><p>Select the position of the internal notch. You can reshape every wall afterwards.</p><div className="l-shape-options">{L_SHAPE_TEMPLATES.map((template) => <button key={template.id} type="button" onClick={() => applyTemplate(template.points)}><span className="l-shape-thumbnail"><i style={{ clipPath: template.preview }} /></span><strong>{template.name}</strong></button>)}</div></div>}
+
           <div className="full-plan-action-divider" aria-hidden="true" />
-          <div className="button-grid full-plan-action-row" role="group" aria-label="Wall tools"><button className={tool === "DRAW" ? "active" : ""} onClick={() => { setTool("DRAW"); setDraft([]); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null); }}>Add wall</button><button className={tool === "REMOVE" ? "active danger-button" : "danger-button"} onClick={() => { if (selectedSegment) { removeSegment(selectedSegment.wallId, selectedSegment.segmentIndex); return; } setTool("REMOVE"); setDraft([]); setLockedViewport(null); setSelectedPoint(null); }}>Remove wall</button></div>
-          <div className="button-grid full-plan-action-row" role="group" aria-label="Measurement tools"><button type="button" className={tool === "ADD_MEASURE" ? "active" : ""} onClick={() => { setMeasurementEditEnabled(false); setTool("ADD_MEASURE"); setDraft([]); setMeasurementDraft([]); setMeasurementContextMenu(null); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); setLockedViewport(null); }}>Add measurement</button><button type="button" className={tool === "REMOVE_MEASURE" ? "active danger-button" : "danger-button"} onClick={activateMeasurementRemoval}>Remove measurement</button></div>
+          <div className="button-grid full-plan-action-row" role="group" aria-label="Wall tools"><button className={tool === "DRAW" ? "active" : ""} onClick={() => { onElementSelected?.(null); setTool("DRAW"); setDraft([]); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null); }}>Add wall</button><button className={tool === "REMOVE" ? "active danger-button" : "danger-button"} onClick={() => { onElementSelected?.(null); if (selectedSegment) { removeSegment(selectedSegment.wallId, selectedSegment.segmentIndex); return; } setTool("REMOVE"); setDraft([]); setLockedViewport(null); setSelectedPoint(null); }}>Remove wall</button></div>
+          <div className="button-grid full-plan-action-row" role="group" aria-label="Measurement tools"><button type="button" className={tool === "ADD_MEASURE" ? "active" : ""} onClick={() => { onElementSelected?.(null); setMeasurementEditEnabled(false); setTool("ADD_MEASURE"); setDraft([]); setMeasurementDraft([]); setMeasurementContextMenu(null); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); setLockedViewport(null); }}>Add measurement</button><button type="button" className={tool === "REMOVE_MEASURE" ? "active danger-button" : "danger-button"} onClick={() => { onElementSelected?.(null); activateMeasurementRemoval(); }}>Remove measurement</button></div>
           <div className="full-plan-action-divider" aria-hidden="true" />
-          <div className="button-grid full-plan-action-row" role="group" aria-label="Room tools"><button className={addRoomPanelOpen ? "active" : ""} aria-pressed={addRoomPanelOpen} onClick={() => { setAddRoomPanelOpen((current) => !current); setTool("SELECT"); setRoomActionError(null); }}>Add room</button><button className="danger-button" disabled={!selectedRoom} onClick={requestRemoveSelectedRoom}>Remove room</button></div>
+          <div className="button-grid full-plan-action-row" role="group" aria-label="Room tools"><button className={addRoomPanelOpen ? "active" : ""} aria-pressed={addRoomPanelOpen} onClick={() => { onElementSelected?.(null); setAddRoomPanelOpen((current) => !current); setTool("SELECT"); setRoomActionError(null); }}>Add room</button><button className="danger-button" disabled={!selectedRoom} onClick={() => { onElementSelected?.(null); requestRemoveSelectedRoom(); }}>Remove room</button></div>
           {addRoomPanelOpen && <div className="room-action-panel"><p>Select a boundary wall to create a new room on the outside of it</p><label className="field"><span>Room depth ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={200} valueMm={roomDepthInput} units={displayUnits} onMmChange={setRoomDepthInput} /></label><button className="review-style-button" aria-label="Apply Add room" onClick={addSelectedRoom}>Add room</button></div>}
           {roomActionError && <p className="inline-error" role="alert">{roomActionError}</p>}
           <div className="button-grid editor-history-row"><button title="Undo last operation (Ctrl+Z)" onClick={undo} disabled={!history.length}>↶ Undo</button><button title="Redo last operation (Ctrl+Y)" onClick={redo} disabled={!future.length}>↷ Redo</button></div>
@@ -2317,8 +2560,9 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
                 <label className="field"><span>Default wall thickness ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={defaultWallThicknessInput ?? wallThickness} units={displayUnits} onMmChange={setDefaultWallThicknessInput} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); requestDefaultWallThickness(); } }} /></label>
               </div>
               <div className="plan-constraint-controls">
-                <label className="snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span><span>Snap to grid</span><small>– {UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput className="snap-size-input" minMm={1} valueMm={snapSize} units={displayUnits} disabled={!snapEnabled} onMmChange={setSnapSize} /></label>
-                <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => { const next = event.target.checked; setSquaredWalls(next); if (next) { record(); setWallsRespectingMeasurements((current) => current.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) })), true, true); } }} /><span>Keep walls horizontal or vertical</span></label>
+                <label className="snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to grid</span></label>
+                <label className="field snap-size-control"><span>Grid size ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput aria-label={`Grid size (${UNIT_LABEL[displayUnits]})`} minMm={1} valueMm={snapSize} units={displayUnits} onMmChange={setSnapSize} /></label>
+                <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => { const next = event.target.checked; setSquaredWalls(next); if (next) { record(); setWallsRespectingMeasurements((current) => current.map((wall) => ({ ...wall, points: squareWallPoints(wall.points) })), true, true); } }} /><span>Keep walls squared</span></label>
                 <label className="check-row measurement-edit-toggle"><input type="checkbox" checked={measurementEditEnabled} onChange={(event) => { setMeasurementEditEnabled(event.target.checked); setMeasurementDraft([]); setSelectedMeasurement(null); setMeasurementContextMenu(null); setTool(event.target.checked ? "MEASURE" : "SELECT"); }} /><span>Edit measurements</span></label>
               </div>
             </div>}
@@ -2335,9 +2579,9 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
       <main className="drawing-column full-plan-drawing">
         <div className="resizable-floorplan-window">
-         {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div><div className="view-property-grid-row" role="group" aria-label="Grid settings"><button type="button" className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button><label className="view-property-grid-size"><span>Grid size <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput aria-label={`Grid size (${UNIT_LABEL[displayUnits]})`} className="view-grid-size-input" minMm={1} valueMm={actualGridSizeMm} units={displayUnits} onMmChange={setSnapSize} /></label></div><div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><label className="view-property-checkbox"><input type="checkbox" checked={showRoomNames} onChange={(event) => setShowRoomNames(event.target.checked)} /><span>Show/Hide room names</span></label><label className="view-property-checkbox"><input type="checkbox" checked={showMeasurements} onChange={(event) => { const enabled = event.target.checked; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><span>Show/Hide all measurements</span></label></div><label className="view-property-checkbox"><input type="checkbox" checked={showWallThickness} onChange={(event) => setShowWallThickness(event.target.checked)} /><span>Show wall thickness</span></label><strong>{vertexCount} vertices · {walls.length} wall run{walls.length === 1 ? "" : "s"}</strong><div className="floorplan-background-actions" role="group" aria-label="Background drawing actions"><button type="button" className="review-style-button floorplan-background-action" disabled={!sourceUrl} onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="review-style-button floorplan-background-action" disabled={!sourceUrl} onClick={clearImportedDrawing}>Remove background image</button></div></div></FloatingToolbar>}
+         {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div><div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><label className="view-property-checkbox"><input type="checkbox" checked={showRoomNames} onChange={(event) => setShowRoomNames(event.target.checked)} /><span>Show/Hide room names</span></label><label className="view-property-checkbox"><input type="checkbox" checked={showMeasurements} onChange={(event) => { const enabled = event.target.checked; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><span>Show/Hide all measurements</span></label><label className="view-property-checkbox"><input type="checkbox" checked={showWallThickness} onChange={(event) => setShowWallThickness(event.target.checked)} /><span>Show wall thickness</span></label><label className="view-property-checkbox"><input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} /><span>Show grid</span></label></div><strong>{vertexCount} vertices · {walls.length} wall run{walls.length === 1 ? "" : "s"}</strong><div className="floorplan-background-actions" role="group" aria-label="Background drawing actions"><button type="button" className="review-style-button floorplan-background-action" disabled={!sourceUrl} onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="review-style-button floorplan-background-action" disabled={!sourceUrl} onClick={clearImportedDrawing}>Remove background image</button></div></div></FloatingToolbar>}
 <div className="full-plan-canvas">{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}
-          <FloorPlanCanvas className={`mode-${tool.toLowerCase()}`} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onPointerDownCapture={beginPan} onPointerMove={movePoint} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
+          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={`mode-${tool.toLowerCase()}`} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onContextMenuCapture={event => { if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={beginPan} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
             if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { if (event.target === event.currentTarget && tool === "SELECT") clearActiveDrawingSelection(); return; }
             const rawRequested = canvasPoint(event, false);
@@ -2350,7 +2594,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
             if (wallHit) { connectDraftToWall(wallHit.wallId, wallHit.segmentIndex, canvasPoint(event, false)); return; }
             if (!draft.length) setLockedViewport(viewport);
             setDraft((current) => current.length && squaredWalls ? [...current, squareDrawPoint(current.at(-1)!, requested)] : [...current, requested]);
-          }} onDoubleClick={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && target.classList.contains("canvas-background")); if (!background) return; event.preventDefault(); if (tool === "DRAW") { commitDraft(); return; } setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); setSelectedMeasurement(null); setContextMenu(null); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }}>
+          }} onDoubleClick={(event) => { if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { if (placement) { event.preventDefault(); onCancelPlacement?.(); return; } const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && target.classList.contains("canvas-background")); if (!background) return; event.preventDefault(); if (tool === "DRAW") { commitDraft(); return; } setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setSelectedMeasurement(null); setContextMenu(null); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }}>
              {sourceUrl && !importing && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
             {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import a drawing as a background reference</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
             {detectedRooms.map((room) => { const outline = room.vertices.map(toScreen); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" />; })}
@@ -2359,11 +2603,27 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
               const outline = room.vertices.map(toScreen); const labelPosition = toScreen(roomLabelPosition(room)); const nameWidth = roomNameEditorWidth(room.name); const labelWidth = nameWidth + 12; const labelHeight = 30; const dragging = draggingRoomLabelId === room.id;
               return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { if (tool !== "DRAW") { event.stopPropagation(); clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className={`room-name-editor${dragging ? " dragging" : ""}`} x={labelPosition.x - labelWidth / 2} y={labelPosition.y - labelHeight / 2} width={labelWidth} height={labelHeight} onPointerDown={(event) => beginRoomLabelDrag(event, room)}><div className="room-name-drag-shell"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { event.stopPropagation(); if (tool !== "DRAW") { clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); }} /></div></foreignObject>}</g>;
             })}
-            {visibleFixtures.map((fixture) => {
+            {visibleFixtures.map((storedFixture) => {
+              const fixture = fixturePreview?.id === storedFixture.id ? fixturePreview : storedFixture;
               const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
               const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
               const centre = toScreen(fixture.center);
-              return <g key={`fixture-${fixture.id}`} className={`floorplan-fixture${selectedFixtureId === fixture.id ? " selected" : ""}`} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}><FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} selected={selectedFixtureId === fixture.id} />{showMeasurements && selectedFixtureId === fixture.id && <FloorPlanFixtureDimensions obstacle={fixture} measurementId={fixture.id} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`fixture:${fixture.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} />}</g>;
+              const selected = selectedFixtureId === fixture.id;
+              const fixtureRoom = selected ? planRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)) : null;
+              const wallSpan = selected && fixture.wall_lock === true ? nearestFixtureWallSpan(fixture, walls) : null;
+              const wall = wallSpan ? walls.find((candidate) => candidate.id === wallSpan.wallId) : undefined;
+              const wallDimensionOffset = wallSpan
+                ? dimensionOffsets[`${wallSpan.wallId}:${wallSpan.segmentIndex}`] ?? (wall ? wallDimensionOffsetFor(wall, wallSpan.segmentIndex) : undefined)
+                : undefined;
+              return (
+                <g key={`fixture-${fixture.id}`} className={`floorplan-fixture${selectedFixtureId === fixture.id ? " selected" : ""}`} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}>
+                  <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} selected={selectedFixtureId === fixture.id} />
+                  {showMeasurements && selected && <>
+                    <FloorPlanFixtureDimensions obstacle={fixture} measurementId={fixture.id} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`fixture:${fixture.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} />
+                    {wallSpan ? <FloorPlanFixtureSpacingDimensions span={wallSpan} toScreen={toScreen} displayUnits={displayUnits} wallDimensionOffset={wallDimensionOffset} /> : fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} />}
+                  </>}
+                </g>
+              );
             })}
             <g pointerEvents="none">
               {["outline", "fill"].map((layer) => <g key={layer}>{wallVisualPaths.map((run) =>
@@ -2471,6 +2731,7 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
                 return <g pointerEvents="none" stroke="#60c7f2" strokeWidth="3"><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} /><circle cx={a.x} cy={a.y} r="5" fill="white" /><circle cx={b.x} cy={b.y} r="5" fill="white" /></g>;
               })()}
             </g>}
+            {placement && placementPoint && <PlacementPreview2D request={placement} point={placementPoint} candidate={placementCandidate} toScreen={toScreen} units={displayUnits} />}
           </FloorPlanCanvas>
           {sourceUrl && !importing && calibrating && <div className="drawing-calibration-panel" role="dialog" aria-modal="false" aria-labelledby="drawing-calibration-title" onKeyDown={(event) => {
             event.stopPropagation(); if (event.key === "Escape") { setCalibrating(false); setCalibrationPoints([]); }
@@ -2496,13 +2757,13 @@ export function FullFloorplanEditor({ viewerOpeningRoom, onStandaloneRoomChange,
 
       <aside className="coordinate-panel full-plan-side-column">
         {toolbarVisibility["floorplan-coordinates"] && <FloatingToolbar title="Coordinates" defaultPosition={{ x: 662, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-coordinates") : { side: "LEFT", slot: 1, slots: 2 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={450} onClose={() => onToggleToolbar("floorplan-coordinates")}>
-        <section className="tool-section"><p className="tool-note">Modify any X, Y corner coordinates here to update the drawing</p><div className="coordinate-input-list" aria-label={`Floorplan coordinates in ${UNIT_LABEL[displayUnits]}`}><div className="coordinate-table-heading"><span>Corner ID</span><span>X</span><span>Y</span></div>{coordinateEntries.map(({ wall, point, pointIndex, cornerNumber }) => { const rowKey = `${wall.id}:${pointIndex}`; const selected = selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex; return <div key={`${wall.id}-coordinate-${pointIndex}`} ref={(element) => { if (element) coordinateRowRefs.current.set(rowKey, element); else coordinateRowRefs.current.delete(rowKey); }} className={`coordinate-row ${selected ? "selected" : ""}`} onClick={() => { setSelectedPoint({ wallId: wall.id, pointIndex }); setSelectedSegment(null); setSelectedOpeningId(null); }}><span className="coordinate-prefix">{cornerNumber}</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, x: value })} /><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, y: value })} /></div>; })}</div></section>
+        <section className="tool-section"><p className="tool-note">Modify any X, Y corner coordinates here to update the drawing</p><div className="coordinate-input-list" aria-label={`Floorplan coordinates in ${UNIT_LABEL[displayUnits]}`}><div className="coordinate-table-heading"><span>Corner ID</span><span>X</span><span>Y</span></div>{coordinateEntries.map(({ wall, point, pointIndex, cornerNumber }) => { const rowKey = `${wall.id}:${pointIndex}`; const selected = selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex; return <div key={`${wall.id}-coordinate-${pointIndex}`} ref={(element) => { if (element) coordinateRowRefs.current.set(rowKey, element); else coordinateRowRefs.current.delete(rowKey); }} className={`coordinate-row ${selected ? "selected" : ""}`} onClick={() => { setSelectedPoint({ wallId: wall.id, pointIndex }); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); }}><span className="coordinate-prefix">{cornerNumber}</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, x: value })} /><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, y: value })} /></div>; })}</div></section>
         </FloatingToolbar>}
-        {openingEditRequest && openingEditorTarget && createPortal(openings.some(item => item.id === openingEditRequest.id) ? openingPanel : (() => {
+        {openingEditorTarget && createPortal(!openingEditRequest || openings.some(item => item.id === openingEditRequest.id) ? openingPanel : (() => {
           const opening = viewerOpeningRoom?.openings.find(item => item.id === openingEditRequest.id);
           return opening && viewerOpeningRoom && onStandaloneRoomChange ? <RoomOpeningEditor key={`${opening.id}-${openingEditRequest.requestId}`} room={viewerOpeningRoom} opening={opening} items={openingCatalogueItems} units={displayUnits} onChange={onStandaloneRoomChange} /> : <p>This opening has been removed. Select another door or window.</p>;
         })(), openingEditorTarget)}
-        {toolbarVisibility["floorplan-openings"] && !openingEditRequest && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-openings") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={520} onClose={() => onToggleToolbar("floorplan-openings")}>{openingPanel}</FloatingToolbar>}
+        {toolbarVisibility["floorplan-openings"] && !openingEditRequest && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-openings") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={520} onClose={() => { onElementSelected?.(null); onToggleToolbar("floorplan-openings"); }}>{openingPanel}</FloatingToolbar>}
       </aside>
     </div>
   </section>;

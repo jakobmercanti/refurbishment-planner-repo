@@ -5,13 +5,15 @@
         "id": "legs",
         "label": "Legs",
         "default_color_hex": "#715840",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood"
       },
       {
         "id": "top",
         "label": "Table top",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       }
     ],
     "bed": [
@@ -19,71 +21,80 @@
         "id": "legs",
         "label": "Legs",
         "default_color_hex": "#715840",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood"
       },
       {
         "id": "frame",
         "label": "Frame and headboard",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "bedding",
         "label": "Bedding and pillows",
         "default_color_hex": "#F2EEE5",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "textile",
+        "default_fabric_id": "cotton"
       },
       {
         "id": "blanket",
         "label": "Blanket",
         "default_color_hex": "#F2EEE5",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "textile",
+        "default_fabric_id": "knit"
       }
     ],
     "seating": [
       {
         "id": "frame",
-        "label": "Frame and arms",
+        "label": "Body and arms",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "textile",
+        "default_fabric_id": "linen"
       },
       {
         "id": "cushions",
         "label": "Seat cushions",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "textile",
+        "default_fabric_id": "linen"
       },
       {
         "id": "back",
         "label": "Back upholstery",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "textile",
+        "default_fabric_id": "linen"
       },
       {
         "id": "legs",
         "label": "Legs",
         "default_color_hex": "#715840",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood"
       }
     ],
     "chair": [
       {
         "id": "frame",
-        "label": "Frame and back",
+        "label": "Seat and back",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
-      },
-      {
-        "id": "cushions",
-        "label": "Seat cushion",
-        "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "legs",
         "label": "Legs",
         "default_color_hex": "#715840",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood"
       }
     ],
     "storage": [
@@ -1199,6 +1210,37 @@
         "label": "Track",
         "default_color_hex": "#5A6061"
       }
+    ],
+    "armchair-scandi": [
+      {
+        "id": "cushions",
+        "label": "Seat cushions",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "textile",
+        "default_fabric_id": "linen"
+      },
+      {
+        "id": "back",
+        "label": "Back upholstery",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "textile",
+        "default_fabric_id": "linen"
+      },
+      {
+        "id": "legs",
+        "label": "Legs",
+        "default_color_hex": "#715840",
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood"
+      },
+      {
+        "id": "timber",
+        "label": "Exposed timber frame",
+        "default_color_hex": "#B99B77",
+        "material_type": "wood"
+      }
     ]
   },
   "representations": {
@@ -1331,6 +1373,12 @@
     "window-double-pane": "window",
     "window-sash": "window-projected",
     "window-single-pane": "window",
-    "window-triple-pane": "window"
+    "window-triple-pane": "window",
+    "furniture-chair-wishbone": "chair",
+    "furniture-chair-ladder": "chair",
+    "furniture-armchair-tub": "seating",
+    "furniture-armchair-scandi": "armchair-scandi",
+    "furniture-chair-crossback": "chair",
+    "furniture-armchair-club": "seating"
   }
 }

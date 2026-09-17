@@ -30,6 +30,7 @@ interface FloatingToolbarProps {
   title: string;
   children: ReactNode;
   className?: string;
+  compact?: boolean;
   defaultPosition: { x: number; y: number };
   maxHeight?: number;
   dock?: ToolbarDock;
@@ -57,10 +58,15 @@ function getToolbarWorkspace(panel: HTMLElement) {
   return panel.parentElement;
 }
 
-function getContentMinimumHeight(panel: HTMLElement, maxHeight: number) {
+function getContentMinimumHeight(panel: HTMLElement, maxHeight: number, compact = false) {
   const titlebar = panel.querySelector<HTMLElement>(".floating-toolbar-titlebar");
   const content = panel.querySelector<HTMLElement>(".floating-toolbar-content");
   if (!titlebar || !content) return MIN_FLOATING_WINDOW_HEIGHT;
+  if (compact) {
+    const panelStyles = window.getComputedStyle(panel);
+    const borders = Number.parseFloat(panelStyles.borderTopWidth || "0") + Number.parseFloat(panelStyles.borderBottomWidth || "0");
+    return Math.ceil(titlebar.getBoundingClientRect().height + borders);
+  }
   const contentStyles = window.getComputedStyle(content);
   const panelStyles = window.getComputedStyle(panel);
   const margins = Number.parseFloat(contentStyles.marginTop || "0") + Number.parseFloat(contentStyles.marginBottom || "0");
@@ -73,14 +79,14 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
   return <FloatingToolbarWindow key={props.layoutResetKey ?? 0} {...props} />;
 }
 
-function FloatingToolbarWindow({ title, children, className = "", defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
+function FloatingToolbarWindow({ title, children, className = "", compact = false, defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<{ pointerX: number; pointerY: number; left: number; top: number; parentWidth: number; parentHeight: number; width: number; height: number } | null>(null);
   const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number; minimumHeight: number } | null>(null);
   const mouseDragRef = useRef(false);
   const [position, setPosition] = useState(defaultPosition);
   const [size, setSize] = useState<{ width: number; height: number | null }>({ width: DEFAULT_FLOATING_WINDOW_WIDTH, height: null });
-  const [minimumHeight, setMinimumHeight] = useState(MIN_FLOATING_WINDOW_HEIGHT);
+  const [minimumHeight, setMinimumHeight] = useState(compact ? 0 : MIN_FLOATING_WINDOW_HEIGHT);
   const [zIndex, setZIndex] = useState(20);
   const [isDocked, setIsDocked] = useState(Boolean(dock));
   const [heightMaximized, setHeightMaximized] = useState(false);
@@ -92,7 +98,7 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
     const content = panel.querySelector<HTMLElement>(".floating-toolbar-content");
     if (!content) return;
     const updateMinimumHeight = () => {
-      const nextMinimumHeight = getContentMinimumHeight(panel, maxHeight);
+      const nextMinimumHeight = getContentMinimumHeight(panel, maxHeight, compact);
       setMinimumHeight((current) => current === nextMinimumHeight ? current : nextMinimumHeight);
     };
     updateMinimumHeight();
@@ -105,7 +111,7 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
       resizeObserver.disconnect();
       mutationObserver.disconnect();
     };
-  }, [maxHeight]);
+  }, [compact, maxHeight]);
 
   useEffect(() => {
     const panel = panelRef.current;
@@ -244,7 +250,7 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
     if (!parent) return;
     const panelBounds = panel.getBoundingClientRect();
     const parentBounds = parent.getBoundingClientRect();
-    const contentMinimumHeight = getContentMinimumHeight(panel, maxHeight);
+    const contentMinimumHeight = getContentMinimumHeight(panel, maxHeight, compact);
     releaseDock(panelBounds, parentBounds);
     const left = panelBounds.left - parentBounds.left;
     const top = panelBounds.top - parentBounds.top;
@@ -298,13 +304,13 @@ function FloatingToolbarWindow({ title, children, className = "", defaultPositio
       : "calc(100% - 16px)",
     zIndex: bringToFront ? 1000 : zIndex,
   } as CSSProperties;
-  return <section ref={panelRef} className={`floating-toolbar ${className}`.trim()} style={style} onPointerDown={focusPanel}>
+  return <section ref={panelRef} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onPointerDown={focusPanel}>
     <header className="floating-toolbar-titlebar" aria-label={`Move ${title}`} title={`${heightMaximized ? "Double-click to restore" : "Double-click to maximise height"} · Drag to move ${title}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onMouseDown={beginMouseDrag} onDoubleClick={toggleHeightMaximized}>
       <span className="floating-toolbar-drag" aria-hidden>⠿</span>
       <strong>{title}</strong>
       <button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button>
     </header>
-    <div className="floating-toolbar-content">{children}</div>
+    <div className="floating-toolbar-content" hidden={compact}>{children}</div>
     {(["TOP", "LEFT", "RIGHT", "BOTTOM"] as const).map((edge) => <button key={edge} type="button" tabIndex={-1} className={`floating-toolbar-resize floating-toolbar-resize-${edge.toLowerCase()}`} aria-label={`Resize ${title} from the ${edge.toLowerCase()} edge`} onPointerDown={(event) => beginResize(edge, event)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} />)}
   </section>;
 }

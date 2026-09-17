@@ -222,6 +222,16 @@ class ObstacleDefinition(BaseModel):
     # Appearance only; these values never participate in fit calculations.
     component_colors: dict[str, str] = Field(default_factory=dict)
 
+    component_materials: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("component_materials")
+    @classmethod
+    def validate_component_materials(cls, value: dict[str, str]) -> dict[str, str]:
+        import re
+        if len(value) > 32 or any(not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", key) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,59}", material) for key, material in value.items()):
+            raise ValueError("component materials must be named parts with material identifiers")
+        return value
+
     @field_validator("component_colors")
     @classmethod
     def validate_component_colors(cls, value: dict[str, str]) -> dict[str, str]:

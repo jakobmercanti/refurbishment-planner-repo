@@ -41,6 +41,8 @@ export interface ColourPart {
   label: string;
   default_color_hex: string;
   legacy_field?: string | null;
+  material_type?: string | null;
+  default_fabric_id?: string | null;
 }
 
 export interface Obstacle {
@@ -64,6 +66,7 @@ export interface Obstacle {
   secondary_color_hex?: string;
   hardware_color_hex?: string;
   component_colors?: Record<string, string>;
+  component_materials?: Record<string, string>;
   wall_lock?: boolean;
   stl_filename?: string;
   stl_base64?: string;
