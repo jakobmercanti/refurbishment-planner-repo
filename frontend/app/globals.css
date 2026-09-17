@@ -516,6 +516,10 @@ button { font: inherit; }
 .field input, .field select, textarea { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 9px; background: #fcfdfb; color: var(--ink); font: 500 11px var(--font-mono); }
 .field input:focus, .field select:focus, textarea:focus { outline: 2px solid rgba(24,61,52,.18); border-color: var(--deep); }
 .coordinate-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.room-measurements { align-items: start; }
+.room-measurements .field { min-width: 0; align-content: start; }
+.room-measurements .field > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-measurements .field input { box-sizing: border-box; width: 100%; height: 38px; min-height: 38px; align-self: start; }
 .coordinate-input-list { min-height: 0; display: block; }
 .coordinate-input-list > div, .coordinate-table-heading { min-height: 24px; display: grid; grid-template-columns: 60px minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 5px; }
 .coordinate-input-list > .coordinate-row.selected { border-radius: 5px; background: rgba(232,241,236,.9); box-shadow: inset 3px 0 0 var(--deep); }

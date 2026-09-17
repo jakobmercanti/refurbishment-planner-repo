@@ -2734,7 +2734,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
             {overallPropertiesExpanded && <div className="full-plan-overall-content">
               <div className="coordinate-fields room-measurements">
                 <label className="field"><span>Wall height ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={100000} valueMm={wallHeight} units={displayUnits} onMmChange={setWallHeight} /></label>
-                <label className="field"><span>Default wall thickness ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={defaultWallThicknessInput ?? wallThickness} units={displayUnits} onMmChange={setDefaultWallThicknessInput} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); requestDefaultWallThickness(); } }} /></label>
+                <label className="field"><span>Default thickness ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={defaultWallThicknessInput ?? wallThickness} units={displayUnits} onMmChange={setDefaultWallThicknessInput} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); requestDefaultWallThickness(); } }} /></label>
               </div>
               <div className="plan-constraint-controls">
                 <label className="snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to grid</span></label>
