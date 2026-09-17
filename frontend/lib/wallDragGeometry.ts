@@ -1,5 +1,5 @@
 export type WallDragPoint = { x: number; y: number };
-export type WallDragAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean };
+export type WallDragAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean; suppressCorner?: boolean };
 export type WallDragWall = { id: string; points: WallDragPoint[]; attachments?: Record<number, WallDragAttachment>; thicknessOverridesMm?: Record<number, number>; lengthOverridesMm?: Record<number, number>; cornerNumbers?: Record<number, number> };
 
 export type MaterializedWallSelection = {
@@ -1197,6 +1197,7 @@ export function materializeWallIntersections(walls: WallDragWall[]): WallDragWal
       for (let sourcePointIndex = 0; sourcePointIndex < sourceLimit; sourcePointIndex += 1) {
         const sourceAttachment = sourceWall.attachments?.[sourcePointIndex];
         if (sourceAttachment?.hideCorner) {
+          if (sourceAttachment.suppressCorner) continue;
           // A connected endpoint is hidden while it coincides with the host's
           // endpoint.  Once that host endpoint has moved into the interior of
           // the host segment, keep the endpoint visible and materialize the
@@ -1494,6 +1495,42 @@ function segmentCoveredByExistingWall(walls: WallDragWall[], start: WallDragPoin
     if (coveredUntil >= 1 - normalizedTolerance) return true;
   }
   return coveredUntil >= 1 - normalizedTolerance;
+}
+
+function suppressCoveredHostEndpoint(
+  walls: WallDragWall[],
+  baselineHost: WallDragWall,
+  connection: WallDragAttachment,
+  originalPoint: WallDragPoint,
+  movedPoint: WallDragPoint,
+): void {
+  const hostStart = baselineHost.points[connection.segmentIndex];
+  const hostEnd = baselineHost.points[connection.segmentIndex + 1];
+  if (!hostStart || !hostEnd) return;
+  const projection = projectOnSegment(originalPoint, hostStart, hostEnd);
+  const hostLength = Math.hypot(hostEnd.x - hostStart.x, hostEnd.y - hostStart.y);
+  if (projection.distance > CONNECTION_TOLERANCE_MM || !hostLength) return;
+  const endpointTolerance = CONNECTION_TOLERANCE_MM / Math.max(1, hostLength);
+  if (projection.along > endpointTolerance && projection.along < 1 - endpointTolerance) return;
+  if (!segmentCoveredByExistingWall([baselineHost], projection.point, movedPoint)) return;
+
+  const hostIndex = walls.findIndex((wall) => wall.id === baselineHost.id);
+  if (hostIndex < 0) return;
+  const candidateHost = walls[hostIndex];
+  const closed = candidateHost.points.length > 2 && samePoint(candidateHost.points[0], candidateHost.points.at(-1)!);
+  const pointIndex = candidateHost.points
+    .slice(0, closed ? -1 : undefined)
+    .findIndex((point) => samePoint(point, originalPoint, CONNECTION_TOLERANCE_MM));
+  if (pointIndex < 0) return;
+
+  const existingAttachment = candidateHost.attachments?.[pointIndex];
+  const attachment = existingAttachment
+    ? { ...existingAttachment, hideCorner: true, suppressCorner: true }
+    : { wallId: candidateHost.id, segmentIndex: connection.segmentIndex, along: projection.along, hideCorner: true, suppressCorner: true };
+  walls[hostIndex] = {
+    ...candidateHost,
+    attachments: { ...candidateHost.attachments, [pointIndex]: attachment },
+  };
 }
 
 function connectionSegmentIndex(wall: WallDragWall, pointIndex: number): number {
@@ -1975,7 +2012,11 @@ export function retainDraggedWallConnections(
       }
       return;
     }
-    if (segmentCoveredByExistingWall(repaired, projection.point, movedPoint, draggedWallId)) return;
+    if (segmentCoveredByExistingWall(repaired, projection.point, movedPoint, draggedWallId)) {
+      const coveredHost = baselineWalls.find((wall) => wall.id === connection.wallId);
+      if (coveredHost) suppressCoveredHostEndpoint(repaired, coveredHost, connection, originalPoint, movedPoint);
+      return;
+    }
 
     const bridgeId = `${bridgeFamily}${pointIndex}:${connection.wallId}:${connection.segmentIndex}`;
     const bridge: WallDragWall = {
