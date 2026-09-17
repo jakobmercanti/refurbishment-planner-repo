@@ -53,7 +53,7 @@ export function ParametricFixture({ obstacle, width, depth, height }: { obstacle
   if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(key)) return <RoomFurniture materials={obstacle.component_materials} physicalSize={[obstacle.dimensions.width.value, obstacle.dimensions.height.value, obstacle.dimensions.depth.value]} colours={colours} representation={key} colour={obstacle.color_hex ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} />;
   const kind = obstacle.fixture_kind ?? key.split("-")[0].toUpperCase();
   const hardwareColour = colours.hardware ?? colours.tap ?? obstacle.hardware_color_hex ?? "#bac4c3";
-  const glass = <meshPhysicalMaterial color={colours.glass ?? "#d5e8e8"} transparent opacity={.25} roughness={.06} metalness={.05} depthWrite={false} side={DoubleSide} />;
+  const glass = <meshPhysicalMaterial color="#d5e8e8" transparent opacity={.25} roughness={.06} metalness={.05} depthWrite={false} side={DoubleSide} />;
   return <group scale={[width, height, depth]}>
     {kind === "TOILET" && (() => {
       const cistern = key.includes("close-coupled");

@@ -11,7 +11,7 @@ function Bar({ a, b, radius = .012, colour = "#394449" }: { a: [number, number, 
   return <mesh position={start.add(end).multiplyScalar(.5)} quaternion={rotation} castShadow><cylinderGeometry args={[radius, radius, delta.length(), 12]} /><meshStandardMaterial color={colour} roughness={.32} metalness={.65} /></mesh>;
 }
 
-function GlassRail({ a, b, guardA, guardB, unit, colours }: { a: [number, number, number]; b: [number, number, number]; guardA: number; guardB: number; unit: number; colours: Record<string, string> }) {
+function GlassRail({ a, b, guardA, guardB, unit }: { a: [number, number, number]; b: [number, number, number]; guardA: number; guardB: number; unit: number }) {
   const length = Math.hypot(b[0] - a[0], b[2] - a[2]), rise = b[1] - a[1];
   const shape = useMemo(() => {
     const panel = new Shape();
@@ -20,7 +20,7 @@ function GlassRail({ a, b, guardA, guardB, unit, colours }: { a: [number, number
     return panel;
   }, [length, rise, guardA, guardB, unit]);
   return <group position={a} rotation={[0, -Math.atan2(b[2] - a[2], b[0] - a[0]), 0]}>
-    <mesh position={[0, 0, -6 * unit]} castShadow><extrudeGeometry args={[shape, { depth: 12 * unit, bevelEnabled: true, bevelSize: unit, bevelThickness: unit, bevelSegments: 2 }]} /><meshPhysicalMaterial color={colours.glass ?? "#c2e0e3"} transparent opacity={.3} transmission={.3} roughness={.08} metalness={.04} depthWrite={false} /></mesh>
+    <mesh position={[0, 0, -6 * unit]} castShadow><extrudeGeometry args={[shape, { depth: 12 * unit, bevelEnabled: true, bevelSize: unit, bevelThickness: unit, bevelSegments: 2 }]} /><meshPhysicalMaterial color="#c2e0e3" transparent opacity={.3} transmission={.3} roughness={.08} metalness={.04} depthWrite={false} /></mesh>
     {[.15, .85].map(t => <mesh key={t} position={[length * t, rise * t + 80 * unit, 0]}><boxGeometry args={[Math.min(35 * unit, length * .18), 45 * unit, 24 * unit]} /><meshStandardMaterial color={colours.clamps ?? "#afb8bb"} metalness={.85} roughness={.24} /></mesh>)}
   </group>;
 }
@@ -59,7 +59,7 @@ export function StaircaseFixture({ representation, width, depth, height, colour:
       {model.open && <mesh position={[0, top - thickness * 2, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow><extrudeGeometry args={[shape, { depth: thickness, bevelEnabled: false }]} /><meshStandardMaterial color={supportColour} roughness={.38} metalness={.65} /></mesh>}
     </group>)}
     {model.rails.map((rail, i) => <group key={i}>
-      {model.glass ? <GlassRail colours={colours} a={point(rail.a)} b={point(rail.b)} guardA={rail.guard_a * sy} guardB={rail.guard_b * sy} unit={sy} /> : <>
+      {model.glass ? <GlassRail a={point(rail.a)} b={point(rail.b)} guardA={rail.guard_a * sy} guardB={rail.guard_b * sy} unit={sy} /> : <>
         <Bar a={point(rail.a, rail.guard_a)} b={point(rail.b, rail.guard_b)} radius={20 * sy} colour={handrailColour} />
         <Bar a={point(rail.a, rail.guard_a - 440)} b={point(rail.b, rail.guard_b - 440)} radius={8 * sy} colour={colours.balusters ?? handrailColour} />
         {rail.post && <Bar a={point(rail.a)} b={point(rail.a, rail.guard_a)} radius={12 * sy} colour={colours.balusters ?? handrailColour} />}
@@ -104,7 +104,7 @@ export function WindowFixture({ representation, width, depth, height, colour: de
           const panes = projected ? 1 : count, pw = (length - frame * 2) / panes, ph = sash ? (height - frame * 2) / 2 : height - frame * 2;
           const px = sash ? 0 : -length / 2 + frame + pw * (pane + .5), py = sash ? frame + ph * (pane + .5) : height / 2, pz = sash ? (pane ? -1 : 1) * frame * .35 : 0;
           return <group key={pane}>
-            <mesh position={[px, py, pz]}><boxGeometry args={[sash ? length - frame * 2 : pw, ph, frame * .12]} /><meshPhysicalMaterial color={colours.glass ?? "#a6cad7"} transparent opacity={.36} roughness={.05} metalness={.08} depthWrite={false} /></mesh>
+            <mesh position={[px, py, pz]}><boxGeometry args={[sash ? length - frame * 2 : pw, ph, frame * .12]} /><meshPhysicalMaterial color="#a6cad7" transparent opacity={.36} roughness={.05} metalness={.08} depthWrite={false} /></mesh>
             {block(px, py, pz, sash ? length - frame * 2 : frame * .45, sash ? frame * .4 : ph, frame * .6, colours.sash ?? colour)}
             {sash && block(0, py, pz, frame * .4, ph, frame * .6, colours.sash ?? colour)}
             {sash && [-1, 1].map(side => <group key={side}>{block(0, py + side * ph / 2, pz, length - frame * 2, frame * .8, frame, colours.sash ?? colour)}</group>)}

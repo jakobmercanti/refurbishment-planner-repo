@@ -1892,12 +1892,11 @@ export function EngineeringViewer(props: ViewerProps) {
         </div>
         <div className="toggle-row">
           <button className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button>
-          {(["elements", "openingImprints", "collisions"] as Array<keyof Toggles>).map((key) => (
+          {(["elements", "openingImprints", "clearance"] as const).map((key) => (
             <button key={key} className={toggles[key] ? "active" : ""} onClick={() => flip(key)} aria-pressed={toggles[key]}>
-              {key === "openingImprints" ? "opening imprint" : key}
+              {key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearance envelope" : "Elements"}
             </button>
           ))}
-          <label className="viewer-toggle-checkbox"><input type="checkbox" checked={toggles.clearance} onChange={() => flip("clearance")} />Clearance envelope</label>
         </div>
         <div className="viewer-view-control-group viewer-lighting-controls" role="group" aria-label="Lighting">
           <button type="button" className="viewer-lighting-toggle" aria-expanded={lightingExpanded} onClick={() => setLightingExpanded((current) => !current)}>

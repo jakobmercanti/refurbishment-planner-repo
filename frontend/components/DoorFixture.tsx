@@ -49,8 +49,8 @@ function DoorLeaf({ width: w, height: h, thickness: t, style, colour, handleSide
       const cut = new Path(); cut.moveTo(-pw / 2 + trim, -ph / 2 + trim); cut.lineTo(-pw / 2 + trim, ph / 2 - trim); cut.lineTo(pw / 2 - trim, ph / 2 - trim); cut.lineTo(pw / 2 - trim, -ph / 2 + trim); cut.closePath(); ring.holes.push(cut);
       return <group key={index} position={[x, y, 0]}>
         {p.glass ? <>
-          <mesh><boxGeometry args={[pw - trim, ph - trim, t * .10]} /><meshPhysicalMaterial color={colours.glass ?? "#bad1d7"} transparent opacity={.28} roughness={style === "entrance-glazed" ? .38 : .04} metalness={.08} depthWrite={false} /></mesh>
-          <mesh position={[0, 0, -t * .15]}><boxGeometry args={[pw - trim, ph - trim, t * .025]} /><meshPhysicalMaterial color={colours.glass ?? "#d6e6e9"} transparent opacity={.12} roughness={.06} depthWrite={false} /></mesh>
+          <mesh><boxGeometry args={[pw - trim, ph - trim, t * .10]} /><meshPhysicalMaterial color="#bad1d7" transparent opacity={.28} roughness={style === "entrance-glazed" ? .38 : .04} metalness={.08} depthWrite={false} /></mesh>
+          <mesh position={[0, 0, -t * .15]}><boxGeometry args={[pw - trim, ph - trim, t * .025]} /><meshPhysicalMaterial color="#d6e6e9" transparent opacity={.12} roughness={.06} depthWrite={false} /></mesh>
           {style === "french-classic" && <>
             <Box at={[0, 0, t * .12]} size={[trim * .8, ph, t * .3]} colour={colours.panels ?? colour} />
             {[1, 2, 3, 4].map(row => <Box key={row} at={[0, -ph / 2 + ph * row / 5, t * .12]} size={[pw, trim * .8, t * .3]} colour={colours.panels ?? colour} />)}

@@ -111,6 +111,9 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   // 4-person table) and hid every sibling entry from the editor.
   const objects = [...family].sort((a, b) => a.subcategory.localeCompare(b.subcategory) || Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
   const selected = objects.find(item => item.id === objectId) ?? objects[0];
+  const activeMacroCategoryLabel = activeMacroCategory ? MACRO_CATEGORY_LABELS[activeMacroCategory] : "";
+  const activeCategoryLabel = activeCategory ? (activeCategory === "storage" ? "Elements" : macroCategories.find(([id]) => id === activeCategory)?.[1] ?? "") : "";
+  const selectedObjectLabel = selected ? `${selected.name.replace(/^Default /i, "")}${!selected.is_default ? ` / ${selected.supplier}` : ""}` : "";
   const existing = room.obstacles.find(item => item.id === editingId);
   function fromCatalogue(item: RoomCatalogueItem, wallLock = wallLockPreference): Obstacle {
     const measured = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
@@ -152,9 +155,9 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   return <section className="fixture-editor element-add-editor" aria-label="Add elements">
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
     <div className="fixture-selectors element-object-selectors compact-catalogue-selectors">
-      <label className="field"><span>Category</span><select value={activeMacroCategory ?? ""} onChange={event => { const nextMacro = event.target.value as MacroCategoryId; const nextCategories = categoriesByMacro.get(nextMacro) ?? []; setMacroCategory(nextMacro); setCategory(nextCategories[0]?.[0] ?? ""); setObjectId(""); setDraft(null); setEditingId(null); setBaseHeightExpanded(false); }}>{availableMacroCategories.map(id => <option key={id} value={id}>{MACRO_CATEGORY_LABELS[id]}</option>)}</select></label>
-      <label className="field"><span>Subcategory</span><select value={activeCategory ?? ""} onChange={event => { setCategory(event.target.value); setObjectId(""); setDraft(null); setEditingId(null); setBaseHeightExpanded(false); }}>{macroCategories.map(([id, name]) => <option key={id} value={id}>{id === "storage" ? "Elements" : name}</option>)}</select></label>
-      <label className="field element-object-select"><span>Object</span><select value={selected?.id ?? ""} onChange={event => choose(objects.find(item => item.id === event.target.value))}>{objects.map(item => <option key={item.id} value={item.id}>{item.name.replace(/^Default /i, "")}{!item.is_default ? ` / ${item.supplier}` : ""}</option>)}</select></label>
+      <label className="field"><span>Category</span><select title={activeMacroCategoryLabel} value={activeMacroCategory ?? ""} onChange={event => { const nextMacro = event.target.value as MacroCategoryId; const nextCategories = categoriesByMacro.get(nextMacro) ?? []; setMacroCategory(nextMacro); setCategory(nextCategories[0]?.[0] ?? ""); setObjectId(""); setDraft(null); setEditingId(null); setBaseHeightExpanded(false); }}>{availableMacroCategories.map(id => <option key={id} value={id}>{MACRO_CATEGORY_LABELS[id]}</option>)}</select></label>
+      <label className="field"><span>Subcategory</span><select title={activeCategoryLabel} value={activeCategory ?? ""} onChange={event => { setCategory(event.target.value); setObjectId(""); setDraft(null); setEditingId(null); setBaseHeightExpanded(false); }}>{macroCategories.map(([id, name]) => <option key={id} value={id}>{id === "storage" ? "Elements" : name}</option>)}</select></label>
+      <label className="field element-object-select"><span>Object</span><select title={selectedObjectLabel} value={selected?.id ?? ""} onChange={event => choose(objects.find(item => item.id === event.target.value))}>{objects.map(item => <option key={item.id} value={item.id}>{item.name.replace(/^Default /i, "")}{!item.is_default ? ` / ${item.supplier}` : ""}</option>)}</select></label>
       {selected && <small className="catalogue-selection-caption">{selected.name.replace(/^Default /i, "")}</small>}
     </div>
     {value && <>

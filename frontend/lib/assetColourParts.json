@@ -185,11 +185,6 @@
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
         "legacy_field": "hardware_color_hex"
-      },
-      {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#D2E4E6"
       }
     ],
     "kitchen": [
@@ -351,11 +346,6 @@
         "legacy_field": "hardware_color_hex"
       },
       {
-        "id": "glass",
-        "label": "Hob surface",
-        "default_color_hex": "#141B20"
-      },
-      {
         "id": "rings",
         "label": "Cooking zone markings",
         "default_color_hex": "#BBC0C3"
@@ -390,11 +380,6 @@
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
         "legacy_field": "hardware_color_hex"
-      },
-      {
-        "id": "glass",
-        "label": "Hob surface",
-        "default_color_hex": "#141B20"
       },
       {
         "id": "rings",
@@ -433,11 +418,6 @@
         "legacy_field": "color_hex"
       },
       {
-        "id": "glass",
-        "label": "Door glass",
-        "default_color_hex": "#20282D"
-      },
-      {
         "id": "controls",
         "label": "Control knobs",
         "default_color_hex": "#20282D"
@@ -472,11 +452,6 @@
         "label": "Appliance front",
         "default_color_hex": "$catalogue",
         "legacy_field": "color_hex"
-      },
-      {
-        "id": "glass",
-        "label": "Door glass",
-        "default_color_hex": "#283B44"
       },
       {
         "id": "controls",
@@ -685,11 +660,6 @@
         "default_color_hex": "#F4F3EF"
       },
       {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#D5E8E8"
-      },
-      {
         "id": "tap",
         "label": "Shower head and mixer",
         "default_color_hex": "#BAC4C3",
@@ -706,11 +676,6 @@
         "id": "tray",
         "label": "Shower tray",
         "default_color_hex": "#F4F3EF"
-      },
-      {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#D5E8E8"
       },
       {
         "id": "tap",
@@ -740,11 +705,6 @@
         "id": "tray",
         "label": "Shower tray",
         "default_color_hex": "#F4F3EF"
-      },
-      {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#D5E8E8"
       },
       {
         "id": "tap",
@@ -834,11 +794,6 @@
         "label": "Panels and mouldings",
         "default_color_hex": "$catalogue",
         "legacy_field": "color_hex"
-      },
-      {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#BAD1D7"
       }
     ],
     "door-barn": [
@@ -923,11 +878,6 @@
         "legacy_field": "color_hex"
       },
       {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#BAD1D7"
-      },
-      {
         "id": "track",
         "label": "Track",
         "default_color_hex": "#5A6061"
@@ -951,11 +901,6 @@
         "label": "Sill",
         "default_color_hex": "$catalogue",
         "legacy_field": "color_hex"
-      },
-      {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#B8D0D7"
       },
       {
         "id": "hardware",
@@ -987,11 +932,6 @@
         "label": "Sill",
         "default_color_hex": "$catalogue",
         "legacy_field": "color_hex"
-      },
-      {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#B8D0D7"
       }
     ],
     "whole": [
@@ -1034,11 +974,6 @@
         "label": "Treads",
         "default_color_hex": "$catalogue",
         "legacy_field": "color_hex"
-      },
-      {
-        "id": "glass",
-        "label": "Glass guarding tint",
-        "default_color_hex": "#C2E0E3"
       },
       {
         "id": "clamps",
@@ -1086,11 +1021,6 @@
         "legacy_field": "color_hex"
       },
       {
-        "id": "glass",
-        "label": "Glass guarding tint",
-        "default_color_hex": "#C2E0E3"
-      },
-      {
         "id": "clamps",
         "label": "Glass clamps",
         "default_color_hex": "#AFB8BB"
@@ -1136,11 +1066,6 @@
         "legacy_field": "color_hex"
       },
       {
-        "id": "glass",
-        "label": "Glass guarding tint",
-        "default_color_hex": "#C2E0E3"
-      },
-      {
         "id": "clamps",
         "label": "Glass clamps",
         "default_color_hex": "#AFB8BB"
@@ -1157,11 +1082,6 @@
         "id": "tray",
         "label": "Shower tray",
         "default_color_hex": "#F4F3EF"
-      },
-      {
-        "id": "glass",
-        "label": "Glass tint",
-        "default_color_hex": "#D5E8E8"
       },
       {
         "id": "tap",

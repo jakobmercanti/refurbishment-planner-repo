@@ -16,6 +16,8 @@ export interface ColourSource {
 
 /** Stable id for the synthetic option that colours every renderable part. */
 export const FULL_PART_ID = "full";
+/** Glass is rendered with a fixed transparent material and is never editable. */
+export const GLASS_PART_ID = "glass";
 
 function fullPartFor(source: ColourSource, parts: ColourPart[]): ColourPart {
   const textileParts = parts.filter(part => part.material_type === "textile");
@@ -44,7 +46,7 @@ function fullPartFor(source: ColourSource, parts: ColourPart[]): ColourPart {
 export function colourPartsFor(source: ColourSource): ColourPart[] {
   if (source.colour_parts?.length) {
     const parts = source.colour_parts
-      .filter(part => part.id !== FULL_PART_ID)
+      .filter(part => part.id !== FULL_PART_ID && part.id !== GLASS_PART_ID)
       .map(part => ({ ...part, default_color_hex: part.default_color_hex === "$catalogue" ? source.color_hex ?? "#F4F3EE" : part.default_color_hex }));
     const distinctParts = parts.length === 1 && /whole object/i.test(parts[0].label) ? [] : parts;
     return [fullPartFor(source, distinctParts), ...distinctParts];
@@ -53,12 +55,15 @@ export function colourPartsFor(source: ColourSource): ColourPart[] {
   const profiles: Record<string, ColourPart[]> = manifest.profiles;
   const key = source.representation_key ?? ({ SHOWER: "shower-corner", BASIN: "basin-vanity", TOILET: "toilet-close-coupled", FURNITURE: "furniture-storage-unit", DOOR: "door-single", WINDOW: "window-casement" }[source.fixture_kind ?? ""] ?? "");
   const profile = source.stl_base64 ? "whole" : representations[key] ?? "whole";
-  const parts = profiles[profile].map(part => ({ ...part, default_color_hex: part.default_color_hex === "$catalogue" ? source.color_hex ?? "#F4F3EE" : part.default_color_hex }));
+  const parts = profiles[profile]
+    .filter(part => part.id !== GLASS_PART_ID)
+    .map(part => ({ ...part, default_color_hex: part.default_color_hex === "$catalogue" ? source.color_hex ?? "#F4F3EE" : part.default_color_hex }));
   const distinctParts = profile === "whole" ? [] : parts;
   return [fullPartFor(source, distinctParts), ...distinctParts];
 }
 
 export function colourForPart(source: ColourSource, part: ColourPart): string {
+  if (part.id === GLASS_PART_ID) return part.default_color_hex === "$catalogue" ? "#D5E8E8" : part.default_color_hex;
   const override = source.component_colors?.[part.id];
   if (override) return override;
   // A saved Full part override is also a fallback for older records that did
@@ -78,6 +83,8 @@ export function colourForPart(source: ColourSource, part: ColourPart): string {
 
 export function resolvedPartColours(source: ColourSource): Record<string, string> {
   const resolved = Object.fromEntries(colourPartsFor(source).map(part => [part.id, colourForPart(source, part)]));
+  // Ignore legacy glass overrides that may still exist in saved projects.
+  delete resolved[GLASS_PART_ID];
   // Parametric STL rendering historically reads `body`; retain that alias
   // while exposing the clearer Full part choice in the editor.
   if (resolved[FULL_PART_ID] && !resolved.body) resolved.body = resolved[FULL_PART_ID];
@@ -88,5 +95,5 @@ export function resolvedPartColours(source: ColourSource): Record<string, string
 export function componentColoursFromMetadata(metadata?: Record<string, unknown>): Record<string, string> {
   const value = metadata?.component_colors;
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(Object.entries(value).filter(([key, colour]) => /^[a-z][a-z0-9_]{0,39}$/.test(key) && typeof colour === "string" && /^#[0-9a-f]{6}$/i.test(colour)));
+  return Object.fromEntries(Object.entries(value).filter(([key, colour]) => key !== GLASS_PART_ID && /^[a-z][a-z0-9_]{0,39}$/.test(key) && typeof colour === "string" && /^#[0-9a-f]{6}$/i.test(colour)));
 }

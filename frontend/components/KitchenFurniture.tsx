@@ -16,7 +16,7 @@ function UpperCabinet({ representation, colour, carcassColour, hardwareColour, w
       return <group key={i}>
         {glazed ? <>
           {[-1, 1].map(side => <group key={side}>{box(x + side * (w - rail) / 2, height / 2, front, rail, height - t * .35, t, colour)}{box(x, side < 0 ? rail / 2 : height - rail / 2, front, w - rail * 2, rail, t, colour)}</group>)}
-          <mesh position={[x, height / 2, front]}><boxGeometry args={[w - rail * 2, height - rail * 2, t * .2]} /><meshPhysicalMaterial color={colours.glass ?? "#d2e4e6"} transparent opacity={.18} roughness={.06} metalness={.04} depthWrite={false} /></mesh>
+          <mesh position={[x, height / 2, front]}><boxGeometry args={[w - rail * 2, height - rail * 2, t * .2]} /><meshPhysicalMaterial color="#d2e4e6" transparent opacity={.18} roughness={.06} metalness={.04} depthWrite={false} /></mesh>
         </> : box(x, height / 2, front, w, height - t * .35, t, colour)}
         {box(x + (i === 0 ? 1 : -1) * w * .32, height * .18, depth / 2 - t * .4, t * .45, height * .15, t * .65, hardwareColour, true)}
         {[.2, .8].map(y => <group key={y}>{box(x - w * .42, height * y, front - t, t, t * 2, t, hardwareColour, true)}</group>)}
@@ -41,12 +41,11 @@ export function KitchenFurniture({ representation: key, colour, width, depth, he
     if (id.startsWith("door") || id === "appliance" || id === "drawer") return "fronts";
     if (id.startsWith("handle") || id === "oven-handle" || id === "controls") return "hardware";
     if (/^(rim-|bowl-|divider)/.test(id)) return "sink";
-    if (id.endsWith("glass")) return "glass";
     if (id === "display" || id === "freezer-seam") return "display";
     return "body";
   };
   const box = (id: string, x: number, y: number, z: number, w: number, h: number, d: number, color = colour, metallic = false) =>
-    <RoundedBox key={id} args={[w,h,d]} position={[x,y,z]} radius={Math.min(w,h,d)*.08} smoothness={3} castShadow receiveShadow><meshStandardMaterial color={colours[partId(id)] ?? color} roughness={metallic ? .23 : .48} metalness={metallic ? .85 : 0} /></RoundedBox>;
+    <RoundedBox key={id} args={[w,h,d]} position={[x,y,z]} radius={Math.min(w,h,d)*.08} smoothness={3} castShadow receiveShadow><meshStandardMaterial color={id.endsWith("glass") ? color : colours[partId(id)] ?? color} roughness={metallic ? .23 : .48} metalness={metallic ? .85 : 0} /></RoundedBox>;
   const doors = double ? 2 : 1;
   const faceTop = top-.045;
   const parts = [
@@ -91,7 +90,7 @@ export function KitchenFurniture({ representation: key, colour, width, depth, he
     parts.push(box("appliance",0,.52,.425,.94,.78,.13,colour),
       box("controls",0,.84,.5,.87,.1,.016,metal,true));
     if(oven) parts.push(box("oven-glass",0,.48,.5,.8,.48,.015,dark),box("oven-handle",0,.76,.518,.72,.022,.025,metal,true));
-    else parts.push(<group key="drum" position={[0,.47,.51]}><mesh><torusGeometry args={[.255,.035,16,48]}/><meshStandardMaterial color={metal} metalness={.9} roughness={.2}/></mesh><mesh position={[0,0,-.012]}><circleGeometry args={[.235,48]}/><meshPhysicalMaterial color={colours.glass ?? "#283B44"} metalness={.25} roughness={.15}/></mesh></group>);
+    else parts.push(<group key="drum" position={[0,.47,.51]}><mesh><torusGeometry args={[.255,.035,16,48]}/><meshStandardMaterial color={metal} metalness={.9} roughness={.2}/></mesh><mesh position={[0,0,-.012]}><circleGeometry args={[.235,48]}/><meshPhysicalMaterial color="#283B44" metalness={.25} roughness={.15}/></mesh></group>);
     parts.push(box("drawer",0,.16,.482,.91,.08,.03));
     for(const x of [-.3,.3]) parts.push(<mesh key={"dial"+x} position={[x,.84,.518]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[.026,.026,.025,24]}/><meshStandardMaterial color={colours.controls ?? dark}/></mesh>);
   }

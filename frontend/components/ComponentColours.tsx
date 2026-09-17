@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { colourForPart, colourPartsFor, FULL_PART_ID, type ColourSource } from "@/lib/assetColours";
+import { colourForPart, colourPartsFor, FULL_PART_ID, GLASS_PART_ID, type ColourSource } from "@/lib/assetColours";
 import { woodFinishOptions } from "@/lib/finishOptions";
 import { FABRICS, fabricById, fabricSwatchStyle, resolvedPartFabrics } from "@/lib/fabrics";
 import { Popup } from "@/components/Popup";
@@ -17,6 +17,7 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
   const snapshot = useRef<{ colours: Record<string, string>; materials: Record<string, string> } | null>(null);
   const id = useId();
   const parts = colourPartsFor(source);
+  const editableColours = Object.fromEntries(Object.entries(source.component_colors ?? {}).filter(([key]) => key !== GLASS_PART_ID));
   const sourceRecord = source as ColourSource & { id?: string; model_id?: string };
   const sourceIdentity = `${sourceRecord.id ?? sourceRecord.model_id ?? ""}|${source.representation_key ?? ""}|${source.fixture_kind ?? ""}|${source.color_hex ?? ""}`;
   useEffect(() => { setSelected(FULL_PART_ID); }, [sourceIdentity]);
@@ -32,7 +33,7 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
   };
   const isFullPart = part.id === FULL_PART_ID;
   const setColour = (next: string) => {
-    const colours = { ...source.component_colors, [part.id]: next };
+    const colours = { ...editableColours, [part.id]: next };
     if (isFullPart) parts.filter(candidate => candidate.id !== FULL_PART_ID).forEach(candidate => { colours[candidate.id] = next; });
     updateAppearance(colours);
   };
@@ -45,7 +46,7 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
   const summarySwatchStyle = textile && fabricId !== "plain" ? fabricSwatchStyle(fabricId, colour) : { backgroundColor: colour };
 
   function openEditor() {
-    snapshot.current = { colours: { ...source.component_colors }, materials: { ...source.component_materials } };
+    snapshot.current = { colours: { ...editableColours }, materials: { ...source.component_materials } };
     setEditorOpen(true);
   }
 
@@ -61,15 +62,14 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
       {compact && <div className="appearance-preview-card"><i style={summarySwatchStyle} aria-hidden /><div><strong>{part.label}</strong><span>{materialLabel}</span><code>{colour.toUpperCase()}</code></div></div>}
       <label className="field"><span>{compact ? "Part" : "Component"}</span><select aria-label="Colour component" value={part.id} onChange={event => setSelected(event.target.value)}>{parts.map(part => <option key={part.id} value={part.id}>{part.label}</option>)}</select></label>
     {textile && (onMaterialsChange || onAppearanceChange) && <div className="fabric-finish-picker">
-      <label className="field"><span>Fabric</span><select aria-label={part.label + " fabric"} value={fabricId} onChange={event => { const materials = { ...source.component_materials, [part.id]: event.target.value }; if (isFullPart) parts.filter(candidate => candidate.id !== FULL_PART_ID && candidate.material_type === "textile").forEach(candidate => { materials[candidate.id] = event.target.value; }); updateAppearance({ ...source.component_colors }, materials); }}><option value="plain">Plain finish</option>{FABRICS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label className="field"><span>Fabric</span><select aria-label={part.label + " fabric"} value={fabricId} onChange={event => { const materials = { ...source.component_materials, [part.id]: event.target.value }; if (isFullPart) parts.filter(candidate => candidate.id !== FULL_PART_ID && candidate.material_type === "textile").forEach(candidate => { materials[candidate.id] = event.target.value; }); updateAppearance({ ...editableColours }, materials); }}><option value="plain">Plain finish</option>{FABRICS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <div className="fabric-finish-preview" style={fabricId === "plain" ? { backgroundColor: colour } : fabricSwatchStyle(fabricId, colour)} aria-label={(fabric?.name ?? "Plain finish") + " in " + colour} />
       <small>{fabric?.description ?? "Smooth colour without a fabric texture."} Choose any colour below.</small>
     </div>}
     {showWoodPreset && <label className="field"><span>{compact ? "Material" : "Wood colours"}</span><select aria-label={`${part.label} colour preset`} value="" onChange={event => { if (event.target.value) setColour(event.target.value); }}><option value="">{compact ? "Choose a finish…" : "Choose a preset…"}</option>{woodFinishOptions().map(option => <option key={option.id} value={option.colorHex}>{option.label}</option>)}</select></label>}
     <label className={`field ${compact ? "appearance-colour-field" : ""}`}><span>{compact ? "Colour" : `${part.label} colour`}</span>{compact ? <span className="appearance-colour-value"><input aria-label={`${part.label} colour`} type="color" value={colour} onChange={event => setColour(event.target.value)} /><code>{colour.toUpperCase()}</code></span> : <input aria-label={`${part.label} colour`} type="color" value={colour} onChange={event => setColour(event.target.value)} />}</label>
-    <button type="button" className="review-style-button colour-reset-button" onClick={() => { const colours = { ...source.component_colors }; const materials = { ...source.component_materials }; if (isFullPart) parts.forEach(candidate => { delete colours[candidate.id]; delete materials[candidate.id]; }); else { colours[part.id] = part.default_color_hex; if (textile) delete materials[part.id]; } updateAppearance(colours, materials); }}>{compact ? "Reset appearance ↺" : `Reset ${part.label.toLowerCase()} to default`}</button>
-    {!compact && textile && (onMaterialsChange || onAppearanceChange) && <button type="button" className="review-style-button colour-reset-button" onClick={() => { const next = { ...source.component_materials }; delete next[part.id]; updateAppearance({ ...source.component_colors }, next); }}>Reset fabric to default</button>}
-    {part.id === "glass" && /tint/i.test(part.label) && <small>Changes the tint; glass remains transparent.</small>}
+    <button type="button" className="review-style-button colour-reset-button" onClick={() => { const colours = { ...editableColours }; const materials = { ...source.component_materials }; if (isFullPart) parts.forEach(candidate => { delete colours[candidate.id]; delete materials[candidate.id]; }); else { colours[part.id] = part.default_color_hex; if (textile) delete materials[part.id]; } updateAppearance(colours, materials); }}>{compact ? "Reset appearance ↺" : `Reset ${part.label.toLowerCase()} to default`}</button>
+    {!compact && textile && (onMaterialsChange || onAppearanceChange) && <button type="button" className="review-style-button colour-reset-button" onClick={() => { const next = { ...source.component_materials }; delete next[part.id]; updateAppearance({ ...editableColours }, next); }}>Reset fabric to default</button>}
   </div>;
 
   return <div className={`fixture-colours-controls ${compact ? "fixture-colours-compact" : ""}`} role="group" aria-label={compact ? "Appearance" : "Colours"}>
