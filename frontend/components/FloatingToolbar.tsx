@@ -62,16 +62,29 @@ function getContentMinimumHeight(panel: HTMLElement, maxHeight: number, compact 
   const titlebar = panel.querySelector<HTMLElement>(".floating-toolbar-titlebar");
   const content = panel.querySelector<HTMLElement>(".floating-toolbar-content");
   if (!titlebar || !content) return MIN_FLOATING_WINDOW_HEIGHT;
-  if (compact) {
-    const panelStyles = window.getComputedStyle(panel);
-    const borders = Number.parseFloat(panelStyles.borderTopWidth || "0") + Number.parseFloat(panelStyles.borderBottomWidth || "0");
-    return Math.ceil(titlebar.getBoundingClientRect().height + borders);
-  }
-  const contentStyles = window.getComputedStyle(content);
   const panelStyles = window.getComputedStyle(panel);
-  const margins = Number.parseFloat(contentStyles.marginTop || "0") + Number.parseFloat(contentStyles.marginBottom || "0");
   const borders = Number.parseFloat(panelStyles.borderTopWidth || "0") + Number.parseFloat(panelStyles.borderBottomWidth || "0");
-  const naturalHeight = titlebar.getBoundingClientRect().height + content.scrollHeight + margins + borders;
+  if (compact) return Math.ceil(titlebar.getBoundingClientRect().height + borders);
+
+  const contentStyles = window.getComputedStyle(content);
+  const margins = Number.parseFloat(contentStyles.marginTop || "0") + Number.parseFloat(contentStyles.marginBottom || "0");
+  const inlineStyle = content.getAttribute("style");
+  let contentHeight = content.scrollHeight;
+  try {
+    // A flex item with overflow:auto can report its current viewport height as
+    // scrollHeight. Temporarily measure it as an intrinsic block so a docked
+    // window does not treat its whole slot as content.
+    content.style.flex = "0 0 auto";
+    content.style.height = "auto";
+    content.style.minHeight = "0";
+    content.style.maxHeight = "none";
+    content.style.overflow = "visible";
+    contentHeight = Math.max(content.scrollHeight, content.getBoundingClientRect().height);
+  } finally {
+    if (inlineStyle === null) content.removeAttribute("style");
+    else content.setAttribute("style", inlineStyle);
+  }
+  const naturalHeight = titlebar.getBoundingClientRect().height + contentHeight + margins + borders;
   return Math.max(MIN_FLOATING_WINDOW_HEIGHT, Math.min(maxHeight, Math.ceil(naturalHeight)));
 }
 
