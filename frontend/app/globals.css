@@ -575,7 +575,7 @@ button { font: inherit; }
 .measurement-item.editable, .measurement-item.editable * { pointer-events: all; cursor: grab; }
 .measurement-item.editable:active { cursor: grabbing; }
 .measurement-item.selected { color: #1678bd; }
-.measurement-item.manual-measurement { color: #1678bd; }
+.measurement-item.manual-measurement { color: #49a3dd; }
 .measurement-item.manual-measurement .manual-measurement-value { fill: currentColor; }
 .measurement-item.custom-measurement .wall-label { fill: currentColor; }
 .custom-measurement { color: #3978b9; }
