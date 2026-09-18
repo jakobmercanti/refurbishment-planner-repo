@@ -61,6 +61,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const [wallLockPreference, setWallLockPreference] = useState(true);
   const [selectorOpen, setSelectorOpen] = useState<SelectorLevel | null>(null);
   const [selectorExpanded, setSelectorExpanded] = useState(false);
+  const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null);
   const selectorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -146,6 +147,8 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     };
   }
   const value = existing ?? draft ?? (selected ? fromCatalogue(selected) : null);
+  const hoveredObject = hoveredObjectId ? objects.find(item => item.id === hoveredObjectId) : undefined;
+  const previewValue = hoveredObject && hoveredObject.id !== selected?.id ? fromCatalogue(hoveredObject, wallLockPreference) : value;
   const stairModel = value?.representation_key ? STAIRCASE_MODELS[value.representation_key] : undefined;
   const cabinet = value?.representation_key?.startsWith("furniture-kitchen-cabinet-");
   const baseUnits = room.obstacles.filter(item => item.id !== value?.id && item.representation_key?.startsWith("furniture-kitchen-") && !item.representation_key.includes("cabinet-"));
@@ -177,6 +180,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setMacroCategory(nextMacro);
     setCategory("");
     setObjectId(null);
+    setHoveredObjectId(null);
     setDraft(null);
     setEditingId(null);
     setBaseHeightExpanded(false);
@@ -191,6 +195,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     }
     setCategory(nextCategory);
     setObjectId(null);
+    setHoveredObjectId(null);
     setDraft(null);
     setEditingId(null);
     setBaseHeightExpanded(false);
@@ -198,6 +203,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setSelectorOpen("object");
   }
   function selectObject(item: RoomCatalogueItem) {
+    setHoveredObjectId(null);
     choose(item);
     setSelectorOpen(null);
     setSelectorExpanded(false);
@@ -214,7 +220,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       </div> : <div className="fixture-cascading-selector" aria-label="Element catalogue selector">
         <div className="fixture-cascading-menu-header">
           <strong>{selectedObjectLabel || "Select object"}</strong>
-          <button type="button" aria-label="Collapse element selector" aria-expanded={true} onClick={() => { setSelectorOpen(null); setSelectorExpanded(false); }}>▴</button>
+          <button type="button" aria-label="Collapse element selector" aria-expanded={true} onClick={() => { setSelectorOpen(null); setHoveredObjectId(null); setSelectorExpanded(false); }}>▴</button>
         </div>
       <div className="fixture-cascading-level">
         <button type="button" className="fixture-cascading-trigger" aria-expanded={selectorOpen === "category"} aria-controls="fixture-category-options" onClick={() => setSelectorOpen(current => current === "category" ? null : "category")}>
@@ -237,13 +243,13 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
           <span className="fixture-cascading-trigger-copy"><span>Object</span><strong className={!selectedObjectLabel ? "placeholder" : undefined}>{selectedObjectLabel || "Select object"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{selectorOpen === "object" ? "▴" : "▾"}</span>
         </button>
         {selectorOpen === "object" && <div id="fixture-object-options" className="fixture-cascading-options" role="listbox" aria-label="Object options">
-          {objects.map(item => <button type="button" role="option" aria-selected={item.id === selected?.id} className={item.id === selected?.id ? "selected" : undefined} key={item.id} onClick={() => selectObject(item)}>{item.name.replace(/^Default /i, "")}{!item.is_default ? ` / ${item.supplier}` : ""}</button>)}
+          {objects.map(item => <button type="button" role="option" aria-selected={item.id === selected?.id} className={item.id === selected?.id ? "selected" : undefined} key={item.id} onMouseEnter={() => setHoveredObjectId(item.id)} onMouseLeave={() => setHoveredObjectId(null)} onFocus={() => setHoveredObjectId(item.id)} onBlur={() => setHoveredObjectId(null)} onClick={() => selectObject(item)}>{item.name.replace(/^Default /i, "")}{!item.is_default ? ` / ${item.supplier}` : ""}</button>)}
         </div>}
       </div>
         </div>}
     </div>
     {value && <>
-      {!value.stl_base64 && <FixturePreview obstacle={value} compact />}
+      {previewValue && !previewValue.stl_base64 && <FixturePreview obstacle={previewValue} compact />}
       <ComponentColours compact previewObstacle={value} source={{ ...value, colour_parts: items.find(item => item.id === value.model_id)?.colour_parts }} onChange={component_colors => {
         const next = { ...value, component_colors };
         if (existing) onChange(room.obstacles.map(item => item.id === existing.id ? next : item));
