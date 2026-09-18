@@ -61,6 +61,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const [wallLockPreference, setWallLockPreference] = useState(true);
   const [selectorOpen, setSelectorOpen] = useState<SelectorLevel | null>(null);
   const [selectorExpanded, setSelectorExpanded] = useState(false);
+  const [elementsListExpanded, setElementsListExpanded] = useState(true);
   const [hoveredObjectId, setHoveredObjectId] = useState<string | null>(null);
   const selectorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -85,6 +86,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
         setObjectId(roomProduct.id);
       }
       setEditingId(item.id);
+      setElementsListExpanded(true);
       setWallLockPreference(item.wall_lock ?? false);
       setDraft(null);
     });
@@ -308,9 +310,12 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
         }
       }}>{existing ? "Done" : "Add element"}</button>
     </>}
-    <div className="fixture-list">{room.obstacles.map(item => <article key={item.id} data-element-id={item.id} className={item.id === editingId ? "editing" : ""}>
-      <strong>{item.name}</strong><button onClick={() => { const product = items.find(p => p.id === item.model_id); if (product && isRoomFixture(product)) { setMacroCategory(macroCategoryForCategoryId(product.category_id)); setCategory(product.category_id); setObjectId(product.id); } setWallLockPreference(item.wall_lock ?? false); setEditingId(item.id); onElementSelected?.({ id: item.id, roomId: room.id }); }}>Edit</button>
-      <button aria-label={`Remove ${item.name}`} onClick={() => { onChange(room.obstacles.filter(p => p.id !== item.id)); if (item.id === editingId) { setEditingId(null); onEditEnd?.(); } }}>×</button>
-    </article>)}</div>
+    {room.obstacles.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
+      <button type="button" className="fixture-section-toggle" aria-expanded={elementsListExpanded} onClick={() => setElementsListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{elementsListExpanded ? "−" : "›"}</span></button>
+      {elementsListExpanded && <div className="fixture-section-content elements-list-content"><div className="fixture-list">{room.obstacles.map(item => <article key={item.id} data-element-id={item.id} className={item.id === editingId ? "editing" : ""}>
+        <strong>{item.name}</strong><button onClick={() => { const product = items.find(p => p.id === item.model_id); if (product && isRoomFixture(product)) { setMacroCategory(macroCategoryForCategoryId(product.category_id)); setCategory(product.category_id); setObjectId(product.id); } setWallLockPreference(item.wall_lock ?? false); setEditingId(item.id); onElementSelected?.({ id: item.id, roomId: room.id }); }}>Edit</button>
+        <button aria-label={`Remove ${item.name}`} onClick={() => { onChange(room.obstacles.filter(p => p.id !== item.id)); if (item.id === editingId) { setEditingId(null); onEditEnd?.(); } }}>×</button>
+      </article>)}</div></div>}
+    </section>}
   </section>;
 }

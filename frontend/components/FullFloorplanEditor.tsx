@@ -798,6 +798,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const [openingDimensionsExpanded, setOpeningDimensionsExpanded] = useState(false);
   const [openingSelectorExpanded, setOpeningSelectorExpanded] = useState(false);
   const [openingSelectorOpen, setOpeningSelectorOpen] = useState<OpeningSelectorLevel | null>(null);
+  const [openingListExpanded, setOpeningListExpanded] = useState(true);
   const [doorType, setDoorType] = useState<"SINGLE" | "DOUBLE">("SINGLE");
   const [hingeSide, setHingeSide] = useState<"START" | "END">("START");
   const [opensInward, setOpensInward] = useState(true);
@@ -1973,7 +1974,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   function selectOpeningForEdit(opening: FullOpening) {
     onElementSelected?.(null);
     setElementTab(opening.kind);
-    setTool("SELECT"); setLockedViewport(viewport); setSelectedOpeningId(opening.id); setSelectedFixtureId(null); setSelectedPoint(null); setSelectedMeasurement(null); setHoveredSegment(null);
+    setTool("SELECT"); setLockedViewport(viewport); setOpeningListExpanded(true); setSelectedOpeningId(opening.id); setSelectedFixtureId(null); setSelectedPoint(null); setSelectedMeasurement(null); setHoveredSegment(null);
     setSelectedSegment(null); setOpeningParent(parentKey(opening.wallId, opening.segmentIndex));
     setOpeningKind(opening.kind); setOpeningCatalogueId(opening.catalogueItemId ?? ""); setOpeningOffset(opening.offset); setOpeningWidth(opening.width); setOpeningHeight(opening.height); setWindowSill(opening.sill);
     {
@@ -2583,7 +2584,10 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
       </div></div>}
     </section>
     {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={saveOpening}>{selectedOpeningId ? `Update ${openingKind.toLowerCase()}` : `Add ${openingKind.toLowerCase()}`}</button></div>
-    {openings.length > 0 && <div className="full-opening-list">{openings.map((opening, index) => { const item = catalogueItemForOpening(opening); return <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small title={item?.name}>{item?.name ?? `${opening.kind === "DOOR" ? "Door" : "Window"} ${String(index + 1).padStart(3, "0")}`} · {formatLength(opening.width, displayUnits)}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>; })}</div>}
+    {openings.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
+      <button type="button" className="fixture-section-toggle" aria-expanded={openingListExpanded} onClick={() => setOpeningListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{openingListExpanded ? "−" : "›"}</span></button>
+      {openingListExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">{openings.map((opening, index) => { const item = catalogueItemForOpening(opening); return <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small title={item?.name}>{item?.name ?? `${opening.kind === "DOOR" ? "Door" : "Window"} ${String(index + 1).padStart(3, "0")}`} · {formatLength(opening.width, displayUnits)}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>; })}</div></div>}
+    </section>}
     </>}
   </section>;
 
