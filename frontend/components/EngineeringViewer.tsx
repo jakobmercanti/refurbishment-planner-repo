@@ -27,6 +27,7 @@ import { buildSharedWallFinishFaces, buildIsolatedRoomWalls, buildRenderedWalls,
 import type { MaterialCollection, Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type ToolbarDock } from "@/components/FloatingToolbar";
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
+import { ViewToggle } from "@/components/ViewToggle";
 import { VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
 const SCALE = 0.001;
@@ -264,6 +265,12 @@ const FLOOR_FRAGMENT_SHADER = `
   }
 `;
 
+function signedPolygonArea(points: Point2D[]) {
+  return points.reduce((area, point, index) => {
+    const next = points[(index + 1) % points.length];
+    return area + point.x * next.y - next.x * point.y;
+  }, 0) / 2;
+}
 function wallVector(start: Point2D, end: Point2D) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -830,7 +837,11 @@ function OpeningFixture({ room, opening, selected, onSelect }: { room: Room; ope
   const windowDepth = typeof opening.metadata?.window_depth_mm === "number" && Number.isFinite(opening.metadata.window_depth_mm) && opening.metadata.window_depth_mm > 0 ? opening.metadata.window_depth_mm * SCALE : depth;
   const windowProjection = windowKey === "window-bay" || windowKey === "window-bow";
   const doorColour = typeof opening.metadata?.color_hex === "string" && /^#[\da-f]{6}$/i.test(opening.metadata.color_hex) ? opening.metadata.color_hex : "#5b4330";
-  return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, vector.angle, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
+  // WindowPlanVertices places the bow depth on local -Z. For the CCW room
+  // winding used by the 2D plan, local -Z points inward after the wall
+  // rotation, so turn projected windows around to keep the bow outside.
+  const openingRotation = windowProjection && signedPolygonArea(room.vertices) >= 0 ? vector.angle + Math.PI : vector.angle;
+  return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, openingRotation, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
     {selected && <Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} />}
     {opening.kind === "DOOR" ? (
       <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture colours={resolvedPartColours({ representation_key: doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type), color_hex: doorColour, component_colors: componentColoursFromMetadata(opening.metadata) })} representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
@@ -1209,6 +1220,7 @@ function WheelZoom({ onManualViewChange }: { onManualViewChange?: () => void }) 
   const { camera, gl } = useThree();
   useEffect(() => {
     const canvas = gl.domElement;
+    if (!canvas) return;
     const zoomWithWheel = (event: WheelEvent) => {
       event.preventDefault();
       if (event.deltaY === 0) return;
@@ -1333,7 +1345,9 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel }: { reques
   const previousPoint=useRef<Point2D|null>(null);
   const raycaster=useMemo(()=>new THREE.Raycaster(),[]);
   const pointAt=useCallback((x:number,y:number) => {
-    const rect=gl.domElement.getBoundingClientRect();
+    const canvas = gl.domElement;
+    if (!canvas) return null;
+    const rect=canvas.getBoundingClientRect();
     if (x<rect.left || x>rect.right || y<rect.top || y>rect.bottom) return null;
     raycaster.setFromCamera(new THREE.Vector2((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1),camera);
     if (request.opening) {
@@ -1364,7 +1378,9 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel }: { reques
     }
   });
   useEffect(()=>{
-    const canvas=gl.domElement, cursor=canvas.style.cursor;
+    const canvas=gl.domElement;
+    if (!canvas) return;
+    const cursor=canvas.style.cursor;
     canvas.style.cursor="crosshair";
     let down: {x:number;y:number}|null=null;
     const move=(event:PointerEvent)=>{ event.stopImmediatePropagation(); client.current={x:event.clientX,y:event.clientY}; };
@@ -1444,6 +1460,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
     };
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") cancel(); };
     const canvas=gl.domElement;
+    if (!canvas) return;
     canvas.addEventListener("pointercancel",cancel);
     window.addEventListener("keydown",key);
     window.addEventListener("blur",cancel);
@@ -1939,12 +1956,10 @@ export function EngineeringViewer(props: ViewerProps) {
           {props.room.person_mockup?.enabled && <button className={activePreset === "eye" ? "active" : ""} aria-pressed={activePreset === "eye"} onClick={() => applyPreset("eye")}>Eye level</button>}
           {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={activePreset === view ? "active" : ""} aria-pressed={activePreset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
         </div>
-        <div className="toggle-row">
-          <button className={showGrid ? "active" : ""} aria-pressed={showGrid} onClick={() => setShowGrid((current) => !current)}>Grid</button>
+        <div className="toggle-row" role="group" aria-label="3D visibility">
+          <ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} />
           {(["elements", "openingImprints", "clearance"] as const).map((key) => (
-            <button key={key} className={toggles[key] ? "active" : ""} onClick={() => flip(key)} aria-pressed={toggles[key]}>
-              {key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearance envelope" : "Elements"}
-            </button>
+            <ViewToggle key={key} label={key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearance envelope" : "Elements"} active={toggles[key]} onToggle={() => flip(key)} />
           ))}
         </div>
         <div className="viewer-view-control-group viewer-lighting-controls" role="group" aria-label="Lighting">

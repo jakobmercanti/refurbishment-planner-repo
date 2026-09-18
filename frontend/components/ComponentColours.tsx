@@ -78,6 +78,6 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
       <span aria-hidden>{compact ? "›" : expanded ? "−" : "+"}</span>
     </button>
     {!compact && expanded && editorFields}
-    {compact && editorOpen && typeof document !== "undefined" && createPortal(<Popup open className="appearance-popup" title="Appearance" message="" confirmLabel="Done" onCancel={() => closeEditor(false)} onConfirm={() => closeEditor(true)}><div className={`appearance-popup-grid${previewObstacle ? "" : " appearance-popup-grid-without-preview"}`}><div className="appearance-popup-form">{editorFields}</div>{previewObstacle && <div className="appearance-popup-preview"><div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div><FixturePreview obstacle={previewObstacle} /></div>}</div></Popup>, document.body)}
+    {compact && editorOpen && typeof document !== "undefined" && createPortal(<Popup open className="appearance-popup" title="Appearance" message="" confirmLabel="Done" onCancel={() => closeEditor(false)} onConfirm={() => closeEditor(true)}><div className={`appearance-popup-grid${previewObstacle ? "" : " appearance-popup-grid-without-preview"}`}><div className="appearance-popup-form">{editorFields}</div>{previewObstacle && <div className="appearance-popup-preview"><div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div><FixturePreview obstacle={previewObstacle} appearanceControls /></div>}</div></Popup>, document.body)}
   </div>;
 }

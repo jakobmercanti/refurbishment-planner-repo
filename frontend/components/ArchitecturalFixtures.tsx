@@ -115,6 +115,9 @@ export function WindowFixture({ representation, width, depth, height, colour: de
         {block(0, frame * .2, frame * .3, length + frame, frame * .4, frame * 3, colours.sill ?? colour)}
       </group>;
     })}
-    {projected && <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colours.sill ?? colour} /></mesh>}
+    {projected && <>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colours.sill ?? colour} /></mesh>
+      <mesh position={[0, height - frame * .6, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colours.sill ?? colour} /></mesh>
+    </>}
   </group>;
 }
