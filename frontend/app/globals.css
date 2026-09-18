@@ -49,6 +49,8 @@ button { font: inherit; }
 .popup-content { padding: 16px; }
 .popup-content p { margin: 0; color: var(--ink); font: 550 10px/1.55 var(--font-mono); }
 .save-view-format { min-width: 0; }
+.save-view-attribution, .export-attribution-toggle { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--ink); font: 550 9px/1.35 var(--font-mono); cursor: pointer; }
+.save-view-attribution input, .export-attribution-toggle input { width: 14px; height: 14px; min-width: 14px; min-height: 14px; margin: 0; accent-color: var(--deep); }
 .popup-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: #fbfcfa; }
 .popup-actions button { min-width: 84px; min-height: 30px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font: 650 9px var(--font-mono); cursor: pointer; }
 .popup-actions button:hover, .popup-actions button:focus-visible { border-color: var(--deep); outline: none; }

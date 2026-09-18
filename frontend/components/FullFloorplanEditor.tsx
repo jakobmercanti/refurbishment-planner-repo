@@ -202,12 +202,12 @@ function buildWallVisualRuns(segments: WallRenderSegment[], closed: boolean): Wa
 const MIN_ENCLOSED_AREA_MM2 = 10_000;
 const FLOORPLAN_EXPORT_WIDTH = 1640;
 const FLOORPLAN_EXPORT_HEIGHT = 1120;
-const FLOORPLAN_EXPORT_ATTRIBUTION = "Made using freefloorplan3d.com";
+const FLOORPLAN_EXPORT_ATTRIBUTION = "Made with FreeFloorplan3D.com";
 const FLOORPLAN_EXPORT_ATTRIBUTION_URL = "https://freefloorplan3d.com";
 
 const FLOORPLAN_EXPORT_BASE_CSS = `
-.floor-canvas{display:block;width:100%;height:100%;min-height:0!important;background:#eef1ed}
-.canvas-background{fill:#eef1ed}.plan-grid line{stroke:#d9dfda;stroke-width:1}.room-polygon{fill:#fff;stroke:none}
+.floor-canvas{display:block;width:100%;height:100%;min-height:0!important;background:#fff}
+.canvas-background{fill:#fff}.plan-grid line{stroke:#d9dfda;stroke-width:1}.room-polygon{fill:#fff;stroke:none}
  .wall-body{stroke:#183d34;stroke-width:var(--wall-stroke-width,10px);stroke-linecap:square}.wall-line{stroke:#fff;stroke-width:var(--wall-inner-stroke-width,4px);stroke-linecap:square}.wall-interaction-line{display:none}.wall-thickness-label{fill:#183d34;font:700 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:4px}
 .wall-dimension{color:#68756f}.wall-dimension.manual-measurement{color:#49a3dd}.wall-dimension.custom-measurement{color:#49a3dd}.wall-dimension.selected{color:#1678bd}.wall-dimension.manual-measurement .manual-measurement-value{fill:currentColor}.wall-dimension.custom-measurement .wall-label{fill:currentColor}.dimension-line,.dimension-extension,.dimension-tick{stroke:currentColor;stroke-width:1}.dimension-extension{opacity:.62}.dimension-tick{stroke-width:1.3}
 .wall-label{fill:#44514b;font:650 10px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:5px}
@@ -219,7 +219,7 @@ const FLOORPLAN_EXPORT_BASE_CSS = `
 `;
 
 function floorplanExportCss(style: FloorplanStyle) {
-  return `${FLOORPLAN_EXPORT_BASE_CSS}\n${floorplanStyleCss(style)}`;
+  return `${FLOORPLAN_EXPORT_BASE_CSS}\n${floorplanStyleCss(style)}\n.floor-canvas .canvas-background{fill:#fff}.floor-canvas{background:#fff}`;
 }
 
 function drawFloorplanAttribution(context: CanvasRenderingContext2D, width: number, height: number) {
@@ -238,7 +238,7 @@ function drawFloorplanAttribution(context: CanvasRenderingContext2D, width: numb
   context.restore();
 }
 
-function floorplanPdfBlobFromJpeg(bytes: ArrayBuffer, width: number, height: number) {
+function floorplanPdfBlobFromJpeg(bytes: ArrayBuffer, width: number, height: number, includeAttribution = true) {
   const encoder = new TextEncoder();
   const pageWidth = Math.max(72, width * 72 / 96);
   const pageHeight = Math.max(72, height * 72 / 96);
@@ -252,17 +252,19 @@ function floorplanPdfBlobFromJpeg(bytes: ArrayBuffer, width: number, height: num
   const offsets: number[] = [0];
   push("%PDF-1.4\n%\xFF\xFF\xFF\xFF\n");
   const object = (id: number, body: string) => { offsets[id] = length; push(`${id} 0 obj\n${body}\nendobj\n`); };
-  object(1, "<< /Type /Catalog /Pages 2 0 R >>"); object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"); object(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R /Annots [6 0 R] >>`);
+  object(1, "<< /Type /Catalog /Pages 2 0 R >>"); object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  const annotation = includeAttribution ? " /Annots [6 0 R]" : "";
+  object(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R${annotation} >>`);
   offsets[4] = length; push(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.byteLength} >>\nstream\n`); push(new Uint8Array(bytes)); push("\nendstream\nendobj\n");
   const contentBytes = encoder.encode(content); object(5, `<< /Length ${contentBytes.length} >>\nstream\n${content}endstream`);
-  object(6, `<< /Type /Annot /Subtype /Link /Rect [${attributionLinkX} 0 ${pageWidth - 8} ${attributionLinkHeight}] /Border [0 0 0] /A << /S /URI /URI (${FLOORPLAN_EXPORT_ATTRIBUTION_URL}) >> >>`);
+  if (includeAttribution) object(6, `<< /Type /Annot /Subtype /Link /Rect [${attributionLinkX} 0 ${pageWidth - 8} ${attributionLinkHeight}] /Border [0 0 0] /A << /S /URI /URI (${FLOORPLAN_EXPORT_ATTRIBUTION_URL}) >> >>`);
+  const lastObject = includeAttribution ? 6 : 5;
   const xref = length;
-  push("xref\n0 7\n0000000000 65535 f \n");
-  for (let id = 1; id <= 6; id += 1) push(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
-  push(`trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  push(`xref\n0 ${lastObject + 1}\n0000000000 65535 f \n`);
+  for (let id = 1; id <= lastObject; id += 1) push(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
+  push(`trailer\n<< /Size ${lastObject + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
   return new Blob(parts, { type: "application/pdf" });
 }
-
 function synchronizeConnectedJunctions(baselineWalls: Wall[], candidateWalls: Wall[], squaredWalls: boolean, preferredWallId: string, detachedEndpointIndices: number[] = []): Wall[] {
   type JunctionReference = { wallId: string; pointIndex: number; point: Point2D };
   const groups: JunctionReference[][] = [];
@@ -817,6 +819,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStyle, setExportStyle] = useState<ExportStyle>("CURRENT");
   const [exportFormat, setExportFormat] = useState<ExportFormat>("PDF");
+  const [includeAttribution, setIncludeAttribution] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
@@ -2613,10 +2616,10 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
       const canvas = document.createElement("canvas"); canvas.width = FLOORPLAN_EXPORT_WIDTH; canvas.height = FLOORPLAN_EXPORT_HEIGHT;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("The browser could not create an export canvas.");
-      context.fillStyle = "#ffffff"; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height); drawFloorplanAttribution(context, canvas.width, canvas.height);
+      context.fillStyle = "#ffffff"; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height); if (includeAttribution) drawFloorplanAttribution(context, canvas.width, canvas.height);
       const imageMime = exportFormat === "PNG" ? "image/png" : "image/jpeg";
       const imageBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("The image export could not be created.")), imageMime, .95));
-      const output = exportFormat === "PDF" ? floorplanPdfBlobFromJpeg(await imageBlob.arrayBuffer(), canvas.width, canvas.height) : imageBlob;
+      const output = exportFormat === "PDF" ? floorplanPdfBlobFromJpeg(await imageBlob.arrayBuffer(), canvas.width, canvas.height, includeAttribution) : imageBlob;
       if (destination) { const writable = await destination.createWritable(); await writable.write(output); await writable.close(); } else { const url = URL.createObjectURL(output); const link = document.createElement("a"); link.href = url; link.download = `floorplan-${exportStyle.toLowerCase()}.${extension}`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
       setExportOpen(false);
     } catch (error) {
@@ -2624,7 +2627,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
     } finally { setExporting(false); }
   }
 
-  const exportPreviewMarkup = exportOpen ? exportSvgMarkup() : null;
+  const exportPreviewMarkup = exportOpen ? exportSvgMarkup(exportStyle, includeAttribution) : null;
   const liveStyleCss = floorplanStyleCss(floorplanStyle);
   const exportStyleLabel = exportStyle === "CURRENT"
     ? `Current ${floorplanStyleLabel(floorplanStyle).toLowerCase()}`
@@ -2682,7 +2685,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
 
     <Popup open={pendingRoomRemovalId !== null} title="Remove room?" message={`${rooms.find((room) => room.id === pendingRoomRemovalId)?.name ?? "This room"} will be removed. Shared walls belonging to neighbouring rooms will be kept.`} confirmLabel="Remove room" onConfirm={removeSelectedRoom} onCancel={() => setPendingRoomRemovalId(null)} />
     <Popup open={defaultWallThicknessConfirmOpen} title="Define default wall thickness?" message="Do you want to define a new default wall thickness? Walls with a custom wall thickness will not be affected." confirmLabel="Ok" onConfirm={confirmDefaultWallThickness} onCancel={cancelDefaultWallThickness} />
-    {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyleLabel}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option>{FLOORPLAN_STYLE_OPTIONS.filter((option) => option.value !== "DEFAULT").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
+    {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyleLabel}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option>{FLOORPLAN_STYLE_OPTIONS.filter((option) => option.value !== "DEFAULT").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label><label className="export-attribution-toggle"><input type="checkbox" checked={includeAttribution} disabled={exporting} onChange={(event) => setIncludeAttribution(event.target.checked)} /><span>Include “Made with FreeFloorplan3D.com”</span></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
     {measurementContextMenu && <div className={`floorplan-context-menu ${measurementContextMenu.custom ? "" : "floorplan-value-menu measurement-value-menu"}`} role="menu" aria-label="Measurement actions" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{measurementContextMenu.custom ? "Measurement" : "Wall measurement"}</strong>
       {measurementContextMenu.custom && <><button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "NORMAL")}>Normal direction</button>

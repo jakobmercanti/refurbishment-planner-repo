@@ -44,6 +44,7 @@ interface Toggles {
 type CameraView = "perspective" | "top" | "bottom" | "left" | "right" | "eye";
 type ProjectionMode = "perspective" | "parallel";
 type CaptureFormat = "png" | "jpg" | "pdf";
+const CAPTURE_ATTRIBUTION = "Made with FreeFloorplan3D.com";
 type LightingSettings = { intensity: number; shadows: number; direction: number; elevation: number };
 const DEFAULT_LIGHTING: LightingSettings = { intensity: 100, shadows: 100, direction: 109, elevation: 55 };
 
@@ -100,6 +101,7 @@ interface ViewerProps extends PlacementProps {
   toolbarLayoutResetKey: number;
   fillToolbarLayout: boolean;
   fitRequest: number;
+  saveViewRequest: number;
 }
 
 type Selection = { type: "OPENING"; id: string; roomId: string } | { type: "ELEMENT"; id: string; roomId: string } | { type: "PERSON"; roomId: string } | { type: "WALL"; id: string; ids: string[]; roomId: string } | { type: "FLOOR"; roomId: string } | null;
@@ -1256,16 +1258,55 @@ function pdfBlobFromJpeg(bytes: ArrayBuffer, width: number, height: number) {
   return new Blob(parts, { type: "application/pdf" });
 }
 
-function CaptureController({ request, format, fileHandle, onError }: { request: number; format: CaptureFormat; fileHandle: SaveFileHandle | null; onError: (message: string) => void }) {
+function drawCaptureAttribution(context: CanvasRenderingContext2D, width: number, height: number) {
+  const scale = Math.max(1, width / 1640);
+  const margin = 14 * scale;
+  context.save();
+  context.font = `600 ${8 * scale}px Arial, sans-serif`;
+  context.textAlign = "right";
+  context.textBaseline = "bottom";
+  context.lineJoin = "round";
+  context.lineWidth = 3 * scale;
+  context.strokeStyle = "#fff";
+  context.fillStyle = "#68756f";
+  context.strokeText(CAPTURE_ATTRIBUTION, width - margin, height - margin);
+  context.fillText(CAPTURE_ATTRIBUTION, width - margin, height - margin);
+  context.restore();
+}
+
+function CaptureController({ request, format, fileHandle, includeAttribution, onError }: { request: number; format: CaptureFormat; fileHandle: SaveFileHandle | null; includeAttribution: boolean; onError: (message: string) => void }) {
   const { camera, gl, scene } = useThree();
+  const capturedRequest = useRef(0);
   useEffect(() => {
-    if (request === 0) return;
+    if (request === 0 || request === capturedRequest.current) return;
+    capturedRequest.current = request;
+    const previousClearColour = gl.getClearColor(new THREE.Color());
+    const previousClearAlpha = gl.getClearAlpha();
+    gl.setClearColor("#fff", 1);
     gl.render(scene, camera);
+    const source = gl.domElement;
+    const canvas = document.createElement("canvas");
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      gl.setClearColor(previousClearColour, previousClearAlpha);
+      onError("The browser could not create an export canvas.");
+      return;
+    }
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(source, 0, 0);
+    gl.setClearColor(previousClearColour, previousClearAlpha);
+    if (includeAttribution) drawCaptureAttribution(context, canvas.width, canvas.height);
     const mimeType = format === "jpg" || format === "pdf" ? "image/jpeg" : "image/png";
-    gl.domElement.toBlob(async (blob) => {
-      if (!blob) return;
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        onError("The view image could not be created.");
+        return;
+      }
       try {
-        const output = format === "pdf" ? pdfBlobFromJpeg(await blob.arrayBuffer(), gl.domElement.width, gl.domElement.height) : blob;
+        const output = format === "pdf" ? pdfBlobFromJpeg(await blob.arrayBuffer(), canvas.width, canvas.height) : blob;
         if (fileHandle) {
           const writable = await fileHandle.createWritable();
           await writable.write(output);
@@ -1282,10 +1323,9 @@ function CaptureController({ request, format, fileHandle, onError }: { request: 
         onError(reason instanceof Error ? reason.message : "Unable to save the view.");
       }
     }, mimeType, format === "jpg" || format === "pdf" ? 0.94 : undefined);
-  }, [camera, fileHandle, format, gl, onError, request, scene]);
+  }, [camera, fileHandle, format, gl, includeAttribution, onError, request, scene]);
   return null;
 }
-
 function PlacementCursor({ request, rooms, walls, onCommit, onCancel }: { request: PlacementRequest; rooms: Room[]; walls: PlacementWall[]; onCommit?: (candidate: PlacementCandidate)=>void; onCancel?: ()=>void }) {
   const { gl, camera }=useThree();
   const [point,setPoint]=useState<Point2D | null>(null);
@@ -1773,6 +1813,7 @@ export function EngineeringViewer(props: ViewerProps) {
   const [captureRequest, setCaptureRequest] = useState(0);
   const [captureFormat, setCaptureFormat] = useState<CaptureFormat>("png");
   const [captureMenuOpen, setCaptureMenuOpen] = useState(false);
+  const [includeCaptureAttribution, setIncludeCaptureAttribution] = useState(true);
   const [captureFileHandle, setCaptureFileHandle] = useState<SaveFileHandle | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [cameraResetKey, setCameraResetKey] = useState(0);
@@ -1839,13 +1880,21 @@ export function EngineeringViewer(props: ViewerProps) {
   }, []);
   const applyPreset = (next: CameraView) => { setProjectionRestore(null); setPreset(next); setActivePreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
   const handleCaptureError = useCallback((message: string) => { setCaptureError(message); setCaptureMenuOpen(true); }, []);
+  useEffect(() => {
+    if (!props.saveViewRequest || props.placement) return;
+    const openRequest = window.setTimeout(() => {
+      setCaptureError(null);
+      setCaptureMenuOpen(true);
+    }, 0);
+    return () => window.clearTimeout(openRequest);
+  }, [props.placement, props.saveViewRequest]);
   async function saveViewAs() {
     setCaptureError(null);
     const picker = (window as Window & { showSaveFilePicker?: SaveFilePicker }).showSaveFilePicker;
     if (!picker) {
       setCaptureFileHandle(null);
       setCaptureMenuOpen(false);
-      setCaptureRequest(Date.now());
+      setCaptureRequest((current) => current + 1);
       return;
     }
     const formatDetails: Record<CaptureFormat, { label: string; mimeType: string }> = {
@@ -1861,7 +1910,7 @@ export function EngineeringViewer(props: ViewerProps) {
       });
       setCaptureFileHandle(handle);
       setCaptureMenuOpen(false);
-      setCaptureRequest(Date.now());
+      setCaptureRequest((current) => current + 1);
     } catch (reason) {
       if (reason instanceof DOMException && reason.name === "AbortError") return;
       setCaptureError(reason instanceof Error ? reason.message : "Unable to choose a save location.");
@@ -1938,12 +1987,12 @@ export function EngineeringViewer(props: ViewerProps) {
       <Canvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
         <Scene {...props} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} />
         <WheelZoom onManualViewChange={clearActivePreset} />
-        <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} onError={handleCaptureError} />
+        <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} includeAttribution={includeCaptureAttribution} onError={handleCaptureError} />
       </Canvas>
       <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
       {toolbarContextMenu && <ToolbarContextMenu x={toolbarContextMenu.x} y={toolbarContextMenu.y} toolbars={VIEWER_TOOLBARS.filter((toolbar) => props.toolbarAvailability[toolbar.id])} visibility={props.toolbarVisibility} onToggle={props.onToggleToolbar} onClose={() => setToolbarContextMenu(null)} />}
       <Popup open={captureMenuOpen} title="Save view" message="" confirmLabel="Save as…" onCancel={() => { setCaptureMenuOpen(false); setCaptureError(null); }} onConfirm={() => { void saveViewAs(); }}>
-        <label className="field save-view-format"><span>File format</span><select value={captureFormat} onChange={(event) => setCaptureFormat(event.target.value as CaptureFormat)}><option value="png">PNG image (.png)</option><option value="jpg">JPG image (.jpg)</option><option value="pdf">PDF document (.pdf)</option></select></label>
+        <label className="field save-view-format"><span>File format</span><select value={captureFormat} onChange={(event) => setCaptureFormat(event.target.value as CaptureFormat)}><option value="png">PNG image (.png)</option><option value="jpg">JPG image (.jpg)</option><option value="pdf">PDF document (.pdf)</option></select></label><label className="save-view-attribution"><input type="checkbox" checked={includeCaptureAttribution} onChange={(event) => setIncludeCaptureAttribution(event.target.checked)} /><span>Include “Made with FreeFloorplan3D.com”</span></label>
         {captureError && <p className="inline-error">{captureError}</p>}
       </Popup>
     </div>
