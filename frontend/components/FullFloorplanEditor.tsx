@@ -812,6 +812,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const [openingMeasurementValueInput, setOpeningMeasurementValueInput] = useState<number | null>(null);
   const [openingMeasurementError, setOpeningMeasurementError] = useState<string | null>(null);
   const [fixtureContextMenu, setFixtureContextMenu] = useState<FixtureContextMenu | null>(null);
+  const [fixtureDeleteConfirmation, setFixtureDeleteConfirmation] = useState<Obstacle | null>(null);
   const [fixtureMeasurementContextMenu, setFixtureMeasurementContextMenu] = useState<FixtureMeasurementContextMenu | null>(null);
   const [fixtureMeasurementValueInput, setFixtureMeasurementValueInput] = useState<number | null>(null);
   const [fixtureMeasurementError, setFixtureMeasurementError] = useState<string | null>(null);
@@ -1089,6 +1090,14 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const commitActiveDraft = useEffectEvent(() => commitDraft());
   const undoLastOperation = useEffectEvent(() => undo());
   const redoLastOperation = useEffectEvent(() => redo());
+  const requestSelectedFixtureDeletion = useEffectEvent(() => {
+    if (fixtureDeleteConfirmation || !selectedFixtureId) return;
+    const fixture = fixtures.find((item) => item.id === selectedFixtureId);
+    if (!fixture) return;
+    setFixtureContextMenu(null);
+    setFixtureMeasurementContextMenu(null);
+    setFixtureDeleteConfirmation(fixture);
+  });
   useEffect(() => {
     const finishActiveTool = (event: KeyboardEvent) => {
       if (!editorRoot.current || editorRoot.current.closest("[hidden]")) return;
@@ -1104,6 +1113,11 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
       if (!event.repeat && !event.shiftKey && !event.altKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
         event.preventDefault();
         redoLastOperation();
+        return;
+      }
+      if (!event.repeat && event.key === "Delete" && !(event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]"))) {
+        if (selectedFixtureId) event.preventDefault();
+        requestSelectedFixtureDeletion();
         return;
       }
       if (tool === "DRAW" && (event.key === "Enter" || event.key === "Escape")) {
@@ -1470,6 +1484,19 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
       const next = update(fixture);
       return selectedRoomDraft() ? constrainObstacleToRoom(next, selectedRoomDraft()!,next.center,planPlacementWalls) ?? fixture : fixture;
     }));
+  }
+
+  function confirmFixtureDeletion() {
+    const fixture = fixtureDeleteConfirmation;
+    if (!fixture || !onFixturesChange) return;
+    onFixturesChange(fixtures.filter((item) => item.id !== fixture.id));
+    if (selectedFixtureId === fixture.id) {
+      setSelectedFixtureId(null);
+      onElementSelected?.(null);
+    }
+    setFixtureDeleteConfirmation(null);
+    setFixtureContextMenu(null);
+    setFixtureMeasurementContextMenu(null);
   }
 
   function applyFixtureMeasurementValue() {
@@ -2685,6 +2712,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
 
     <Popup open={pendingRoomRemovalId !== null} title="Remove room?" message={`${rooms.find((room) => room.id === pendingRoomRemovalId)?.name ?? "This room"} will be removed. Shared walls belonging to neighbouring rooms will be kept.`} confirmLabel="Remove room" onConfirm={removeSelectedRoom} onCancel={() => setPendingRoomRemovalId(null)} />
     <Popup open={defaultWallThicknessConfirmOpen} title="Define default wall thickness?" message="Do you want to define a new default wall thickness? Walls with a custom wall thickness will not be affected." confirmLabel="Ok" onConfirm={confirmDefaultWallThickness} onCancel={cancelDefaultWallThickness} />
+    <Popup open={fixtureDeleteConfirmation !== null} title="Delete object?" message={fixtureDeleteConfirmation ? `Are you sure you want to delete the object "${fixtureDeleteConfirmation.name}"?` : ""} confirmLabel="Ok" onConfirm={confirmFixtureDeletion} onCancel={() => setFixtureDeleteConfirmation(null)} />
     {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyleLabel}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option>{FLOORPLAN_STYLE_OPTIONS.filter((option) => option.value !== "DEFAULT").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label><label className="export-attribution-toggle"><input type="checkbox" checked={includeAttribution} disabled={exporting} onChange={(event) => setIncludeAttribution(event.target.checked)} /><span>Include “Made with FreeFloorplan3D.com”</span></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
     {measurementContextMenu && <div className={`floorplan-context-menu ${measurementContextMenu.custom ? "" : "floorplan-value-menu measurement-value-menu"}`} role="menu" aria-label="Measurement actions" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{measurementContextMenu.custom ? "Measurement" : "Wall measurement"}</strong>
@@ -2707,7 +2735,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
       <button type="button" role="menuitem" onClick={() => { setOpeningContextMenu(null); }}>Edit values</button>
       <button type="button" role="menuitem" className="danger-button" onClick={() => { const id = openingContextMenu.id; setOpeningContextMenu(null); deleteOpeningById(id); }}>Delete opening</button>
     </div>}
-    {fixtureContextMenu && (() => { const fixture = fixtures.find((item) => item.id === fixtureContextMenu.id); return fixture ? <div className="floorplan-context-menu floorplan-value-menu" role="menu" aria-label="Fixture values" style={{ left: fixtureContextMenu.x, top: fixtureContextMenu.y }} onContextMenu={(event) => event.preventDefault()}><strong>{fixture.name}</strong><div className="context-coordinate-fields"><label>X <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={fixture.center.x} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, center: { ...item.center, x: value } }))} /></label><label>Y <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={fixture.center.y} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, center: { ...item.center, y: value } }))} /></label><label>Width <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixture.dimensions.width.value} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, width: { ...item.dimensions.width, value } } }))} /></label><label>Depth <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixture.dimensions.depth.value} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, depth: { ...item.dimensions.depth, value } } }))} /></label></div><button type="button" role="menuitem" onClick={() => setFixtureContextMenu(null)}>Done</button></div> : null; })()}
+    {fixtureContextMenu && (() => { const fixture = fixtures.find((item) => item.id === fixtureContextMenu.id); return fixture ? <div className="floorplan-context-menu floorplan-value-menu" role="menu" aria-label="Fixture values" style={{ left: fixtureContextMenu.x, top: fixtureContextMenu.y }} onContextMenu={(event) => event.preventDefault()}><strong>{fixture.name}</strong><div className="context-coordinate-fields"><label>X <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={fixture.center.x} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, center: { ...item.center, x: value } }))} /></label><label>Y <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={fixture.center.y} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, center: { ...item.center, y: value } }))} /></label><label>Width <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixture.dimensions.width.value} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, width: { ...item.dimensions.width, value } } }))} /></label><label>Depth <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixture.dimensions.depth.value} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, depth: { ...item.dimensions.depth, value } } }))} /></label></div><button type="button" role="menuitem" onClick={() => setFixtureContextMenu(null)}>Done</button><button type="button" role="menuitem" className="danger-button" onClick={() => { setFixtureContextMenu(null); setFixtureDeleteConfirmation(fixture); }}>Delete object</button></div> : null; })()}
     {contextMenu && <div className="floorplan-context-menu floorplan-value-menu" role="menu" aria-label={`${contextMenu.kind === "WALL" ? "Wall" : "Corner"} actions`} style={{ left: contextMenu.x, top: contextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{contextMenu.kind === "WALL" ? "Wall" : "Corner"}</strong>
       {contextMenu.kind === "WALL" && selectedWall && <><label>Wall length <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={wallLengthInput ?? wallLengthForSegment(selectedWall, contextMenu.segmentIndex)} units={displayUnits} onMmChange={setWallLengthInput} /></label><button type="button" role="menuitem" onClick={() => { applySelectedWallLength(); setContextMenu(null); }}>Apply wall length</button><label>Wall thickness <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} maxMm={2000} valueMm={wallThicknessInput?.key === `${contextMenu.wallId}:${contextMenu.segmentIndex}` ? wallThicknessInput.value : wallThicknessForSegment(selectedWall, contextMenu.segmentIndex, wallThickness)} units={displayUnits} onMmChange={(value) => setWallThicknessInput({ key: `${contextMenu.wallId}:${contextMenu.segmentIndex}`, value })} /></label><button type="button" role="menuitem" onClick={() => { setSelectedWallThickness(contextMenu.wallId, contextMenu.segmentIndex, wallThicknessInput?.key === `${contextMenu.wallId}:${contextMenu.segmentIndex}` ? wallThicknessInput.value : wallThicknessForSegment(selectedWall, contextMenu.segmentIndex, wallThickness)); setContextMenu(null); }}>Apply wall thickness</button><small className="context-help">Defaults to overall {formatLength(wallThickness, displayUnits)}.</small><button type="button" role="menuitem" onClick={() => resetSelectedWallThickness(contextMenu.wallId, contextMenu.segmentIndex)} disabled={selectedWall.thicknessOverridesMm?.[contextMenu.segmentIndex] === undefined}>Use overall thickness</button><button type="button" role="menuitem" className="danger-button" onClick={() => { const target = contextMenu; setContextMenu(null); removeSegment(target.wallId, target.segmentIndex); }}>Delete wall segment</button></>}
