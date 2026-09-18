@@ -533,7 +533,7 @@ button { font: inherit; }
 .coordinate-input-list input:hover { border-bottom-color: #c8d3cc; }
 .coordinate-input-list input:focus { outline: 0; border-bottom-color: var(--deep); background: rgba(232,241,236,.5); }
 .coordinate-prefix, .coordinate-comma { color: var(--ink); font: 700 11px var(--font-mono); white-space: nowrap; }
-.coordinate-prefix { min-width: 28px; }
+.coordinate-table-heading > :first-child, .coordinate-prefix { min-width: 28px; padding-left: 4px; box-sizing: border-box; }
 .primary-small, .validate-button { width: 100%; border-color: var(--deep); background: var(--deep); color: white; }
 .danger-button { width: 100%; color: var(--fail); border-color: #efc5c1; background: var(--fail-soft); }
 .drawing-column { min-width: 0; }
