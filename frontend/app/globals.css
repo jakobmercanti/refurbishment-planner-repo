@@ -118,7 +118,8 @@ button { font: inherit; }
 .opening-preview img, .opening-preview svg { width: 76px; height: 76px; object-fit: contain; }
 .opening-preview span { min-width: 0; overflow: hidden; font: 650 9px/1.35 var(--font-mono); text-overflow: ellipsis; }
 .fixture-editor > .fixture-save { width: 100%; margin-top: var(--toolbar-control-gap); padding: 12px; border-radius: 8px; background: var(--deep); color: white; }
-.mode-switch.element-tabs { position: sticky; top: 0; z-index: 2; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 6px 0; background: white; }
+.mode-switch.element-tabs { position: sticky; top: 0; z-index: 2; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; padding: 3px 0; background: white; }
+.mode-switch.element-tabs button { padding-block: 6px; }
 .catalogue-plan-link { font: 11px var(--font-mono); color: var(--deep); }
 .catalogue-object-preview.ellipse span { border-radius: 50%; }
 .catalogue-object-preview span { width: 54%; height: 42px; display: block; border-radius: 5px 5px 2px 2px; background: var(--object-colour); box-shadow: inset 0 -8px 0 rgba(0,0,0,.08), 0 8px 16px rgba(21,34,28,.16); }
