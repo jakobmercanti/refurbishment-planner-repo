@@ -1537,3 +1537,4 @@ button:disabled {
 @media (max-width: 560px) {
   .appearance-actions-row { gap: 8px; }
 }
+.element-add-editor .fixture-section-content > .element-inline-action { margin-top: 6px; }
