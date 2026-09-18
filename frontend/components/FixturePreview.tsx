@@ -1,6 +1,6 @@
 "use client";
 import { Canvas } from "@react-three/fiber";
-import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
+import { Bounds, Center, OrbitControls, useBounds } from "@react-three/drei";
 import { useEffect, useState } from "react";
 import { ParametricFixture } from "@/components/ParametricFixture";
 import type { Obstacle } from "@/lib/types";
@@ -38,9 +38,9 @@ export function FixturePreview({ obstacle, compact = false }: { obstacle: Obstac
       <ambientLight intensity={1.8} /><directionalLight position={[3, 5, 4]} intensity={3} />
       <Bounds fit clip observe margin={1.22} maxDuration={0.35}>
         <PreviewCameraFrame frameKey={frameKey} />
-        <group position={[0, -.45, 0]} rotation={[0, Number(obstacle.rotation_deg) * Math.PI / 180, 0]}><ParametricFixture obstacle={obstacle} width={width / largest} depth={depth / largest} height={height / largest} /></group>
+        <Center cacheKey={frameKey}><group rotation={[0, Number(obstacle.rotation_deg) * Math.PI / 180, 0]}><ParametricFixture obstacle={obstacle} width={width / largest} depth={depth / largest} height={height / largest} /></group></Center>
       </Bounds>
-      <OrbitControls enablePan={false} enableZoom={false} />
+      <OrbitControls makeDefault enablePan={false} enableZoom={false} />
     </Canvas>
     {compact && <span className="fixture-preview-hint" aria-hidden>{isExpanded ? "Click to collapse" : "Click to enlarge"}</span>}
   </div>;
