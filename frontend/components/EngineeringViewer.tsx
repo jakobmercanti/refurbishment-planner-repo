@@ -14,7 +14,7 @@ import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
 import { floorDesignColour, flooringSwatch, normalizeFloorDesign, TILE_MATERIALS } from "@/lib/flooring";
 import { Grid, Html, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
@@ -639,12 +639,15 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   );
 }
 
-function StlFixture({ obstacle, width, depth, height, colour }: { obstacle: Obstacle; width: number; depth: number; height: number; colour: string }) {
+function StlFixture({ obstacle, width, depth, height, colour, fallback }: { obstacle: Obstacle; width: number; depth: number; height: number; colour: string; fallback: ReactNode }) {
   const geometry = useMemo(() => {
     if (!obstacle.stl_base64) return null;
     try {
-      const encoded = obstacle.stl_base64.includes(",") ? obstacle.stl_base64.split(",", 2)[1] : obstacle.stl_base64;
-      const binary = window.atob(encoded);
+      const source = obstacle.stl_base64.trim();
+      const encoded = source.includes(",") ? source.slice(source.indexOf(",") + 1) : source;
+      const normalized = encoded.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+      const padded = normalized.padEnd(normalized.length + (4 - normalized.length % 4) % 4, "=");
+      const binary = window.atob(padded);
       const bytes = new Uint8Array(binary.length);
       for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
       const parsed = new STLLoader().parse(bytes.buffer);
@@ -660,9 +663,10 @@ function StlFixture({ obstacle, width, depth, height, colour }: { obstacle: Obst
         if (!box) return null;
       }
       const size = box.getSize(new THREE.Vector3());
+      if (![size.x, size.y, size.z].every((value) => Number.isFinite(value) && value > 1e-6)) return null;
       const centre = box.getCenter(new THREE.Vector3());
       parsed.translate(-centre.x, -box.min.y, -centre.z);
-      parsed.scale(width / Math.max(size.x, 1e-6), height / Math.max(size.y, 1e-6), depth / Math.max(size.z, 1e-6));
+      parsed.scale(width / size.x, height / size.y, depth / size.z);
       parsed.computeBoundingSphere();
       return parsed;
     } catch {
@@ -670,8 +674,49 @@ function StlFixture({ obstacle, width, depth, height, colour }: { obstacle: Obst
     }
   }, [depth, height, obstacle.stl_base64, width]);
   useEffect(() => () => geometry?.dispose(), [geometry]);
-  if (!geometry) return null;
+  if (!geometry) return fallback;
   return <mesh geometry={geometry} castShadow receiveShadow><meshStandardMaterial color={colour} roughness={0.56} metalness={0.04} /></mesh>;
+}
+
+function safeRenderDimension(value: number, fallback: number) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
+}
+
+function ProceduralFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
+  const fixtureKind = fixtureKindForObstacle(obstacle);
+  const customColour = obstacle.color_hex;
+  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
+    return <ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} />;
+  }
+
+  if (fixtureKind === "FURNITURE") {
+    if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(obstacle.representation_key ?? "")) {
+      return <RoomFurniture materials={obstacle.component_materials} physicalSize={[width / SCALE, height / SCALE, depth / SCALE]} colours={resolvedPartColours(obstacle)} representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} />;
+    }
+    const isBench = obstacle.model_id?.includes("bench");
+    return <>
+      <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[width, height, depth]} />
+        <meshStandardMaterial color={customColour ?? (isBench ? "#a88762" : "#b99b77")} roughness={0.72} />
+      </mesh>
+      {!isBench && <>
+        <mesh position={[0, height * 0.55, depth / 2 + 0.004]}>
+          <boxGeometry args={[width * 0.88, height * 0.78, 0.012]} />
+          <meshStandardMaterial color="#ceb798" roughness={0.66} />
+        </mesh>
+        <mesh position={[width * 0.34, height * 0.55, depth / 2 + 0.014]}>
+          <sphereGeometry args={[0.018, 16, 12]} />
+          <meshStandardMaterial color="#4e5755" metalness={0.55} roughness={0.3} />
+        </mesh>
+      </>}
+    </>;
+  }
+
+  return <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
+    <boxGeometry args={[width, height, depth]} />
+    <meshStandardMaterial color="#8a7765" roughness={0.72} />
+  </mesh>;
 }
 
 function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPointerUp }: {
@@ -681,76 +726,31 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
   onPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
   onPointerUp?: (event: ThreeEvent<PointerEvent>) => void;
 }) {
-  const fixtureKind = fixtureKindForObstacle(obstacle);
-  const width = obstacle.dimensions.width.value * SCALE;
-  const depth = obstacle.dimensions.depth.value * SCALE;
-  const height = obstacle.dimensions.height.value * SCALE;
-  const position: [number, number, number] = [
-    obstacle.center.x * SCALE,
-    obstacle.base_z_mm * SCALE,
-    -obstacle.center.y * SCALE,
-  ];
-  const rotation: [number, number, number] = [0, THREE.MathUtils.degToRad(obstacle.rotation_deg), 0];
-  const interactionProps = {
-    onPointerDown,
-    onPointerMove,
-    onPointerUp,
-  };
-  const customColour = obstacle.color_hex;
+  const sourceDimensions = [obstacle.dimensions.width.value, obstacle.dimensions.depth.value, obstacle.dimensions.height.value].map(Number);
+  const fallbackDimension = Math.max(...sourceDimensions.filter(value => Number.isFinite(value) && value > 0), 1000);
+  const width = safeRenderDimension(obstacle.dimensions.width.value, fallbackDimension) * SCALE;
+  const depth = safeRenderDimension(obstacle.dimensions.depth.value, fallbackDimension) * SCALE;
+  const height = safeRenderDimension(obstacle.dimensions.height.value, fallbackDimension) * SCALE;
+  const centerX = Number.isFinite(Number(obstacle.center.x)) ? Number(obstacle.center.x) : 0;
+  const centerY = Number.isFinite(Number(obstacle.center.y)) ? Number(obstacle.center.y) : 0;
+  const baseZ = Number.isFinite(Number(obstacle.base_z_mm)) && Number(obstacle.base_z_mm) >= 0 ? Number(obstacle.base_z_mm) : 0;
+  const rotationValue = Number.isFinite(Number(obstacle.rotation_deg)) ? Number(obstacle.rotation_deg) : 0;
+  const position: [number, number, number] = [centerX * SCALE, baseZ * SCALE, -centerY * SCALE];
+  const rotation: [number, number, number] = [0, THREE.MathUtils.degToRad(rotationValue), 0];
+  const interactionProps = { onPointerDown, onPointerMove, onPointerUp };
   const selectionRing = selected ? (
     <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[Math.max(width, depth) * 0.62, Math.max(width, depth) * 0.68, 48]} />
       <meshBasicMaterial color="#b8640c" transparent opacity={0.9} side={THREE.DoubleSide} />
     </mesh>
   ) : null;
+  const procedural = <ProceduralFixture obstacle={obstacle} width={width} depth={depth} height={height} />;
 
-  if (obstacle.stl_base64) {
-    return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={resolvedPartColours(obstacle).body ?? customColour ?? "#b99b77"} /></group>;
-  }
-
-  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
-    return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} /></group>;
-  }
-
-  if (fixtureKind === "FURNITURE") {
-    if (/^furniture-(sofa|armchair|chair|bed|table)-/.test(obstacle.representation_key ?? "")) {
-      return <group position={position} rotation={rotation} {...interactionProps}>{selectionRing}<RoomFurniture materials={obstacle.component_materials} physicalSize={[obstacle.dimensions.width.value, obstacle.dimensions.height.value, obstacle.dimensions.depth.value]} colours={resolvedPartColours(obstacle)} representation={obstacle.representation_key!} colour={customColour ?? "#b99b77"} secondaryColour={obstacle.secondary_color_hex} hardwareColour={obstacle.hardware_color_hex} width={width} depth={depth} height={height} /></group>;
-    }
-    const isBench = obstacle.model_id?.includes("bench");
-    return (
-      <group position={position} rotation={rotation} {...interactionProps}>
-        {selectionRing}
-        <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[width, height, depth]} />
-          <meshStandardMaterial color={customColour ?? (isBench ? "#a88762" : "#b99b77")} roughness={0.72} />
-        </mesh>
-        {!isBench && <>
-          <mesh position={[0, height * 0.55, depth / 2 + 0.004]}>
-            <boxGeometry args={[width * 0.88, height * 0.78, 0.012]} />
-            <meshStandardMaterial color="#ceb798" roughness={0.66} />
-          </mesh>
-          <mesh position={[width * 0.34, height * 0.55, depth / 2 + 0.014]}>
-            <sphereGeometry args={[0.018, 16, 12]} />
-            <meshStandardMaterial color="#4e5755" metalness={0.55} roughness={0.3} />
-          </mesh>
-        </>}
-      </group>
-    );
-  }
-
-  return (
-    <mesh
-      position={[position[0], position[1] + height / 2, position[2]]}
-      rotation={rotation}
-      castShadow
-      {...interactionProps}
-    >
-      <boxGeometry args={[width, height, depth]} />
-      <meshStandardMaterial color="#8a7765" roughness={0.72} />
-    </mesh>
-  );
+  return <group position={position} rotation={rotation} {...interactionProps}>
+    {selectionRing}
+    {obstacle.stl_base64 ? <StlFixture obstacle={obstacle} width={width} depth={depth} height={height} colour={resolvedPartColours(obstacle).body ?? obstacle.color_hex ?? "#b99b77"} fallback={procedural} /> : procedural}
+  </group>;
 }
-
 function DoorSwingLeaf({
   hinge,
   initial,
