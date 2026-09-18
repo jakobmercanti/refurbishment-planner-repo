@@ -60,6 +60,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const [editingId, setEditingId] = useState<string | null>(null);
   const [wallLockPreference, setWallLockPreference] = useState(true);
   const [selectorOpen, setSelectorOpen] = useState<SelectorLevel | null>(null);
+  const [selectorExpanded, setSelectorExpanded] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -169,6 +170,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const activeCategoryDisplay = activeCategory ? (activeCategory === "storage" ? "Elements" : macroCategories.find(([id]) => id === activeCategory)?.[1] ?? "") : "";
   function selectMacroCategory(nextMacro: MacroCategoryId) {
     if (nextMacro === activeMacroCategory) {
+      setSelectorExpanded(true);
       setSelectorOpen("subcategory");
       return;
     }
@@ -178,10 +180,12 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setDraft(null);
     setEditingId(null);
     setBaseHeightExpanded(false);
+    setSelectorExpanded(true);
     setSelectorOpen("subcategory");
   }
   function selectCategory(nextCategory: string) {
     if (nextCategory === activeCategory) {
+      setSelectorExpanded(true);
       setSelectorOpen("object");
       return;
     }
@@ -190,18 +194,28 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setDraft(null);
     setEditingId(null);
     setBaseHeightExpanded(false);
+    setSelectorExpanded(true);
     setSelectorOpen("object");
   }
   function selectObject(item: RoomCatalogueItem) {
     choose(item);
     setSelectorOpen(null);
+    setSelectorExpanded(false);
   }
   const positionSummary = value ? `X ${formatLength(value.center.x, displayUnits)} · Y ${formatLength(value.center.y, displayUnits)} · Rot ${value.rotation_deg.toFixed(0)}°` : "Set placement coordinates";
   const dimensionsSummary = value ? `${formatLength(value.dimensions.width.value, displayUnits)} × ${formatLength(value.dimensions.depth.value, displayUnits)} × ${formatLength(value.dimensions.height.value, displayUnits)}` : "Set object dimensions";
   const baseHeightRelevant = Boolean(value && (cabinet || stairModel || value.base_z_mm > 0 || baseHeightExpanded));
   return <section className="fixture-editor element-add-editor" aria-label="Add elements">
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
-    <div className="fixture-cascading-selector" ref={selectorRef} aria-label="Element catalogue selector">
+    <div className="fixture-cascading-menu" ref={selectorRef}>
+      {!selectorExpanded ? <div className="fixture-cascading-collapsed">
+        <strong>{selectedObjectLabel || "Select object"}</strong>
+        <button type="button" aria-label="Expand element selector" aria-expanded={false} onClick={() => setSelectorExpanded(true)}>▾</button>
+      </div> : <div className="fixture-cascading-selector" aria-label="Element catalogue selector">
+        <div className="fixture-cascading-menu-header">
+          <strong>{selectedObjectLabel || "Select object"}</strong>
+          <button type="button" aria-label="Collapse element selector" aria-expanded={true} onClick={() => { setSelectorOpen(null); setSelectorExpanded(false); }}>▴</button>
+        </div>
       <div className="fixture-cascading-level">
         <button type="button" className="fixture-cascading-trigger" aria-expanded={selectorOpen === "category"} aria-controls="fixture-category-options" onClick={() => setSelectorOpen(current => current === "category" ? null : "category")}>
           <span className="fixture-cascading-trigger-copy"><span>Category</span><strong className={!activeMacroCategory ? "placeholder" : undefined}>{activeMacroCategory ? macroCategoryDisplay(activeMacroCategory) : "Select category"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{selectorOpen === "category" ? "▴" : "▾"}</span>
@@ -226,6 +240,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
           {objects.map(item => <button type="button" role="option" aria-selected={item.id === selected?.id} className={item.id === selected?.id ? "selected" : undefined} key={item.id} onClick={() => selectObject(item)}>{item.name.replace(/^Default /i, "")}{!item.is_default ? ` / ${item.supplier}` : ""}</button>)}
         </div>}
       </div>
+        </div>}
     </div>
     {value && <>
       {!value.stl_base64 && <FixturePreview obstacle={value} compact />}
