@@ -64,6 +64,7 @@ type FullOpening = {
 };
 type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[]; wallThickness?: number; rooms?: NamedOutline[]; selectedRoomId?: string | null };
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
+type OpeningDrag = { openingId: string; before: Snapshot; wallId: string; segmentIndex: number; sideSign: -1 | 1; initialOpensInward: boolean };
 type RoomLabelDrag = { roomId: string; before: Snapshot; pointerStart: Point2D; labelStart: Point2D; moved: boolean };
 type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number; roomFinishes?: Record<string, RoomFinishes>; viewSettings?: PersistedViewSettings };
 interface Props extends PlacementProps { viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
@@ -462,6 +463,13 @@ function pointOnSegment(point: Point2D, start: Point2D, end: Point2D): { point: 
   return { point: { x: start.x + dx * along, y: start.y + dy * along }, along };
 }
 
+function signedWallSide(point: Point2D, start: Point2D, end: Point2D): number {
+  const length = Math.hypot(end.x - start.x, end.y - start.y);
+  if (!length) return 0;
+  const projection = pointOnSegment(point, start, end).point;
+  return ((end.x - start.x) * (point.y - projection.y) - (end.y - start.y) * (point.x - projection.x)) / length;
+}
+
 type MeasurementGeometry = { start: Point2D; end: Point2D; length: number };
 
 /**
@@ -831,7 +839,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const wallDrag = useRef<WallDrag | null>(null);
   const pendingOpeningRemap = useRef<{ beforeWalls: Wall[]; openings: FullOpening[] } | null>(null);
   const draftStartAttachment = useRef<WallAttachment | null>(null);
-  const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
+  const openingDrag = useRef<OpeningDrag | null>(null);
   const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
   const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
   const fixtureDrag = useRef<{ id: string; original: Obstacle; offset: Point2D; candidate: PlacementCandidate | null } | null>(null);
@@ -1921,7 +1929,14 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
       return;
     }
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
-    openingDrag.current = { openingId: opening.id, before: snapshot() }; selectOpeningForEdit(opening);
+    const svg = event.currentTarget.ownerSVGElement;
+    const wall = walls.find((item) => item.id === opening.wallId);
+    const start = wall?.points[opening.segmentIndex];
+    const end = wall?.points[opening.segmentIndex + 1];
+    const pointer = svg ? canvasPointFromClient(event.clientX, event.clientY, svg, false) : null;
+    const distanceFromWall = pointer && start && end ? signedWallSide(pointer, start, end) : 0;
+    const sideSign = (Math.abs(distanceFromWall) > 1 ? Math.sign(distanceFromWall) : opening.opensInward ? 1 : -1) as -1 | 1;
+    openingDrag.current = { openingId: opening.id, before: snapshot(), wallId: opening.wallId, segmentIndex: opening.segmentIndex, sideSign, initialOpensInward: opening.opensInward }; selectOpeningForEdit(opening);
   }
 
   function selectOpeningForEdit(opening: FullOpening) {
@@ -2102,7 +2117,14 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
       return { wall, segmentIndex, distance: Math.hypot(pointer.x - projection.point.x, pointer.y - projection.point.y), offset };
     })).filter((item): item is { wall: Wall; segmentIndex: number; distance: number; offset: number } => item.offset !== null).sort((first, second) => first.distance - second.distance)[0];
     if (!nearest) return true;
-    setOpenings((current) => current.map((item) => item.id === opening.id ? { ...item, wallId: nearest.wall.id, segmentIndex: nearest.segmentIndex, offset: nearest.offset } : item));
+    const sameWallSegment = nearest.wall.id === active.wallId && nearest.segmentIndex === active.segmentIndex;
+    const distanceFromWall = signedWallSide(pointer, nearest.wall.points[nearest.segmentIndex], nearest.wall.points[nearest.segmentIndex + 1]);
+    const sideSign = Math.abs(distanceFromWall) > 1 ? Math.sign(distanceFromWall) as -1 | 1 : active.sideSign;
+    const nextOpensInward = sameWallSegment
+      ? sideSign === active.sideSign ? active.initialOpensInward : !active.initialOpensInward
+      : opening.opensInward;
+    setOpenings((current) => current.map((item) => item.id === opening.id ? { ...item, wallId: nearest.wall.id, segmentIndex: nearest.segmentIndex, offset: nearest.offset, ...(opening.kind === "DOOR" && sameWallSegment ? { opensInward: nextOpensInward } : {}) } : item));
+    if (opening.kind === "DOOR" && sameWallSegment) setOpensInward(nextOpensInward);
     setSelectedSegment({ wallId: nearest.wall.id, segmentIndex: nearest.segmentIndex }); setOpeningParent(parentKey(nearest.wall.id, nearest.segmentIndex)); setOpeningOffset(nearest.offset);
     return true;
   }
