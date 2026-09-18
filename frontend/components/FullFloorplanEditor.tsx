@@ -3,7 +3,7 @@ import { RoomOpeningEditor } from "@/components/RoomOpeningEditor";
 import { createPortal } from "react-dom";
 import { doorModel } from "@/lib/doorModels";
 
-import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
 import { OpeningPreview, openingPreviewObstacle } from "@/components/OpeningPreview";
 import { Popup } from "@/components/Popup";
@@ -19,7 +19,7 @@ import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeni
 import { filledToolbarDock, FloatingToolbar } from "@/components/FloatingToolbar";
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { closestValidOpeningOffset, cornerOffsetsOnWallSegment, isOpeningPlacementValid } from "@/lib/openingPlacement";
-import { translateWallAndAttachedOpenings } from "@/lib/openingWallDrag";
+import { remapOpeningsAfterWallDrag, translateWallAndAttachedOpenings } from "@/lib/openingWallDrag";
 import { closedRooms as detectClosedRooms } from "@/lib/roomDetection";
 import { addRoomOutsideWall, removeRoomBoundary } from "@/lib/roomOperations";
 import { needsWallThicknessOverride } from "@/lib/wallThickness";
@@ -829,6 +829,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const coordinateRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
   const wallDrag = useRef<WallDrag | null>(null);
+  const pendingOpeningRemap = useRef<{ beforeWalls: Wall[]; openings: FullOpening[] } | null>(null);
   const draftStartAttachment = useRef<WallAttachment | null>(null);
   const openingDrag = useRef<{ openingId: string; before: Snapshot } | null>(null);
   const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
@@ -889,6 +890,12 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const storedRoom = projectRooms.find(room => room.source_floorplan_room_id === selectedRoom?.id);
   const fixtures = storedRoom?.obstacles ?? (selectedRoom?.id === activeSourceRoomId ? currentFixtures : []);
   const visibleFixtures = [...projectRooms.filter(room => rooms.some(outline => outline.id === room.source_floorplan_room_id) && room.source_floorplan_room_id !== selectedRoom?.id).flatMap(room => room.obstacles), ...fixtures];
+  useLayoutEffect(() => {
+    const pending = pendingOpeningRemap.current;
+    if (!pending) return;
+    pendingOpeningRemap.current = null;
+    setOpenings(remapOpeningsAfterWallDrag(pending.beforeWalls, walls, pending.openings));
+  }, [walls]);
   const wallDimensionOffsetFor = (wall: Wall, segmentIndex: number) => Math.max(32, (200 + (showWallThickness ? wallThicknessForSegment(wall, segmentIndex, wallThickness) / 2 : 0)) * activeViewport.scale);
   const openingCatalogueForKind = useMemo(() => openingCatalogueItems.filter((item) => item.fixture_kind === openingKind), [openingCatalogueItems, openingKind]);
   const openingCatalogueCategories = useMemo<OpeningCatalogueCategory[]>(() => {
@@ -1884,16 +1891,20 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
     const materialized = materializeWallJunctionsForSelection(historyBefore.walls, wall.id, segmentIndex, pointerStart);
     const materializedSnapshot = remapSnapshotForMaterializedSelection(historyBefore, materialized);
     const separatedStart = separateParallelSegmentStartForDrag(materializedSnapshot.walls, wall.id, materialized.segmentIndex);
-    const separatedEnd = separateParallelSegmentEndForDrag(separatedStart.walls, wall.id, separatedStart.segmentIndex);
+    const separatedStartOpenings = remapOpeningsAfterWallDrag(materializedSnapshot.walls, separatedStart.walls, materializedSnapshot.openings);
+    const separatedSnapshot = { ...materializedSnapshot, walls: separatedStart.walls as Wall[], openings: separatedStartOpenings };
+    const separatedEnd = separateParallelSegmentEndForDrag(separatedSnapshot.walls, wall.id, separatedStart.segmentIndex);
+    const separatedEndOpenings = remapOpeningsAfterWallDrag(separatedSnapshot.walls, separatedEnd.walls, separatedSnapshot.openings);
     const detachedPointIndices = [separatedStart.detachedPointIndex, separatedEnd.detachedEndPointIndex].filter((pointIndex): pointIndex is number => pointIndex !== undefined);
     const keepDetachedPointIndices = [
       ...(separatedStart.keepDetachedPointHidden && separatedStart.detachedPointIndex !== undefined ? [separatedStart.detachedPointIndex] : []),
       ...(separatedEnd.keepDetachedEndPointHidden && separatedEnd.detachedEndPointIndex !== undefined ? [separatedEnd.detachedEndPointIndex] : []),
     ];
-    const before = { ...materializedSnapshot, walls: separatedEnd.walls as Wall[] };
+    const before = { ...separatedSnapshot, walls: separatedEnd.walls as Wall[], openings: separatedEndOpenings };
     const selectedWall = before.walls.find((candidate) => candidate.id === wall.id);
     if (!selectedWall) return;
     event.stopPropagation(); svg.setPointerCapture(event.pointerId);
+    pendingOpeningRemap.current = null;
     wallDrag.current = { wallId: wall.id, segmentIndex: separatedEnd.segmentIndex, detachedPointIndices, keepDetachedPointIndices, before, historyBefore, points: selectedWall.points.map((point) => ({ ...point })), pointerStart };
     if (materialized.splitAlong.length || detachedPointIndices.length) {
       setWallsRespectingMeasurements(cloneWalls(before.walls)); setOpenings(cloneOpenings(before.openings)); setMeasurements(cloneMeasurements(before.measurements));
@@ -2230,7 +2241,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
         const directConstraints = directCandidate.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
         return directConstraints ? assignStableCornerNumbers(directCandidate) : current;
       });
-      setOpenings(openingConstrained.openings);
+      pendingOpeningRemap.current = { beforeWalls: activeWall.before.walls, openings: openingConstrained.openings };
       return;
     }
     if (!pointDrag.current) return;
@@ -2283,7 +2294,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
       return;
     }
     if (openingDrag.current) { const before = openingDrag.current.before; openingDrag.current = null; setLockedViewport(null); record(before); return; }
-    if (wallDrag.current) { const before = wallDrag.current.historyBefore; wallDrag.current = null; setLockedViewport(null); record(before); return; }
+    if (wallDrag.current) { const before = wallDrag.current.historyBefore; wallDrag.current = null; pendingOpeningRemap.current = null; setLockedViewport(null); record(before); return; }
     if (!pointDrag.current) return;
     const before = pointDrag.current.before; pointDrag.current = null; setLockedViewport(null); record(before);
     setOpenings((current) => current.filter((opening) => openingPlacementIsValid(opening, walls, current)));

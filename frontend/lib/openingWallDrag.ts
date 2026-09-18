@@ -1,9 +1,64 @@
 export type OpeningWallDragPoint = { x: number; y: number };
-export type OpeningWallDragWall = { id: string; points: OpeningWallDragPoint[] };
+export type OpeningWallDragWall = { id: string; points: OpeningWallDragPoint[]; cornerNumbers?: Record<number, number> };
 export type OpeningWallDragOpening = { id: string; wallId: string; segmentIndex: number; offset: number; width: number };
 
 function samePoint(first: OpeningWallDragPoint, second: OpeningWallDragPoint) {
   return Math.hypot(first.x - second.x, first.y - second.y) <= .001;
+}
+
+/**
+ * Keep an opening on the same physical wall span after a drag materializes a
+ * junction and inserts a point before its stored segment index.
+ */
+export function remapOpeningsAfterWallDrag<TWall extends OpeningWallDragWall, TOpening extends OpeningWallDragOpening>(
+  beforeWalls: TWall[],
+  nextWalls: TWall[],
+  openings: TOpening[],
+): TOpening[] {
+  return openings.map((opening) => {
+    const beforeWall = beforeWalls.find((wall) => wall.id === opening.wallId);
+    const nextWall = nextWalls.find((wall) => wall.id === opening.wallId);
+    if (!beforeWall || !nextWall) return opening;
+    const beforeClosed = samePoint(beforeWall.points[0], beforeWall.points.at(-1)!);
+    const beforeStartIndex = opening.segmentIndex;
+    const beforeEndIndex = beforeClosed && beforeStartIndex + 1 === beforeWall.points.length - 1 ? 0 : beforeStartIndex + 1;
+    if (!beforeWall.points[beforeStartIndex] || !beforeWall.points[beforeEndIndex]) return opening;
+
+    const startNumber = beforeWall.cornerNumbers?.[beforeStartIndex];
+    const endNumber = beforeWall.cornerNumbers?.[beforeEndIndex];
+    if (startNumber === undefined || endNumber === undefined || !nextWall.cornerNumbers) return opening;
+    const nextStartIndex = Number(Object.entries(nextWall.cornerNumbers).find(([, number]) => number === startNumber)?.[0]);
+    const nextEndIndex = Number(Object.entries(nextWall.cornerNumbers).find(([, number]) => number === endNumber)?.[0]);
+    const nextClosed = samePoint(nextWall.points[0], nextWall.points.at(-1)!);
+    const nextUniqueCount = nextClosed ? nextWall.points.length - 1 : nextWall.points.length;
+    if (!Number.isInteger(nextStartIndex) || !Number.isInteger(nextEndIndex) || nextStartIndex < 0 || nextEndIndex < 0 || nextStartIndex >= nextUniqueCount || nextEndIndex >= nextUniqueCount) return opening;
+
+    const path: Array<{ segmentIndex: number; length: number }> = [];
+    let cursor = nextStartIndex;
+    for (let step = 0; step <= nextUniqueCount; step += 1) {
+      if (cursor === nextEndIndex) break;
+      const nextIndex = cursor + 1 < nextUniqueCount ? cursor + 1 : (nextClosed ? 0 : nextUniqueCount);
+      const start = nextWall.points[cursor];
+      const end = nextWall.points[nextIndex];
+      if (!start || !end) return opening;
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (!length) return opening;
+      path.push({ segmentIndex: cursor, length });
+      cursor = nextIndex;
+    }
+    if (cursor !== nextEndIndex || !path.length) return opening;
+
+    const openingStart = Math.max(0, opening.offset);
+    const openingEnd = openingStart + Math.max(0, opening.width);
+    let distance = 0;
+    const target = path.find((segment) => {
+      const fits = openingStart >= distance - .01 && openingEnd <= distance + segment.length + .01;
+      if (!fits) distance += segment.length;
+      return fits;
+    });
+    if (!target) return opening;
+    return { ...opening, segmentIndex: target.segmentIndex, offset: Math.max(0, openingStart - distance) } as TOpening;
+  });
 }
 
 /**
