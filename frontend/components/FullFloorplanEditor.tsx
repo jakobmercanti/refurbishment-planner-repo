@@ -56,6 +56,7 @@ type ExportStyle = "CURRENT" | FloorplanStyle;
 type ExportFormat = "PDF" | "PNG" | "JPG";
 type SaveFileHandle = { createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> };
 type OpeningCatalogueCategory = { id: string; label: string; items: CatalogueItem[] };
+type OpeningSelectorLevel = "category" | "object";
 type PersistedViewSettings = { showGrid?: boolean; showMeasurements?: boolean; showRoomNames?: boolean; showWallThickness?: boolean; zoom?: number; pan?: Point2D };
 type FullOpening = {
   id: string; kind: "DOOR" | "WINDOW"; wallId: string; segmentIndex: number;
@@ -795,6 +796,8 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const [windowSill, setWindowSill] = useState(900);
   const [openingPositionExpanded, setOpeningPositionExpanded] = useState(false);
   const [openingDimensionsExpanded, setOpeningDimensionsExpanded] = useState(false);
+  const [openingSelectorExpanded, setOpeningSelectorExpanded] = useState(false);
+  const [openingSelectorOpen, setOpeningSelectorOpen] = useState<OpeningSelectorLevel | null>(null);
   const [doorType, setDoorType] = useState<"SINGLE" | "DOUBLE">("SINGLE");
   const [hingeSide, setHingeSide] = useState<"START" | "END">("START");
   const [opensInward, setOpensInward] = useState(true);
@@ -806,6 +809,7 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
   const [openingCatalogueId, setOpeningCatalogueId] = useState("");
   const [openingComponentColours, setOpeningComponentColours] = useState<Record<string, string>>({});
   const [doorCustomColour, setDoorCustomColour] = useState("#5b4330");
+  const openingSelectorRef = useRef<HTMLDivElement>(null);
   const [measurements, setMeasurements] = useState<CustomMeasurement[]>([]);
   const [dimensionOffsets, setDimensionOffsets] = useState<Record<string, number>>({});
   const [hiddenDimensions, setHiddenDimensions] = useState<string[]>([]);
@@ -905,6 +909,21 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
     setOpenings(remapOpeningsAfterWallDrag(pending.beforeWalls, walls, pending.openings));
   }, [walls]);
   const wallDimensionOffsetFor = (wall: Wall, segmentIndex: number) => Math.max(32, (200 + (showWallThickness ? wallThicknessForSegment(wall, segmentIndex, wallThickness) / 2 : 0)) * activeViewport.scale);
+  useEffect(() => {
+    if (!openingSelectorOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!openingSelectorRef.current?.contains(event.target as Node)) setOpeningSelectorOpen(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpeningSelectorOpen(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openingSelectorOpen]);
   const openingCatalogueForKind = useMemo(() => openingCatalogueItems.filter((item) => item.fixture_kind === openingKind), [openingCatalogueItems, openingKind]);
   const openingCatalogueCategories = useMemo<OpeningCatalogueCategory[]>(() => {
     const categories = new Map<string, OpeningCatalogueCategory>();
@@ -943,11 +962,23 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
     setOpeningComponentColours({});
     setDoorCustomColour(item.color_hex);
   }
+  function selectOpeningCategory(category: OpeningCatalogueCategory) {
+    applyOpeningCatalogueItem(category.items.find((item) => item.is_default) ?? category.items[0]);
+    setOpeningSelectorExpanded(true);
+    setOpeningSelectorOpen("object");
+  }
+  function selectOpeningObject(item: CatalogueItem) {
+    applyOpeningCatalogueItem(item);
+    setOpeningSelectorOpen(null);
+    setOpeningSelectorExpanded(false);
+  }
   function selectOpeningKind(kind: "DOOR" | "WINDOW") {
     onElementSelected?.(null);
     setOpeningComponentColours({});
     setOpeningPositionExpanded(false);
     setOpeningDimensionsExpanded(false);
+    setOpeningSelectorOpen(null);
+    setOpeningSelectorExpanded(false);
     setElementTab(kind);
     setOpeningKind(kind);
     const item = defaultOpeningCatalogueItem(kind);
@@ -2507,10 +2538,32 @@ export function FullFloorplanEditor({ onPlacementWallsChange, placement, onBegin
     <div className="mode-switch element-tabs" role="tablist" aria-label="Element type">{(["DOOR", "WINDOW", "FURNITURE"] as const).filter(tab => !openingEditorTarget || tab !== "FURNITURE").map(tab => <button key={tab} role="tab" aria-selected={elementTab === tab} className={elementTab === tab ? "active" : ""} onClick={() => tab === "FURNITURE" ? setElementTab(tab) : selectOpeningKind(tab)}>{tab === "FURNITURE" ? "Elements" : tab[0] + tab.slice(1).toLowerCase()}</button>)}</div>
     {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add elements.</p> : elementTab === "FURNITURE" && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedRoom!.id}-${elementEditRequest?.requestId ?? "new"}`} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={elementEditRequest} onEditEnd={() => onElementSelected?.(null)} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={onBeginPlacement} /> : <>
     <p className="tool-note">Choose a variant and click Add. Select a wall first to use its offset, or place the preview on a wall with the cursor.</p>
-    <div className="opening-catalogue-selectors compact-catalogue-selectors">
-      <label className="field"><span>Category</span><select aria-label={openingKind === "DOOR" ? "Door category" : "Window category"} title={activeOpeningCategory?.label ?? ""} value={activeOpeningCategory?.id ?? ""} onChange={(event) => { const category = openingCatalogueCategories.find((candidate) => candidate.id === event.target.value); applyOpeningCatalogueItem(category?.items.find((item) => item.is_default) ?? category?.items[0]); }}>{openingCatalogueCategories.length === 0 && <option value="">Loading catalogue categories…</option>}{openingCatalogueCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
-      <label className="field"><span>Object</span><select aria-label={openingKind === "DOOR" ? "Door object" : "Window object"} title={activeOpeningCatalogueItem?.subcategory ?? ""} value={activeOpeningCatalogueItem?.id ?? ""} onChange={(event) => applyOpeningCatalogueItem(activeOpeningCategory?.items.find((item) => item.id === event.target.value))}>{activeOpeningCategory?.items.map((item) => <option key={item.id} value={item.id}>{item.subcategory}</option>)}{openingCatalogueForKind.length === 0 && <option value="">Loading catalogue objects…</option>}</select></label>
-      {activeOpeningCatalogueItem && <small className="catalogue-selection-caption">{activeOpeningCatalogueItem.subcategory}</small>}
+    <div className="fixture-cascading-menu opening-cascading-menu" ref={openingSelectorRef}>
+      {!openingSelectorExpanded ? <div className="fixture-cascading-collapsed">
+        <strong>{activeOpeningCatalogueItem?.name?.replace(/^Default /i, "") || "Select object"}</strong>
+        <button type="button" aria-label={`Expand ${openingKind === "DOOR" ? "door" : "window"} selector`} aria-expanded={false} onClick={() => setOpeningSelectorExpanded(true)}>▾</button>
+      </div> : <div className="fixture-cascading-selector" aria-label={`${openingKind === "DOOR" ? "Door" : "Window"} catalogue selector`}>
+        <div className="fixture-cascading-menu-header">
+          <strong>{activeOpeningCatalogueItem?.name?.replace(/^Default /i, "") || "Select object"}</strong>
+          <button type="button" aria-label={`Collapse ${openingKind === "DOOR" ? "door" : "window"} selector`} aria-expanded={true} onClick={() => { setOpeningSelectorOpen(null); setOpeningSelectorExpanded(false); }}>▴</button>
+        </div>
+        <div className="fixture-cascading-level">
+          <button type="button" className="fixture-cascading-trigger" disabled={!openingCatalogueCategories.length} aria-expanded={openingSelectorOpen === "category"} aria-controls="opening-category-options" onClick={() => setOpeningSelectorOpen((current) => current === "category" ? null : "category")}>
+            <span className="fixture-cascading-trigger-copy"><span>Category</span><strong className={!activeOpeningCategory ? "placeholder" : undefined}>{activeOpeningCategory?.label || "Select category"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{openingSelectorOpen === "category" ? "▴" : "▾"}</span>
+          </button>
+          {openingSelectorOpen === "category" && <div id="opening-category-options" className="fixture-cascading-options" role="listbox" aria-label={`${openingKind === "DOOR" ? "Door" : "Window"} categories`}>
+            {openingCatalogueCategories.map((category) => <button type="button" role="option" aria-selected={category.id === activeOpeningCategory?.id} className={category.id === activeOpeningCategory?.id ? "selected" : undefined} key={category.id} onClick={() => selectOpeningCategory(category)}>{category.label}</button>)}
+          </div>}
+        </div>
+        <div className="fixture-cascading-level">
+          <button type="button" className="fixture-cascading-trigger" disabled={!activeOpeningCategory || activeOpeningCategory.items.length === 0} aria-expanded={openingSelectorOpen === "object"} aria-controls="opening-object-options" onClick={() => setOpeningSelectorOpen((current) => current === "object" ? null : "object")}>
+            <span className="fixture-cascading-trigger-copy"><span>Object</span><strong className={!activeOpeningCatalogueItem ? "placeholder" : undefined}>{activeOpeningCatalogueItem?.name?.replace(/^Default /i, "") || "Select object"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{openingSelectorOpen === "object" ? "▴" : "▾"}</span>
+          </button>
+          {openingSelectorOpen === "object" && <div id="opening-object-options" className="fixture-cascading-options" role="listbox" aria-label={`${openingKind === "DOOR" ? "Door" : "Window"} objects`}>
+            {activeOpeningCategory?.items.map((item) => <button type="button" role="option" aria-selected={item.id === activeOpeningCatalogueItem?.id} className={item.id === activeOpeningCatalogueItem?.id ? "selected" : undefined} key={item.id} onClick={() => selectOpeningObject(item)}>{item.subcategory || item.name}</button>)}
+          </div>}
+        </div>
+      </div>}
     </div>
     <ComponentColours compact previewObstacle={activeOpeningCatalogueItem ? openingPreviewObstacle({ item: activeOpeningCatalogueItem, kind: openingKind, doorType, width: openingWidth, height: openingHeight, colorHex: doorColour, componentColors: openingComponentColours }) : undefined} source={{ ...activeOpeningCatalogueItem, fixture_kind: openingKind, color_hex: doorColour, component_colors: openingComponentColours }} onChange={setOpeningComponentColours} />
     {activeOpeningCatalogueItem && <OpeningPreview item={activeOpeningCatalogueItem} kind={openingKind} doorType={doorType} width={openingWidth} height={openingHeight} colorHex={doorColour} componentColors={openingComponentColours} />}
