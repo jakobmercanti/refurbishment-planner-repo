@@ -54,7 +54,6 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const [category, setCategory] = useState("showers");
   const [objectId, setObjectId] = useState<string | null>("");
   const [positionExpanded, setPositionExpanded] = useState(false);
-  const [dimensionsExpanded, setDimensionsExpanded] = useState(false);
   const [baseHeightExpanded, setBaseHeightExpanded] = useState(false);
   const [draft, setDraft] = useState<Obstacle | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -211,8 +210,25 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setSelectorExpanded(false);
   }
   const positionSummary = value ? `X ${formatLength(value.center.x, displayUnits)} · Y ${formatLength(value.center.y, displayUnits)} · Rot ${value.rotation_deg.toFixed(0)}°` : "Set placement coordinates";
-  const dimensionsSummary = value ? `${formatLength(value.dimensions.width.value, displayUnits)} × ${formatLength(value.dimensions.depth.value, displayUnits)} × ${formatLength(value.dimensions.height.value, displayUnits)}` : "Set object dimensions";
   const baseHeightRelevant = Boolean(value && (cabinet || stairModel || value.base_z_mm > 0 || baseHeightExpanded));
+  function resetDimensions() {
+    if (!value) return;
+    const sourceItem = items.find(item => item.id === value.model_id) ?? selected;
+    if (!sourceItem) return;
+    change({
+      ...value,
+      verified: false,
+      dimensions: {
+        width: { ...value.dimensions.width, value: sourceItem.width_mm, verified: false, source_type: "USER_MEASURED" },
+        depth: { ...value.dimensions.depth, value: sourceItem.depth_mm, verified: false, source_type: "USER_MEASURED" },
+        height: { ...value.dimensions.height, value: sourceItem.height_mm, verified: false, source_type: "USER_MEASURED" },
+      },
+    });
+  }
+  const dimensionsContent = value ? <div className="appearance-dimensions-fields fixture-fields three-columns" aria-label="Dimensions">
+    {(["width", "depth", "height"] as const).map(axis => <label className="field" key={axis}><span>{axis[0].toUpperCase() + axis.slice(1)} {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={value.dimensions[axis].value} units={displayUnits} onMmChange={n => change({ ...value, verified: false, dimensions: { ...value.dimensions, [axis]: { ...value.dimensions[axis], value: n, verified: false, source_type: "USER_MEASURED" } } })} /></label>)}
+  </div> : null;
+
   return <section className="fixture-editor element-add-editor" aria-label="Add elements">
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
     <div className="fixture-cascading-menu" ref={selectorRef}>
@@ -252,7 +268,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     </div>
     {value && <>
       {previewValue && !previewValue.stl_base64 && <FixturePreview obstacle={previewValue} compact />}
-      <ComponentColours compact previewObstacle={value} source={{ ...value, colour_parts: items.find(item => item.id === value.model_id)?.colour_parts }} onChange={component_colors => {
+      <ComponentColours compact previewObstacle={value} dimensionsContent={dimensionsContent} onResetDimensions={resetDimensions} source={{ ...value, colour_parts: items.find(item => item.id === value.model_id)?.colour_parts }} onChange={component_colors => {
         const next = { ...value, component_colors };
         if (existing) onChange(room.obstacles.map(item => item.id === existing.id ? next : item));
         else setDraft(next);
@@ -289,12 +305,6 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
           </div></div>
           <label className="fixture-lock-switch"><input type="checkbox" checked={value.wall_lock ?? false} onChange={event => { const wallLock = event.target.checked; setWallLockPreference(wallLock); change({ ...value, wall_lock: wallLock }); }} /><span>Keep adjacent to nearest wall</span></label>
         </div>}
-      </section>
-      <section className="fixture-add-section" aria-label="Dimensions">
-        <button type="button" className="fixture-section-toggle" aria-expanded={dimensionsExpanded} onClick={() => setDimensionsExpanded(current => !current)}><span><strong>Dimensions</strong><small>{dimensionsSummary}</small></span><span aria-hidden>{dimensionsExpanded ? "−" : "›"}</span></button>
-        {dimensionsExpanded && <div className="fixture-section-content"><div className="fixture-fields three-columns">
-          {(["width", "depth", "height"] as const).map(axis => <label className="field" key={axis}><span>{axis[0].toUpperCase() + axis.slice(1)} {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={value.dimensions[axis].value} units={displayUnits} onMmChange={n => change({ ...value, verified: false, dimensions: { ...value.dimensions, [axis]: { ...value.dimensions[axis], value: n, verified: false, source_type: "USER_MEASURED" } } })} /></label>)}
-        </div></div>}
       </section>
       {mountingError && <p role="alert">{mountingError}</p>}
       <button className="fixture-save" disabled={!!error} onClick={() => {

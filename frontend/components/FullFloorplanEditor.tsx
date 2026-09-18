@@ -809,7 +809,6 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   const [openingHeight, setOpeningHeight] = useState(2040);
   const [windowSill, setWindowSill] = useState(900);
   const [openingPositionExpanded, setOpeningPositionExpanded] = useState(false);
-  const [openingDimensionsExpanded, setOpeningDimensionsExpanded] = useState(false);
   const [openingSelectorExpanded, setOpeningSelectorExpanded] = useState(false);
   const [openingSelectorOpen, setOpeningSelectorOpen] = useState<OpeningSelectorLevel | null>(null);
   const [openingListExpanded, setOpeningListExpanded] = useState(true);
@@ -1017,7 +1016,6 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     setHoveredOpeningCatalogueId(null);
     setOpeningComponentColours({});
     setOpeningPositionExpanded(false);
-    setOpeningDimensionsExpanded(false);
     setOpeningSelectorOpen(null);
     setOpeningSelectorExpanded(false);
     setElementTab(kind);
@@ -2918,7 +2916,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
 
   const prepareOpeningAddition = useEffectEvent(() => {
     onElementSelected?.(null);
-    setSelectedOpeningId(null); resetOpeningForm("DOOR"); setOpeningParent(""); setOpeningPositionExpanded(false); setOpeningDimensionsExpanded(false); setElementTab("DOOR");
+    setSelectedOpeningId(null); resetOpeningForm("DOOR"); setOpeningParent(""); setOpeningPositionExpanded(false); setElementTab("DOOR");
   });
   useEffect(() => {
     if (openingEditorTarget && !openingEditRequest) prepareOpeningAddition();
@@ -2979,8 +2977,16 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   const openingPositionSummary = openingParent
     ? `${openingParentLabel} · Offset ${formatLength(openingOffset, displayUnits)}`
     : `Select a wall · Offset ${formatLength(openingOffset, displayUnits)}`;
-  const openingDimensionsSummary = `${formatLength(openingWidth, displayUnits)} × ${formatLength(openingHeight, displayUnits)}${openingKind === "WINDOW" ? ` · Sill ${formatLength(windowSill, displayUnits)}` : ""}`;
-
+  const openingDimensionsContent = <div className={"appearance-dimensions-fields coordinate-fields opening-dimensions-fields" + (openingKind === "WINDOW" ? " window" : "")} aria-label="Dimensions">
+    <label className="field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingHeight} units={displayUnits} onMmChange={setOpeningHeight} /></label><label className="field"><span>Width <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingWidth} units={displayUnits} onMmChange={setOpeningWidth} /></label>{openingKind === "WINDOW" && <label className="field"><span>Sill <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={windowSill} units={displayUnits} onMmChange={setWindowSill} /></label>}
+  </div>;
+  function resetOpeningDimensions() {
+    const item = activeOpeningCatalogueItem;
+    if (!item) return;
+    setOpeningWidth(item.width_mm);
+    setOpeningHeight(item.height_mm);
+    if (openingKind === "WINDOW") setWindowSill(Math.min(1200, Math.max(0, item.height_mm)) || 900);
+  }
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const annotationPanelSelection: AnnotationPanelSelection = selectedAnnotation ? { type: selectedAnnotation.type, text: selectedAnnotation.text } : null;
   const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add elements">
@@ -3014,7 +3020,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         </div>
       </div>}
     </div>
-    <ComponentColours compact previewObstacle={previewOpeningCatalogueItem ? openingPreviewObstacle({ item: previewOpeningCatalogueItem, kind: openingKind, doorType: previewOpeningDoorType, width: previewOpeningWidth, height: previewOpeningHeight, colorHex: previewOpeningColour, componentColors: previewOpeningComponentColours }) : undefined} source={{ ...activeOpeningCatalogueItem, fixture_kind: openingKind, color_hex: doorColour, component_colors: openingComponentColours }} onChange={setOpeningComponentColours} />
+    <ComponentColours compact dimensionsContent={openingDimensionsContent} onResetDimensions={resetOpeningDimensions} previewObstacle={previewOpeningCatalogueItem ? openingPreviewObstacle({ item: previewOpeningCatalogueItem, kind: openingKind, doorType: previewOpeningDoorType, width: previewOpeningWidth, height: previewOpeningHeight, colorHex: previewOpeningColour, componentColors: previewOpeningComponentColours }) : undefined} source={{ ...activeOpeningCatalogueItem, fixture_kind: openingKind, color_hex: doorColour, component_colors: openingComponentColours }} onChange={setOpeningComponentColours} />
     {previewOpeningCatalogueItem && <OpeningPreview item={previewOpeningCatalogueItem} kind={openingKind} doorType={previewOpeningDoorType} width={previewOpeningWidth} height={previewOpeningHeight} colorHex={previewOpeningColour} componentColors={previewOpeningComponentColours} />}
     {openingCatalogueError && <p className="inline-error">{openingCatalogueError}</p>}
     <section className="fixture-add-section" aria-label="Position">
@@ -3024,12 +3030,6 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         <label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label></div>
         {openingKind === "DOOR" && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
       </div>}
-    </section>
-    <section className="fixture-add-section" aria-label="Dimensions">
-      <button type="button" className="fixture-section-toggle" aria-expanded={openingDimensionsExpanded} onClick={() => setOpeningDimensionsExpanded((current) => !current)}><span><strong>Dimensions</strong><small>{openingDimensionsSummary}</small></span><span aria-hidden>{openingDimensionsExpanded ? "−" : "›"}</span></button>
-      {openingDimensionsExpanded && <div className="fixture-section-content"><div className={`coordinate-fields opening-dimensions-fields${openingKind === "WINDOW" ? " window" : ""}`}>
-        <label className="field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingHeight} units={displayUnits} onMmChange={setOpeningHeight} /></label><label className="field"><span>Width <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingWidth} units={displayUnits} onMmChange={setOpeningWidth} /></label>{openingKind === "WINDOW" && <label className="field"><span>Sill <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={windowSill} units={displayUnits} onMmChange={setWindowSill} /></label>}
-      </div></div>}
     </section>
     {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={saveOpening}>{selectedOpeningId ? `Update ${openingKind.toLowerCase()}` : `Add ${openingKind.toLowerCase()}`}</button></div>
     {openings.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">

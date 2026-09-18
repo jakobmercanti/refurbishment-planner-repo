@@ -33,6 +33,5 @@ export function openingPreviewObstacle({ item, kind, doorType = "SINGLE", width,
 
 export function OpeningPreview({ item, kind, doorType = "SINGLE", width, height, colorHex, componentColors }: OpeningPreviewProps) {
   const obstacle = openingPreviewObstacle({ item, kind, doorType, width, height, colorHex, componentColors });
-  const representation = obstacle.representation_key ?? (kind === "DOOR" ? "door-single" : "window-single-pane");
-  return <><FixturePreview obstacle={obstacle} compact /><svg viewBox="0 0 200 100" role="img" aria-label={`${obstacle.name} plan symbol`} style={{ width: "100%", height: 100, background: "white" }}><title>{obstacle.name} plan symbol</title><image href={`/fixture-symbols/${representation}.svg`} width={200} height={100} preserveAspectRatio="xMidYMid meet" /></svg></>;
+  return <FixturePreview obstacle={obstacle} compact />;
 }

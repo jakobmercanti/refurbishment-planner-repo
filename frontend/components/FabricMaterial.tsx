@@ -22,7 +22,7 @@ float fabricWeave(vec2 p) {
   float h = mix(warp,weft,step(1.0,mod(floor(p.x)+floor(p.y),2.0)));
   FABRIC_PATTERN
   // Fade fine detail below pixel resolution to prevent shimmering at room scale.
-  float visible = 1.0-smoothstep(.25,1.4,max(length(dFdx(p)),length(dFdy(p))));
+  float visible = 1.0-smoothstep(.55,3.6,max(length(dFdx(p)),length(dFdy(p))));
   return mix(.5,h*.75+grain*.12+slub*.13,visible);
 }
 float fabricHeight() {
@@ -48,18 +48,19 @@ const patterns: Record<string, string> = {
 export function FabricMaterial({ fabricId, colour, physicalSize }: { fabricId?: string; colour: string; physicalSize: [number, number, number] }) {
   const fabric = fabricById(fabricId);
   const [x,y,z] = physicalSize;
+  const relief = Math.min(1.15, (fabric?.relief ?? .3) * 1.55);
   const compile = useCallback<MeshPhysicalMaterial["onBeforeCompile"]>((shader) => {
     if (!fabric) return;
     shader.uniforms.fabricScale = { value: new Vector3(x/fabric.scale_mm,y/fabric.scale_mm,z/fabric.scale_mm) };
     shader.vertexShader = `uniform vec3 fabricScale; varying vec3 vFabricPosition; varying vec3 vFabricNormal;\n${shader.vertexShader}`.replace("#include <begin_vertex>", "#include <begin_vertex>\nvFabricPosition = position * fabricScale; vFabricNormal = normal;");
     shader.fragmentShader = weaveShader.replace("FABRIC_PATTERN", patterns[fabric.pattern] ?? patterns.plain) + shader.fragmentShader;
-    shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", "#include <map_fragment>\nfloat yarnHeight = fabricHeight(); diffuseColor.rgb *= .88 + .24 * yarnHeight;");
+    shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", "#include <map_fragment>" + "\nfloat yarnHeight = fabricHeight();" + "\nfloat yarnContrast = smoothstep(.16,.84,yarnHeight);" + "\n// Keep the weave readable in the preview while retaining tonal variation." + "\ndiffuseColor.rgb *= .70 + .60 * yarnContrast;");
     shader.fragmentShader = shader.fragmentShader.replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
       vec3 fabricDx = normalize(dFdx(-vViewPosition)), fabricDy = normalize(dFdy(-vViewPosition));
       vec3 fabricR1 = cross(fabricDy, normal), fabricR2 = cross(normal, fabricDx);
       float fabricDet = dot(fabricDx, fabricR1) * faceDirection;
       vec3 fabricGradient = sign(fabricDet) * (dFdx(yarnHeight)*fabricR1 + dFdy(yarnHeight)*fabricR2);
-      normal = normalize(max(abs(fabricDet),.0001)*normal - ${fabric.relief.toFixed(3)}*fabricGradient);`);
-  }, [fabric,x,y,z]);
+      normal = normalize(max(abs(fabricDet),.0001)*normal - ${relief.toFixed(3)}*fabricGradient);`);
+  }, [fabric,relief,x,y,z]);
   return <meshPhysicalMaterial key={`${fabricId}-${x}-${y}-${z}`} color={colour} roughness={fabric?.roughness ?? .7} sheen={fabric?.sheen ?? 0} sheenColor={colour} sheenRoughness={.75} onBeforeCompile={compile} customProgramCacheKey={() => `fabric-v1-${fabricId}`} />;
 }

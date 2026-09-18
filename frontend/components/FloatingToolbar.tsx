@@ -2,6 +2,7 @@
 
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WINDOW_HEIGHT, resizeFloatingWindow, type FloatingWindowResizeEdge } from "@/lib/floatingWindowGeometry";
+import { WindowIcon } from "@/components/WindowIcon";
 
 export interface ToolbarDock {
   side: "LEFT" | "RIGHT";
@@ -342,6 +343,7 @@ function FloatingToolbarWindow({ title, children, className = "", compact = fals
   return <section ref={panelRef} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onPointerDown={focusPanel}>
     <header className="floating-toolbar-titlebar" aria-label={`Move ${title}`} title={`${heightMaximized ? "Double-click to restore" : "Double-click to maximise height"} · Drag to move ${title}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onMouseDown={beginMouseDrag} onDoubleClick={toggleHeightMaximized}>
       <span className="floating-toolbar-drag" aria-hidden>⠿</span>
+      <span className="floating-toolbar-icon"><WindowIcon title={title} /></span>
       <strong>{title}</strong>
       <button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button>
     </header>

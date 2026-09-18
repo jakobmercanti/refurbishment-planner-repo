@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { colourForPart, colourPartsFor, FULL_PART_ID, GLASS_PART_ID, type ColourSource } from "@/lib/assetColours";
 import { woodFinishOptions } from "@/lib/finishOptions";
@@ -10,7 +10,7 @@ import { FixturePreview } from "@/components/FixturePreview";
 import type { Obstacle } from "@/lib/types";
 
 /** The same database-driven part picker is used by both element windows. */
-export function ComponentColours({ source, onChange, onMaterialsChange, onAppearanceChange, compact = false, previewObstacle }: { source: ColourSource; onChange: (colours: Record<string, string>) => void; onMaterialsChange?: (materials: Record<string, string>) => void; onAppearanceChange?: (colours: Record<string, string>, materials: Record<string, string>) => void; compact?: boolean; previewObstacle?: Obstacle }) {
+export function ComponentColours({ source, onChange, onMaterialsChange, onAppearanceChange, compact = false, previewObstacle, dimensionsContent, onResetDimensions }: { source: ColourSource; onChange: (colours: Record<string, string>) => void; onMaterialsChange?: (materials: Record<string, string>) => void; onAppearanceChange?: (colours: Record<string, string>, materials: Record<string, string>) => void; compact?: boolean; previewObstacle?: Obstacle; dimensionsContent?: ReactNode; onResetDimensions?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [selected, setSelected] = useState("");
@@ -58,26 +58,29 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
     setEditorOpen(false);
   }
 
-  const editorFields = <div id={id} className={`fixture-colours-fields ${compact ? "appearance-editor-fields" : ""}`}>
-      {compact && <div className="appearance-preview-card"><i style={summarySwatchStyle} aria-hidden /><div><strong>{part.label}</strong><span>{materialLabel}</span><code>{colour.toUpperCase()}</code></div></div>}
-      <label className="field"><span>{compact ? "Part" : "Component"}</span><select aria-label="Colour component" value={part.id} onChange={event => setSelected(event.target.value)}>{parts.map(part => <option key={part.id} value={part.id}>{part.label}</option>)}</select></label>
-    {textile && (onMaterialsChange || onAppearanceChange) && <div className="fabric-finish-picker">
-      <label className="field"><span>Fabric</span><select aria-label={part.label + " fabric"} value={fabricId} onChange={event => { const materials = { ...source.component_materials, [part.id]: event.target.value }; if (isFullPart) parts.filter(candidate => candidate.id !== FULL_PART_ID && candidate.material_type === "textile").forEach(candidate => { materials[candidate.id] = event.target.value; }); updateAppearance({ ...editableColours }, materials); }}><option value="plain">Plain finish</option>{FABRICS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      <div className="fabric-finish-preview" style={fabricId === "plain" ? { backgroundColor: colour } : fabricSwatchStyle(fabricId, colour)} aria-label={(fabric?.name ?? "Plain finish") + " in " + colour} />
-      <small>{fabric?.description ?? "Smooth colour without a fabric texture."} Choose any colour below.</small>
-    </div>}
-    {showWoodPreset && <label className="field"><span>{compact ? "Material" : "Wood colours"}</span><select aria-label={`${part.label} colour preset`} value="" onChange={event => { if (event.target.value) setColour(event.target.value); }}><option value="">{compact ? "Choose a finish…" : "Choose a preset…"}</option>{woodFinishOptions().map(option => <option key={option.id} value={option.colorHex}>{option.label}</option>)}</select></label>}
-    <label className={`field ${compact ? "appearance-colour-field" : ""}`}><span>{compact ? "Colour" : `${part.label} colour`}</span>{compact ? <span className="appearance-colour-value"><input aria-label={`${part.label} colour`} type="color" value={colour} onChange={event => setColour(event.target.value)} /><code>{colour.toUpperCase()}</code></span> : <input aria-label={`${part.label} colour`} type="color" value={colour} onChange={event => setColour(event.target.value)} />}</label>
-    <button type="button" className="review-style-button colour-reset-button" onClick={() => { const colours = { ...editableColours }; const materials = { ...source.component_materials }; if (isFullPart) parts.forEach(candidate => { delete colours[candidate.id]; delete materials[candidate.id]; }); else { colours[part.id] = part.default_color_hex; if (textile) delete materials[part.id]; } updateAppearance(colours, materials); }}>{compact ? "Reset appearance ↺" : `Reset ${part.label.toLowerCase()} to default`}</button>
-    {!compact && textile && (onMaterialsChange || onAppearanceChange) && <button type="button" className="review-style-button colour-reset-button" onClick={() => { const next = { ...source.component_materials }; delete next[part.id]; updateAppearance({ ...editableColours }, next); }}>Reset fabric to default</button>}
+  const materialField = showWoodPreset && <label className="field"><span>{compact ? "Material" : "Wood colours"}</span><select aria-label={part.label + " colour preset"} value="" onChange={event => { if (event.target.value) setColour(event.target.value); }}><option value="">{compact ? "Choose a finish…" : "Choose a preset…"}</option>{woodFinishOptions().map(option => <option key={option.id} value={option.colorHex}>{option.label}</option>)}</select></label>;
+  const colourField = <label className={"field " + (compact ? "appearance-colour-field" : "")}><span>{compact ? "Colour" : part.label + " colour"}</span>{compact ? <span className="appearance-colour-value"><input aria-label={part.label + " colour"} type="color" value={colour} onChange={event => setColour(event.target.value)} /><code>{colour.toUpperCase()}</code></span> : <input aria-label={part.label + " colour"} type="color" value={colour} onChange={event => setColour(event.target.value)} />}</label>;
+  const fabricField = textile && (onMaterialsChange || onAppearanceChange) && <div className="fabric-finish-picker">
+    <label className="field"><span>Fabric</span><select aria-label={part.label + " fabric"} value={fabricId} onChange={event => { const materials = { ...source.component_materials, [part.id]: event.target.value }; if (isFullPart) parts.filter(candidate => candidate.id !== FULL_PART_ID && candidate.material_type === "textile").forEach(candidate => { materials[candidate.id] = event.target.value; }); updateAppearance({ ...editableColours }, materials); }}><option value="plain">Plain finish</option>{FABRICS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <div className="fabric-finish-preview" style={fabricId === "plain" ? { backgroundColor: colour } : fabricSwatchStyle(fabricId, colour)} aria-label={(fabric?.name ?? "Plain finish") + " in " + colour} />
+    <small>{fabric?.description ?? "Smooth colour without a fabric texture."} Choose any colour below.</small>
   </div>;
 
-  return <div className={`fixture-colours-controls ${compact ? "fixture-colours-compact" : ""}`} role="group" aria-label={compact ? "Appearance" : "Colours"}>
+  const resetAppearanceButton = <button type="button" className="review-style-button colour-reset-button" onClick={() => { const colours = { ...editableColours }; const materials = { ...source.component_materials }; if (isFullPart) parts.forEach(candidate => { delete colours[candidate.id]; delete materials[candidate.id]; }); else { colours[part.id] = part.default_color_hex; if (textile) delete materials[part.id]; } updateAppearance(colours, materials); }}>{compact ? "Reset appearance" : "Reset " + part.label.toLowerCase() + " to default"}</button>;
+  const resetFabricButton = !compact && textile && (onMaterialsChange || onAppearanceChange) && <button type="button" className="review-style-button colour-reset-button" onClick={() => { const next = { ...source.component_materials }; delete next[part.id]; updateAppearance({ ...editableColours }, next); }}>Reset fabric to default</button>;
+  const resetDimensionsButton = compact && onResetDimensions && <button type="button" className="review-style-button colour-reset-button" onClick={onResetDimensions}>Reset dimensions</button>;
+  const editorFields = <div id={id} className={"fixture-colours-fields " + (compact ? "appearance-editor-fields" : "")}>
+      {compact && <div className="appearance-preview-card"><i style={summarySwatchStyle} aria-hidden /><div><strong>{part.label}</strong><span>{materialLabel}</span><code>{colour.toUpperCase()}</code></div></div>}
+      <label className="field"><span>{compact ? "Part" : "Component"}</span><select aria-label="Colour component" value={part.id} onChange={event => setSelected(event.target.value)}>{parts.map(part => <option key={part.id} value={part.id}>{part.label}</option>)}</select></label>
+    {compact ? <div className="appearance-material-colour-row">{fabricField}{!textile && materialField}{colourField}</div> : <>{fabricField}{materialField}{colourField}</>}
+  </div>;
+
+  return <div className={`fixture-colours-controls ${compact ? "fixture-colours-compact" : ""}`} role="group" aria-label={compact ? "Appearance & dimensions" : "Colours"}>
     <button type="button" className="fixture-colours-toggle" aria-expanded={compact ? editorOpen : expanded} aria-controls={compact ? undefined : id} onClick={() => compact ? openEditor() : setExpanded(value => !value)}>
-      {compact ? <span className="appearance-summary"><strong>Appearance</strong><span className="appearance-summary-detail"><i className="appearance-summary-swatch" style={summarySwatchStyle} aria-hidden /><span><b>{part.label}</b><small>{materialLabel}</small></span></span></span> : <strong>Colours</strong>}
+      {compact ? <span className="appearance-summary"><strong>Appearance &amp; dimensions</strong><span className="appearance-summary-detail"><i className="appearance-summary-swatch" style={summarySwatchStyle} aria-hidden /><span><b>{part.label}</b><small>{materialLabel}</small></span></span></span> : <strong>Colours</strong>}
       <span aria-hidden>{compact ? "›" : expanded ? "−" : "+"}</span>
     </button>
-    {!compact && expanded && editorFields}
-    {compact && editorOpen && typeof document !== "undefined" && createPortal(<Popup open className="appearance-popup" title="Appearance" message="" confirmLabel="Done" onCancel={() => closeEditor(false)} onConfirm={() => closeEditor(true)}><div className={`appearance-popup-grid${previewObstacle ? "" : " appearance-popup-grid-without-preview"}`}><div className="appearance-popup-form">{editorFields}</div>{previewObstacle && <div className="appearance-popup-preview"><div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div><FixturePreview obstacle={previewObstacle} appearanceControls /></div>}</div></Popup>, document.body)}
+    {!compact && expanded && <>{editorFields}{resetAppearanceButton}{resetFabricButton}</>}
+    {compact && editorOpen && typeof document !== "undefined" && createPortal(<Popup open className="appearance-popup" title="Appearance & dimensions" message="" confirmLabel="Done" onCancel={() => closeEditor(false)} onConfirm={() => closeEditor(true)}><div className={`appearance-popup-grid${previewObstacle ? "" : " appearance-popup-grid-without-preview"}`}><div className="appearance-popup-form">{editorFields}{dimensionsContent}{(resetDimensionsButton || resetAppearanceButton) && <div className="appearance-actions-row">{resetAppearanceButton}{resetDimensionsButton}</div>}</div>{previewObstacle && <div className="appearance-popup-preview"><div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div><FixturePreview obstacle={previewObstacle} appearanceControls /></div>}</div></Popup>, document.body)}
   </div>;
 }
