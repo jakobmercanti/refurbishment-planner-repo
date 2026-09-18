@@ -38,10 +38,11 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
   if (style === "TRADITIONAL") return `
 .${root} .plan-grid{display:none}
 .${root} .canvas-background{fill:#fff}
-.${root} .wall-body,.${root} .wall-line,.${root} .opening-gap,.${root} .opening-jamb,.${root} .door-leaf,.${root} .door-swing,.${root} .window-frame,.${root} .window-core,.${root} .window-jamb{stroke:#151515}
+.${root} .wall-body,.${root} .wall-line,.${root} .opening-gap,.${root} .opening-jamb,.${root} .door-leaf,.${root} .door-swing,.${root} .window-frame,.${root} .window-core,.${root} .window-jamb,.${root} .window-projecting-frame,.${root} .window-pane{stroke:#151515}
 .${root} .wall-line{stroke:#151515;stroke-width:var(--wall-inner-stroke-width,4px)}
 .${root} .wall-thickness-label{fill:#151515}
-.${root} .wall-line:hover,.${root} .wall-line.selected{stroke:#f1b14b;stroke-width:var(--wall-inner-stroke-width,4px)}
+.${root} .wall-label{fill:#151515}
+.${root} .wall-line:hover,.${root} .wall-line.selected{stroke:#151515;stroke-width:var(--wall-inner-stroke-width,4px)}
 .${root} .vertex-layer{opacity:0}
 .${root} .vertex-label{display:none}
 .${root} .wall-dimension{display:inline}
@@ -52,14 +53,16 @@ export function floorplanStyleCss(style: FloorplanStyle): string {
 .${root} .opening-gap{stroke:#fff;stroke-width:var(--opening-gap-width,14px)}
 .${root} .opening-jamb{stroke-width:1.4}
 .${root} .door-closed-line{display:none}
-.${root} .door-leaf{stroke:var(--door-colour,#606060);stroke-width:1.15}
-.${root} .door-swing{stroke:var(--door-colour,#777);stroke-width:1;stroke-dasharray:none}
+.${root} .door-leaf{stroke:#151515;stroke-width:1.15}
+.${root} .door-swing{stroke:#151515;stroke-width:1;stroke-dasharray:none}
 .${root} .window-frame{stroke:#151515;stroke-width:1.25}
-.${root} .window-core{stroke:#777;stroke-width:.8}
+.${root} .window-core{stroke:#151515;stroke-width:.8}
 .${root} .window-jamb{stroke-width:1.2}
+.${root} .wall-dimension,.${root} .opening-dimension,.${root} .window-dimension,.${root} .fixture-dimension{color:#151515}
+.${root} .floorplan-fixture image{filter:grayscale(1) contrast(1.15)}
 .${root} .floorplan-fixture rect{fill:#fff;stroke:#151515}
 .${root} .floorplan-fixture text{fill:#151515}
-.${root} .floorplan-fixture .fixture-dimension{color:#b45309}
+.${root} .floorplan-fixture .fixture-dimension{color:#151515}
 .${root} .floorplan-fixture .fixture-dimension-label{fill:currentColor}
 ${selectedFixtureStyleCss(root)}
 `;

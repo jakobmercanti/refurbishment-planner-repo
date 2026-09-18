@@ -17,7 +17,8 @@ export function FlooringPatternDefinition({ id, design, scale = 1, origin = { x:
 
 export function FlooringPreview({ design, className = "" }: { design: FloorDesign; className?: string }) {
   const id = `floor-preview-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const extent = Math.max(design.length_mm * 2, design.width_mm * 4);
+  // Give the editor preview a little more breathing room so tile and wood repeats do not fill the whole card.
+  const extent = Math.max(design.length_mm * 2, design.width_mm * 4) * 1.5;
   return <svg className={className} viewBox={`0 0 ${extent} ${extent}`} role="img" aria-label="Flooring pattern preview" style={{ width: "100%", aspectRatio: "1", display: "block", borderRadius: 8 }}>
     <defs><FlooringPatternDefinition id={id} design={design} /></defs><rect width={extent} height={extent} fill={`url(#${id})`} />
   </svg>;
@@ -80,6 +81,7 @@ export function FlooringControls({ design: saved, onChange }: { design?: FloorDe
       const next = defaultFloorDesign(FLOORING_PATTERNS.find((pattern) => pattern.material === type)!.id);
       onChange({ ...next, rotation_deg: design.rotation_deg, wood_id: design.wood_id, tile_colour: design.tile_colour, tile_material_id: design.tile_material_id });
     }}><option value="" disabled>Choose a flooring type</option><option value="tile">Tiles</option><option value="wood">Wooden flooring</option></select></label>
+
     {saved && <>
       <div className="fixture-colours-controls fixture-colours-compact flooring-colours-compact" role="group" aria-label="Colours and patterns">
         <button type="button" className="fixture-colours-toggle" aria-expanded={editorOpen} onClick={openAppearanceEditor}>
@@ -87,10 +89,12 @@ export function FlooringControls({ design: saved, onChange }: { design?: FloorDe
         </button>
         {editorOpen && typeof document !== "undefined" && createPortal(<Popup open className="appearance-popup flooring-appearance-popup" title="Appearance" message="" confirmLabel="Done" onCancel={() => closeAppearanceEditor(false)} onConfirm={() => closeAppearanceEditor(true)}><div className="appearance-popup-grid"><div className="appearance-popup-form">{editorFields}</div><div className="appearance-popup-preview flooring-appearance-popup-preview"><div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div><div className="flooring-preview-surface"><FlooringPreview design={design} className="flooring-preview-canvas" /></div></div></div></Popup>, document.body)}
       </div>
+      <div className="flooring-dimension-fields" aria-label="Flooring dimensions">
       <DimensionInput label="Rotation (degrees)" value={design.rotation_deg} min={-36000} max={36000} onChange={(rotation_deg) => update({ rotation_deg })} />
       {design.pattern !== "wood-double-basket-weave" && <DimensionInput label={design.pattern === "wood-hexagonal" ? "Hexagon point-to-point size (mm)" : ["wood-versailles", "wood-chantilly"].includes(design.pattern) ? "Border / board width (mm)" : "Element width (mm)"} value={design.width_mm} min={20} max={3000} onChange={(width_mm) => update({ width_mm })} />}
       {!["tile-square", "tile-diamond", "tile-parquet", "tile-pinwheel", "wood-hexagonal"].includes(design.pattern) && <DimensionInput label={["wood-versailles", "wood-chantilly", "wood-mosaic", "wood-double-basket-weave"].includes(design.pattern) ? "Panel / module size (mm)" : "Element length (mm)"} value={design.length_mm} min={design.width_mm} max={6000} onChange={(length_mm) => update({ length_mm })} />}
       <DimensionInput label={wood ? "Joint width (mm)" : "Grout width (mm)"} value={design.grout_mm} min={0} max={Math.min(20, design.width_mm / 4)} onChange={(grout_mm) => update({ grout_mm })} />
+      </div>
       <small>Sizes are in millimetres. Edge pieces are cut to fit; wood shades and grain are illustrative.</small>
     </>}
   </div>;

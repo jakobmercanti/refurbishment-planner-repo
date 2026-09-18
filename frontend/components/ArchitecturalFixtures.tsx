@@ -11,7 +11,7 @@ function Bar({ a, b, radius = .012, colour = "#394449" }: { a: [number, number, 
   return <mesh position={start.add(end).multiplyScalar(.5)} quaternion={rotation} castShadow><cylinderGeometry args={[radius, radius, delta.length(), 12]} /><meshStandardMaterial color={colour} roughness={.32} metalness={.65} /></mesh>;
 }
 
-function GlassRail({ a, b, guardA, guardB, unit }: { a: [number, number, number]; b: [number, number, number]; guardA: number; guardB: number; unit: number }) {
+function GlassRail({ a, b, guardA, guardB, unit, clampColour }: { a: [number, number, number]; b: [number, number, number]; guardA: number; guardB: number; unit: number; clampColour?: string }) {
   const length = Math.hypot(b[0] - a[0], b[2] - a[2]), rise = b[1] - a[1];
   const shape = useMemo(() => {
     const panel = new Shape();
@@ -21,7 +21,7 @@ function GlassRail({ a, b, guardA, guardB, unit }: { a: [number, number, number]
   }, [length, rise, guardA, guardB, unit]);
   return <group position={a} rotation={[0, -Math.atan2(b[2] - a[2], b[0] - a[0]), 0]}>
     <mesh position={[0, 0, -6 * unit]} castShadow><extrudeGeometry args={[shape, { depth: 12 * unit, bevelEnabled: true, bevelSize: unit, bevelThickness: unit, bevelSegments: 2 }]} /><meshPhysicalMaterial color="#c2e0e3" transparent opacity={.3} transmission={.3} roughness={.08} metalness={.04} depthWrite={false} /></mesh>
-    {[.15, .85].map(t => <mesh key={t} position={[length * t, rise * t + 80 * unit, 0]}><boxGeometry args={[Math.min(35 * unit, length * .18), 45 * unit, 24 * unit]} /><meshStandardMaterial color={colours.clamps ?? "#afb8bb"} metalness={.85} roughness={.24} /></mesh>)}
+    {[.15, .85].map(t => <mesh key={t} position={[length * t, rise * t + 80 * unit, 0]}><boxGeometry args={[Math.min(35 * unit, length * .18), 45 * unit, 24 * unit]} /><meshStandardMaterial color={clampColour ?? "#afb8bb"} metalness={.85} roughness={.24} /></mesh>)}
   </group>;
 }
 
@@ -59,7 +59,7 @@ export function StaircaseFixture({ representation, width, depth, height, colour:
       {model.open && <mesh position={[0, top - thickness * 2, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow><extrudeGeometry args={[shape, { depth: thickness, bevelEnabled: false }]} /><meshStandardMaterial color={supportColour} roughness={.38} metalness={.65} /></mesh>}
     </group>)}
     {model.rails.map((rail, i) => <group key={i}>
-      {model.glass ? <GlassRail a={point(rail.a)} b={point(rail.b)} guardA={rail.guard_a * sy} guardB={rail.guard_b * sy} unit={sy} /> : <>
+      {model.glass ? <GlassRail a={point(rail.a)} b={point(rail.b)} guardA={rail.guard_a * sy} guardB={rail.guard_b * sy} unit={sy} clampColour={colours.clamps} /> : <>
         <Bar a={point(rail.a, rail.guard_a)} b={point(rail.b, rail.guard_b)} radius={20 * sy} colour={handrailColour} />
         <Bar a={point(rail.a, rail.guard_a - 440)} b={point(rail.b, rail.guard_b - 440)} radius={8 * sy} colour={colours.balusters ?? handrailColour} />
         {rail.post && <Bar a={point(rail.a)} b={point(rail.a, rail.guard_a)} radius={12 * sy} colour={colours.balusters ?? handrailColour} />}
@@ -89,6 +89,9 @@ export function WindowFixture({ representation, width, depth, height, colour: de
   if (["window-single-pane", "window-double-pane", "window-triple-pane", "window-casement"].includes(representation)) return <CasementWindow colours={colours} colour={colour} representation={representation} width={width} depth={depth} height={height} />;
   const frame = Math.min(width * .035, height * .035, depth * .28);
   const projected = representation === "window-bay" || representation === "window-bow";
+  // Offset the exposed sill faces from the frame's top/bottom planes to avoid
+  // z-fighting when the sill has a custom colour.
+  const projectedSillGap = Math.max(frame * .04, .0005);
   const count = representation.includes("triple") ? 3 : representation.includes("double") || representation === "window-casement" ? 2 : 1;
   function block(x: number, y: number, z: number, w: number, h: number, d: number, tint = colour) {
     return <mesh position={[x, y, z]} castShadow receiveShadow><boxGeometry args={[w, h, d]} /><OpeningFinishMaterial colour={tint} /></mesh>;
@@ -112,12 +115,12 @@ export function WindowFixture({ representation, width, depth, height, colour: de
           </group>;
         })}
         {!sash && !projected && count > 1 && block(0, height / 2, 0, frame, height - frame * 2, frame * 1.5)}
-        {block(0, frame * .2, frame * .3, length + frame, frame * .4, frame * 3, colours.sill ?? colour)}
+        {!projected && block(0, frame * .2, frame * .3, length + frame, frame * .4, frame * 3, colours.sill ?? colour)}
       </group>;
     })}
     {projected && <>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colours.sill ?? colour} /></mesh>
-      <mesh position={[0, height - frame * .6, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colours.sill ?? colour} /></mesh>
+      <mesh position={[0, -projectedSillGap, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colours.sill ?? colour} /></mesh>
+      <mesh position={[0, height - frame * .6 + projectedSillGap, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[sillShape, { depth: frame * .6, bevelEnabled: false }]} /><OpeningFinishMaterial colour={colours.sill ?? colour} /></mesh>
     </>}
   </group>;
 }

@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Popup } from "@/components/Popup";
 
 export type MarkerSymbol = "CIRCLE" | "FILLED_CIRCLE" | "SQUARE" | "FILLED_SQUARE" | "TRIANGLE" | "DIAMOND" | "EXCLAMATION" | "QUESTION" | "PLUS" | "CROSS" | "NUMBER" | "LETTER";
 export type MarkerSize = "SMALL" | "MEDIUM" | "LARGE";
-export type MarkerSettings = { symbol: MarkerSymbol; label: string; color: string; size: MarkerSize };
+export type MarkerSettings = { symbol: MarkerSymbol; label: string; color: string; size: MarkerSize; arrowAttached?: boolean };
 
 interface MarkerSettingsPopupProps {
   open: boolean;
@@ -42,18 +43,35 @@ function SymbolPreview({ symbol }: { symbol: MarkerSymbol }) {
 }
 
 export function MarkerSettingsPopup({ open, settings, editing, onChange, onConfirm, onCancel }: MarkerSettingsPopupProps) {
+  const [symbolMenuOpen, setSymbolMenuOpen] = useState(false);
   const hasLabel = settings.symbol === "NUMBER" || settings.symbol === "LETTER";
-  return <Popup open={open} title="Marker settings" message="" className="marker-settings-popup" autoFocusTarget="content" confirmLabel={editing ? "Save" : "Place"} onConfirm={onConfirm} onCancel={onCancel}>
+  const selectedSymbol = SYMBOLS.find((option) => option.value === settings.symbol) ?? SYMBOLS[0];
+
+  return <Popup open={open} title="Marker settings" message="" className="marker-settings-popup" autoFocusTarget="content" confirmLabel={editing ? "Save" : "Place"} onConfirm={() => { setSymbolMenuOpen(false); onConfirm(); }} onCancel={() => { setSymbolMenuOpen(false); onCancel(); }}>
     <div className="marker-settings-content">
       <div className="marker-settings-field">
         <span className="marker-settings-label">Symbol</span>
-        <div className="marker-symbol-grid" role="listbox" aria-label="Marker symbol">
-          {SYMBOLS.map((option) => <button key={option.value} type="button" role="option" aria-label={option.label} aria-selected={settings.symbol === option.value} className={settings.symbol === option.value ? "selected" : ""} onClick={() => onChange({ symbol: option.value })}><SymbolPreview symbol={option.value} /><small>{option.label}</small></button>)}
+        <div className="marker-symbol-picker">
+          <button type="button" className="marker-symbol-trigger" aria-haspopup="listbox" aria-expanded={symbolMenuOpen} onClick={() => setSymbolMenuOpen((current) => !current)}>
+            <span className="marker-symbol-trigger-preview"><SymbolPreview symbol={settings.symbol} /></span>
+            <span>{selectedSymbol.label}</span>
+            <span className="marker-symbol-trigger-chevron" aria-hidden>{symbolMenuOpen ? "⌃" : "⌄"}</span>
+          </button>
+          {symbolMenuOpen && <div className="marker-symbol-menu" role="listbox" aria-label="Marker symbol choices">
+            {SYMBOLS.map((option) => <button key={option.value} type="button" role="option" aria-selected={settings.symbol === option.value} className={settings.symbol === option.value ? "selected" : ""} onClick={() => { onChange({ symbol: option.value }); setSymbolMenuOpen(false); }}>
+              <span className="marker-symbol-option-preview"><SymbolPreview symbol={option.value} /></span>
+              <span>{option.label}</span>
+            </button>)}
+          </div>}
         </div>
       </div>
       {hasLabel && <label className="marker-settings-field"><span className="marker-settings-label">Label</span><input value={settings.label} maxLength={8} placeholder={settings.symbol === "NUMBER" ? "Auto number" : "Auto letter"} onChange={(event) => onChange({ label: event.target.value })} /></label>}
       <label className="marker-settings-row"><span>Colour</span><input aria-label="Marker colour" type="color" value={settings.color} onChange={(event) => onChange({ color: event.target.value })} /></label>
       <label className="marker-settings-row"><span>Size</span><select value={settings.size} onChange={(event) => onChange({ size: event.target.value as MarkerSize })}><option value="SMALL">Small</option><option value="MEDIUM">Medium</option><option value="LARGE">Large</option></select></label>
+      <label className="marker-settings-checkbox">
+        <input type="checkbox" checked={Boolean(settings.arrowAttached)} onChange={(event) => onChange({ arrowAttached: event.target.checked })} />
+        <span><strong>Attach arrow</strong><small>Use a second click to place the arrow tail, like a callout.</small></span>
+      </label>
     </div>
   </Popup>;
 }

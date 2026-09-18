@@ -16,7 +16,7 @@ import { PlacementPreview2D } from "@/components/PlacementPreview2D";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
 import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
-import { filledToolbarDock, FloatingToolbar } from "@/components/FloatingToolbar";
+import { filledToolbarDock, FloatingToolbar, positionedToolbarDock } from "@/components/FloatingToolbar";
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { closestValidOpeningOffset, cornerOffsetsOnWallSegment, isOpeningPlacementValid } from "@/lib/openingPlacement";
 import { remapOpeningsAfterWallDrag, translateWallAndAttachedOpenings } from "@/lib/openingWallDrag";
@@ -97,7 +97,7 @@ function readImageDimensions(url: string): Promise<{ width: number; height: numb
   });
 }
 const DEFAULT_SNAP_MM = 50;
-const DEFAULT_MARKER_SETTINGS: MarkerSettings = { symbol: "NUMBER", label: "", color: "#287fb8", size: "MEDIUM" };
+const DEFAULT_MARKER_SETTINGS: MarkerSettings = { symbol: "NUMBER", label: "", color: "#287fb8", size: "MEDIUM", arrowAttached: false };
 const DEFAULT_WALL_THICKNESS_MM = 50;
 const MIN_WALL_CLEARANCE_MM = 200;
 const MAX_DEFAULT_MEASUREMENT_OFFSET_MM = 200;
@@ -218,6 +218,8 @@ const FLOORPLAN_EXPORT_WIDTH = 1640;
 const FLOORPLAN_EXPORT_HEIGHT = 1120;
 const FLOORPLAN_EXPORT_ATTRIBUTION = "Made with FreeFloorplan3D.com";
 const FLOORPLAN_EXPORT_ATTRIBUTION_URL = "https://freefloorplan3d.com";
+const FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE = 12;
+const FLOORPLAN_EXPORT_PADDING_RATIO = 0.15;
 
 const FLOORPLAN_EXPORT_BASE_CSS = `
 .floor-canvas{display:block;width:100%;height:100%;min-height:0!important;background:#fff}
@@ -240,15 +242,15 @@ ${floorplanStyleCss(style)}
 
 function drawFloorplanAttribution(context: CanvasRenderingContext2D, width: number, height: number) {
   const scale = width / FLOORPLAN_EXPORT_WIDTH;
-  const margin = 12 * scale;
+  const margin = 16 * scale;
   context.save();
-  context.font = `600 ${7.5 * scale}px Arial, sans-serif`;
+  context.font = `700 ${FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE * scale}px Arial, sans-serif`;
   context.textAlign = "right";
   context.textBaseline = "bottom";
   context.lineJoin = "round";
   context.lineWidth = 3 * scale;
   context.strokeStyle = "#fff";
-  context.fillStyle = "#68756f";
+  context.fillStyle = "#000";
   context.strokeText(FLOORPLAN_EXPORT_ATTRIBUTION, width - margin, height - margin);
   context.fillText(FLOORPLAN_EXPORT_ATTRIBUTION, width - margin, height - margin);
   context.restore();
@@ -1299,12 +1301,15 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   function undo() { const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous); }
   function redo() { const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next); }
 
-  function moveCornerPreservingTopology(baseline: Wall[], selection: PointSelection, next: Point2D): Wall[] {
+  function moveCornerPreservingTopology(baseline: Wall[], selection: PointSelection, next: Point2D, options?: { allowSubMinimumLength?: boolean }): Wall[] {
     const source = baseline.find((wall) => wall.id === selection.wallId);
     if (!source) return baseline;
+    const allowSubMinimumLength = options?.allowSubMinimumLength ?? false;
     const requestedPoints = squaredWalls ? moveSquaredWallPoint(source.points, selection.pointIndex, next) : source.points.map((point, pointIndex) => pointIndex === selection.pointIndex ? { ...next } : { ...point });
     const constrainedNext = squaredWalls
-      ? constrainSquaredCornerTarget(baseline, source.id, selection.pointIndex, requestedPoints, next, Math.max(MIN_WALL_CLEARANCE_MM, snapEnabled ? snapSize : 0))
+      ? allowSubMinimumLength
+        ? { ...next }
+        : constrainSquaredCornerTarget(baseline, source.id, selection.pointIndex, requestedPoints, next, Math.max(MIN_WALL_CLEARANCE_MM, snapEnabled ? snapSize : 0))
       : { ...next };
     const candidate = baseline.map((wall) => {
       if (wall.id !== selection.wallId) return { ...wall, points: wall.points.map((point) => ({ ...point })) };
@@ -1324,7 +1329,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     return repaired.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== selection.wallId || hasMinimumEnclosedArea(wall.points))) ? repaired : baseline;
   }
 
-  function constrainCornerMoveForOpenings(baselineWalls: Wall[], baselineOpenings: FullOpening[], selection: PointSelection, requestedNext: Point2D): { walls: Wall[]; openings: FullOpening[] } {
+  function constrainCornerMoveForOpenings(baselineWalls: Wall[], baselineOpenings: FullOpening[], selection: PointSelection, requestedNext: Point2D, options?: { allowSubMinimumLength?: boolean }): { walls: Wall[]; openings: FullOpening[] } {
     const source = baselineWalls.find((wall) => wall.id === selection.wallId);
     const origin = source?.points[selection.pointIndex];
     if (!source || !origin) return { walls: baselineWalls, openings: baselineOpenings };
@@ -1335,7 +1340,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       };
       const candidateWalls = progress === 0
         ? baselineWalls
-        : moveCornerPreservingTopology(baselineWalls, selection, target);
+        : moveCornerPreservingTopology(baselineWalls, selection, target, options);
       return {
         walls: candidateWalls,
         openings: remapOpeningsAfterWallDrag(baselineWalls, candidateWalls, baselineOpenings),
@@ -1425,9 +1430,10 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const nextMarker = { ...markerSettings, label: markerLabelForPlacement(markerSettings) };
     if (dialog.mode === "EDIT") {
       const current = annotations.find((annotation) => annotation.id === dialog.annotationId);
-      if (current && JSON.stringify(current.marker) !== JSON.stringify(nextMarker)) {
+      const nextArrowTail = nextMarker.arrowAttached && current?.position ? current.labelPosition ?? { x: current.position.x + 250, y: current.position.y - 180 } : undefined;
+      if (current && (JSON.stringify(current.marker) !== JSON.stringify(nextMarker) || Boolean(current.labelPosition) !== Boolean(nextArrowTail))) {
         record();
-        setAnnotations((items) => items.map((item) => item.id === dialog.annotationId ? { ...item, marker: nextMarker, style: { ...item.style, color: nextMarker.color } } : item));
+        setAnnotations((items) => items.map((item) => item.id === dialog.annotationId ? { ...item, marker: nextMarker, labelPosition: nextArrowTail, style: { ...item.style, color: nextMarker.color } } : item));
       }
       setMarkerSettings(nextMarker);
       setMarkerDialog(null);
@@ -1551,8 +1557,15 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     }
     if (annotationTool === "MARKER") {
       const marker = { ...markerSettings, label: markerLabelForPlacement(markerSettings) };
-      createAnnotation({ id: crypto.randomUUID(), type: "MARKER", position: point, marker, style: { ...annotationStyle, color: marker.color } });
-      setMarkerSettings({ ...marker, label: marker.symbol === "NUMBER" || marker.symbol === "LETTER" ? nextMarkerLabel(marker.symbol, [...annotations, { id: "next", type: "MARKER", position: point, marker, style: { ...annotationStyle, color: marker.color } }]) : "" });
+      if (marker.arrowAttached && !annotationDraft.length) {
+        setAnnotationDraft([point]);
+        return true;
+      }
+      const markerPosition = marker.arrowAttached ? annotationDraft[0] : point;
+      const annotation = { id: crypto.randomUUID(), type: "MARKER" as const, position: markerPosition, ...(marker.arrowAttached ? { labelPosition: point } : {}), marker, style: { ...annotationStyle, color: marker.color } };
+      createAnnotation(annotation);
+      setMarkerSettings({ ...marker, label: marker.symbol === "NUMBER" || marker.symbol === "LETTER" ? nextMarkerLabel(marker.symbol, [...annotations, annotation]) : "" });
+      setAnnotationDraft([]);
       setAnnotationTool(null);
       return true;
     }
@@ -1592,8 +1605,10 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       else moved.end = nextPoint;
     } else if (moved.type === "POLYLINE" && active.handle === "VERTEX" && moved.points && active.vertexIndex !== undefined) moved.points[active.vertexIndex] = nextPoint;
     else if (moved.type === "TEXT" && active.handle === "TEXT") moved.position = nextPoint;
-    else if (moved.type === "MARKER" && active.handle === "MARKER") moved.position = nextPoint;
-    else if (moved.type === "CALLOUT") {
+    else if (moved.type === "MARKER") {
+      if (active.handle === "MARKER") moved.position = nextPoint;
+      else if (active.handle === "LABEL") moved.labelPosition = nextPoint;
+    } else if (moved.type === "CALLOUT") {
       if (active.handle === "ANCHOR") moved.anchor = nextPoint;
       else if (active.handle === "LABEL") moved.labelPosition = nextPoint;
     }
@@ -1744,7 +1759,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const next = { x: start.x + (end.x - start.x) * value / current, y: start.y + (end.y - start.y) * value / current };
     const closed = samePoint(wall.points[0], wall.points.at(-1)!);
     const endIndex = closed && segmentIndex + 1 === wall.points.length - 1 ? 0 : segmentIndex + 1;
-    updateCoordinatePoint(wallId, endIndex, next, { segmentIndex, lengthMm: value });
+    updateCoordinatePoint(wallId, endIndex, next, { segmentIndex, lengthMm: value }, { allowSubMinimumLength: true });
     setMeasurementContextMenu(null); setMeasurementLengthInput(null);
   }
 
@@ -2189,7 +2204,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const next = { x: start.x + (end.x - start.x) / currentLength * requested, y: start.y + (end.y - start.y) / currentLength * requested };
     const closed = samePoint(selectedWall.points[0], selectedWall.points.at(-1)!);
     const endIndex = closed && selectedSegment.segmentIndex + 1 === selectedWall.points.length - 1 ? 0 : selectedSegment.segmentIndex + 1;
-    updateCoordinatePoint(selectedWall.id, endIndex, next, { segmentIndex: selectedSegment.segmentIndex, lengthMm: requested });
+    updateCoordinatePoint(selectedWall.id, endIndex, next, { segmentIndex: selectedSegment.segmentIndex, lengthMm: requested }, { allowSubMinimumLength: true });
     setWallLengthInput(null);
   }
 
@@ -2293,7 +2308,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       }, {}) : undefined;
       return [{
         ...item,
-        points: squaredWalls ? squareWallPoints(points) : points,
+        points,
         attachments: attachments && Object.keys(attachments).length ? attachments : undefined,
         cornerNumbers: cornerNumbers && Object.keys(cornerNumbers).length ? cornerNumbers : undefined,
         thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, sourceSegmentIndices),
@@ -2803,10 +2818,10 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setWallLengthInput(null); setOpeningParent(parentKey(wallId, segmentIndex));
   }
 
-  function updateCoordinatePoint(wallId: string, pointIndex: number, next: Point2D, lengthOverride?: { segmentIndex: number; lengthMm: number }) {
+  function updateCoordinatePoint(wallId: string, pointIndex: number, next: Point2D, lengthOverride?: { segmentIndex: number; lengthMm: number }, options?: { allowSubMinimumLength?: boolean }) {
     const raw = snapshot();
     const before = { ...raw, walls: assignStableCornerNumbers(raw.walls, wallVertexStarts) };
-    const constrained = constrainCornerMoveForOpenings(before.walls, before.openings, { wallId, pointIndex }, next);
+    const constrained = constrainCornerMoveForOpenings(before.walls, before.openings, { wallId, pointIndex }, next, options);
     pendingOpeningRemap.current = { beforeWalls: before.walls, openings: constrained.openings };
     record(before);
     const nextWalls = !lengthOverride ? constrained.walls : constrained.walls.map((wall) => wall.id === wallId ? { ...wall, lengthOverridesMm: { ...wall.lengthOverridesMm, [lengthOverride.segmentIndex]: lengthOverride.lengthMm } } : wall);
@@ -3075,7 +3090,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const modelPoints = [
       ...walls.flatMap((wall) => wall.points),
       ...draft,
-      ...rooms.flatMap((room) => room.vertices),
+      ...rooms.flatMap((room) => [...room.vertices, ...(room.labelPosition ? [room.labelPosition] : [])]),
       ...planRooms.flatMap((room) => room.vertices),
       ...annotations.flatMap((annotation) => [
         ...(annotation.start ? [annotation.start] : []),
@@ -3098,14 +3113,28 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         ];
       }),
     ];
-    const screenPoints = modelPoints.map(toScreen).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+    const dimensionBounds = Array.from(source.querySelectorAll<SVGGraphicsElement>(".wall-dimension,.opening-dimension,.fixture-dimension")).flatMap((element) => {
+      try {
+        const box = element.getBBox();
+        if (![box.x, box.y, box.width, box.height].every(Number.isFinite)) return [];
+        return [
+          { x: box.x, y: box.y },
+          { x: box.x + box.width, y: box.y },
+          { x: box.x, y: box.y + box.height },
+          { x: box.x + box.width, y: box.y + box.height },
+        ];
+      } catch {
+        return [];
+      }
+    });
+    const screenPoints = [...modelPoints.map(toScreen), ...dimensionBounds].filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
     if (screenPoints.length > 0) {
       const minX = Math.min(...screenPoints.map((point) => point.x));
       const maxX = Math.max(...screenPoints.map((point) => point.x));
       const minY = Math.min(...screenPoints.map((point) => point.y));
       const maxY = Math.max(...screenPoints.map((point) => point.y));
       const span = Math.max(maxX - minX, maxY - minY, 1);
-      const padding = Math.max(48, Math.min(120, span * 0.12)) + (effectiveStyle === "CREATIVE" ? 112 : 0);
+      const padding = Math.max(64, Math.min(160, span * FLOORPLAN_EXPORT_PADDING_RATIO)) + (effectiveStyle === "CREATIVE" ? 112 : 0);
       const viewBox = { x: minX - padding, y: minY - padding, width: maxX - minX + padding * 2, height: maxY - minY + padding * 2 };
       clone.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
       const background = clone.querySelector<SVGRectElement>(".canvas-background");
@@ -3120,21 +3149,23 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         .split(/[\s,]+/)
         .map(Number)
         .filter(Number.isFinite);
+      const attributionScale = viewBoxWidth / FLOORPLAN_EXPORT_WIDTH;
+      const attributionMargin = 16 * attributionScale;
       const attributionLink = document.createElementNS("http://www.w3.org/2000/svg", "a");
       attributionLink.setAttribute("href", FLOORPLAN_EXPORT_ATTRIBUTION_URL);
       attributionLink.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", FLOORPLAN_EXPORT_ATTRIBUTION_URL);
       attributionLink.setAttribute("aria-label", FLOORPLAN_EXPORT_ATTRIBUTION);
       const attribution = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      attribution.setAttribute("x", String(viewBoxX + viewBoxWidth - 12));
-      attribution.setAttribute("y", String(viewBoxY + viewBoxHeight - 10));
+      attribution.setAttribute("x", String(viewBoxX + viewBoxWidth - attributionMargin));
+      attribution.setAttribute("y", String(viewBoxY + viewBoxHeight - attributionMargin));
       attribution.setAttribute("text-anchor", "end");
-      attribution.setAttribute("fill", "#68756f");
+      attribution.setAttribute("fill", "#000");
       attribution.setAttribute("font-family", "Arial,sans-serif");
-      attribution.setAttribute("font-size", "7.5");
-      attribution.setAttribute("font-weight", "600");
+      attribution.setAttribute("font-size", String(FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE * attributionScale));
+      attribution.setAttribute("font-weight", "700");
       attribution.setAttribute("paint-order", "stroke");
       attribution.setAttribute("stroke", "#fff");
-      attribution.setAttribute("stroke-width", "3");
+      attribution.setAttribute("stroke-width", String(3 * attributionScale));
       attribution.setAttribute("stroke-linejoin", "round");
       attribution.textContent = FLOORPLAN_EXPORT_ATTRIBUTION;
       attributionLink.appendChild(attribution);
@@ -3150,9 +3181,17 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       });
       symbol.classList.remove("coloured-fixture-symbol");
     });
-    clone.querySelectorAll(".styled-room-floors,.creative-garden,.creative-floor-wash").forEach((element) => {
-      if (effectiveStyle === "CREATIVE" || (effectiveStyle === "MODERN" && element.classList.contains("styled-room-floors"))) (element as SVGElement).style.display = "inline";
-      else element.remove();
+    const preserveAtmosphere = effectiveStyle === "CREATIVE" || effectiveStyle === "MODERN";
+    clone.querySelectorAll<SVGElement>(".styled-room-floors,.creative-garden,.creative-floor-wash").forEach((element) => {
+      if (!preserveAtmosphere || (effectiveStyle === "MODERN" && !element.classList.contains("styled-room-floors"))) {
+        element.remove();
+        return;
+      }
+      // These layers are hidden in the live SVG until a style is selected.
+      // Remove the inline display:none so the standalone export cannot hide
+      // creative planting or material patterns when its stylesheet loads.
+      element.removeAttribute("style");
+      element.setAttribute("display", "inline");
     });
     const styleClass = floorplanStyleClass(effectiveStyle);
     if (styleClass) clone.classList.add(styleClass);
@@ -3205,9 +3244,16 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   const exportStyleLabel = exportStyle === "CURRENT"
     ? `Current ${floorplanStyleLabel(floorplanStyle).toLowerCase()}`
     : `${floorplanStyleLabel(exportStyle).replace(/ style$/, "")} drawing`;
-  const floorplanLeftDockIds = ["floorplan-build", "floorplan-coordinates"].filter((id) => toolbarVisibility[id as ToolbarId]);
-  const floorplanRightDockIds = ["floorplan-view", "floorplan-openings"].filter((id) => toolbarVisibility[id as ToolbarId]);
-  const floorplanDock = (side: "LEFT" | "RIGHT", visibleIds: string[], activeId: string) => filledToolbarDock(side, visibleIds, activeId);
+  const floorplanLeftDockIds = ["floorplan-view", "floorplan-build", "floorplan-coordinates"].filter((id) => toolbarVisibility[id as ToolbarId]);
+  const floorplanRightDockIds = ["floorplan-openings"].filter((id) => toolbarVisibility[id as ToolbarId]);
+  const floorplanDock = (side: "LEFT" | "RIGHT", visibleIds: string[], activeId: string) => {
+    if (!fillToolbarLayout) return filledToolbarDock(side, visibleIds, activeId);
+    const width = 340;
+    if (side === "RIGHT") return positionedToolbarDock("RIGHT", 8, undefined, width);
+    if (activeId === "floorplan-view") return positionedToolbarDock("LEFT", 8, undefined, width);
+    if (activeId === "floorplan-build") return positionedToolbarDock("LEFT", "clamp(258px, 31%, 320px)", undefined, width);
+    return positionedToolbarDock("LEFT", "calc(31% + 326px)", undefined, width);
+  };
   const outlinePickerTemplates = pendingOutlineAction === "NOTCHED_RECTANGLE" ? NOTCHED_RECTANGLE_TEMPLATES : L_SHAPE_TEMPLATES;
   const outlinePickerTitle = pendingOutlineAction === "NOTCHED_RECTANGLE" ? "Choose the recess orientation" : "Choose the L orientation";
   const outlinePickerDescription = pendingOutlineAction === "NOTCHED_RECTANGLE"
@@ -3250,10 +3296,11 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     return <polygon points={annotationArrowPoints(from, to)} fill={stroke} />;
   };
   const markerRadius = (size: MarkerSize) => size === "SMALL" ? 10 : size === "LARGE" ? 18 : 14;
-  const renderAnnotationMarker = (annotation: FloorplanAnnotation, selected: boolean, select: (event: ReactPointerEvent<SVGGElement>) => void, handle: (event: ReactPointerEvent<SVGCircleElement>, handleName: "MARKER") => void) => {
+  const renderAnnotationMarker = (annotation: FloorplanAnnotation, selected: boolean, select: (event: ReactPointerEvent<SVGGElement>) => void, handle: (event: ReactPointerEvent<SVGCircleElement>, handleName: "MARKER" | "LABEL") => void) => {
     if (!annotation.position || !annotation.marker) return null;
     const marker = annotation.marker;
     const point = toScreen(annotation.position);
+    const arrowTail = marker.arrowAttached && annotation.labelPosition ? toScreen(annotation.labelPosition) : null;
     const radius = markerRadius(marker.size);
     const color = marker.color || annotation.style.color || "#287fb8";
     const numberLabel = marker.symbol === "NUMBER" || marker.symbol === "LETTER";
@@ -3269,10 +3316,11 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       shape = <circle cx={point.x} cy={point.y} r={radius} fill="#fff" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />;
     }
     return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select} onDoubleClick={() => editMarker(annotation)}>
+      {arrowTail && <><line x1={arrowTail.x} y1={arrowTail.y} x2={point.x} y2={point.y} stroke={color} strokeWidth={Math.max(1, annotation.style.thickness)} strokeDasharray={annotationDash(annotation.style)} vectorEffect="non-scaling-stroke" />{renderArrowEnd(arrowTail, point, color, annotation.style.arrowEndStyle)}<line x1={arrowTail.x} y1={arrowTail.y} x2={point.x} y2={point.y} stroke="transparent" strokeWidth="16" className="annotation-hit" /></>}
       {shape}
       {numberLabel || marker.symbol === "EXCLAMATION" || marker.symbol === "QUESTION" ? <text x={point.x} y={point.y + radius * .35} textAnchor="middle" fill={color} fontSize={Math.max(10, radius * 1.05)} fontWeight="700" dominantBaseline="middle">{marker.label || (marker.symbol === "EXCLAMATION" ? "!" : marker.symbol === "QUESTION" ? "?" : "")}</text> : null}
       <circle cx={point.x} cy={point.y} r={Math.max(12, radius + 6)} fill="transparent" stroke="transparent" strokeWidth="10" className="annotation-hit" />
-      {selected && <circle className="annotation-handle" cx={point.x} cy={point.y} r="6" onPointerDown={(event) => handle(event, "MARKER")} />}
+      {selected && <><circle className="annotation-handle" cx={point.x} cy={point.y} r="6" onPointerDown={(event) => handle(event, "MARKER")} />{arrowTail && <circle className="annotation-handle" cx={arrowTail.x} cy={arrowTail.y} r="6" onPointerDown={(event) => handle(event, "LABEL")} />}</>}
     </g>;
   };
   const renderAnnotation = (annotation: FloorplanAnnotation) => {
@@ -3320,7 +3368,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       </g>;
     }
     if (annotation.type === "MARKER") {
-      const handle = (event: ReactPointerEvent<SVGCircleElement>, handleName: "MARKER") => beginAnnotationDrag(event, annotation, handleName);
+      const handle = (event: ReactPointerEvent<SVGCircleElement>, handleName: "MARKER" | "LABEL") => beginAnnotationDrag(event, annotation, handleName);
       return renderAnnotationMarker(annotation, selected, select, handle);
     }
     if (annotation.type === "CALLOUT" && annotation.anchor && annotation.labelPosition) {
@@ -3448,7 +3496,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
 
       <main className="drawing-column full-plan-drawing">
         <div className="resizable-floorplan-window">
-         {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div>{sourceUrl && !importing && <div className="floorplan-background-actions drawing-navigation-row" role="group" aria-label="Drawing actions"><button type="button" className="fit-view-button floorplan-background-action" onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="fit-view-button floorplan-background-action" onClick={clearImportedDrawing}>Remove drawing</button></div>}<div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><ViewToggle label="Room names" active={showRoomNames} onToggle={() => setShowRoomNames((current) => !current)} /><ViewToggle label="Measurements" active={showMeasurements} onToggle={() => { const enabled = !showMeasurements; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><ViewToggle label="Wall thickness" active={showWallThickness} onToggle={() => setShowWallThickness((current) => !current)} /><ViewToggle label="Annotations" active={showAnnotations} onToggle={() => setShowAnnotations((current) => !current)} /><ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} /><ViewToggle label="Coordinates table" active={coordinatesToolbarOpen} onToggle={() => onToggleToolbar("floorplan-coordinates")} /></div></div></FloatingToolbar>}
+         {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div>{sourceUrl && !importing && <div className="floorplan-background-actions drawing-navigation-row" role="group" aria-label="Drawing actions"><button type="button" className="fit-view-button floorplan-background-action" onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="fit-view-button floorplan-background-action" onClick={clearImportedDrawing}>Remove drawing</button></div>}<div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><ViewToggle label="Room names" active={showRoomNames} onToggle={() => setShowRoomNames((current) => !current)} /><ViewToggle label="Measurements" active={showMeasurements} onToggle={() => { const enabled = !showMeasurements; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><ViewToggle label="Wall thickness" active={showWallThickness} onToggle={() => setShowWallThickness((current) => !current)} /><ViewToggle label="Annotations" active={showAnnotations} onToggle={() => setShowAnnotations((current) => !current)} /><ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} /><ViewToggle label="Coordinates table" active={coordinatesToolbarOpen} onToggle={() => onToggleToolbar("floorplan-coordinates")} /></div></div></FloatingToolbar>}
 <div className="full-plan-canvas">{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}
           <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={`mode-${tool.toLowerCase()}`} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onContextMenuCapture={event => { if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
@@ -3650,7 +3698,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
           const opening = viewerOpeningRoom?.openings.find(item => item.id === openingEditRequest.id);
           return opening && viewerOpeningRoom && onStandaloneRoomChange ? <RoomOpeningEditor key={`${opening.id}-${openingEditRequest.requestId}`} room={viewerOpeningRoom} opening={opening} items={openingCatalogueItems} units={displayUnits} onChange={onStandaloneRoomChange} /> : <p>This opening has been removed. Select another door or window.</p>;
         })(), openingEditorTarget)}
-        {toolbarVisibility["floorplan-openings"] && !openingEditRequest && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-openings") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={520} onClose={() => { onElementSelected?.(null); onToggleToolbar("floorplan-openings"); }}>{openingPanel}</FloatingToolbar>}
+        {toolbarVisibility["floorplan-openings"] && !openingEditRequest && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-openings") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={760} onClose={() => { onElementSelected?.(null); onToggleToolbar("floorplan-openings"); }}>{openingPanel}</FloatingToolbar>}
       </aside>
     </div>
   </section>;

@@ -129,55 +129,6 @@ const TILE_COLLECTION: TileStyle[] = [
   { id: "white-hexagon", name: "White hexagon", pattern: "HEXAGON", base: "#f3f1eb", accent: "#d3d0c9", grout: "#aaa9a5", tileSize: 220, preview: "conic-gradient(from 30deg,#d3d0c9 60deg,#f3f1eb 0 120deg,#d3d0c9 0 180deg,#f3f1eb 0 240deg,#d3d0c9 0 300deg,#f3f1eb 0)" },
 ];
 
-interface TilePalette {
-  name: string;
-  base: string;
-  accent: string;
-  grout: string;
-}
-
-const TILE_PALETTES: Partial<Record<TilePattern, TilePalette[]>> = {
-  MARBLE: [
-    { name: "Carrara", base: "#eeeae2", accent: "#aeb5b3", grout: "#d0cdc7" },
-    { name: "Nero", base: "#202321", accent: "#d9d7ce", grout: "#777a75" },
-    { name: "Rose", base: "#ead8d2", accent: "#a36f70", grout: "#cbb9b3" },
-  ],
-  CHECKERBOARD: [
-    { name: "Black + white", base: "#f2f0e9", accent: "#202523", grout: "#b9b7b0" },
-    { name: "Navy + cream", base: "#efe5cf", accent: "#263e58", grout: "#c9bda8" },
-    { name: "Sage + chalk", base: "#e8e8df", accent: "#668071", grout: "#bfc4b9" },
-  ],
-  HERRINGBONE: [
-    { name: "Terracotta", base: "#b96f4f", accent: "#8e4d39", grout: "#e2cbbd" },
-    { name: "Forest", base: "#42685b", accent: "#28483f", grout: "#c4cdc6" },
-    { name: "Sand", base: "#d8c19b", accent: "#aa8d65", grout: "#eee2ce" },
-  ],
-  DIAMOND: [
-    { name: "Blue", base: "#e8e5dc", accent: "#315f78", grout: "#c8c5bd" },
-    { name: "Burgundy", base: "#eee3d8", accent: "#7c3843", grout: "#cbbeb3" },
-    { name: "Ochre", base: "#f0e5c9", accent: "#b67b27", grout: "#cabf9f" },
-  ],
-  KITKAT: [
-    { name: "Sage", base: "#789786", accent: "#5d796b", grout: "#d8d4ca" },
-    { name: "Ocean", base: "#4e7f8b", accent: "#315c68", grout: "#d4dcda" },
-    { name: "Blush", base: "#c98f86", accent: "#a66d68", grout: "#ead8d3" },
-  ],
-  SQUARE_600: [
-    { name: "Charcoal", base: "#343c3b", accent: "#252b2a", grout: "#79817e" },
-    { name: "Limestone", base: "#c9c0ae", accent: "#a99d88", grout: "#e2ddd3" },
-    { name: "Concrete", base: "#8d9290", accent: "#6f7472", grout: "#c4c7c4" },
-  ],
-  TERRAZZO: [
-    { name: "Cream", base: "#e6ddcc", accent: "#9d7867", grout: "#d5cbb9" },
-    { name: "Confetti", base: "#ece8dd", accent: "#315f78", grout: "#b96f4f" },
-    { name: "Night", base: "#343938", accent: "#d2a45b", grout: "#7f8e89" },
-  ],
-  HEXAGON: [
-    { name: "White", base: "#f3f1eb", accent: "#d3d0c9", grout: "#aaa9a5" },
-    { name: "Graphite", base: "#4a504e", accent: "#2f3433", grout: "#858b88" },
-    { name: "Sea glass", base: "#b7d0c8", accent: "#759c91", grout: "#e0e7e3" },
-  ],
-};
 
 const TILE_PATTERN_INDEX: Record<TilePattern, number> = {
   NONE: 0,
@@ -1274,14 +1225,10 @@ function drawCaptureAttribution(context: CanvasRenderingContext2D, width: number
   const scale = Math.max(1, width / 1640);
   const margin = 14 * scale;
   context.save();
-  context.font = `600 ${8 * scale}px Arial, sans-serif`;
+  context.font = `700 ${12 * scale}px Arial, sans-serif`;
   context.textAlign = "right";
   context.textBaseline = "bottom";
-  context.lineJoin = "round";
-  context.lineWidth = 3 * scale;
-  context.strokeStyle = "#fff";
-  context.fillStyle = "#68756f";
-  context.strokeText(CAPTURE_ATTRIBUTION, width - margin, height - margin);
+  context.fillStyle = "#000000";
   context.fillText(CAPTURE_ATTRIBUTION, width - margin, height - margin);
   context.restore();
 }
@@ -1692,10 +1639,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
   const [paintSearch, setPaintSearch] = useState("");
   const [paintCollectionId, setPaintCollectionId] = useState("paints-dulux");
   const [materialCollections, setMaterialCollections] = useState<MaterialCollection[]>([]);
-  const [tileCollections, setTileCollections] = useState<MaterialCollection[]>([]);
-  const [tileCollectionId, setTileCollectionId] = useState("");
   useEffect(() => { void fetch(`${apiUrl}/catalog/materials?kind=PAINT`).then((response) => response.ok ? response.json() as Promise<MaterialCollection[]> : []).then(setMaterialCollections).catch(() => setMaterialCollections([])); }, [apiUrl]);
-  useEffect(() => { void fetch(`${apiUrl}/catalog/materials?kind=TILE`).then((response) => response.ok ? response.json() as Promise<MaterialCollection[]> : []).then(setTileCollections).catch(() => setTileCollections([])); }, [apiUrl]);
   if (!selection) return null;
   const finishes = room.finishes ?? {};
   const selectedElement = selection.type === "ELEMENT" ? room.obstacles.find((item) => item.id === selection.id) : undefined;
@@ -1723,21 +1667,6 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
     })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
   }
 
-  function setFloorColours(tileId: string, colours: { base: string; accent: string; grout: string }) {
-    buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => ({
-      ...current,
-      floor_tile_colours: { ...(current.floor_tile_colours ?? {}), [tileId]: colours },
-    })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
-  }
-
-  function resetFloorColours(tileId: string) {
-    buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => {
-      const colours = { ...(current.floor_tile_colours ?? {}) };
-      delete colours[tileId];
-      return { ...current, floor_tile_colours: Object.keys(colours).length ? colours : undefined };
-    }).forEach((update) => onFinishesChange(update.finishes, update.roomId));
-  }
-
   function setWallLock(locked: boolean) {
     if (!selectedElement) return;
     const unlocked = { ...selectedElement, wall_lock: locked };
@@ -1745,19 +1674,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
     onObstaclesChange(room.obstacles.map((item) => item.id === selectedElement.id ? updated : item), room.id);
   }
 
-  const availableTileCollections = tileCollections.filter((collection) => !(collection.kind === "TILE" && collection.id === "tiles-default"));
-  const activeTileCollectionId = availableTileCollections.some((collection) => collection.id === tileCollectionId) ? tileCollectionId : availableTileCollections[0]?.id ?? "";
-  const selectedTileCollection = availableTileCollections.find((collection) => collection.id === activeTileCollectionId);
-  const tiles = selectedTileCollection?.families.flatMap((family) => family.items.map((item) => ({
-    id: item.id,
-    name: item.name,
-    pattern: "SQUARE_600" as TilePattern,
-    base: item.color_hex,
-    accent: item.color_hex,
-    grout: "#b7b5af",
-    tileSize: 600,
-    preview: item.color_hex,
-  }))) ?? TILE_COLLECTION;
+
 
   return (
     <FloatingToolbar title="Selected object controls" defaultPosition={{ x: 790, y: 452 }} dock={dock} layoutResetKey={layoutResetKey} bringToFront maxHeight={650} onClose={onClose}>
@@ -1777,9 +1694,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
         <p>Drag the body across the floor to reposition it. Use the Human mock-up toolbar for rotation, posture and clearance settings.</p>
       </>}
       {selection.type === "WALL" && <>
-        <span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span>
-        <strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong>
-        <output className="selected-colour-hex">HEX <code>{(finishes.wall_colors?.[selection.id] ?? DEFAULT_WALL_COLOUR).toUpperCase()}</code></output>
+        <div className="selected-wall-heading"><span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span><strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong></div>
         <label className="field"><span>Paint options</span><select aria-label="Paint options" value={wallPaintScope} onChange={(event) => setWallPaintScope(event.target.value as WallPaintScope)}><option value="SELECTED">Selected walls</option><option value="ROOM">Current room walls</option><option value="ALL">All walls</option></select></label>
         <label className="field"><span>Paint collection</span><select value={paintCollectionId} onChange={(event) => { setPaintCollectionId(event.target.value); setPaintFamilyId(""); setPaintSearch(""); }}>{materialCollections.length ? materialCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>) : <option value="paints-dulux">Dulux paints</option>}</select></label>
         <SkirtingControls value={finishes.skirting_board} collapsed={skirtingCollapsed} onToggleCollapsed={setSkirtingCollapsed} onChange={skirting_board => { if (skirting_board.enabled) setSkirtingCollapsed(false); onFinishesChange({ ...finishes, skirting_board }, room.id); }} />
@@ -1797,23 +1712,12 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
         <button className="review-style-button colour-reset-button" type="button" onClick={() => setWallColour()}>Reset to default</button>
       </>}
       {selection.type === "FLOOR" && <>
-        <span className="eyebrow">Selected floor</span>
         <strong>Flooring</strong>
-        <output className="selected-colour-hex">HEX <code>{(finishes.floor_tile_colours?.[finishes.floor_tile_id ?? ""]?.base ?? finishes.floor_color ?? "#E8E1D6").toUpperCase()}</code></output>
         <label className="field"><span>Tile options</span><select aria-label="Tile options" value={floorTileScope} onChange={(event) => setFloorTileScope(event.target.value as FloorTileScope)}><option value="SELECTED">Selected floor</option><option value="ROOM">Current room floor</option><option value="ALL">All floors</option></select></label>
         <FlooringControls design={finishes.floor_design} onChange={(floor_design) => {
           buildFloorFinishUpdates(rooms, room.id, floorTileScope, (current) => ({ ...current, floor_design, floor_color: floorDesignColour(floor_design), floor_tile_id: undefined, floor_pattern: "NONE" })).forEach((update) => onFinishesChange(update.finishes, update.roomId));
         }} />
-        {availableTileCollections.length > 0 && <details><summary>Existing tile collections</summary>
-        <label className="field"><span>Tile collection</span><select value={activeTileCollectionId} onChange={(event) => setTileCollectionId(event.target.value)}>{availableTileCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label>
-        <div className="tile-collection">{tiles.map((tile) => <button key={tile.id} type="button" className={finishes.floor_tile_id === tile.id ? "selected" : ""} onClick={() => setFloorTile(tile)}><span className="tile-swatch" style={{ background: tile.preview }} /><small>{tile.name}</small></button>)}</div>
-        {(() => {
-          const selectedTile = tiles.find((tile) => tile.id === finishes.floor_tile_id);
-          if (!selectedTile) return null;
-          const current = finishes.floor_tile_colours?.[selectedTile.id] ?? { base: selectedTile.base, accent: selectedTile.accent, grout: selectedTile.grout };
-          return <div className="tile-colour-editor"><strong>{selectedTile.name} colours</strong><div className="tile-palette-presets">{(TILE_PALETTES[selectedTile.pattern] ?? []).map((palette) => <button key={palette.name} type="button" title={palette.name} aria-label={`Use ${palette.name} colours`} style={{ background: `linear-gradient(135deg, ${palette.base} 0 45%, ${palette.grout} 45% 55%, ${palette.accent} 55% 100%)` }} onClick={() => setFloorColours(selectedTile.id, palette)} />)}</div><div className="tile-custom-colours"><label><span>Primary</span><input type="color" value={current.base} onChange={(event) => setFloorColours(selectedTile.id, { ...current, base: event.target.value })} /></label><label><span>Accent</span><input type="color" value={current.accent} onChange={(event) => setFloorColours(selectedTile.id, { ...current, accent: event.target.value })} /></label><label><span>Grout</span><input type="color" value={current.grout} onChange={(event) => setFloorColours(selectedTile.id, { ...current, grout: event.target.value })} /></label></div><button type="button" className="review-style-button colour-reset-button" onClick={() => resetFloorColours(selectedTile.id)}>Reset colours to default</button></div>;
-        })()}
-        </details>}
+
         <button className="remove-finish" type="button" onClick={() => setFloorTile()}>Remove floor finish</button>
       </>}
     </aside>
@@ -1877,7 +1781,7 @@ export function EngineeringViewer(props: ViewerProps) {
     : null;
   const selectedObjectPanelVisible = Boolean(panelSelection && panelRoom);
   const viewerLeftDock = (activeId: string): ToolbarDock => {
-    if (activeId === "viewer-view") return positionedToolbarDock("LEFT", "clamp(166px, 14%, 174px)", "clamp(300px, 43%, 494px)", 355);
+    if (activeId === "viewer-view") return positionedToolbarDock("LEFT", "clamp(166px, 14%, 174px)", undefined, 340);
     return filledToolbarDock("LEFT", ["viewer-view", "viewer-person"].filter((id) => props.toolbarVisibility[id as ToolbarId]), activeId);
   };
   const clearActivePreset = useCallback(() => setActivePreset(null), []);

@@ -48,7 +48,8 @@ const patterns: Record<string, string> = {
 export function FabricMaterial({ fabricId, colour, physicalSize }: { fabricId?: string; colour: string; physicalSize: [number, number, number] }) {
   const fabric = fabricById(fabricId);
   const [x,y,z] = physicalSize;
-  const relief = Math.min(1.15, (fabric?.relief ?? .3) * 1.55);
+  // Keep fabric relief at micro-surface scale; stronger values create broad waviness on upholstery.
+  const relief = Math.min(.12, (fabric?.relief ?? .3) * .35);
   const compile = useCallback<MeshPhysicalMaterial["onBeforeCompile"]>((shader) => {
     if (!fabric) return;
     shader.uniforms.fabricScale = { value: new Vector3(x/fabric.scale_mm,y/fabric.scale_mm,z/fabric.scale_mm) };
@@ -62,5 +63,5 @@ export function FabricMaterial({ fabricId, colour, physicalSize }: { fabricId?: 
       vec3 fabricGradient = sign(fabricDet) * (dFdx(yarnHeight)*fabricR1 + dFdy(yarnHeight)*fabricR2);
       normal = normalize(max(abs(fabricDet),.0001)*normal - ${relief.toFixed(3)}*fabricGradient);`);
   }, [fabric,relief,x,y,z]);
-  return <meshPhysicalMaterial key={`${fabricId}-${x}-${y}-${z}`} color={colour} roughness={fabric?.roughness ?? .7} sheen={fabric?.sheen ?? 0} sheenColor={colour} sheenRoughness={.75} onBeforeCompile={compile} customProgramCacheKey={() => `fabric-v1-${fabricId}`} />;
+  return <meshPhysicalMaterial key={`${fabricId}-${x}-${y}-${z}`} color={colour} roughness={fabric?.roughness ?? .7} sheen={fabric?.sheen ?? 0} sheenColor={colour} sheenRoughness={.75} onBeforeCompile={compile} customProgramCacheKey={() => `fabric-v2-${fabricId}`} />;
 }
