@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { STAIRCASE_MODELS } from "@/lib/architecturalModels";
 import { ComponentColours } from "@/components/ComponentColours";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
@@ -23,6 +23,7 @@ const MACRO_CATEGORY_LABELS: Record<MacroCategoryId, string> = {
 };
 type RoomCatalogueItem = CatalogueItem & { fixture_kind: NonNullable<Obstacle["fixture_kind"]> };
 type ElementEditRequest = { id: string; roomId: string; requestId: number };
+type SelectorLevel = "category" | "subcategory" | "object";
 function isRoomFixture(item: CatalogueItem): item is RoomCatalogueItem {
   return ROOM_FIXTURE_KINDS.has(item.fixture_kind);
 }
@@ -51,13 +52,15 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const [error, setError] = useState("");
   const [macroCategory, setMacroCategory] = useState<MacroCategoryId>("bathroom");
   const [category, setCategory] = useState("showers");
-  const [objectId, setObjectId] = useState("");
+  const [objectId, setObjectId] = useState<string | null>("");
   const [positionExpanded, setPositionExpanded] = useState(false);
   const [dimensionsExpanded, setDimensionsExpanded] = useState(false);
   const [baseHeightExpanded, setBaseHeightExpanded] = useState(false);
   const [draft, setDraft] = useState<Obstacle | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [wallLockPreference, setWallLockPreference] = useState(true);
+  const [selectorOpen, setSelectorOpen] = useState<SelectorLevel | null>(null);
+  const selectorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const controller = new AbortController();
     const refresh = () => { void fetch(`${apiUrl}/catalog/items`, { signal: controller.signal, cache: "no-store" })
@@ -86,6 +89,21 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     return () => window.cancelAnimationFrame(frame);
   }, [elementEditRequest, items, room.id, room.obstacles]);
   useEffect(() => {
+    if (!selectorOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!selectorRef.current?.contains(event.target as Node)) setSelectorOpen(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectorOpen(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [selectorOpen]);
+  useEffect(() => {
     if (!elementEditRequest || elementEditRequest.roomId !== room.id || editingId !== elementEditRequest.id) return;
     const frame = window.requestAnimationFrame(() => {
       const row = document.querySelector<HTMLElement>(`[data-element-id="${elementEditRequest.id}"]`);
@@ -104,15 +122,13 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const availableMacroCategories = MACRO_CATEGORY_ORDER.filter((id) => categoriesByMacro.has(id));
   const activeMacroCategory = availableMacroCategories.includes(macroCategory) ? macroCategory : availableMacroCategories[0];
   const macroCategories = activeMacroCategory ? categoriesByMacro.get(activeMacroCategory) ?? [] : [];
-  const activeCategory = macroCategories.some(([id]) => id === category) ? category : macroCategories[0]?.[0];
+  const activeCategory = category === "" ? "" : macroCategories.some(([id]) => id === category) ? category : macroCategories[0]?.[0] ?? "";
   const family = fixtureItems.filter(item => item.category_id === activeCategory);
   // `subcategory` is an Object catalogue grouping, not a second family. The
   // previous filter selected only the first grouping (for example, the
   // 4-person table) and hid every sibling entry from the editor.
   const objects = [...family].sort((a, b) => a.subcategory.localeCompare(b.subcategory) || Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
-  const selected = objects.find(item => item.id === objectId) ?? objects[0];
-  const activeMacroCategoryLabel = activeMacroCategory ? MACRO_CATEGORY_LABELS[activeMacroCategory] : "";
-  const activeCategoryLabel = activeCategory ? (activeCategory === "storage" ? "Elements" : macroCategories.find(([id]) => id === activeCategory)?.[1] ?? "") : "";
+  const selected = objectId === null ? undefined : objects.find(item => item.id === objectId) ?? objects[0];
   const selectedObjectLabel = selected ? `${selected.name.replace(/^Default /i, "")}${!selected.is_default ? ` / ${selected.supplier}` : ""}` : "";
   const existing = room.obstacles.find(item => item.id === editingId);
   function fromCatalogue(item: RoomCatalogueItem, wallLock = wallLockPreference): Obstacle {
@@ -149,16 +165,67 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     if (existing) change({ ...next, id: existing.id, center: existing.center, rotation_deg: existing.rotation_deg, wall_lock: existing.wall_lock });
     else setDraft(next);
   }
+  const macroCategoryDisplay = (id: MacroCategoryId) => MACRO_CATEGORY_LABELS[id].replace(/\s+fixtures$/, "");
+  const activeCategoryDisplay = activeCategory ? (activeCategory === "storage" ? "Elements" : macroCategories.find(([id]) => id === activeCategory)?.[1] ?? "") : "";
+  function selectMacroCategory(nextMacro: MacroCategoryId) {
+    if (nextMacro === activeMacroCategory) {
+      setSelectorOpen("subcategory");
+      return;
+    }
+    setMacroCategory(nextMacro);
+    setCategory("");
+    setObjectId(null);
+    setDraft(null);
+    setEditingId(null);
+    setBaseHeightExpanded(false);
+    setSelectorOpen("subcategory");
+  }
+  function selectCategory(nextCategory: string) {
+    if (nextCategory === activeCategory) {
+      setSelectorOpen("object");
+      return;
+    }
+    setCategory(nextCategory);
+    setObjectId(null);
+    setDraft(null);
+    setEditingId(null);
+    setBaseHeightExpanded(false);
+    setSelectorOpen("object");
+  }
+  function selectObject(item: RoomCatalogueItem) {
+    choose(item);
+    setSelectorOpen(null);
+  }
   const positionSummary = value ? `X ${formatLength(value.center.x, displayUnits)} · Y ${formatLength(value.center.y, displayUnits)} · Rot ${value.rotation_deg.toFixed(0)}°` : "Set placement coordinates";
   const dimensionsSummary = value ? `${formatLength(value.dimensions.width.value, displayUnits)} × ${formatLength(value.dimensions.depth.value, displayUnits)} × ${formatLength(value.dimensions.height.value, displayUnits)}` : "Set object dimensions";
   const baseHeightRelevant = Boolean(value && (cabinet || stairModel || value.base_z_mm > 0 || baseHeightExpanded));
   return <section className="fixture-editor element-add-editor" aria-label="Add elements">
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
-    <div className="fixture-selectors element-object-selectors compact-catalogue-selectors">
-      <label className="field"><span>Category</span><select title={activeMacroCategoryLabel} value={activeMacroCategory ?? ""} onChange={event => { const nextMacro = event.target.value as MacroCategoryId; const nextCategories = categoriesByMacro.get(nextMacro) ?? []; setMacroCategory(nextMacro); setCategory(nextCategories[0]?.[0] ?? ""); setObjectId(""); setDraft(null); setEditingId(null); setBaseHeightExpanded(false); }}>{availableMacroCategories.map(id => <option key={id} value={id}>{MACRO_CATEGORY_LABELS[id]}</option>)}</select></label>
-      <label className="field"><span>Subcategory</span><select title={activeCategoryLabel} value={activeCategory ?? ""} onChange={event => { setCategory(event.target.value); setObjectId(""); setDraft(null); setEditingId(null); setBaseHeightExpanded(false); }}>{macroCategories.map(([id, name]) => <option key={id} value={id}>{id === "storage" ? "Elements" : name}</option>)}</select></label>
-      <label className="field element-object-select"><span>Object</span><select title={selectedObjectLabel} value={selected?.id ?? ""} onChange={event => choose(objects.find(item => item.id === event.target.value))}>{objects.map(item => <option key={item.id} value={item.id}>{item.name.replace(/^Default /i, "")}{!item.is_default ? ` / ${item.supplier}` : ""}</option>)}</select></label>
-      {selected && <small className="catalogue-selection-caption">{selected.name.replace(/^Default /i, "")}</small>}
+    <div className="fixture-cascading-selector" ref={selectorRef} aria-label="Element catalogue selector">
+      <div className="fixture-cascading-level">
+        <button type="button" className="fixture-cascading-trigger" aria-expanded={selectorOpen === "category"} aria-controls="fixture-category-options" onClick={() => setSelectorOpen(current => current === "category" ? null : "category")}>
+          <span className="fixture-cascading-trigger-copy"><span>Category</span><strong className={!activeMacroCategory ? "placeholder" : undefined}>{activeMacroCategory ? macroCategoryDisplay(activeMacroCategory) : "Select category"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{selectorOpen === "category" ? "▴" : "▾"}</span>
+        </button>
+        {selectorOpen === "category" && <div id="fixture-category-options" className="fixture-cascading-options" role="listbox" aria-label="Category options">
+          {availableMacroCategories.map(id => <button type="button" role="option" aria-selected={id === activeMacroCategory} className={id === activeMacroCategory ? "selected" : undefined} key={id} onClick={() => selectMacroCategory(id)}>{macroCategoryDisplay(id)}</button>)}
+        </div>}
+      </div>
+      <div className="fixture-cascading-level">
+        <button type="button" className="fixture-cascading-trigger" disabled={!activeMacroCategory || macroCategories.length === 0} aria-expanded={selectorOpen === "subcategory"} aria-controls="fixture-subcategory-options" onClick={() => setSelectorOpen(current => current === "subcategory" ? null : "subcategory")}>
+          <span className="fixture-cascading-trigger-copy"><span>Subcategory</span><strong className={!activeCategoryDisplay ? "placeholder" : undefined}>{activeCategoryDisplay || "Select subcategory"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{selectorOpen === "subcategory" ? "▴" : "▾"}</span>
+        </button>
+        {selectorOpen === "subcategory" && <div id="fixture-subcategory-options" className="fixture-cascading-options" role="listbox" aria-label="Subcategory options">
+          {macroCategories.map(([id, name]) => <button type="button" role="option" aria-selected={id === activeCategory} className={id === activeCategory ? "selected" : undefined} key={id} onClick={() => selectCategory(id)}>{id === "storage" ? "Elements" : name}</button>)}
+        </div>}
+      </div>
+      <div className="fixture-cascading-level">
+        <button type="button" className="fixture-cascading-trigger" disabled={!activeCategory || objects.length === 0} aria-expanded={selectorOpen === "object"} aria-controls="fixture-object-options" onClick={() => setSelectorOpen(current => current === "object" ? null : "object")}>
+          <span className="fixture-cascading-trigger-copy"><span>Object</span><strong className={!selectedObjectLabel ? "placeholder" : undefined}>{selectedObjectLabel || "Select object"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{selectorOpen === "object" ? "▴" : "▾"}</span>
+        </button>
+        {selectorOpen === "object" && <div id="fixture-object-options" className="fixture-cascading-options" role="listbox" aria-label="Object options">
+          {objects.map(item => <button type="button" role="option" aria-selected={item.id === selected?.id} className={item.id === selected?.id ? "selected" : undefined} key={item.id} onClick={() => selectObject(item)}>{item.name.replace(/^Default /i, "")}{!item.is_default ? ` / ${item.supplier}` : ""}</button>)}
+        </div>}
+      </div>
     </div>
     {value && <>
       {!value.stl_base64 && <FixturePreview obstacle={value} compact />}
