@@ -1009,7 +1009,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .fixture-cascading-trigger-copy > strong { min-width: 0; overflow: hidden; color: var(--ink); font: 650 11px/1.25 var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
 .fixture-cascading-trigger-copy > strong.placeholder { color: var(--muted); font-weight: 550; }
 .fixture-cascading-chevron { color: var(--deep); font: 700 13px/1 var(--font-sans); }
-.fixture-cascading-options { display: grid; max-height: 160px; gap: 2px; overflow-y: auto; padding: 0 6px 6px; }
+.fixture-cascading-options { display: grid; max-height: 160px; gap: 2px; overflow-y: auto; padding: 5px 6px 6px; }
 .fixture-cascading-options button { min-height: 28px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 550 11px/1.25 var(--font-sans); text-align: left; cursor: pointer; }
 .fixture-cascading-options button:hover, .fixture-cascading-options button:focus-visible { background: var(--soft); outline: none; }
 .fixture-cascading-options button.selected { background: var(--deep); color: white; }
