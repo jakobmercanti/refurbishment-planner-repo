@@ -31,7 +31,7 @@ import { AnnotationsPanel, type AnnotationArrowEndStyle, type AnnotationPanelSel
 import { ViewToggle } from "@/components/ViewToggle";
 import { MarkerSettingsPopup, markerTextSize, type MarkerSettings, type MarkerSymbol } from "@/components/MarkerSettingsPopup";
 import { openingCatalogueCategoryLabel, openingCatalogueDefaultDimensions } from "@/lib/openingCatalogue";
-import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleBridgeCorners, ensureVisibleJunctionCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, trimOpenWallEndpoint, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
+import { refreshWallEndpointAttachments, appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleBridgeCorners, ensureVisibleJunctionCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, trimOpenWallEndpoint, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
 import type { CatalogueItem, Obstacle, Opening, Point2D, Room, RoomFinishes } from "@/lib/types";
 import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
@@ -221,7 +221,7 @@ const FLOORPLAN_EXPORT_HEIGHT = 1120;
 const FLOORPLAN_EXPORT_ATTRIBUTION = "Made with FreeFloorplan3D.com";
 const FLOORPLAN_EXPORT_ATTRIBUTION_URL = "https://freefloorplan3d.com";
 const FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE = 18;
-const FLOORPLAN_EXPORT_PADDING_RATIO = 0.08;
+const FLOORPLAN_EXPORT_PADDING_RATIO = 0.04;
 const FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX = 48;
 
 const FLOORPLAN_EXPORT_BASE_CSS = `
@@ -1356,6 +1356,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   function redo() { const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next); }
 
   function moveCornerPreservingTopology(baseline: Wall[], selection: PointSelection, next: Point2D, options?: { allowSubMinimumLength?: boolean }): Wall[] {
+    baseline = refreshWallEndpointAttachments(baseline);
     const source = baseline.find((wall) => wall.id === selection.wallId);
     if (!source) return baseline;
     const allowSubMinimumLength = options?.allowSubMinimumLength ?? false;
@@ -3285,13 +3286,11 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       label.textContent = input?.value ?? input?.getAttribute("value") ?? "Room";
       editor.replaceWith(label);
     });
-    clone.querySelectorAll("g").forEach((group) => {
-      const containsSourceImage = Array.from(group.querySelectorAll<SVGImageElement>("image")).some((image) => image.getAttribute("href") === sourceUrl || image.getAttributeNS("http://www.w3.org/1999/xlink", "href") === sourceUrl);
-      if (containsSourceImage) group.remove();
-    });
     clone.querySelectorAll(".full-plan-source-image").forEach((element) => element.remove());
     clone.querySelectorAll<SVGImageElement>("image").forEach((image) => {
-      if (image.getAttribute("href") === sourceUrl || image.getAttributeNS("http://www.w3.org/1999/xlink", "href") === sourceUrl) image.remove();
+      // Missing href attributes are null too; they must never match an absent background.
+      // Remove only the background image, preserving any sibling plan elements.
+      if (sourceUrl && (image.getAttribute("href") === sourceUrl || image.getAttributeNS("http://www.w3.org/1999/xlink", "href") === sourceUrl)) image.remove();
     });
     clone.querySelectorAll(".corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit,.annotation-hit,.annotation-handle").forEach((element) => element.remove());
 
@@ -3375,7 +3374,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       const minY = Math.min(...screenPoints.map((point) => point.y));
       const maxY = Math.max(...screenPoints.map((point) => point.y));
       const span = Math.max(maxX - minX, maxY - minY, 1);
-      const padding = Math.max(40, Math.min(88, span * FLOORPLAN_EXPORT_PADDING_RATIO));
+      const padding = Math.max(24, Math.min(48, span * FLOORPLAN_EXPORT_PADDING_RATIO));
       const contentWidth = maxX - minX;
       const contentHeight = maxY - minY;
       const attributionReserve = reserveAttribution
@@ -3388,7 +3387,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       let viewBoxHeight = contentHeight + padding * 2 + attributionReserve;
       if (viewBoxWidth / viewBoxHeight > targetAspect) {
         const expandedHeight = viewBoxWidth / targetAspect;
-        viewBoxY -= expandedHeight - viewBoxHeight;
+        viewBoxY -= (expandedHeight - viewBoxHeight) / 2;
         viewBoxHeight = expandedHeight;
       } else {
         const expandedWidth = viewBoxHeight * targetAspect;
@@ -3535,7 +3534,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     }));
   });
 
-  const annotationDash = (style: AnnotationStyle) => style.lineStyle === "DASHED" ? "10 7" : style.lineStyle === "DOTTED" ? "2 6" : undefined;
+  const annotationDash = (style: AnnotationStyle) => ({ SOLID: undefined, DASHED: "10 7", DOTTED: "2 6", SHORT_DASH: "5 4", LONG_DASH: "20 8", DASH_DOT: "12 5 2 5", DASH_DOT_DOT: "12 5 2 5 2 5" })[style.lineStyle];
   const annotationTextRotation = (style: AnnotationStyle) => typeof style.rotation === "number" && Number.isFinite(style.rotation) ? style.rotation : 0;
   const annotationArrowGeometry = (from: Point2D, to: Point2D, size = 9) => {
     const angle = Math.atan2(to.y - from.y, to.x - from.x);

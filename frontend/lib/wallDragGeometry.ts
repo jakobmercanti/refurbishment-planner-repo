@@ -1171,6 +1171,36 @@ export function translateIncidentWallRunsForCorner(
  * that defines the intended junction and must not become a detached corner
  * merely because a fast pointer drag overshoots the host's clearance limit.
  */
+/**
+ * Refresh branch anchors after a junction slides or its host is split.
+ * Keep geometry fixed: stale endpoint ratios must not snap a branch back to
+ * its former corner during the next corner drag or coordinate edit.
+ */
+export function refreshWallEndpointAttachments(walls: WallDragWall[]): WallDragWall[] {
+  return walls.map((wall) => {
+    const closed = wall.points.length > 2 && samePoint(wall.points[0], wall.points.at(-1)!);
+    if (closed || !wall.attachments || wall.id.startsWith(AUTO_BRIDGE_PREFIX)) return wall;
+    const attachments = { ...wall.attachments };
+    let changed = false;
+    for (const pointIndex of [0, wall.points.length - 1]) {
+      const attachment = attachments[pointIndex];
+      const point = wall.points[pointIndex];
+      const host = attachment && walls.find((candidate) => candidate.id === attachment.wallId);
+      if (!point || !attachment || !host || host.id === wall.id) continue;
+      const segments = host.points.slice(0, -1).map((start, segmentIndex) => ({
+        segmentIndex, projection: projectOnSegment(point, start, host.points[segmentIndex + 1]),
+        length: Math.hypot(host.points[segmentIndex + 1].x - start.x, host.points[segmentIndex + 1].y - start.y),
+      })).filter((segment) => segment.length > CONNECTION_TOLERANCE_MM && segment.projection.distance <= CONNECTION_TOLERANCE_MM);
+      const match = segments.find((segment) => segment.segmentIndex === attachment.segmentIndex) ?? segments[0];
+      if (!match) continue;
+      if (match.segmentIndex === attachment.segmentIndex && Math.abs(match.projection.along - attachment.along) <= 1e-6) continue;
+      attachments[pointIndex] = { ...attachment, segmentIndex: match.segmentIndex, along: match.projection.along };
+      changed = true;
+    }
+    return changed ? { ...wall, attachments } : wall;
+  });
+}
+
 export function reanchorAttachedWallEndpoints(walls: WallDragWall[], activelyDraggedWallId?: string): WallDragWall[] {
   return walls.map((wall) => {
     const isClosed = wall.points.length > 2 && samePoint(wall.points[0], wall.points.at(-1)!);
@@ -1335,7 +1365,7 @@ export function materializeWallIntersections(walls: WallDragWall[]): WallDragWal
     }
     if (!inserted) break;
   }
-  return nextWalls;
+  return refreshWallEndpointAttachments(nextWalls);
 }
 
 /**
@@ -1393,10 +1423,13 @@ export function ensureVisibleJunctionCorners(walls: WallDragWall[]): WallDragWal
     }));
     const needsCorner = group.directions.length >= 3 || hasNonCollinearLegs;
     if (!needsCorner) return;
-    const candidate = group.references.find(({ wallIndex, pointIndex }) => !walls[wallIndex].attachments?.[pointIndex]?.suppressCorner);
+    // Suppression removes redundant straight-run points, never a physical bend.
+    // A translated closing wall can leave only suppressed copies at its old junction.
+    const candidate = group.references.find(({ wallIndex, pointIndex }) => !walls[wallIndex].attachments?.[pointIndex]?.suppressCorner)
+      ?? (hasNonCollinearLegs ? group.references[0] : undefined);
     if (!candidate) return;
     const wall = nextWalls[candidate.wallIndex];
-    const attachments = { ...wall.attachments, [candidate.pointIndex]: { ...wall.attachments?.[candidate.pointIndex], hideCorner: false } };
+    const attachments = { ...wall.attachments, [candidate.pointIndex]: { ...wall.attachments?.[candidate.pointIndex], hideCorner: false, suppressCorner: false } };
     nextWalls[candidate.wallIndex] = { ...wall, attachments };
     changed = true;
   });

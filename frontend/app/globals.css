@@ -298,6 +298,7 @@ button { font: inherit; }
 .fixture-field-group > span { color: var(--muted); font: 700 8px var(--font-mono); letter-spacing: .09em; text-transform: uppercase; }
 .fixture-fields { display: grid; gap: 7px; }
 .fixture-fields.three-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.appearance-dimensions-error { grid-column: 1 / -1; color: var(--fail) !important; white-space: nowrap; }
 .fixture-form-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: var(--toolbar-control-gap); }
 .fixture-form-actions > button { min-height: 36px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font: 650 9px var(--font-mono); cursor: pointer; }
 .fixture-form-actions > .fixture-save { grid-column: 2; border-color: var(--deep); background: var(--deep); color: white; }
