@@ -6,6 +6,7 @@ import { ComponentColours } from "@/components/ComponentColours";
 import { componentColoursFromMetadata } from "@/lib/assetColours";
 import { doorModel } from "@/lib/doorModels";
 import { cornerOffsetsOnWallSegment, isOpeningPlacementValid } from "@/lib/openingPlacement";
+import { openingCatalogueDefaultDimensions } from "@/lib/openingCatalogue";
 import type { CatalogueItem, Opening, Room } from "@/lib/types";
 import { UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 
@@ -23,12 +24,12 @@ export function RoomOpeningEditor({ room, opening, items, units, onChange }: { r
   </div>;
   function resetDimensions() {
     if (!item) return;
-    const defaultSill = draft.kind === "WINDOW" ? Math.min(1200, Math.max(0, item.height_mm)) || 900 : draft.sill_height_mm;
+    const dimensions = openingCatalogueDefaultDimensions(item);
     setDraft(current => ({
       ...current,
       width: { ...current.width, value: item.width_mm, verified: false, source_type: "USER_MEASURED" },
-      height: { ...current.height, value: item.height_mm, verified: false, source_type: "USER_MEASURED" },
-      sill_height_mm: defaultSill,
+      height: { ...current.height, value: dimensions.height, verified: false, source_type: "USER_MEASURED" },
+      sill_height_mm: draft.kind === "WINDOW" ? dimensions.sill : draft.sill_height_mm,
     }));
   }
 
@@ -44,7 +45,8 @@ export function RoomOpeningEditor({ room, opening, items, units, onChange }: { r
   return <section className="tool-section full-plan-openings-panel" aria-label="Edit opening">
     <label className="field"><span>{draft.kind === "DOOR" ? "Door" : "Window"} type</span><select value={item?.id ?? ""} onChange={event => {
       const next = variants.find(item => item.id === event.target.value); if (!next) return;
-      setDraft({ ...draft, width: { ...draft.width, value: next.width_mm, verified: false }, height: { ...draft.height, value: next.height_mm, verified: false }, door_type: (doorModel(next.representation_key)?.leaves ?? 1) > 1 ? "DOUBLE" : "SINGLE", metadata: { ...draft.metadata, representation_key: next.representation_key, catalogue_item_id: next.id, window_depth_mm: next.depth_mm, color_hex: next.color_hex, component_colors: {} } });
+      const dimensions = openingCatalogueDefaultDimensions(next);
+      setDraft({ ...draft, width: { ...draft.width, value: next.width_mm, verified: false }, height: { ...draft.height, value: dimensions.height, verified: false }, sill_height_mm: draft.kind === "WINDOW" ? dimensions.sill : draft.sill_height_mm, door_type: (doorModel(next.representation_key)?.leaves ?? 1) > 1 ? "DOUBLE" : "SINGLE", metadata: { ...draft.metadata, representation_key: next.representation_key, catalogue_item_id: next.id, window_depth_mm: next.depth_mm, color_hex: next.color_hex, component_colors: {} } });
     }}><option value="" disabled>Current model</option>{variants.map(item => <option key={item.id} value={item.id}>{item.category_name} · {item.name}</option>)}</select></label>
     <OpeningPreview item={item} kind={draft.kind === "WINDOW" ? "WINDOW" : "DOOR"} doorType={draft.door_type} width={draft.width.value} height={draft.height.value} colorHex={colour} componentColors={componentColoursFromMetadata(draft.metadata)} />
     <label className="field"><span>Parent wall</span><select value={draft.parent_wall_id} onChange={event => setDraft({ ...draft, parent_wall_id: event.target.value })}>{room.vertices.map((_, index) => <option key={index} value={`wall-${String(index + 1).padStart(3, "0")}`}>Wall {index + 1}</option>)}</select></label>

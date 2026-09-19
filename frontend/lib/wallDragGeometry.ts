@@ -119,6 +119,50 @@ function subsegmentForAlong(boundaries: number[], along: number, preferredIndex?
 }
 
 /**
+ * Remove one endpoint from an open wall run while preserving the remaining
+ * segments and their point/segment metadata. A two-point run has no remainder.
+ */
+export function trimOpenWallEndpoint(wall: WallDragWall, pointIndex: number): WallDragWall | null {
+  const closed = wall.points.length > 2 && samePoint(wall.points[0], wall.points.at(-1)!);
+  const lastPointIndex = wall.points.length - 1;
+  if (closed || (pointIndex !== 0 && pointIndex !== lastPointIndex)) return wall;
+
+  const removeFirst = pointIndex === 0;
+  const points = removeFirst ? wall.points.slice(1) : wall.points.slice(0, -1);
+  if (points.length < 2) return null;
+
+  const remapPointIndex = (sourceIndex: number) => removeFirst ? sourceIndex - 1 : sourceIndex;
+  const remapPoints = <T,>(values?: Record<number, T>) => {
+    if (!values) return undefined;
+    const remapped = Object.entries(values).reduce<Record<number, T>>((next, [rawIndex, value]) => {
+      const targetIndex = remapPointIndex(Number(rawIndex));
+      if (targetIndex >= 0 && targetIndex < points.length) next[targetIndex] = value;
+      return next;
+    }, {});
+    return Object.keys(remapped).length ? remapped : undefined;
+  };
+  const remapSegments = (values?: Record<number, number>) => {
+    if (!values) return undefined;
+    const remapped = Object.entries(values).reduce<Record<number, number>>((next, [rawIndex, value]) => {
+      const sourceIndex = Number(rawIndex);
+      const targetIndex = removeFirst ? sourceIndex - 1 : sourceIndex;
+      if (targetIndex >= 0 && targetIndex < points.length - 1) next[targetIndex] = value;
+      return next;
+    }, {});
+    return Object.keys(remapped).length ? remapped : undefined;
+  };
+
+  return {
+    ...wall,
+    points,
+    attachments: remapPoints(wall.attachments),
+    cornerNumbers: remapPoints(wall.cornerNumbers),
+    thicknessOverridesMm: remapSegments(wall.thicknessOverridesMm),
+    lengthOverridesMm: remapSegments(wall.lengthOverridesMm),
+  };
+}
+
+/**
  * Turn visible T-junctions into real editable wall vertices before selection.
  * The room graph already treats these points as corners, but leaving the host
  * wall unsplit makes a click below the junction select and move the full run.
@@ -1294,6 +1338,72 @@ export function materializeWallIntersections(walls: WallDragWall[]): WallDragWal
   return nextWalls;
 }
 
+/**
+ * Ensure every real wall junction has at least one visible editable corner.
+ *
+ * Materialized junctions normally hide the duplicate host point because the
+ * attached wall endpoint supplies the visible handle. During a translated
+ * multi-room drag both copies can be marked hidden, however, leaving a bend or
+ * T-junction with no corner at all. Restore one non-suppressed handle whenever
+ * the geometry still proves that a corner is required.
+ */
+export function ensureVisibleJunctionCorners(walls: WallDragWall[]): WallDragWall[] {
+  type JunctionReference = { wallIndex: number; pointIndex: number };
+  type JunctionGroup = { point: WallDragPoint; references: JunctionReference[]; directions: WallDragPoint[] };
+  const groups: JunctionGroup[] = [];
+
+  const groupFor = (point: WallDragPoint) => {
+    const existing = groups.find((group) => samePoint(group.point, point));
+    if (existing) return existing;
+    const group = { point: { ...point }, references: [], directions: [] };
+    groups.push(group);
+    return group;
+  };
+
+  walls.forEach((wall, wallIndex) => {
+    const closed = wall.points.length > 2 && samePoint(wall.points[0], wall.points.at(-1)!);
+    const visiblePointLimit = wall.points.length - (closed ? 1 : 0);
+    for (let pointIndex = 0; pointIndex < visiblePointLimit; pointIndex += 1) {
+      groupFor(wall.points[pointIndex]).references.push({ wallIndex, pointIndex });
+    }
+    wall.points.slice(0, -1).forEach((start, segmentIndex) => {
+      const end = wall.points[segmentIndex + 1];
+      if (!end) return;
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (length <= CONNECTION_TOLERANCE_MM) return;
+      groupFor(start).directions.push({ x: end.x - start.x, y: end.y - start.y });
+      groupFor(end).directions.push({ x: start.x - end.x, y: start.y - end.y });
+    });
+  });
+
+  const nextWalls = walls.map((wall) => ({
+    ...wall,
+    points: wall.points.map((point) => ({ ...point })),
+    attachments: wall.attachments ? Object.fromEntries(Object.entries(wall.attachments).map(([index, attachment]) => [index, { ...attachment }])) : undefined,
+  }));
+  let changed = false;
+
+  groups.forEach((group) => {
+    const hasVisibleCorner = group.references.some(({ wallIndex, pointIndex }) => !walls[wallIndex].attachments?.[pointIndex]?.hideCorner);
+    if (hasVisibleCorner) return;
+    const hasNonCollinearLegs = group.directions.some((first, firstIndex) => group.directions.slice(firstIndex + 1).some((second) => {
+      const firstLength = Math.hypot(first.x, first.y);
+      const secondLength = Math.hypot(second.x, second.y);
+      return Math.abs(first.x * second.y - first.y * second.x) > ORTHOGONAL_TOLERANCE_MM * firstLength * secondLength;
+    }));
+    const needsCorner = group.directions.length >= 3 || hasNonCollinearLegs;
+    if (!needsCorner) return;
+    const candidate = group.references.find(({ wallIndex, pointIndex }) => !walls[wallIndex].attachments?.[pointIndex]?.suppressCorner);
+    if (!candidate) return;
+    const wall = nextWalls[candidate.wallIndex];
+    const attachments = { ...wall.attachments, [candidate.pointIndex]: { ...wall.attachments?.[candidate.pointIndex], hideCorner: false } };
+    nextWalls[candidate.wallIndex] = { ...wall, attachments };
+    changed = true;
+  });
+
+  return changed ? nextWalls : walls;
+}
+
 /** Ensure a bridge never leaves a junction without a visible editable corner. */
 export function ensureVisibleBridgeCorners(walls: WallDragWall[]): WallDragWall[] {
   const nextWalls = walls.map((wall) => ({
@@ -1331,7 +1441,7 @@ export function ensureVisibleBridgeCorners(walls: WallDragWall[]): WallDragWall[
  * never make a previously continuous wall appear truncated.
  */
 export function appendWallRunPreservingExistingWalls(walls: WallDragWall[], wall: WallDragWall): WallDragWall[] {
-  return materializeWallIntersections([...walls, wall]);
+  return ensureVisibleJunctionCorners(materializeWallIntersections([...walls, wall]));
 }
 
 /**

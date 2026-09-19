@@ -38,7 +38,7 @@ test("wall 8-9 can extend beyond room 1's left side while keeping both rooms clo
     point.x !== 650 || point.y !== 1800 || wall.attachments?.[index]?.hideCorner)),
   "the abandoned junction must not become corner 10");
 });
-import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, ensureVisibleBridgeCorners, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type WallDragWall } from "../lib/wallDragGeometry.ts";
+import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleJunctionCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, ensureVisibleBridgeCorners, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, trimOpenWallEndpoint, type WallDragWall } from "../lib/wallDragGeometry.ts";
 
 const roomWall: WallDragWall = {
   id: "room-1",
@@ -244,6 +244,92 @@ test("shows a corner where a bridge joins the interior of another wall", () => {
   assert.deepEqual(repaired[2].points, [{ x: 1200, y: 0 }, { x: 1200, y: 500 }]);
   assert.equal(repaired[2].attachments?.[0]?.hideCorner, false);
   assert.equal(repaired[2].attachments?.[1]?.hideCorner, true);
+});
+
+test("trims only the deleted endpoint from an open wall run", () => {
+  const wall: WallDragWall = {
+    id: "open-run",
+    points: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 800 }],
+    cornerNumbers: { 0: 1, 1: 2, 2: 3 },
+    thicknessOverridesMm: { 0: 40, 1: 60 },
+    lengthOverridesMm: { 0: 1000, 1: 800 },
+  };
+
+  const withoutLast = trimOpenWallEndpoint(wall, 2);
+  assert.deepEqual(withoutLast?.points, [{ x: 0, y: 0 }, { x: 1000, y: 0 }]);
+  assert.deepEqual(withoutLast?.cornerNumbers, { 0: 1, 1: 2 });
+  assert.deepEqual(withoutLast?.thicknessOverridesMm, { 0: 40 });
+  assert.deepEqual(withoutLast?.lengthOverridesMm, { 0: 1000 });
+
+  const withoutFirst = trimOpenWallEndpoint(wall, 0);
+  assert.deepEqual(withoutFirst?.points, [{ x: 1000, y: 0 }, { x: 1000, y: 800 }]);
+  assert.deepEqual(withoutFirst?.cornerNumbers, { 0: 2, 1: 3 });
+  assert.deepEqual(withoutFirst?.thicknessOverridesMm, { 0: 60 });
+  assert.deepEqual(withoutFirst?.lengthOverridesMm, { 0: 800 });
+
+  assert.equal(trimOpenWallEndpoint({ id: "single-segment", points: [{ x: 0, y: 0 }, { x: 1000, y: 0 }] }, 1), null);
+});
+
+test("preserves the left prefix when a draft closes at an interior point", () => {
+  const prefix: WallDragWall = {
+    id: "left-prefix",
+    points: [{ x: 0, y: 0 }, { x: 0, y: 300 }],
+  };
+  const room: WallDragWall = {
+    id: "lower-room",
+    points: [
+      { x: 0, y: 300 },
+      { x: 0, y: 800 },
+      { x: 1000, y: 800 },
+      { x: 1000, y: 300 },
+      { x: 0, y: 300 },
+    ],
+  };
+
+  const committed = appendWallRunPreservingExistingWalls(
+    appendWallRunPreservingExistingWalls([], prefix),
+    room,
+  );
+  const committedPrefix = committed.find((wall) => wall.id === "left-prefix");
+  const committedRoom = committed.find((wall) => wall.id === "lower-room");
+
+  assert.deepEqual(committedPrefix?.points, prefix.points);
+  assert.deepEqual(committedRoom?.points, room.points);
+});
+
+test("restores a visible corner when every duplicate T-junction handle is hidden", () => {
+  const walls: WallDragWall[] = [
+    {
+      id: "host",
+      points: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 2000, y: 0 }],
+      attachments: { 1: { wallId: "host", segmentIndex: 0, along: 1, hideCorner: true } },
+    },
+    {
+      id: "branch",
+      points: [{ x: 1000, y: 0 }, { x: 1000, y: 800 }],
+      attachments: {
+        0: { wallId: "host", segmentIndex: 0, along: 1, hideCorner: true },
+        1: { wallId: "branch", segmentIndex: 0, along: 1, hideCorner: true },
+      },
+    },
+  ];
+
+  const repaired = ensureVisibleJunctionCorners(walls);
+  assert.equal(repaired[0].attachments?.[1]?.hideCorner, false);
+  assert.equal(repaired[1].attachments?.[0]?.hideCorner, true);
+});
+
+test("restores a visible corner for a hidden wall bend", () => {
+  const walls: WallDragWall[] = [
+    {
+      id: "bent-wall",
+      points: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 800 }],
+      attachments: { 1: { wallId: "bent-wall", segmentIndex: 0, along: 1, hideCorner: true } },
+    },
+  ];
+
+  const repaired = ensureVisibleJunctionCorners(walls);
+  assert.equal(repaired[0].attachments?.[1]?.hideCorner, false);
 });
 
 test("does not add a bridge while the dragged endpoint remains on its host segment", () => {

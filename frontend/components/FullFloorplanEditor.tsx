@@ -30,8 +30,8 @@ import { FloorplanAtmosphere } from "@/components/FloorplanAtmosphere";
 import { AnnotationsPanel, type AnnotationArrowEndStyle, type AnnotationPanelSelection, type AnnotationStyle, type AnnotationToolName } from "@/components/AnnotationsPanel";
 import { ViewToggle } from "@/components/ViewToggle";
 import { MarkerSettingsPopup, markerTextSize, type MarkerSettings, type MarkerSymbol } from "@/components/MarkerSettingsPopup";
-import { openingCatalogueCategoryLabel } from "@/lib/openingCatalogue";
-import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleBridgeCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
+import { openingCatalogueCategoryLabel, openingCatalogueDefaultDimensions } from "@/lib/openingCatalogue";
+import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleBridgeCorners, ensureVisibleJunctionCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, trimOpenWallEndpoint, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
 import type { CatalogueItem, Obstacle, Opening, Point2D, Room, RoomFinishes } from "@/lib/types";
 import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
@@ -98,6 +98,7 @@ function readImageDimensions(url: string): Promise<{ width: number; height: numb
 }
 const DEFAULT_SNAP_MM = 50;
 const DRAFT_CLOSURE_ADJUSTMENT_MM = 50;
+const DRAW_CORNER_HIT_TOLERANCE_MM = 50;
 const DEFAULT_MARKER_SETTINGS: MarkerSettings = { symbol: "NUMBER", label: "", color: "#287fb8", size: 14, arrowAttached: false };
 const DEFAULT_WALL_THICKNESS_MM = 50;
 const MIN_WALL_CLEARANCE_MM = 200;
@@ -239,6 +240,33 @@ const FLOORPLAN_EXPORT_BASE_CSS = `
 function floorplanExportCss(style: FloorplanStyle) {
   return `${FLOORPLAN_EXPORT_BASE_CSS}
 ${floorplanStyleCss(style)}`;
+}
+
+async function inlineExportImages(markup: string): Promise<string> {
+  const document = new DOMParser().parseFromString(markup, "image/svg+xml");
+  if (document.querySelector("parsererror")) return markup;
+  const images = Array.from(document.querySelectorAll<SVGImageElement>("image"));
+  await Promise.all(images.map(async (image) => {
+    const href = image.getAttribute("href") ?? image.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+    if (!href || href.startsWith("data:") || href.startsWith("#")) return;
+    try {
+      const response = await fetch(new URL(href, window.location.href), { credentials: "same-origin" });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read floorplan symbol"));
+        reader.onerror = () => reject(reader.error ?? new Error("Could not read floorplan symbol"));
+        reader.readAsDataURL(blob);
+      });
+      image.setAttribute("href", dataUrl);
+      image.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
+    } catch {
+      // Keep the original URL as a best-effort fallback for assets that do not
+      // permit same-origin fetching; local catalogue symbols are inlined above.
+    }
+  }));
+  return new XMLSerializer().serializeToString(document.documentElement);
 }
 
 function drawFloorplanAttribution(context: CanvasRenderingContext2D, width: number, height: number) {
@@ -951,7 +979,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
 
   function setWallsRespectingMeasurements(next: Wall[] | ((current: Wall[]) => Wall[]), preserveOrthogonal = squaredWalls, keepProposedOnConflict = false, allowProposedIfOverridesSatisfied = false) {
     setWalls((current) => {
-      const proposed = typeof next === "function" ? next(current) : next;
+      const proposed = ensureVisibleJunctionCorners(typeof next === "function" ? next(current) : next);
       const enforced = preserveOrthogonal
         ? enforceWallLengthOverridesPreservingOrthogonality(proposed)
         : enforceWallLengthOverrides(proposed);
@@ -1034,10 +1062,11 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   }
   function applyOpeningCatalogueItem(item?: CatalogueItem) {
     if (!item || (item.fixture_kind !== "DOOR" && item.fixture_kind !== "WINDOW")) return;
+    const dimensions = openingCatalogueDefaultDimensions(item);
     setOpeningCatalogueId(item.id);
     setOpeningWidth(item.width_mm);
-    setOpeningHeight(item.height_mm);
-    if (item.fixture_kind === "WINDOW") setWindowSill(Math.min(1200, Math.max(0, item.height_mm)) || 900);
+    setOpeningHeight(dimensions.height);
+    if (item.fixture_kind === "WINDOW") setWindowSill(dimensions.sill);
     if (item.fixture_kind === "DOOR") {
       setDoorType((doorModel(item.representation_key)?.leaves ?? (item.subcategory.toLowerCase().includes("double") ? 2 : 1)) > 1 ? "DOUBLE" : "SINGLE");
     }
@@ -1501,6 +1530,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     if (annotationTool !== "POLYLINE" || annotationDraft.length < 2) return;
     createAnnotation({ id: crypto.randomUUID(), type: "POLYLINE", points: annotationDraft.map((point) => ({ ...point })), style: { ...annotationStyle } });
     setAnnotationDraft([]);
+    setAnnotationTool(null);
   }
 
   function editAnnotationText(annotation: FloorplanAnnotation) {
@@ -1614,6 +1644,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     if (!annotationDraft.length) { setAnnotationDraft([point]); return true; }
     createAnnotation({ id: crypto.randomUUID(), type: annotationTool, start: annotationDraft[0], end: point, style: { ...annotationStyle } });
     setAnnotationDraft([]);
+    setAnnotationTool(null);
     return true;
   }
 
@@ -2009,17 +2040,23 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     return attachToWalls ? snapPoint(gridPoint, walls, snapEnabled, snapSize) : gridPoint;
   }
 
-  function commitDraft(points = draft, endAttachment?: WallAttachment) {
+  function commitDraft(points = draft, endAttachment?: WallAttachment, preservedPrefix?: Point2D[]) {
     // Draft points have already been squared as they are drawn. Re-squaring here can
     // move an attached endpoint away from its host and manufacture a short wall stub.
-    const shapedPoints = points.reduce<Point2D[]>((result, point) => {
+    const shapeDraftPoints = (source: Point2D[]) => source.reduce<Point2D[]>((result, point) => {
       if (!result.length || !samePoint(result.at(-1)!, point, 0.5)) result.push({ ...point });
       return result;
     }, []);
+    const shapedPoints = shapeDraftPoints(points);
+    const shapedPrefix = preservedPrefix ? shapeDraftPoints(preservedPrefix) : [];
     if (shapedPoints.length >= 2) {
       record();
       const attachments: Record<number, WallAttachment> = {};
-      if (draftStartAttachment.current) attachments[0] = { ...draftStartAttachment.current };
+      const prefixAttachments: Record<number, WallAttachment> = {};
+      if (draftStartAttachment.current) {
+        if (shapedPrefix.length >= 2) prefixAttachments[0] = { ...draftStartAttachment.current };
+        else attachments[0] = { ...draftStartAttachment.current };
+      }
       // An attached endpoint is still the corner that closes the new wall. Keep its
       // label visible; the attachment itself prevents it from drifting off its host.
       if (endAttachment) attachments[shapedPoints.length - 1] = { ...endAttachment };
@@ -2028,11 +2065,10 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       // of leaving two partially overlapping runs whose visible union appears
       // truncated.  The materializer only inserts junction vertices; it never
       // removes or shortens an existing endpoint.
-      setWallsRespectingMeasurements((current) => appendWallRunPreservingExistingWalls(current, {
-        id: crypto.randomUUID(),
-        points: shapedPoints,
-        attachments: Object.keys(attachments).length ? attachments : undefined,
-      }));
+      setWallsRespectingMeasurements((current) => [
+        ...(shapedPrefix.length >= 2 ? [{ id: crypto.randomUUID(), points: shapedPrefix, attachments: Object.keys(prefixAttachments).length ? prefixAttachments : undefined }] : []),
+        { id: crypto.randomUUID(), points: shapedPoints, attachments: Object.keys(attachments).length ? attachments : undefined },
+      ].reduce((next, wall) => appendWallRunPreservingExistingWalls(next, wall), current));
     }
     draftStartAttachment.current = null; setDraft([]); setHoveredCorner(null); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null);
   }
@@ -2108,7 +2144,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   }
 
   function findCornerNear(point: Point2D): PointSelection | null {
-    const tolerance = snapEnabled ? Math.max(40, snapSize * 2) : 40;
+    const tolerance = DRAW_CORNER_HIT_TOLERANCE_MM;
     let closest: (PointSelection & { distance: number }) | null = null;
     walls.forEach((wall) => wall.points.slice(0, samePoint(wall.points[0], wall.points.at(-1)!) ? -1 : undefined).forEach((corner, pointIndex) => {
       if (wall.attachments?.[pointIndex]?.hideCorner) return;
@@ -2121,6 +2157,26 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   function draftStartNear(point: Point2D): boolean {
     if (draft.length < 3) return false;
     return samePoint(point, draft[0], DRAFT_CLOSURE_ADJUSTMENT_MM);
+  }
+
+  function draftClosurePathNear(point: Point2D): { points: Point2D[]; preservedPrefix?: Point2D[] } | null {
+    if (draft.length < 3) return null;
+    const tolerance = Math.max(35, snapEnabled ? snapSize : 35);
+    let closest: { segmentIndex: number; point: Point2D; distance: number } | null = null;
+    for (let segmentIndex = 0; segmentIndex < draft.length - 1; segmentIndex += 1) {
+      const start = draft[segmentIndex];
+      const end = draft[segmentIndex + 1];
+      if (!start || !end) continue;
+      const projection = pointOnSegment(point, start, end);
+      const distance = Math.hypot(point.x - projection.point.x, point.y - projection.point.y);
+      if (projection.along <= 1e-6 || projection.along >= 1 - 1e-6 || distance > tolerance) continue;
+      if (!closest || distance < closest.distance) closest = { segmentIndex, point: projection.point, distance };
+    }
+    if (!closest) return null;
+    const prefix = [...draft.slice(0, closest.segmentIndex + 1), closest.point];
+    const loop = [closest.point, ...draft.slice(closest.segmentIndex + 1)];
+    if (loop.length >= 3 && prefix.length >= 2) return { points: loop, preservedPrefix: prefix };
+    return { points: prefix };
   }
 
   function clearImportedDrawing() {
@@ -2155,6 +2211,16 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     if (closed) {
       const core = wall.points.slice(0, -1);
       const count = core.length;
+      // A two-point closed run is the same wall stored in both directions:
+      // [start, end, start]. Removing one of its displayed segments must
+      // remove the run entirely rather than leaving the reverse duplicate
+      // (and its endpoint corner) behind.
+      if (count <= 2) {
+        setWallsRespectingMeasurements((current) => current.filter((item) => item.id !== wallId));
+        setOpenings((current) => current.filter((opening) => opening.wallId !== wallId));
+        setSelectedSegment(null); setSelectedPoint(null); setOpeningParent("");
+        return;
+      }
       const remaining = Array.from({ length: count }, (_, index) => core[(segmentIndex + 1 + index) % count]);
       const sourceSegmentIndices = Array.from({ length: count - 1 }, (_, index) => (segmentIndex + 1 + index) % count);
       setWallsRespectingMeasurements((current) => current.map((item) => item.id === wallId ? { ...item, points: remaining.map((point) => ({ ...point })), thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, sourceSegmentIndices), lengthOverridesMm: remapSegmentLengthOverrides(item.lengthOverridesMm, sourceSegmentIndices) } : item));
@@ -2331,13 +2397,10 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     if (!selectedWall || !target) return;
     const selectedClosed = samePoint(selectedWall.points[0], selectedWall.points.at(-1)!);
     const selectedUniqueCount = selectedClosed ? selectedWall.points.length - 1 : selectedWall.points.length;
-    const selectedIsEndpoint = !selectedClosed && (selection.pointIndex === 0 || selection.pointIndex === selectedWall.points.length - 1);
     if (selectedClosed && selectedUniqueCount <= 3) return;
 
-    const wallIdsToDelete = new Set<string>();
     const wallIdsToModify = new Set<string>();
-    if (selectedIsEndpoint) wallIdsToDelete.add(selectedWall.id);
-    else wallIdsToModify.add(selectedWall.id);
+    wallIdsToModify.add(selectedWall.id);
     walls.forEach((candidate) => {
       if (candidate.id === selectedWall.id) return;
       const closed = samePoint(candidate.points[0], candidate.points.at(-1)!);
@@ -2346,16 +2409,18 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         .filter(({ point }) => samePoint(point, target))
         .map(({ pointIndex }) => pointIndex);
       if (!pointIndexes.length || closed) return;
-      if (pointIndexes.some((pointIndex) => pointIndex === 0 || pointIndex === candidate.points.length - 1)) wallIdsToDelete.add(candidate.id);
-      else wallIdsToModify.add(candidate.id);
+      wallIdsToModify.add(candidate.id);
     });
 
     const nextWalls = walls.flatMap((item) => {
-      if (wallIdsToDelete.has(item.id)) return [];
       if (!wallIdsToModify.has(item.id)) return [item];
       const closed = samePoint(item.points[0], item.points.at(-1)!);
       const pointIndex = item.id === selectedWall.id ? selection.pointIndex : item.points.findIndex((point) => samePoint(point, target));
       if (pointIndex < 0 || (closed && pointIndex >= item.points.length - 1)) return [item];
+      if (!closed && (pointIndex === 0 || pointIndex === item.points.length - 1)) {
+        const trimmed = trimOpenWallEndpoint(item, pointIndex);
+        return trimmed ? [trimmed] : [];
+      }
       const core = closed ? item.points.slice(0, -1) : [...item.points];
       if (pointIndex >= core.length) return [item];
       const sourcePointIndices = core.map((_, index) => index);
@@ -2399,7 +2464,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     });
     if (nextWalls.length === walls.length && JSON.stringify(nextWalls) === JSON.stringify(walls)) return;
     record();
-    const affectedWallIds = new Set([...wallIdsToDelete, ...wallIdsToModify]);
+    const affectedWallIds = new Set(wallIdsToModify);
     setWallsRespectingMeasurements(nextWalls, false, true, true);
     setOpenings((current) => current.filter((opening) => !affectedWallIds.has(opening.wallId)));
     setMeasurements((current) => current.filter((measurement) => {
@@ -2871,7 +2936,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         // to the dragged segment, then reanchor bridge endpoints without the
         // host-propagation step that could move those restored walls again.
         const isolatedWalls = preserveUnrelatedWallGeometry(activeWall.before.walls, repairedParallelWalls, activeWall.wallId, activeWall.segmentIndex);
-        const finalWalls = ensureVisibleBridgeCorners(materializeWallIntersections(reanchorAutoWallBridges(isolatedWalls, activeWall.wallId, false)));
+        const finalWalls = ensureVisibleJunctionCorners(ensureVisibleBridgeCorners(materializeWallIntersections(reanchorAutoWallBridges(isolatedWalls, activeWall.wallId, false))));
         const preservesConstraints = finalWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
         if (preservesConstraints) return assignStableCornerNumbers(finalWalls);
 
@@ -2881,10 +2946,10 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         // its drag-start hosts, and materialize any resulting T junctions.
         // This keeps a wall drag from silently becoming a no-op while retaining
         // the orthogonal and minimum-area guarantees above.
-        const directCandidate = ensureVisibleBridgeCorners(materializeWallIntersections(reanchorAutoWallBridges(
+        const directCandidate = ensureVisibleJunctionCorners(ensureVisibleBridgeCorners(materializeWallIntersections(reanchorAutoWallBridges(
           retainDraggedWallConnections(activeWall.before.walls, nextWalls, activeWall.wallId, activeWall.segmentIndex),
           activeWall.wallId,
-        )));
+        ))));
         const directConstraints = directCandidate.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
         return directConstraints ? assignStableCornerNumbers(directCandidate) : current;
       });
@@ -2974,7 +3039,8 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
 
   function resetOpeningForm(kind = openingKind) {
     const item = defaultOpeningCatalogueItem(kind);
-    setOpeningKind(kind); setOpeningCatalogueId(item?.id ?? ""); setOpeningOffset(100); setOpeningWidth(item?.width_mm ?? 800); setOpeningHeight(item?.height_mm ?? (kind === "DOOR" ? 2040 : 900)); setWindowSill(item?.fixture_kind === "WINDOW" ? Math.min(1200, Math.max(0, item.height_mm)) || 900 : 900);
+    const dimensions = item ? openingCatalogueDefaultDimensions(item) : undefined;
+    setOpeningKind(kind); setOpeningCatalogueId(item?.id ?? ""); setOpeningOffset(100); setOpeningWidth(item?.width_mm ?? 800); setOpeningHeight(dimensions?.height ?? (kind === "DOOR" ? 2040 : 900)); setWindowSill(item?.fixture_kind === "WINDOW" ? dimensions?.sill ?? 900 : 900);
     const defaultColour = item?.color_hex ?? "#5b4330";
     setDoorType(item?.fixture_kind === "DOOR" && (doorModel(item.representation_key)?.leaves ?? (item.subcategory.toLowerCase().includes("double") ? 2 : 1)) > 1 ? "DOUBLE" : "SINGLE"); setOpeningComponentColours({}); setDoorCustomColour(defaultColour); setHingeSide("START"); setOpensInward(true); setOpeningError(null);
     setOpeningParent(selectedSegment ? parentKey(selectedSegment.wallId, selectedSegment.segmentIndex) : "");
@@ -3142,9 +3208,10 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   function resetOpeningDimensions() {
     const item = activeOpeningCatalogueItem;
     if (!item) return;
+    const dimensions = openingCatalogueDefaultDimensions(item);
     setOpeningWidth(item.width_mm);
-    setOpeningHeight(item.height_mm);
-    if (openingKind === "WINDOW") setWindowSill(Math.min(1200, Math.max(0, item.height_mm)) || 900);
+    setOpeningHeight(dimensions.height);
+    if (openingKind === "WINDOW") setWindowSill(dimensions.sill);
   }
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const annotationPanelSelection: AnnotationPanelSelection = selectedAnnotation ? { type: selectedAnnotation.type, text: selectedAnnotation.text } : null;
@@ -3271,20 +3338,64 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         return [];
       }
     });
-    const screenPoints = [...modelPoints.map(toScreen), ...dimensionBounds].filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+    const visibleLayerBounds = Array.from(source.querySelectorAll<SVGGraphicsElement>(
+      ".floorplan-fixture,.opening-symbol,.annotation-layer,.room-name-editor,.creative-garden",
+    )).flatMap((element) => {
+      const shouldIncludeAtmosphere = element.classList.contains("creative-garden") && effectiveStyle === "CREATIVE";
+      const previousStyle = shouldIncludeAtmosphere ? element.getAttribute("style") : null;
+      const previousDisplay = shouldIncludeAtmosphere ? element.getAttribute("display") : null;
+      if (shouldIncludeAtmosphere) {
+        element.removeAttribute("style");
+        element.setAttribute("display", "inline");
+      }
+      try {
+        const computed = getComputedStyle(element);
+        if (!shouldIncludeAtmosphere && (computed.display === "none" || computed.visibility === "hidden")) return [];
+        const box = element.getBBox();
+        if (![box.x, box.y, box.width, box.height].every(Number.isFinite) || (box.width === 0 && box.height === 0)) return [];
+        return [
+          { x: box.x, y: box.y },
+          { x: box.x + box.width, y: box.y },
+          { x: box.x, y: box.y + box.height },
+          { x: box.x + box.width, y: box.y + box.height },
+        ];
+      } catch {
+        return [];
+      } finally {
+        if (shouldIncludeAtmosphere) {
+          if (previousStyle === null) element.removeAttribute("style"); else element.setAttribute("style", previousStyle);
+          if (previousDisplay === null) element.removeAttribute("display"); else element.setAttribute("display", previousDisplay);
+        }
+      }
+    });
+    const screenPoints = [...modelPoints.map(toScreen), ...dimensionBounds, ...visibleLayerBounds].filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
     if (screenPoints.length > 0) {
       const minX = Math.min(...screenPoints.map((point) => point.x));
       const maxX = Math.max(...screenPoints.map((point) => point.x));
       const minY = Math.min(...screenPoints.map((point) => point.y));
       const maxY = Math.max(...screenPoints.map((point) => point.y));
       const span = Math.max(maxX - minX, maxY - minY, 1);
-      const padding = Math.max(40, Math.min(112, span * FLOORPLAN_EXPORT_PADDING_RATIO)) + (effectiveStyle === "CREATIVE" ? 112 : 0);
+      const padding = Math.max(40, Math.min(88, span * FLOORPLAN_EXPORT_PADDING_RATIO));
       const contentWidth = maxX - minX;
-      const viewBoxWidth = contentWidth + padding * 2;
+      const contentHeight = maxY - minY;
       const attributionReserve = reserveAttribution
-        ? FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX * viewBoxWidth / FLOORPLAN_EXPORT_WIDTH
+        ? FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX * (contentWidth + padding * 2) / FLOORPLAN_EXPORT_WIDTH
         : 0;
-      const viewBox = { x: minX - padding, y: minY - padding, width: viewBoxWidth, height: maxY - minY + padding * 2 + attributionReserve };
+      const targetAspect = FLOORPLAN_EXPORT_WIDTH / FLOORPLAN_EXPORT_HEIGHT;
+      let viewBoxX = minX - padding;
+      let viewBoxY = minY - padding;
+      let viewBoxWidth = contentWidth + padding * 2;
+      let viewBoxHeight = contentHeight + padding * 2 + attributionReserve;
+      if (viewBoxWidth / viewBoxHeight > targetAspect) {
+        const expandedHeight = viewBoxWidth / targetAspect;
+        viewBoxY -= expandedHeight - viewBoxHeight;
+        viewBoxHeight = expandedHeight;
+      } else {
+        const expandedWidth = viewBoxHeight * targetAspect;
+        viewBoxX -= (expandedWidth - viewBoxWidth) / 2;
+        viewBoxWidth = expandedWidth;
+      }
+      const viewBox = { x: viewBoxX, y: viewBoxY, width: viewBoxWidth, height: viewBoxHeight };
       clone.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
       const background = clone.querySelector<SVGRectElement>(".canvas-background");
       background?.setAttribute("x", String(viewBox.x));
@@ -3354,8 +3465,9 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   async function exportFloorplan() {
     setExporting(true); setExportError(null);
     try {
-      const markup = exportSvgMarkup(exportStyle, false, includeAttribution);
-      if (!markup) throw new Error("The floorplan canvas is unavailable. Close this dialog and try again.");
+      const rawMarkup = exportSvgMarkup(exportStyle, false, includeAttribution);
+      if (!rawMarkup) throw new Error("The floorplan canvas is unavailable. Close this dialog and try again.");
+      const markup = await inlineExportImages(rawMarkup);
       const extension = exportFormat.toLowerCase();
       const mimeType = exportFormat === "PDF" ? "application/pdf" : exportFormat === "JPG" ? "image/jpeg" : "image/png";
       const picker = (window as Window & { showSaveFilePicker?: (options: { suggestedName: string; types: Array<{ description: string; accept: Record<string, string[]> }> }) => Promise<SaveFileHandle> }).showSaveFilePicker;
@@ -3474,7 +3586,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select} onDoubleClick={() => editMarker(annotation)}>
       {arrowTail && <><line x1={arrowTail.x} y1={arrowTail.y} x2={point.x} y2={point.y} stroke={color} strokeWidth={Math.max(1, annotation.style.thickness)} strokeDasharray={annotationDash(annotation.style)} vectorEffect="non-scaling-stroke" />{renderArrowEnd(arrowTail, point, color, annotation.style.arrowEndStyle)}<line x1={arrowTail.x} y1={arrowTail.y} x2={point.x} y2={point.y} stroke="transparent" strokeWidth="16" className="annotation-hit" /></>}
       {shape}
-      {markerText ? <text x={point.x} y={point.y} textAnchor="middle" fill={color} fontSize={labelFontSize} fontWeight="700" dominantBaseline="middle">{markerText}</text> : null}
+      {markerText ? <text x={point.x} y={point.y} textAnchor="middle" fill={color} fontSize={labelFontSize} fontWeight="700" dominantBaseline="central">{markerText}</text> : null}
       <circle cx={point.x} cy={point.y} r={Math.max(12, radius + 6)} fill="transparent" stroke="transparent" strokeWidth="10" className="annotation-hit" />
       {selected && <><circle className="annotation-handle" cx={point.x} cy={point.y} r="6" onPointerDown={(event) => handle(event, "MARKER")} />{arrowTail && <circle className="annotation-handle" cx={arrowTail.x} cy={arrowTail.y} r="6" onPointerDown={(event) => handle(event, "LABEL")} />}</>}
     </g>;
@@ -3653,6 +3765,8 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
             if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && (target.classList.contains("canvas-background") || target.classList.contains("plan-grid"))); if (background && tool === "SELECT") clearActiveDrawingSelection(); return; }
             const rawRequested = canvasPoint(event, false);
             if (draftStartNear(rawRequested)) { commitDraft(closeDraftPath(draft, squaredWalls)); return; }
+            const draftClosure = draftClosurePathNear(rawRequested);
+            if (draftClosure) { commitDraft(closeDraftPath(draftClosure.points, squaredWalls), undefined, draftClosure.preservedPrefix); return; }
             const cornerHit = findCornerNear(rawRequested);
             if (cornerHit) { connectDraftToCorner(cornerHit); return; }
             const requested = canvasPoint(event); const closes = draft.length >= 3 && samePoint(requested, draft[0], 16);

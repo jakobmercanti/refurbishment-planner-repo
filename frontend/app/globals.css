@@ -1560,6 +1560,7 @@ button:disabled {
 .appearance-popup .appearance-preview-card > i { width: 64px; height: 64px; }
 .appearance-popup .appearance-material-colour-row { gap: 10px; }
 .appearance-popup .fabric-finish-preview { min-height: 56px; }
+.appearance-popup .fabric-finish-picker > small { font-size: 11px; line-height: 1.45; }
 .appearance-popup .appearance-section-divider { margin-block: 12px; }
 .appearance-popup .appearance-actions-row { gap: 10px; margin-top: 4px; }
 @media (max-width: 560px) {

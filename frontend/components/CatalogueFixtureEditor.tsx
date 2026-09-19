@@ -24,6 +24,26 @@ const MACRO_CATEGORY_LABELS: Record<MacroCategoryId, string> = {
 type RoomCatalogueItem = CatalogueItem & { fixture_kind: NonNullable<Obstacle["fixture_kind"]> };
 type ElementEditRequest = { id: string; roomId: string; requestId: number };
 type SelectorLevel = "category" | "subcategory" | "object";
+type DimensionAxis = "width" | "depth" | "height";
+
+function PositiveDimensionFields({ value, displayUnits, onChange }: { value: Obstacle; displayUnits: DisplayUnits; onChange: (axis: DimensionAxis, nextValue: number) => void }) {
+  const [error, setError] = useState("");
+  const errorMessage = "Dimensions must be positive numbers.";
+  const update = (axis: DimensionAxis, nextValue: number) => {
+    if (!Number.isFinite(nextValue) || nextValue <= 0) {
+      setError(errorMessage);
+      return;
+    }
+    setError("");
+    onChange(axis, nextValue);
+  };
+
+  return <div className="appearance-dimensions-fields fixture-fields three-columns" aria-label="Dimensions">
+    {(["width", "depth", "height"] as const).map(axis => <label className="field" key={axis}><span>{axis[0].toUpperCase() + axis.slice(1)} {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={value.dimensions[axis].value} units={displayUnits} onMmChange={nextValue => update(axis, nextValue)} onInvalidValue={() => setError(errorMessage)} /></label>)}
+    {error && <p className="inline-error appearance-dimensions-error" role="alert">{error}</p>}
+  </div>;
+}
+
 function isRoomFixture(item: CatalogueItem): item is RoomCatalogueItem {
   return ROOM_FIXTURE_KINDS.has(item.fixture_kind);
 }
@@ -225,9 +245,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       },
     });
   }
-  const dimensionsContent = value ? <div className="appearance-dimensions-fields fixture-fields three-columns" aria-label="Dimensions">
-    {(["width", "depth", "height"] as const).map(axis => <label className="field" key={axis}><span>{axis[0].toUpperCase() + axis.slice(1)} {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={value.dimensions[axis].value} units={displayUnits} onMmChange={n => change({ ...value, verified: false, dimensions: { ...value.dimensions, [axis]: { ...value.dimensions[axis], value: n, verified: false, source_type: "USER_MEASURED" } } })} /></label>)}
-  </div> : null;
+  const dimensionsContent = value ? <PositiveDimensionFields value={value} displayUnits={displayUnits} onChange={(axis, nextValue) => change({ ...value, verified: false, dimensions: { ...value.dimensions, [axis]: { ...value.dimensions[axis], value: nextValue, verified: false, source_type: "USER_MEASURED" } } })} /> : null;
 
   return <section className="fixture-editor element-add-editor" aria-label="Add elements">
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
