@@ -4,8 +4,15 @@ import { useState } from "react";
 import { Popup } from "@/components/Popup";
 
 export type MarkerSymbol = "CIRCLE" | "FILLED_CIRCLE" | "SQUARE" | "FILLED_SQUARE" | "TRIANGLE" | "DIAMOND" | "EXCLAMATION" | "QUESTION" | "PLUS" | "CROSS" | "NUMBER" | "LETTER";
-export type MarkerSize = "SMALL" | "MEDIUM" | "LARGE";
+export type MarkerSize = number | "SMALL" | "MEDIUM" | "LARGE";
 export type MarkerSettings = { symbol: MarkerSymbol; label: string; color: string; size: MarkerSize; arrowAttached?: boolean };
+
+export function markerTextSize(size: MarkerSize): number {
+  if (typeof size === "number" && Number.isFinite(size)) return Math.min(72, Math.max(8, size));
+  if (size === "SMALL") return 10;
+  if (size === "LARGE") return 18;
+  return 14;
+}
 
 interface MarkerSettingsPopupProps {
   open: boolean;
@@ -45,6 +52,7 @@ function SymbolPreview({ symbol }: { symbol: MarkerSymbol }) {
 export function MarkerSettingsPopup({ open, settings, editing, onChange, onConfirm, onCancel }: MarkerSettingsPopupProps) {
   const [symbolMenuOpen, setSymbolMenuOpen] = useState(false);
   const hasLabel = settings.symbol === "NUMBER" || settings.symbol === "LETTER";
+  const hasText = hasLabel || settings.symbol === "EXCLAMATION" || settings.symbol === "QUESTION";
   const selectedSymbol = SYMBOLS.find((option) => option.value === settings.symbol) ?? SYMBOLS[0];
 
   return <Popup open={open} title="Marker settings" message="" className="marker-settings-popup" autoFocusTarget="content" confirmLabel={editing ? "Save" : "Place"} onConfirm={() => { setSymbolMenuOpen(false); onConfirm(); }} onCancel={() => { setSymbolMenuOpen(false); onCancel(); }}>
@@ -67,7 +75,7 @@ export function MarkerSettingsPopup({ open, settings, editing, onChange, onConfi
       </div>
       {hasLabel && <label className="marker-settings-field"><span className="marker-settings-label">Label</span><input value={settings.label} maxLength={8} placeholder={settings.symbol === "NUMBER" ? "Auto number" : "Auto letter"} onChange={(event) => onChange({ label: event.target.value })} /></label>}
       <label className="marker-settings-row"><span>Colour</span><input aria-label="Marker colour" type="color" value={settings.color} onChange={(event) => onChange({ color: event.target.value })} /></label>
-      <label className="marker-settings-row"><span>Size</span><select value={settings.size} onChange={(event) => onChange({ size: event.target.value as MarkerSize })}><option value="SMALL">Small</option><option value="MEDIUM">Medium</option><option value="LARGE">Large</option></select></label>
+      <label className="marker-settings-row"><span>{hasText ? "Text size (px)" : "Marker size (px)"}</span><input aria-label={hasText ? "Marker text size in pixels" : "Marker size in pixels"} type="number" min="8" max="72" step="1" value={typeof settings.size === "number" ? settings.size : markerTextSize(settings.size)} onChange={(event) => { const value = event.target.value; if (value === "") { onChange({ size: 0 }); return; } const numeric = Number(value); if (Number.isFinite(numeric)) onChange({ size: numeric }); }} onBlur={() => onChange({ size: markerTextSize(settings.size) })} /></label>
       <label className="marker-settings-checkbox">
         <input type="checkbox" checked={Boolean(settings.arrowAttached)} onChange={(event) => onChange({ arrowAttached: event.target.checked })} />
         <span><strong>Attach arrow</strong><small>Use a second click to place the arrow tail, like a callout.</small></span>

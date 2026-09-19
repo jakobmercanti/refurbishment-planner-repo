@@ -1294,6 +1294,34 @@ export function materializeWallIntersections(walls: WallDragWall[]): WallDragWal
   return nextWalls;
 }
 
+/** Ensure a bridge never leaves a junction without a visible editable corner. */
+export function ensureVisibleBridgeCorners(walls: WallDragWall[]): WallDragWall[] {
+  const nextWalls = walls.map((wall) => ({
+    ...wall,
+    points: wall.points.map((point) => ({ ...point })),
+    attachments: wall.attachments ? Object.fromEntries(Object.entries(wall.attachments).map(([index, attachment]) => [index, { ...attachment }])) : undefined,
+  }));
+  let changed = false;
+  nextWalls.forEach((wall, wallIndex) => {
+    if (!wall.id.startsWith(AUTO_BRIDGE_PREFIX) || !wall.attachments) return;
+    const attachments = { ...wall.attachments };
+    Object.entries(attachments).forEach(([rawIndex, attachment]) => {
+      if (!attachment.hideCorner) return;
+      const pointIndex = Number(rawIndex);
+      const point = wall.points[pointIndex];
+      if (!point) return;
+      const anotherVisibleCorner = nextWalls.some((candidate, candidateWallIndex) => candidate.points.some((candidatePoint, candidatePointIndex) =>
+        !(candidateWallIndex === wallIndex && candidatePointIndex === pointIndex)
+        && samePoint(candidatePoint, point)
+        && !candidate.attachments?.[candidatePointIndex]?.hideCorner));
+      if (anotherVisibleCorner) return;
+      attachments[pointIndex] = { ...attachment, hideCorner: false };
+      changed = true;
+    });
+    nextWalls[wallIndex] = { ...wall, attachments };
+  });
+  return changed ? nextWalls : walls;
+}
 /**
  * Add a newly drawn wall run without losing the span of any existing run.
  *
@@ -1884,10 +1912,17 @@ export function retainDraggedWallConnections(
     // otherwise the stale segment makes a perfectly attached endpoint look
     // like an off-host move and leaves the old split behind.
     const baselineHostForLookup = baselineWalls.find((wall) => wall.id === connection.wallId);
+    const baselineHostStartForLookup = baselineHostForLookup?.points[connection.segmentIndex];
+    const baselineHostEndForLookup = baselineHostForLookup?.points[connection.segmentIndex + 1];
     const hasMaterializedHostJunction = Boolean(baselineHostForLookup
-      && baselineHostForLookup.points.some((point, pointIndex) => samePoint(point, originalPoint)
-        && baselineHostForLookup.attachments?.[pointIndex]?.hideCorner
-        && baselineHostForLookup.attachments?.[pointIndex]?.wallId === baselineHostForLookup.id));
+      && baselineHostForLookup.points.some((point, pointIndex) => {
+        if (!samePoint(point, originalPoint)) return false;
+        const attachment = baselineHostForLookup.attachments?.[pointIndex];
+        const isHiddenMaterializedJunction = attachment?.hideCorner && attachment.wallId === baselineHostForLookup.id;
+        const isCollinearHostJunction = Boolean(baselineHostStartForLookup && baselineHostEndForLookup
+          && straightRunPointIndices(baselineHostForLookup.points, pointIndex, baselineHostStartForLookup, baselineHostEndForLookup).length >= 3);
+        return Boolean(isHiddenMaterializedJunction || isCollinearHostJunction);
+      }));
     const movedHostSegment = hasMaterializedHostJunction ? hostWall.points.slice(0, -1).map((candidateStart, candidateSegmentIndex) => {
       const candidateEnd = hostWall.points[candidateSegmentIndex + 1];
       if (!candidateEnd || candidateSegmentIndex === connection.segmentIndex) return null;
@@ -1948,10 +1983,15 @@ export function retainDraggedWallConnections(
       if (slidesAlongHost && materializedHost) {
         const baselineClosed = materializedHost.points.length > 2 && samePoint(materializedHost.points[0], materializedHost.points.at(-1)!);
         const baselineLimit = materializedHost.points.length - (baselineClosed ? 1 : 0);
+        const baselineHostStart = baselineHostForLookup?.points[connection.segmentIndex];
+        const baselineHostEnd = baselineHostForLookup?.points[connection.segmentIndex + 1];
         const existingHostPointIndex = materializedHost.points.slice(0, baselineLimit).findIndex((point, pointIndex) => {
           if (!samePoint(point, originalPoint)) return false;
           const attachment = materializedHost.attachments?.[pointIndex];
-          return Boolean(attachment?.hideCorner && attachment.wallId === materializedHost.id);
+          const isHiddenMaterializedJunction = attachment?.hideCorner && attachment.wallId === materializedHost.id;
+          const isCollinearHostJunction = Boolean(baselineHostStart && baselineHostEnd
+            && straightRunPointIndices(baselineHostForLookup!.points, pointIndex, baselineHostStart, baselineHostEnd).length >= 3);
+          return Boolean(isHiddenMaterializedJunction || isCollinearHostJunction);
         });
         if (existingHostPointIndex >= 0) {
           const hostIndex = repaired.findIndex((wall) => wall.id === connection.wallId);

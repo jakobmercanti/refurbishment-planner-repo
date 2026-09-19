@@ -2,6 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { closedRooms } from "../lib/roomDetection.ts";
 
+test("reveals one bridge corner when the coincident host corners are hidden", () => {
+  const walls: WallDragWall[] = [
+    { id: "host", points: [{ x: 0, y: 0 }, { x: 1000, y: 0 }], attachments: { 0: { wallId: "host", segmentIndex: 0, along: 0, hideCorner: true } } },
+    { id: "auto-wall-bridge:test", points: [{ x: 0, y: 0 }, { x: -500, y: 0 }], attachments: { 0: { wallId: "host", segmentIndex: 0, along: 0, hideCorner: true } } },
+  ];
+
+  const repaired = ensureVisibleBridgeCorners(walls);
+
+  assert.equal(repaired[1].attachments?.[0]?.hideCorner, false);
+});
 test("wall 8-9 can extend beyond room 1's left side while keeping both rooms closed", () => {
   const baseline = materializeWallIntersections([
     {id:"main",points:[{x:0,y:0},{x:2400,y:0},{x:2400,y:1800},{x:0,y:1800},{x:0,y:0}]},
@@ -28,7 +38,7 @@ test("wall 8-9 can extend beyond room 1's left side while keeping both rooms clo
     point.x !== 650 || point.y !== 1800 || wall.attachments?.[index]?.hideCorner)),
   "the abandoned junction must not become corner 10");
 });
-import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type WallDragWall } from "../lib/wallDragGeometry.ts";
+import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, ensureVisibleBridgeCorners, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type WallDragWall } from "../lib/wallDragGeometry.ts";
 
 const roomWall: WallDragWall = {
   id: "room-1",
@@ -371,6 +381,32 @@ test("moves an existing stacked-room junction instead of splitting wall 2-3 at i
   assert.equal(materialized.some((wall) => wall.id.startsWith("auto-wall-bridge:")), false);
 });
 
+test("reuses a visible collinear host junction instead of creating a second corner", () => {
+  const baseline: WallDragWall[] = [
+    {
+      id: "host-room",
+      points: [{ x: 0, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 2660 }, { x: 2400, y: 4080 }, { x: 0, y: 4080 }, { x: 0, y: 0 }],
+      cornerNumbers: { 0: 1, 1: 2, 2: 5, 3: 3, 4: 4 },
+    },
+    {
+      id: "stacked-room",
+      points: [{ x: 2400, y: 2660 }, { x: 3800, y: 2660 }, { x: 3800, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 2660 }],
+      cornerNumbers: { 0: 5, 1: 8, 2: 7, 3: 6 },
+      attachments: { 0: { wallId: "host-room", segmentIndex: 1, along: 1 }, 4: { wallId: "host-room", segmentIndex: 1, along: 1 } },
+    },
+  ];
+  const candidate: WallDragWall[] = [
+    baseline[0],
+    { ...baseline[1], points: [{ x: 2400, y: 3500 }, { x: 3800, y: 3500 }, { x: 3800, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 3500 }] },
+  ];
+
+  const repaired = retainDraggedWallConnections(baseline, candidate, "stacked-room", 0);
+  const host = repaired.find((wall) => wall.id === "host-room")!;
+
+  assert.equal(host.points.some((point) => point.x === 2400 && point.y === 2660), false);
+  assert.deepEqual(host.points[2], { x: 2400, y: 3500 });
+  assert.equal(host.points.filter((point) => point.x === 2400 && point.y === 3500).length, 1);
+});
 test("reveals a previously hidden stacked-room endpoint when it moves into the host wall", () => {
   const baseline: WallDragWall[] = [
     { id: "lower-room", points: [{ x: 0, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 1800 }, { x: 0, y: 1800 }, { x: 0, y: 0 }], cornerNumbers: { 0: 1, 1: 2, 2: 3, 3: 4 } },

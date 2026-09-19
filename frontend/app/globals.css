@@ -794,7 +794,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .floorplan-context-menu button { width: 100%; padding: 8px 9px; border: 1px solid var(--line); border-radius: 6px; background: #f8faf8; color: var(--ink); font: 650 10px var(--font-mono); text-align: left; cursor: pointer; }
 .floorplan-context-menu button:hover, .floorplan-context-menu button:focus-visible { border-color: var(--deep); outline: none; background: #edf4ef; }
 .floorplan-context-menu .danger-button { border-color: #efc5c1; background: var(--fail-soft); color: var(--fail); }
-.floorplan-context-menu.floorplan-value-menu { width: 224px; }
+.floorplan-context-menu.floorplan-value-menu { width: 224px; max-height: min(520px, calc(100vh - 16px)); overflow-y: auto; }
 .floorplan-value-menu label { display: grid; gap: 4px; padding: 3px 5px; color: var(--muted); font: 650 8px var(--font-mono); }
 .floorplan-value-menu .context-help { padding: 0 5px 4px; color: var(--muted); font: 500 8px var(--font-mono); }
 .floorplan-value-menu label > div { width: 100%; }
@@ -1167,7 +1167,8 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
   color: var(--muted);
   font: 600 11px var(--font-sans);
 }
-.annotation-style-row select {
+.annotation-style-row select,
+.annotation-style-row input[type="number"] {
   width: 100%;
   min-height: 30px;
   border: 1px solid var(--line);
@@ -1277,8 +1278,8 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .marker-symbol-grid button.selected { border-color: var(--deep); background: #eef5f1; box-shadow: inset 0 0 0 1px var(--deep); }
 .marker-symbol-grid svg { width: 25px; height: 25px; }
 .marker-symbol-grid small { overflow: hidden; max-width: 100%; color: var(--muted); font: 600 8px var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
-.marker-settings-field input, .marker-settings-row select { min-height: 32px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); padding: 0 8px; font: 600 11px var(--font-sans); }
-.marker-settings-field input:focus, .marker-settings-row select:focus { border-color: var(--deep); outline: 2px solid rgb(34 102 84 / 18%); }
+.marker-settings-field input, .marker-settings-row select, .marker-settings-row input[type="number"] { min-height: 32px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); padding: 0 8px; font: 600 11px var(--font-sans); }
+.marker-settings-field input:focus, .marker-settings-row select:focus, .marker-settings-row input[type="number"]:focus { border-color: var(--deep); outline: 2px solid rgb(34 102 84 / 18%); }
 .marker-settings-row { display: grid; grid-template-columns: 1fr 150px; align-items: center; gap: 8px; color: var(--muted); font: 650 11px var(--font-sans); }
 .marker-settings-row input[type="color"] { width: 100%; height: 32px; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
 @media (max-width: 520px) { .marker-symbol-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -1574,7 +1575,9 @@ button:disabled {
 .marker-symbol-trigger-chevron { color: var(--muted); font-size: 15px; line-height: 1; }
 .marker-symbol-menu { position: absolute; z-index: 8; top: calc(100% + 4px); right: 0; left: 0; max-height: 240px; overflow-y: auto; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 8px 22px rgb(15 34 58 / 14%); }
 .marker-symbol-menu button { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; width: 100%; min-height: 36px; gap: 8px; padding: 4px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font: 650 11px var(--font-sans); text-align: left; cursor: pointer; }
-.marker-symbol-menu button:hover, .marker-symbol-menu button:focus-visible, .marker-symbol-menu button.selected { background: #eef5f1; outline: none; }
+.marker-symbol-menu button:hover, .marker-symbol-menu button:focus-visible { background: #eef5f1; outline: none; }
+.marker-symbol-menu button.selected, .marker-symbol-menu button.selected:hover, .marker-symbol-menu button.selected:focus-visible { background: #eaf2ee !important; color: var(--deep) !important; box-shadow: inset 0 0 0 1px var(--deep); outline: none; }
+.marker-symbol-menu button.selected .marker-symbol-option-preview { color: var(--deep) !important; }
 .marker-settings-checkbox { display: flex; align-items: flex-start; gap: 9px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #f7fafc; color: var(--ink); cursor: pointer; }
 .marker-settings-checkbox input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; accent-color: var(--deep); }
 .marker-settings-checkbox span { display: grid; gap: 3px; }

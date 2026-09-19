@@ -46,6 +46,7 @@ type CameraView = "perspective" | "top" | "bottom" | "left" | "right" | "eye";
 type ProjectionMode = "perspective" | "parallel";
 type CaptureFormat = "png" | "jpg" | "pdf";
 const CAPTURE_ATTRIBUTION = "Made with FreeFloorplan3D.com";
+const CAPTURE_ATTRIBUTION_FONT_SIZE = 18;
 type LightingSettings = { intensity: number; shadows: number; direction: number; elevation: number };
 const DEFAULT_LIGHTING: LightingSettings = { intensity: 100, shadows: 100, direction: 109, elevation: 55 };
 
@@ -1225,7 +1226,7 @@ function drawCaptureAttribution(context: CanvasRenderingContext2D, width: number
   const scale = Math.max(1, width / 1640);
   const margin = 14 * scale;
   context.save();
-  context.font = `700 ${12 * scale}px Arial, sans-serif`;
+  context.font = `700 ${CAPTURE_ATTRIBUTION_FONT_SIZE * scale}px Arial, sans-serif`;
   context.textAlign = "right";
   context.textBaseline = "bottom";
   context.fillStyle = "#000000";

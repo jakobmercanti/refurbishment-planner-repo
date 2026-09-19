@@ -29,9 +29,9 @@ import { FLOORPLAN_STYLE_OPTIONS, floorplanStyleClass, floorplanStyleCss, floorp
 import { FloorplanAtmosphere } from "@/components/FloorplanAtmosphere";
 import { AnnotationsPanel, type AnnotationArrowEndStyle, type AnnotationPanelSelection, type AnnotationStyle, type AnnotationToolName } from "@/components/AnnotationsPanel";
 import { ViewToggle } from "@/components/ViewToggle";
-import { MarkerSettingsPopup, type MarkerSettings, type MarkerSize, type MarkerSymbol } from "@/components/MarkerSettingsPopup";
+import { MarkerSettingsPopup, markerTextSize, type MarkerSettings, type MarkerSymbol } from "@/components/MarkerSettingsPopup";
 import { openingCatalogueCategoryLabel } from "@/lib/openingCatalogue";
-import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
+import { appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleBridgeCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
 import type { CatalogueItem, Obstacle, Opening, Point2D, Room, RoomFinishes } from "@/lib/types";
 import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 
@@ -97,7 +97,8 @@ function readImageDimensions(url: string): Promise<{ width: number; height: numb
   });
 }
 const DEFAULT_SNAP_MM = 50;
-const DEFAULT_MARKER_SETTINGS: MarkerSettings = { symbol: "NUMBER", label: "", color: "#287fb8", size: "MEDIUM", arrowAttached: false };
+const DRAFT_CLOSURE_ADJUSTMENT_MM = 50;
+const DEFAULT_MARKER_SETTINGS: MarkerSettings = { symbol: "NUMBER", label: "", color: "#287fb8", size: 14, arrowAttached: false };
 const DEFAULT_WALL_THICKNESS_MM = 50;
 const MIN_WALL_CLEARANCE_MM = 200;
 const MAX_DEFAULT_MEASUREMENT_OFFSET_MM = 200;
@@ -218,8 +219,9 @@ const FLOORPLAN_EXPORT_WIDTH = 1640;
 const FLOORPLAN_EXPORT_HEIGHT = 1120;
 const FLOORPLAN_EXPORT_ATTRIBUTION = "Made with FreeFloorplan3D.com";
 const FLOORPLAN_EXPORT_ATTRIBUTION_URL = "https://freefloorplan3d.com";
-const FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE = 12;
-const FLOORPLAN_EXPORT_PADDING_RATIO = 0.15;
+const FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE = 18;
+const FLOORPLAN_EXPORT_PADDING_RATIO = 0.08;
+const FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX = 48;
 
 const FLOORPLAN_EXPORT_BASE_CSS = `
 .floor-canvas{display:block;width:100%;height:100%;min-height:0!important;background:#fff}
@@ -236,8 +238,7 @@ const FLOORPLAN_EXPORT_BASE_CSS = `
 
 function floorplanExportCss(style: FloorplanStyle) {
   return `${FLOORPLAN_EXPORT_BASE_CSS}
-${floorplanStyleCss(style)}
-.floor-canvas .canvas-background{fill:#fff}.floor-canvas{background:#fff}`;
+${floorplanStyleCss(style)}`;
 }
 
 function drawFloorplanAttribution(context: CanvasRenderingContext2D, width: number, height: number) {
@@ -261,8 +262,8 @@ function floorplanPdfBlobFromJpeg(bytes: ArrayBuffer, width: number, height: num
   const pageWidth = Math.max(72, width * 72 / 96);
   const pageHeight = Math.max(72, height * 72 / 96);
   const content = `q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Im0 Do\nQ\n`;
-  const attributionLinkWidth = 155;
-  const attributionLinkHeight = 18;
+  const attributionLinkWidth = 220;
+  const attributionLinkHeight = 28;
   const attributionLinkX = Math.max(0, pageWidth - attributionLinkWidth - 8);
   const parts: Uint8Array<ArrayBuffer>[] = [];
   let length = 0;
@@ -533,6 +534,34 @@ function snapPoint(point: Point2D, walls: Wall[], enabled: boolean, increment: n
   return nearby ?? (enabled ? { x: Math.round(point.x / increment) * increment, y: Math.round(point.y / increment) * increment } : point);
 }
 
+const ANNOTATION_WALL_SNAP_DISTANCE_MM = 140;
+type AnnotationWallProjection = { point: Point2D; start: Point2D; end: Point2D; distance: number };
+
+function nearestAnnotationWallProjection(point: Point2D, walls: Wall[]): AnnotationWallProjection | null {
+  let nearest: AnnotationWallProjection | null = null;
+  walls.forEach((wall) => wall.points.slice(0, -1).forEach((start, segmentIndex) => {
+    const end = wall.points[segmentIndex + 1];
+    if (!end) return;
+    const projection = pointOnSegment(point, start, end).point;
+    const distance = Math.hypot(projection.x - point.x, projection.y - point.y);
+    if (distance <= ANNOTATION_WALL_SNAP_DISTANCE_MM && (!nearest || distance < nearest.distance)) nearest = { point: projection, start, end, distance };
+  }));
+  return nearest;
+}
+
+function intersectAnnotationAxisWithWall(anchor: Point2D, wall: AnnotationWallProjection, horizontal: boolean): Point2D | null {
+  const dx = wall.end.x - wall.start.x;
+  const dy = wall.end.y - wall.start.y;
+  if (horizontal) {
+    if (Math.abs(dy) < 1e-9) return Math.abs(anchor.y - wall.start.y) <= 1e-6 ? pointOnSegment(anchor, wall.start, wall.end).point : null;
+    const along = (anchor.y - wall.start.y) / dy;
+    return along >= 0 && along <= 1 ? { x: wall.start.x + dx * along, y: anchor.y } : null;
+  }
+  if (Math.abs(dx) < 1e-9) return Math.abs(anchor.x - wall.start.x) <= 1e-6 ? pointOnSegment(anchor, wall.start, wall.end).point : null;
+  const along = (anchor.x - wall.start.x) / dx;
+  return along >= 0 && along <= 1 ? { x: anchor.x, y: wall.start.y + dy * along } : null;
+}
+
 function squareWallPoints(points: Point2D[]): Point2D[] {
   if (points.length < 2) return points.map((point) => ({ ...point }));
   const closed = samePoint(points[0], points.at(-1)!);
@@ -563,6 +592,20 @@ function orthogonalPathTo(points: Point2D[], target: Point2D): Point2D[] {
   const horizontalFirst = Math.abs(target.x - last.x) >= Math.abs(target.y - last.y);
   const turn = horizontalFirst ? { x: target.x, y: last.y } : { x: last.x, y: target.y };
   return [...points, turn, target];
+}
+
+function closeDraftPath(points: Point2D[], squaredWalls: boolean): Point2D[] {
+  if (!points.length) return points;
+  const first = points[0];
+  if (!squaredWalls || points.length < 3) return [...points, { ...first }];
+  const last = points.at(-1)!;
+  const previous = points.at(-2)!;
+  const previousSegmentVertical = Math.abs(last.x - previous.x) < Math.abs(last.y - previous.y);
+  const adjustment = previousSegmentVertical ? Math.abs(last.y - first.y) : Math.abs(last.x - first.x);
+  const adjustedLast = adjustment <= DRAFT_CLOSURE_ADJUSTMENT_MM
+    ? previousSegmentVertical ? { ...last, y: first.y } : { ...last, x: first.x }
+    : last;
+  return orthogonalPathTo([...points.slice(0, -1), adjustedLast], first);
 }
 
 function orthogonalIntersectionOnSegment(from: Point2D, requested: Point2D, start: Point2D, end: Point2D): Point2D | null {
@@ -834,7 +877,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   const [annotationMeasurementMode, setAnnotationMeasurementMode] = useState<"ADD" | "REMOVE" | null>(null);
   const [annotationDraft, setAnnotationDraft] = useState<Point2D[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
-  const [annotationStyle, setAnnotationStyle] = useState<AnnotationStyle>({ lineStyle: "SOLID", thickness: 1, textSize: 14, color: "#287fb8", arrowEndStyle: "CLASSIC" });
+  const [annotationStyle, setAnnotationStyle] = useState<AnnotationStyle>({ lineStyle: "SOLID", thickness: 1, textSize: 14, rotation: 0, color: "#287fb8", arrowEndStyle: "CLASSIC" });
   const [annotationTextDialog, setAnnotationTextDialog] = useState<AnnotationTextDialog | null>(null);
   const [markerDialog, setMarkerDialog] = useState<MarkerDialog | null>(null);
   const [markerSettings, setMarkerSettings] = useState<MarkerSettings>(DEFAULT_MARKER_SETTINGS);
@@ -872,7 +915,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   const draftStartAttachment = useRef<WallAttachment | null>(null);
   const openingDrag = useRef<OpeningDrag | null>(null);
   const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
-  const annotationDrag = useRef<{ id: string; handle: "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL" | "MARKER"; vertexIndex?: number; before: Snapshot; pointerStart: Point2D; original: FloorplanAnnotation } | null>(null);
+  const annotationDrag = useRef<{ id: string; handle: "WHOLE" | "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL" | "MARKER"; vertexIndex?: number; before: Snapshot; pointerStart: Point2D; original: FloorplanAnnotation } | null>(null);
   const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
   const fixtureDrag = useRef<{ id: string; original: Obstacle; offset: Point2D; candidate: PlacementCandidate | null } | null>(null);
   const [fixturePreview, setFixturePreview] = useState<Obstacle | null>(null);
@@ -1177,6 +1220,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const commitActiveDraft = useEffectEvent(() => commitDraft());
+  const cancelActiveEditorInteractionEvent = useEffectEvent(() => cancelActiveEditorInteraction());
   const undoLastOperation = useEffectEvent(() => undo());
   const redoLastOperation = useEffectEvent(() => redo());
   const finishAnnotationPolylineEvent = useEffectEvent(() => finishAnnotationPolyline());
@@ -1193,7 +1237,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const finishActiveTool = (event: KeyboardEvent) => {
       if (!editorRoot.current || editorRoot.current.closest("[hidden]")) return;
       if (calibrating) {
-        if (event.key === "Escape") { event.preventDefault(); setCalibrating(false); setCalibrationPoints([]); setCalibrationHover(null); }
+        if (event.key === "Escape") { event.preventDefault(); cancelActiveEditorInteractionEvent(); }
         return;
       }
       if (!event.repeat && !event.shiftKey && !event.altKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
@@ -1216,13 +1260,9 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         requestSelectedFixtureDeletion();
         return;
       }
-      if (event.key === "Escape" && annotationTextDialog) { event.preventDefault(); cancelAnnotationTextDialog(); return; }
-      if (event.key === "Escape" && markerDialog) { event.preventDefault(); cancelMarkerDialog(); return; }
-      if (event.key === "Escape" && annotationTool && annotationTool !== "MEASUREMENT") {
+      if (event.key === "Escape" && (annotationTextDialog || markerDialog || annotationTool)) {
         event.preventDefault();
-        setAnnotationDraft([]);
-        setAnnotationTool(null);
-        setTool("SELECT");
+        cancelActiveEditorInteractionEvent();
         return;
       }
       if ((event.key === "Enter" || event.key === "Return") && annotationTool === "POLYLINE") {
@@ -1230,35 +1270,20 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         finishAnnotationPolylineEvent();
         return;
       }
-      if (tool === "DRAW" && (event.key === "Enter" || event.key === "Escape")) {
+      if (tool === "DRAW" && (event.key === "Enter" || event.key === "Return")) {
         event.preventDefault();
         commitActiveDraft();
         return;
       }
-      if (event.key === "Escape" && annotationTool === "MEASUREMENT") {
-        setAnnotationTool(null);
-        setAnnotationMeasurementMode(null);
-        setTool("SELECT");
-        setMeasurementDraft([]);
-        setSelectedMeasurement(null);
+      if (event.key === "Escape" && (placement || fixtureDrag.current || tool !== "SELECT" || annotationPanelOpen || addRoomPanelOpen || outlineMenuOpen || lShapePickerOpen)) {
+        event.preventDefault();
+        cancelActiveEditorInteractionEvent();
         return;
-      }
-      if (event.key === "Escape" && tool === "ADD_CORNERS") {
-        setTool("SELECT");
-        setSelectedSegment(null);
-        setSelectedPoint(null);
-        setLockedViewport(null);
-      }
-      if (event.key === "Escape" && tool === "ADD_MEASURE") {
-        setTool("SELECT"); setAnnotationTool(null); setMeasurementDraft([]); setSelectedMeasurement(null); setMeasurementContextMenu(null);
-      }
-      if (event.key === "Escape" && tool === "REMOVE_MEASURE") {
-        setTool("SELECT"); setSelectedMeasurement(null); setMeasurementContextMenu(null);
       }
     };
     window.addEventListener("keydown", finishActiveTool);
     return () => window.removeEventListener("keydown", finishActiveTool);
-  }, [annotationTextDialog, annotationTool, calibrating, markerDialog, selectedAnnotationId, selectedFixtureId, tool]);
+  }, [addRoomPanelOpen, annotationPanelOpen, annotationTextDialog, annotationTool, calibrating, lShapePickerOpen, markerDialog, outlineMenuOpen, placement, selectedAnnotationId, selectedFixtureId, tool]);
 
   useEffect(() => {
     if (!contextMenu && !measurementContextMenu && !openingContextMenu && !openingMeasurementContextMenu && !fixtureContextMenu && !fixtureMeasurementContextMenu && !toolbarContextMenu) return;
@@ -1373,11 +1398,22 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     return canvasPointFromClient(event.clientX, event.clientY, event.currentTarget, attachToWalls);
   }
 
-  function annotationPoint(event: ReactPointerEvent<SVGSVGElement>): Point2D {
+  function annotationPoint(event: ReactPointerEvent<SVGSVGElement>, anchor?: Point2D, attachToWall = false): Point2D {
     const raw = floorPlanFromClient(event.clientX, event.clientY, event.currentTarget, activeViewport);
-    if (event.altKey || event.ctrlKey || event.metaKey || !snapEnabled) return raw;
+    const bypassSnap = event.altKey || event.ctrlKey || event.metaKey;
+    const wallProjection = attachToWall && !bypassSnap ? nearestAnnotationWallProjection(raw, walls) : null;
     const gridPoint = { x: Math.round(raw.x / snapSize) * snapSize, y: Math.round(raw.y / snapSize) * snapSize };
-    return snapPoint(gridPoint, walls, true, snapSize);
+    const target = wallProjection?.point ?? (!snapEnabled ? raw : snapPoint(gridPoint, walls, true, snapSize));
+    if (!anchor || !event.shiftKey) return target;
+
+    const horizontalFirst = Math.abs(raw.x - anchor.x) >= Math.abs(raw.y - anchor.y);
+    if (wallProjection) {
+      const primary = intersectAnnotationAxisWithWall(anchor, wallProjection, horizontalFirst);
+      const alternate = intersectAnnotationAxisWithWall(anchor, wallProjection, !horizontalFirst);
+      if (primary) return primary;
+      if (alternate) return alternate;
+    }
+    return horizontalFirst ? { x: target.x, y: anchor.y } : { x: anchor.x, y: target.y };
   }
 
   function nextMarkerLabel(symbol: MarkerSymbol, items = annotations): string {
@@ -1412,7 +1448,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   function openMarkerSettings(mode: MarkerDialog["mode"], annotation?: FloorplanAnnotation) {
     if (mode === "EDIT" && annotation) {
       const current = annotation.marker ?? { ...DEFAULT_MARKER_SETTINGS, color: annotation.style.color ?? DEFAULT_MARKER_SETTINGS.color };
-      setMarkerSettings({ ...current });
+      setMarkerSettings({ ...current, size: markerTextSize(current.size) });
       setMarkerDialog({ mode: "EDIT", annotationId: annotation.id });
       return;
     }
@@ -1421,13 +1457,12 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   }
 
   function cancelMarkerDialog() {
-    setMarkerDialog(null);
+    cancelAnnotationMode();
   }
-
   function confirmMarkerSettings() {
     const dialog = markerDialog;
     if (!dialog) return;
-    const nextMarker = { ...markerSettings, label: markerLabelForPlacement(markerSettings) };
+    const nextMarker = { ...markerSettings, size: markerTextSize(markerSettings.size), label: markerLabelForPlacement(markerSettings) };
     if (dialog.mode === "EDIT") {
       const current = annotations.find((annotation) => annotation.id === dialog.annotationId);
       const nextArrowTail = nextMarker.arrowAttached && current?.position ? current.labelPosition ?? { x: current.position.x + 250, y: current.position.y - 180 } : undefined;
@@ -1455,6 +1490,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     openMarkerSettings("EDIT", annotation);
   }
   function createAnnotation(annotation: FloorplanAnnotation) {
+    setShowAnnotations(true);
     record();
     setAnnotations((current) => [...current, annotation]);
     setSelectedAnnotationId(annotation.id);
@@ -1471,10 +1507,8 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     if (annotation.type !== "TEXT" && annotation.type !== "CALLOUT") return;
     setAnnotationTextDialog({ mode: "EDIT", annotationId: annotation.id, annotationType: annotation.type, value: annotation.text ?? "" });
   }
-
   function cancelAnnotationTextDialog() {
-    setAnnotationTextDialog(null);
-    setAnnotationDraft([]);
+    cancelAnnotationMode();
   }
 
   function confirmAnnotationTextDialog() {
@@ -1497,8 +1531,8 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     setAnnotationTextDialog(null);
     setAnnotationDraft([]);
   }
-
   function activateAnnotationMeasurement(mode: "ADD" | "REMOVE") {
+    setShowMeasurements(true);
     setAnnotationDraft([]);
     setSelectedAnnotationId(null);
     onElementSelected?.(null);
@@ -1527,6 +1561,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       activateAnnotationMeasurement("ADD");
       return;
     }
+    setShowAnnotations(true);
     onElementSelected?.(null);
     setAnnotationMeasurementMode(null);
     setMeasurementDraft([]);
@@ -1544,7 +1579,9 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   function handleAnnotationPointerDown(event: ReactPointerEvent<SVGSVGElement>): boolean {
     if (!annotationTool || annotationTool === "MEASUREMENT" || event.button !== 0) return false;
     event.preventDefault(); event.stopPropagation();
-    const point = annotationPoint(event);
+    const lineTool = annotationTool === "LINE" || annotationTool === "ARROW";
+    const lineAnchor = lineTool && annotationDraft.length === 1 ? annotationDraft[0] : undefined;
+    const point = annotationPoint(event, lineAnchor, lineTool);
     if (annotationTool === "TEXT") {
       setAnnotationTextDialog({ mode: "CREATE_TEXT", position: point, value: "" });
       return true;
@@ -1580,7 +1617,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     return true;
   }
 
-  function beginAnnotationDrag(event: ReactPointerEvent<SVGElement>, annotation: FloorplanAnnotation, handle: "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL" | "MARKER", vertexIndex?: number) {
+  function beginAnnotationDrag(event: ReactPointerEvent<SVGElement>, annotation: FloorplanAnnotation, handle: "WHOLE" | "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL" | "MARKER", vertexIndex?: number) {
     if (tool !== "SELECT" || event.button !== 0) return;
     const svg = event.currentTarget.ownerSVGElement;
     if (!svg) return;
@@ -1589,6 +1626,12 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     setSelectedAnnotationId(annotation.id);
     setAnnotationPanelOpen(true);
     setAnnotationStyle({ ...annotation.style, color: annotation.style.color ?? "#287fb8", arrowEndStyle: annotation.style.arrowEndStyle ?? "CLASSIC" });
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedOpeningId(null);
+    setSelectedFixtureId(null);
+    setSelectedMeasurement(null);
+    onElementSelected?.(null);
     annotationDrag.current = { id: annotation.id, handle, vertexIndex, before: snapshot(), pointerStart: floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport), original: cloneAnnotations([annotation])[0] };
   }
 
@@ -1600,7 +1643,15 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const original = active.original;
     const moved: FloorplanAnnotation = { ...original, style: { ...original.style }, start: original.start ? { ...original.start } : undefined, end: original.end ? { ...original.end } : undefined, points: original.points?.map((point) => ({ ...point })), position: original.position ? { ...original.position } : undefined, anchor: original.anchor ? { ...original.anchor } : undefined, labelPosition: original.labelPosition ? { ...original.labelPosition } : undefined, marker: original.marker ? { ...original.marker } : undefined };
     const nextPoint = { x: pointer.x, y: pointer.y };
-    if (moved.type === "LINE" || moved.type === "ARROW") {
+    const translate = (point: Point2D | undefined) => point ? { x: point.x + dx, y: point.y + dy } : undefined;
+    if (active.handle === "WHOLE") {
+      moved.start = translate(moved.start);
+      moved.end = translate(moved.end);
+      moved.points = moved.points?.map(translate).filter((point): point is Point2D => Boolean(point));
+      moved.position = translate(moved.position);
+      moved.anchor = translate(moved.anchor);
+      moved.labelPosition = translate(moved.labelPosition);
+    } else if (moved.type === "LINE" || moved.type === "ARROW") {
       if (active.handle === "START") moved.start = nextPoint;
       else moved.end = nextPoint;
     } else if (moved.type === "POLYLINE" && active.handle === "VERTEX" && moved.points && active.vertexIndex !== undefined) moved.points[active.vertexIndex] = nextPoint;
@@ -1678,6 +1729,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
 
   function addMeasurementReference(reference: MeasurementReference) {
     if (tool !== "ADD_MEASURE") return;
+    setShowMeasurements(true);
     const first = measurementDraft[0];
     if (!first) { setMeasurementDraft([reference]); return; }
     if (sameMeasurementReference(first, reference)) return;
@@ -1873,6 +1925,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const roomId = owner?.id ?? selectedRoomDraft()?.id;
     setTool("SELECT");
     setElementTab("FURNITURE");
+    setSelectedAnnotationId(null);
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
     setSelectedSegment(null);
@@ -1981,7 +2034,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         attachments: Object.keys(attachments).length ? attachments : undefined,
       }));
     }
-    draftStartAttachment.current = null; setDraft([]); setHoveredCorner(null); setTool("SELECT"); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null);
+    draftStartAttachment.current = null; setDraft([]); setHoveredCorner(null); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null);
   }
 
   function connectDraftToWall(wallId: string, segmentIndex: number, requested: Point2D, alignClosingCorner = false) {
@@ -2006,7 +2059,14 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       // the last draft point even when free-angle drawing is enabled, so the final
       // segment finishes flush instead of preserving a near-miss below/alongside it.
       const alignedDraft = alignClosingCorner ? alignDraftToCorner(draft, point) : draft;
-      commitDraft(squaredWalls ? orthogonalPathTo(alignedDraft, point) : [...alignedDraft, point], attachment);
+      // If the draft starts on an existing corner, alignDraftToCorner returns the
+      // bend point by adjusting that one-point draft. Keep the original corner as
+      // the first point so a squared corner-to-corner wall becomes two real walls
+      // with an editable intersection, rather than only the final leg.
+      const closingPath = squaredWalls && alignClosingCorner && draft.length === 1 && alignedDraft.length === 1 && !samePoint(draft[0], alignedDraft[0])
+        ? [draft[0], ...orthogonalPathTo(alignedDraft, point).slice(1)]
+        : squaredWalls ? orthogonalPathTo(alignedDraft, point) : [...alignedDraft, point];
+      commitDraft(closingPath, attachment);
     }
     else {
       // Keep the user's current view when the first point starts a wall. The
@@ -2060,8 +2120,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
 
   function draftStartNear(point: Point2D): boolean {
     if (draft.length < 3) return false;
-    const tolerance = snapEnabled ? Math.max(40, snapSize * 2) : 40;
-    return samePoint(point, draft[0], tolerance);
+    return samePoint(point, draft[0], DRAFT_CLOSURE_ADJUSTMENT_MM);
   }
 
   function clearImportedDrawing() {
@@ -2105,15 +2164,29 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       }));
     } else {
       const firstRun = wall.points.slice(0, segmentIndex + 1);
-      const secondRun = wall.points.slice(segmentIndex + 1);
+      const rawSecondRun = wall.points.slice(segmentIndex + 1);
+      // A connected branch can be stored as one open run: [branch end,
+      // junction, host end]. Removing the branch leaves the branch endpoint
+      // followed by the host segment, which backtracks over part of the same
+      // wall. Drop that redundant endpoint so the host returns to one run.
+      const leadingOverlap = rawSecondRun.length >= 3
+        && (() => {
+          const projection = pointOnSegment(rawSecondRun[0], rawSecondRun[1], rawSecondRun[2]);
+          return Math.hypot(projection.point.x - rawSecondRun[0].x, projection.point.y - rawSecondRun[0].y) <= 1
+            && projection.along > 1e-6 && projection.along < 1 - 1e-6;
+        })();
+      const secondRun = leadingOverlap ? rawSecondRun.slice(1) : rawSecondRun;
+      const droppedLeadingSegment = leadingOverlap ? 1 : 0;
+
+      const secondSegmentSourceIndices = Array.from({ length: secondRun.length - 1 }, (_, index) => segmentIndex + 1 + droppedLeadingSegment + index);
       const secondId = crypto.randomUUID();
       setWallsRespectingMeasurements((current) => current.flatMap((item) => item.id !== wallId ? [item] : [
         ...(firstRun.length >= 2 ? [{ ...item, points: firstRun.map((point) => ({ ...point })), thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, Array.from({ length: firstRun.length - 1 }, (_, index) => index)), lengthOverridesMm: remapSegmentLengthOverrides(item.lengthOverridesMm, Array.from({ length: firstRun.length - 1 }, (_, index) => index)) }] : []),
-        ...(secondRun.length >= 2 ? [{ id: secondId, points: secondRun.map((point) => ({ ...point })), thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, Array.from({ length: secondRun.length - 1 }, (_, index) => segmentIndex + 1 + index)), lengthOverridesMm: remapSegmentLengthOverrides(item.lengthOverridesMm, Array.from({ length: secondRun.length - 1 }, (_, index) => segmentIndex + 1 + index)) }] : []),
+        ...(secondRun.length >= 2 ? [{ id: secondId, points: secondRun.map((point) => ({ ...point })), attachments: item.attachments ? Object.fromEntries(Object.entries(item.attachments).flatMap(([rawIndex, attachment]) => { const sourceIndex = Number(rawIndex); const targetIndex = sourceIndex - (segmentIndex + 1 + droppedLeadingSegment); return targetIndex >= 0 && targetIndex < secondRun.length ? [[targetIndex, { ...attachment }]] : []; })) : undefined, cornerNumbers: item.cornerNumbers ? Object.fromEntries(Object.entries(item.cornerNumbers).flatMap(([rawIndex, number]) => { const sourceIndex = Number(rawIndex); const targetIndex = sourceIndex - (segmentIndex + 1 + droppedLeadingSegment); return targetIndex >= 0 && targetIndex < secondRun.length ? [[targetIndex, number]] : []; })) : undefined, thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, secondSegmentSourceIndices), lengthOverridesMm: remapSegmentLengthOverrides(item.lengthOverridesMm, secondSegmentSourceIndices) }] : []),
       ]));
       setOpenings((current) => current.filter((opening) => !(opening.wallId === wallId && opening.segmentIndex === segmentIndex)).map((opening) => {
         if (opening.wallId !== wallId || opening.segmentIndex < segmentIndex) return opening;
-        return { ...opening, wallId: secondId, segmentIndex: opening.segmentIndex - segmentIndex - 1 };
+        return { ...opening, wallId: secondId, segmentIndex: opening.segmentIndex - segmentIndex - 1 - droppedLeadingSegment };
       }));
     }
     setSelectedSegment(null); setSelectedPoint(null); setOpeningParent("");
@@ -2285,25 +2358,34 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       if (pointIndex < 0 || (closed && pointIndex >= item.points.length - 1)) return [item];
       const core = closed ? item.points.slice(0, -1) : [...item.points];
       if (pointIndex >= core.length) return [item];
+      const sourcePointIndices = core.map((_, index) => index);
       core.splice(pointIndex, 1);
       if (closed && core.length < 3) return [item];
-      const points = closed ? [...core, { ...core[0] }] : core;
-      const segmentCount = item.points.length - 1;
+      const remappedSourcePointIndices = closed
+        ? sourcePointIndices
+          .filter((sourceIndex) => sourceIndex !== pointIndex)
+          .slice(pointIndex)
+          .concat(sourcePointIndices.filter((sourceIndex) => sourceIndex !== pointIndex).slice(0, pointIndex))
+        : sourcePointIndices;
+      const points = closed
+        ? [...core.slice(pointIndex), ...core.slice(0, pointIndex)]
+        : core;
       const sourceSegmentIndices = closed
-        ? Array.from({ length: Math.max(0, points.length - 1) }, (_, index) => {
-            if (pointIndex === 0) return index === points.length - 2 ? segmentCount - 1 : index + 1;
-            return index < pointIndex - 1 ? index : index === pointIndex - 1 ? index : index + 1;
-          })
+        ? remappedSourcePointIndices.slice(0, Math.max(0, points.length - 1))
         : Array.from({ length: Math.max(0, points.length - 1) }, (_, index) => index < pointIndex ? index : index + 1);
-      const remapPointIndex = (sourceIndex: number) => sourceIndex === pointIndex ? -1 : sourceIndex > pointIndex ? sourceIndex - 1 : sourceIndex;
+      const remapPointIndex = (sourceIndex: number) => {
+        if (sourceIndex === pointIndex) return -1;
+        if (closed) return remappedSourcePointIndices.indexOf(sourceIndex);
+        return sourceIndex > pointIndex ? sourceIndex - 1 : sourceIndex;
+      };
       const attachments = item.attachments ? Object.entries(item.attachments).reduce<Record<number, WallAttachment>>((next, [rawIndex, attachment]) => {
         const targetIndex = remapPointIndex(Number(rawIndex));
-        if (targetIndex >= 0 && targetIndex < points.length - (closed ? 1 : 0)) next[targetIndex] = attachment;
+        if (targetIndex >= 0 && targetIndex < points.length) next[targetIndex] = attachment;
         return next;
       }, {}) : undefined;
       const cornerNumbers = item.cornerNumbers ? Object.entries(item.cornerNumbers).reduce<Record<number, number>>((next, [rawIndex, number]) => {
         const targetIndex = remapPointIndex(Number(rawIndex));
-        if (targetIndex >= 0 && targetIndex < points.length - (closed ? 1 : 0)) next[targetIndex] = number;
+        if (targetIndex >= 0 && targetIndex < points.length) next[targetIndex] = number;
         return next;
       }, {}) : undefined;
       return [{
@@ -2335,7 +2417,11 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     event.preventDefault(); event.stopPropagation();
     setSelectedSegment(selection); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setWallLengthInput(null);
     setOpeningParent(parentKey(selection.wallId, selection.segmentIndex));
-    setContextMenu({ kind: "WALL", ...selection, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
+    const contextMenuWidth = 224;
+    const contextMenuHeight = Math.min(520, Math.max(0, window.innerHeight - 16));
+    const maxContextMenuX = Math.max(8, window.innerWidth - contextMenuWidth - 8);
+    const maxContextMenuY = Math.max(8, window.innerHeight - contextMenuHeight - 8);
+    setContextMenu({ kind: "WALL", ...selection, x: Math.max(8, Math.min(event.clientX, maxContextMenuX)), y: Math.max(8, Math.min(event.clientY, maxContextMenuY)) });
   }
 
   function openPointContextMenu(event: ReactMouseEvent<SVGCircleElement>, selection: PointSelection) {
@@ -2346,6 +2432,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
 
   function beginPointDrag(event: ReactPointerEvent<SVGCircleElement>, selection: PointSelection) {
     if ((tool !== "SELECT" && tool !== "MEASURE") || event.button !== 0) return;
+    setSelectedAnnotationId(null);
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     const raw = snapshot();
     const before = { ...raw, walls: assignStableCornerNumbers(raw.walls, wallVertexStarts) };
@@ -2373,6 +2460,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const before = { ...separatedSnapshot, walls: separatedEnd.walls as Wall[], openings: separatedEndOpenings };
     const selectedWall = before.walls.find((candidate) => candidate.id === wall.id);
     if (!selectedWall) return;
+    setSelectedAnnotationId(null);
     event.stopPropagation(); svg.setPointerCapture(event.pointerId);
     pendingOpeningRemap.current = null;
     wallDrag.current = { wallId: wall.id, segmentIndex: separatedEnd.segmentIndex, detachedPointIndices, keepDetachedPointIndices, before, historyBefore, points: selectedWall.points.map((point) => ({ ...point })), pointerStart };
@@ -2402,6 +2490,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   }
 
   function selectOpeningForEdit(opening: FullOpening) {
+    setSelectedAnnotationId(null);
     onElementSelected?.(null);
     setElementTab(opening.kind);
     setTool("SELECT"); setLockedViewport(viewport); setOpeningListExpanded(true); setSelectedOpeningId(opening.id); setSelectedFixtureId(null); setSelectedPoint(null); setSelectedMeasurement(null); setHoveredSegment(null);
@@ -2468,9 +2557,63 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     setLockedViewport(null);
   }
 
-  function cancelAnnotationMode() { setAnnotationTool(null); setAnnotationMeasurementMode(null); setAnnotationDraft([]); setAnnotationTextDialog(null); setMarkerDialog(null); }
+  function cancelAnnotationMode() {
+    setAnnotationTool(null);
+    setAnnotationMeasurementMode(null);
+    setAnnotationDraft([]);
+    setAnnotationTextDialog(null);
+    setMarkerDialog(null);
+    setTool("SELECT");
+    setMeasurementDraft([]);
+    setSelectedMeasurement(null);
+    setMeasurementContextMenu(null);
+  }
 
+  function cancelActiveEditorInteraction() {
+    if (placement) onCancelPlacement?.();
+    placementPress.current = null;
+    setPlacementPoint(null);
+    if (fixtureDrag.current) {
+      fixtureDrag.current = null;
+      setFixturePreview(null);
+    }
+    pointDrag.current = null;
+    wallDrag.current = null;
+    openingDrag.current = null;
+    measurementDrag.current = null;
+    annotationDrag.current = null;
+    panDrag.current = null;
+    roomLabelDrag.current = null;
+    cancelAnnotationMode();
+
+    setAddRoomPanelOpen(false);
+    setOutlineMenuOpen(false);
+    setLShapePickerOpen(false);
+    setPendingOutlineAction(null);
+    setRoomActionError(null);
+    setCalibrating(false);
+    setCalibrationPoints([]);
+    setCalibrationHover(null);
+    setDraft([]);
+    setHoveredCorner(null);
+    setHoveredSegment(null);
+    setLockedViewport(null);
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedOpeningId(null);
+    setOpeningParent("");
+    setOpeningError(null);
+    setMeasurementEditEnabled(false);
+    setContextMenu(null);
+    setOpeningContextMenu(null);
+    setOpeningMeasurementContextMenu(null);
+    setFixtureContextMenu(null);
+    setFixtureMeasurementContextMenu(null);
+    setToolbarContextMenu(null);
+  }
   function activateModifyTool() {
+
+
     onElementSelected?.(null);
     setOutlineMenuOpen(false);
     setAddRoomPanelOpen(false);
@@ -2728,7 +2871,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         // to the dragged segment, then reanchor bridge endpoints without the
         // host-propagation step that could move those restored walls again.
         const isolatedWalls = preserveUnrelatedWallGeometry(activeWall.before.walls, repairedParallelWalls, activeWall.wallId, activeWall.segmentIndex);
-        const finalWalls = materializeWallIntersections(reanchorAutoWallBridges(isolatedWalls, activeWall.wallId, false));
+        const finalWalls = ensureVisibleBridgeCorners(materializeWallIntersections(reanchorAutoWallBridges(isolatedWalls, activeWall.wallId, false)));
         const preservesConstraints = finalWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
         if (preservesConstraints) return assignStableCornerNumbers(finalWalls);
 
@@ -2738,10 +2881,10 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
         // its drag-start hosts, and materialize any resulting T junctions.
         // This keeps a wall drag from silently becoming a no-op while retaining
         // the orthogonal and minimum-area guarantees above.
-        const directCandidate = materializeWallIntersections(reanchorAutoWallBridges(
+        const directCandidate = ensureVisibleBridgeCorners(materializeWallIntersections(reanchorAutoWallBridges(
           retainDraggedWallConnections(activeWall.before.walls, nextWalls, activeWall.wallId, activeWall.segmentIndex),
           activeWall.wallId,
-        ));
+        )));
         const directConstraints = directCandidate.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
         return directConstraints ? assignStableCornerNumbers(directCandidate) : current;
       });
@@ -2812,6 +2955,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   }
 
   function selectSegment(wallId: string, segmentIndex: number) {
+    setSelectedAnnotationId(null);
     if (tool === "REMOVE") { removeSegment(wallId, segmentIndex); return; }
     if (tool === "ADD_CORNERS") { setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); return; }
     if (tool !== "SELECT") return;
@@ -3054,7 +3198,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     </>}
   </section>;
 
-  function exportSvgMarkup(styleChoice: ExportStyle = exportStyle, includeAttribution = true) {
+  function exportSvgMarkup(styleChoice: ExportStyle = exportStyle, includeAttribution = true, reserveAttribution = includeAttribution) {
     const source = Array.from(editorRoot.current?.querySelectorAll<SVGSVGElement>(".floor-canvas") ?? []).find((canvas) => !canvas.closest(".export-svg-preview"));
     if (!source) return null;
     const clone = source.cloneNode(true) as SVGSVGElement;
@@ -3134,8 +3278,13 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
       const minY = Math.min(...screenPoints.map((point) => point.y));
       const maxY = Math.max(...screenPoints.map((point) => point.y));
       const span = Math.max(maxX - minX, maxY - minY, 1);
-      const padding = Math.max(64, Math.min(160, span * FLOORPLAN_EXPORT_PADDING_RATIO)) + (effectiveStyle === "CREATIVE" ? 112 : 0);
-      const viewBox = { x: minX - padding, y: minY - padding, width: maxX - minX + padding * 2, height: maxY - minY + padding * 2 };
+      const padding = Math.max(40, Math.min(112, span * FLOORPLAN_EXPORT_PADDING_RATIO)) + (effectiveStyle === "CREATIVE" ? 112 : 0);
+      const contentWidth = maxX - minX;
+      const viewBoxWidth = contentWidth + padding * 2;
+      const attributionReserve = reserveAttribution
+        ? FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX * viewBoxWidth / FLOORPLAN_EXPORT_WIDTH
+        : 0;
+      const viewBox = { x: minX - padding, y: minY - padding, width: viewBoxWidth, height: maxY - minY + padding * 2 + attributionReserve };
       clone.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
       const background = clone.querySelector<SVGRectElement>(".canvas-background");
       background?.setAttribute("x", String(viewBox.x));
@@ -3205,7 +3354,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   async function exportFloorplan() {
     setExporting(true); setExportError(null);
     try {
-      const markup = exportSvgMarkup(exportStyle, false);
+      const markup = exportSvgMarkup(exportStyle, false, includeAttribution);
       if (!markup) throw new Error("The floorplan canvas is unavailable. Close this dialog and try again.");
       const extension = exportFormat.toLowerCase();
       const mimeType = exportFormat === "PDF" ? "application/pdf" : exportFormat === "JPG" ? "image/jpeg" : "image/png";
@@ -3275,6 +3424,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
   });
 
   const annotationDash = (style: AnnotationStyle) => style.lineStyle === "DASHED" ? "10 7" : style.lineStyle === "DOTTED" ? "2 6" : undefined;
+  const annotationTextRotation = (style: AnnotationStyle) => typeof style.rotation === "number" && Number.isFinite(style.rotation) ? style.rotation : 0;
   const annotationArrowGeometry = (from: Point2D, to: Point2D, size = 9) => {
     const angle = Math.atan2(to.y - from.y, to.x - from.x);
     const left = { x: to.x - Math.cos(angle - Math.PI / 6) * size, y: to.y - Math.sin(angle - Math.PI / 6) * size };
@@ -3295,15 +3445,21 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     }
     return <polygon points={annotationArrowPoints(from, to)} fill={stroke} />;
   };
-  const markerRadius = (size: MarkerSize) => size === "SMALL" ? 10 : size === "LARGE" ? 18 : 14;
+  const markerRadius = (size: MarkerSettings["size"]) => markerTextSize(size);
   const renderAnnotationMarker = (annotation: FloorplanAnnotation, selected: boolean, select: (event: ReactPointerEvent<SVGGElement>) => void, handle: (event: ReactPointerEvent<SVGCircleElement>, handleName: "MARKER" | "LABEL") => void) => {
     if (!annotation.position || !annotation.marker) return null;
     const marker = annotation.marker;
     const point = toScreen(annotation.position);
     const arrowTail = marker.arrowAttached && annotation.labelPosition ? toScreen(annotation.labelPosition) : null;
-    const radius = markerRadius(marker.size);
+    const baseRadius = markerRadius(marker.size);
     const color = marker.color || annotation.style.color || "#287fb8";
     const numberLabel = marker.symbol === "NUMBER" || marker.symbol === "LETTER";
+    const markerText = numberLabel ? marker.label : marker.symbol === "EXCLAMATION" ? "!" : marker.symbol === "QUESTION" ? "?" : "";
+    const labelFontSize = markerTextSize(marker.size);
+    const labelPadding = Math.max(4, labelFontSize * .32);
+    const radius = numberLabel
+      ? Math.max(baseRadius, (markerText.length * labelFontSize * .62) / 2 + labelPadding, labelFontSize / 2 + labelPadding)
+      : baseRadius;
     let shape: ReactNode;
     if (marker.symbol === "CIRCLE" || marker.symbol === "FILLED_CIRCLE") shape = <circle cx={point.x} cy={point.y} r={radius} fill={marker.symbol === "FILLED_CIRCLE" ? color : "#fff"} stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />;
     else if (marker.symbol === "SQUARE" || marker.symbol === "FILLED_SQUARE") shape = <rect x={point.x - radius} y={point.y - radius} width={radius * 2} height={radius * 2} rx="2" fill={marker.symbol === "FILLED_SQUARE" ? color : "#fff"} stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />;
@@ -3318,7 +3474,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select} onDoubleClick={() => editMarker(annotation)}>
       {arrowTail && <><line x1={arrowTail.x} y1={arrowTail.y} x2={point.x} y2={point.y} stroke={color} strokeWidth={Math.max(1, annotation.style.thickness)} strokeDasharray={annotationDash(annotation.style)} vectorEffect="non-scaling-stroke" />{renderArrowEnd(arrowTail, point, color, annotation.style.arrowEndStyle)}<line x1={arrowTail.x} y1={arrowTail.y} x2={point.x} y2={point.y} stroke="transparent" strokeWidth="16" className="annotation-hit" /></>}
       {shape}
-      {numberLabel || marker.symbol === "EXCLAMATION" || marker.symbol === "QUESTION" ? <text x={point.x} y={point.y + radius * .35} textAnchor="middle" fill={color} fontSize={Math.max(10, radius * 1.05)} fontWeight="700" dominantBaseline="middle">{marker.label || (marker.symbol === "EXCLAMATION" ? "!" : marker.symbol === "QUESTION" ? "?" : "")}</text> : null}
+      {markerText ? <text x={point.x} y={point.y} textAnchor="middle" fill={color} fontSize={labelFontSize} fontWeight="700" dominantBaseline="middle">{markerText}</text> : null}
       <circle cx={point.x} cy={point.y} r={Math.max(12, radius + 6)} fill="transparent" stroke="transparent" strokeWidth="10" className="annotation-hit" />
       {selected && <><circle className="annotation-handle" cx={point.x} cy={point.y} r="6" onPointerDown={(event) => handle(event, "MARKER")} />{arrowTail && <circle className="annotation-handle" cx={arrowTail.x} cy={arrowTail.y} r="6" onPointerDown={(event) => handle(event, "LABEL")} />}</>}
     </g>;
@@ -3330,16 +3486,7 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     const dash = annotationDash(annotation.style);
     const select = (event: ReactPointerEvent<SVGGElement>) => {
       if (tool !== "SELECT" || annotationTool) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setSelectedAnnotationId(annotation.id);
-      setAnnotationPanelOpen(true);
-      setAnnotationStyle({ ...annotation.style, color: annotation.style.color ?? "#287fb8", arrowEndStyle: annotation.style.arrowEndStyle ?? "CLASSIC" });
-      setSelectedSegment(null);
-      setSelectedPoint(null);
-      setSelectedOpeningId(null);
-      setSelectedFixtureId(null);
-      onElementSelected?.(null);
+      beginAnnotationDrag(event, annotation, "WHOLE");
     };
     const handle = (event: ReactPointerEvent<SVGCircleElement>, handleName: "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL", vertexIndex?: number) => beginAnnotationDrag(event, annotation, handleName, vertexIndex);
     if ((annotation.type === "LINE" || annotation.type === "ARROW") && annotation.start && annotation.end) {
@@ -3362,8 +3509,9 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     }
     if (annotation.type === "TEXT" && annotation.position) {
       const position = toScreen(annotation.position);
+      const rotation = annotationTextRotation(annotation.style);
       return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select} onDoubleClick={() => editAnnotationText(annotation)}>
-        <text x={position.x} y={position.y} fill={stroke} fontSize={annotation.style.textSize} fontWeight="600" dominantBaseline="middle">{annotation.text}</text>
+        <text x={position.x} y={position.y} transform={`rotate(${rotation} ${position.x} ${position.y})`} fill={stroke} fontSize={annotation.style.textSize} fontWeight="600" dominantBaseline="middle">{annotation.text}</text>
         {selected && <circle className="annotation-handle" cx={position.x} cy={position.y} r="6" onPointerDown={(event) => handle(event, "TEXT")} />}
       </g>;
     }
@@ -3374,11 +3522,12 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     if (annotation.type === "CALLOUT" && annotation.anchor && annotation.labelPosition) {
       const anchor = toScreen(annotation.anchor);
       const label = toScreen(annotation.labelPosition);
+      const rotation = annotationTextRotation(annotation.style);
       return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select} onDoubleClick={() => editAnnotationText(annotation)}>
         <line x1={label.x} y1={label.y} x2={anchor.x} y2={anchor.y} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
         <polygon points={annotationArrowPoints(label, anchor)} fill={stroke} />
         <line x1={label.x} y1={label.y} x2={anchor.x} y2={anchor.y} stroke="transparent" strokeWidth="16" className="annotation-hit" />
-        <text x={label.x} y={label.y} fill={stroke} fontSize={annotation.style.textSize} fontWeight="600" dominantBaseline="middle">{annotation.text}</text>
+        <text x={label.x} y={label.y} transform={`rotate(${rotation} ${label.x} ${label.y})`} fill={stroke} fontSize={annotation.style.textSize} fontWeight="600" dominantBaseline="middle">{annotation.text}</text>
         {selected && <><circle className="annotation-handle" cx={anchor.x} cy={anchor.y} r="6" onPointerDown={(event) => handle(event, "ANCHOR")} /><circle className="annotation-handle" cx={label.x} cy={label.y} r="6" onPointerDown={(event) => handle(event, "LABEL")} /></>}
       </g>;
     }
@@ -3422,8 +3571,9 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
     </Popup>
     <MarkerSettingsPopup open={markerDialog !== null} settings={markerSettings} editing={markerDialog?.mode === "EDIT"} onChange={updateMarkerSettings} onConfirm={confirmMarkerSettings} onCancel={cancelMarkerDialog} />
 
-    {annotationPanelOpen && <FloatingToolbar title="Annotations & lines" defaultPosition={{ x: 300, y: 76 }} maxHeight={560} bringToFront onClose={() => { setAnnotationPanelOpen(false); setAnnotationTool(null); setAnnotationMeasurementMode(null); setAnnotationTextDialog(null); setMarkerDialog(null); setAnnotationDraft([]); setTool("SELECT"); setMeasurementDraft([]); }}><AnnotationsPanel tool={annotationTool} style={annotationStyle} selection={annotationPanelSelection} measurementMode={annotationMeasurementMode} onToolChange={handleAnnotationToolChange} onStyleChange={updateAnnotationStyle} onTextChange={updateSelectedAnnotationText} onDeleteSelected={deleteSelectedAnnotation} onAddMeasurement={() => activateAnnotationMeasurement("ADD")} onRemoveMeasurement={() => activateAnnotationMeasurement("REMOVE")} onClearToolSelection={clearAnnotationToolSelection} /></FloatingToolbar>}
+    {annotationPanelOpen && <FloatingToolbar title="Annotations & lines" defaultPosition={{ x: 300, y: 76 }} maxHeight={560} bringToFront onClose={() => { setAnnotationPanelOpen(false); cancelAnnotationMode(); }}><AnnotationsPanel tool={annotationTool} style={annotationStyle} selection={annotationPanelSelection} measurementMode={annotationMeasurementMode} onToolChange={handleAnnotationToolChange} onStyleChange={updateAnnotationStyle} onTextChange={updateSelectedAnnotationText} onDeleteSelected={deleteSelectedAnnotation} onAddMeasurement={() => activateAnnotationMeasurement("ADD")} onRemoveMeasurement={() => activateAnnotationMeasurement("REMOVE")} onClearToolSelection={clearAnnotationToolSelection} /></FloatingToolbar>}
     {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyleLabel}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option>{FLOORPLAN_STYLE_OPTIONS.filter((option) => option.value !== "DEFAULT").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label><label className="export-attribution-toggle"><input type="checkbox" checked={includeAttribution} disabled={exporting} onChange={(event) => setIncludeAttribution(event.target.checked)} /><span>Include “Made with FreeFloorplan3D.com”</span></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
+
     {measurementContextMenu && <div className={`floorplan-context-menu ${measurementContextMenu.custom ? "" : "floorplan-value-menu measurement-value-menu"}`} role="menu" aria-label="Measurement actions" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>{measurementContextMenu.custom ? "Measurement" : "Wall measurement"}</strong>
       {measurementContextMenu.custom && <><button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "NORMAL")}>Normal direction</button>
@@ -3502,11 +3652,11 @@ export function FullFloorplanEditor({ annotateRequest = 0, onPlacementWallsChang
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
             if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && (target.classList.contains("canvas-background") || target.classList.contains("plan-grid"))); if (background && tool === "SELECT") clearActiveDrawingSelection(); return; }
             const rawRequested = canvasPoint(event, false);
-            if (draftStartNear(rawRequested)) { commitDraft(squaredWalls ? orthogonalPathTo(draft, draft[0]) : [...draft, draft[0]]); return; }
+            if (draftStartNear(rawRequested)) { commitDraft(closeDraftPath(draft, squaredWalls)); return; }
             const cornerHit = findCornerNear(rawRequested);
             if (cornerHit) { connectDraftToCorner(cornerHit); return; }
             const requested = canvasPoint(event); const closes = draft.length >= 3 && samePoint(requested, draft[0], 16);
-            if (closes) { commitDraft(squaredWalls ? orthogonalPathTo(draft, draft[0]) : [...draft, draft[0]]); return; }
+            if (closes) { commitDraft(closeDraftPath(draft, squaredWalls)); return; }
             const wallHit = findWallSegmentNear(canvasPoint(event, false));
             if (wallHit) { connectDraftToWall(wallHit.wallId, wallHit.segmentIndex, canvasPoint(event, false)); return; }
             if (!draft.length) setLockedViewport(viewport);
