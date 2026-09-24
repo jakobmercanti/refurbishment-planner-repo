@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import "./globals.css";
 import "./ui-theme.css";
 import "./mobile.css";
 import "./privacy.css";
+import "./commercial.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.freefloorplan3d.com"),
@@ -22,7 +24,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}<noscript><div style={{ padding: 24 }}><h1>Free floorplan creator in 2D and 3D</h1><p>Enable JavaScript to draw your floorplan, explore in 3D and download it for free. No registration or payment required.</p><a href="/">About FreeFloorplan3D</a> · <a href="/guides/">Read the planning guides</a></div></noscript></body>
+      <body>{children}<noscript><div style={{ padding: 24 }}><h1>Free floorplan creator in 2D and 3D</h1><p>Enable JavaScript to draw your floorplan, explore in 3D and download it for free. No registration or payment required.</p><Link href="/">About FreeFloorplan3D</Link> · <Link href="/guides/">Read the planning guides</Link></div></noscript></body>
     </html>
   );
 }

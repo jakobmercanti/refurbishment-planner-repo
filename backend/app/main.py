@@ -49,6 +49,7 @@ from backend.app.schemas import (
 from cad.generator import generate_cad
 from backend.app.deployment import DeploymentBoundary
 from backend.app.aggregate_analytics import router as aggregate_analytics_router
+from backend.app.commercial_api import router as commercial_api_router
 from database.catalog import catalogue_session, initialise_catalogue
 from database.software_settings import load_software_settings, update_software_settings
 from database.catalogue_assets import (
@@ -77,7 +78,13 @@ class RequestBodyLimitMiddleware:
         if scope.get("type") != "http" or scope.get("method") not in {"POST", "PUT", "PATCH"}:
             await self.app(scope, receive, send)
             return
-        limit = 256 if scope.get("path") == "/analytics/event" else self.default_limit
+        path = scope.get("path")
+        if path == "/analytics/event":
+            limit = 256
+        elif path == "/commercial/stripe/webhook":
+            limit = 1_000_000
+        else:
+            limit = self.default_limit
         messages: list[dict[str, Any]] = []
         total = 0
         while True:
@@ -113,14 +120,20 @@ app = FastAPI(
 )
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(DeploymentBoundary)
+cors_allowed_origins = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=cors_allowed_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization", "Idempotency-Key", "Stripe-Signature"],
 )
 app.include_router(aggregate_analytics_router)
+app.include_router(commercial_api_router)
 initialise_catalogue()
 # Keep the human-readable administrator configuration available from the
 # moment the API starts, including before the first browser request.
