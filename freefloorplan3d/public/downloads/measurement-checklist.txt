@@ -1,0 +1,38 @@
+FREEFLOORPLAN3D — ROOM MEASUREMENT CHECKLIST
+https://www.freefloorplan3d.com/
+
+Room / building: ___________________________
+Date: _____________________________________
+Measurement units (keep consistent): _______
+
+[ ] Sketch the room outline and label each wall.
+[ ] Record the length of every wall segment.
+[ ] Include recesses, alcoves, columns and built-in cupboards.
+[ ] Measure the overall span where possible to cross-check sections.
+[ ] Measure each door width and its offset from a labelled corner.
+[ ] Mark door swing direction.
+[ ] Measure each window width and offset from a labelled corner.
+[ ] Record window sill heights and opening heights.
+[ ] Record ceiling heights, slopes and changes in level.
+[ ] Mark radiators, steps, fixed services and other obstructions.
+[ ] Measure relevant furniture, including space needed to use it.
+[ ] Repeat key measurements and record any uncertainty.
+[ ] Check diagonals where practical; don't assume all corners are square.
+[ ] Mark inaccessible areas and unverified assumptions.
+[ ] Keep labelled photos alongside your sketch, if useful.
+
+WALL / OPENING       MEASUREMENT       NOTES / UNCERTAINTY
+_________________   _______________   _______________________
+_________________   _______________   _______________________
+_________________   _______________   _______________________
+_________________   _______________   _______________________
+_________________   _______________   _______________________
+_________________   _______________   _______________________
+
+The FreeFloorplan3D editor is coming soon. This checklist helps you
+prepare; it does not create a floorplan or submit any information.
+Your completed checklist stays on your device.
+
+Verify critical measurements before construction or buying fitted
+products. Get professional advice and approvals where your project
+requires them.

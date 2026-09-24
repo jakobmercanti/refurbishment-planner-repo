@@ -1,0 +1,17 @@
+{
+  "$schema": "../frontend/node_modules/wrangler/config-schema.json",
+  "name": "freefloorplan3d-planner-test",
+  "account_id": "e7b15d4071cac7e990eee39776523c4f",
+  "main": "planner-worker.mjs",
+  "compatibility_date": "2026-09-22",
+  "workers_dev": true,
+  "vars": { "ENGINEERING_API_ORIGIN": "https://freefloorplan3d-api-production.up.railway.app" },
+  "ratelimits": [{ "name": "ANALYTICS_RATE_LIMIT", "namespace_id": "9052602", "simple": { "limit": 30, "period": 60 } }],
+  "assets": { "directory": "../frontend/out", "binding": "ASSETS", "run_worker_first": true, "html_handling": "none" },
+  "routes": [
+    { "pattern": "www.freefloorplan3d.com/planner", "zone_id": "b70e9c7623bf478b6d7d7ef776d83936" },
+    { "pattern": "www.freefloorplan3d.com/planner/*", "zone_id": "b70e9c7623bf478b6d7d7ef776d83936" },
+    { "pattern": "www.freefloorplan3d.com/planner-test", "zone_id": "b70e9c7623bf478b6d7d7ef776d83936" },
+    { "pattern": "www.freefloorplan3d.com/planner-test/*", "zone_id": "b70e9c7623bf478b6d7d7ef776d83936" }
+  ]
+}

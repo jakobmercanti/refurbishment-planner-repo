@@ -1,0 +1,14 @@
+.git
+.venv
+.uv-cache
+.local-logs
+.pytest*
+frontend/node_modules
+frontend/.next
+frontend/out
+data/*.sqlite3*
+data/catalogue-assets
+.env*
+.wrangler
+freefloorplan3d*
+landing

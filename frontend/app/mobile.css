@@ -1,0 +1,76 @@
+/* Compact layouts are device-scoped; desktop floating windows are unchanged. */
+.compact-workspace { --control-height-normal: 36px; --toolbar-control-gap: 6px; }
+.compact-workspace .topbar { flex: 0 0 48px; height: 48px; min-height: 48px; padding: 0 8px; gap: 6px; grid-template-columns: minmax(0, 1fr) auto; }
+.compact-workspace .app-identity { grid-column: 1; grid-row: 1; gap: 8px; width: auto; }
+.compact-workspace .brand span { display: none; }
+.compact-workspace .brand-mark { width: 28px; height: 28px; }
+.compact-workspace .software-menu { margin-left: 0; min-width: 0; flex: 1; justify-content: space-between; }
+.compact-workspace .software-menu-item > button { min-height: 40px; padding: 6px; font: 600 11px var(--font-sans); }
+.compact-workspace .app-nav { grid-column: 2; grid-row: 1; gap: 2px; padding: 2px; }
+.compact-workspace .app-nav button { min-width: 34px; min-height: 36px; padding: 4px 7px; font-size: 11px; }
+.compact-workspace .local-save-status { position: static; flex: 0 0 auto; min-height: 20px; max-width: 100%; padding: 3px 10px; font: 500 10px/1.4 var(--font-sans); background: var(--panel); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; z-index: auto; }
+.compact-tool-switcher { order: 10; flex: 0 0 auto; display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; background: var(--panel); border-top: 1px solid var(--line); }
+.compact-tool-switcher button { flex: 1 0 auto; min-height: 40px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--deep); font: 650 12px var(--font-sans); touch-action: manipulation; }
+.compact-tool-switcher button[aria-pressed=true] { background: var(--deep); color: white; border-color: var(--deep); }
+.compact-workspace .software-dropdown { position: fixed; top: calc(env(safe-area-inset-top) + 49px); left: auto; right: calc(env(safe-area-inset-right) + 8px); width: min(300px, calc(100vw - 16px)); max-height: calc(100dvh - 100px); overflow-y: auto; }
+.compact-workspace .software-dropdown button { min-height: 44px; font: 600 13px var(--font-sans); padding: 9px 10px; }
+.compact-workspace .software-dropdown kbd { display: none; }
+.compact-workspace .toolbar-menu-actions > button:first-child { display: none; }
+.compact-workspace .floating-toolbar { left: auto !important; right: 8px !important; top: 8px !important; bottom: auto !important; width: 280px !important; min-width: 0 !important; height: auto !important; min-height: 0 !important; max-height: calc(100% - 40px) !important; border-radius: 10px; }
+.compact-workspace .floating-toolbar-titlebar { min-height: 36px; grid-template-columns: 18px minmax(0,1fr) 36px; padding: 0 4px 0 10px; cursor: default; touch-action: auto; }
+.compact-workspace .floating-toolbar-drag, .compact-workspace .floating-toolbar-resize { display: none; }
+.compact-workspace .floating-toolbar-close { width: 36px; height: 36px; }
+.compact-workspace .floating-toolbar-content { margin: 0 6px 6px; overscroll-behavior: contain; }
+.compact-workspace .floating-toolbar .floating-toolbar-content :where(button, p, label, small) { font-size: 11px; }
+.compact-workspace .floating-toolbar-content .tool-section { padding: 8px; }
+.compact-workspace .button-grid { gap: 6px; }
+.compact-workspace .button-grid button, .compact-workspace .review-style-button { min-height: 36px; padding: 6px 8px; }
+.compact-workspace .full-plan-action-divider { margin: 6px 0; }
+.compact-workspace .editor-history-row { margin-top: 6px; }
+.compact-workspace .full-plan-overall-properties { margin-top: 8px; }
+.compact-workspace .floating-evidence-panel { padding: 8px; }
+.compact-workspace .viewer-shell { min-height: 0; }
+.compact-workspace .placement-status { top: 8px; left: 8px; right: 8px; width: auto; max-width: calc(100% - 16px); transform: none; font-size: 11px; }
+.compact-workspace .modal-backdrop, .compact-workspace .popup-backdrop { padding: 10px; }
+.compact-workspace .popup { display: flex; flex-direction: column; max-width: calc(100vw - 20px); max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 0; }
+.compact-workspace .popup-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; }
+.compact-workspace .popup-titlebar, .compact-workspace .popup-actions { flex: 0 0 auto; }
+.compact-workspace .popup-actions button { min-height: 40px; }
+.compact-workspace .catalogue-modal { width: calc(100vw - 20px); height: calc(100dvh - 24px); }
+.compact-workspace .catalogue-categories { max-height: 25dvh; }
+.compact-workspace .catalogue-header h2 { font-size: 18px; }
+.compact-workspace .catalogue-detail-dialog, .compact-workspace .settings-dialog, .compact-workspace .save-as-dialog { max-height: calc(100dvh - 24px); overflow-y: auto; }
+.project-download-backdrop, .project-file-progress { z-index: 2300 !important; }
+.project-file-progress { position: fixed; top: 76px; left: 12px; right: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; }
+.project-download-dialog { max-height: calc(100dvh - 24px); overflow-y: auto; }
+.project-download-dialog p { font: 500 13px/1.5 var(--font-sans); }
+.project-download-name { overflow-wrap: anywhere; color: var(--deep); }
+.project-download-actions { display: grid; gap: 10px; }
+.project-download-actions a, .project-download-actions button { display: block; min-height: 44px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font: 650 13px var(--font-sans); text-align: center; text-decoration: none; }
+.project-download-actions a.primary { background: var(--deep); color: white; }
+.project-download-dialog .project-download-help { font-size: 12px; color: var(--muted); }
+@media (max-width: 600px) {
+  .compact-workspace .brand { display: none; }
+  .compact-workspace .floating-toolbar { top: auto !important; bottom: 8px !important; right: 8px !important; left: 8px !important; width: auto !important; max-width: none; max-height: min(43dvh, 360px) !important; }
+  .compact-workspace .floating-toolbar-content .tool-section { padding: 6px; }
+  .compact-workspace .full-plan-build-toolbar .button-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .compact-workspace .catalogue-categories { max-height: 21dvh; }
+  .compact-workspace .catalogue-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+  .compact-workspace .catalogue-object-body { padding: 8px; }
+  .compact-workspace .catalogue-object-body h3 { font-size: 12px; }
+  .compact-workspace .catalogue-card-actions button { min-height: 40px; padding: 6px; font-size: 11px; }
+  .compact-workspace .save-as-dialog footer { flex-wrap: wrap; }
+  .compact-workspace .save-as-dialog label strong { padding: 0 6px; font-size: 10px; }
+  .compact-workspace .annotations-panel { min-width: 0; }
+}
+@media (pointer: coarse) {
+  .compact-workspace .floating-toolbar .floating-toolbar-content :is(input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea),
+  .compact-workspace [role=dialog] :is(input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea),
+  .compact-workspace .catalogue-toolbar input { font-size: 16px; min-height: 36px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .compact-workspace .floating-toolbar { max-height: calc(100% - 16px) !important; }
+  .compact-workspace .local-save-status { min-height: 16px; padding-block: 1px; }
+  .compact-tool-switcher { padding-block: 3px; }
+  .compact-tool-switcher button { min-height: 34px; padding-block: 4px; }
+}

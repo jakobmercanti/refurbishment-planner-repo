@@ -1,0 +1,4089 @@
+"use client";
+import { exported } from "@/lib/analytics";
+import { RoomOpeningEditor } from "@/components/RoomOpeningEditor";
+import { createPortal } from "react-dom";
+import { doorModel } from "@/lib/doorModels";
+
+import { type CSSProperties, type ReactNode, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
+import { OpeningPreview, openingPreviewObstacle } from "@/components/OpeningPreview";
+import { Popup } from "@/components/Popup";
+import { calibratedDrawingSize, orthogonalCalibrationPoint } from "@/lib/drawingCalibration";
+import { renderPdfDrawing } from "@/lib/pdfDrawing";
+import { FloorPlanFixtureDimensions, FloorPlanFixtureRoomSpacingDimensions, FloorPlanFixtureSpacingDimensions, nearestFixtureWallSpan, type FixtureDimensionSection } from "@/components/FloorPlanFixtureDimensions";
+import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
+import { constrainObstacleToRoom, containsPoint, resolveObstaclePlacement, resolvePlacement, type PlacementCandidate, type PlacementProps } from "@/lib/elementPlacement";
+import { PlacementPreview2D } from "@/components/PlacementPreview2D";
+import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
+import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
+import { filledToolbarDock, FloatingToolbar, positionedToolbarDock } from "@/components/FloatingToolbar";
+import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
+import { closestValidOpeningOffset, cornerOffsetsOnWallSegment, isOpeningPlacementValid } from "@/lib/openingPlacement";
+import { remapOpeningsAfterWallDrag, translateWallAndAttachedOpenings } from "@/lib/openingWallDrag";
+import { closedRooms as detectClosedRooms } from "@/lib/roomDetection";
+import { addRoomOutsideWall, removeRoomBoundary } from "@/lib/roomOperations";
+import { needsWallThicknessOverride } from "@/lib/wallThickness";
+import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import { ComponentColours } from "@/components/ComponentColours";
+import { FLOORPLAN_STYLE_OPTIONS, floorplanStyleClass, floorplanStyleCss, floorplanStyleLabel, type FloorplanStyle } from "@/lib/floorplanStyles";
+import { FloorplanAtmosphere } from "@/components/FloorplanAtmosphere";
+import { AnnotationsPanel, type AnnotationArrowEndStyle, type AnnotationPanelSelection, type AnnotationStyle, type AnnotationToolName } from "@/components/AnnotationsPanel";
+import { ViewToggle } from "@/components/ViewToggle";
+import { MarkerSettingsPopup, markerTextSize, type MarkerSettings, type MarkerSymbol } from "@/components/MarkerSettingsPopup";
+import { openingCatalogueCategoryLabel, openingCatalogueDefaultDimensions } from "@/lib/openingCatalogue";
+import { propagateSquaredWallEdit } from "@/lib/wallDragGeometry";
+import { refreshWallEndpointAttachments, releaseWallLengthOverride, appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleBridgeCorners, ensureVisibleJunctionCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, trimOpenWallEndpoint, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
+import type { CatalogueItem, Obstacle, Opening, Point2D, Room, RoomFinishes } from "@/lib/types";
+import { FLOORPLAN_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
+
+type WallAttachment = { wallId: string; segmentIndex: number; along: number; hideCorner?: boolean };
+type Wall = { id: string; points: Point2D[]; attachments?: Record<number, WallAttachment>; thicknessOverridesMm?: Record<number, number>; lengthOverridesMm?: Record<number, number>; cornerNumbers?: Record<number, number> };
+type NamedOutline = { id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[]; colourIndex?: number; labelPosition?: Point2D };
+type Tool = "SELECT" | "DRAW" | "ADD_CORNERS" | "REMOVE" | "MEASURE" | "ADD_MEASURE" | "REMOVE_MEASURE";
+type RepeatCommand = { kind: "TOOL"; tool: Exclude<Tool, "SELECT"> } | { kind: "ANNOTATION"; tool: AnnotationToolName; measurementMode?: "ADD" | "REMOVE" } | null;
+
+function repeatCommandKey(command: RepeatCommand): string | null {
+  if (!command) return null;
+  if (command.kind === "TOOL") return "TOOL:" + command.tool;
+  return "ANNOTATION:" + command.tool + (command.measurementMode ? ":" + command.measurementMode : "");
+}
+type SegmentSelection = { wallId: string; segmentIndex: number };
+type PointSelection = { wallId: string; pointIndex: number };
+type PendingOutlineAction = "EMPTY" | "RECTANGLE" | "L_SHAPE" | "NOTCHED_RECTANGLE";
+type NotchedRectangleOrientation = "TOP" | "RIGHT" | "BOTTOM" | "LEFT";
+type RoomPointSelection = { kind: "ROOM_POINT"; point: Point2D };
+type FixtureMeasurementSelection = { kind: "FIXTURE"; fixtureId: string };
+type OpeningMeasurementSelection = { kind: "OPENING"; openingId: string };
+type MeasurementReference = ({ kind: "WALL" } & SegmentSelection) | ({ kind: "POINT" } & PointSelection) | RoomPointSelection | FixtureMeasurementSelection | OpeningMeasurementSelection;
+type MeasurementDirection = "NORMAL" | "HORIZONTAL" | "VERTICAL";
+type CustomMeasurement = { id: string; first: MeasurementReference; second: MeasurementReference; offset: number; direction?: MeasurementDirection };
+type GeometryContextMenu = ({ kind: "WALL" } & SegmentSelection | { kind: "POINT" } & PointSelection) & { x: number; y: number };
+type MeasurementContextMenu = { id: string; custom: boolean; x: number; y: number };
+type OpeningContextMenu = { id: string; x: number; y: number };
+type OpeningMeasurementContextMenu = { id: string; section: number; x: number; y: number };
+type FixtureContextMenu = { id: string; x: number; y: number };
+type FixtureMeasurementContextMenu = { id: string; section: FixtureDimensionSection; x: number; y: number };
+type ExportStyle = "CURRENT" | FloorplanStyle;
+type ExportFormat = "PDF" | "PNG" | "JPG";
+type SaveFileHandle = { createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> };
+type OpeningCatalogueCategory = { id: string; label: string; items: CatalogueItem[] };
+type OpeningSelectorLevel = "category" | "object";
+type FloorplanAnnotationType = "LINE" | "ARROW" | "POLYLINE" | "TEXT" | "CALLOUT" | "MARKER";
+type FloorplanAnnotation = { id: string; type: FloorplanAnnotationType; start?: Point2D; end?: Point2D; points?: Point2D[]; position?: Point2D; anchor?: Point2D; labelPosition?: Point2D; text?: string; marker?: MarkerSettings; style: AnnotationStyle };
+type MarkerDialog = { mode: "CREATE" } | { mode: "EDIT"; annotationId: string };
+type AnnotationTextDialog =
+  | { mode: "CREATE_TEXT"; value: string; position: Point2D }
+  | { mode: "CREATE_CALLOUT"; value: string; anchor: Point2D; labelPosition: Point2D }
+  | { mode: "EDIT"; value: string; annotationId: string; annotationType: "TEXT" | "CALLOUT" };
+type PersistedViewSettings = { showGrid?: boolean; showMeasurements?: boolean; showRoomNames?: boolean; showWallThickness?: boolean; showAnnotations?: boolean; zoom?: number; pan?: Point2D };
+type FullOpening = {
+  id: string; kind: "DOOR" | "WINDOW"; wallId: string; segmentIndex: number;
+  offset: number; width: number; height: number; sill: number; colorHex?: string; componentColors?: Record<string, string>;
+  hingeSide: "START" | "END"; doorType: "SINGLE" | "DOUBLE"; opensInward: boolean; catalogueItemId?: string; representationKey?: string; windowDepthMm?: number;
+};
+type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; annotations: FloorplanAnnotation[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[]; wallThickness?: number; rooms?: NamedOutline[]; selectedRoomId?: string | null };
+type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
+type OpeningDrag = { openingId: string; before: Snapshot; wallId: string; segmentIndex: number; sideSign: -1 | 1; initialOpensInward: boolean };
+type RoomLabelDrag = { roomId: string; before: Snapshot; pointerStart: Point2D; labelStart: Point2D; moved: boolean };
+export type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number; roomFinishes?: Record<string, RoomFinishes>; viewSettings?: PersistedViewSettings };
+interface Props extends PlacementProps { annotateRequest?: number; viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
+
+interface Props { initialFloorplan?: PersistedFloorplan | null; onPersistFloorplan?: (floorplan: PersistedFloorplan, rooms: Room[]) => void; }
+const DEFAULT_SIZE = { width: 1100, height: 700 };
+const isPdfFile = (file: File) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+function readImageDimensions(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) {
+        reject(new Error("The drawing could not be loaded."));
+        return;
+      }
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => reject(new Error("The drawing could not be loaded."));
+    image.src = url;
+  });
+}
+const DEFAULT_SNAP_MM = 50;
+const DRAFT_CLOSURE_ADJUSTMENT_MM = 50;
+const DRAW_CORNER_HIT_TOLERANCE_MM = 50;
+const DEFAULT_MARKER_SETTINGS: MarkerSettings = { symbol: "NUMBER", label: "", color: "#287fb8", size: 14, arrowAttached: false };
+const DEFAULT_WALL_THICKNESS_MM = 50;
+const MIN_WALL_CLEARANCE_MM = 200;
+const MAX_DEFAULT_MEASUREMENT_OFFSET_MM = 200;
+const DEFAULT_CUSTOM_MEASUREMENT_OFFSET_SCREEN = 48;
+const MEASUREMENT_LABEL_GAP_SCREEN = 10;
+const defaultMeasurementOffset = (maximumScreenOffset: number, scale: number) => Math.max(0, Math.min(maximumScreenOffset, MAX_DEFAULT_MEASUREMENT_OFFSET_MM * Math.max(0, scale) - MEASUREMENT_LABEL_GAP_SCREEN));
+// An opening belongs to one wall segment, never to a corner where two segments
+// meet. This keeps the graphical gap, door swing and exported room geometry
+// unambiguous after a room is edited.
+const OPENING_CORNER_CLEARANCE_MM = 50;
+
+const RECTANGLE_TEMPLATE: Point2D[] = [{ x: 0, y: 0 }, { x: 2400, y: 0 }, { x: 2400, y: 1800 }, { x: 0, y: 1800 }];
+function buildNotchedRectanglePoints(orientation: NotchedRectangleOrientation): Point2D[] {
+  const minX = Math.min(...RECTANGLE_TEMPLATE.map((point) => point.x));
+  const maxX = Math.max(...RECTANGLE_TEMPLATE.map((point) => point.x));
+  const minY = Math.min(...RECTANGLE_TEMPLATE.map((point) => point.y));
+  const maxY = Math.max(...RECTANGLE_TEMPLATE.map((point) => point.y));
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const spanX = width * 0.38;
+  const spanY = height * 0.38;
+  const depthX = width * 0.22;
+  const depthY = height * 0.22;
+  const left = minX + (width - spanX) / 2;
+  const right = left + spanX;
+  const bottom = minY + (height - spanY) / 2;
+  const top = bottom + spanY;
+  if (orientation === "TOP") {
+    return [{ x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: right, y: maxY }, { x: right, y: maxY - depthY }, { x: left, y: maxY - depthY }, { x: left, y: maxY }, { x: minX, y: maxY }];
+  }
+  if (orientation === "RIGHT") {
+    return [{ x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: bottom }, { x: maxX - depthX, y: bottom }, { x: maxX - depthX, y: top }, { x: maxX, y: top }, { x: maxX, y: maxY }, { x: minX, y: maxY }];
+  }
+  if (orientation === "BOTTOM") {
+    return [{ x: minX, y: minY }, { x: left, y: minY }, { x: left, y: minY + depthY }, { x: right, y: minY + depthY }, { x: right, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }];
+  }
+  return [{ x: minX, y: minY }, { x: maxX, y: minY }, { x: maxX, y: maxY }, { x: minX, y: maxY }, { x: minX, y: top }, { x: minX + depthX, y: top }, { x: minX + depthX, y: bottom }, { x: minX, y: bottom }];
+}
+const NOTCHED_RECTANGLE_TEMPLATES: Array<{ id: NotchedRectangleOrientation; name: string; preview: string; points: Point2D[] }> = [
+  { id: "TOP", name: "Top", preview: "polygon(0 0, 31% 0, 31% 22%, 69% 22%, 69% 0, 100% 0, 100% 100%, 0 100%)", points: buildNotchedRectanglePoints("TOP") },
+  { id: "RIGHT", name: "Right", preview: "polygon(0 0, 100% 0, 100% 31%, 78% 31%, 78% 69%, 100% 69%, 100% 100%, 0 100%)", points: buildNotchedRectanglePoints("RIGHT") },
+  { id: "BOTTOM", name: "Bottom", preview: "polygon(0 0, 100% 0, 100% 100%, 69% 100%, 69% 78%, 31% 78%, 31% 100%, 0 100%)", points: buildNotchedRectanglePoints("BOTTOM") },
+  { id: "LEFT", name: "Left", preview: "polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 69%, 22% 69%, 22% 31%, 0 31%)", points: buildNotchedRectanglePoints("LEFT") },
+];
+const L_SHAPE_TEMPLATES: Array<{ id: string; name: string; preview: string; points: Point2D[] }> = [
+  { id: "NOTCH_TOP_RIGHT", name: "Notch top right", preview: "polygon(0 0, 69% 0, 69% 36%, 100% 36%, 100% 100%, 0 100%)", points: [{ x: 0, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 1800 }, { x: 2200, y: 1800 }, { x: 2200, y: 2800 }, { x: 0, y: 2800 }] },
+  { id: "NOTCH_BOTTOM_RIGHT", name: "Notch bottom right", preview: "polygon(0 0, 100% 0, 100% 64%, 69% 64%, 69% 100%, 0 100%)", points: [{ x: 0, y: 0 }, { x: 2200, y: 0 }, { x: 2200, y: 1000 }, { x: 3200, y: 1000 }, { x: 3200, y: 2800 }, { x: 0, y: 2800 }] },
+  { id: "NOTCH_TOP_LEFT", name: "Notch top left", preview: "polygon(31% 0, 100% 0, 100% 100%, 0 100%, 0 36%, 31% 36%)", points: [{ x: 0, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 2800 }, { x: 1000, y: 2800 }, { x: 1000, y: 1800 }, { x: 0, y: 1800 }] },
+  { id: "NOTCH_BOTTOM_LEFT", name: "Notch bottom left", preview: "polygon(0 0, 100% 0, 100% 100%, 31% 100%, 31% 64%, 0 64%)", points: [{ x: 1000, y: 0 }, { x: 3200, y: 0 }, { x: 3200, y: 2800 }, { x: 0, y: 2800 }, { x: 0, y: 1000 }, { x: 1000, y: 1000 }] },
+];
+const cloneWalls = (walls: Wall[]) => walls.map((wall) => ({ ...wall, points: wall.points.map((point) => ({ ...point })), attachments: wall.attachments ? Object.fromEntries(Object.entries(wall.attachments).map(([index, attachment]) => [index, { ...attachment }])) : undefined, thicknessOverridesMm: wall.thicknessOverridesMm ? { ...wall.thicknessOverridesMm } : undefined, lengthOverridesMm: wall.lengthOverridesMm ? { ...wall.lengthOverridesMm } : undefined, cornerNumbers: wall.cornerNumbers ? { ...wall.cornerNumbers } : undefined }));
+const wallThicknessForSegment = (wall: Wall, segmentIndex: number, defaultThicknessMm: number) => wall.thicknessOverridesMm?.[segmentIndex] ?? defaultThicknessMm;
+const remapSegmentThicknessOverrides = (overrides: Record<number, number> | undefined, sourceIndices: number[]) => {
+  if (!overrides) return undefined;
+  const next = sourceIndices.reduce<Record<number, number>>((result, sourceIndex, targetIndex) => {
+    const thicknessMm = overrides[sourceIndex];
+    if (thicknessMm !== undefined) result[targetIndex] = thicknessMm;
+    return result;
+  }, {});
+  return Object.keys(next).length ? next : undefined;
+};
+const remapSegmentLengthOverrides = (overrides: Record<number, number> | undefined, sourceIndices: number[]) => {
+  if (!overrides) return undefined;
+  const next = sourceIndices.reduce<Record<number, number>>((result, sourceIndex, targetIndex) => {
+    const lengthMm = overrides[sourceIndex];
+    if (lengthMm !== undefined) result[targetIndex] = lengthMm;
+    return result;
+  }, {});
+  return Object.keys(next).length ? next : undefined;
+};
+const splitSegmentLengthOverride = (overrides: Record<number, number> | undefined, segmentIndex: number, along: number) => {
+  if (!overrides) return undefined;
+  const next: Record<number, number> = {};
+  Object.entries(overrides).forEach(([rawIndex, lengthMm]) => {
+    const sourceIndex = Number(rawIndex);
+    if (sourceIndex < segmentIndex) next[sourceIndex] = lengthMm;
+    else if (sourceIndex === segmentIndex) {
+      next[sourceIndex] = lengthMm * along;
+      next[sourceIndex + 1] = lengthMm * (1 - along);
+    } else next[sourceIndex + 1] = lengthMm;
+  });
+  return Object.keys(next).length ? next : undefined;
+};
+const cloneOpenings = (openings: FullOpening[]) => openings.map((opening) => ({ ...opening, componentColors: opening.componentColors ? { ...opening.componentColors } : undefined }));
+const cloneMeasurementReference = (reference: MeasurementReference): MeasurementReference => reference.kind === "ROOM_POINT"
+  ? { ...reference, point: { ...reference.point } }
+  : { ...reference };
+const cloneMeasurements = (measurements: CustomMeasurement[]) => measurements.map((measurement) => ({ ...measurement, first: cloneMeasurementReference(measurement.first), second: cloneMeasurementReference(measurement.second) }));
+const cloneAnnotations = (annotations: FloorplanAnnotation[]) => annotations.map((annotation) => ({ ...annotation, start: annotation.start ? { ...annotation.start } : undefined, end: annotation.end ? { ...annotation.end } : undefined, points: annotation.points?.map((point) => ({ ...point })), position: annotation.position ? { ...annotation.position } : undefined, anchor: annotation.anchor ? { ...annotation.anchor } : undefined, labelPosition: annotation.labelPosition ? { ...annotation.labelPosition } : undefined, marker: annotation.marker ? { ...annotation.marker } : undefined, style: { ...annotation.style } }));
+const samePoint = (a: Point2D, b: Point2D, tolerance = 1) => Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
+type WallRenderSegment = { segmentIndex: number; start: Point2D; end: Point2D; thicknessMm: number; visualThicknessMm: number };
+type WallVisualRun = { segments: WallRenderSegment[]; points: Point2D[]; thicknessMm: number; closed: boolean };
+const sameVisualThickness = (first: WallRenderSegment, second: WallRenderSegment) => Math.abs(first.visualThicknessMm - second.visualThicknessMm) <= .001;
+function buildWallVisualRuns(segments: WallRenderSegment[], closed: boolean): WallVisualRun[] {
+  if (!segments.length) return [];
+  const runs: WallVisualRun[] = [];
+  let current: WallVisualRun = { segments: [segments[0]], points: [segments[0].start, segments[0].end], thicknessMm: segments[0].visualThicknessMm, closed: false };
+  segments.slice(1).forEach((segment) => {
+    if (sameVisualThickness(current.segments.at(-1)!, segment)) {
+      current.segments.push(segment);
+      current.points.push(segment.end);
+      return;
+    }
+    runs.push(current);
+    current = { segments: [segment], points: [segment.start, segment.end], thicknessMm: segment.visualThicknessMm, closed: false };
+  });
+  runs.push(current);
+  if (closed && runs.length > 1 && sameVisualThickness(runs[0].segments[0], runs.at(-1)!.segments.at(-1)!)) {
+    const first = runs.shift()!;
+    const last = runs.pop()!;
+    runs.unshift({ segments: [...last.segments, ...first.segments], points: [...last.points, ...first.points.slice(1)], thicknessMm: last.thicknessMm, closed: false });
+  }
+  if (closed && runs.length === 1) runs[0].closed = true;
+  return runs;
+}
+const MIN_ENCLOSED_AREA_MM2 = 10_000;
+const FLOORPLAN_EXPORT_WIDTH = 1640;
+const FLOORPLAN_EXPORT_HEIGHT = 1120;
+const FLOORPLAN_EXPORT_ATTRIBUTION = "Made with FreeFloorplan3D.com";
+const FLOORPLAN_EXPORT_ATTRIBUTION_URL = "https://freefloorplan3d.com";
+const FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE = 18;
+const FLOORPLAN_EXPORT_PADDING_RATIO = 0.04;
+const FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX = 48;
+
+const FLOORPLAN_EXPORT_BASE_CSS = `
+.floor-canvas{display:block;width:100%;height:100%;min-height:0!important;background:#fff}
+.canvas-background{fill:#fff}.plan-grid line{stroke:#d9dfda;stroke-width:1}.room-polygon{fill:#fff;stroke:none}
+ .wall-body{stroke:#183d34;stroke-width:var(--wall-stroke-width,10px);stroke-linecap:square}.wall-line{stroke:#fff;stroke-width:var(--wall-inner-stroke-width,4px);stroke-linecap:square}.wall-interaction-line{display:none}.wall-thickness-label{fill:#183d34;font:700 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:4px}
+.wall-dimension{color:#151515}.wall-dimension .wall-label{fill:currentColor}.wall-dimension.manual-measurement{color:#49a3dd}.wall-dimension.custom-measurement{color:#151515}.wall-dimension.selected{color:#1678bd}.wall-dimension.manual-measurement.selected{color:#49a3dd}.wall-dimension.custom-measurement.selected{color:#151515}.wall-dimension.manual-measurement .manual-measurement-value{fill:#49a3dd}.wall-dimension.custom-measurement .wall-label{fill:#151515}.dimension-line,.dimension-extension,.dimension-tick{stroke:currentColor;stroke-width:1}.dimension-extension{opacity:.62}.dimension-tick{stroke-width:1.3}
+.wall-label{fill:#44514b;font:650 10px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:5px}
+.export-room-name{fill:#233e37;font:700 10px Arial,sans-serif;text-anchor:middle;dominant-baseline:central}
+.vertex-handle{fill:#fff;stroke:#183d34;stroke-width:4}.vertex-label{fill:#17221e;font:700 8px ui-monospace,monospace;text-anchor:middle}
+.opening-gap{stroke:#fff;stroke-width:var(--opening-gap-width,14px)}.opening-jamb{stroke:#233e37;stroke-width:2.5;stroke-linecap:square}.door-closed-line{stroke:#8e9a95;stroke-width:1.2;stroke-dasharray:4 3}.door-leaf{stroke:var(--door-colour,#4caf8a);stroke-width:3;stroke-linecap:square}.door-swing{fill:none;stroke:var(--door-colour,#4caf8a);stroke-width:1.5;stroke-dasharray:4 2}
+.opening-dimension{color:#9a4604}.opening-dimension-label{fill:currentColor;font:650 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:5px}.window-dimension{color:#9a4604}.window-dimension .opening-dimension-label{fill:currentColor}.fixture-dimension{color:#b45309;pointer-events:none}.fixture-dimension-label{fill:currentColor;font:650 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:5px}.window-frame{stroke:var(--window-colour,#287fb8);stroke-width:2.6;stroke-linecap:square}.window-core{stroke:#76acd0;stroke-width:1.2}.window-jamb{stroke:var(--window-colour,#287fb8)}
+ .vertex-layer,.full-room-highlight,.corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit,.wall-interaction-line{display:none}
+`;
+
+function floorplanExportCss(style: FloorplanStyle) {
+  return `${FLOORPLAN_EXPORT_BASE_CSS}
+${floorplanStyleCss(style)}`;
+}
+
+async function inlineExportImages(markup: string): Promise<string> {
+  const document = new DOMParser().parseFromString(markup, "image/svg+xml");
+  if (document.querySelector("parsererror")) return markup;
+  const images = Array.from(document.querySelectorAll<SVGImageElement>("image"));
+  await Promise.all(images.map(async (image) => {
+    const href = image.getAttribute("href") ?? image.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+    if (!href || href.startsWith("data:") || href.startsWith("#")) return;
+    try {
+      const response = await fetch(new URL(href, window.location.href), { credentials: "same-origin" });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read floorplan symbol"));
+        reader.onerror = () => reject(reader.error ?? new Error("Could not read floorplan symbol"));
+        reader.readAsDataURL(blob);
+      });
+      image.setAttribute("href", dataUrl);
+      image.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
+    } catch {
+      // Keep the original URL as a best-effort fallback for assets that do not
+      // permit same-origin fetching; local catalogue symbols are inlined above.
+    }
+  }));
+  return new XMLSerializer().serializeToString(document.documentElement);
+}
+
+function drawFloorplanAttribution(context: CanvasRenderingContext2D, width: number, height: number) {
+  const scale = width / FLOORPLAN_EXPORT_WIDTH;
+  const margin = 16 * scale;
+  context.save();
+  context.font = `700 ${FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE * scale}px Arial, sans-serif`;
+  context.textAlign = "right";
+  context.textBaseline = "bottom";
+  context.lineJoin = "round";
+  context.lineWidth = 3 * scale;
+  context.strokeStyle = "#fff";
+  context.fillStyle = "#000";
+  context.strokeText(FLOORPLAN_EXPORT_ATTRIBUTION, width - margin, height - margin);
+  context.fillText(FLOORPLAN_EXPORT_ATTRIBUTION, width - margin, height - margin);
+  context.restore();
+}
+
+function floorplanPdfBlobFromJpeg(bytes: ArrayBuffer, width: number, height: number, includeAttribution = true) {
+  const encoder = new TextEncoder();
+  const pageWidth = Math.max(72, width * 72 / 96);
+  const pageHeight = Math.max(72, height * 72 / 96);
+  const content = `q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Im0 Do\nQ\n`;
+  const attributionLinkWidth = 220;
+  const attributionLinkHeight = 28;
+  const attributionLinkX = Math.max(0, pageWidth - attributionLinkWidth - 8);
+  const parts: Uint8Array<ArrayBuffer>[] = [];
+  let length = 0;
+  const push = (value: string | Uint8Array) => { const source = typeof value === "string" ? encoder.encode(value) : value; const next = new Uint8Array(source.byteLength); next.set(source); parts.push(next); length += next.byteLength; };
+  const offsets: number[] = [0];
+  push("%PDF-1.4\n%\xFF\xFF\xFF\xFF\n");
+  const object = (id: number, body: string) => { offsets[id] = length; push(`${id} 0 obj\n${body}\nendobj\n`); };
+  object(1, "<< /Type /Catalog /Pages 2 0 R >>"); object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  const annotation = includeAttribution ? " /Annots [6 0 R]" : "";
+  object(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R${annotation} >>`);
+  offsets[4] = length; push(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.byteLength} >>\nstream\n`); push(new Uint8Array(bytes)); push("\nendstream\nendobj\n");
+  const contentBytes = encoder.encode(content); object(5, `<< /Length ${contentBytes.length} >>\nstream\n${content}endstream`);
+  if (includeAttribution) object(6, `<< /Type /Annot /Subtype /Link /Rect [${attributionLinkX} 0 ${pageWidth - 8} ${attributionLinkHeight}] /Border [0 0 0] /A << /S /URI /URI (${FLOORPLAN_EXPORT_ATTRIBUTION_URL}) >> >>`);
+  const lastObject = includeAttribution ? 6 : 5;
+  const xref = length;
+  push(`xref\n0 ${lastObject + 1}\n0000000000 65535 f \n`);
+  for (let id = 1; id <= lastObject; id += 1) push(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
+  push(`trailer\n<< /Size ${lastObject + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(parts, { type: "application/pdf" });
+}function synchronizeConnectedJunctions(baselineWalls: Wall[], candidateWalls: Wall[], squaredWalls: boolean, preferredWallId: string, detachedEndpointIndices: number[] = []): Wall[] {
+  type JunctionReference = { wallId: string; pointIndex: number; point: Point2D };
+  const groups: JunctionReference[][] = [];
+  baselineWalls.forEach((wall) => {
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    wall.points.slice(0, closed ? -1 : undefined).forEach((point, pointIndex) => {
+      const reference = { wallId: wall.id, pointIndex, point };
+      const group = groups.find((items) => samePoint(items[0].point, point));
+      if (group) group.push(reference); else groups.push([reference]);
+    });
+  });
+  const synchronized = cloneWalls(candidateWalls);
+  const maximumPasses = baselineWalls.reduce((total, wall) => total + wall.points.length, 0) + 1;
+  for (let pass = 0; pass < maximumPasses; pass += 1) {
+    let updated = false;
+    for (const group of groups) {
+      // A separate wall which terminates at the endpoint of a translated segment
+      // must remain at its original junction. The bridge-repair pass will join it
+      // to the moved endpoint. Pulling it along here would stretch that wall and
+      // leave the room graph open instead of creating the required return wall.
+      if (group.some((reference) => reference.wallId === preferredWallId && detachedEndpointIndices.includes(reference.pointIndex))) continue;
+      const changed = group.flatMap((reference) => {
+        const wall = synchronized.find((item) => item.id === reference.wallId);
+        const point = wall?.points[reference.pointIndex];
+        if (!point || samePoint(point, reference.point, .001)) return [];
+        return [{ reference, point, distance: Math.hypot(point.x - reference.point.x, point.y - reference.point.y) }];
+      }).sort((first, second) => Number(second.reference.wallId === preferredWallId) - Number(first.reference.wallId === preferredWallId) || second.distance - first.distance);
+      if (!changed.length) continue;
+      const target = changed[0].point;
+      for (const reference of group) {
+        const wallIndex = synchronized.findIndex((item) => item.id === reference.wallId);
+        if (wallIndex < 0 || samePoint(synchronized[wallIndex].points[reference.pointIndex], target, .001)) continue;
+        const wall = synchronized[wallIndex];
+        const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+        const points = squaredWalls ? moveSquaredWallPoint(wall.points, reference.pointIndex, target) : wall.points.map((point, pointIndex) => pointIndex === reference.pointIndex ? { ...target } : { ...point });
+        if (!squaredWalls && closed && reference.pointIndex === 0) points[points.length - 1] = { ...target };
+        synchronized[wallIndex] = { ...wall, points };
+        updated = true;
+      }
+    }
+    if (!updated) break;
+  }
+  return synchronized;
+}
+
+function signedPolygonArea(points: Point2D[]): number {
+  return points.reduce((area, point, index) => {
+    const next = points[(index + 1) % points.length];
+    return area + point.x * next.y - next.x * point.y;
+  }, 0) / 2;
+}
+
+function counterClockwiseVertices(points: Point2D[]): Point2D[] {
+  const vertices = points.map((point) => ({ ...point }));
+  return signedPolygonArea(vertices) < 0 ? vertices.reverse() : vertices;
+}
+
+function hasMinimumEnclosedArea(points: Point2D[]): boolean {
+  const closed = points.length >= 4 && samePoint(points[0], points.at(-1)!);
+  if (!closed) return true;
+  const outline = points.slice(0, -1);
+  const twiceArea = outline.reduce((total, point, index) => {
+    const next = outline[(index + 1) % outline.length];
+    return total + point.x * next.y - next.x * point.y;
+  }, 0);
+  return Math.abs(twiceArea) / 2 >= MIN_ENCLOSED_AREA_MM2;
+}
+
+function hasOnlyOrthogonalSegments(points: Point2D[]): boolean {
+  const tolerance = 0.001;
+  return points.slice(0, -1).every((start, index) => {
+    const end = points[index + 1];
+    return Math.abs(end.x - start.x) <= tolerance || Math.abs(end.y - start.y) <= tolerance;
+  });
+}
+
+const segmentLength = (wall: Wall, index: number) => Math.hypot(wall.points[index + 1].x - wall.points[index].x, wall.points[index + 1].y - wall.points[index].y);
+const wallLengthForSegment = (wall: Wall, index: number) => wall.lengthOverridesMm?.[index] ?? segmentLength(wall, index);
+const parentKey = (wallId: string, segmentIndex: number) => `${wallId}::${segmentIndex}`;
+
+function wallLengthOverridesSatisfied(walls: Wall[]): boolean {
+  return walls.every((wall) => Object.entries(wall.lengthOverridesMm ?? {}).every(([rawSegmentIndex, targetLength]) => {
+    const segmentIndex = Number(rawSegmentIndex);
+    const closed = wall.points.length > 2 && samePoint(wall.points[0], wall.points.at(-1)!);
+    const endIndex = closed && segmentIndex + 1 === wall.points.length - 1 ? 0 : segmentIndex + 1;
+    const start = wall.points[segmentIndex];
+    const end = wall.points[endIndex];
+    if (!start || !end || !Number.isFinite(targetLength) || targetLength <= 0) return false;
+    return Math.abs(Math.hypot(end.x - start.x, end.y - start.y) - targetLength) <= 0.01;
+  }));
+}
+
+function redundantHeightDimensionIds(walls: Wall[], roomCount: number): Set<string> {
+  if (roomCount < 2) return new Set();
+  const tolerance = 1;
+  const vertical = walls.flatMap((wall) => wall.points.slice(0, -1).flatMap((start, segmentIndex) => {
+    const end = wall.points[segmentIndex + 1];
+    if (!end || wall.lengthOverridesMm?.[segmentIndex] !== undefined || Math.abs(end.x - start.x) > tolerance || Math.abs(end.y - start.y) <= tolerance) return [];
+    return [{ id: `${wall.id}:${segmentIndex}`, x: start.x, minY: Math.min(start.y, end.y), maxY: Math.max(start.y, end.y) }];
+  }));
+  const horizontal = walls.flatMap((wall) => wall.points.slice(0, -1).flatMap((start, segmentIndex) => {
+    const end = wall.points[segmentIndex + 1];
+    if (!end || Math.abs(end.y - start.y) > tolerance || Math.abs(end.x - start.x) <= tolerance) return [];
+    return [{ y: start.y, minX: Math.min(start.x, end.x), maxX: Math.max(start.x, end.x) }];
+  }));
+  const parent = new Map(vertical.map((segment) => [segment.id, segment.id]));
+  const find = (id: string): string => {
+    const root = parent.get(id);
+    if (!root || root === id) return id;
+    const resolved = find(root); parent.set(id, resolved); return resolved;
+  };
+  const join = (first: string, second: string) => { const firstRoot = find(first); const secondRoot = find(second); if (firstRoot !== secondRoot) parent.set(secondRoot, firstRoot); };
+  const sameSpan = (first: typeof vertical[number], second: typeof vertical[number]) => Math.abs(first.minY - second.minY) <= tolerance && Math.abs(first.maxY - second.maxY) <= tolerance;
+  const bridged = (first: typeof vertical[number], second: typeof vertical[number]) => horizontal.some((segment) => {
+    const minX = Math.min(first.x, second.x); const maxX = Math.max(first.x, second.x);
+    return (Math.abs(segment.y - first.minY) <= tolerance || Math.abs(segment.y - first.maxY) <= tolerance) && segment.minX <= minX + tolerance && segment.maxX >= maxX - tolerance;
+  });
+  for (let firstIndex = 0; firstIndex < vertical.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < vertical.length; secondIndex += 1) {
+      if (sameSpan(vertical[firstIndex], vertical[secondIndex]) && bridged(vertical[firstIndex], vertical[secondIndex])) join(vertical[firstIndex].id, vertical[secondIndex].id);
+    }
+  }
+  const groups = new Map<string, typeof vertical>();
+  vertical.forEach((segment) => { const root = find(segment.id); groups.set(root, [...(groups.get(root) ?? []), segment]); });
+  return new Set([...groups.values()].flatMap((group) => group.sort((first, second) => first.x - second.x).slice(1).map((segment) => segment.id)));
+}
+
+function assignStableCornerNumbers(walls: Wall[], fallbackStarts = new Map<string, number>()): Wall[] {
+  let nextNumber = Math.max(0, ...walls.flatMap((wall) => Object.values(wall.cornerNumbers ?? {}))) + 1;
+  return walls.map((wall) => {
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    const lastUniqueIndex = wall.points.length - (closed ? 1 : 0);
+    const numbers = { ...wall.cornerNumbers };
+    const fallbackStart = fallbackStarts.get(wall.id);
+    let visibleIndex = 0;
+    for (let pointIndex = 0; pointIndex < lastUniqueIndex; pointIndex += 1) {
+      if (wall.attachments?.[pointIndex]?.hideCorner) continue;
+      if (numbers[pointIndex] === undefined) numbers[pointIndex] = fallbackStart === undefined ? nextNumber++ : fallbackStart + visibleIndex;
+      visibleIndex += 1;
+    }
+    return { ...wall, cornerNumbers: numbers };
+  });
+}
+
+function remapSnapshotForMaterializedSelection(snapshot: Snapshot, materialized: MaterializedWallSelection): Snapshot {
+  if (!materialized.splitAlong.length) return snapshot;
+  const sourceWall = snapshot.walls.find((wall) => wall.id === materialized.wallId);
+  if (!sourceWall) return { ...snapshot, walls: materialized.walls as Wall[] };
+  const wallId = sourceWall.id;
+  const sourceSegmentIndex = materialized.sourceSegmentIndex;
+  const insertedCount = materialized.splitAlong.length;
+  const sourceStart = sourceWall.points[sourceSegmentIndex];
+  const sourceEnd = sourceWall.points[sourceSegmentIndex + 1];
+  const sourceLength = Math.hypot(sourceEnd.x - sourceStart.x, sourceEnd.y - sourceStart.y) || 1;
+  const boundaries = [0, ...materialized.splitAlong, 1];
+  const remapSegment = (segmentIndex: number, along = .5) => {
+    if (segmentIndex < sourceSegmentIndex) return { segmentIndex, along };
+    if (segmentIndex > sourceSegmentIndex) return { segmentIndex: segmentIndex + insertedCount, along };
+    const subsegment = Math.max(0, Math.min(boundaries.length - 2, boundaries.findIndex((_, index) => index < boundaries.length - 1 && along <= boundaries[index + 1] + 1e-6)));
+    return { segmentIndex: sourceSegmentIndex + subsegment, along: (along - boundaries[subsegment]) / (boundaries[subsegment + 1] - boundaries[subsegment]) };
+  };
+  const remapReference = (reference: MeasurementReference): MeasurementReference => {
+    if (reference.kind === "ROOM_POINT" || reference.kind === "FIXTURE" || reference.kind === "OPENING") return cloneMeasurementReference(reference);
+    if (reference.wallId !== wallId) return { ...reference };
+    if (reference.kind === "POINT") return { ...reference, pointIndex: reference.pointIndex > sourceSegmentIndex ? reference.pointIndex + insertedCount : reference.pointIndex };
+    return { ...reference, segmentIndex: reference.segmentIndex === sourceSegmentIndex ? materialized.segmentIndex : remapSegment(reference.segmentIndex).segmentIndex };
+  };
+  const remapDimensionId = (id: string) => {
+    const separator = id.lastIndexOf(":");
+    if (separator < 0 || id.slice(0, separator) !== wallId) return [id];
+    const segmentIndex = Number(id.slice(separator + 1));
+    if (segmentIndex !== sourceSegmentIndex) return [`${wallId}:${remapSegment(segmentIndex).segmentIndex}`];
+    return boundaries.slice(0, -1).map((_, index) => `${wallId}:${sourceSegmentIndex + index}`);
+  };
+  return {
+    ...snapshot,
+    walls: materialized.walls as Wall[],
+    openings: snapshot.openings.map((opening) => {
+      if (opening.wallId !== wallId) return { ...opening };
+      const mapped = remapSegment(opening.segmentIndex, opening.segmentIndex === sourceSegmentIndex ? (opening.offset + opening.width / 2) / sourceLength : .5);
+      return { ...opening, segmentIndex: mapped.segmentIndex, offset: opening.segmentIndex === sourceSegmentIndex ? opening.offset - boundaries[mapped.segmentIndex - sourceSegmentIndex] * sourceLength : opening.offset };
+    }),
+    measurements: snapshot.measurements.map((measurement) => ({ ...measurement, first: remapReference(measurement.first), second: remapReference(measurement.second) })),
+    dimensionOffsets: Object.fromEntries(Object.entries(snapshot.dimensionOffsets).flatMap(([id, offset]) => remapDimensionId(id).map((nextId) => [nextId, offset]))),
+    hiddenDimensions: snapshot.hiddenDimensions.flatMap(remapDimensionId),
+  };
+}
+
+function pointOnSegment(point: Point2D, start: Point2D, end: Point2D): { point: Point2D; along: number } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return { point: { ...start }, along: 0 };
+  const along = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  return { point: { x: start.x + dx * along, y: start.y + dy * along }, along };
+}
+
+function signedWallSide(point: Point2D, start: Point2D, end: Point2D): number {
+  const length = Math.hypot(end.x - start.x, end.y - start.y);
+  if (!length) return 0;
+  const projection = pointOnSegment(point, start, end).point;
+  return ((end.x - start.x) * (point.y - projection.y) - (end.y - start.y) * (point.x - projection.x)) / length;
+}
+
+type MeasurementGeometry = { start: Point2D; end: Point2D; length: number };
+
+/**
+ * Return a perpendicular wall-to-wall measurement when both references are
+ * parallel.  Wall references are represented by their midpoints, which can
+ * sit at different heights when one wall is shorter than the other.  Joining
+ * those midpoints produces the diagonal distance seen in the editor.  Aligning
+ * an anchor along the shared tangent interval keeps the dimension normal to
+ * both wall lines and reports their true separation.
+ */
+function parallelWallMeasurementGeometry(first: Wall, firstSegmentIndex: number, second: Wall, secondSegmentIndex: number): MeasurementGeometry | null {
+  const firstStart = first.points[firstSegmentIndex];
+  const firstEnd = first.points[firstSegmentIndex + 1];
+  const secondStart = second.points[secondSegmentIndex];
+  const secondEnd = second.points[secondSegmentIndex + 1];
+  if (!firstStart || !firstEnd || !secondStart || !secondEnd) return null;
+  const firstVector = { x: firstEnd.x - firstStart.x, y: firstEnd.y - firstStart.y };
+  const secondVector = { x: secondEnd.x - secondStart.x, y: secondEnd.y - secondStart.y };
+  const firstLength = Math.hypot(firstVector.x, firstVector.y);
+  const secondLength = Math.hypot(secondVector.x, secondVector.y);
+  if (!firstLength || !secondLength) return null;
+  const cross = firstVector.x * secondVector.y - firstVector.y * secondVector.x;
+  if (Math.abs(cross) > 1e-4 * firstLength * secondLength) return null;
+
+  const tangent = { x: firstVector.x / firstLength, y: firstVector.y / firstLength };
+  const normal = { x: -tangent.y, y: tangent.x };
+  const firstMid = { x: (firstStart.x + firstEnd.x) / 2, y: (firstStart.y + firstEnd.y) / 2 };
+  const secondMid = { x: (secondStart.x + secondEnd.x) / 2, y: (secondStart.y + secondEnd.y) / 2 };
+  const firstT = (point: Point2D) => point.x * tangent.x + point.y * tangent.y;
+  const firstRange = [firstT(firstStart), firstT(firstEnd)].sort((a, b) => a - b);
+  const secondRange = [firstT(secondStart), firstT(secondEnd)].sort((a, b) => a - b);
+  const overlapStart = Math.max(firstRange[0], secondRange[0]);
+  const overlapEnd = Math.min(firstRange[1], secondRange[1]);
+  const anchorT = overlapStart <= overlapEnd
+    ? (overlapStart + overlapEnd) / 2
+    : (Math.max(firstRange[0], secondRange[0]) + Math.min(firstRange[1], secondRange[1])) / 2;
+  const firstPoint = { x: firstMid.x + tangent.x * (anchorT - firstT(firstMid)), y: firstMid.y + tangent.y * (anchorT - firstT(firstMid)) };
+  const secondPoint = { x: secondMid.x + tangent.x * (anchorT - firstT(secondMid)), y: secondMid.y + tangent.y * (anchorT - firstT(secondMid)) };
+  const signedSeparation = (secondPoint.x - firstPoint.x) * normal.x + (secondPoint.y - firstPoint.y) * normal.y;
+  return { start: firstPoint, end: secondPoint, length: Math.abs(signedSeparation) };
+}
+
+function snapPoint(point: Point2D, walls: Wall[], enabled: boolean, increment: number): Point2D {
+  const nearby = walls.flatMap((wall) => wall.points).find((candidate) => Math.hypot(candidate.x - point.x, candidate.y - point.y) <= 14);
+  return nearby ?? (enabled ? { x: Math.round(point.x / increment) * increment, y: Math.round(point.y / increment) * increment } : point);
+}
+
+const ANNOTATION_WALL_SNAP_DISTANCE_MM = 140;
+type AnnotationWallProjection = { point: Point2D; start: Point2D; end: Point2D; distance: number };
+
+function nearestAnnotationWallProjection(point: Point2D, walls: Wall[]): AnnotationWallProjection | null {
+  let nearest: AnnotationWallProjection | null = null;
+  walls.forEach((wall) => wall.points.slice(0, -1).forEach((start, segmentIndex) => {
+    const end = wall.points[segmentIndex + 1];
+    if (!end) return;
+    const projection = pointOnSegment(point, start, end).point;
+    const distance = Math.hypot(projection.x - point.x, projection.y - point.y);
+    if (distance <= ANNOTATION_WALL_SNAP_DISTANCE_MM && (!nearest || distance < nearest.distance)) nearest = { point: projection, start, end, distance };
+  }));
+  return nearest;
+}
+
+function intersectAnnotationAxisWithWall(anchor: Point2D, wall: AnnotationWallProjection, horizontal: boolean): Point2D | null {
+  const dx = wall.end.x - wall.start.x;
+  const dy = wall.end.y - wall.start.y;
+  if (horizontal) {
+    if (Math.abs(dy) < 1e-9) return Math.abs(anchor.y - wall.start.y) <= 1e-6 ? pointOnSegment(anchor, wall.start, wall.end).point : null;
+    const along = (anchor.y - wall.start.y) / dy;
+    return along >= 0 && along <= 1 ? { x: wall.start.x + dx * along, y: anchor.y } : null;
+  }
+  if (Math.abs(dx) < 1e-9) return Math.abs(anchor.x - wall.start.x) <= 1e-6 ? pointOnSegment(anchor, wall.start, wall.end).point : null;
+  const along = (anchor.x - wall.start.x) / dx;
+  return along >= 0 && along <= 1 ? { x: anchor.x, y: wall.start.y + dy * along } : null;
+}
+
+function squareWallPoints(points: Point2D[]): Point2D[] {
+  if (points.length < 2) return points.map((point) => ({ ...point }));
+  const closed = samePoint(points[0], points.at(-1)!);
+  const core = closed ? points.slice(0, -1) : points;
+  if (core.length < 2) return points.map((point) => ({ ...point }));
+  const firstHorizontal = Math.abs(core[1].x - core[0].x) >= Math.abs(core[1].y - core[0].y);
+  const alternating = closed && core.length % 2 === 0;
+  const squared = [{ ...core[0] }];
+  for (let index = 1; index < core.length; index += 1) {
+    const source = core[index]; const previous = squared[index - 1];
+    const horizontal = alternating ? (index % 2 === 1 ? firstHorizontal : !firstHorizontal) : Math.abs(source.x - previous.x) >= Math.abs(source.y - previous.y);
+    squared.push(horizontal ? { x: source.x, y: previous.y } : { x: previous.x, y: source.y });
+  }
+  if (alternating) { const last = squared.length - 1; squared[last] = firstHorizontal ? { ...squared[last], x: squared[0].x } : { ...squared[last], y: squared[0].y }; }
+  return closed ? [...squared, { ...squared[0] }] : squared;
+}
+
+function squareDrawPoint(from: Point2D, requested: Point2D): Point2D {
+  return Math.abs(requested.x - from.x) >= Math.abs(requested.y - from.y)
+    ? { x: requested.x, y: from.y }
+    : { x: from.x, y: requested.y };
+}
+
+function orthogonalPathTo(points: Point2D[], target: Point2D): Point2D[] {
+  const last = points.at(-1);
+  if (!last || samePoint(last, target)) return points;
+  if (last.x === target.x || last.y === target.y) return [...points, target];
+  const horizontalFirst = Math.abs(target.x - last.x) >= Math.abs(target.y - last.y);
+  const turn = horizontalFirst ? { x: target.x, y: last.y } : { x: last.x, y: target.y };
+  return [...points, turn, target];
+}
+
+function closeDraftPath(points: Point2D[], squaredWalls: boolean): Point2D[] {
+  if (!points.length) return points;
+  const first = points[0];
+  if (!squaredWalls || points.length < 3) return [...points, { ...first }];
+  const last = points.at(-1)!;
+  const previous = points.at(-2)!;
+  const previousSegmentVertical = Math.abs(last.x - previous.x) < Math.abs(last.y - previous.y);
+  const adjustment = previousSegmentVertical ? Math.abs(last.y - first.y) : Math.abs(last.x - first.x);
+  const adjustedLast = adjustment <= DRAFT_CLOSURE_ADJUSTMENT_MM
+    ? previousSegmentVertical ? { ...last, y: first.y } : { ...last, x: first.x }
+    : last;
+  return orthogonalPathTo([...points.slice(0, -1), adjustedLast], first);
+}
+
+function orthogonalIntersectionOnSegment(from: Point2D, requested: Point2D, start: Point2D, end: Point2D): Point2D | null {
+  const dx = end.x - start.x; const dy = end.y - start.y;
+  const candidates: Point2D[] = [];
+  if (Math.abs(dy) > 1e-9) {
+    const along = (from.y - start.y) / dy;
+    if (along >= 0 && along <= 1) candidates.push({ x: start.x + dx * along, y: from.y });
+  }
+  if (Math.abs(dx) > 1e-9) {
+    const along = (from.x - start.x) / dx;
+    if (along >= 0 && along <= 1) candidates.push({ x: from.x, y: start.y + dy * along });
+  }
+  return candidates.sort((first, second) => Math.hypot(first.x - requested.x, first.y - requested.y) - Math.hypot(second.x - requested.x, second.y - requested.y))[0] ?? null;
+}
+
+function moveSquaredWallPoint(points: Point2D[], index: number, next: Point2D): Point2D[] {
+  const closed = points.length > 2 && samePoint(points[0], points.at(-1)!);
+  const core = closed ? points.slice(0, -1) : points;
+  if (!core[index]) return points.map((point) => ({ ...point }));
+  const squared = core.map((point) => ({ ...point }));
+  squared[index] = { ...next };
+  (["x", "y"] as const).forEach((axis) => {
+    const usesVerticalWall = axis === "x";
+    const queue = [index]; const visited = new Set<number>(queue);
+    while (queue.length) {
+      const current = queue.shift()!;
+      const candidates = [
+        ...(current > 0 || closed ? [{ point: (current - 1 + core.length) % core.length, segment: (current - 1 + core.length) % core.length }] : []),
+        ...(current < core.length - 1 || closed ? [{ point: (current + 1) % core.length, segment: current }] : []),
+      ];
+      for (const candidate of candidates) {
+        const start = core[candidate.segment]; const end = core[(candidate.segment + 1) % core.length];
+        const horizontal = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y);
+        if ((usesVerticalWall && horizontal) || (!usesVerticalWall && !horizontal) || visited.has(candidate.point)) continue;
+        squared[candidate.point][axis] = next[axis]; visited.add(candidate.point); queue.push(candidate.point);
+      }
+    }
+  });
+  return closed ? [...squared, { ...squared[0] }] : squared;
+}
+
+function hasPerpendicularConnectedLeg(points: Point2D[], index: number, hostStart: Point2D, hostEnd: Point2D): boolean {
+  const closed = points.length > 2 && samePoint(points[0], points.at(-1)!);
+  const core = closed ? points.slice(0, -1) : points;
+  const point = core[index];
+  const hostLength = Math.hypot(hostEnd.x - hostStart.x, hostEnd.y - hostStart.y);
+  if (!point || !hostLength) return false;
+  const hostDirection = { x: (hostEnd.x - hostStart.x) / hostLength, y: (hostEnd.y - hostStart.y) / hostLength };
+  const neighbours = [
+    ...(index > 0 || closed ? [core[(index - 1 + core.length) % core.length]] : []),
+    ...(index < core.length - 1 || closed ? [core[(index + 1) % core.length]] : []),
+  ];
+  return neighbours.some((neighbour) => {
+    const length = Math.hypot(neighbour.x - point.x, neighbour.y - point.y);
+    if (!length) return false;
+    const alignment = Math.abs(((neighbour.x - point.x) / length) * hostDirection.x + ((neighbour.y - point.y) / length) * hostDirection.y);
+    return alignment < .995;
+  });
+}
+
+function roomCentre(room: NamedOutline): Point2D {
+  return room.vertices.reduce((total, point) => ({ x: total.x + point.x / room.vertices.length, y: total.y + point.y / room.vertices.length }), { x: 0, y: 0 });
+}
+
+function roomVisualCentre(points: Point2D[]): Point2D {
+  let twiceArea = 0; let x = 0; let y = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length]; const cross = point.x * next.y - next.x * point.y;
+    twiceArea += cross; x += (point.x + next.x) * cross; y += (point.y + next.y) * cross;
+  });
+  if (Math.abs(twiceArea) < 1e-9) return roomCentre({ vertices: points } as NamedOutline);
+  return { x: x / (3 * twiceArea), y: y / (3 * twiceArea) };
+}
+
+function roomNameEditorWidth(name: string): number {
+  return Math.max(36, name.length * 7 + 16);
+}
+
+function roomLabelPosition(room: Pick<NamedOutline, "vertices" | "labelPosition">): Point2D {
+  return room.labelPosition ? { ...room.labelPosition } : roomVisualCentre(room.vertices);
+}
+
+function reconcileRooms(current: NamedOutline[], detected: NamedOutline[]): NamedOutline[] {
+  const available = current.map((room, index) => ({ ...room, colourIndex: room.colourIndex ?? index % 6 }));
+  const sourceIdsFor = (room: NamedOutline) => new Set([...(room.sourceWallIds ?? []), room.sourceWallId].filter(Boolean));
+  const currentSources = current.map(sourceIdsFor);
+  const detectedSources = detected.map(sourceIdsFor);
+  const assignedCurrent = new Set<number>();
+  const assignedDetected = new Set<number>();
+  const matches = new Map<number, number>();
+  const centreDistance = (first: NamedOutline, second: NamedOutline) => {
+    const firstCentre = roomCentre(first); const secondCentre = roomCentre(second);
+    return Math.hypot(firstCentre.x - secondCentre.x, firstCentre.y - secondCentre.y);
+  };
+  // Prefer an exact source-wall-set match. A new exterior room shares its
+  // selected wall with the existing room, so a loose first-match can otherwise
+  // steal the existing room's name and make the old room appear renamed.
+  const exactPairs: Array<{ currentIndex: number; detectedIndex: number; distance: number }> = [];
+  currentSources.forEach((sources, currentIndex) => detectedSources.forEach((candidateSources, detectedIndex) => {
+    if (sources.size === 0 || sources.size !== candidateSources.size || [...sources].some((source) => !candidateSources.has(source))) return;
+    exactPairs.push({ currentIndex, detectedIndex, distance: centreDistance(current[currentIndex], detected[detectedIndex]) });
+  }));
+  exactPairs.sort((first, second) => first.distance - second.distance);
+  exactPairs.forEach(({ currentIndex, detectedIndex }) => {
+    if (assignedCurrent.has(currentIndex) || assignedDetected.has(detectedIndex)) return;
+    assignedCurrent.add(currentIndex); assignedDetected.add(detectedIndex); matches.set(detectedIndex, currentIndex);
+  });
+  // If a wall edit changes the source set, retain the closest one-to-one
+  // source-wall match before treating a detected room as genuinely new.
+  const overlapPairs: Array<{ currentIndex: number; detectedIndex: number; overlap: number; distance: number }> = [];
+  currentSources.forEach((sources, currentIndex) => detectedSources.forEach((candidateSources, detectedIndex) => {
+    if (assignedCurrent.has(currentIndex) || assignedDetected.has(detectedIndex)) return;
+    const overlap = [...sources].filter((source) => candidateSources.has(source)).length;
+    if (!overlap) return;
+    overlapPairs.push({ currentIndex, detectedIndex, overlap, distance: centreDistance(current[currentIndex], detected[detectedIndex]) });
+  }));
+  overlapPairs.sort((first, second) => second.overlap - first.overlap || first.distance - second.distance);
+  overlapPairs.forEach(({ currentIndex, detectedIndex }) => {
+    if (assignedCurrent.has(currentIndex) || assignedDetected.has(detectedIndex)) return;
+    assignedCurrent.add(currentIndex); assignedDetected.add(detectedIndex); matches.set(detectedIndex, currentIndex);
+  });
+  const usedNames = new Set(current.map((room) => room.name.trim().toLowerCase()));
+  const usedColours = new Set(available.map((room) => room.colourIndex));
+  let nextRoomNumber = Math.max(0, ...current.map((room) => Number(room.name.match(/^Room\s+(\d+)$/i)?.[1] ?? 0))) + 1;
+  let nextColour = 0;
+  const nextName = () => {
+    while (usedNames.has(`room ${nextRoomNumber}`)) nextRoomNumber += 1;
+    const name = `Room ${nextRoomNumber}`; usedNames.add(name.toLowerCase()); nextRoomNumber += 1; return name;
+  };
+  const nextColourIndex = () => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const colour = (nextColour + attempt) % 6;
+      if (!usedColours.has(colour)) { usedColours.add(colour); nextColour = colour + 1; return colour; }
+    }
+    const colour = nextColour % 6; nextColour += 1; return colour;
+  };
+  return detected.map((room, detectedIndex) => {
+    const currentIndex = matches.get(detectedIndex);
+    const match = currentIndex === undefined ? null : available[currentIndex];
+    if (!match) return { ...room, id: crypto.randomUUID(), name: nextName(), colourIndex: nextColourIndex() };
+    return { ...room, id: match.id, name: match.name, colourIndex: match.colourIndex, labelPosition: match.labelPosition ? { ...match.labelPosition } : undefined };
+  });
+}
+
+function roomOpenings(room: NamedOutline, openings: FullOpening[], walls: Wall[], catalogue: CatalogueItem[]): Opening[] {
+  const measurement = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
+  const roomEdges = room.vertices.map((start, index) => ({ start, end: room.vertices[(index + 1) % room.vertices.length], index }));
+  return openings.flatMap((opening) => {
+    const wall = walls.find((item) => item.id === opening.wallId); const start = wall?.points[opening.segmentIndex]; const end = wall?.points[opening.segmentIndex + 1];
+    if (!start || !end) return [];
+    const segmentLengthMm = Math.hypot(end.x - start.x, end.y - start.y); if (!segmentLengthMm) return [];
+    const unit = { x: (end.x - start.x) / segmentLengthMm, y: (end.y - start.y) / segmentLengthMm };
+    const openingStart = { x: start.x + unit.x * opening.offset, y: start.y + unit.y * opening.offset };
+    const openingEnd = { x: openingStart.x + unit.x * opening.width, y: openingStart.y + unit.y * opening.width };
+    const edge = roomEdges.find((candidate) => {
+      const startProjection = pointOnSegment(openingStart, candidate.start, candidate.end); const endProjection = pointOnSegment(openingEnd, candidate.start, candidate.end);
+      return Math.hypot(openingStart.x - startProjection.point.x, openingStart.y - startProjection.point.y) <= 1 && Math.hypot(openingEnd.x - endProjection.point.x, openingEnd.y - endProjection.point.y) <= 1;
+    });
+    if (!edge) return [];
+    const edgeDx = edge.end.x - edge.start.x; const edgeDy = edge.end.y - edge.start.y; const segmentDx = end.x - start.x; const segmentDy = end.y - start.y;
+    const edgeLength = Math.hypot(edgeDx, edgeDy); const startProjection = pointOnSegment(openingStart, edge.start, edge.end);
+    // Projection is already measured from this room's wall start. Reverse only
+    // the opening interval, otherwise the 3D preview jumps to the opposite end.
+    const offset = startProjection.along * edgeLength - (edgeDx * segmentDx + edgeDy * segmentDy >= 0 ? 0 : opening.width);
+    const catalogueItem = catalogue.find(item => item.id === opening.catalogueItemId);
+    const metadata = { component_colors: opening.componentColors ?? {}, representation_key: opening.representationKey ?? catalogueItem?.representation_key, window_depth_mm: opening.windowDepthMm ?? catalogueItem?.depth_mm, ...(opening.catalogueItemId ? { catalogue_item_id: opening.catalogueItemId } : {}), ...(opening.colorHex ? { color_hex: opening.colorHex } : {}) };
+    return [{ id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(edge.index + 1).padStart(3, "0")}`, offset_mm: Math.max(0, offset), width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0, ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}), ...(Object.keys(metadata).length ? { metadata } : {}) }];
+  });
+}
+
+function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultThicknessMm: number): Record<string, number> {
+  const toleranceMm = 1;
+  const overrides: Record<string, number> = {};
+  room.vertices.forEach((start, roomEdgeIndex) => {
+    const end = room.vertices[(roomEdgeIndex + 1) % room.vertices.length];
+    const source = walls.flatMap((wall) => wall.points.slice(0, -1).map((segmentStart, segmentIndex) => ({ wall, segmentIndex, segmentStart, segmentEnd: wall.points[segmentIndex + 1] })))
+      .find((segment) => {
+        const startProjection = pointOnSegment(start, segment.segmentStart, segment.segmentEnd);
+        const endProjection = pointOnSegment(end, segment.segmentStart, segment.segmentEnd);
+        return Math.hypot(start.x - startProjection.point.x, start.y - startProjection.point.y) <= toleranceMm
+          && Math.hypot(end.x - endProjection.point.x, end.y - endProjection.point.y) <= toleranceMm;
+      });
+    if (!source) return;
+    const thicknessMm = wallThicknessForSegment(source.wall, source.segmentIndex, defaultThicknessMm);
+    if (Math.abs(thicknessMm - defaultThicknessMm) > 1e-6) overrides[`wall-${String(roomEdgeIndex + 1).padStart(3, "0")}`] = thicknessMm;
+  });
+  return overrides;
+}
+
+export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
+  const [walls, setWalls] = useState<Wall[]>([]);
+  const [restoredFinishes, setRestoredFinishes] = useState<Record<string, RoomFinishes>>({});
+  const [openings, setOpenings] = useState<FullOpening[]>([]);
+  const [history, setHistory] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
+  const [draft, setDraft] = useState<Point2D[]>([]);
+  const [tool, setTool] = useState<Tool>("SELECT");
+  const [repeatCommand, setRepeatCommand] = useState<RepeatCommand>(null);
+  const [lShapePickerOpen, setLShapePickerOpen] = useState(false);
+  const [outlineMenuOpen, setOutlineMenuOpen] = useState(false);
+  const [pendingOutlineAction, setPendingOutlineAction] = useState<PendingOutlineAction | null>(null);
+  const [outlineOrientation, setOutlineOrientation] = useState(L_SHAPE_TEMPLATES[0].id);
+  const [pendingRoomRemovalId, setPendingRoomRemovalId] = useState<string | null>(null);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [snapSize, setSnapSize] = useState(DEFAULT_SNAP_MM);
+  const [squaredWalls, setSquaredWalls] = useState(true);
+  const [wallHeight, setWallHeight] = useState(2400);
+  const [wallThickness, setWallThickness] = useState(DEFAULT_WALL_THICKNESS_MM);
+  const [zoom, setZoom] = useState(1);
+  const [showGrid, setShowGrid] = useState(true);
+  const [showWallThickness, setShowWallThickness] = useState(true);
+  const [pan, setPan] = useState<Point2D>({ x: 0, y: 0 });
+  const [selectedSegment, setSelectedSegment] = useState<SegmentSelection | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<PointSelection | null>(null);
+  const [hoveredCorner, setHoveredCorner] = useState<PointSelection | null>(null);
+  const [hoveredSegment, setHoveredSegment] = useState<SegmentSelection | null>(null);
+  const [wallLengthInput, setWallLengthInput] = useState<number | null>(null);
+  const [wallThicknessInput, setWallThicknessInput] = useState<{ key: string; value: number } | null>(null);
+  const [defaultWallThicknessInput, setDefaultWallThicknessInput] = useState<number | null>(null);
+  const [defaultWallThicknessConfirmOpen, setDefaultWallThicknessConfirmOpen] = useState(false);
+  const [overallPropertiesExpanded, setOverallPropertiesExpanded] = useState(false);
+  const [showMeasurements, setShowMeasurements] = useState(true);
+  const [showAnnotations, setShowAnnotations] = useState(true);
+  const [addRoomPanelOpen, setAddRoomPanelOpen] = useState(false);
+  const [roomDepthInput, setRoomDepthInput] = useState(2000);
+  const [roomActionError, setRoomActionError] = useState<string | null>(null);
+  const [measurementLengthInput, setMeasurementLengthInput] = useState<number | null>(null);
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [canvasSize, setCanvasSize] = useState(DEFAULT_SIZE);
+  const [calibrating, setCalibrating] = useState(false);
+  const [calibrationPoints, setCalibrationPoints] = useState<Point2D[]>([]);
+  const [calibrationHover, setCalibrationHover] = useState<Point2D | null>(null);
+  const [calibrationLength, setCalibrationLength] = useState("");
+  const [calibrationError, setCalibrationError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<NamedOutline[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [draggingRoomLabelId, setDraggingRoomLabelId] = useState<string | null>(null);
+  const [elementTab, setElementTab] = useState<"DOOR" | "WINDOW" | "FURNITURE">("DOOR");
+  const [openingKind, setOpeningKind] = useState<"DOOR" | "WINDOW">("DOOR");
+  const [openingParent, setOpeningParent] = useState("");
+  const [openingOffset, setOpeningOffset] = useState(100);
+  const [openingWidth, setOpeningWidth] = useState(800);
+  const [openingHeight, setOpeningHeight] = useState(2040);
+  const [windowSill, setWindowSill] = useState(900);
+  const [openingPositionExpanded, setOpeningPositionExpanded] = useState(false);
+  const [openingSelectorExpanded, setOpeningSelectorExpanded] = useState(false);
+  const [openingSelectorOpen, setOpeningSelectorOpen] = useState<OpeningSelectorLevel | null>(null);
+  const [openingListExpanded, setOpeningListExpanded] = useState(true);
+  const [doorType, setDoorType] = useState<"SINGLE" | "DOUBLE">("SINGLE");
+  const [hingeSide, setHingeSide] = useState<"START" | "END">("START");
+  const [opensInward, setOpensInward] = useState(true);
+  const [openingError, setOpeningError] = useState<string | null>(null);
+  const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [hoveredOpeningCatalogueId, setHoveredOpeningCatalogueId] = useState<string | null>(null);
+  const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(null);
+  const [openingCatalogueItems, setOpeningCatalogueItems] = useState<CatalogueItem[]>([]);
+  const [openingCatalogueError, setOpeningCatalogueError] = useState<string | null>(null);
+  const [openingCatalogueId, setOpeningCatalogueId] = useState("");
+  const [openingComponentColours, setOpeningComponentColours] = useState<Record<string, string>>({});
+  const [doorCustomColour, setDoorCustomColour] = useState("#5b4330");
+  const openingSelectorRef = useRef<HTMLDivElement>(null);
+  const [measurements, setMeasurements] = useState<CustomMeasurement[]>([]);
+  const [annotations, setAnnotations] = useState<FloorplanAnnotation[]>([]);
+  const [annotationPanelOpen, setAnnotationPanelOpen] = useState(false);
+  const [annotationTool, setAnnotationTool] = useState<AnnotationToolName | null>(null);
+  const [annotationMeasurementMode, setAnnotationMeasurementMode] = useState<"ADD" | "REMOVE" | null>(null);
+  const [annotationDraft, setAnnotationDraft] = useState<Point2D[]>([]);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [annotationStyle, setAnnotationStyle] = useState<AnnotationStyle>({ lineStyle: "SOLID", thickness: 1, textSize: 14, rotation: 0, color: "#287fb8", arrowEndStyle: "CLASSIC" });
+  const [annotationTextDialog, setAnnotationTextDialog] = useState<AnnotationTextDialog | null>(null);
+  const [markerDialog, setMarkerDialog] = useState<MarkerDialog | null>(null);
+  const [markerSettings, setMarkerSettings] = useState<MarkerSettings>(DEFAULT_MARKER_SETTINGS);
+  const [dimensionOffsets, setDimensionOffsets] = useState<Record<string, number>>({});
+  const [hiddenDimensions, setHiddenDimensions] = useState<string[]>([]);
+  const [measurementDraft, setMeasurementDraft] = useState<MeasurementReference[]>([]);
+  const [selectedMeasurement, setSelectedMeasurement] = useState<string | null>(null);
+  const [measurementEditEnabled, setMeasurementEditEnabled] = useState(false);
+  const [showRoomNames, setShowRoomNames] = useState(true);
+  const [contextMenu, setContextMenu] = useState<GeometryContextMenu | null>(null);
+  const [measurementContextMenu, setMeasurementContextMenu] = useState<MeasurementContextMenu | null>(null);
+  const [openingContextMenu, setOpeningContextMenu] = useState<OpeningContextMenu | null>(null);
+  const [openingMeasurementContextMenu, setOpeningMeasurementContextMenu] = useState<OpeningMeasurementContextMenu | null>(null);
+  const [openingMeasurementValueInput, setOpeningMeasurementValueInput] = useState<number | null>(null);
+  const [openingMeasurementError, setOpeningMeasurementError] = useState<string | null>(null);
+  const [fixtureContextMenu, setFixtureContextMenu] = useState<FixtureContextMenu | null>(null);
+  const [fixtureDeleteConfirmation, setFixtureDeleteConfirmation] = useState<Obstacle | null>(null);
+  const [fixtureMeasurementContextMenu, setFixtureMeasurementContextMenu] = useState<FixtureMeasurementContextMenu | null>(null);
+  const [fixtureMeasurementValueInput, setFixtureMeasurementValueInput] = useState<number | null>(null);
+  const [fixtureMeasurementError, setFixtureMeasurementError] = useState<string | null>(null);
+  const [toolbarContextMenu, setToolbarContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportStyle, setExportStyle] = useState<ExportStyle>("CURRENT");
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("PDF");
+  const [includeAttribution, setIncludeAttribution] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [restored, setRestored] = useState(false);
+  const [lockedViewport, setLockedViewport] = useState<FloorPlanViewport | null>(null);
+  const editorRoot = useRef<HTMLElement>(null);
+  const coordinateRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const pointDrag = useRef<{ selection: PointSelection; before: Snapshot } | null>(null);
+  const wallDrag = useRef<WallDrag | null>(null);
+  const pendingOpeningRemap = useRef<{ beforeWalls: Wall[]; openings: FullOpening[] } | null>(null);
+  const draftStartAttachment = useRef<WallAttachment | null>(null);
+  const openingDrag = useRef<OpeningDrag | null>(null);
+  const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
+  const annotationDrag = useRef<{ id: string; handle: "WHOLE" | "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL" | "MARKER"; vertexIndex?: number; before: Snapshot; pointerStart: Point2D; original: FloorplanAnnotation } | null>(null);
+  const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
+  const fixtureDrag = useRef<{ id: string; original: Obstacle; offset: Point2D; candidate: PlacementCandidate | null } | null>(null);
+  const [fixturePreview, setFixturePreview] = useState<Obstacle | null>(null);
+  const [placementPoint, setPlacementPoint] = useState<Point2D | null>(null);
+  const placementPress = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && fixtureDrag.current) { fixtureDrag.current = null; setFixturePreview(null); }
+    };
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, []);
+  const roomLabelDrag = useRef<RoomLabelDrag | null>(null);
+  const backgroundImportId = useRef(0);
+  useEffect(() => { if (annotateRequest > 0) queueMicrotask(() => setAnnotationPanelOpen(true)); }, [annotateRequest]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const refresh = () => {
+      void fetch(`${apiUrl}/catalog/items`, { signal: controller.signal, cache: "no-store" })
+        .then((response) => response.ok ? response.json() as Promise<CatalogueItem[]> : Promise.reject(new Error("Object catalogue is unavailable.")))
+        .then((records) => {
+          setOpeningCatalogueItems(records.filter((item) => item.fixture_kind === "DOOR" || item.fixture_kind === "WINDOW"));
+          setOpeningCatalogueError(null);
+        })
+        .catch((reason) => { if (!controller.signal.aborted) setOpeningCatalogueError(reason instanceof Error ? reason.message : "Object catalogue is unavailable."); });
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("catalogue-changed", refresh);
+    return () => { controller.abort(); window.removeEventListener("focus", refresh); window.removeEventListener("catalogue-changed", refresh); };
+  }, [apiUrl]);
+
+  function setWallsRespectingMeasurements(next: Wall[] | ((current: Wall[]) => Wall[]), preserveOrthogonal = squaredWalls, keepProposedOnConflict = false, allowProposedIfOverridesSatisfied = false) {
+    setWalls((current) => {
+      const proposed = ensureVisibleJunctionCorners(typeof next === "function" ? next(current) : next);
+      const enforced = preserveOrthogonal
+        ? enforceWallLengthOverridesPreservingOrthogonality(proposed)
+        : enforceWallLengthOverrides(proposed);
+      if (enforced === null) {
+        // A corner drag can leave the edited span valid while a connected
+        // endpoint makes the broad reconciliation pass briefly non-orthogonal.
+        // Keep that safe drag candidate instead of making the handle appear
+        // locked; explicit length overrides are still checked above.
+        const proposedIsSafe = allowProposedIfOverridesSatisfied
+          && wallLengthOverridesSatisfied(proposed)
+          && (!preserveOrthogonal || proposed.every((wall) => hasOnlyOrthogonalSegments(wall.points)));
+        return keepProposedOnConflict || proposedIsSafe ? proposed : current;
+      }
+      const nextWalls = enforced as Wall[];
+      return JSON.stringify(current) === JSON.stringify(nextWalls) ? current : nextWalls;
+    });
+  }
+
+  const selectedRoom = useMemo(() => rooms.find((room) => room.id === selectedRoomId) ?? rooms[0] ?? null, [rooms, selectedRoomId]);
+  const storedRoom = projectRooms.find(room => room.source_floorplan_room_id === selectedRoom?.id);
+  const fixtures = storedRoom?.obstacles ?? (selectedRoom?.id === activeSourceRoomId ? currentFixtures : []);
+  const visibleFixtures = [...projectRooms.filter(room => rooms.some(outline => outline.id === room.source_floorplan_room_id) && room.source_floorplan_room_id !== selectedRoom?.id).flatMap(room => room.obstacles), ...fixtures];
+  useLayoutEffect(() => {
+    const pending = pendingOpeningRemap.current;
+    if (!pending) return;
+    pendingOpeningRemap.current = null;
+    setOpenings(remapOpeningsAfterWallDrag(pending.beforeWalls, walls, pending.openings));
+  }, [walls]);
+  const wallDimensionOffsetFor = (wall: Wall, segmentIndex: number) => Math.max(32, (200 + (showWallThickness ? wallThicknessForSegment(wall, segmentIndex, wallThickness) / 2 : 0)) * activeViewport.scale);
+  useEffect(() => {
+    if (!openingSelectorOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!openingSelectorRef.current?.contains(event.target as Node)) setOpeningSelectorOpen(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpeningSelectorOpen(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openingSelectorOpen]);
+  const openingCatalogueForKind = useMemo(() => openingCatalogueItems.filter((item) => item.fixture_kind === openingKind), [openingCatalogueItems, openingKind]);
+  const openingCatalogueCategories = useMemo<OpeningCatalogueCategory[]>(() => {
+    const categories = new Map<string, OpeningCatalogueCategory>();
+    openingCatalogueForKind.forEach((item) => {
+      const label = openingCatalogueCategoryLabel(item);
+      const id = `${item.fixture_kind}:${item.category_id}:${label}`;
+      const category = categories.get(id);
+      if (category) category.items.push(item);
+      else categories.set(id, { id, label, items: [item] });
+    });
+    return [...categories.values()];
+  }, [openingCatalogueForKind]);
+  const activeOpeningCategory = openingCatalogueCategories.find((category) => category.items.some((item) => item.id === openingCatalogueId))
+    ?? openingCatalogueCategories.find((category) => category.items.some((item) => item.is_default))
+    ?? openingCatalogueCategories[0];
+  const activeOpeningCatalogueItem = activeOpeningCategory?.items.find((item) => item.id === openingCatalogueId)
+    ?? activeOpeningCategory?.items.find((item) => item.is_default)
+    ?? activeOpeningCategory?.items[0];
+  const doorColour = doorCustomColour;
+  const hoveredOpeningCatalogueItem = hoveredOpeningCatalogueId ? openingCatalogueItems.find((item) => item.id === hoveredOpeningCatalogueId) : undefined;
+  const previewOpeningCatalogueItem = hoveredOpeningCatalogueItem && hoveredOpeningCatalogueItem.id !== activeOpeningCatalogueItem?.id ? hoveredOpeningCatalogueItem : activeOpeningCatalogueItem;
+  const previewOpeningIsHovered = Boolean(hoveredOpeningCatalogueItem && hoveredOpeningCatalogueItem.id !== activeOpeningCatalogueItem?.id);
+  const previewOpeningDoorType = previewOpeningIsHovered && previewOpeningCatalogueItem?.fixture_kind === "DOOR"
+    ? (doorModel(previewOpeningCatalogueItem.representation_key)?.leaves ?? (previewOpeningCatalogueItem.subcategory.toLowerCase().includes("double") ? 2 : 1)) > 1 ? "DOUBLE" : "SINGLE"
+    : doorType;
+  const previewOpeningWidth = previewOpeningIsHovered ? previewOpeningCatalogueItem?.width_mm : openingWidth;
+  const previewOpeningHeight = previewOpeningIsHovered ? previewOpeningCatalogueItem?.height_mm : openingHeight;
+  const previewOpeningColour = previewOpeningIsHovered ? previewOpeningCatalogueItem?.color_hex : doorColour;
+  const previewOpeningComponentColours = previewOpeningIsHovered ? {} : openingComponentColours;
+  function defaultOpeningCatalogueItem(kind: "DOOR" | "WINDOW") {
+    return openingCatalogueItems.find((item) => item.fixture_kind === kind && item.is_default)
+      ?? openingCatalogueItems.find((item) => item.fixture_kind === kind);
+  }
+  function catalogueItemForOpening(opening: FullOpening) {
+    return opening.catalogueItemId ? openingCatalogueItems.find((item) => item.id === opening.catalogueItemId) : undefined;
+  }
+  function applyOpeningCatalogueItem(item?: CatalogueItem) {
+    if (!item || (item.fixture_kind !== "DOOR" && item.fixture_kind !== "WINDOW")) return;
+    const dimensions = openingCatalogueDefaultDimensions(item);
+    setOpeningCatalogueId(item.id);
+    setOpeningWidth(item.width_mm);
+    setOpeningHeight(dimensions.height);
+    if (item.fixture_kind === "WINDOW") setWindowSill(dimensions.sill);
+    if (item.fixture_kind === "DOOR") {
+      setDoorType((doorModel(item.representation_key)?.leaves ?? (item.subcategory.toLowerCase().includes("double") ? 2 : 1)) > 1 ? "DOUBLE" : "SINGLE");
+    }
+    setOpeningComponentColours({});
+    setDoorCustomColour(item.color_hex);
+  }
+  function selectOpeningCategory(category: OpeningCatalogueCategory) {
+    setHoveredOpeningCatalogueId(null);
+    applyOpeningCatalogueItem(category.items.find((item) => item.is_default) ?? category.items[0]);
+    setOpeningSelectorExpanded(true);
+    setOpeningSelectorOpen("object");
+  }
+  function selectOpeningObject(item: CatalogueItem) {
+    setHoveredOpeningCatalogueId(null);
+    applyOpeningCatalogueItem(item);
+    setOpeningSelectorOpen(null);
+    setOpeningSelectorExpanded(false);
+  }
+  function selectOpeningKind(kind: "DOOR" | "WINDOW") {
+    onElementSelected?.(null);
+    setHoveredOpeningCatalogueId(null);
+    setOpeningComponentColours({});
+    setOpeningPositionExpanded(false);
+    setOpeningSelectorOpen(null);
+    setOpeningSelectorExpanded(false);
+    setElementTab(kind);
+    setOpeningKind(kind);
+    const item = defaultOpeningCatalogueItem(kind);
+    if (item) applyOpeningCatalogueItem(item);
+    else {
+      setOpeningCatalogueId("");
+      setOpeningWidth(800);
+      setOpeningHeight(kind === "DOOR" ? 2040 : 900);
+      if (kind === "WINDOW") setWindowSill(900);
+      if (kind === "DOOR") setDoorType("SINGLE");
+    }
+  }
+  function windowPaneCountFor(opening: FullOpening) {
+    const item = catalogueItemForOpening(opening);
+    const label = `${item?.subcategory ?? ""} ${item?.name ?? ""} ${item?.representation_key ?? ""}`.toLowerCase();
+    return label.includes("triple") ? 3 : label.includes("double") ? 2 : 1;
+  }
+  const roomDraftForOutline = useCallback((outline: NamedOutline): Room => {
+    const stored = projectRooms.find(room => room.source_floorplan_room_id === outline.id);
+    const normalized = { ...outline, vertices: counterClockwiseVertices(outline.vertices) };
+    return {
+      id: stored?.id ?? outline.id,
+      source_floorplan_room_id: outline.id,
+      name: normalized.name,
+      version: stored?.version ?? 1,
+      vertices: normalized.vertices,
+      wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" },
+      wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" },
+      wall_thickness_overrides_mm: roomWallThicknessOverrides(normalized, walls, wallThickness),
+      openings: roomOpenings(normalized, openings, walls, openingCatalogueItems),
+      obstacles: stored?.obstacles ?? (outline.id === activeSourceRoomId ? currentFixtures : []),
+      person_mockup: stored?.person_mockup ?? null,
+      finishes: stored?.finishes ?? restoredFinishes[outline.id],
+    };
+  }, [activeSourceRoomId, currentFixtures, openingCatalogueItems, openings, projectRooms, restoredFinishes, wallHeight, wallThickness, walls]);
+  const planRooms = useMemo(() => rooms.map(roomDraftForOutline), [roomDraftForOutline, rooms]);
+  const placementGeometry = useRef({ walls, openings, planRooms, viewerOpeningRoom });
+  useEffect(() => { placementGeometry.current = { walls, openings, planRooms, viewerOpeningRoom }; }, [walls, openings, planRooms, viewerOpeningRoom]);
+  const planPlacementWalls = useMemo(()=>walls.flatMap(wall=>wall.points.slice(0,-1).map((start,index)=>({start,end:wall.points[index+1],thickness:wallThicknessForSegment(wall,index,wallThickness)}))),[walls,wallThickness]);
+  useEffect(()=>{ onPlacementWallsChange?.(planPlacementWalls); },[onPlacementWallsChange,planPlacementWalls]);
+  const placementCandidate = placement && placementPoint ? resolvePlacement(placement, placementPoint, planRooms,planPlacementWalls) : null;
+  const planRoomsSignature = useMemo(() => JSON.stringify(planRooms), [planRooms]);
+  const publishedPlanRooms = useRef("");
+  const publishPlanRooms = useEffectEvent((next: Room[]) => onPlanRoomsChange?.(next));
+  useEffect(() => {
+    if (!restored || publishedPlanRooms.current === planRoomsSignature) return;
+    publishedPlanRooms.current = planRoomsSignature;
+    publishPlanRooms(planRooms);
+  }, [planRooms, planRoomsSignature, restored]);
+  function onFixturesChange(next: Obstacle[]) {
+    const draft = selectedRoomDraft();
+    if (draft) next = next.flatMap(obstacle => {
+      const previous = draft.obstacles.find(item => item.id === obstacle.id);
+      const unchanged = previous && JSON.stringify([previous.center,previous.dimensions,previous.rotation_deg,previous.wall_lock]) === JSON.stringify([obstacle.center,obstacle.dimensions,obstacle.rotation_deg,obstacle.wall_lock]);
+      const bounded = unchanged ? obstacle : constrainObstacleToRoom(obstacle,draft,obstacle.center,planPlacementWalls);
+      return bounded ? [bounded] : previous ? [previous] : [];
+    });
+    if (draft && onPlanRoomChange) onPlanRoomChange({ ...draft, ...storedRoom, id: storedRoom?.id ?? draft.id, source_floorplan_room_id: selectedRoom!.id, vertices: draft.vertices, openings: draft.openings, obstacles: next, version: (storedRoom?.version ?? 0) + 1 });
+    else currentOnFixturesChange?.(next);
+  }
+  const segmentOptions = useMemo(() => walls.flatMap((wall, wallIndex) => wall.points.slice(0, -1).map((_, segmentIndex) => ({ key: parentKey(wall.id, segmentIndex), label: `Wall ${wallIndex + 1}.${segmentIndex + 1}`, wall, segmentIndex }))), [walls]);
+  const selectedWall = selectedSegment ? walls.find((wall) => wall.id === selectedSegment.wallId) ?? null : null;
+  const selectedPointWall = selectedPoint ? walls.find((wall) => wall.id === selectedPoint.wallId) ?? null : null;
+  const selectedPointValue = selectedPointWall && selectedPoint ? selectedPointWall.points[selectedPoint.pointIndex] : null;
+  const detectedRooms = useMemo(() => detectClosedRooms(walls), [walls]);
+  const wallVertexStarts = useMemo(() => {
+    const starts = new Map<string, number>(); let next = 1;
+    walls.forEach((wall) => { starts.set(wall.id, next); next += wall.points.slice(0, samePoint(wall.points[0], wall.points.at(-1)!) ? -1 : undefined).filter((_, index) => !wall.attachments?.[index]?.hideCorner).length; });
+    return starts;
+  }, [walls]);
+  const coordinateEntries = walls.flatMap((wall) => {
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    const points = wall.points.slice(0, closed ? -1 : undefined);
+    const start = wallVertexStarts.get(wall.id) ?? 1;
+    return points.map((point, pointIndex) => ({ point, pointIndex })).filter(({ pointIndex }) => !wall.attachments?.[pointIndex]?.hideCorner).map(({ point, pointIndex }, visibleIndex) => ({ wall, point, pointIndex, cornerNumber: wall.cornerNumbers?.[pointIndex] ?? start + visibleIndex }));
+  });
+  const coordinatesToolbarOpen = toolbarVisibility["floorplan-coordinates"];
+  useEffect(() => {
+    if (!coordinatesToolbarOpen || !selectedPoint) return;
+    coordinateRowRefs.current.get(`${selectedPoint.wallId}:${selectedPoint.pointIndex}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [coordinatesToolbarOpen, selectedPoint]);
+  const viewport = useMemo(() => {
+    const geometry = [...walls.flatMap((wall) => wall.points), ...draft];
+    const points = sourceUrl ? [...(calibrating ? [] : geometry), { x: 0, y: 0 }, { x: canvasSize.width, y: canvasSize.height }] : geometry;
+    const xs = points.map((point) => point.x); const ys = points.map((point) => point.y);
+    const span = points.length > 1 ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) : 1000;
+    return createFloorPlanViewport(points, Math.max(120, span * .17));
+  }, [canvasSize.height, canvasSize.width, draft, sourceUrl, walls, calibrating]);
+  const zoomedViewport = scaleFloorPlanViewport(lockedViewport ?? viewport, zoom);
+  const activeViewport = { ...zoomedViewport, offsetX: zoomedViewport.offsetX + pan.x, offsetY: zoomedViewport.offsetY + pan.y };
+  const toScreen = (point: Point2D) => floorPlanToScreen(point, activeViewport);
+  const actualGridSizeMm = Number.isFinite(snapSize) && snapSize > 0 ? snapSize : DEFAULT_SNAP_MM;
+  const gridOrigin = toScreen({ x: 0, y: 0 });
+  const gridSpacing = actualGridSizeMm * activeViewport.scale;
+  const zoomWithWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    if (event.deltaY === 0) return;
+    const factor = event.deltaY > 0 ? 0.9 : 1.1;
+    setZoom((current) => Math.max(.5, Math.min(3, current * factor)));
+  };
+
+  useEffect(() => () => { if (sourceUrl) URL.revokeObjectURL(sourceUrl); }, [sourceUrl]);
+
+  useEffect(() => { if (exportRequest > 0) queueMicrotask(() => { setExportError(null); setExportOpen(true); }); }, [exportRequest]);
+  const publishPersistedFloorplan = useEffectEvent((value: PersistedFloorplan, rooms: Room[]) => onPersistFloorplan?.(value, rooms));
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try {
+      const saved = initialFloorplan;
+      if (saved) {
+        setRestoredFinishes(saved.roomFinishes ?? {});
+        const savedSquaredWalls = saved.squaredWalls ?? true;
+        const savedWalls = cloneWalls(saved.walls ?? []);
+        // Saved coordinates are authoritative. Do not re-square or re-enforce
+        // them during restore: both operations can move a junction that the
+        // user deliberately positioned before refreshing the page.
+        setWalls(savedWalls);
+        setOpenings(cloneOpenings(saved.openings ?? []));
+        setMeasurements(cloneMeasurements(saved.measurements ?? [])); setAnnotations(cloneAnnotations(saved.annotations ?? [])); setDimensionOffsets(saved.dimensionOffsets ?? {}); setHiddenDimensions(saved.hiddenDimensions ?? []);
+        setCanvasSize(saved.canvasSize ?? DEFAULT_SIZE);
+        setRooms(saved.rooms ?? []); setSelectedRoomId(saved.selectedRoomId ?? null);
+        setSnapEnabled(saved.snapEnabled ?? true); setSnapSize(saved.snapSize ?? DEFAULT_SNAP_MM); setSquaredWalls(savedSquaredWalls); setWallHeight(saved.wallHeight ?? 2400); setWallThickness(saved.wallThickness ?? DEFAULT_WALL_THICKNESS_MM);
+        const viewSettings = saved.viewSettings ?? {};
+        setShowGrid(viewSettings.showGrid ?? true);
+        setShowMeasurements(viewSettings.showMeasurements ?? true);
+        setShowAnnotations(viewSettings.showAnnotations ?? true);
+        setShowRoomNames(viewSettings.showRoomNames ?? true);
+        setShowWallThickness(viewSettings.showWallThickness ?? true);
+        const savedZoom = viewSettings.zoom;
+        setZoom(typeof savedZoom === "number" && Number.isFinite(savedZoom) ? Math.max(.5, Math.min(3, savedZoom)) : 1);
+        const savedPan = viewSettings.pan;
+        setPan(savedPan && Number.isFinite(savedPan.x) && Number.isFinite(savedPan.y) ? { x: savedPan.x, y: savedPan.y } : { x: 0, y: 0 });
+      }
+    } catch { /* Ignore a damaged browser draft and start clean. */ }
+    setRestored(true);
+  // The parent replaces this immutable snapshot only when opening another project.
+  }, [initialFloorplan]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const roomFinishes = Object.fromEntries(planRooms.filter((room) => room.finishes).map((room) => [room.source_floorplan_room_id ?? room.id, room.finishes!]));
+    const viewSettings: PersistedViewSettings = { showGrid, showMeasurements, showRoomNames, showWallThickness, showAnnotations, zoom, pan };
+    const value: PersistedFloorplan = { walls, openings, measurements, annotations, dimensionOffsets, hiddenDimensions, canvasSize, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, roomFinishes, viewSettings };
+    publishPersistedFloorplan(value, planRooms);
+  }, [annotations, canvasSize, dimensionOffsets, hiddenDimensions, measurements, openings, pan, planRooms, restored, rooms, selectedRoomId, showGrid, showMeasurements, showRoomNames, showWallThickness, showAnnotations, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, walls, zoom]);
+
+  useEffect(() => {
+    if (!restored) return;
+    setRooms((current) => reconcileRooms(current, detectedRooms));
+  }, [detectedRooms, restored]);
+
+  useEffect(() => {
+    setSelectedRoomId((current) => rooms.some((room) => room.id === current) ? current : rooms[0]?.id ?? null);
+  }, [rooms]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const commitActiveDraft = useEffectEvent(() => commitDraft());
+  const cancelActiveEditorInteractionEvent = useEffectEvent(() => cancelActiveEditorInteraction());
+  const undoLastOperation = useEffectEvent(() => undo());
+  const redoLastOperation = useEffectEvent(() => redo());
+  const finishAnnotationPolylineEvent = useEffectEvent(() => finishAnnotationPolyline());
+  const deleteSelectedAnnotationEvent = useEffectEvent(() => deleteSelectedAnnotation());
+  const requestSelectedFixtureDeletion = useEffectEvent(() => {
+    if (fixtureDeleteConfirmation || !selectedFixtureId) return;
+    const fixture = fixtures.find((item) => item.id === selectedFixtureId);
+    if (!fixture) return;
+    setFixtureContextMenu(null);
+    setFixtureMeasurementContextMenu(null);
+    setFixtureDeleteConfirmation(fixture);
+  });
+  useEffect(() => {
+    const finishActiveTool = (event: KeyboardEvent) => {
+      if (!editorRoot.current || editorRoot.current.closest("[hidden]")) return;
+      if (calibrating) {
+        if (event.key === "Escape") { event.preventDefault(); cancelActiveEditorInteractionEvent(); }
+        return;
+      }
+      if (!event.repeat && !event.shiftKey && !event.altKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undoLastOperation();
+        return;
+      }
+      if (!event.repeat && !event.shiftKey && !event.altKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redoLastOperation();
+        return;
+      }
+      if (!event.repeat && (event.key === "Delete" || event.key === "Backspace") && !(event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]"))) {
+        if (selectedAnnotationId) {
+          event.preventDefault();
+          deleteSelectedAnnotationEvent();
+          return;
+        }
+        if (selectedFixtureId) event.preventDefault();
+        requestSelectedFixtureDeletion();
+        return;
+      }
+      if (event.key === "Escape" && (annotationTextDialog || markerDialog || annotationTool)) {
+        event.preventDefault();
+        cancelActiveEditorInteractionEvent();
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Return") && annotationTool === "POLYLINE") {
+        event.preventDefault();
+        finishAnnotationPolylineEvent();
+        return;
+      }
+      if (tool === "DRAW" && (event.key === "Enter" || event.key === "Return")) {
+        event.preventDefault();
+        commitActiveDraft();
+        return;
+      }
+      if (event.key === "Escape" && (placement || fixtureDrag.current || tool !== "SELECT" || annotationPanelOpen || addRoomPanelOpen || outlineMenuOpen || lShapePickerOpen)) {
+        event.preventDefault();
+        cancelActiveEditorInteractionEvent();
+        return;
+      }
+    };
+    window.addEventListener("keydown", finishActiveTool);
+    return () => window.removeEventListener("keydown", finishActiveTool);
+  }, [addRoomPanelOpen, annotationPanelOpen, annotationTextDialog, annotationTool, calibrating, lShapePickerOpen, markerDialog, outlineMenuOpen, placement, selectedAnnotationId, selectedFixtureId, tool]);
+
+  useEffect(() => {
+    if (!contextMenu && !measurementContextMenu && !openingContextMenu && !openingMeasurementContextMenu && !fixtureContextMenu && !fixtureMeasurementContextMenu && !toolbarContextMenu) return;
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".floorplan-context-menu")) return;
+      if (target instanceof Element && target.closest(".toolbar-context-menu")) return;
+      if (target instanceof Element && target.closest(".measurement-context-target")) return;
+      setContextMenu(null);
+      setMeasurementContextMenu(null);
+      setOpeningContextMenu(null);
+      setOpeningMeasurementContextMenu(null);
+      setFixtureContextMenu(null);
+      setFixtureMeasurementContextMenu(null);
+      setFixtureMeasurementValueInput(null);
+      setFixtureMeasurementError(null);
+      setToolbarContextMenu(null);
+      setSelectedMeasurement(null);
+    };
+    const dismissWithKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" && event.key !== "Enter" && event.key !== "Return") return;
+      if ((event.key === "Enter" || event.key === "Return") && event.target instanceof Element && event.target.closest(".measurement-value-menu")) return;
+      event.preventDefault();
+      setContextMenu(null); setMeasurementContextMenu(null); setOpeningContextMenu(null); setOpeningMeasurementContextMenu(null); setFixtureContextMenu(null); setFixtureMeasurementContextMenu(null); setFixtureMeasurementValueInput(null); setFixtureMeasurementError(null); setToolbarContextMenu(null); setSelectedMeasurement(null);
+    };
+    const dismissOnBlur = () => { setContextMenu(null); setMeasurementContextMenu(null); setOpeningContextMenu(null); setOpeningMeasurementContextMenu(null); setFixtureContextMenu(null); setFixtureMeasurementContextMenu(null); setFixtureMeasurementValueInput(null); setFixtureMeasurementError(null); setToolbarContextMenu(null); setSelectedMeasurement(null); };
+    window.addEventListener("pointerdown", dismiss);
+    window.addEventListener("keydown", dismissWithKeyboard);
+    window.addEventListener("blur", dismissOnBlur);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("keydown", dismissWithKeyboard);
+      window.removeEventListener("blur", dismissOnBlur);
+    };
+  }, [contextMenu, fixtureContextMenu, fixtureMeasurementContextMenu, measurementContextMenu, openingContextMenu, openingMeasurementContextMenu, toolbarContextMenu]);
+
+  function snapshot(): Snapshot { return { wallThickness, rooms: rooms.map((room) => ({ ...room, vertices: room.vertices.map((point) => ({ ...point })), labelPosition: room.labelPosition ? { ...room.labelPosition } : undefined })), selectedRoomId, walls: cloneWalls(walls), openings: cloneOpenings(openings), measurements: cloneMeasurements(measurements), annotations: cloneAnnotations(annotations), dimensionOffsets: { ...dimensionOffsets }, hiddenDimensions: [...hiddenDimensions] }; }
+  function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); }
+  function restore(value: Snapshot) { setDefaultWallThicknessInput(null); setWallThicknessInput(null); setWalls(cloneWalls(value.walls)); if (value.wallThickness !== undefined) setWallThickness(value.wallThickness); if (value.rooms) setRooms(value.rooms); setSelectedRoomId(value.selectedRoomId ?? null); setOpenings(cloneOpenings(value.openings)); setMeasurements(cloneMeasurements(value.measurements ?? [])); setAnnotations(cloneAnnotations(value.annotations ?? [])); setDimensionOffsets({ ...(value.dimensionOffsets ?? {}) }); setHiddenDimensions([...(value.hiddenDimensions ?? [])]); setDraft([]); setMeasurementDraft([]); setAnnotationDraft([]); setSelectedAnnotationId(null); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); }
+  function undo() { const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous); }
+  function redo() { const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next); }
+
+  function moveCornerPreservingTopology(baseline: Wall[], selection: PointSelection, next: Point2D, options?: { allowSubMinimumLength?: boolean }): Wall[] {
+    baseline = refreshWallEndpointAttachments(baseline);
+    const source = baseline.find((wall) => wall.id === selection.wallId);
+    if (!source) return baseline;
+    const allowSubMinimumLength = options?.allowSubMinimumLength ?? false;
+    const requestedWalls = squaredWalls ? propagateSquaredWallEdit(baseline, baseline.map((wall) => wall.id === source.id
+      ? { ...wall, points: moveSquaredWallPoint(wall.points, selection.pointIndex, next) } : wall), selection) : baseline;
+    const requestedPoints = requestedWalls.find((wall) => wall.id === source.id)!.points;
+    const constrainedNext = squaredWalls
+      ? allowSubMinimumLength
+        ? { ...next }
+        : constrainSquaredCornerTarget(baseline, source.id, selection.pointIndex, requestedPoints, next, Math.max(MIN_WALL_CLEARANCE_MM, snapEnabled ? snapSize : 0), requestedWalls)
+      : { ...next };
+    const candidate = baseline.map((wall) => {
+      if (wall.id !== selection.wallId) return { ...wall, points: wall.points.map((point) => ({ ...point })) };
+      const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+      const points = squaredWalls ? moveSquaredWallPoint(wall.points, selection.pointIndex, constrainedNext) : wall.points.map((point, pointIndex) => pointIndex === selection.pointIndex ? { ...constrainedNext } : { ...point });
+      if (closed && selection.pointIndex === 0) points[points.length - 1] = { ...points[0] };
+      // Validate the completed layout after propagation: the remote end of a
+      // locked wall has not moved yet in this intermediate candidate.
+      return { ...wall, points };
+    });
+    const propagated = squaredWalls ? propagateSquaredWallEdit(baseline, candidate, selection) : candidate;
+    const translatedRun = translateStraightWallRunForCorner(baseline, propagated, selection.wallId, selection.pointIndex);
+    const hostTranslated = translateHostSegmentWithDraggedEndpoint(baseline, translatedRun, selection.wallId, selection.pointIndex);
+    const incidentTranslated = translateIncidentWallRunsForCorner(baseline, hostTranslated, selection.wallId, selection.pointIndex);
+    const synchronized = reanchorAutoWallBridges(synchronizeConnectedJunctions(baseline, incidentTranslated, squaredWalls, selection.wallId), selection.wallId);
+    const adjacentSegmentIndex = Math.max(0, Math.min(source.points.length - 2, selection.pointIndex));
+    const connectedEndpoints = followTerminatingEndpointsOnTranslatedSegments(baseline, synchronized, selection.wallId);
+    const anchoredEndpoints = reanchorAttachedWallEndpoints(connectedEndpoints, selection.wallId);
+    const repaired = reanchorAutoWallBridges(retainDraggedWallConnections(baseline, anchoredEndpoints, selection.wallId, adjacentSegmentIndex), selection.wallId);
+    return (!squaredWalls || wallLengthOverridesSatisfied(repaired)) && repaired.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && hasMinimumEnclosedArea(wall.points)) ? repaired : baseline;
+  }
+
+  function constrainCornerMoveForOpenings(baselineWalls: Wall[], baselineOpenings: FullOpening[], selection: PointSelection, requestedNext: Point2D, options?: { allowSubMinimumLength?: boolean }): { walls: Wall[]; openings: FullOpening[] } {
+    const source = baselineWalls.find((wall) => wall.id === selection.wallId);
+    const origin = source?.points[selection.pointIndex];
+    if (!source || !origin) return { walls: baselineWalls, openings: baselineOpenings };
+    const candidateAt = (progress: number) => {
+      const target = {
+        x: origin.x + (requestedNext.x - origin.x) * progress,
+        y: origin.y + (requestedNext.y - origin.y) * progress,
+      };
+      const candidateWalls = progress === 0
+        ? baselineWalls
+        : moveCornerPreservingTopology(baselineWalls, selection, target, options);
+      return {
+        walls: candidateWalls,
+        openings: remapOpeningsAfterWallDrag(baselineWalls, candidateWalls, baselineOpenings),
+      };
+    };
+    const valid = (candidate: { walls: Wall[]; openings: FullOpening[] }) => {
+      const changedWallIds = new Set(candidate.walls.filter((wall) => {
+        const before = baselineWalls.find((item) => item.id === wall.id);
+        return !before || before.points.length !== wall.points.length || wall.points.some((point, index) => {
+          const previous = before.points[index];
+          return !previous || Math.hypot(point.x - previous.x, point.y - previous.y) > .001;
+        });
+      }).map((wall) => wall.id));
+      return candidate.openings.every((opening) => !changedWallIds.has(opening.wallId) || openingPlacementIsValid(opening, candidate.walls, candidate.openings));
+    };
+    const requested = candidateAt(1);
+    if (valid(requested)) return requested;
+    const initial = candidateAt(0);
+    if (!valid(initial)) return initial;
+    let allowed = 0;
+    let blocked = 1;
+    for (let iteration = 0; iteration < 32; iteration += 1) {
+      const progress = (allowed + blocked) / 2;
+      if (valid(candidateAt(progress))) allowed = progress;
+      else blocked = progress;
+    }
+    return candidateAt(allowed);
+  }
+  function canvasPoint(event: ReactPointerEvent<SVGSVGElement>, attachToWalls = true): Point2D {
+    return canvasPointFromClient(event.clientX, event.clientY, event.currentTarget, attachToWalls);
+  }
+
+  function annotationPoint(event: ReactPointerEvent<SVGSVGElement>, anchor?: Point2D, attachToWall = false): Point2D {
+    const raw = floorPlanFromClient(event.clientX, event.clientY, event.currentTarget, activeViewport);
+    const bypassSnap = event.altKey || event.ctrlKey || event.metaKey;
+    const wallProjection = attachToWall && !bypassSnap ? nearestAnnotationWallProjection(raw, walls) : null;
+    const gridPoint = { x: Math.round(raw.x / snapSize) * snapSize, y: Math.round(raw.y / snapSize) * snapSize };
+    const target = wallProjection?.point ?? (!snapEnabled ? raw : snapPoint(gridPoint, walls, true, snapSize));
+    if (!anchor || !event.shiftKey) return target;
+
+    const horizontalFirst = Math.abs(raw.x - anchor.x) >= Math.abs(raw.y - anchor.y);
+    if (wallProjection) {
+      const primary = intersectAnnotationAxisWithWall(anchor, wallProjection, horizontalFirst);
+      const alternate = intersectAnnotationAxisWithWall(anchor, wallProjection, !horizontalFirst);
+      if (primary) return primary;
+      if (alternate) return alternate;
+    }
+    return horizontalFirst ? { x: target.x, y: anchor.y } : { x: anchor.x, y: target.y };
+  }
+
+  function nextMarkerLabel(symbol: MarkerSymbol, items = annotations): string {
+    const markers = items.filter((annotation) => annotation.type === "MARKER");
+    if (symbol === "NUMBER") {
+      const values = markers.map((annotation) => Number(annotation.marker?.label)).filter((value) => Number.isFinite(value));
+      return String((values.length ? Math.max(...values) : 0) + 1);
+    }
+    if (symbol === "LETTER") {
+      const values = markers.map((annotation) => (annotation.marker?.label ?? "").trim().toUpperCase()).filter((value) => /^[A-Z]+$/.test(value)).map((value) => value.split("").reduce((total, character) => total * 26 + character.charCodeAt(0) - 64, 0));
+      let value = (values.length ? Math.max(...values) : 0) + 1;
+      let label = "";
+      while (value > 0) { value -= 1; label = String.fromCharCode(65 + (value % 26)) + label; value = Math.floor(value / 26); }
+      return label;
+    }
+    return "";
+  }
+
+  function markerLabelForPlacement(settings: MarkerSettings): string {
+    return (settings.symbol === "NUMBER" || settings.symbol === "LETTER") && !settings.label.trim() ? nextMarkerLabel(settings.symbol) : settings.label.trim();
+  }
+
+  function updateMarkerSettings(partial: Partial<MarkerSettings>) {
+    setMarkerSettings((current) => {
+      const next = { ...current, ...partial };
+      if (partial.symbol && partial.symbol !== current.symbol && (partial.symbol === "NUMBER" || partial.symbol === "LETTER")) next.label = nextMarkerLabel(partial.symbol);
+      if (partial.symbol && partial.symbol !== current.symbol && partial.symbol !== "NUMBER" && partial.symbol !== "LETTER") next.label = "";
+      return next;
+    });
+  }
+
+  function openMarkerSettings(mode: MarkerDialog["mode"], annotation?: FloorplanAnnotation) {
+    if (mode === "EDIT" && annotation) {
+      const current = annotation.marker ?? { ...DEFAULT_MARKER_SETTINGS, color: annotation.style.color ?? DEFAULT_MARKER_SETTINGS.color };
+      setMarkerSettings({ ...current, size: markerTextSize(current.size) });
+      setMarkerDialog({ mode: "EDIT", annotationId: annotation.id });
+      return;
+    }
+    setMarkerSettings((current) => ({ ...current, label: current.symbol === "NUMBER" || current.symbol === "LETTER" ? nextMarkerLabel(current.symbol) : "" }));
+    setMarkerDialog({ mode: "CREATE" });
+  }
+
+  function cancelMarkerDialog() {
+    cancelAnnotationMode();
+  }
+  function confirmMarkerSettings() {
+    const dialog = markerDialog;
+    if (!dialog) return;
+    const nextMarker = { ...markerSettings, size: markerTextSize(markerSettings.size), label: markerLabelForPlacement(markerSettings) };
+    if (dialog.mode === "EDIT") {
+      const current = annotations.find((annotation) => annotation.id === dialog.annotationId);
+      const nextArrowTail = nextMarker.arrowAttached && current?.position ? current.labelPosition ?? { x: current.position.x + 250, y: current.position.y - 180 } : undefined;
+      if (current && (JSON.stringify(current.marker) !== JSON.stringify(nextMarker) || Boolean(current.labelPosition) !== Boolean(nextArrowTail))) {
+        record();
+        setAnnotations((items) => items.map((item) => item.id === dialog.annotationId ? { ...item, marker: nextMarker, labelPosition: nextArrowTail, style: { ...item.style, color: nextMarker.color } } : item));
+      }
+      setMarkerSettings(nextMarker);
+      setMarkerDialog(null);
+      return;
+    }
+    setMarkerSettings(nextMarker);
+    setMarkerDialog(null);
+    setAnnotationDraft([]);
+    setAnnotationTool("MARKER");
+    setAnnotationMeasurementMode(null);
+    setTool("SELECT");
+    setSelectedAnnotationId(null);
+  }
+
+  function editMarker(annotation: FloorplanAnnotation) {
+    if (annotation.type !== "MARKER") return;
+    setSelectedAnnotationId(annotation.id);
+    setAnnotationPanelOpen(true);
+    openMarkerSettings("EDIT", annotation);
+  }
+  function createAnnotation(annotation: FloorplanAnnotation) {
+    setShowAnnotations(true);
+    record();
+    setAnnotations((current) => [...current, annotation]);
+    setSelectedAnnotationId(annotation.id);
+    setAnnotationPanelOpen(true);
+  }
+
+  function finishAnnotationPolyline() {
+    if (annotationTool !== "POLYLINE" || annotationDraft.length < 2) return;
+    createAnnotation({ id: crypto.randomUUID(), type: "POLYLINE", points: annotationDraft.map((point) => ({ ...point })), style: { ...annotationStyle } });
+    setAnnotationDraft([]);
+    setAnnotationTool(annotationToolAfterCompletion("POLYLINE"));
+  }
+
+  function editAnnotationText(annotation: FloorplanAnnotation) {
+    if (annotation.type !== "TEXT" && annotation.type !== "CALLOUT") return;
+    setAnnotationTextDialog({ mode: "EDIT", annotationId: annotation.id, annotationType: annotation.type, value: annotation.text ?? "" });
+  }
+  function cancelAnnotationTextDialog() {
+    cancelAnnotationMode();
+  }
+
+  function confirmAnnotationTextDialog() {
+    const dialog = annotationTextDialog;
+    const text = dialog?.value.trim() ?? "";
+    if (!dialog || !text) return;
+    if (dialog.mode === "EDIT") {
+      const current = annotations.find((annotation) => annotation.id === dialog.annotationId);
+      if (current && current.text !== text) {
+        record();
+        setAnnotations((items) => items.map((item) => item.id === dialog.annotationId ? { ...item, text } : item));
+      }
+    } else if (dialog.mode === "CREATE_TEXT") {
+      createAnnotation({ id: crypto.randomUUID(), type: "TEXT", position: dialog.position, text, style: { ...annotationStyle } });
+      setAnnotationTool(annotationToolAfterCompletion("TEXT"));
+    } else {
+      createAnnotation({ id: crypto.randomUUID(), type: "CALLOUT", anchor: dialog.anchor, labelPosition: dialog.labelPosition, text, style: { ...annotationStyle } });
+      setAnnotationTool(annotationToolAfterCompletion("CALLOUT"));
+    }
+    setAnnotationTextDialog(null);
+    setAnnotationDraft([]);
+  }
+  function activateAnnotationMeasurement(mode: "ADD" | "REMOVE") {
+    setShowMeasurements(true);
+    setAnnotationDraft([]);
+    setSelectedAnnotationId(null);
+    onElementSelected?.(null);
+    if (mode === "REMOVE" && selectedMeasurement) {
+      deleteSelectedMeasurement();
+      setAnnotationTool(null);
+      setAnnotationMeasurementMode(null);
+      return;
+    }
+    setAnnotationTool("MEASUREMENT");
+    setAnnotationMeasurementMode(mode);
+    setMeasurementEditEnabled(false);
+    setDraft([]);
+    setMeasurementDraft([]);
+    setMeasurementContextMenu(null);
+    setSelectedMeasurement(null);
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setLockedViewport(null);
+    setTool(mode === "ADD" ? "ADD_MEASURE" : "REMOVE_MEASURE");
+  }
+  function handleAnnotationToolChange(next: AnnotationToolName) {
+    setAnnotationDraft([]);
+    setSelectedAnnotationId(null);
+    if (next === "MEASUREMENT") {
+      activateAnnotationMeasurement("ADD");
+      return;
+    }
+    setShowAnnotations(true);
+    onElementSelected?.(null);
+    setAnnotationMeasurementMode(null);
+    setMeasurementDraft([]);
+    setMeasurementContextMenu(null);
+    setSelectedSegment(null); setSelectedPoint(null); setSelectedMeasurement(null); setLockedViewport(null);
+    if (next === "MARKER") {
+      setAnnotationTool(null);
+      openMarkerSettings("CREATE");
+      return;
+    }
+    setAnnotationTool(next);
+    setTool("SELECT");
+  }
+
+  function handleAnnotationPointerDown(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    if (!annotationTool || annotationTool === "MEASUREMENT" || event.button !== 0) return false;
+    event.preventDefault(); event.stopPropagation();
+    const lineTool = annotationTool === "LINE" || annotationTool === "ARROW";
+    const lineAnchor = lineTool && annotationDraft.length === 1 ? annotationDraft[0] : undefined;
+    const point = annotationPoint(event, lineAnchor, lineTool);
+    if (annotationTool === "TEXT") {
+      setAnnotationTextDialog({ mode: "CREATE_TEXT", position: point, value: "" });
+      return true;
+    }
+    if (annotationTool === "CALLOUT") {
+      if (!annotationDraft.length) { setAnnotationDraft([point]); return true; }
+      setAnnotationTextDialog({ mode: "CREATE_CALLOUT", anchor: annotationDraft[0], labelPosition: point, value: "" });
+      setAnnotationDraft([]);
+      return true;
+    }
+    if (annotationTool === "MARKER") {
+      const marker = { ...markerSettings, label: markerLabelForPlacement(markerSettings) };
+      if (marker.arrowAttached && !annotationDraft.length) {
+        setAnnotationDraft([point]);
+        return true;
+      }
+      const markerPosition = marker.arrowAttached ? annotationDraft[0] : point;
+      const annotation = { id: crypto.randomUUID(), type: "MARKER" as const, position: markerPosition, ...(marker.arrowAttached ? { labelPosition: point } : {}), marker, style: { ...annotationStyle, color: marker.color } };
+      createAnnotation(annotation);
+      setMarkerSettings({ ...marker, label: marker.symbol === "NUMBER" || marker.symbol === "LETTER" ? nextMarkerLabel(marker.symbol, [...annotations, annotation]) : "" });
+      setAnnotationDraft([]);
+      setAnnotationTool(annotationToolAfterCompletion("MARKER"));
+      return true;
+    }
+    if (annotationTool === "POLYLINE") {
+      if (event.detail > 1) { finishAnnotationPolyline(); return true; }
+      setAnnotationDraft((current) => [...current, point]);
+      return true;
+    }
+    if (!annotationDraft.length) { setAnnotationDraft([point]); return true; }
+    createAnnotation({ id: crypto.randomUUID(), type: annotationTool, start: annotationDraft[0], end: point, style: { ...annotationStyle } });
+    setAnnotationDraft([]);
+    setAnnotationTool(annotationToolAfterCompletion(annotationTool));
+    return true;
+  }
+
+  function beginAnnotationDrag(event: ReactPointerEvent<SVGElement>, annotation: FloorplanAnnotation, handle: "WHOLE" | "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL" | "MARKER", vertexIndex?: number) {
+    if (tool !== "SELECT" || event.button !== 0) return;
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    event.preventDefault(); event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setSelectedAnnotationId(annotation.id);
+    setAnnotationPanelOpen(true);
+    setAnnotationStyle({ ...annotation.style, color: annotation.style.color ?? "#287fb8", arrowEndStyle: annotation.style.arrowEndStyle ?? "CLASSIC" });
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedOpeningId(null);
+    setSelectedFixtureId(null);
+    setSelectedMeasurement(null);
+    onElementSelected?.(null);
+    annotationDrag.current = { id: annotation.id, handle, vertexIndex, before: snapshot(), pointerStart: floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport), original: cloneAnnotations([annotation])[0] };
+  }
+
+  function moveAnnotation(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    const active = annotationDrag.current;
+    if (!active) return false;
+    const pointer = floorPlanFromClient(event.clientX, event.clientY, event.currentTarget, activeViewport);
+    const dx = pointer.x - active.pointerStart.x; const dy = pointer.y - active.pointerStart.y;
+    const original = active.original;
+    const moved: FloorplanAnnotation = { ...original, style: { ...original.style }, start: original.start ? { ...original.start } : undefined, end: original.end ? { ...original.end } : undefined, points: original.points?.map((point) => ({ ...point })), position: original.position ? { ...original.position } : undefined, anchor: original.anchor ? { ...original.anchor } : undefined, labelPosition: original.labelPosition ? { ...original.labelPosition } : undefined, marker: original.marker ? { ...original.marker } : undefined };
+    const nextPoint = { x: pointer.x, y: pointer.y };
+    const translate = (point: Point2D | undefined) => point ? { x: point.x + dx, y: point.y + dy } : undefined;
+    if (active.handle === "WHOLE") {
+      moved.start = translate(moved.start);
+      moved.end = translate(moved.end);
+      moved.points = moved.points?.map(translate).filter((point): point is Point2D => Boolean(point));
+      moved.position = translate(moved.position);
+      moved.anchor = translate(moved.anchor);
+      moved.labelPosition = translate(moved.labelPosition);
+    } else if (moved.type === "LINE" || moved.type === "ARROW") {
+      if (active.handle === "START") moved.start = nextPoint;
+      else moved.end = nextPoint;
+    } else if (moved.type === "POLYLINE" && active.handle === "VERTEX" && moved.points && active.vertexIndex !== undefined) moved.points[active.vertexIndex] = nextPoint;
+    else if (moved.type === "TEXT" && active.handle === "TEXT") moved.position = nextPoint;
+    else if (moved.type === "MARKER") {
+      if (active.handle === "MARKER") moved.position = nextPoint;
+      else if (active.handle === "LABEL") moved.labelPosition = nextPoint;
+    } else if (moved.type === "CALLOUT") {
+      if (active.handle === "ANCHOR") moved.anchor = nextPoint;
+      else if (active.handle === "LABEL") moved.labelPosition = nextPoint;
+    }
+    if (Math.hypot(dx, dy) > 1) (active as typeof active & { moved?: boolean }).moved = true;
+    setAnnotations((current) => current.map((item) => item.id === moved.id ? moved : item));
+    return true;
+  }
+
+  function deleteSelectedAnnotation() {
+    if (!selectedAnnotationId) return;
+    record();
+    setAnnotations((current) => current.filter((annotation) => annotation.id !== selectedAnnotationId));
+    setSelectedAnnotationId(null); setAnnotationDraft([]);
+  }
+
+  function updateAnnotationStyle(partial: Partial<AnnotationStyle>) {
+    const next = { ...annotationStyle, ...partial };
+    setAnnotationStyle(next);
+    if (!selectedAnnotationId) return;
+    record();
+    setAnnotations((current) => current.map((annotation) => {
+      if (annotation.id !== selectedAnnotationId) return annotation;
+      return annotation.type === "MARKER" && annotation.marker ? { ...annotation, style: next, marker: { ...annotation.marker, color: next.color ?? annotation.marker.color } } : { ...annotation, style: next };
+    }));
+  }
+
+  function updateSelectedAnnotationText(text: string) {
+    if (!selectedAnnotationId) return;
+    record();
+    setAnnotations((current) => current.map((annotation) => annotation.id === selectedAnnotationId && (annotation.type === "TEXT" || annotation.type === "CALLOUT") ? { ...annotation, text } : annotation));
+  }
+  function screenPointFromClient(clientX: number, clientY: number, svg: SVGSVGElement): Point2D {
+    const rect = svg.getBoundingClientRect();
+    return { x: (clientX - rect.left) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: (clientY - rect.top) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height };
+  }
+
+  function resolveMeasurementReference(reference: MeasurementReference): Point2D | null {
+    if (reference.kind === "ROOM_POINT") return { ...reference.point };
+    if (reference.kind === "FIXTURE") return visibleFixtures.find((fixture) => fixture.id === reference.fixtureId)?.center ?? null;
+    if (reference.kind === "OPENING") {
+      const opening = openings.find((item) => item.id === reference.openingId);
+      const wall = opening ? walls.find((item) => item.id === opening.wallId) : null;
+      const start = wall && opening ? wall.points[opening.segmentIndex] : null;
+      const end = wall && opening ? wall.points[opening.segmentIndex + 1] : null;
+      if (!opening || !start || !end) return null;
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (!length) return null;
+      const distance = Math.max(0, Math.min(length, opening.offset + opening.width / 2));
+      return { x: start.x + (end.x - start.x) * distance / length, y: start.y + (end.y - start.y) * distance / length };
+    }
+    const wall = walls.find((item) => item.id === reference.wallId);
+    if (!wall) return null;
+    if (reference.kind === "POINT") return wall.points[reference.pointIndex] ?? null;
+    const start = wall.points[reference.segmentIndex]; const end = wall.points[reference.segmentIndex + 1];
+    return start && end ? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 } : null;
+  }
+
+  function sameMeasurementReference(first: MeasurementReference, second: MeasurementReference): boolean {
+    if (first.kind !== second.kind) return false;
+    if (first.kind === "ROOM_POINT" && second.kind === "ROOM_POINT") return samePoint(first.point, second.point, .5);
+    if (first.kind === "FIXTURE" && second.kind === "FIXTURE") return first.fixtureId === second.fixtureId;
+    if (first.kind === "OPENING" && second.kind === "OPENING") return first.openingId === second.openingId;
+    if (first.kind === "POINT" && second.kind === "POINT") return first.wallId === second.wallId && first.pointIndex === second.pointIndex;
+    if (first.kind === "WALL" && second.kind === "WALL") return first.wallId === second.wallId && first.segmentIndex === second.segmentIndex;
+    return false;
+  }
+
+  function addMeasurementReference(reference: MeasurementReference) {
+    if (tool !== "ADD_MEASURE") return;
+    setShowMeasurements(true);
+    const first = measurementDraft[0];
+    if (!first) { setMeasurementDraft([reference]); return; }
+    if (sameMeasurementReference(first, reference)) return;
+    const id = crypto.randomUUID(); record();
+    setMeasurements((current) => [...current, { id, first, second: reference, offset: defaultMeasurementOffset(DEFAULT_CUSTOM_MEASUREMENT_OFFSET_SCREEN, activeViewport.scale) }]);
+    setMeasurementDraft([]); setSelectedMeasurement(`custom:${id}`); setMeasurementEditEnabled(true); setTool(repeatCommand?.kind === "ANNOTATION" && repeatCommand.tool === "MEASUREMENT" && repeatCommand.measurementMode === "ADD" ? "ADD_MEASURE" : "MEASURE");
+  }
+
+  function addRoomPointAtClient(clientX: number, clientY: number, svg: SVGSVGElement) {
+    const point = canvasPointFromClient(clientX, clientY, svg, false);
+    const insideRoom = [...detectedRooms, ...rooms].some((room) => room.vertices.length >= 3 && containsPoint(point, room.vertices));
+    if (!insideRoom) return;
+    addMeasurementReference({ kind: "ROOM_POINT", point });
+  }
+
+  function addRoomPointMeasurement(event: ReactPointerEvent<Element>) {
+    if (tool !== "ADD_MEASURE" || event.button !== 0) return;
+    const svg = event.currentTarget.closest("svg") as SVGSVGElement | null;
+    if (!svg) return;
+    event.preventDefault(); event.stopPropagation();
+    addRoomPointAtClient(event.clientX, event.clientY, svg);
+  }
+
+  function resolveMeasurementGeometry(first: MeasurementReference, second: MeasurementReference, direction: MeasurementDirection): MeasurementGeometry | null {
+    const start = resolveMeasurementReference(first);
+    const end = resolveMeasurementReference(second);
+    if (!start || !end) return null;
+    if (direction === "NORMAL" && first.kind === "WALL" && second.kind === "WALL") {
+      const firstWall = walls.find((wall) => wall.id === first.wallId);
+      const secondWall = walls.find((wall) => wall.id === second.wallId);
+      const parallel = firstWall && secondWall
+        ? parallelWallMeasurementGeometry(firstWall, first.segmentIndex, secondWall, second.segmentIndex)
+        : null;
+      if (parallel) return parallel;
+    }
+    return { start, end, length: Math.hypot(end.x - start.x, end.y - start.y) };
+  }
+
+  function beginMeasurementDrag(event: ReactPointerEvent<SVGGElement>, id: string, custom: boolean, offset: number, normal: Point2D) {
+    if (!measurementEditEnabled || event.button !== 0) return;
+    const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
+    event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    onElementSelected?.(null);
+    measurementDrag.current = { id, custom, offset, normal, pointerStart: screenPointFromClient(event.clientX, event.clientY, svg), before: snapshot() };
+    setSelectedMeasurement(`${custom ? "custom" : "auto"}:${id}`);
+  }
+
+  function openMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, id: string) {
+    event.preventDefault(); event.stopPropagation();
+    onElementSelected?.(null);
+    setContextMenu(null); setOpeningMeasurementContextMenu(null); setFixtureMeasurementContextMenu(null); setMeasurementLengthInput(null); setSelectedMeasurement(`custom:${id}`);
+    setMeasurementContextMenu({ id, custom: true, x: event.clientX, y: event.clientY });
+  }
+
+  function setMeasurementDirection(id: string, direction: MeasurementDirection) {
+    const measurement = measurements.find((item) => item.id === id);
+    if (!measurement || (measurement.direction ?? "NORMAL") === direction) { setMeasurementContextMenu(null); return; }
+    record();
+    setMeasurements((current) => current.map((item) => item.id === id ? { ...item, direction } : item));
+    setMeasurementContextMenu(null);
+  }
+
+  function openAutoMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, selection: SegmentSelection) {
+    event.preventDefault(); event.stopPropagation(); setContextMenu(null); setOpeningMeasurementContextMenu(null); setFixtureMeasurementContextMenu(null);
+    onElementSelected?.(null);
+    const wall = walls.find((item) => item.id === selection.wallId);
+    setMeasurementLengthInput(wall ? Math.round(wallLengthForSegment(wall, selection.segmentIndex) * 10) / 10 : null);
+    setSelectedMeasurement(`auto:${selection.wallId}:${selection.segmentIndex}`);
+    setMeasurementContextMenu({ id: `${selection.wallId}:${selection.segmentIndex}`, custom: false, x: event.clientX, y: event.clientY });
+  }
+
+  function applyAutoMeasurementValue(id: string) {
+    const separator = id.lastIndexOf(":");
+    const wallId = id.slice(0, separator); const segmentIndex = Number(id.slice(separator + 1));
+    const wall = walls.find((item) => item.id === wallId); const start = wall?.points[segmentIndex]; const end = wall?.points[segmentIndex + 1];
+    const current = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0;
+    const value = Number(measurementLengthInput);
+    if (!wall || !start || !end || !current || !Number.isFinite(value) || value <= 0) return;
+    const next = { x: start.x + (end.x - start.x) * value / current, y: start.y + (end.y - start.y) * value / current };
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    const endIndex = closed && segmentIndex + 1 === wall.points.length - 1 ? 0 : segmentIndex + 1;
+    updateCoordinatePoint(wallId, endIndex, next, { segmentIndex, lengthMm: value }, { allowSubMinimumLength: true });
+    setMeasurementContextMenu(null); setMeasurementLengthInput(null);
+  }
+
+  function closeAutoMeasurementValueMenu() {
+    setMeasurementContextMenu(null); setMeasurementLengthInput(null);
+  }
+
+  function closeOpeningMeasurementValueMenu() {
+    setOpeningMeasurementContextMenu(null); setOpeningMeasurementValueInput(null); setOpeningMeasurementError(null);
+  }
+
+  function closeFixtureMeasurementValueMenu() {
+    setFixtureMeasurementContextMenu(null); setFixtureMeasurementValueInput(null); setFixtureMeasurementError(null);
+  }
+
+  function handleMeasurementValueMenuKeyDown(event: ReactKeyboardEvent<HTMLElement>, onApply: () => void, onCancel: () => void) {
+    if (event.key === "Enter" || event.key === "Return") {
+      event.preventDefault(); event.stopPropagation(); onApply();
+    } else if (event.key === "Escape") {
+      event.preventDefault(); event.stopPropagation(); onCancel();
+    }
+  }
+
+  function removeMeasurementById(id: string, custom: boolean) {
+    record();
+    if (custom) setMeasurements((current) => current.filter((measurement) => measurement.id !== id));
+    else setHiddenDimensions((current) => [...new Set([...current, id])]);
+    setSelectedMeasurement(null);
+    setSelectedAnnotationId(null);
+  }
+
+  function deleteSelectedMeasurement() {
+    if (!selectedMeasurement) return;
+    removeMeasurementById(selectedMeasurement.startsWith("custom:") ? selectedMeasurement.slice(7) : selectedMeasurement.slice(5), selectedMeasurement.startsWith("custom:"));
+  }
+
+  function deleteMeasurement(id: string, custom: boolean) {
+    setSelectedMeasurement(`${custom ? "custom" : "auto"}:${id}`);
+    removeMeasurementById(id, custom);
+    setMeasurementContextMenu(null); setMeasurementLengthInput(null); setSelectedMeasurement(null);
+  }
+
+  function releaseWallMeasurement(id: string) {
+    const separator = id.lastIndexOf(":");
+    const wallId = id.slice(0, separator);
+    const segmentIndex = Number(id.slice(separator + 1));
+    const wall = walls.find((item) => item.id === wallId);
+    if (!wall || !Number.isInteger(segmentIndex) || wall.lengthOverridesMm?.[segmentIndex] === undefined) {
+      setMeasurementContextMenu(null);
+      setMeasurementLengthInput(null);
+      return;
+    }
+    record();
+    const dimensionId = `${wallId}:${segmentIndex}`;
+    setShowMeasurements(true);
+    setHiddenDimensions((current) => current.filter((item) => item !== dimensionId));
+    setWallsRespectingMeasurements((current) => releaseWallLengthOverride(current, wallId, segmentIndex), squaredWalls, false, true);
+    setMeasurementContextMenu(null);
+    setMeasurementLengthInput(null);
+    setSelectedMeasurement(null);
+  }
+
+  function beginRoomLabelDrag(event: ReactPointerEvent<SVGForeignObjectElement>, room: NamedOutline) {
+    if (tool !== "SELECT" || event.button !== 0) return;
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    roomLabelDrag.current = {
+      roomId: room.id,
+      before: snapshot(),
+      pointerStart: floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport),
+      labelStart: roomLabelPosition(room),
+      moved: false,
+    };
+    setDraggingRoomLabelId(room.id);
+    clearActiveDrawingSelection();
+    setSelectedRoomId(room.id);
+  }
+
+  function beginFixtureDrag(event: ReactPointerEvent<SVGElement>, fixture: Obstacle) {
+    if (event.button !== 0 || placement) return;
+    if (tool === "ADD_MEASURE") {
+      event.preventDefault(); event.stopPropagation();
+      addMeasurementReference({ kind: "FIXTURE", fixtureId: fixture.id });
+      return;
+    }
+    const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
+    selectFixtureForEdit(fixture, owner);
+    event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    svg.setPointerCapture(event.pointerId);
+    const pointer = floorPlanFromClient(event.clientX,event.clientY,svg,activeViewport);
+    fixtureDrag.current = { id: fixture.id, original: fixture, offset: { x: fixture.center.x-pointer.x, y: fixture.center.y-pointer.y }, candidate: null };
+  }
+
+  function moveRoomLabel(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    const active = roomLabelDrag.current;
+    if (!active) return false;
+    const pointer = floorPlanFromClient(event.clientX, event.clientY, event.currentTarget, activeViewport);
+    const nextPosition = {
+      x: active.labelStart.x + pointer.x - active.pointerStart.x,
+      y: active.labelStart.y + pointer.y - active.pointerStart.y,
+    };
+    if (!active.moved && Math.hypot(nextPosition.x - active.labelStart.x, nextPosition.y - active.labelStart.y) > 1) active.moved = true;
+    setRooms((current) => current.map((room) => room.id === active.roomId ? { ...room, labelPosition: nextPosition } : room));
+    return true;
+  }
+
+  function moveFixture(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    const active = fixtureDrag.current;
+    if (!active || !onFixturesChange) return false;
+    const pointer = canvasPoint(event, false);
+    const requested = { x:pointer.x+active.offset.x, y:pointer.y+active.offset.y };
+    const snapped = snapEnabled ? {x:Math.round(requested.x/snapSize)*snapSize,y:Math.round(requested.y/snapSize)*snapSize} : requested;
+    const candidate = resolveObstaclePlacement(active.original,snapped,planRooms,planPlacementWalls,active.candidate?.roomId ?? planRooms.find(room=>room.obstacles.some(item=>item.id===active.id))?.id);
+    if (candidate) { active.candidate = candidate; setFixturePreview(candidate.obstacle); }
+    return true;
+  }
+
+  function openFixtureContextMenu(event: ReactMouseEvent<SVGElement>, fixture: Obstacle) {
+    if (placement) return;
+    const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
+    selectFixtureForEdit(fixture, owner);
+    if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
+    event.preventDefault(); event.stopPropagation(); setFixtureMeasurementContextMenu(null); setFixtureContextMenu({ id: fixture.id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 244)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
+  }
+
+  function selectFixtureForEdit(fixture: Obstacle, owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id))) {
+    const roomId = owner?.id ?? selectedRoomDraft()?.id;
+    setTool("SELECT");
+    setElementTab("FURNITURE");
+    setSelectedAnnotationId(null);
+    setSelectedFixtureId(fixture.id);
+    setSelectedOpeningId(null);
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedMeasurement(null);
+    if (roomId) onElementSelected?.({ id: fixture.id, roomId });
+  }
+
+  function fixtureMeasurementValue(fixture: Obstacle, section: FixtureDimensionSection): number {
+    return section === 0 ? fixture.dimensions.width.value : fixture.dimensions.depth.value;
+  }
+
+  function openFixtureMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, fixture: Obstacle, rawSection: number) {
+    if (!measurementEditEnabled || !onFixturesChange) return;
+    const section = Math.max(0, Math.min(1, Math.trunc(rawSection))) as FixtureDimensionSection;
+    const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
+    if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
+    event.preventDefault(); event.stopPropagation();
+    setContextMenu(null); setMeasurementContextMenu(null); setOpeningContextMenu(null); setOpeningMeasurementContextMenu(null); setFixtureContextMenu(null); setFixtureMeasurementContextMenu(null);
+    setFixtureMeasurementValueInput(Math.round(fixtureMeasurementValue(fixture, section) * 10) / 10);
+    setFixtureMeasurementError(null);
+    setFixtureMeasurementContextMenu({ id: fixture.id, section, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 250)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
+  }
+
+  function updateFixture(id: string, update: (fixture: Obstacle) => Obstacle) {
+    if (!onFixturesChange) return;
+    onFixturesChange(fixtures.map((fixture) => {
+      if (fixture.id !== id) return fixture;
+      const next = update(fixture);
+      return selectedRoomDraft() ? constrainObstacleToRoom(next, selectedRoomDraft()!,next.center,planPlacementWalls) ?? fixture : fixture;
+    }));
+  }
+
+  function confirmFixtureDeletion() {
+    const fixture = fixtureDeleteConfirmation;
+    if (!fixture || !onFixturesChange) return;
+    onFixturesChange(fixtures.filter((item) => item.id !== fixture.id));
+    if (selectedFixtureId === fixture.id) {
+      setSelectedFixtureId(null);
+      onElementSelected?.(null);
+    }
+    setFixtureDeleteConfirmation(null);
+    setFixtureContextMenu(null);
+    setFixtureMeasurementContextMenu(null);
+  }
+
+  function applyFixtureMeasurementValue() {
+    const menu = fixtureMeasurementContextMenu;
+    const fixture = menu ? fixtures.find((item) => item.id === menu.id) : null;
+    if (!menu || !fixture) return;
+    const value = fixtureMeasurementValueInput ?? fixtureMeasurementValue(fixture, menu.section);
+    if (!Number.isFinite(value) || value <= 0) {
+      setFixtureMeasurementError("Enter a length greater than zero.");
+      return;
+    }
+    const dimension = menu.section === 0 ? "width" : "depth";
+    updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, [dimension]: { ...item.dimensions[dimension], value } } }));
+    setFixtureMeasurementContextMenu(null); setFixtureMeasurementValueInput(null); setFixtureMeasurementError(null);
+  }
+
+  function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
+    if (placement) {
+      event.preventDefault(); event.stopPropagation();
+      if (event.button === 2) return; // The context-menu event cancels without opening a menu.
+      if (event.button === 0) {
+        placementPress.current = {x:event.clientX,y:event.clientY};
+        setPlacementPoint(canvasPoint(event,false));
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      return;
+    }
+    if (event.button !== 1) return;
+    event.preventDefault(); event.stopPropagation();
+    panDrag.current = { clientX: event.clientX, clientY: event.clientY, pan: { ...pan } };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function canvasPointFromClient(clientX: number, clientY: number, svg: SVGSVGElement, attachToWalls = true): Point2D {
+    const mapped = floorPlanFromClient(clientX, clientY, svg, activeViewport);
+    const gridPoint = snapEnabled ? { x: Math.round(mapped.x / snapSize) * snapSize, y: Math.round(mapped.y / snapSize) * snapSize } : mapped;
+    return attachToWalls ? snapPoint(gridPoint, walls, snapEnabled, snapSize) : gridPoint;
+  }
+
+  function commitDraft(points = draft, endAttachment?: WallAttachment, preservedPrefix?: Point2D[]) {
+    // Draft points have already been squared as they are drawn. Re-squaring here can
+    // move an attached endpoint away from its host and manufacture a short wall stub.
+    const shapeDraftPoints = (source: Point2D[]) => source.reduce<Point2D[]>((result, point) => {
+      if (!result.length || !samePoint(result.at(-1)!, point, 0.5)) result.push({ ...point });
+      return result;
+    }, []);
+    const shapedPoints = shapeDraftPoints(points);
+    const shapedPrefix = preservedPrefix ? shapeDraftPoints(preservedPrefix) : [];
+    if (shapedPoints.length >= 2) {
+      record();
+      const attachments: Record<number, WallAttachment> = {};
+      const prefixAttachments: Record<number, WallAttachment> = {};
+      if (draftStartAttachment.current) {
+        if (shapedPrefix.length >= 2) prefixAttachments[0] = { ...draftStartAttachment.current };
+        else attachments[0] = { ...draftStartAttachment.current };
+      }
+      // An attached endpoint is still the corner that closes the new wall. Keep its
+      // label visible; the attachment itself prevents it from drifting off its host.
+      if (endAttachment) attachments[shapedPoints.length - 1] = { ...endAttachment };
+      // A connected draft can start or finish in the middle of an existing
+      // wall.  Keep that host run intact and materialize the junction instead
+      // of leaving two partially overlapping runs whose visible union appears
+      // truncated.  The materializer only inserts junction vertices; it never
+      // removes or shortens an existing endpoint.
+      setWallsRespectingMeasurements((current) => [
+        ...(shapedPrefix.length >= 2 ? [{ id: crypto.randomUUID(), points: shapedPrefix, attachments: Object.keys(prefixAttachments).length ? prefixAttachments : undefined }] : []),
+        { id: crypto.randomUUID(), points: shapedPoints, attachments: Object.keys(attachments).length ? attachments : undefined },
+      ].reduce((next, wall) => appendWallRunPreservingExistingWalls(next, wall), current));
+    }
+    draftStartAttachment.current = null; setDraft([]); setHoveredCorner(null); setTool(repeatCommand?.kind === "TOOL" && repeatCommand.tool === "DRAW" ? "DRAW" : "SELECT"); setSelectedSegment(null); setSelectedPoint(null);
+  }
+
+  function connectDraftToWall(wallId: string, segmentIndex: number, requested: Point2D, alignClosingCorner = false) {
+    const wall = walls.find((item) => item.id === wallId);
+    const start = wall?.points[segmentIndex]; const end = wall?.points[segmentIndex + 1];
+    if (!start || !end) return;
+    // A corner click is authoritative. The orthogonal intersection helper is useful
+    // for finishing on the middle of a wall, but at an endpoint it can replace the
+    // clicked corner with a nearby point derived from the preceding draft segment.
+    const directIntersection = !alignClosingCorner && squaredWalls && draft.length ? orthogonalIntersectionOnSegment(draft.at(-1)!, requested, start, end) : null;
+    const projected = alignClosingCorner ? { ...requested } : directIntersection ?? pointOnSegment(requested, start, end).point;
+    // Finishing on an existing wall endpoint must reuse that endpoint. Without this
+    // small snap, a close click can leave a tiny sliver and create an unwanted extra
+    // numbered corner beside the existing junction.
+    const endpointTolerance = snapEnabled ? Math.max(8, snapSize * 0.5) : 8;
+    const touchesStart = Math.hypot(projected.x - start.x, projected.y - start.y) <= endpointTolerance;
+    const touchesEnd = Math.hypot(projected.x - end.x, projected.y - end.y) <= endpointTolerance;
+    const point = touchesStart ? { ...start } : touchesEnd ? { ...end } : projected;
+    const attachment = { wallId, segmentIndex, along: pointOnSegment(point, start, end).along, hideCorner: touchesStart || touchesEnd };
+    if (draft.length) {
+      // Picking a real corner is an explicit request to close at that corner. Align
+      // the last draft point even when free-angle drawing is enabled, so the final
+      // segment finishes flush instead of preserving a near-miss below/alongside it.
+      const alignedDraft = alignClosingCorner ? alignDraftToCorner(draft, point) : draft;
+      // If the draft starts on an existing corner, alignDraftToCorner returns the
+      // bend point by adjusting that one-point draft. Keep the original corner as
+      // the first point so a squared corner-to-corner wall becomes two real walls
+      // with an editable intersection, rather than only the final leg.
+      const closingPath = squaredWalls && alignClosingCorner && draft.length === 1 && alignedDraft.length === 1 && !samePoint(draft[0], alignedDraft[0])
+        ? [draft[0], ...orthogonalPathTo(alignedDraft, point).slice(1)]
+        : squaredWalls ? orthogonalPathTo(alignedDraft, point) : [...alignedDraft, point];
+      commitDraft(closingPath, attachment);
+    }
+    else {
+      // Keep the user's current view when the first point starts a wall. The
+      // point is mapped using this viewport, so locking the same viewport
+      // prevents the draft from triggering an automatic fit/jump.
+      setLockedViewport(viewport); draftStartAttachment.current = attachment; setDraft([point]);
+    }
+    setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null);
+  }
+
+  function connectDraftToCorner(selection: PointSelection) {
+    const wall = walls.find((item) => item.id === selection.wallId);
+    const point = wall?.points[selection.pointIndex];
+    if (!wall || !point) return;
+    const segmentIndex = wall.points[selection.pointIndex + 1] ? selection.pointIndex : selection.pointIndex - 1;
+    if (segmentIndex < 0) return;
+    setHoveredCorner(null);
+    connectDraftToWall(selection.wallId, segmentIndex, point, true);
+  }
+
+  function alignDraftToCorner(points: Point2D[], corner: Point2D): Point2D[] {
+    const last = points.at(-1);
+    if (!last || last.x === corner.x || last.y === corner.y) return points;
+    const horizontalConnection = Math.abs(corner.x - last.x) >= Math.abs(corner.y - last.y);
+    const aligned = horizontalConnection ? { ...last, y: corner.y } : { ...last, x: corner.x };
+    return [...points.slice(0, -1), aligned];
+  }
+
+  function findWallSegmentNear(point: Point2D): SegmentSelection | null {
+    const tolerance = snapEnabled ? Math.max(35, snapSize) : 35;
+    let closest: (SegmentSelection & { distance: number }) | null = null;
+    walls.forEach((wall) => wall.points.slice(0, -1).forEach((start, segmentIndex) => {
+      const end = wall.points[segmentIndex + 1];
+      const projected = pointOnSegment(point, start, end).point;
+      const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+      if (distance <= tolerance && (!closest || distance < closest.distance)) closest = { wallId: wall.id, segmentIndex, distance };
+    }));
+    return closest;
+  }
+
+  function findCornerNear(point: Point2D): PointSelection | null {
+    const tolerance = DRAW_CORNER_HIT_TOLERANCE_MM;
+    let closest: (PointSelection & { distance: number }) | null = null;
+    walls.forEach((wall) => wall.points.slice(0, samePoint(wall.points[0], wall.points.at(-1)!) ? -1 : undefined).forEach((corner, pointIndex) => {
+      if (wall.attachments?.[pointIndex]?.hideCorner) return;
+      const distance = Math.hypot(point.x - corner.x, point.y - corner.y);
+      if (distance <= tolerance && (!closest || distance < closest.distance)) closest = { wallId: wall.id, pointIndex, distance };
+    }));
+    return closest;
+  }
+
+  function draftStartNear(point: Point2D): boolean {
+    if (draft.length < 3) return false;
+    return samePoint(point, draft[0], DRAFT_CLOSURE_ADJUSTMENT_MM);
+  }
+
+  function draftClosurePathNear(point: Point2D): { points: Point2D[]; preservedPrefix?: Point2D[] } | null {
+    if (draft.length < 3) return null;
+    const tolerance = Math.max(35, snapEnabled ? snapSize : 35);
+    let closest: { segmentIndex: number; point: Point2D; distance: number } | null = null;
+    for (let segmentIndex = 0; segmentIndex < draft.length - 1; segmentIndex += 1) {
+      const start = draft[segmentIndex];
+      const end = draft[segmentIndex + 1];
+      if (!start || !end) continue;
+      const projection = pointOnSegment(point, start, end);
+      const distance = Math.hypot(point.x - projection.point.x, point.y - projection.point.y);
+      if (projection.along <= 1e-6 || projection.along >= 1 - 1e-6 || distance > tolerance) continue;
+      if (!closest || distance < closest.distance) closest = { segmentIndex, point: projection.point, distance };
+    }
+    if (!closest) return null;
+    const prefix = [...draft.slice(0, closest.segmentIndex + 1), closest.point];
+    const loop = [closest.point, ...draft.slice(closest.segmentIndex + 1)];
+    if (loop.length >= 3 && prefix.length >= 2) return { points: loop, preservedPrefix: prefix };
+    return { points: prefix };
+  }
+
+  function clearImportedDrawing() {
+    setCalibrating(false); setCalibrationPoints([]); setCalibrationHover(null);
+    backgroundImportId.current += 1;
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    setSourceUrl(null); setSourceFile(null); setCanvasSize(DEFAULT_SIZE); setImporting(false); setImportError(null);
+  }
+
+  function applyTemplate(points: Point2D[]) {
+    record();
+    onElementSelected?.(null);
+    clearImportedDrawing();
+    const outline = [...points.map((point) => ({ ...point })), { ...points[0] }];
+    setWallsRespectingMeasurements([{ id: crypto.randomUUID(), points: squaredWalls ? squareWallPoints(outline) : outline }]);
+    setOpenings([]); setMeasurements([]); setAnnotations([]); setSelectedAnnotationId(null); setAnnotationDraft([]); setAnnotationTextDialog(null); setAnnotationTool(null); setAnnotationMeasurementMode(null); setDimensionOffsets({}); setHiddenDimensions([]); setRooms([]); setSelectedRoomId(null); setDraft([]); setTool("SELECT"); setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); setLockedViewport(null); setLShapePickerOpen(false);
+  }
+
+  function newOutline() {
+    record();
+    onElementSelected?.(null);
+    clearImportedDrawing();
+    setWallsRespectingMeasurements([]); setOpenings([]); setMeasurements([]); setAnnotations([]); setSelectedAnnotationId(null); setAnnotationDraft([]); setAnnotationTextDialog(null); setAnnotationTool(null); setAnnotationMeasurementMode(null); setDimensionOffsets({}); setHiddenDimensions([]); setRooms([]); setSelectedRoomId(null); setDraft([]); setTool("DRAW"); setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); setLShapePickerOpen(false);
+  }
+
+  function removeSegment(wallId: string, segmentIndex: number) {
+    onElementSelected?.(null);
+    const wall = walls.find((item) => item.id === wallId);
+    if (!wall || !wall.points[segmentIndex + 1]) return;
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    record();
+    if (closed) {
+      const core = wall.points.slice(0, -1);
+      const count = core.length;
+      // A two-point closed run is the same wall stored in both directions:
+      // [start, end, start]. Removing one of its displayed segments must
+      // remove the run entirely rather than leaving the reverse duplicate
+      // (and its endpoint corner) behind.
+      if (count <= 2) {
+        setWallsRespectingMeasurements((current) => current.filter((item) => item.id !== wallId));
+        setOpenings((current) => current.filter((opening) => opening.wallId !== wallId));
+        setSelectedSegment(null); setSelectedPoint(null); setOpeningParent("");
+        return;
+      }
+      const remaining = Array.from({ length: count }, (_, index) => core[(segmentIndex + 1 + index) % count]);
+      const sourceSegmentIndices = Array.from({ length: count - 1 }, (_, index) => (segmentIndex + 1 + index) % count);
+      setWallsRespectingMeasurements((current) => current.map((item) => item.id === wallId ? { ...item, points: remaining.map((point) => ({ ...point })), thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, sourceSegmentIndices), lengthOverridesMm: remapSegmentLengthOverrides(item.lengthOverridesMm, sourceSegmentIndices) } : item));
+      setOpenings((current) => current.filter((opening) => !(opening.wallId === wallId && opening.segmentIndex === segmentIndex)).map((opening) => {
+        if (opening.wallId !== wallId) return opening;
+        return { ...opening, segmentIndex: (opening.segmentIndex - (segmentIndex + 1) + count) % count };
+      }));
+    } else {
+      const firstRun = wall.points.slice(0, segmentIndex + 1);
+      const rawSecondRun = wall.points.slice(segmentIndex + 1);
+      // A connected branch can be stored as one open run: [branch end,
+      // junction, host end]. Removing the branch leaves the branch endpoint
+      // followed by the host segment, which backtracks over part of the same
+      // wall. Drop that redundant endpoint so the host returns to one run.
+      const leadingOverlap = rawSecondRun.length >= 3
+        && (() => {
+          const projection = pointOnSegment(rawSecondRun[0], rawSecondRun[1], rawSecondRun[2]);
+          return Math.hypot(projection.point.x - rawSecondRun[0].x, projection.point.y - rawSecondRun[0].y) <= 1
+            && projection.along > 1e-6 && projection.along < 1 - 1e-6;
+        })();
+      const secondRun = leadingOverlap ? rawSecondRun.slice(1) : rawSecondRun;
+      const droppedLeadingSegment = leadingOverlap ? 1 : 0;
+
+      const secondSegmentSourceIndices = Array.from({ length: secondRun.length - 1 }, (_, index) => segmentIndex + 1 + droppedLeadingSegment + index);
+      const secondId = crypto.randomUUID();
+      setWallsRespectingMeasurements((current) => current.flatMap((item) => item.id !== wallId ? [item] : [
+        ...(firstRun.length >= 2 ? [{ ...item, points: firstRun.map((point) => ({ ...point })), thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, Array.from({ length: firstRun.length - 1 }, (_, index) => index)), lengthOverridesMm: remapSegmentLengthOverrides(item.lengthOverridesMm, Array.from({ length: firstRun.length - 1 }, (_, index) => index)) }] : []),
+        ...(secondRun.length >= 2 ? [{ id: secondId, points: secondRun.map((point) => ({ ...point })), attachments: item.attachments ? Object.fromEntries(Object.entries(item.attachments).flatMap(([rawIndex, attachment]) => { const sourceIndex = Number(rawIndex); const targetIndex = sourceIndex - (segmentIndex + 1 + droppedLeadingSegment); return targetIndex >= 0 && targetIndex < secondRun.length ? [[targetIndex, { ...attachment }]] : []; })) : undefined, cornerNumbers: item.cornerNumbers ? Object.fromEntries(Object.entries(item.cornerNumbers).flatMap(([rawIndex, number]) => { const sourceIndex = Number(rawIndex); const targetIndex = sourceIndex - (segmentIndex + 1 + droppedLeadingSegment); return targetIndex >= 0 && targetIndex < secondRun.length ? [[targetIndex, number]] : []; })) : undefined, thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, secondSegmentSourceIndices), lengthOverridesMm: remapSegmentLengthOverrides(item.lengthOverridesMm, secondSegmentSourceIndices) }] : []),
+      ]));
+      setOpenings((current) => current.filter((opening) => !(opening.wallId === wallId && opening.segmentIndex === segmentIndex)).map((opening) => {
+        if (opening.wallId !== wallId || opening.segmentIndex < segmentIndex) return opening;
+        return { ...opening, wallId: secondId, segmentIndex: opening.segmentIndex - segmentIndex - 1 - droppedLeadingSegment };
+      }));
+    }
+    setSelectedSegment(null); setSelectedPoint(null); setOpeningParent("");
+  }
+
+  function insertPointAt(wallId: string, segmentIndex: number, requested?: Point2D) {
+    const wall = walls.find((item) => item.id === wallId);
+    if (!wall) return;
+    const start = wall.points[segmentIndex]; const end = wall.points[segmentIndex + 1];
+    if (!start || !end) return;
+    const projected = pointOnSegment(requested ?? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }, start, end);
+    if (projected.along <= .015 || projected.along >= .985) return;
+    const inserted = projected.point;
+    record();
+    setWallsRespectingMeasurements((current) => current.map((item) => {
+      if (item.id !== wallId) return item;
+      const points = [...item.points.slice(0, segmentIndex + 1), inserted, ...item.points.slice(segmentIndex + 1)];
+      const thicknessOverridesMm = item.thicknessOverridesMm ? Object.entries(item.thicknessOverridesMm).reduce<Record<number, number>>((next, [key, thicknessMm]) => {
+        const index = Number(key);
+        if (index < segmentIndex) next[index] = thicknessMm;
+        else if (index === segmentIndex) { next[index] = thicknessMm; next[index + 1] = thicknessMm; }
+        else next[index + 1] = thicknessMm;
+        return next;
+      }, {}) : undefined;
+      return { ...item, points: squaredWalls ? squareWallPoints(points) : points, thicknessOverridesMm, lengthOverridesMm: splitSegmentLengthOverride(item.lengthOverridesMm, segmentIndex, projected.along) };
+    }));
+    setOpenings((current) => current.filter((opening) => !(opening.wallId === wallId && opening.segmentIndex === segmentIndex)).map((opening) => opening.wallId === wallId && opening.segmentIndex > segmentIndex ? { ...opening, segmentIndex: opening.segmentIndex + 1 } : opening));
+    setSelectedPoint({ wallId, pointIndex: segmentIndex + 1 });
+    setSelectedSegment({ wallId, segmentIndex: segmentIndex + 1 });
+  }
+
+  function addSelectedRoom() {
+    if (!selectedSegment) { setRoomActionError("Select a boundary wall to create a new room on the outside of it"); return; }
+    const result = addRoomOutsideWall(walls, selectedSegment, crypto.randomUUID(), roomDepthInput);
+    if (result.error) { setRoomActionError(result.error); return; }
+    record(); setWalls(result.walls as Wall[]); setRoomActionError(null); setAddRoomPanelOpen(false);
+  }
+
+  function clearActiveDrawingSelection() {
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedOpeningId(null);
+    setSelectedFixtureId(null);
+    onElementSelected?.(null);
+    setOpeningParent("");
+    setOpeningError(null);
+    setSelectedMeasurement(null);
+    setSelectedAnnotationId(null);
+  }
+
+  function removeSelectedRoom() {
+    const room = pendingRoomRemovalId ? rooms.find((item) => item.id === pendingRoomRemovalId) : null;
+    setPendingRoomRemovalId(null);
+    if (!room) return;
+    onElementSelected?.(null);
+    const result = removeRoomBoundary(walls, room.vertices);
+    const remapReference = (reference: MeasurementReference): MeasurementReference | null => {
+      if (reference.kind === "ROOM_POINT" || reference.kind === "FIXTURE" || reference.kind === "OPENING") return cloneMeasurementReference(reference);
+      if (reference.kind === "POINT") { const mapped = result.pointMap[`${reference.wallId}:${reference.pointIndex}`]; return mapped ? { kind: "POINT", ...mapped } : null; }
+      const mapped = result.segmentMap[`${reference.wallId}:${reference.segmentIndex}`];
+      // A whole-wall measurement cannot truthfully refer to only one fragment.
+      return mapped?.length === 1 && mapped[0].from === 0 && mapped[0].to === 1 ? { kind: "WALL", wallId: mapped[0].wallId, segmentIndex: mapped[0].segmentIndex } : null;
+    };
+    record();
+    setOpenings(openings.flatMap((opening) => {
+      const wall = walls.find((item) => item.id === opening.wallId);
+      const start = wall?.points[opening.segmentIndex], end = wall?.points[opening.segmentIndex + 1];
+      if (!start || !end) return [];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      const mapped = result.segmentMap[`${opening.wallId}:${opening.segmentIndex}`]?.find((part) => opening.offset >= part.from * length - .001 && opening.offset + opening.width <= part.to * length + .001);
+      return mapped ? [{ ...opening, wallId: mapped.wallId, segmentIndex: mapped.segmentIndex, offset: opening.offset - mapped.from * length }] : [];
+    }));
+    setMeasurements(measurements.flatMap((measurement) => { const first = remapReference(measurement.first), second = remapReference(measurement.second); return first && second ? [{ ...measurement, first, second }] : []; }));
+    const remapDimensionId = (id: string) => id.startsWith("opening:") || id.startsWith("fixture:") ? [id] : (result.segmentMap[id] ?? []).map((part) => `${part.wallId}:${part.segmentIndex}`);
+    setDimensionOffsets(Object.fromEntries(Object.entries(dimensionOffsets).flatMap(([id, offset]) => remapDimensionId(id).map((key) => [key, offset]))));
+    setHiddenDimensions(hiddenDimensions.flatMap(remapDimensionId));
+    const remainingRooms = rooms.filter((item) => item.id !== room.id).map((item) => ({ ...item, sourceWallIds: [...new Set((item.sourceWallIds ?? [item.sourceWallId]).flatMap((id) => walls.find((wall) => wall.id === id)?.points.slice(0, -1).flatMap((_, index) => (result.segmentMap[`${id}:${index}`] ?? []).map((part) => part.wallId)) ?? []))] }));
+    setRooms(remainingRooms); setWalls(result.walls as Wall[]); setSelectedRoomId(remainingRooms[0]?.id ?? null);
+    setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); setSelectedMeasurement(null); setMeasurementDraft([]); setRoomActionError(null);
+  }
+
+  function applySelectedWallLength() {
+    if (!selectedSegment || !selectedWall) return;
+    const start = selectedWall.points[selectedSegment.segmentIndex]; const end = selectedWall.points[selectedSegment.segmentIndex + 1];
+    const currentLength = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0;
+    const requested = wallLengthInput ?? currentLength;
+    if (!start || !end || !currentLength || !Number.isFinite(requested) || requested <= 0) return;
+    const closed = samePoint(selectedWall.points[0], selectedWall.points.at(-1)!);
+    const endIndex = closed && selectedSegment.segmentIndex + 1 === selectedWall.points.length - 1 ? 0 : selectedSegment.segmentIndex + 1;
+    const unit = { x: (end.x - start.x) / currentLength, y: (end.y - start.y) / currentLength };
+    const raw = snapshot();
+    const before = { ...raw, walls: assignStableCornerNumbers(raw.walls, wallVertexStarts) };
+    const endpointCandidates = [
+      { pointIndex: endIndex, next: { x: start.x + unit.x * requested, y: start.y + unit.y * requested }, order: 0 },
+      ...(endIndex === selectedSegment.segmentIndex ? [] : [{ pointIndex: selectedSegment.segmentIndex, next: { x: end.x - unit.x * requested, y: end.y - unit.y * requested }, order: 1 }]),
+    ];
+    const candidateResults = endpointCandidates.map(({ pointIndex, next, order }) => {
+      // The dimension being replaced must not prevent its own resize.
+      const resizeBaseline = releaseWallLengthOverride(before.walls, selectedWall.id, selectedSegment.segmentIndex);
+      const constrained = constrainCornerMoveForOpenings(resizeBaseline, before.openings, { wallId: selectedWall.id, pointIndex }, next, { allowSubMinimumLength: true });
+      const proposed = ensureVisibleJunctionCorners(constrained.walls.map((wall) => wall.id === selectedWall.id
+        ? { ...wall, lengthOverridesMm: { ...wall.lengthOverridesMm, [selectedSegment.segmentIndex]: requested } }
+        : wall));
+      const enforced = squaredWalls ? enforceWallLengthOverridesPreservingOrthogonality(proposed) : enforceWallLengthOverrides(proposed);
+      const evaluated = enforced ?? proposed;
+      const nonOrthogonalSegments = evaluated.reduce((total, wall) => total + wall.points.slice(0, -1).reduce((count, point, index) => {
+        const following = wall.points[index + 1];
+        return count + (following && Math.abs(following.x - point.x) > 0.001 && Math.abs(following.y - point.y) > 0.001 ? 1 : 0);
+      }, 0), 0);
+      const editedWall = evaluated.find((wall) => wall.id === selectedWall.id);
+      const editedPoint = editedWall?.points[pointIndex];
+      const originalPoint = selectedWall.points[pointIndex];
+      const changed = Boolean(editedPoint && originalPoint && Math.hypot(editedPoint.x - originalPoint.x, editedPoint.y - originalPoint.y) > 0.001);
+      const editedStart = editedWall?.points[selectedSegment.segmentIndex];
+      const editedEnd = editedWall?.points[endIndex];
+      const overrideSatisfied = Boolean(editedStart && editedEnd && Math.abs(Math.hypot(editedEnd.x - editedStart.x, editedEnd.y - editedStart.y) - requested) <= 0.01);
+      return { constrained, walls: evaluated, pointIndex, order, nonOrthogonalSegments, changed, overrideSatisfied };
+    }).filter((candidate) => candidate.changed && candidate.overrideSatisfied && wallLengthOverridesSatisfied(candidate.walls));
+    const best = candidateResults.sort((first, second) => first.nonOrthogonalSegments - second.nonOrthogonalSegments || first.order - second.order)[0];
+    if (!best) return;
+    pendingOpeningRemap.current = { beforeWalls: before.walls, openings: best.constrained.openings };
+    record(before);
+    setWallsRespectingMeasurements(() => best.walls, squaredWalls, false, true);
+    setWallLengthInput(null);
+  }
+
+  function requestDefaultWallThickness() {
+    const nextThickness = defaultWallThicknessInput;
+    if (nextThickness === null || !Number.isFinite(nextThickness) || nextThickness <= 0 || nextThickness === wallThickness) return;
+    setDefaultWallThicknessConfirmOpen(true);
+  }
+
+  function cancelDefaultWallThickness() {
+    setDefaultWallThicknessConfirmOpen(false);
+    setDefaultWallThicknessInput(null);
+  }
+
+  function confirmDefaultWallThickness() {
+    const nextThickness = defaultWallThicknessInput;
+    setDefaultWallThicknessConfirmOpen(false);
+    if (nextThickness === null || !Number.isFinite(nextThickness) || nextThickness <= 0 || nextThickness === wallThickness) {
+      setDefaultWallThicknessInput(null);
+      return;
+    }
+    record();
+    setWallThickness(nextThickness);
+    setDefaultWallThicknessInput(null);
+  }
+
+  function setSelectedWallThickness(wallId: string, segmentIndex: number, thicknessMm: number) {
+    const wall = walls.find((item) => item.id === wallId);
+    if (!wall || !needsWallThicknessOverride(wall.thicknessOverridesMm?.[segmentIndex], thicknessMm)) return;
+    record();
+    setWallsRespectingMeasurements((current) => current.map((wall) => wall.id !== wallId ? wall : { ...wall, thicknessOverridesMm: { ...wall.thicknessOverridesMm, [segmentIndex]: thicknessMm } }));
+  }
+
+  function resetSelectedWallThickness(wallId: string, segmentIndex: number) {
+    setWallThicknessInput(null);
+    const wall = walls.find((item) => item.id === wallId);
+    if (!wall?.thicknessOverridesMm || wall.thicknessOverridesMm[segmentIndex] === undefined) return;
+    record();
+    setWallsRespectingMeasurements((current) => current.map((item) => {
+      if (item.id !== wallId) return item;
+      const thicknessOverridesMm = { ...item.thicknessOverridesMm };
+      delete thicknessOverridesMm[segmentIndex];
+      return { ...item, thicknessOverridesMm: Object.keys(thicknessOverridesMm).length ? thicknessOverridesMm : undefined };
+    }));
+  }
+
+  function deletePointAt(selection: PointSelection) {
+    onElementSelected?.(null);
+    const selectedWall = walls.find((item) => item.id === selection.wallId);
+    const target = selectedWall?.points[selection.pointIndex];
+    if (!selectedWall || !target) return;
+    const selectedClosed = samePoint(selectedWall.points[0], selectedWall.points.at(-1)!);
+    const selectedUniqueCount = selectedClosed ? selectedWall.points.length - 1 : selectedWall.points.length;
+    if (selectedClosed && selectedUniqueCount <= 3) return;
+
+    const wallIdsToModify = new Set<string>();
+    wallIdsToModify.add(selectedWall.id);
+    walls.forEach((candidate) => {
+      if (candidate.id === selectedWall.id) return;
+      const closed = samePoint(candidate.points[0], candidate.points.at(-1)!);
+      const pointIndexes = candidate.points
+        .map((point, pointIndex) => ({ point, pointIndex }))
+        .filter(({ point }) => samePoint(point, target))
+        .map(({ pointIndex }) => pointIndex);
+      if (!pointIndexes.length || closed) return;
+      wallIdsToModify.add(candidate.id);
+    });
+
+    const nextWalls = walls.flatMap((item) => {
+      if (!wallIdsToModify.has(item.id)) return [item];
+      const closed = samePoint(item.points[0], item.points.at(-1)!);
+      const pointIndex = item.id === selectedWall.id ? selection.pointIndex : item.points.findIndex((point) => samePoint(point, target));
+      if (pointIndex < 0 || (closed && pointIndex >= item.points.length - 1)) return [item];
+      if (!closed && (pointIndex === 0 || pointIndex === item.points.length - 1)) {
+        const trimmed = trimOpenWallEndpoint(item, pointIndex);
+        return trimmed ? [trimmed] : [];
+      }
+      const core = closed ? item.points.slice(0, -1) : [...item.points];
+      if (pointIndex >= core.length) return [item];
+      const sourcePointIndices = core.map((_, index) => index);
+      core.splice(pointIndex, 1);
+      if (closed && core.length < 3) return [item];
+      const remappedSourcePointIndices = closed
+        ? sourcePointIndices
+          .filter((sourceIndex) => sourceIndex !== pointIndex)
+          .slice(pointIndex)
+          .concat(sourcePointIndices.filter((sourceIndex) => sourceIndex !== pointIndex).slice(0, pointIndex))
+        : sourcePointIndices;
+      const points = closed
+        ? [...core.slice(pointIndex), ...core.slice(0, pointIndex)]
+        : core;
+      const sourceSegmentIndices = closed
+        ? remappedSourcePointIndices.slice(0, Math.max(0, points.length - 1))
+        : Array.from({ length: Math.max(0, points.length - 1) }, (_, index) => index < pointIndex ? index : index + 1);
+      const remapPointIndex = (sourceIndex: number) => {
+        if (sourceIndex === pointIndex) return -1;
+        if (closed) return remappedSourcePointIndices.indexOf(sourceIndex);
+        return sourceIndex > pointIndex ? sourceIndex - 1 : sourceIndex;
+      };
+      const attachments = item.attachments ? Object.entries(item.attachments).reduce<Record<number, WallAttachment>>((next, [rawIndex, attachment]) => {
+        const targetIndex = remapPointIndex(Number(rawIndex));
+        if (targetIndex >= 0 && targetIndex < points.length) next[targetIndex] = attachment;
+        return next;
+      }, {}) : undefined;
+      const cornerNumbers = item.cornerNumbers ? Object.entries(item.cornerNumbers).reduce<Record<number, number>>((next, [rawIndex, number]) => {
+        const targetIndex = remapPointIndex(Number(rawIndex));
+        if (targetIndex >= 0 && targetIndex < points.length) next[targetIndex] = number;
+        return next;
+      }, {}) : undefined;
+      return [{
+        ...item,
+        points,
+        attachments: attachments && Object.keys(attachments).length ? attachments : undefined,
+        cornerNumbers: cornerNumbers && Object.keys(cornerNumbers).length ? cornerNumbers : undefined,
+        thicknessOverridesMm: remapSegmentThicknessOverrides(item.thicknessOverridesMm, sourceSegmentIndices),
+        lengthOverridesMm: remapSegmentLengthOverrides(item.lengthOverridesMm, sourceSegmentIndices),
+      }];
+    });
+    if (nextWalls.length === walls.length && JSON.stringify(nextWalls) === JSON.stringify(walls)) return;
+    record();
+    const affectedWallIds = new Set(wallIdsToModify);
+    setWallsRespectingMeasurements(nextWalls, false, true, true);
+    setOpenings((current) => current.filter((opening) => !affectedWallIds.has(opening.wallId)));
+    setMeasurements((current) => current.filter((measurement) => {
+      const references = [measurement.first, measurement.second];
+      return !references.some((reference) => (reference.kind === "WALL" || reference.kind === "POINT") && affectedWallIds.has(reference.wallId));
+    }));
+    setDimensionOffsets((current) => Object.fromEntries(
+      Object.entries(current).filter(([id]) => ![...affectedWallIds].some((wallId) => id.startsWith(`${wallId}:`))),
+    ));
+    setHiddenDimensions((current) => current.filter((id) => ![...affectedWallIds].some((wallId) => id.startsWith(`${wallId}:`))));
+    setSelectedPoint(null); setSelectedSegment(null); setOpeningParent("");
+  }
+
+  function openWallContextMenu(event: ReactMouseEvent<SVGLineElement>, selection: SegmentSelection) {
+    event.preventDefault(); event.stopPropagation();
+    setSelectedSegment(selection); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setWallLengthInput(null);
+    setOpeningParent(parentKey(selection.wallId, selection.segmentIndex));
+    const contextMenuWidth = 224;
+    const contextMenuHeight = Math.min(520, Math.max(0, window.innerHeight - 16));
+    const maxContextMenuX = Math.max(8, window.innerWidth - contextMenuWidth - 8);
+    const maxContextMenuY = Math.max(8, window.innerHeight - contextMenuHeight - 8);
+    setContextMenu({ kind: "WALL", ...selection, x: Math.max(8, Math.min(event.clientX, maxContextMenuX)), y: Math.max(8, Math.min(event.clientY, maxContextMenuY)) });
+  }
+
+  function openPointContextMenu(event: ReactMouseEvent<SVGCircleElement>, selection: PointSelection) {
+    event.preventDefault(); event.stopPropagation();
+    setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null);
+    setContextMenu({ kind: "POINT", ...selection, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
+  }
+
+  function beginPointDrag(event: ReactPointerEvent<SVGCircleElement>, selection: PointSelection) {
+    if ((tool !== "SELECT" && tool !== "MEASURE") || event.button !== 0) return;
+    setSelectedAnnotationId(null);
+    event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    const raw = snapshot();
+    const before = { ...raw, walls: assignStableCornerNumbers(raw.walls, wallVertexStarts) };
+    pointDrag.current = { selection, before }; setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null);
+  }
+
+  function beginWallDrag(event: ReactPointerEvent<SVGLineElement>, wall: Wall, segmentIndex: number) {
+    if (tool !== "SELECT" && tool !== "MEASURE" || event.button !== 0) return;
+    const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
+    const pointerStart = canvasPointFromClient(event.clientX, event.clientY, svg, false);
+    const rawHistoryBefore = snapshot();
+    const historyBefore = { ...rawHistoryBefore, walls: assignStableCornerNumbers(rawHistoryBefore.walls, wallVertexStarts) };
+    const materialized = materializeWallJunctionsForSelection(historyBefore.walls, wall.id, segmentIndex, pointerStart);
+    const materializedSnapshot = remapSnapshotForMaterializedSelection(historyBefore, materialized);
+    const separatedStart = separateParallelSegmentStartForDrag(materializedSnapshot.walls, wall.id, materialized.segmentIndex);
+    const separatedStartOpenings = remapOpeningsAfterWallDrag(materializedSnapshot.walls, separatedStart.walls, materializedSnapshot.openings);
+    const separatedSnapshot = { ...materializedSnapshot, walls: separatedStart.walls as Wall[], openings: separatedStartOpenings };
+    const separatedEnd = separateParallelSegmentEndForDrag(separatedSnapshot.walls, wall.id, separatedStart.segmentIndex);
+    const separatedEndOpenings = remapOpeningsAfterWallDrag(separatedSnapshot.walls, separatedEnd.walls, separatedSnapshot.openings);
+    const detachedPointIndices = [separatedStart.detachedPointIndex, separatedEnd.detachedEndPointIndex].filter((pointIndex): pointIndex is number => pointIndex !== undefined);
+    const keepDetachedPointIndices = [
+      ...(separatedStart.keepDetachedPointHidden && separatedStart.detachedPointIndex !== undefined ? [separatedStart.detachedPointIndex] : []),
+      ...(separatedEnd.keepDetachedEndPointHidden && separatedEnd.detachedEndPointIndex !== undefined ? [separatedEnd.detachedEndPointIndex] : []),
+    ];
+    const before = { ...separatedSnapshot, walls: separatedEnd.walls as Wall[], openings: separatedEndOpenings };
+    const selectedWall = before.walls.find((candidate) => candidate.id === wall.id);
+    if (!selectedWall) return;
+    setSelectedAnnotationId(null);
+    event.stopPropagation(); svg.setPointerCapture(event.pointerId);
+    pendingOpeningRemap.current = null;
+    wallDrag.current = { wallId: wall.id, segmentIndex: separatedEnd.segmentIndex, detachedPointIndices, keepDetachedPointIndices, before, historyBefore, points: selectedWall.points.map((point) => ({ ...point })), pointerStart };
+    if (materialized.splitAlong.length || detachedPointIndices.length) {
+      setWallsRespectingMeasurements(cloneWalls(before.walls)); setOpenings(cloneOpenings(before.openings)); setMeasurements(cloneMeasurements(before.measurements));
+      setDimensionOffsets({ ...before.dimensionOffsets }); setHiddenDimensions([...before.hiddenDimensions]);
+    }
+    setLockedViewport(viewport); setSelectedSegment({ wallId: wall.id, segmentIndex: separatedEnd.segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setWallLengthInput(null); setOpeningParent(parentKey(wall.id, separatedEnd.segmentIndex));
+  }
+
+  function beginOpeningDrag(event: ReactPointerEvent<SVGElement>, opening: FullOpening) {
+    if (event.button !== 0 || placement) return;
+    if (tool === "ADD_MEASURE") {
+      event.preventDefault(); event.stopPropagation();
+      addMeasurementReference({ kind: "OPENING", openingId: opening.id });
+      return;
+    }
+    event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    const svg = event.currentTarget.ownerSVGElement;
+    const wall = walls.find((item) => item.id === opening.wallId);
+    const start = wall?.points[opening.segmentIndex];
+    const end = wall?.points[opening.segmentIndex + 1];
+    const pointer = svg ? canvasPointFromClient(event.clientX, event.clientY, svg, false) : null;
+    const distanceFromWall = pointer && start && end ? signedWallSide(pointer, start, end) : 0;
+    const sideSign = (Math.abs(distanceFromWall) > 1 ? Math.sign(distanceFromWall) : opening.opensInward ? 1 : -1) as -1 | 1;
+    openingDrag.current = { openingId: opening.id, before: snapshot(), wallId: opening.wallId, segmentIndex: opening.segmentIndex, sideSign, initialOpensInward: opening.opensInward }; selectOpeningForEdit(opening);
+  }
+
+  function selectOpeningForEdit(opening: FullOpening) {
+    setSelectedAnnotationId(null);
+    onElementSelected?.(null);
+    setElementTab(opening.kind);
+    setTool("SELECT"); setLockedViewport(viewport); setOpeningListExpanded(true); setSelectedOpeningId(opening.id); setSelectedFixtureId(null); setSelectedPoint(null); setSelectedMeasurement(null); setHoveredSegment(null);
+    setSelectedSegment(null); setOpeningParent(parentKey(opening.wallId, opening.segmentIndex));
+    setOpeningKind(opening.kind); setOpeningCatalogueId(opening.catalogueItemId ?? ""); setOpeningOffset(opening.offset); setOpeningWidth(opening.width); setOpeningHeight(opening.height); setWindowSill(opening.sill);
+    {
+      const catalogue = catalogueItemForOpening(opening);
+      const colour = opening.colorHex ?? catalogue?.color_hex;
+      setOpeningComponentColours(opening.componentColors ?? {});
+      setDoorCustomColour(colour ?? catalogue?.color_hex ?? (opening.kind === "WINDOW" ? "#F4F3EE" : "#5b4330"));
+    }
+    setDoorType(opening.doorType); setHingeSide(opening.hingeSide); setOpensInward(opening.opensInward); setOpeningError(null);
+  }
+
+  const editOpeningFromViewer = useEffectEvent(() => {
+    const opening = openings.find(item => item.id === openingEditRequest?.id);
+    if (opening) {
+      const owner = projectRooms.find(room => room.id === openingEditRequest?.roomId);
+      if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
+      selectOpeningForEdit(opening);
+    }
+  });
+  useEffect(() => {
+    if (openingEditRequest) editOpeningFromViewer();
+  }, [openingEditRequest]);
+
+  // A furniture selection can originate in either viewer. Keep the 2D editor
+  // on the matching Elements tab and let the catalogue editor open that row.
+  const editElementFromViewer = useEffectEvent(() => {
+    if (!elementEditRequest) return;
+    const owner = projectRooms.find(room => room.id === elementEditRequest.roomId || room.obstacles.some(item => item.id === elementEditRequest.id));
+    const fixture = owner?.obstacles.find(item => item.id === elementEditRequest.id) ?? fixtures.find(item => item.id === elementEditRequest.id);
+    if (!fixture) return;
+    if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
+    setElementTab("FURNITURE");
+    setSelectedFixtureId(fixture.id);
+    setSelectedOpeningId(null);
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedMeasurement(null);
+    setSelectedAnnotationId(null);
+  });
+  useEffect(() => {
+    if (elementEditRequest) editElementFromViewer();
+  }, [elementEditRequest]);
+
+  function requestOutlineAction(action: PendingOutlineAction) {
+    onElementSelected?.(null);
+    setLShapePickerOpen(action === "L_SHAPE" || action === "NOTCHED_RECTANGLE");
+    setPendingOutlineAction(action);
+    if (action === "L_SHAPE" && pendingOutlineAction !== "L_SHAPE") setOutlineOrientation(L_SHAPE_TEMPLATES[0].id);
+    if (action === "NOTCHED_RECTANGLE" && pendingOutlineAction !== "NOTCHED_RECTANGLE") setOutlineOrientation(NOTCHED_RECTANGLE_TEMPLATES[0].id);
+  }
+
+  function clearAnnotationToolSelection() {
+    cancelAnnotationMode();
+    onElementSelected?.(null);
+    setTool("SELECT");
+    setMeasurementDraft([]);
+    setMeasurementContextMenu(null);
+    setSelectedMeasurement(null);
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setLockedViewport(null);
+  }
+
+  function cancelAnnotationMode() {
+    setAnnotationTool(null);
+    setAnnotationMeasurementMode(null);
+    setAnnotationDraft([]);
+    setAnnotationTextDialog(null);
+    setMarkerDialog(null);
+    setTool("SELECT");
+    setMeasurementDraft([]);
+    setSelectedMeasurement(null);
+    setMeasurementContextMenu(null);
+  }
+
+  function annotationToolAfterCompletion(toolName: AnnotationToolName): AnnotationToolName | null {
+    return repeatCommand?.kind === "ANNOTATION" && repeatCommand.tool === toolName ? toolName : null;
+  }
+
+  function handleAnnotationCommandDoubleClick(command: AnnotationToolName | "ADD_MEASUREMENT" | "REMOVE_MEASUREMENT") {
+    if (command === "ADD_MEASUREMENT") {
+      setRepeatCommand({ kind: "ANNOTATION", tool: "MEASUREMENT", measurementMode: "ADD" });
+    } else if (command === "REMOVE_MEASUREMENT") {
+      setRepeatCommand({ kind: "ANNOTATION", tool: "MEASUREMENT", measurementMode: "REMOVE" });
+    } else {
+      setRepeatCommand({ kind: "ANNOTATION", tool: command });
+    }
+  }
+
+  function clearRepeatCommandFromButton(event: ReactMouseEvent<HTMLElement>) {
+    const target = event.target;
+    if (!(target instanceof Element) || !repeatCommand) return;
+    const button = target.closest("button");
+    if (button && button.dataset.repeatCommand !== repeatCommandKey(repeatCommand)) setRepeatCommand(null);
+  }
+
+  function cancelActiveEditorInteraction() {
+    setRepeatCommand(null);
+    if (placement) onCancelPlacement?.();
+    placementPress.current = null;
+    setPlacementPoint(null);
+    if (fixtureDrag.current) {
+      fixtureDrag.current = null;
+      setFixturePreview(null);
+    }
+    pointDrag.current = null;
+    wallDrag.current = null;
+    openingDrag.current = null;
+    measurementDrag.current = null;
+    annotationDrag.current = null;
+    panDrag.current = null;
+    roomLabelDrag.current = null;
+    cancelAnnotationMode();
+
+    setAddRoomPanelOpen(false);
+    setOutlineMenuOpen(false);
+    setLShapePickerOpen(false);
+    setPendingOutlineAction(null);
+    setRoomActionError(null);
+    setCalibrating(false);
+    setCalibrationPoints([]);
+    setCalibrationHover(null);
+    setDraft([]);
+    setHoveredCorner(null);
+    setHoveredSegment(null);
+    setLockedViewport(null);
+    setSelectedSegment(null);
+    setSelectedPoint(null);
+    setSelectedOpeningId(null);
+    setOpeningParent("");
+    setOpeningError(null);
+    setMeasurementEditEnabled(false);
+    setContextMenu(null);
+    setOpeningContextMenu(null);
+    setOpeningMeasurementContextMenu(null);
+    setFixtureContextMenu(null);
+    setFixtureMeasurementContextMenu(null);
+    setToolbarContextMenu(null);
+  }
+  function activateModifyTool() {
+
+
+    onElementSelected?.(null);
+    setOutlineMenuOpen(false);
+    setAddRoomPanelOpen(false);
+    setTool("SELECT");
+    setAnnotationTool(null);
+    setAnnotationMeasurementMode(null);
+    setAnnotationTextDialog(null);
+    setAnnotationDraft([]);
+    setDraft([]);
+    setLockedViewport(null);
+  }
+
+  function confirmOutlineAction() {
+    const action = pendingOutlineAction;
+    if (!action) return;
+    setOutlineMenuOpen(false);
+    setLShapePickerOpen(false);
+    setPendingOutlineAction(null);
+    if (action === "EMPTY") newOutline();
+    else if (action === "RECTANGLE") applyTemplate(RECTANGLE_TEMPLATE);
+    else if (action === "L_SHAPE") applyTemplate((L_SHAPE_TEMPLATES.find(template => template.id === outlineOrientation) ?? L_SHAPE_TEMPLATES[0]).points);
+    else if (action === "NOTCHED_RECTANGLE") applyTemplate((NOTCHED_RECTANGLE_TEMPLATES.find(template => template.id === outlineOrientation) ?? NOTCHED_RECTANGLE_TEMPLATES[0]).points);
+  }
+
+  function openOpeningContextMenu(event: ReactMouseEvent<SVGGElement>, opening: FullOpening) {
+    if (placement) return;
+    event.preventDefault(); event.stopPropagation(); selectOpeningForEdit(opening); setContextMenu(null); setMeasurementContextMenu(null);
+    setOpeningContextMenu({ id: opening.id, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 190)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)) });
+  }
+
+  function openingMeasurementValue(opening: FullOpening, section: number): number {
+    const wall = walls.find((item) => item.id === opening.wallId);
+    const length = wall && wall.points[opening.segmentIndex + 1] ? segmentLength(wall, opening.segmentIndex) : 0;
+    if (section === 0) return opening.offset;
+    if (section === 1) return opening.width;
+    return Math.max(0, length - opening.offset - opening.width);
+  }
+
+  function openOpeningMeasurementContextMenu(event: ReactMouseEvent<SVGGElement>, opening: FullOpening, section: number) {
+    if (!measurementEditEnabled) return;
+    event.preventDefault(); event.stopPropagation();
+    selectOpeningForEdit(opening);
+    setContextMenu(null); setMeasurementContextMenu(null); setOpeningContextMenu(null); setFixtureMeasurementContextMenu(null); setOpeningMeasurementError(null);
+    setOpeningMeasurementValueInput(openingMeasurementValue(opening, section));
+    setOpeningMeasurementContextMenu({ id: opening.id, section, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 250)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 180)) });
+  }
+
+  function applyOpeningMeasurementValue() {
+    const menu = openingMeasurementContextMenu;
+    const opening = menu ? openings.find((item) => item.id === menu.id) : null;
+    if (!menu || !opening) return;
+    const value = openingMeasurementValueInput ?? openingMeasurementValue(opening, menu.section);
+    if (!Number.isFinite(value) || value < 0) { setOpeningMeasurementError("Enter a non-negative length."); return; }
+    const wall = walls.find((item) => item.id === opening.wallId);
+    const length = wall && wall.points[opening.segmentIndex + 1] ? segmentLength(wall, opening.segmentIndex) : 0;
+    const candidate = menu.section === 0 ? { ...opening, offset: value }
+      : menu.section === 1 ? { ...opening, width: value }
+        : { ...opening, offset: length - opening.width - value };
+    if (candidate.width <= 0 || !openingPlacementIsValid(candidate)) {
+      setOpeningMeasurementError(`The resulting opening must remain ${formatLength(OPENING_CORNER_CLEARANCE_MM, displayUnits)} clear of every corner and junction.`);
+      return;
+    }
+    record();
+    setOpenings((current) => current.map((item) => item.id === candidate.id ? candidate : item));
+    setOpeningOffset(candidate.offset); setOpeningWidth(candidate.width); setOpeningMeasurementContextMenu(null); setOpeningMeasurementError(null);
+  }
+
+  function deleteOpeningById(id: string) {
+    record(); setOpenings((current) => current.filter((opening) => opening.id !== id)); if (selectedOpeningId === id) setSelectedOpeningId(null);
+  }
+
+  function openingCornerOffsets(wall: Wall, segmentIndex: number): number[] {
+    const start = wall.points[segmentIndex]; const end = wall.points[segmentIndex + 1];
+    if (!start || !end) return [];
+    return cornerOffsetsOnWallSegment(start, end, walls.flatMap((candidateWall) => candidateWall.points));
+  }
+
+  function openingPlacementIsValid(opening: Pick<FullOpening, "id" | "wallId" | "segmentIndex" | "offset" | "width">, geometry = walls, allOpenings = openings): boolean {
+    const wall = geometry.find((item) => item.id === opening.wallId);
+    if (!wall || !wall.points[opening.segmentIndex + 1]) return false;
+    const length = segmentLength(wall, opening.segmentIndex);
+    const corners = cornerOffsetsOnWallSegment(wall.points[opening.segmentIndex], wall.points[opening.segmentIndex + 1], geometry.flatMap((candidateWall) => candidateWall.points));
+    const blockers = allOpenings.filter((item) => item.id !== opening.id && item.wallId === opening.wallId && item.segmentIndex === opening.segmentIndex);
+    return isOpeningPlacementValid(opening.offset, opening.width, length, corners, blockers, OPENING_CORNER_CLEARANCE_MM);
+  }
+
+  function constrainWallTranslationForOpenings(active: WallDrag, normal: Point2D, requestedDistance: number): { distance: number; openings: FullOpening[] } {
+    const translate = (distance: number) => {
+      const translated = translateWallAndAttachedOpenings(active.before.walls, active.before.openings, active.wallId, active.segmentIndex, normal, distance);
+      if (!squaredWalls) return translated;
+      const walls = propagateSquaredWallEdit(active.before.walls, translated.walls, { wallId: active.wallId, pointIndex: active.segmentIndex });
+      if (walls === translated.walls) return translated;
+      return { walls, openings: remapOpeningsAfterWallDrag(active.before.walls, walls, active.before.openings) };
+    };
+    const isValid = (distance: number) => {
+      const candidate = translate(distance);
+      return candidate.openings.every((opening) => openingPlacementIsValid(opening, candidate.walls, candidate.openings));
+    };
+    if (!requestedDistance || isValid(requestedDistance)) {
+      const candidate = translate(requestedDistance);
+      return { distance: requestedDistance, openings: candidate.openings };
+    }
+    if (!isValid(0)) return { distance: 0, openings: active.before.openings };
+    const direction = Math.sign(requestedDistance);
+    let allowed = 0;
+    let blocked = Math.abs(requestedDistance);
+    // Opening validity is continuous for a straight wall translation. Find the
+    // exact clearance boundary rather than dropping the drag frame that first
+    // crossed it, which keeps the wall motion smooth with or without snapping.
+    for (let iteration = 0; iteration < 32; iteration++) {
+      const candidateDistance = direction * (allowed + blocked) / 2;
+      if (isValid(candidateDistance)) allowed = Math.abs(candidateDistance);
+      else blocked = Math.abs(candidateDistance);
+    }
+    const distance = direction * allowed;
+    return { distance, openings: translate(distance).openings };
+  }
+
+  function moveOpening(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    const active = openingDrag.current;
+    if (!active) return false;
+    const opening = openings.find((item) => item.id === active.openingId);
+    if (!opening) return true;
+    const pointer = canvasPoint(event, false);
+    const nearest = walls.flatMap((wall) => wall.points.slice(0, -1).map((start, segmentIndex) => {
+      const end = wall.points[segmentIndex + 1]; const projection = pointOnSegment(pointer, start, end); const length = segmentLength(wall, segmentIndex);
+      const rawOffset = projection.along * length - opening.width / 2;
+      const requested = snapEnabled ? Math.round(rawOffset / snapSize) * snapSize : Math.round(rawOffset * 10) / 10;
+      const blockers = openings.filter((item) => item.id !== opening.id && item.wallId === wall.id && item.segmentIndex === segmentIndex);
+      const offset = closestValidOpeningOffset(requested, opening.width, length, openingCornerOffsets(wall, segmentIndex), blockers, OPENING_CORNER_CLEARANCE_MM);
+      return { wall, segmentIndex, distance: Math.hypot(pointer.x - projection.point.x, pointer.y - projection.point.y), offset };
+    })).filter((item): item is { wall: Wall; segmentIndex: number; distance: number; offset: number } => item.offset !== null).sort((first, second) => first.distance - second.distance)[0];
+    if (!nearest) return true;
+    const sameWallSegment = nearest.wall.id === active.wallId && nearest.segmentIndex === active.segmentIndex;
+    const distanceFromWall = signedWallSide(pointer, nearest.wall.points[nearest.segmentIndex], nearest.wall.points[nearest.segmentIndex + 1]);
+    const sideSign = Math.abs(distanceFromWall) > 1 ? Math.sign(distanceFromWall) as -1 | 1 : active.sideSign;
+    const nextOpensInward = sameWallSegment
+      ? sideSign === active.sideSign ? active.initialOpensInward : !active.initialOpensInward
+      : opening.opensInward;
+    setOpenings((current) => current.map((item) => item.id === opening.id ? { ...item, wallId: nearest.wall.id, segmentIndex: nearest.segmentIndex, offset: nearest.offset, ...(opening.kind === "DOOR" && sameWallSegment ? { opensInward: nextOpensInward } : {}) } : item));
+    if (opening.kind === "DOOR" && sameWallSegment) setOpensInward(nextOpensInward);
+    setSelectedSegment({ wallId: nearest.wall.id, segmentIndex: nearest.segmentIndex }); setOpeningParent(parentKey(nearest.wall.id, nearest.segmentIndex)); setOpeningOffset(nearest.offset);
+    return true;
+  }
+
+  function movePoint(event: ReactPointerEvent<SVGSVGElement>) {
+    if (placement) { setPlacementPoint(canvasPoint(event,false)); return; }
+    const panStart = panDrag.current;
+    if (panStart) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setPan({ x: panStart.pan.x + (event.clientX - panStart.clientX) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: panStart.pan.y + (event.clientY - panStart.clientY) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height });
+      return;
+    }
+    if (moveAnnotation(event)) return;
+    if (tool === "DRAW" && !measurementDrag.current && !fixtureDrag.current && !openingDrag.current && !wallDrag.current && !pointDrag.current) {
+      const hovered = findCornerNear(canvasPoint(event, false));
+      setHoveredCorner((current) => current?.wallId === hovered?.wallId && current?.pointIndex === hovered?.pointIndex ? current : hovered);
+    }
+    if (moveRoomLabel(event)) return;
+    const activeMeasurement = measurementDrag.current;
+    if (activeMeasurement) {
+      const pointer = screenPointFromClient(event.clientX, event.clientY, event.currentTarget);
+      const distance = activeMeasurement.offset + (pointer.x - activeMeasurement.pointerStart.x) * activeMeasurement.normal.x + (pointer.y - activeMeasurement.pointerStart.y) * activeMeasurement.normal.y;
+      if (activeMeasurement.custom) setMeasurements((current) => current.map((measurement) => measurement.id === activeMeasurement.id ? { ...measurement, offset: distance } : measurement));
+      else setDimensionOffsets((current) => ({ ...current, [activeMeasurement.id]: distance }));
+      return;
+    }
+    if (moveFixture(event)) return;
+    if (moveOpening(event)) return;
+    const activeWall = wallDrag.current;
+    if (activeWall) {
+      const start = activeWall.points[activeWall.segmentIndex]; const endIndex = activeWall.segmentIndex + 1; const end = activeWall.points[endIndex];
+      if (!start || !end) return;
+      const dx = end.x - start.x; const dy = end.y - start.y; const length = Math.hypot(dx, dy); if (!length) return;
+      const pointer = canvasPoint(event, false); const normal = { x: -dy / length, y: dx / length };
+      const rawDistance = (pointer.x - activeWall.pointerStart.x) * normal.x + (pointer.y - activeWall.pointerStart.y) * normal.y;
+      const requestedDistance = snapEnabled ? Math.round(rawDistance / snapSize) * snapSize : Math.round(rawDistance * 10) / 10;
+      const requestedWalls = squaredWalls ? propagateSquaredWallEdit(activeWall.before.walls,
+        translateWallAndAttachedOpenings(activeWall.before.walls, [], activeWall.wallId, activeWall.segmentIndex, normal, requestedDistance).walls,
+        { wallId: activeWall.wallId, pointIndex: activeWall.segmentIndex }) : undefined;
+      const wallClearanceDistance = constrainTranslatedWallDistance(activeWall.before.walls, activeWall.wallId, activeWall.segmentIndex, requestedDistance, Math.max(MIN_WALL_CLEARANCE_MM, snapEnabled ? snapSize : 0), requestedWalls);
+      const openingConstrained = constrainWallTranslationForOpenings(activeWall, normal, wallClearanceDistance);
+      const distance = openingConstrained.distance;
+      const movedStart = { x: start.x + normal.x * distance, y: start.y + normal.y * distance };
+      const movedEnd = { x: end.x + normal.x * distance, y: end.y + normal.y * distance };
+      // Repair small gaps left by earlier snapped edits and keep projected
+      // junction endpoints rigidly attached during every wall translation.
+      setWallsRespectingMeasurements((current) => {
+        // Pointer-down can materialize a T-junction into a new wall vertex.
+        // Build every drag frame from that normalized snapshot rather than the
+        // pre-render state, which may still contain the original unsplit line.
+        let nextWalls: Wall[] = activeWall.before.walls.map((wall) => {
+        if (wall.id === activeWall.wallId) {
+          const points = activeWall.points.map((point) => ({ ...point })); const closed = samePoint(points[0], points.at(-1)!);
+          points[activeWall.segmentIndex] = { ...movedStart };
+          points[endIndex] = { ...movedEnd };
+          if (closed && activeWall.segmentIndex === 0) points[points.length - 1] = { ...points[0] };
+          if (closed && endIndex === points.length - 1) points[0] = { ...points[endIndex] };
+          const attachments = { ...wall.attachments };
+          if (Math.abs(distance) > 1) {
+            for (const pointIndex of activeWall.detachedPointIndices) {
+              if (!activeWall.keepDetachedPointIndices.includes(pointIndex)) delete attachments[pointIndex];
+            }
+          }
+          return { ...wall, points, attachments: Object.keys(attachments).length ? attachments : undefined };
+        }
+        // Explicit anchors are created when a wall starts or finishes on this segment.
+        // Resolve every anchored point from the host segment itself instead of moving it
+        // from its previous coordinates. That keeps a junction rigid and repairs a
+        // legacy corner that has already drifted slightly away from its host wall.
+        // Always identify connections from the drag-start snapshot. After the first
+        // pointer update a connected point has already moved away from its original
+        // coordinate, so comparing the live geometry on later updates loses the
+        // junction and lets the selected wall continue moving on its own.
+        const baselineWall = activeWall.before.walls.find((item) => item.id === wall.id) ?? wall;
+        const attachments = { ...baselineWall.attachments };
+        let points = baselineWall.points.map((point) => ({ ...point }));
+        const closed = samePoint(baselineWall.points[0], baselineWall.points.at(-1)!);
+        baselineWall.points.forEach((point, pointIndex) => {
+          // A closed floorplan can contain the same physical junction in several
+          // wall runs. Move every coincident corner, including interior points;
+          // restricting this to run endpoints leaves the other wall behind and
+          // visibly opens the room.
+          if (closed && pointIndex === baselineWall.points.length - 1) return;
+          const sharedTarget = samePoint(point, start) ? movedStart : samePoint(point, end) ? movedEnd : null;
+          if (sharedTarget) {
+            // Keep another wall's terminating endpoint in place. It is not an
+            // interior anchor on the translated segment; retainDraggedWallConnections
+            // adds the perpendicular bridge from this fixed junction to the moved
+            // endpoint after all walls have been updated.
+            return;
+          }
+          const attachment = baselineWall.attachments?.[pointIndex];
+          if (attachment?.wallId === activeWall.wallId && attachment.segmentIndex === activeWall.segmentIndex) {
+            const along = Math.max(0, Math.min(1, attachment.along));
+            const target = { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
+            points = squaredWalls ? moveSquaredWallPoint(points, pointIndex, target) : points.map((candidate, index) => index === pointIndex ? target : candidate);
+            return;
+          }
+          // A connected corner can be an interior point of a wall run (a T or
+          // multi-room junction), not only a run endpoint. Keep its perpendicular
+          // leg attached to the moving host segment so a wall is never left open.
+          // Use a tight physical tolerance: a nearby, deliberately separate wall
+          // must never be pulled onto the selected wall.
+          if (hasPerpendicularConnectedLeg(baselineWall.points, pointIndex, start, end) && isPreciseWallJunction(point, start, end)) {
+            const along = pointOnSegment(point, start, end).along;
+            attachments[pointIndex] = { wallId: activeWall.wallId, segmentIndex: activeWall.segmentIndex, along };
+            const target = { x: start.x + (end.x - start.x) * along + normal.x * distance, y: start.y + (end.y - start.y) * along + normal.y * distance };
+            points = squaredWalls ? moveSquaredWallPoint(points, pointIndex, target) : points.map((candidate, index) => index === pointIndex ? target : candidate);
+          }
+        });
+        return { ...wall, points, attachments: Object.keys(attachments).length ? attachments : undefined };
+        }).map((wall) => ({ ...wall, points: samePoint(wall.points[0], wall.points.at(-1)!) ? [...wall.points.slice(0, -1), { ...wall.points[0] }] : wall.points }));
+        if (squaredWalls) nextWalls = propagateSquaredWallEdit(activeWall.before.walls, nextWalls, { wallId: activeWall.wallId, pointIndex: activeWall.segmentIndex });
+        const synchronizedWalls = reanchorAutoWallBridges(synchronizeConnectedJunctions(activeWall.before.walls, nextWalls, squaredWalls, activeWall.wallId, [activeWall.segmentIndex, endIndex]), activeWall.wallId);
+        const fixedParallelWalls = preserveUnrelatedParallelWallSegments(activeWall.before.walls, synchronizedWalls, activeWall.wallId, activeWall.segmentIndex);
+        const followedWalls = reanchorAttachedWallEndpoints(followTerminatingEndpointsOnTranslatedSegments(activeWall.before.walls, fixedParallelWalls, activeWall.wallId), activeWall.wallId);
+        // Connections can point in either direction. When the selected wall's own
+        // endpoint was attached to another wall, moving it beyond that host's end
+        // needs a real bridge segment; otherwise the enclosing room graph opens.
+        const connectedWalls = reanchorAutoWallBridges(retainDraggedWallConnections(activeWall.before.walls, followedWalls, activeWall.wallId, activeWall.segmentIndex), activeWall.wallId);
+        const repairedParallelWalls = reanchorAutoWallBridges(preserveUnrelatedParallelWallSegments(activeWall.before.walls, connectedWalls, activeWall.wallId, activeWall.segmentIndex), activeWall.wallId);
+        // The bridge repair above may inspect and temporarily translate the
+        // entire graph. Restore existing walls which have no direct connection
+        // to the dragged segment, then reanchor bridge endpoints without the
+        // host-propagation step that could move those restored walls again.
+        const isolatedWalls = preserveUnrelatedWallGeometry(activeWall.before.walls, repairedParallelWalls, activeWall.wallId, activeWall.segmentIndex);
+        const finalWalls = ensureVisibleJunctionCorners(ensureVisibleBridgeCorners(materializeWallIntersections(reanchorAutoWallBridges(isolatedWalls, activeWall.wallId, false))));
+        const preservesConstraints = finalWalls.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
+        if (preservesConstraints && wallLengthOverridesSatisfied(finalWalls)) return assignStableCornerNumbers(finalWalls);
+
+        // A translated open run can be rejected by the broad repair passes
+        // when its attached room endpoint is also a shared corner.  Preserve
+        // the direct segment translation as a safe fallback, reconnect it to
+        // its drag-start hosts, and materialize any resulting T junctions.
+        // This keeps a wall drag from silently becoming a no-op while retaining
+        // the orthogonal and minimum-area guarantees above.
+        const directCandidate = ensureVisibleJunctionCorners(ensureVisibleBridgeCorners(materializeWallIntersections(reanchorAutoWallBridges(
+          retainDraggedWallConnections(activeWall.before.walls, nextWalls, activeWall.wallId, activeWall.segmentIndex),
+          activeWall.wallId,
+        ))));
+        const directConstraints = directCandidate.every((wall) => (!squaredWalls || hasOnlyOrthogonalSegments(wall.points)) && (wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points)));
+        if (directConstraints && wallLengthOverridesSatisfied(directCandidate)) return assignStableCornerNumbers(directCandidate);
+        // Only reconcile lengths after trying both translations. A repair pass
+        // can disturb a remote locked span even when the direct move is valid.
+        // Never accept a sequential correction that breaks an earlier lock.
+        for (const candidate of [preservesConstraints ? finalWalls : null, directConstraints ? directCandidate : null]) {
+          if (!candidate) continue;
+          const enforced = squaredWalls ? enforceWallLengthOverridesPreservingOrthogonality(candidate) : enforceWallLengthOverrides(candidate);
+          if (enforced && wallLengthOverridesSatisfied(enforced) && enforced.every((wall) => wall.id !== activeWall.wallId || hasMinimumEnclosedArea(wall.points))) {
+            return assignStableCornerNumbers(enforced);
+          }
+        }
+        return current;
+      });
+      pendingOpeningRemap.current = { beforeWalls: activeWall.before.walls, openings: openingConstrained.openings };
+      return;
+    }
+    if (!pointDrag.current) return;
+    const activePoint = pointDrag.current;
+    const { selection } = activePoint; const next = canvasPoint(event, false);
+    // Work from the drag-start topology each frame. Updating only the clicked
+    // point leaves coincident corners and attached wall runs behind, which opens
+    // otherwise closed rooms. The repair pass preserves direct junctions and
+    // creates a short bridging wall only when an endpoint has genuinely moved
+    // off the wall it was attached to.
+    const constrained = constrainCornerMoveForOpenings(activePoint.before.walls, activePoint.before.openings, selection, next);
+    pendingOpeningRemap.current = { beforeWalls: activePoint.before.walls, openings: constrained.openings };
+    setWallsRespectingMeasurements(() => constrained.walls, squaredWalls, false, true);
+  }
+
+  function finishPointDrag(event?: ReactPointerEvent<SVGSVGElement>) {
+    if (placement && event) {
+      const down=placementPress.current; placementPress.current=null;
+      if (event.type!=="pointercancel" && event.button===0 && down && Math.hypot(event.clientX-down.x,event.clientY-down.y)<5) {
+        const point=canvasPoint(event,false), candidate=resolvePlacement(placement,point,planRooms,planPlacementWalls);
+        if (candidate) {
+          onCommitPlacement?.(candidate);
+          if (!placement.opening && candidate.roomId) {
+            setElementTab("FURNITURE");
+            setSelectedFixtureId(candidate.obstacle.id);
+            const target = planRooms.find(room => room.id === candidate.roomId);
+            if (target?.source_floorplan_room_id) setSelectedRoomId(target.source_floorplan_room_id);
+            onElementSelected?.({ id: candidate.obstacle.id, roomId: candidate.roomId });
+          }
+        }
+      }
+      return;
+    }
+    if (panDrag.current) { panDrag.current = null; return; }
+    if (annotationDrag.current) {
+      const active = annotationDrag.current;
+      annotationDrag.current = null;
+      if ((active as typeof active & { moved?: boolean }).moved) record(active.before);
+      return;
+    }
+    if (roomLabelDrag.current) {
+      const active = roomLabelDrag.current;
+      roomLabelDrag.current = null;
+      setDraggingRoomLabelId(null);
+      if (active.moved) record(active.before);
+      return;
+    }
+    if (measurementDrag.current) { const before = measurementDrag.current.before; measurementDrag.current = null; record(before); return; }
+    if (fixtureDrag.current) {
+      const candidate = fixtureDrag.current.candidate;
+      fixtureDrag.current = null; setFixturePreview(null);
+      if (event?.type !== "pointercancel" && candidate?.roomId) {
+        onTransferObstacle?.(candidate.obstacle,candidate.roomId);
+        const destination=planRooms.find(room=>room.id===candidate.roomId);
+        if (destination?.source_floorplan_room_id) setSelectedRoomId(destination.source_floorplan_room_id);
+      }
+      return;
+    }
+    if (openingDrag.current) { const before = openingDrag.current.before; openingDrag.current = null; setLockedViewport(null); record(before); return; }
+    if (wallDrag.current) { const before = wallDrag.current.historyBefore; wallDrag.current = null; pendingOpeningRemap.current = null; setLockedViewport(null); record(before); return; }
+    if (!pointDrag.current) return;
+    const before = pointDrag.current.before; pointDrag.current = null; pendingOpeningRemap.current = null; setLockedViewport(null); record(before);
+    setOpenings((current) => current.filter((opening) => openingPlacementIsValid(opening, walls, current)));
+  }
+
+  function selectSegment(wallId: string, segmentIndex: number) {
+    setSelectedAnnotationId(null);
+    if (tool === "REMOVE") { removeSegment(wallId, segmentIndex); return; }
+    if (tool === "ADD_CORNERS") { setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); return; }
+    if (tool !== "SELECT") return;
+    setSelectedSegment({ wallId, segmentIndex }); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setWallLengthInput(null); setOpeningParent(parentKey(wallId, segmentIndex));
+  }
+
+  function updateCoordinatePoint(wallId: string, pointIndex: number, next: Point2D, lengthOverride?: { segmentIndex: number; lengthMm: number }, options?: { allowSubMinimumLength?: boolean }) {
+    const raw = snapshot();
+    const before = { ...raw, walls: assignStableCornerNumbers(raw.walls, wallVertexStarts) };
+    const resizeBaseline = lengthOverride ? releaseWallLengthOverride(before.walls, wallId, lengthOverride.segmentIndex) : before.walls;
+    const constrained = constrainCornerMoveForOpenings(resizeBaseline, before.openings, { wallId, pointIndex }, next, options);
+    const nextWalls = !lengthOverride ? constrained.walls : constrained.walls.map((wall) => wall.id === wallId ? { ...wall, lengthOverridesMm: { ...wall.lengthOverridesMm, [lengthOverride.segmentIndex]: lengthOverride.lengthMm } } : wall);
+    // Reject incompatible dimensions atomically rather than letting the old
+    // endpoint-only correction undo an existing lock or the requested resize.
+    if (squaredWalls && lengthOverride && !wallLengthOverridesSatisfied(nextWalls)) return;
+    pendingOpeningRemap.current = { beforeWalls: before.walls, openings: constrained.openings };
+    record(before);
+    setWallsRespectingMeasurements(() => nextWalls, squaredWalls, false, true);
+  }
+
+  function resetOpeningForm(kind = openingKind) {
+    const item = defaultOpeningCatalogueItem(kind);
+    const dimensions = item ? openingCatalogueDefaultDimensions(item) : undefined;
+    setOpeningKind(kind); setOpeningCatalogueId(item?.id ?? ""); setOpeningOffset(100); setOpeningWidth(item?.width_mm ?? 800); setOpeningHeight(dimensions?.height ?? (kind === "DOOR" ? 2040 : 900)); setWindowSill(item?.fixture_kind === "WINDOW" ? dimensions?.sill ?? 900 : 900);
+    const defaultColour = item?.color_hex ?? "#5b4330";
+    setDoorType(item?.fixture_kind === "DOOR" && (doorModel(item.representation_key)?.leaves ?? (item.subcategory.toLowerCase().includes("double") ? 2 : 1)) > 1 ? "DOUBLE" : "SINGLE"); setOpeningComponentColours({}); setDoorCustomColour(defaultColour); setHingeSide("START"); setOpensInward(true); setOpeningError(null);
+    setOpeningParent(selectedSegment ? parentKey(selectedSegment.wallId, selectedSegment.segmentIndex) : "");
+  }
+
+  function beginOpeningPlacement() {
+    cancelAnnotationMode();
+    if (!onBeginPlacement) return;
+    const standalone = Boolean(openingEditorTarget && viewerOpeningRoom && !planRooms.some(room=>room.id===viewerOpeningRoom.id));
+    const context = () => {
+      const current=placementGeometry.current, room=standalone?current.viewerOpeningRoom:null;
+      if (!room) return current;
+      const roomWalls: Wall[]=room.vertices.map((start,index)=>({id:`wall-${String(index+1).padStart(3,"0")}`,points:[start,room.vertices[(index+1)%room.vertices.length]],thicknessOverridesMm:{0:room.wall_thickness_overrides_mm?.[`wall-${String(index+1).padStart(3,"0")}`]??room.wall_thickness.value}}));
+      const roomOpenings: FullOpening[]=room.openings.filter(item=>item.kind!=="GENERIC").map(item=>({id:item.id,kind:item.kind as "DOOR"|"WINDOW",wallId:item.parent_wall_id,segmentIndex:0,offset:item.offset_mm,width:item.width.value,height:item.height.value,sill:item.sill_height_mm,hingeSide:item.hinge_side??"START",doorType:item.door_type??"SINGLE",opensInward:item.opens_inward??true}));
+      return {...current,walls:roomWalls,openings:roomOpenings,planRooms:[room]};
+    };
+    if (!context().walls.length) { setOpeningError("Draw a wall or open a room before placing an opening."); return; }
+    const id = crypto.randomUUID();
+    const settings = { kind: openingKind, width: openingWidth, height: openingHeight, sill: openingKind === "WINDOW" ? windowSill : 0,
+      hingeSide, doorType, opensInward, catalogueItemId: activeOpeningCatalogueItem?.id, representationKey: activeOpeningCatalogueItem?.representation_key,
+      windowDepthMm: activeOpeningCatalogueItem?.depth_mm, colorHex: doorColour, componentColors: { ...openingComponentColours } };
+    const measured = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
+    const ghost: Obstacle = { id: "opening-preview", name: activeOpeningCatalogueItem?.name ?? openingKind.toLowerCase(), center: {x:0,y:0},
+      dimensions: {width:measured(openingWidth),depth:measured(activeOpeningCatalogueItem?.depth_mm ?? wallThickness),height:measured(openingHeight)},
+      base_z_mm:settings.sill, rotation_deg:0, verified:false, color_hex:doorColour, component_colors:settings.componentColors,
+      representation_key:settings.representationKey ?? (openingKind === "DOOR" ? "door-single" : "window-casement") };
+    onBeginPlacement({ id, obstacle:ghost, opening:{kind:openingKind,hingeSide,doorType,opensInward},
+      resolve: point => {
+        const current=context();
+        const points=current.walls.flatMap(wall=>wall.points);
+        const candidates=current.walls.flatMap(wall=>wall.points.slice(0,-1).flatMap((start,segmentIndex)=>{
+          const end=wall.points[segmentIndex+1], projected=pointOnSegment(point,start,end), length=segmentLength(wall,segmentIndex);
+          const blockers=current.openings.filter(item=>item.wallId===wall.id && item.segmentIndex===segmentIndex);
+          const offset=closestValidOpeningOffset(projected.along*length-settings.width/2,settings.width,length,cornerOffsetsOnWallSegment(start,end,points),blockers,OPENING_CORNER_CLEARANCE_MM);
+          if (offset===null) return [];
+          const center={x:start.x+(end.x-start.x)*(offset+settings.width/2)/length,y:start.y+(end.y-start.y)*(offset+settings.width/2)/length};
+          const distance=Math.hypot(center.x-point.x,center.y-point.y);
+          if (distance>Math.max(400,settings.width*.6)) return [];
+          const owner=current.planRooms.find(room=>containsPoint(center,room.vertices));
+          if (owner && settings.sill+settings.height>owner.wall_height.value) return [];
+          const renderedOpening=owner ? roomOpenings({id:owner.id,name:owner.name,vertices:owner.vertices,sourceWallId:wall.id},[{...settings,id,wallId:wall.id,segmentIndex,offset}],current.walls,openingCatalogueItems)[0] : undefined;
+          return [{ obstacle:{...ghost,center,rotation_deg:Math.atan2(end.y-start.y,end.x-start.x)*180/Math.PI},roomId:owner?.id,
+            openingModel:owner && renderedOpening ? {room:owner,opening:renderedOpening} : undefined,
+            opening:{wallId:wall.id,segmentIndex,offset,start,end,thickness:wallThicknessForSegment(wall,segmentIndex,wallThickness)},distance }];
+        }));
+        return candidates.sort((a,b)=>a.distance-b.distance)[0]??null;
+      },
+      commit: candidate => {
+        if (!candidate.opening) return false;
+        const target=candidate.opening, current=context();
+        const next={...settings,id,wallId:target.wallId,segmentIndex:target.segmentIndex,offset:target.offset};
+        if (!openingPlacementIsValid(next,current.walls,current.openings)) return false;
+        if (standalone && current.viewerOpeningRoom && onStandaloneRoomChange) {
+          const room=current.viewerOpeningRoom;
+          if (room.openings.some(item=>item.id===id)) return true;
+          const opening: Opening={id,kind:settings.kind,parent_wall_id:target.wallId,offset_mm:target.offset,width:measured(settings.width),height:measured(settings.height),sill_height_mm:settings.sill,
+            hinge_side:settings.hingeSide,door_type:settings.doorType,opens_inward:settings.opensInward,swing_angle_deg:90,metadata:{catalogue_item_id:settings.catalogueItemId,representation_key:settings.representationKey,window_depth_mm:settings.windowDepthMm,color_hex:settings.colorHex,component_colors:settings.componentColors}};
+          onStandaloneRoomChange({...room,version:room.version+1,openings:[...room.openings,opening]});
+          return true;
+        }
+        record();
+        setOpenings(previous=>previous.some(item=>item.id===id)?previous:[...previous,next]);
+        setSelectedOpeningId(null); setOpeningParent(""); setSelectedSegment(null);
+        return true;
+      }
+    });
+    setTool("SELECT"); setDraft([]); setPlacementPoint(null);
+  }
+
+  function saveOpening() {
+    setOpeningError(null);
+    const option = segmentOptions.find((item) => item.key === openingParent);
+    const availableHeight=openingEditorTarget && viewerOpeningRoom ? viewerOpeningRoom.wall_height.value : wallHeight;
+    if (![openingWidth, openingHeight, openingOffset, windowSill].every(Number.isFinite) || openingHeight <= 0 || (openingKind === "WINDOW" ? windowSill : 0) + openingHeight > availableHeight || (openingKind === "WINDOW" && windowSill < 0)) { setOpeningError("The opening height and sill must fit within the wall height."); return; }
+    if (openingWidth <= 0) { setOpeningError("Enter an opening width greater than zero."); return; }
+    if (!selectedOpeningId && (!option || (openingEditorTarget && !openingEditRequest))) { beginOpeningPlacement(); return; }
+    if (!option) { setOpeningError("Select a wall for this opening."); return; }
+    const length = segmentLength(option.wall, option.segmentIndex);
+    const corners = openingCornerOffsets(option.wall, option.segmentIndex);
+    const blockers = openings.filter((item) => item.id !== selectedOpeningId && item.wallId === option.wall.id && item.segmentIndex === option.segmentIndex);
+    if (!isOpeningPlacementValid(openingOffset, openingWidth, length, corners, [], OPENING_CORNER_CLEARANCE_MM)) { setOpeningError(`The opening must stay on its wall and at least ${formatLength(OPENING_CORNER_CLEARANCE_MM, displayUnits)} clear of every wall corner or junction.`); return; }
+    // A new opening can inherit an occupied offset after selection or dragging.
+    const offset = selectedOpeningId
+      ? (isOpeningPlacementValid(openingOffset, openingWidth, length, corners, blockers, OPENING_CORNER_CLEARANCE_MM) ? openingOffset : null)
+      : closestValidOpeningOffset(openingOffset, openingWidth, length, corners, blockers, OPENING_CORNER_CLEARANCE_MM);
+    if (offset === null) { setOpeningError(selectedOpeningId ? "This opening overlaps another door or window. Choose a different offset." : "There is not enough free space on this wall for another opening of this width."); return; }
+    record();
+    const nextOpening: Omit<FullOpening, "id"> = { kind: openingKind, wallId: option.wall.id, segmentIndex: option.segmentIndex, offset, width: openingWidth, height: openingHeight, sill: openingKind === "WINDOW" ? windowSill : 0, hingeSide, doorType, opensInward, catalogueItemId: activeOpeningCatalogueItem?.id, representationKey: activeOpeningCatalogueItem?.representation_key, windowDepthMm: activeOpeningCatalogueItem?.depth_mm, colorHex: doorColour, componentColors: { ...openingComponentColours } };
+    if (selectedOpeningId) setOpenings((current) => current.map((item) => item.id === selectedOpeningId ? { ...nextOpening, id: item.id } : item));
+    else {
+      setOpenings((current) => [...current, { ...nextOpening, id: crypto.randomUUID() }]);
+    }
+    if (openingEditRequest && selectedOpeningId) return;
+    // Keep the selected catalogue variant and dimensions for repeated additions.
+    // Resetting to the first default could silently change a single door to double.
+    setSelectedOpeningId(null);
+    setOpeningParent(option.key);
+    setOpeningOffset(closestValidOpeningOffset(offset + openingWidth, openingWidth, length, corners, [...blockers, nextOpening], OPENING_CORNER_CLEARANCE_MM) ?? offset);
+  }
+
+  const prepareOpeningAddition = useEffectEvent(() => {
+    onElementSelected?.(null);
+    setSelectedOpeningId(null); resetOpeningForm("DOOR"); setOpeningParent(""); setOpeningPositionExpanded(false); setElementTab("DOOR");
+  });
+  useEffect(() => {
+    if (openingEditorTarget && !openingEditRequest) prepareOpeningAddition();
+  }, [openingEditorTarget, openingEditRequest]);
+
+  function cancelOpeningEdit() {
+    const parent = openingParent;
+    setSelectedOpeningId(null); resetOpeningForm(); setOpeningParent(parent);
+  }
+
+  async function importDrawing(file?: File) {
+    if (!file) return;
+    let nextUrl = URL.createObjectURL(file);
+    const importId = backgroundImportId.current + 1;
+    backgroundImportId.current = importId;
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    setSourceFile(file); setSourceUrl(nextUrl); setCanvasSize(DEFAULT_SIZE); setImporting(true); setImportError(null);
+    setCalibrating(false); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError("");
+    try {
+      if (isPdfFile(file)) {
+        const raster = await renderPdfDrawing(file);
+        URL.revokeObjectURL(nextUrl);
+        nextUrl = URL.createObjectURL(raster);
+        if (backgroundImportId.current !== importId) { URL.revokeObjectURL(nextUrl); return; }
+        setSourceUrl(nextUrl);
+      }
+      const dimensions = await readImageDimensions(nextUrl);
+      if (backgroundImportId.current !== importId) {
+        URL.revokeObjectURL(nextUrl);
+        return;
+      }
+      setCanvasSize(dimensions);
+      setTool("SELECT"); setLockedViewport(null); setCalibrating(true);
+    } catch (reason) {
+      if (backgroundImportId.current !== importId) {
+        URL.revokeObjectURL(nextUrl);
+        return;
+      }
+      URL.revokeObjectURL(nextUrl);
+      setSourceUrl(null); setSourceFile(null); setImportError(reason instanceof Error ? reason.message : "The drawing could not be loaded.");
+    } finally {
+      if (backgroundImportId.current === importId) setImporting(false);
+    }
+  }
+
+  const processImportedDrawing = useEffectEvent((file: File) => importDrawing(file));
+  useEffect(() => {
+    if (!importFile) return;
+    queueMicrotask(() => { void processImportedDrawing(importFile); });
+  }, [importFile]);
+
+  function selectedRoomDraft(): Room | null {
+    return selectedRoom ? roomDraftForOutline(selectedRoom) : null;
+  }
+
+  const sourceTopLeft = toScreen({ x: 0, y: canvasSize.height }); const sourceBottomRight = toScreen({ x: canvasSize.width, y: 0 }); const sourceIsPdf = sourceFile ? isPdfFile(sourceFile) : false;
+  const openingParentLabel = segmentOptions.find((item) => item.key === openingParent)?.label ?? "Select a wall";
+  const openingPositionSummary = openingParent
+    ? `${openingParentLabel} · Offset ${formatLength(openingOffset, displayUnits)}`
+    : `Select a wall · Offset ${formatLength(openingOffset, displayUnits)}`;
+  const openingDimensionsContent = <div className={"appearance-dimensions-fields coordinate-fields opening-dimensions-fields" + (openingKind === "WINDOW" ? " window" : "")} aria-label="Dimensions">
+    <label className="field"><span>Height <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingHeight} units={displayUnits} onMmChange={setOpeningHeight} /></label><label className="field"><span>Width <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={1} valueMm={openingWidth} units={displayUnits} onMmChange={setOpeningWidth} /></label>{openingKind === "WINDOW" && <label className="field"><span>Sill <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={windowSill} units={displayUnits} onMmChange={setWindowSill} /></label>}
+  </div>;
+  function resetOpeningDimensions() {
+    const item = activeOpeningCatalogueItem;
+    if (!item) return;
+    const dimensions = openingCatalogueDefaultDimensions(item);
+    setOpeningWidth(item.width_mm);
+    setOpeningHeight(dimensions.height);
+    if (openingKind === "WINDOW") setWindowSill(dimensions.sill);
+  }
+  const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
+  const annotationPanelSelection: AnnotationPanelSelection = selectedAnnotation ? { type: selectedAnnotation.type, text: selectedAnnotation.text } : null;
+  const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add elements">
+    <div className="mode-switch element-tabs" role="tablist" aria-label="Element type">{(["DOOR", "WINDOW", "FURNITURE"] as const).filter(tab => !openingEditorTarget || tab !== "FURNITURE").map(tab => <button key={tab} role="tab" aria-selected={elementTab === tab} className={elementTab === tab ? "active" : ""} onClick={() => tab === "FURNITURE" ? setElementTab(tab) : selectOpeningKind(tab)}>{tab === "FURNITURE" ? "Elements" : tab[0] + tab.slice(1).toLowerCase()}</button>)}</div>
+    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add elements.</p> : elementTab === "FURNITURE" && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedRoom!.id}-${elementEditRequest?.requestId ?? "new"}`} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={elementEditRequest} onEditEnd={() => onElementSelected?.(null)} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
+    <p className="tool-note">Choose a variant and click Add. Select a wall first to use its offset, or place the preview on a wall with the cursor.</p>
+    <div className="fixture-cascading-menu opening-cascading-menu" ref={openingSelectorRef}>
+      {!openingSelectorExpanded ? <div className="fixture-cascading-collapsed">
+        <strong>{activeOpeningCatalogueItem?.name?.replace(/^Default /i, "") || "Select object"}</strong>
+        <button type="button" aria-label={`Expand ${openingKind === "DOOR" ? "door" : "window"} selector`} aria-expanded={false} onClick={() => setOpeningSelectorExpanded(true)}>▾</button>
+      </div> : <div className="fixture-cascading-selector" aria-label={`${openingKind === "DOOR" ? "Door" : "Window"} catalogue selector`}>
+        <div className="fixture-cascading-menu-header">
+          <strong>{activeOpeningCatalogueItem?.name?.replace(/^Default /i, "") || "Select object"}</strong>
+          <button type="button" aria-label={`Collapse ${openingKind === "DOOR" ? "door" : "window"} selector`} aria-expanded={true} onClick={() => { setOpeningSelectorOpen(null); setHoveredOpeningCatalogueId(null); setOpeningSelectorExpanded(false); }}>▴</button>
+        </div>
+        <div className="fixture-cascading-level">
+          <button type="button" className="fixture-cascading-trigger" disabled={!openingCatalogueCategories.length} aria-expanded={openingSelectorOpen === "category"} aria-controls="opening-category-options" onClick={() => setOpeningSelectorOpen((current) => current === "category" ? null : "category")}>
+            <span className="fixture-cascading-trigger-copy"><span>Category</span><strong className={!activeOpeningCategory ? "placeholder" : undefined}>{activeOpeningCategory?.label || "Select category"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{openingSelectorOpen === "category" ? "▴" : "▾"}</span>
+          </button>
+          {openingSelectorOpen === "category" && <div id="opening-category-options" className="fixture-cascading-options" role="listbox" aria-label={`${openingKind === "DOOR" ? "Door" : "Window"} categories`}>
+            {openingCatalogueCategories.map((category) => <button type="button" role="option" aria-selected={category.id === activeOpeningCategory?.id} className={category.id === activeOpeningCategory?.id ? "selected" : undefined} key={category.id} onClick={() => selectOpeningCategory(category)}>{category.label}</button>)}
+          </div>}
+        </div>
+        <div className="fixture-cascading-level">
+          <button type="button" className="fixture-cascading-trigger" disabled={!activeOpeningCategory || activeOpeningCategory.items.length === 0} aria-expanded={openingSelectorOpen === "object"} aria-controls="opening-object-options" onClick={() => setOpeningSelectorOpen((current) => current === "object" ? null : "object")}>
+            <span className="fixture-cascading-trigger-copy"><span>Object</span><strong className={!activeOpeningCatalogueItem ? "placeholder" : undefined}>{activeOpeningCatalogueItem?.name?.replace(/^Default /i, "") || "Select object"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{openingSelectorOpen === "object" ? "▴" : "▾"}</span>
+          </button>
+          {openingSelectorOpen === "object" && <div id="opening-object-options" className="fixture-cascading-options" role="listbox" aria-label={`${openingKind === "DOOR" ? "Door" : "Window"} objects`}>
+            {activeOpeningCategory?.items.map((item) => <button type="button" role="option" aria-selected={item.id === activeOpeningCatalogueItem?.id} className={item.id === activeOpeningCatalogueItem?.id ? "selected" : undefined} key={item.id} onMouseEnter={() => setHoveredOpeningCatalogueId(item.id)} onMouseLeave={() => setHoveredOpeningCatalogueId(null)} onFocus={() => setHoveredOpeningCatalogueId(item.id)} onBlur={() => setHoveredOpeningCatalogueId(null)} onClick={() => selectOpeningObject(item)}>{item.subcategory || item.name}</button>)}
+          </div>}
+        </div>
+      </div>}
+    </div>
+    <ComponentColours compact dimensionsContent={openingDimensionsContent} onResetDimensions={resetOpeningDimensions} previewObstacle={previewOpeningCatalogueItem ? openingPreviewObstacle({ item: previewOpeningCatalogueItem, kind: openingKind, doorType: previewOpeningDoorType, width: previewOpeningWidth, height: previewOpeningHeight, colorHex: previewOpeningColour, componentColors: previewOpeningComponentColours }) : undefined} source={{ ...activeOpeningCatalogueItem, fixture_kind: openingKind, color_hex: doorColour, component_colors: openingComponentColours }} onChange={setOpeningComponentColours} />
+    {previewOpeningCatalogueItem && <OpeningPreview item={previewOpeningCatalogueItem} kind={openingKind} doorType={previewOpeningDoorType} width={previewOpeningWidth} height={previewOpeningHeight} colorHex={previewOpeningColour} componentColors={previewOpeningComponentColours} />}
+    {openingCatalogueError && <p className="inline-error">{openingCatalogueError}</p>}
+    <section className="fixture-add-section" aria-label="Position">
+      <button type="button" className="fixture-section-toggle" aria-expanded={openingPositionExpanded} onClick={() => setOpeningPositionExpanded((current) => !current)}><span><strong>Position</strong><small>{openingPositionSummary}</small></span><span aria-hidden>{openingPositionExpanded ? "−" : "›"}</span></button>
+      {openingPositionExpanded && <div className="fixture-section-content">
+        <div className="coordinate-fields opening-fields"><label className="field"><span>Parent wall</span><select value={openingParent} onChange={(event) => setOpeningParent(event.target.value)}><option value="">Select a wall…</option>{segmentOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
+        <label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label></div>
+        {openingKind === "DOOR" && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
+      </div>}
+    </section>
+    {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={saveOpening}>{selectedOpeningId ? `Update ${openingKind.toLowerCase()}` : `Add ${openingKind.toLowerCase()}`}</button></div>
+    {openings.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
+      <button type="button" className="fixture-section-toggle" aria-expanded={openingListExpanded} onClick={() => setOpeningListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{openingListExpanded ? "−" : "›"}</span></button>
+      {openingListExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">{openings.map((opening, index) => { const item = catalogueItemForOpening(opening); return <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small title={item?.name}>{item?.name ?? `${opening.kind === "DOOR" ? "Door" : "Window"} ${String(index + 1).padStart(3, "0")}`} · {formatLength(opening.width, displayUnits)}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>; })}</div></div>}
+    </section>}
+    </>}
+  </section>;
+
+  function exportSvgMarkup(styleChoice: ExportStyle = exportStyle, includeAttribution = true, reserveAttribution = includeAttribution) {
+    const source = Array.from(editorRoot.current?.querySelectorAll<SVGSVGElement>(".floor-canvas") ?? []).find((canvas) => !canvas.closest(".export-svg-preview"));
+    if (!source) return null;
+    const clone = source.cloneNode(true) as SVGSVGElement;
+    clone.querySelectorAll(".placement-preview").forEach(element=>element.remove());
+    const effectiveStyle = styleChoice === "CURRENT" ? floorplanStyle : styleChoice;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("width", String(FLOORPLAN_EXPORT_WIDTH));
+    clone.setAttribute("height", String(FLOORPLAN_EXPORT_HEIGHT));
+    clone.style.removeProperty("min-height");
+    clone.style.removeProperty("height");
+    clone.querySelectorAll<SVGForeignObjectElement>("foreignObject.room-name-editor").forEach((editor) => {
+      const input = editor.querySelector<HTMLInputElement>("input");
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      const x = Number(editor.getAttribute("x") ?? "0") + Number(editor.getAttribute("width") ?? "0") / 2;
+      const y = Number(editor.getAttribute("y") ?? "0") + Number(editor.getAttribute("height") ?? "0") / 2;
+      label.setAttribute("class", "export-room-name"); label.setAttribute("x", String(x)); label.setAttribute("y", String(y));
+      label.textContent = input?.value ?? input?.getAttribute("value") ?? "Room";
+      editor.replaceWith(label);
+    });
+    clone.querySelectorAll(".full-plan-source-image").forEach((element) => element.remove());
+    clone.querySelectorAll<SVGImageElement>("image").forEach((image) => {
+      // Missing href attributes are null too; they must never match an absent background.
+      // Remove only the background image, preserving any sibling plan elements.
+      if (sourceUrl && (image.getAttribute("href") === sourceUrl || image.getAttributeNS("http://www.w3.org/1999/xlink", "href") === sourceUrl)) image.remove();
+    });
+    clone.querySelectorAll(".corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit,.annotation-hit,.annotation-handle").forEach((element) => element.remove());
+
+    // The editor viewport includes the imported drawing so that it remains
+    // visible while tracing. Exports must instead fit the actual plan model;
+    // otherwise a large background image makes the walls look tiny.
+    const modelPoints = [
+      ...walls.flatMap((wall) => wall.points),
+      ...draft,
+      ...rooms.flatMap((room) => [...room.vertices, ...(room.labelPosition ? [room.labelPosition] : [])]),
+      ...planRooms.flatMap((room) => room.vertices),
+      ...annotations.flatMap((annotation) => [
+        ...(annotation.start ? [annotation.start] : []),
+        ...(annotation.end ? [annotation.end] : []),
+        ...(annotation.points ?? []),
+        ...(annotation.position ? [annotation.position] : []),
+        ...(annotation.anchor ? [annotation.anchor] : []),
+        ...(annotation.labelPosition ? [annotation.labelPosition] : []),
+      ]),
+      ...visibleFixtures.flatMap((fixture) => {
+        const width = Number(fixture.dimensions.width.value);
+        const depth = Number(fixture.dimensions.depth.value);
+        if (!Number.isFinite(fixture.center.x) || !Number.isFinite(fixture.center.y) || !Number.isFinite(width) || !Number.isFinite(depth)) return [];
+        const radius = Math.hypot(width, depth) / 2;
+        return [
+          { x: fixture.center.x - radius, y: fixture.center.y - radius },
+          { x: fixture.center.x + radius, y: fixture.center.y - radius },
+          { x: fixture.center.x - radius, y: fixture.center.y + radius },
+          { x: fixture.center.x + radius, y: fixture.center.y + radius },
+        ];
+      }),
+    ];
+    const dimensionBounds = Array.from(source.querySelectorAll<SVGGraphicsElement>(".wall-dimension,.opening-dimension,.fixture-dimension")).flatMap((element) => {
+      try {
+        const box = element.getBBox();
+        if (![box.x, box.y, box.width, box.height].every(Number.isFinite)) return [];
+        return [
+          { x: box.x, y: box.y },
+          { x: box.x + box.width, y: box.y },
+          { x: box.x, y: box.y + box.height },
+          { x: box.x + box.width, y: box.y + box.height },
+        ];
+      } catch {
+        return [];
+      }
+    });
+    const visibleLayerBounds = Array.from(source.querySelectorAll<SVGGraphicsElement>(
+      ".floorplan-fixture,.opening-symbol,.annotation-layer,.room-name-editor,.creative-garden",
+    )).flatMap((element) => {
+      const shouldIncludeAtmosphere = element.classList.contains("creative-garden") && effectiveStyle === "CREATIVE";
+      const previousStyle = shouldIncludeAtmosphere ? element.getAttribute("style") : null;
+      const previousDisplay = shouldIncludeAtmosphere ? element.getAttribute("display") : null;
+      if (shouldIncludeAtmosphere) {
+        element.removeAttribute("style");
+        element.setAttribute("display", "inline");
+      }
+      try {
+        const computed = getComputedStyle(element);
+        if (!shouldIncludeAtmosphere && (computed.display === "none" || computed.visibility === "hidden")) return [];
+        const box = element.getBBox();
+        if (![box.x, box.y, box.width, box.height].every(Number.isFinite) || (box.width === 0 && box.height === 0)) return [];
+        return [
+          { x: box.x, y: box.y },
+          { x: box.x + box.width, y: box.y },
+          { x: box.x, y: box.y + box.height },
+          { x: box.x + box.width, y: box.y + box.height },
+        ];
+      } catch {
+        return [];
+      } finally {
+        if (shouldIncludeAtmosphere) {
+          if (previousStyle === null) element.removeAttribute("style"); else element.setAttribute("style", previousStyle);
+          if (previousDisplay === null) element.removeAttribute("display"); else element.setAttribute("display", previousDisplay);
+        }
+      }
+    });
+    const screenPoints = [...modelPoints.map(toScreen), ...dimensionBounds, ...visibleLayerBounds].filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+    if (screenPoints.length > 0) {
+      const minX = Math.min(...screenPoints.map((point) => point.x));
+      const maxX = Math.max(...screenPoints.map((point) => point.x));
+      const minY = Math.min(...screenPoints.map((point) => point.y));
+      const maxY = Math.max(...screenPoints.map((point) => point.y));
+      const span = Math.max(maxX - minX, maxY - minY, 1);
+      const padding = Math.max(24, Math.min(48, span * FLOORPLAN_EXPORT_PADDING_RATIO));
+      const contentWidth = maxX - minX;
+      const contentHeight = maxY - minY;
+      const attributionReserve = reserveAttribution
+        ? FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX * (contentWidth + padding * 2) / FLOORPLAN_EXPORT_WIDTH
+        : 0;
+      const targetAspect = FLOORPLAN_EXPORT_WIDTH / FLOORPLAN_EXPORT_HEIGHT;
+      let viewBoxX = minX - padding;
+      let viewBoxY = minY - padding;
+      let viewBoxWidth = contentWidth + padding * 2;
+      let viewBoxHeight = contentHeight + padding * 2 + attributionReserve;
+      if (viewBoxWidth / viewBoxHeight > targetAspect) {
+        const expandedHeight = viewBoxWidth / targetAspect;
+        viewBoxY -= (expandedHeight - viewBoxHeight) / 2;
+        viewBoxHeight = expandedHeight;
+      } else {
+        const expandedWidth = viewBoxHeight * targetAspect;
+        viewBoxX -= (expandedWidth - viewBoxWidth) / 2;
+        viewBoxWidth = expandedWidth;
+      }
+      const viewBox = { x: viewBoxX, y: viewBoxY, width: viewBoxWidth, height: viewBoxHeight };
+      clone.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+      const background = clone.querySelector<SVGRectElement>(".canvas-background");
+      background?.setAttribute("x", String(viewBox.x));
+      background?.setAttribute("y", String(viewBox.y));
+      background?.setAttribute("width", String(viewBox.width));
+      background?.setAttribute("height", String(viewBox.height));
+    }
+    if (includeAttribution) {
+      const [viewBoxX = 0, viewBoxY = 0, viewBoxWidth = FLOORPLAN_EXPORT_WIDTH, viewBoxHeight = FLOORPLAN_EXPORT_HEIGHT] = (clone.getAttribute("viewBox") ?? "")
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number)
+        .filter(Number.isFinite);
+      const attributionScale = viewBoxWidth / FLOORPLAN_EXPORT_WIDTH;
+      const attributionMargin = 16 * attributionScale;
+      const attributionLink = document.createElementNS("http://www.w3.org/2000/svg", "a");
+      attributionLink.setAttribute("href", FLOORPLAN_EXPORT_ATTRIBUTION_URL);
+      attributionLink.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", FLOORPLAN_EXPORT_ATTRIBUTION_URL);
+      attributionLink.setAttribute("aria-label", FLOORPLAN_EXPORT_ATTRIBUTION);
+      const attribution = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      attribution.setAttribute("x", String(viewBoxX + viewBoxWidth - attributionMargin));
+      attribution.setAttribute("y", String(viewBoxY + viewBoxHeight - attributionMargin));
+      attribution.setAttribute("text-anchor", "end");
+      attribution.setAttribute("fill", "#000");
+      attribution.setAttribute("font-family", "Arial,sans-serif");
+      attribution.setAttribute("font-size", String(FLOORPLAN_EXPORT_ATTRIBUTION_FONT_SIZE * attributionScale));
+      attribution.setAttribute("font-weight", "700");
+      attribution.setAttribute("paint-order", "stroke");
+      attribution.setAttribute("stroke", "#fff");
+      attribution.setAttribute("stroke-width", String(3 * attributionScale));
+      attribution.setAttribute("stroke-linejoin", "round");
+      attribution.textContent = FLOORPLAN_EXPORT_ATTRIBUTION;
+      attributionLink.appendChild(attribution);
+      clone.appendChild(attributionLink);
+    }
+    const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    clone.classList.remove(...FLOORPLAN_STYLE_OPTIONS.map((option) => floorplanStyleClass(option.value)).filter(Boolean));
+    clone.querySelectorAll(".coloured-fixture-symbol").forEach((symbol) => {
+      const selectedClass = effectiveStyle === "MODERN" ? "symbol-modern" : effectiveStyle === "CREATIVE" ? "symbol-creative" : "symbol-default";
+      symbol.querySelectorAll(".symbol-default,.symbol-modern,.symbol-creative").forEach((image) => {
+        if (!image.classList.contains(selectedClass)) image.remove();
+        else (image as SVGElement).style.display = "inline";
+      });
+      symbol.classList.remove("coloured-fixture-symbol");
+    });
+    const preserveAtmosphere = effectiveStyle === "CREATIVE" || effectiveStyle === "MODERN";
+    clone.querySelectorAll<SVGElement>(".styled-room-floors,.creative-garden,.creative-floor-wash").forEach((element) => {
+      if (!preserveAtmosphere || (effectiveStyle === "MODERN" && !element.classList.contains("styled-room-floors"))) {
+        element.remove();
+        return;
+      }
+      // These layers are hidden in the live SVG until a style is selected.
+      // Remove the inline display:none so the standalone export cannot hide
+      // creative planting or material patterns when its stylesheet loads.
+      element.removeAttribute("style");
+      element.setAttribute("display", "inline");
+    });
+    const styleClass = floorplanStyleClass(effectiveStyle);
+    if (styleClass) clone.classList.add(styleClass);
+    // The preview sits inside the app's stylesheet; make this standalone export
+    // stylesheet authoritative so it renders exactly like the saved SVG raster.
+    style.textContent = floorplanExportCss(effectiveStyle).replace(/!important/g, "").replace(/:([^;{}]+)([;}])/g, ":$1 !important$2");
+    clone.insertBefore(style, clone.firstChild);
+    return new XMLSerializer().serializeToString(clone);
+  }
+
+  async function exportFloorplan() {
+    setExporting(true); setExportError(null);
+    try {
+      const rawMarkup = exportSvgMarkup(exportStyle, false, includeAttribution);
+      if (!rawMarkup) throw new Error("The floorplan canvas is unavailable. Close this dialog and try again.");
+      const markup = await inlineExportImages(rawMarkup);
+      const extension = exportFormat.toLowerCase();
+      const mimeType = exportFormat === "PDF" ? "application/pdf" : exportFormat === "JPG" ? "image/jpeg" : "image/png";
+      const picker = (window as Window & { showSaveFilePicker?: (options: { suggestedName: string; types: Array<{ description: string; accept: Record<string, string[]> }> }) => Promise<SaveFileHandle> }).showSaveFilePicker;
+      let destination: SaveFileHandle | null = null;
+      // Request the location before rasterisation, while the Save click still has a user gesture.
+      try {
+        destination = picker ? await picker({ suggestedName: `floorplan-${exportStyle.toLowerCase()}.${extension}`, types: [{ description: `Floorplan ${exportFormat}`, accept: { [mimeType]: [`.${extension}`] } }] }) : null;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        throw new Error("Could not select that save location. Please try again.");
+      }
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const next = new Image();
+        const timeout = window.setTimeout(() => reject(new Error("The floorplan image took too long to render. Please try again.")), 10_000);
+        next.onload = () => { window.clearTimeout(timeout); resolve(next); };
+        next.onerror = () => { window.clearTimeout(timeout); reject(new Error("The floorplan preview could not be rendered.")); };
+        next.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+      });
+      const canvas = document.createElement("canvas"); canvas.width = FLOORPLAN_EXPORT_WIDTH; canvas.height = FLOORPLAN_EXPORT_HEIGHT;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("The browser could not create an export canvas.");
+      context.fillStyle = "#ffffff"; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height); if (includeAttribution) drawFloorplanAttribution(context, canvas.width, canvas.height);
+      const imageMime = exportFormat === "PNG" ? "image/png" : "image/jpeg";
+      const imageBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("The image export could not be created.")), imageMime, .95));
+      const output = exportFormat === "PDF" ? floorplanPdfBlobFromJpeg(await imageBlob.arrayBuffer(), canvas.width, canvas.height, includeAttribution) : imageBlob;
+      if (destination) { const writable = await destination.createWritable(); await writable.write(output); await writable.close(); } else { const url = URL.createObjectURL(output); const link = document.createElement("a"); link.href = url; link.download = `floorplan-${exportStyle.toLowerCase()}.${extension}`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
+      exported(exportFormat.toLowerCase() as "pdf" | "png" | "jpg");
+      setExportOpen(false);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "The floorplan export could not be created.");
+    } finally { setExporting(false); }
+  }
+
+  const exportPreviewMarkup = exportOpen ? exportSvgMarkup(exportStyle, includeAttribution) : null;
+  const liveStyleCss = floorplanStyleCss(floorplanStyle);
+  const exportStyleLabel = exportStyle === "CURRENT"
+    ? `Current ${floorplanStyleLabel(floorplanStyle).toLowerCase()}`
+    : `${floorplanStyleLabel(exportStyle).replace(/ style$/, "")} drawing`;
+  const floorplanLeftDockIds = ["floorplan-view", "floorplan-build", "floorplan-coordinates"].filter((id) => toolbarVisibility[id as ToolbarId]);
+  const floorplanRightDockIds = ["floorplan-openings"].filter((id) => toolbarVisibility[id as ToolbarId]);
+  const floorplanDock = (side: "LEFT" | "RIGHT", visibleIds: string[], activeId: string) => {
+    if (!fillToolbarLayout) return filledToolbarDock(side, visibleIds, activeId);
+    const width = 340;
+    if (side === "RIGHT") return positionedToolbarDock("RIGHT", 8, undefined, width);
+    if (activeId === "floorplan-view") return positionedToolbarDock("LEFT", 8, undefined, width);
+    if (activeId === "floorplan-build") return positionedToolbarDock("LEFT", "clamp(258px, 31%, 320px)", undefined, width);
+    return positionedToolbarDock("LEFT", "calc(31% + 326px)", undefined, width);
+  };
+  const outlinePickerTemplates = pendingOutlineAction === "NOTCHED_RECTANGLE" ? NOTCHED_RECTANGLE_TEMPLATES : L_SHAPE_TEMPLATES;
+  const outlinePickerTitle = pendingOutlineAction === "NOTCHED_RECTANGLE" ? "Choose the recess orientation" : "Choose the L orientation";
+  const outlinePickerDescription = pendingOutlineAction === "NOTCHED_RECTANGLE"
+    ? "Select the side for the rectangular recess. You can reshape every wall afterwards."
+    : "Select the position of the internal notch. You can reshape every wall afterwards.";
+  const redundantHeightDimensions = redundantHeightDimensionIds(walls, rooms.length);
+  const wallVisualPaths = walls.flatMap((wall) => {
+    const closed = samePoint(wall.points[0], wall.points.at(-1)!);
+    const segments = wall.points.slice(0, -1).map((point, segmentIndex): WallRenderSegment => ({
+      segmentIndex, start: toScreen(point), end: toScreen(wall.points[segmentIndex + 1]),
+      thicknessMm: wallThicknessForSegment(wall, segmentIndex, wallThickness),
+      visualThicknessMm: showWallThickness ? wallThicknessForSegment(wall, segmentIndex, wallThickness) : 0,
+    }));
+    return buildWallVisualRuns(segments, closed).map((run, index) => ({
+      key: `${wall.id}:${index}`,
+      width: showWallThickness ? Math.max(0, run.thicknessMm * activeViewport.scale) : 4,
+      path: `${run.points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")}${run.closed ? " Z" : ""}`,
+    }));
+  });
+
+  const annotationDash = (style: AnnotationStyle) => ({ SOLID: undefined, DASHED: "10 7", DOTTED: "2 6", SHORT_DASH: "5 4", LONG_DASH: "20 8", DASH_DOT: "12 5 2 5", DASH_DOT_DOT: "12 5 2 5 2 5" })[style.lineStyle];
+  const annotationTextRotation = (style: AnnotationStyle) => typeof style.rotation === "number" && Number.isFinite(style.rotation) ? style.rotation : 0;
+  const annotationArrowGeometry = (from: Point2D, to: Point2D, size = 9) => {
+    const angle = Math.atan2(to.y - from.y, to.x - from.x);
+    const left = { x: to.x - Math.cos(angle - Math.PI / 6) * size, y: to.y - Math.sin(angle - Math.PI / 6) * size };
+    const right = { x: to.x - Math.cos(angle + Math.PI / 6) * size, y: to.y - Math.sin(angle + Math.PI / 6) * size };
+    return { tip: to, left, right, angle };
+  };
+  const annotationArrowPoints = (from: Point2D, to: Point2D, size = 9) => {
+    const { tip, left, right } = annotationArrowGeometry(from, to, size);
+    return [tip, left, right].map((point) => point.x + "," + point.y).join(" ");
+  };
+  const renderArrowEnd = (from: Point2D, to: Point2D, stroke: string, style: AnnotationArrowEndStyle = "CLASSIC") => {
+    const { tip, left, right, angle } = annotationArrowGeometry(from, to);
+    if (style === "OPEN") return <polyline points={`${left.x},${left.y} ${tip.x},${tip.y} ${right.x},${right.y}`} fill="none" stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+    if (style === "CIRCLE") return <circle cx={tip.x} cy={tip.y} r="4.5" fill={stroke} vectorEffect="non-scaling-stroke" />;
+    if (style === "SQUARE") {
+      const size = 8;
+      return <rect x={tip.x - size / 2} y={tip.y - size / 2} width={size} height={size} fill={stroke} transform={`rotate(${angle * 180 / Math.PI} ${tip.x} ${tip.y})`} vectorEffect="non-scaling-stroke" />;
+    }
+    return <polygon points={annotationArrowPoints(from, to)} fill={stroke} />;
+  };
+  const markerRadius = (size: MarkerSettings["size"]) => markerTextSize(size);
+  const renderAnnotationMarker = (annotation: FloorplanAnnotation, selected: boolean, select: (event: ReactPointerEvent<SVGGElement>) => void, handle: (event: ReactPointerEvent<SVGCircleElement>, handleName: "MARKER" | "LABEL") => void) => {
+    if (!annotation.position || !annotation.marker) return null;
+    const marker = annotation.marker;
+    const point = toScreen(annotation.position);
+    const arrowTail = marker.arrowAttached && annotation.labelPosition ? toScreen(annotation.labelPosition) : null;
+    const baseRadius = markerRadius(marker.size);
+    const color = marker.color || annotation.style.color || "#287fb8";
+    const numberLabel = marker.symbol === "NUMBER" || marker.symbol === "LETTER";
+    const markerText = numberLabel ? marker.label : marker.symbol === "EXCLAMATION" ? "!" : marker.symbol === "QUESTION" ? "?" : "";
+    const labelFontSize = markerTextSize(marker.size);
+    const labelPadding = Math.max(4, labelFontSize * .32);
+    const radius = numberLabel
+      ? Math.max(baseRadius, (markerText.length * labelFontSize * .62) / 2 + labelPadding, labelFontSize / 2 + labelPadding)
+      : baseRadius;
+    let shape: ReactNode;
+    if (marker.symbol === "CIRCLE" || marker.symbol === "FILLED_CIRCLE") shape = <circle cx={point.x} cy={point.y} r={radius} fill={marker.symbol === "FILLED_CIRCLE" ? color : "#fff"} stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />;
+    else if (marker.symbol === "SQUARE" || marker.symbol === "FILLED_SQUARE") shape = <rect x={point.x - radius} y={point.y - radius} width={radius * 2} height={radius * 2} rx="2" fill={marker.symbol === "FILLED_SQUARE" ? color : "#fff"} stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />;
+    else if (marker.symbol === "TRIANGLE") shape = <polygon points={`${point.x},${point.y - radius} ${point.x + radius},${point.y + radius} ${point.x - radius},${point.y + radius}`} fill="#fff" stroke={color} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+    else if (marker.symbol === "DIAMOND") shape = <polygon points={`${point.x},${point.y - radius} ${point.x + radius},${point.y} ${point.x},${point.y + radius} ${point.x - radius},${point.y}`} fill="#fff" stroke={color} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+    else if (marker.symbol === "PLUS" || marker.symbol === "CROSS") {
+      const diagonal = marker.symbol === "CROSS";
+      shape = <g stroke={color} strokeWidth="3" strokeLinecap="round" vectorEffect="non-scaling-stroke">{diagonal ? <><line x1={point.x - radius} y1={point.y - radius} x2={point.x + radius} y2={point.y + radius} /><line x1={point.x + radius} y1={point.y - radius} x2={point.x - radius} y2={point.y + radius} /></> : <><line x1={point.x} y1={point.y - radius} x2={point.x} y2={point.y + radius} /><line x1={point.x - radius} y1={point.y} x2={point.x + radius} y2={point.y} /></>}</g>;
+    } else {
+      shape = <circle cx={point.x} cy={point.y} r={radius} fill="#fff" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />;
+    }
+    return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select} onDoubleClick={() => editMarker(annotation)}>
+      {arrowTail && <><line x1={arrowTail.x} y1={arrowTail.y} x2={point.x} y2={point.y} stroke={color} strokeWidth={Math.max(1, annotation.style.thickness)} strokeDasharray={annotationDash(annotation.style)} vectorEffect="non-scaling-stroke" />{renderArrowEnd(arrowTail, point, color, annotation.style.arrowEndStyle)}<line x1={arrowTail.x} y1={arrowTail.y} x2={point.x} y2={point.y} stroke="transparent" strokeWidth="16" className="annotation-hit" /></>}
+      {shape}
+      {markerText ? <text x={point.x} y={point.y} textAnchor="middle" fill={color} fontSize={labelFontSize} fontWeight="700" dominantBaseline="central">{markerText}</text> : null}
+      <circle cx={point.x} cy={point.y} r={Math.max(12, radius + 6)} fill="transparent" stroke="transparent" strokeWidth="10" className="annotation-hit" />
+      {selected && <><circle className="annotation-handle" cx={point.x} cy={point.y} r="6" onPointerDown={(event) => handle(event, "MARKER")} />{arrowTail && <circle className="annotation-handle" cx={arrowTail.x} cy={arrowTail.y} r="6" onPointerDown={(event) => handle(event, "LABEL")} />}</>}
+    </g>;
+  };
+  const renderAnnotation = (annotation: FloorplanAnnotation) => {
+    const selected = selectedAnnotationId === annotation.id;
+    const stroke = annotation.style.color ?? "#287fb8";
+    const strokeWidth = Math.max(1, annotation.style.thickness);
+    const dash = annotationDash(annotation.style);
+    const select = (event: ReactPointerEvent<SVGGElement>) => {
+      if (tool !== "SELECT" || annotationTool) return;
+      beginAnnotationDrag(event, annotation, "WHOLE");
+    };
+    const handle = (event: ReactPointerEvent<SVGCircleElement>, handleName: "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL", vertexIndex?: number) => beginAnnotationDrag(event, annotation, handleName, vertexIndex);
+    if ((annotation.type === "LINE" || annotation.type === "ARROW") && annotation.start && annotation.end) {
+      const start = toScreen(annotation.start);
+      const end = toScreen(annotation.end);
+      return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select}>
+        <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+        {annotation.type === "ARROW" && renderArrowEnd(start, end, stroke, annotation.style.arrowEndStyle)}
+        <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="transparent" strokeWidth="16" className="annotation-hit" />
+        {selected && <><circle className="annotation-handle" cx={start.x} cy={start.y} r="6" onPointerDown={(event) => handle(event, "START")} /><circle className="annotation-handle" cx={end.x} cy={end.y} r="6" onPointerDown={(event) => handle(event, "END")} /></>}
+      </g>;
+    }
+    if (annotation.type === "POLYLINE" && annotation.points?.length) {
+      const points = annotation.points.map(toScreen);
+      return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select}>
+        <polyline points={points.map((point) => point.x + "," + point.y).join(" ")} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+        <polyline points={points.map((point) => point.x + "," + point.y).join(" ")} fill="none" stroke="transparent" strokeWidth="16" className="annotation-hit" />
+        {selected && points.map((point, index) => <circle key={index} className="annotation-handle" cx={point.x} cy={point.y} r="6" onPointerDown={(event) => handle(event, "VERTEX", index)} />)}
+      </g>;
+    }
+    if (annotation.type === "TEXT" && annotation.position) {
+      const position = toScreen(annotation.position);
+      const rotation = annotationTextRotation(annotation.style);
+      return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select} onDoubleClick={() => editAnnotationText(annotation)}>
+        <text x={position.x} y={position.y} transform={`rotate(${rotation} ${position.x} ${position.y})`} fill={stroke} fontSize={annotation.style.textSize} fontWeight="600" dominantBaseline="middle">{annotation.text}</text>
+        {selected && <circle className="annotation-handle" cx={position.x} cy={position.y} r="6" onPointerDown={(event) => handle(event, "TEXT")} />}
+      </g>;
+    }
+    if (annotation.type === "MARKER") {
+      const handle = (event: ReactPointerEvent<SVGCircleElement>, handleName: "MARKER" | "LABEL") => beginAnnotationDrag(event, annotation, handleName);
+      return renderAnnotationMarker(annotation, selected, select, handle);
+    }
+    if (annotation.type === "CALLOUT" && annotation.anchor && annotation.labelPosition) {
+      const anchor = toScreen(annotation.anchor);
+      const label = toScreen(annotation.labelPosition);
+      const rotation = annotationTextRotation(annotation.style);
+      return <g key={annotation.id} className={selected ? "floorplan-annotation annotation-selected" : "floorplan-annotation"} onPointerDown={select} onDoubleClick={() => editAnnotationText(annotation)}>
+        <line x1={label.x} y1={label.y} x2={anchor.x} y2={anchor.y} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={dash} vectorEffect="non-scaling-stroke" />
+        <polygon points={annotationArrowPoints(label, anchor)} fill={stroke} />
+        <line x1={label.x} y1={label.y} x2={anchor.x} y2={anchor.y} stroke="transparent" strokeWidth="16" className="annotation-hit" />
+        <text x={label.x} y={label.y} transform={`rotate(${rotation} ${label.x} ${label.y})`} fill={stroke} fontSize={annotation.style.textSize} fontWeight="600" dominantBaseline="middle">{annotation.text}</text>
+        {selected && <><circle className="annotation-handle" cx={anchor.x} cy={anchor.y} r="6" onPointerDown={(event) => handle(event, "ANCHOR")} /><circle className="annotation-handle" cx={label.x} cy={label.y} r="6" onPointerDown={(event) => handle(event, "LABEL")} /></>}
+      </g>;
+    }
+    return null;
+  };
+  const annotationDraftPoints = annotationDraft.map(toScreen);
+  const annotationLayerDisabled = Boolean(annotationTool) || tool !== "SELECT";
+  return <section ref={editorRoot} onClickCapture={clearRepeatCommandFromButton} className={`editor-page full-plan-page ${floorplanStyleClass(floorplanStyle)}`.trim()}>
+    {liveStyleCss && <style data-floorplan-style={floorplanStyle} dangerouslySetInnerHTML={{ __html: liveStyleCss }} />}
+    <Popup open={outlineMenuOpen} title="New outline" message="" confirmLabel="Ok" confirmDisabled={!pendingOutlineAction} onConfirm={confirmOutlineAction} onCancel={() => setOutlineMenuOpen(false)}>
+      <div className="outline-menu-content">
+        <p>Choose a starting point. Clicking Ok will overwrite the current floorplan.</p>
+        <div className="outline-menu-options" role="group" aria-label="Outline starting points">
+          <button type="button" className="outline-menu-option" aria-pressed={pendingOutlineAction === "EMPTY"} onClick={() => requestOutlineAction("EMPTY") }>
+            <strong>Empty floorplan</strong>
+            <span>Start with a blank canvas</span>
+          </button>
+          <button type="button" className="outline-menu-option" aria-pressed={pendingOutlineAction === "RECTANGLE"} onClick={() => requestOutlineAction("RECTANGLE") }>
+            <strong>Rectangle</strong>
+            <span>Use a rectangular outline</span>
+          </button>
+          <button type="button" className="outline-menu-option outline-menu-option-with-arrow" aria-pressed={pendingOutlineAction === "L_SHAPE"} onClick={() => requestOutlineAction("L_SHAPE") }>
+            <span><strong>L-shape</strong><small>Choose a notch orientation</small></span>
+            <span className="outline-menu-arrow" aria-hidden>›</span>
+          </button>
+          <button type="button" className="outline-menu-option outline-menu-option-with-arrow" aria-pressed={pendingOutlineAction === "NOTCHED_RECTANGLE"} onClick={() => requestOutlineAction("NOTCHED_RECTANGLE") }>
+            <span><strong>Notched rectangle</strong><small>Rectangle with a recess</small></span>
+            <span className="outline-menu-arrow" aria-hidden>›</span>
+          </button>
+
+        </div>
+          {lShapePickerOpen && (pendingOutlineAction === "L_SHAPE" || pendingOutlineAction === "NOTCHED_RECTANGLE") && <div className="l-shape-picker" id={pendingOutlineAction === "NOTCHED_RECTANGLE" ? "full-notched-rectangle-picker" : "full-l-shape-picker"}><div><span>{outlinePickerTitle}</span><button type="button" aria-label={pendingOutlineAction === "NOTCHED_RECTANGLE" ? "Close recess chooser" : "Close L-shape chooser"} onClick={() => setLShapePickerOpen(false)}>×</button></div><p>{outlinePickerDescription}</p><div className="l-shape-options">{outlinePickerTemplates.map((template) => <button key={template.id} type="button" aria-pressed={outlineOrientation === template.id} onClick={() => setOutlineOrientation(template.id)}><span className="l-shape-thumbnail"><i style={{ clipPath: template.preview }} /></span><strong>{template.name}</strong></button>)}</div></div>}
+      </div>
+    </Popup>
+
+    <Popup open={pendingRoomRemovalId !== null} title="Remove room?" message={`${rooms.find((room) => room.id === pendingRoomRemovalId)?.name ?? "This room"} will be removed. Shared walls belonging to neighbouring rooms will be kept.`} confirmLabel="Remove room" onConfirm={removeSelectedRoom} onCancel={() => setPendingRoomRemovalId(null)} />
+    <Popup open={defaultWallThicknessConfirmOpen} title="Define default wall thickness?" message="Do you want to define a new default wall thickness? Walls with a custom wall thickness will not be affected." confirmLabel="Ok" onConfirm={confirmDefaultWallThickness} onCancel={cancelDefaultWallThickness} />
+    <Popup open={fixtureDeleteConfirmation !== null} title="Delete object?" message={fixtureDeleteConfirmation ? `Are you sure you want to delete the object "${fixtureDeleteConfirmation.name}"?` : ""} confirmLabel="Ok" onConfirm={confirmFixtureDeletion} onCancel={() => setFixtureDeleteConfirmation(null)} />
+    <Popup open={annotationTextDialog !== null} title={annotationTextDialog && ((annotationTextDialog.mode === "CREATE_CALLOUT") || (annotationTextDialog.mode === "EDIT" && annotationTextDialog.annotationType === "CALLOUT")) ? "Callout text" : "Text"} message="" className="annotation-text-popup" autoFocusTarget="content" confirmLabel="Ok" confirmDisabled={!annotationTextDialog?.value.trim()} onConfirm={confirmAnnotationTextDialog} onCancel={cancelAnnotationTextDialog}>
+      <label className="annotation-text-popup-field"><span>Text</span><input autoFocus value={annotationTextDialog?.value ?? ""} onChange={(event) => setAnnotationTextDialog((current) => current ? { ...current, value: event.target.value } : current)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); confirmAnnotationTextDialog(); } }} /></label>
+    </Popup>
+    <MarkerSettingsPopup open={markerDialog !== null} settings={markerSettings} editing={markerDialog?.mode === "EDIT"} onChange={updateMarkerSettings} onConfirm={confirmMarkerSettings} onCancel={cancelMarkerDialog} />
+
+    {annotationPanelOpen && <FloatingToolbar title="Annotations & lines" defaultPosition={{ x: 300, y: 76 }} maxHeight={560} bringToFront onClose={() => { setAnnotationPanelOpen(false); cancelAnnotationMode(); }}><AnnotationsPanel tool={annotationTool} style={annotationStyle} selection={annotationPanelSelection} measurementMode={annotationMeasurementMode} onToolChange={handleAnnotationToolChange} onCommandDoubleClick={handleAnnotationCommandDoubleClick} onStyleChange={updateAnnotationStyle} onTextChange={updateSelectedAnnotationText} onDeleteSelected={deleteSelectedAnnotation} onAddMeasurement={() => activateAnnotationMeasurement("ADD")} onRemoveMeasurement={() => activateAnnotationMeasurement("REMOVE")} onClearToolSelection={clearAnnotationToolSelection} /></FloatingToolbar>}
+    {exportOpen && <div className="modal-backdrop floorplan-export-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exporting) setExportOpen(false); }}><section className={`floorplan-export-dialog export-style-${exportStyle.toLowerCase()}`} role="dialog" aria-modal="true" aria-labelledby="floorplan-export-title"><header><div><span className="eyebrow">Floorplan export</span><h2 id="floorplan-export-title">Preview and save</h2></div><button type="button" className="modal-close" disabled={exporting} onClick={() => setExportOpen(false)}>×</button></header><div className="export-style-preview"><span>Preview</span><strong>{exportStyleLabel}</strong>{exportPreviewMarkup && <div className="export-svg-preview" dangerouslySetInnerHTML={{ __html: exportPreviewMarkup }} />}</div><label className="field"><span>Drawing style</span><select value={exportStyle} disabled={exporting} onChange={(event) => setExportStyle(event.target.value as ExportStyle)}><option value="CURRENT">Current style</option>{FLOORPLAN_STYLE_OPTIONS.filter((option) => option.value !== "DEFAULT").map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className="field"><span>File format</span><select value={exportFormat} disabled={exporting} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="PDF">PDF</option><option value="JPG">JPG</option><option value="PNG">PNG</option></select></label><label className="export-attribution-toggle"><input type="checkbox" checked={includeAttribution} disabled={exporting} onChange={(event) => setIncludeAttribution(event.target.checked)} /><span>Include “Made with FreeFloorplan3D.com”</span></label>{exportError && <p className="inline-error">{exportError}</p>}<footer><button type="button" disabled={exporting} onClick={() => setExportOpen(false)}>Cancel</button><button className="primary" type="button" disabled={exporting} onClick={() => { void exportFloorplan(); }}>{exporting ? "Preparing export…" : `Save as ${exportFormat}`}</button></footer></section></div>}
+
+    {measurementContextMenu && <div className={`floorplan-context-menu ${measurementContextMenu.custom ? "" : "floorplan-value-menu measurement-value-menu"}`} role="menu" aria-label="Measurement actions" style={{ left: measurementContextMenu.x, top: measurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      <strong>{measurementContextMenu.custom ? "Measurement" : "Wall measurement"}</strong>
+      {measurementContextMenu.custom && <><button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "NORMAL")}>Normal direction</button>
+      <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "HORIZONTAL")}>Horizontal dimension only</button>
+      <button type="button" role="menuitem" onClick={() => setMeasurementDirection(measurementContextMenu.id, "VERTICAL")}>Vertical dimension only</button></>}
+      {!measurementContextMenu.custom && (() => {
+        const separator = measurementContextMenu.id.lastIndexOf(":");
+        const wall = walls.find((item) => item.id === measurementContextMenu.id.slice(0, separator));
+        const segmentIndex = Number(measurementContextMenu.id.slice(separator + 1));
+        const currentLength = wall ? wallLengthForSegment(wall, segmentIndex) : 0;
+        return <><label>Wall length <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={measurementLengthInput ?? currentLength} units={displayUnits} onMmChange={setMeasurementLengthInput} onKeyDown={(event) => handleMeasurementValueMenuKeyDown(event, () => applyAutoMeasurementValue(measurementContextMenu.id), closeAutoMeasurementValueMenu)} /></label><button type="button" role="menuitem" onClick={() => applyAutoMeasurementValue(measurementContextMenu.id)}>Apply wall length</button>{wall?.lengthOverridesMm?.[segmentIndex] !== undefined && <button type="button" role="menuitem" onClick={() => releaseWallMeasurement(measurementContextMenu.id)}>Release measurement</button>}</>;
+      })()}
+      <button type="button" role="menuitem" className="danger-button" onClick={() => deleteMeasurement(measurementContextMenu.id, measurementContextMenu.custom)}>{measurementContextMenu.custom ? "Delete measurement" : "Hide measurement"}</button>
+    </div>}
+    {openingMeasurementContextMenu && (() => { const opening = openings.find((item) => item.id === openingMeasurementContextMenu.id); const labels = ["Distance from wall start", "Opening width", "Distance to wall end"]; return opening ? <div className="floorplan-context-menu floorplan-value-menu measurement-value-menu" role="menu" aria-label="Opening measurement value" style={{ left: openingMeasurementContextMenu.x, top: openingMeasurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}><strong>{opening.kind === "WINDOW" ? "Window" : "Door"} measurement</strong><label>{labels[openingMeasurementContextMenu.section]} <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={0} valueMm={openingMeasurementValueInput ?? openingMeasurementValue(opening, openingMeasurementContextMenu.section)} units={displayUnits} onMmChange={setOpeningMeasurementValueInput} onKeyDown={(event) => handleMeasurementValueMenuKeyDown(event, applyOpeningMeasurementValue, closeOpeningMeasurementValueMenu)} /></label>{openingMeasurementError && <p className="inline-error">{openingMeasurementError}</p>}<button type="button" role="menuitem" onClick={applyOpeningMeasurementValue}>Apply value</button></div> : null; })()}
+    {fixtureMeasurementContextMenu && (() => { const fixture = fixtures.find((item) => item.id === fixtureMeasurementContextMenu.id); const labels = ["X width", "Y depth"]; return fixture ? <div className="floorplan-context-menu floorplan-value-menu measurement-value-menu" role="menu" aria-label="Element measurement value" style={{ left: fixtureMeasurementContextMenu.x, top: fixtureMeasurementContextMenu.y }} onContextMenu={(event) => event.preventDefault()}><strong>{fixture.name} measurement</strong><label>{labels[fixtureMeasurementContextMenu.section]} <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixtureMeasurementValueInput ?? fixtureMeasurementValue(fixture, fixtureMeasurementContextMenu.section)} units={displayUnits} onMmChange={setFixtureMeasurementValueInput} onKeyDown={(event) => handleMeasurementValueMenuKeyDown(event, applyFixtureMeasurementValue, closeFixtureMeasurementValueMenu)} /></label>{fixtureMeasurementError && <p className="inline-error">{fixtureMeasurementError}</p>}<button type="button" role="menuitem" onClick={applyFixtureMeasurementValue}>Apply value</button></div> : null; })()}
+    {openingContextMenu && <div className="floorplan-context-menu" role="menu" aria-label="Opening actions" style={{ left: openingContextMenu.x, top: openingContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      <strong>{openings.find((opening) => opening.id === openingContextMenu.id)?.kind === "WINDOW" ? "Window" : "Door"}</strong>
+      <button type="button" role="menuitem" onClick={() => { setOpeningContextMenu(null); }}>Edit values</button>
+      <button type="button" role="menuitem" className="danger-button" onClick={() => { const id = openingContextMenu.id; setOpeningContextMenu(null); deleteOpeningById(id); }}>Delete opening</button>
+    </div>}
+    {fixtureContextMenu && (() => { const fixture = fixtures.find((item) => item.id === fixtureContextMenu.id); return fixture ? <div className="floorplan-context-menu floorplan-value-menu" role="menu" aria-label="Fixture values" style={{ left: fixtureContextMenu.x, top: fixtureContextMenu.y }} onContextMenu={(event) => event.preventDefault()}><strong>{fixture.name}</strong><div className="context-coordinate-fields"><label>X <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={fixture.center.x} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, center: { ...item.center, x: value } }))} /></label><label>Y <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={fixture.center.y} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, center: { ...item.center, y: value } }))} /></label><label>Width <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixture.dimensions.width.value} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, width: { ...item.dimensions.width, value } } }))} /></label><label>Depth <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={fixture.dimensions.depth.value} units={displayUnits} onMmChange={(value) => updateFixture(fixture.id, (item) => ({ ...item, dimensions: { ...item.dimensions, depth: { ...item.dimensions.depth, value } } }))} /></label></div><button type="button" role="menuitem" onClick={() => setFixtureContextMenu(null)}>Done</button><button type="button" role="menuitem" className="danger-button" onClick={() => { setFixtureContextMenu(null); setFixtureDeleteConfirmation(fixture); }}>Delete object</button></div> : null; })()}
+    {contextMenu && <div className="floorplan-context-menu floorplan-value-menu" role="menu" aria-label={`${contextMenu.kind === "WALL" ? "Wall" : "Corner"} actions`} style={{ left: contextMenu.x, top: contextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      <strong>{contextMenu.kind === "WALL" ? "Wall" : "Corner"}</strong>
+      {contextMenu.kind === "WALL" && selectedWall && <><label>Wall length <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} valueMm={wallLengthInput ?? wallLengthForSegment(selectedWall, contextMenu.segmentIndex)} units={displayUnits} onMmChange={setWallLengthInput} /></label><button type="button" role="menuitem" onClick={() => { applySelectedWallLength(); setContextMenu(null); }}>Apply wall length</button><label>Wall thickness <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput minMm={1} maxMm={2000} valueMm={wallThicknessInput?.key === `${contextMenu.wallId}:${contextMenu.segmentIndex}` ? wallThicknessInput.value : wallThicknessForSegment(selectedWall, contextMenu.segmentIndex, wallThickness)} units={displayUnits} onMmChange={(value) => setWallThicknessInput({ key: `${contextMenu.wallId}:${contextMenu.segmentIndex}`, value })} /></label><button type="button" role="menuitem" onClick={() => { setSelectedWallThickness(contextMenu.wallId, contextMenu.segmentIndex, wallThicknessInput?.key === `${contextMenu.wallId}:${contextMenu.segmentIndex}` ? wallThicknessInput.value : wallThicknessForSegment(selectedWall, contextMenu.segmentIndex, wallThickness)); setContextMenu(null); }}>Apply wall thickness</button><small className="context-help">Defaults to overall {formatLength(wallThickness, displayUnits)}.</small><button type="button" role="menuitem" onClick={() => resetSelectedWallThickness(contextMenu.wallId, contextMenu.segmentIndex)} disabled={selectedWall.thicknessOverridesMm?.[contextMenu.segmentIndex] === undefined}>Use overall thickness</button><button type="button" role="menuitem" className="danger-button" onClick={() => { const target = contextMenu; setContextMenu(null); removeSegment(target.wallId, target.segmentIndex); }}>Delete wall segment</button></>}
+      {contextMenu.kind === "POINT" && selectedPointWall && selectedPointValue && <><div className="context-coordinate-fields"><label>X <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={selectedPointValue.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(contextMenu.wallId, contextMenu.pointIndex, { ...selectedPointValue, x: value })} /></label><label>Y <small>{UNIT_LABEL[displayUnits]}</small><DisplayNumberInput valueMm={selectedPointValue.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(contextMenu.wallId, contextMenu.pointIndex, { ...selectedPointValue, y: value })} /></label></div><button type="button" role="menuitem" onClick={() => setContextMenu(null)}>Done</button><button type="button" role="menuitem" className="danger-button" onClick={() => { const target = contextMenu; setContextMenu(null); deletePointAt(target); }}>Delete corner</button></>}
+    </div>}
+    {toolbarContextMenu && <ToolbarContextMenu x={toolbarContextMenu.x} y={toolbarContextMenu.y} toolbars={FLOORPLAN_TOOLBARS} visibility={toolbarVisibility} onToggle={onToggleToolbar} onClose={() => setToolbarContextMenu(null)} />}
+    <div className="editor-layout full-plan-layout">
+      <aside className="editor-tools full-plan-controls">
+        {toolbarVisibility["floorplan-build"] && <FloatingToolbar title="Build floorplan" className="full-plan-build-toolbar" defaultPosition={{ x: 16, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-build") : { side: "LEFT", slot: 0, slots: 2 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={Math.max(360, FLOOR_PLAN_CANVAS_HEIGHT - 74)} onClose={() => onToggleToolbar("floorplan-build")}>
+        <section className="tool-section">
+          <div className="button-grid">
+            <button type="button" aria-haspopup="dialog" aria-expanded={outlineMenuOpen} onClick={() => { onElementSelected?.(null); setLShapePickerOpen(false); setPendingOutlineAction("RECTANGLE"); setOutlineMenuOpen(true); }}>New outline</button>
+            <button type="button" className={tool === "SELECT" ? "active" : ""} onClick={activateModifyTool}>Modify</button>
+          </div>
+
+          <div className="full-plan-action-divider" aria-hidden="true" />
+          <div className="button-grid full-plan-action-row" role="group" aria-label="Wall tools">
+            <button type="button" data-repeat-command="TOOL:DRAW" className={tool === "DRAW" ? "active" : ""} onClick={() => { cancelAnnotationMode(); onElementSelected?.(null); setTool("DRAW"); setDraft([]); setLockedViewport(null); setSelectedSegment(null); setSelectedPoint(null); }} onDoubleClick={() => setRepeatCommand({ kind: "TOOL", tool: "DRAW" })}>Add wall</button>
+            <button type="button" data-repeat-command="TOOL:REMOVE" className={tool === "REMOVE" ? "active danger-button" : "danger-button"} onClick={() => { cancelAnnotationMode(); onElementSelected?.(null); if (selectedSegment) { removeSegment(selectedSegment.wallId, selectedSegment.segmentIndex); return; } setTool("REMOVE"); setDraft([]); setLockedViewport(null); setSelectedPoint(null); }} onDoubleClick={() => setRepeatCommand({ kind: "TOOL", tool: "REMOVE" })}>Remove wall</button>
+          </div>
+
+          <div className="full-plan-action-divider" aria-hidden="true" />
+          <div className="button-grid full-plan-action-row" role="group" aria-label="Room tools"><button className={addRoomPanelOpen ? "active" : ""} aria-pressed={addRoomPanelOpen} onClick={() => { cancelAnnotationMode(); onElementSelected?.(null); setAddRoomPanelOpen((current) => !current); setTool("SELECT"); setRoomActionError(null); }}>Add room</button><button className={annotationPanelOpen ? "active" : ""} type="button" aria-pressed={annotationPanelOpen} onClick={() => { cancelAnnotationMode(); onElementSelected?.(null); setAnnotationPanelOpen(true); }}>Annotate</button></div>
+          {addRoomPanelOpen && <div className="room-action-panel"><p>Select a boundary wall to create a new room on the outside of it</p><label className="field"><span>Room depth ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={200} valueMm={roomDepthInput} units={displayUnits} onMmChange={setRoomDepthInput} /></label><button className="review-style-button" aria-label="Apply Add room" onClick={addSelectedRoom}>Add room</button></div>}
+          {roomActionError && <p className="inline-error" role="alert">{roomActionError}</p>}
+          <div className="button-grid editor-history-row"><button title="Undo last operation (Ctrl+Z)" onClick={undo} disabled={!history.length}>↶ Undo</button><button title="Redo last operation (Ctrl+Y)" onClick={redo} disabled={!future.length}>↷ Redo</button></div>
+          <div className={`full-plan-overall-properties${overallPropertiesExpanded ? " expanded" : ""}`}>
+            <button type="button" className="full-plan-overall-toggle" aria-expanded={overallPropertiesExpanded} onClick={() => setOverallPropertiesExpanded((current) => !current)}><strong>Overall properties</strong><span aria-hidden>{overallPropertiesExpanded ? "−" : "+"}</span></button>
+            {overallPropertiesExpanded && <div className="full-plan-overall-content">
+              <div className="coordinate-fields room-measurements">
+                <label className="field"><span>Wall height ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={100000} valueMm={wallHeight} units={displayUnits} onMmChange={setWallHeight} /></label>
+                <label className="field"><span>Default thickness ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={defaultWallThicknessInput ?? wallThickness} units={displayUnits} onMmChange={setDefaultWallThicknessInput} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); requestDefaultWallThickness(); } }} /></label>
+              </div>
+              <div className="plan-constraint-controls">
+                <label className="snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to grid</span></label>
+                <label className="field snap-size-control"><span>Grid size ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput aria-label={`Grid size (${UNIT_LABEL[displayUnits]})`} minMm={1} valueMm={snapSize} units={displayUnits} onMmChange={setSnapSize} /></label>
+                <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => setSquaredWalls(event.target.checked)} /><span>Keep walls squared</span></label>
+                <label className="check-row measurement-edit-toggle"><input type="checkbox" checked={measurementEditEnabled} onChange={(event) => { setMeasurementEditEnabled(event.target.checked); setMeasurementDraft([]); setSelectedMeasurement(null); setMeasurementContextMenu(null); setTool(event.target.checked ? "MEASURE" : "SELECT"); }} /><span>Edit measurements</span></label>
+              </div>
+            </div>}
+          </div>
+          {measurementEditEnabled && selectedMeasurement && <div className="selected-properties measurement-properties"><div className="tool-heading"><h2>Selected measurement</h2></div><p className="tool-note">Drag this measurement on the drawing, right-click it for actions, or remove it.</p><button className="danger-button" onClick={deleteSelectedMeasurement}>Delete measurement</button></div>}
+          {tool === "SELECT" && selectedSegment && selectedWall && <div className="selected-properties">
+            <label className="field"><span>Select a wall and define new length below ({UNIT_LABEL[displayUnits]})</span><div className="field-action-row"><DisplayNumberInput minMm={1} valueMm={wallLengthInput ?? wallLengthForSegment(selectedWall, selectedSegment.segmentIndex)} units={displayUnits} onMmChange={setWallLengthInput} /><button className="review-style-button" onClick={applySelectedWallLength}>Apply wall length</button></div></label>
+            <label className="field"><span>Select a wall and define the new wall thickness ({UNIT_LABEL[displayUnits]})</span><div className="field-action-row"><DisplayNumberInput minMm={1} maxMm={2000} valueMm={wallThicknessInput?.key === `${selectedWall.id}:${selectedSegment.segmentIndex}` ? wallThicknessInput.value : wallThicknessForSegment(selectedWall, selectedSegment.segmentIndex, wallThickness)} units={displayUnits} onMmChange={(value) => setWallThicknessInput({ key: `${selectedWall.id}:${selectedSegment.segmentIndex}`, value })} /><button className="review-style-button" onClick={() => setSelectedWallThickness(selectedWall.id, selectedSegment.segmentIndex, wallThicknessInput?.key === `${selectedWall.id}:${selectedSegment.segmentIndex}` ? wallThicknessInput.value : wallThicknessForSegment(selectedWall, selectedSegment.segmentIndex, wallThickness))}>Apply wall thickness</button></div></label>
+            <button className="review-style-button" type="button" disabled={selectedWall.thicknessOverridesMm?.[selectedSegment.segmentIndex] === undefined} onClick={() => { resetSelectedWallThickness(selectedWall.id, selectedSegment.segmentIndex); setWallThicknessInput(null); }}>Use default thickness</button>
+          </div>}
+          {tool === "SELECT" && selectedPoint && selectedPointWall && selectedPointValue && <div className="selected-properties"><div className="tool-heading"><h2>Selected corner</h2></div><div className="coordinate-fields"><label className="field"><span>X ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput valueMm={selectedPointValue.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, x: value })} /></label><label className="field"><span>Y ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput valueMm={selectedPointValue.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(selectedPointWall.id, selectedPoint.pointIndex, { ...selectedPointValue, y: value })} /></label></div></div>}
+        </section></FloatingToolbar>}
+      </aside>
+
+      <main className="drawing-column full-plan-drawing">
+        <div className="resizable-floorplan-window">
+         {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div>{sourceUrl && !importing && <div className="floorplan-background-actions drawing-navigation-row" role="group" aria-label="Drawing actions"><button type="button" className="fit-view-button floorplan-background-action" onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="fit-view-button floorplan-background-action" onClick={clearImportedDrawing}>Remove drawing</button></div>}<div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><ViewToggle label="Room names" active={showRoomNames} onToggle={() => setShowRoomNames((current) => !current)} /><ViewToggle label="Measurements" active={showMeasurements} onToggle={() => { const enabled = !showMeasurements; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><ViewToggle label="Wall thickness" active={showWallThickness} onToggle={() => setShowWallThickness((current) => !current)} /><ViewToggle label="Annotations" active={showAnnotations} onToggle={() => setShowAnnotations((current) => !current)} /><ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} /><ViewToggle label="Coordinates table" active={coordinatesToolbarOpen} onToggle={() => onToggleToolbar("floorplan-coordinates")} /></div></div></FloatingToolbar>}
+<div className="full-plan-canvas">{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}
+          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={`mode-${tool.toLowerCase()}`} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onContextMenuCapture={event => { if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
+            if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
+            if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && (target.classList.contains("canvas-background") || target.classList.contains("plan-grid"))); if (background && tool === "SELECT") clearActiveDrawingSelection(); return; }
+            const rawRequested = canvasPoint(event, false);
+            if (draftStartNear(rawRequested)) { commitDraft(closeDraftPath(draft, squaredWalls)); return; }
+            const draftClosure = draftClosurePathNear(rawRequested);
+            if (draftClosure) { commitDraft(closeDraftPath(draftClosure.points, squaredWalls), undefined, draftClosure.preservedPrefix); return; }
+            const cornerHit = findCornerNear(rawRequested);
+            if (cornerHit) { connectDraftToCorner(cornerHit); return; }
+            const requested = canvasPoint(event); const closes = draft.length >= 3 && samePoint(requested, draft[0], 16);
+            if (closes) { commitDraft(closeDraftPath(draft, squaredWalls)); return; }
+            const wallHit = findWallSegmentNear(canvasPoint(event, false));
+            if (wallHit) { connectDraftToWall(wallHit.wallId, wallHit.segmentIndex, canvasPoint(event, false)); return; }
+            if (!draft.length) setLockedViewport(viewport);
+            setDraft((current) => current.length && squaredWalls ? [...current, squareDrawPoint(current.at(-1)!, requested)] : [...current, requested]);
+          }} onDoubleClick={(event) => { if (annotationTool === "POLYLINE") { event.preventDefault(); event.stopPropagation(); finishAnnotationPolyline(); return; } if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { if (placement) { event.preventDefault(); onCancelPlacement?.(); return; } const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && target.classList.contains("canvas-background")); if (!background) return; event.preventDefault(); if (tool === "DRAW") { commitDraft(); return; } setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setSelectedMeasurement(null); setSelectedAnnotationId(null); setContextMenu(null); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }}>
+             {sourceUrl && !importing && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
+            {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import a drawing as a background reference</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
+            {detectedRooms.map((room) => { const outline = room.vertices.map(toScreen); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } if (tool === "SELECT") { event.stopPropagation(); clearActiveDrawingSelection(); } }} />; })}
+            <FloorplanAtmosphere rooms={planRooms} toScreen={toScreen} />
+            {rooms.map((room, index) => {
+              const outline = room.vertices.map(toScreen); const labelPosition = toScreen(roomLabelPosition(room)); const nameWidth = roomNameEditorWidth(room.name); const labelWidth = nameWidth + 12; const labelHeight = 30; const dragging = draggingRoomLabelId === room.id;
+              return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } if (tool !== "DRAW") { event.stopPropagation(); clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className={`room-name-editor${dragging ? " dragging" : ""}`} x={labelPosition.x - labelWidth / 2} y={labelPosition.y - labelHeight / 2} width={labelWidth} height={labelHeight} onPointerDown={(event) => beginRoomLabelDrag(event, room)}><div className="room-name-drag-shell"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } event.stopPropagation(); if (tool !== "DRAW") { clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); }} /></div></foreignObject>}</g>;
+            })}
+            {visibleFixtures.map((storedFixture) => {
+              const fixture = fixturePreview?.id === storedFixture.id ? fixturePreview : storedFixture;
+              const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
+              const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
+              const centre = toScreen(fixture.center);
+              const selected = selectedFixtureId === fixture.id;
+              const fixtureRoom = selected ? planRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)) : null;
+              const wallSpan = selected && fixture.wall_lock === true ? nearestFixtureWallSpan(fixture, walls) : null;
+              const wall = wallSpan ? walls.find((candidate) => candidate.id === wallSpan.wallId) : undefined;
+              const wallDimensionOffset = wallSpan
+                ? dimensionOffsets[`${wallSpan.wallId}:${wallSpan.segmentIndex}`] ?? (wall ? wallDimensionOffsetFor(wall, wallSpan.segmentIndex) : undefined)
+                : undefined;
+              return (
+                <g key={`fixture-${fixture.id}`} className={`floorplan-fixture${selectedFixtureId === fixture.id ? " selected" : ""}`} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}>
+                  <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} selected={selectedFixtureId === fixture.id} />
+                  {showMeasurements && selected && <>
+                    <FloorPlanFixtureDimensions obstacle={fixture} measurementId={fixture.id} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`fixture:${fixture.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} />
+                    {wallSpan ? <FloorPlanFixtureSpacingDimensions span={wallSpan} toScreen={toScreen} displayUnits={displayUnits} wallDimensionOffset={wallDimensionOffset} /> : fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} />}
+                  </>}
+                </g>
+              );
+            })}
+            <g pointerEvents="none">
+              {["outline", "fill"].map((layer) => <g key={layer}>{wallVisualPaths.map((run) =>
+                <path key={run.key} className={layer === "outline" ? "wall-body" : "wall-line"} style={{ "--wall-stroke-width": `${run.width + 2}px`, "--wall-inner-stroke-width": `${run.width}px` } as CSSProperties} d={run.path} fill="none" strokeLinecap="square" strokeLinejoin="miter" pointerEvents="none" />
+              )}</g>)}
+            </g>
+            {walls.map((wall) => {
+              const closed = samePoint(wall.points[0], wall.points.at(-1)!); const modelPoints = closed ? wall.points.slice(0, -1) : wall.points; const screenPoints = modelPoints.map(toScreen); const centre = screenPoints.reduce((total, point) => ({ x: total.x + point.x / screenPoints.length, y: total.y + point.y / screenPoints.length }), { x: 0, y: 0 });
+              const wallSegments = wall.points.slice(0, -1).map((modelStart, segmentIndex): WallRenderSegment => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const thicknessMm = wallThicknessForSegment(wall, segmentIndex, wallThickness); return { segmentIndex, start, end, thicknessMm, visualThicknessMm: showWallThickness ? thicknessMm : 0 }; });
+
+              const dimensions = wall.points.slice(0, -1).map((modelStart, segmentIndex) => {
+                const modelEnd = wall.points[segmentIndex + 1]; const length = wallLengthForSegment(wall, segmentIndex); const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const dimensionId = `${wall.id}:${segmentIndex}`; if (hiddenDimensions.includes(dimensionId) || redundantHeightDimensions.has(dimensionId)) return null; const offset = dimensionOffsets[dimensionId] ?? wallDimensionOffsetFor(wall, segmentIndex); const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * MEASUREMENT_LABEL_GAP_SCREEN, y: (first.y + second.y) / 2 + outward.y * MEASUREMENT_LABEL_GAP_SCREEN }; const manual = wall.lengthOverridesMm?.[segmentIndex] !== undefined;
+                return <g key={`${wall.id}-dimension-${segmentIndex}`} className={`wall-dimension measurement-item measurement-context-target ${manual ? "manual-measurement" : ""} ${tool === "MEASURE" ? "editable" : ""} ${tool === "REMOVE_MEASURE" ? "measurement-removal-target" : ""} ${selectedMeasurement === `auto:${dimensionId}` ? "selected" : ""}`} onPointerDown={(event) => tool === "REMOVE_MEASURE" ? (event.preventDefault(), event.stopPropagation(), removeMeasurementById(dimensionId, false)) : beginMeasurementDrag(event, dimensionId, false, offset, outward)} onContextMenu={(event) => openAutoMeasurementContextMenu(event, { wallId: wall.id, segmentIndex })}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className={`wall-label ${manual ? "manual-measurement-value" : ""}`} x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
+              });
+              return (
+                <g key={wall.id} className={tool === "REMOVE" ? "removable" : ""}>
+                  {wallSegments.map(({ segmentIndex, start, end, thicknessMm }) => {
+                    const selection = { wallId: wall.id, segmentIndex };
+                    const chosen = measurementDraft.some((reference) => reference.kind === "WALL" && reference.wallId === wall.id && reference.segmentIndex === segmentIndex);
+                    const isOverride = showMeasurements && showWallThickness && wall.thicknessOverridesMm?.[segmentIndex] !== undefined;
+                    const innerStrokeWidth = showWallThickness ? Math.max(0, thicknessMm * activeViewport.scale) : 4;
+                    const strokeWidth = innerStrokeWidth + 2;
+                    const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+                    const normal = { x: -(end.y - start.y) / screenLength, y: (end.x - start.x) / screenLength };
+                    const label = { x: (start.x + end.x) / 2 + normal.x * (strokeWidth / 2 + 14), y: (start.y + end.y) / 2 + normal.y * (strokeWidth / 2 + 14) };
+                    const selected = selectedSegment?.wallId === wall.id && selectedSegment.segmentIndex === segmentIndex;
+                    const hovered = hoveredSegment?.wallId === wall.id && hoveredSegment.segmentIndex === segmentIndex;
+                    const wallStyle = { "--wall-stroke-width": `${strokeWidth}px`, "--wall-inner-stroke-width": `${innerStrokeWidth}px`, "--wall-hit-stroke-width": `${Math.max(strokeWidth, 24)}px` } as CSSProperties;
+                    return <g key={`${wall.id}-segment-${segmentIndex}`}>
+                      {(selected || hovered || chosen) && <line className={`wall-selection-line ${chosen ? "measurement-chosen" : ""}`} style={wallStyle} x1={start.x} y1={start.y} x2={end.x} y2={end.y} />}
+                      <line className="wall-interaction-line" style={wallStyle} x1={start.x} y1={start.y} x2={end.x} y2={end.y} onPointerEnter={() => setHoveredSegment(selection)} onPointerLeave={() => setHoveredSegment((current) => current?.wallId === wall.id && current.segmentIndex === segmentIndex ? null : current)} onContextMenu={(event) => openWallContextMenu(event, selection)} onPointerDown={(event) => { event.stopPropagation(); const svg = event.currentTarget.ownerSVGElement; if (tool === "DRAW" && svg) { connectDraftToWall(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_CORNERS" && svg) { insertPointAt(wall.id, segmentIndex, canvasPointFromClient(event.clientX, event.clientY, svg, false)); return; } if (tool === "ADD_MEASURE") { addMeasurementReference({ kind: "WALL", ...selection }); return; } if (tool === "SELECT" || tool === "MEASURE") { beginWallDrag(event, wall, segmentIndex); return; } selectSegment(wall.id, segmentIndex); }} />
+                      {isOverride && <text className="wall-thickness-label" x={label.x} y={label.y}>{`${formatLength(thicknessMm, displayUnits)} thick`}</text>}
+                    </g>;
+                  })}
+                  {showMeasurements && dimensions}
+                </g>
+              );
+            })}
+            {measurementDraft.filter((reference) => reference.kind === "ROOM_POINT" || reference.kind === "FIXTURE" || reference.kind === "OPENING").map((reference, index) => {
+              const modelPoint = resolveMeasurementReference(reference);
+              if (!modelPoint) return null;
+              const point = toScreen(modelPoint);
+              return <g key={`measurement-reference-${index}`} className="measurement-reference-point" pointerEvents="none"><circle cx={point.x} cy={point.y} r="7" /><text x={point.x} y={point.y - 11}>Point {index + 1}</text></g>;
+            })}
+            {showMeasurements && measurements.map((measurement) => {
+              const direction = measurement.direction ?? "NORMAL";
+              const geometry = resolveMeasurementGeometry(measurement.first, measurement.second, direction);
+              if (!geometry) return null;
+              const modelStart = geometry.start; const modelEnd = geometry.end;
+              const start = toScreen(modelStart); const end = toScreen(modelEnd);
+              const screenLength = Math.hypot(end.x - start.x, end.y - start.y); const normalLength = geometry.length;
+              if (!screenLength || !normalLength) return null;
+              const normalTangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const normalNormal = { x: -normalTangent.y, y: normalTangent.x };
+              const tangent = direction === "HORIZONTAL" ? { x: 1, y: 0 } : direction === "VERTICAL" ? { x: 0, y: 1 } : normalTangent;
+              const normal = direction === "HORIZONTAL" ? { x: 0, y: -1 } : direction === "VERTICAL" ? { x: 1, y: 0 } : normalNormal;
+              const baseline = direction === "HORIZONTAL" ? (start.y + end.y) / 2 + normal.y * measurement.offset : direction === "VERTICAL" ? (start.x + end.x) / 2 + normal.x * measurement.offset : null;
+              const first = direction === "HORIZONTAL" ? { x: start.x, y: baseline! } : direction === "VERTICAL" ? { x: baseline!, y: start.y } : { x: start.x + normal.x * measurement.offset, y: start.y + normal.y * measurement.offset };
+              const second = direction === "HORIZONTAL" ? { x: end.x, y: baseline! } : direction === "VERTICAL" ? { x: baseline!, y: end.y } : { x: end.x + normal.x * measurement.offset, y: end.y + normal.y * measurement.offset };
+              const length = direction === "HORIZONTAL" ? Math.abs(modelEnd.x - modelStart.x) : direction === "VERTICAL" ? Math.abs(modelEnd.y - modelStart.y) : normalLength;
+              const label = { x: (first.x + second.x) / 2 + normal.x * MEASUREMENT_LABEL_GAP_SCREEN, y: (first.y + second.y) / 2 + normal.y * MEASUREMENT_LABEL_GAP_SCREEN };
+              return <g key={measurement.id} className={`wall-dimension custom-measurement measurement-item measurement-context-target ${tool === "MEASURE" ? "editable" : ""} ${tool === "REMOVE_MEASURE" ? "measurement-removal-target" : ""} ${selectedMeasurement === `custom:${measurement.id}` ? "selected" : ""}`} onPointerDown={(event) => tool === "REMOVE_MEASURE" ? (event.preventDefault(), event.stopPropagation(), removeMeasurementById(measurement.id, true)) : beginMeasurementDrag(event, measurement.id, true, measurement.offset, normal)} onContextMenu={(event) => openMeasurementContextMenu(event, measurement.id)}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={start.x} y1={start.y} x2={first.x} y2={first.y} /><line className="dimension-extension" x1={end.x} y1={end.y} x2={second.x} y2={second.y} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + normal.x * 4} y1={first.y - tangent.y * 4 + normal.y * 4} x2={first.x + tangent.x * 4 - normal.x * 4} y2={first.y + tangent.y * 4 - normal.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + normal.x * 4} y1={second.y - tangent.y * 4 + normal.y * 4} x2={second.x + tangent.x * 4 - normal.x * 4} y2={second.y + tangent.y * 4 - normal.y * 4} /><text className="wall-label" x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
+            })}
+            {draft.length > 0 && <polyline points={draft.map(toScreen).map((point) => `${point.x},${point.y}`).join(" ")} className="full-wall-draft" />}
+            {openings.map((opening) => {
+              const wall = walls.find((item) => item.id === opening.wallId); const wallStart = wall?.points[opening.segmentIndex]; const wallEnd = wall?.points[opening.segmentIndex + 1];
+              if (!wall || !wallStart || !wallEnd) return null;
+              const wallPoints = samePoint(wall.points[0], wall.points.at(-1)!) ? wall.points.slice(0, -1) : wall.points;
+              const wallCentre = wallPoints.reduce((total, point) => ({ x: total.x + point.x / wallPoints.length, y: total.y + point.y / wallPoints.length }), { x: 0, y: 0 });
+              const lane = openings.filter((item) => item.wallId === opening.wallId && item.segmentIndex === opening.segmentIndex).findIndex((item) => item.id === opening.id);
+              const wallDimensionId = `${opening.wallId}:${opening.segmentIndex}`;
+              const wallDimensionOffset = dimensionOffsets[wallDimensionId] ?? wallDimensionOffsetFor(wall, opening.segmentIndex);
+              const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward, colorHex: opening.colorHex, representationKey: opening.representationKey ?? catalogueItemForOpening(opening)?.representation_key, windowDepthMm: opening.windowDepthMm ?? catalogueItemForOpening(opening)?.depth_mm, windowPaneCount: opening.kind === "WINDOW" ? windowPaneCountFor(opening) : undefined };
+              return showMeasurements && selectedOpeningId === opening.id && <FloorPlanOpeningDimensions key={`opening-dimensions-${opening.id}`} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} wallCentre={wallCentre} wallDimensionOffset={wallDimensionOffset} lane={lane} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`opening:${opening.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openOpeningMeasurementContextMenu(event, opening, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openOpeningMeasurementContextMenu(event, opening, section) : undefined} />;
+            })}
+            {openings.map((opening) => {
+              const wall = walls.find((item) => item.id === opening.wallId); const wallStart = wall?.points[opening.segmentIndex]; const wallEnd = wall?.points[opening.segmentIndex + 1];
+              if (!wall || !wallStart || !wallEnd) return null;
+              const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward, colorHex: opening.colorHex, representationKey: opening.representationKey ?? catalogueItemForOpening(opening)?.representation_key, windowDepthMm: opening.windowDepthMm ?? catalogueItemForOpening(opening)?.depth_mm, windowPaneCount: opening.kind === "WINDOW" ? windowPaneCountFor(opening) : undefined };
+              const closedWall = samePoint(wall.points[0], wall.points.at(-1)!);
+              const wallPoints = closedWall ? wall.points.slice(0, -1) : wall.points;
+              const wallCentre = wallPoints.reduce((total, point) => ({ x: total.x + point.x / wallPoints.length, y: total.y + point.y / wallPoints.length }), { x: 0, y: 0 });
+              const roomCentre = closedWall ? roomVisualCentre(wallPoints) : wallCentre;
+              return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} roomCentre={roomCentre} wallThicknessScreen={showWallThickness ? wallThicknessForSegment(wall, opening.segmentIndex, wallThickness) * activeViewport.scale : 10} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} onContextMenu={(event) => openOpeningContextMenu(event, opening)} />;
+            })}
+            <g className="annotation-layer" pointerEvents={annotationLayerDisabled ? "none" : "auto"} aria-label="Annotations">
+              {showAnnotations && annotations.map(renderAnnotation)}
+              {annotationDraftPoints.length > 0 && <g pointerEvents="none" opacity="0.7">
+                {(annotationTool === "LINE" || annotationTool === "ARROW") && annotationDraftPoints.length === 1 && <circle cx={annotationDraftPoints[0].x} cy={annotationDraftPoints[0].y} r="5" fill="#287fb8" />}
+                {(annotationTool === "LINE" || annotationTool === "ARROW") && annotationDraftPoints.length === 2 && <line x1={annotationDraftPoints[0].x} y1={annotationDraftPoints[0].y} x2={annotationDraftPoints[1].x} y2={annotationDraftPoints[1].y} stroke="#287fb8" strokeWidth="2" strokeDasharray="6 5" />}
+                {annotationTool === "POLYLINE" && <polyline points={annotationDraftPoints.map((point) => point.x + "," + point.y).join(" ")} fill="none" stroke="#287fb8" strokeWidth="2" strokeDasharray="6 5" />}
+                {annotationTool === "CALLOUT" && <circle cx={annotationDraftPoints[0].x} cy={annotationDraftPoints[0].y} r="6" fill="#287fb8" />}
+                {annotationDraftPoints.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="4" fill="white" stroke="#287fb8" strokeWidth="2" />)}
+              </g>}
+            </g>
+            <g className="vertex-layer">{walls.flatMap((wall) => { const closed = samePoint(wall.points[0], wall.points.at(-1)!); const firstNumber = wallVertexStarts.get(wall.id) ?? 1; return wall.points.slice(0, closed ? -1 : undefined).map((modelPoint, pointIndex) => ({ modelPoint, pointIndex })).filter(({ pointIndex }) => !wall.attachments?.[pointIndex]?.hideCorner).map(({ modelPoint, pointIndex }, visibleIndex) => { const point = toScreen(modelPoint); const selection = { wallId: wall.id, pointIndex }; const chosen = measurementDraft.some((reference) => reference.kind === "POINT" && reference.wallId === wall.id && reference.pointIndex === pointIndex); const hoverEnabled = tool === "SELECT" || tool === "DRAW" || tool === "ADD_MEASURE"; const hovered = hoverEnabled && hoveredCorner?.wallId === wall.id && hoveredCorner.pointIndex === pointIndex; const clearHoveredCorner = () => setHoveredCorner((current) => current?.wallId === wall.id && current.pointIndex === pointIndex ? null : current); const handleCornerPointerDown = (event: ReactPointerEvent<SVGCircleElement>) => { if (tool === "DRAW" && event.button === 0) { event.stopPropagation(); connectDraftToCorner(selection); return; } if (tool === "ADD_MEASURE") { event.stopPropagation(); addMeasurementReference({ kind: "POINT", ...selection }); return; } beginPointDrag(event, selection); }; return <g key={`${wall.id}-point-${pointIndex}`}><circle cx={point.x} cy={point.y} r={selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "12" : "10"} className={`vertex-handle full-plan-vertex ${tool === "SELECT" || tool === "ADD_MEASURE" ? "editable" : ""} ${hovered ? "hovered" : ""} ${hovered && tool === "DRAW" ? "draw-connect-target" : ""} ${selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex ? "selected" : ""} ${chosen ? "measurement-chosen" : ""}`} onPointerEnter={() => setHoveredCorner(selection)} onPointerLeave={clearHoveredCorner} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={handleCornerPointerDown} /><text className="vertex-label" x={point.x} y={point.y + 3}>{wall.cornerNumbers?.[pointIndex] ?? firstNumber + visibleIndex}</text>{hoverEnabled && <circle cx={point.x} cy={point.y} r="22" className={`corner-hover-hit ${tool === "DRAW" ? "draw-mode" : ""}`} onPointerEnter={() => setHoveredCorner(selection)} onPointerLeave={clearHoveredCorner} onContextMenu={(event) => openPointContextMenu(event, selection)} onPointerDown={handleCornerPointerDown} />}</g>; }); })}</g>
+            {draft.map((modelPoint, index) => { const point = toScreen(modelPoint); const isDraftStart = index === 0 && draft.length >= 3; return <circle key={`draft-${index}`} cx={point.x} cy={point.y} r={isDraftStart ? "10" : "7"} className={`full-plan-draft-node ${isDraftStart ? "full-plan-draft-start" : ""}`} />; })}
+            {calibrating && sourceUrl && <g>
+              <rect x="0" y="0" width={FLOOR_PLAN_CANVAS_WIDTH} height={FLOOR_PLAN_CANVAS_HEIGHT} fill="white" />
+              <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" />
+              <rect x="0" y="0" width={FLOOR_PLAN_CANVAS_WIDTH} height={FLOOR_PLAN_CANVAS_HEIGHT} fill="transparent" style={{ cursor: "crosshair" }}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  event.preventDefault(); event.stopPropagation();
+                  if (calibrationPoints.length >= 2) return;
+                  const svg = event.currentTarget.ownerSVGElement!;
+                  const rawPoint = floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport);
+                  const point = event.shiftKey && calibrationPoints.length === 1
+                    ? orthogonalCalibrationPoint(calibrationPoints[0], rawPoint)
+                    : rawPoint;
+                  if (point.x < 0 || point.y < 0 || point.x > canvasSize.width || point.y > canvasSize.height) { setCalibrationError("Choose points inside the drawing."); return; }
+                  setCalibrationError(""); setCalibrationPoints((current) => [...current, point]); setCalibrationHover(point);
+                }}
+                onPointerMove={(event) => {
+                  event.stopPropagation();
+                  if (calibrationPoints.length === 1) {
+                    const rawPoint = floorPlanFromClient(event.clientX, event.clientY, event.currentTarget.ownerSVGElement!, activeViewport);
+                    setCalibrationHover(event.shiftKey ? orthogonalCalibrationPoint(calibrationPoints[0], rawPoint) : rawPoint);
+                  }
+                }}
+                onDoubleClick={(event) => event.stopPropagation()} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }} />
+              {calibrationPoints.length > 0 && (() => {
+                const a = toScreen(calibrationPoints[0]); const b = toScreen(calibrationPoints[1] ?? calibrationHover ?? calibrationPoints[0]);
+                return <g pointerEvents="none" stroke="#60c7f2" strokeWidth="3"><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} /><circle cx={a.x} cy={a.y} r="5" fill="white" /><circle cx={b.x} cy={b.y} r="5" fill="white" /></g>;
+              })()}
+            </g>}
+            {placement && placementPoint && <PlacementPreview2D request={placement} point={placementPoint} candidate={placementCandidate} toScreen={toScreen} units={displayUnits} />}
+          </FloorPlanCanvas>
+          {sourceUrl && !importing && calibrating && <div className="drawing-calibration-panel" role="dialog" aria-modal="false" aria-labelledby="drawing-calibration-title" onKeyDown={(event) => {
+            event.stopPropagation(); if (event.key === "Escape") { setCalibrating(false); setCalibrationPoints([]); }
+          }}>
+            <form onSubmit={(event) => {
+              event.preventDefault();
+              const size = calibrationPoints.length === 2 ? calibratedDrawingSize(canvasSize, calibrationPoints[0], calibrationPoints[1], Number(calibrationLength)) : null;
+              if (!size) { setCalibrationError("Choose two different points and enter a positive length."); return; }
+              setCanvasSize(size); setCalibrating(false); setCalibrationPoints([]); setCalibrationHover(null); setLockedViewport(null);
+            }} className="popup drawing-calibration-popup">
+              <header className="popup-titlebar"><span className="popup-drag" aria-hidden>⠿</span><strong id="drawing-calibration-title">Calibrate imported drawing</strong></header>
+              <div className="popup-content"><p>{calibrationPoints.length < 2 ? "Click two ends of a known distance on the drawing." : "Enter the real length of the light-blue line."}{sourceIsPdf ? " PDF page 1." : ""}</p><p className="drawing-calibration-hint">Hold Shift while choosing the second point to keep the reference line horizontal or vertical.</p>
+              <label>Reference length (mm)<input aria-label="Reference length (mm)" type="number" min="0.001" step="any" value={calibrationLength} onChange={(event) => setCalibrationLength(event.target.value)} /></label>
+              {calibrationError && <p className="inline-error" role="alert">{calibrationError}</p>}</div>
+              <footer className="popup-actions"><button type="submit" disabled={calibrationPoints.length !== 2}>Apply scale</button>
+                <button type="button" onClick={() => { setCalibrationPoints([]); setCalibrationHover(null); setCalibrationError(""); }}>Redraw line</button>
+                <button type="button" onClick={() => { setCalibrating(false); setCalibrationPoints([]); }}>Cancel</button></footer>
+            </form>
+          </div>}
+        </div><div className="drawing-scale"><span>Coordinates and dimensions shown in {UNIT_LABEL[displayUnits]} · calculations remain millimetre-authoritative</span><span>Shared floorplan engine auto-fits the complete plan</span></div>
+        </div>
+      </main>
+
+      <aside className="coordinate-panel full-plan-side-column">
+        {toolbarVisibility["floorplan-coordinates"] && <FloatingToolbar title="Coordinates" defaultPosition={{ x: 662, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-coordinates") : { side: "LEFT", slot: 1, slots: 2 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={450} onClose={() => onToggleToolbar("floorplan-coordinates")}>
+        <section className="tool-section"><p className="tool-note">Modify any X, Y corner coordinates here to update the drawing</p><div className="coordinate-input-list" aria-label={`Floorplan coordinates in ${UNIT_LABEL[displayUnits]}`}><div className="coordinate-table-heading"><span>Corner ID</span><span>X</span><span>Y</span></div>{coordinateEntries.map(({ wall, point, pointIndex, cornerNumber }) => { const rowKey = `${wall.id}:${pointIndex}`; const selected = selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex; return <div key={`${wall.id}-coordinate-${pointIndex}`} ref={(element) => { if (element) coordinateRowRefs.current.set(rowKey, element); else coordinateRowRefs.current.delete(rowKey); }} className={`coordinate-row ${selected ? "selected" : ""}`} onClick={() => { setSelectedPoint({ wallId: wall.id, pointIndex }); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); }}><span className="coordinate-prefix">{cornerNumber}</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, x: value })} /><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, y: value })} /></div>; })}</div></section>
+        </FloatingToolbar>}
+        {openingEditorTarget && createPortal(!openingEditRequest || openings.some(item => item.id === openingEditRequest.id) ? openingPanel : (() => {
+          const opening = viewerOpeningRoom?.openings.find(item => item.id === openingEditRequest.id);
+          return opening && viewerOpeningRoom && onStandaloneRoomChange ? <RoomOpeningEditor key={`${opening.id}-${openingEditRequest.requestId}`} room={viewerOpeningRoom} opening={opening} items={openingCatalogueItems} units={displayUnits} onChange={onStandaloneRoomChange} /> : <p>This opening has been removed. Select another door or window.</p>;
+        })(), openingEditorTarget)}
+        {toolbarVisibility["floorplan-openings"] && !openingEditRequest && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-openings") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={760} onClose={() => { onElementSelected?.(null); onToggleToolbar("floorplan-openings"); }}>{openingPanel}</FloatingToolbar>}
+      </aside>
+    </div>
+  </section>;
+}

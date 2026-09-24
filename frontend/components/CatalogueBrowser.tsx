@@ -1,0 +1,634 @@
+"use client";
+import { assetUrl } from "@/lib/assetUrl";
+const PROGRAMMER_TOOLS = process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_ENABLE_PROGRAMMER_TOOLS === "true";
+import { fabricSwatchStyle } from "@/lib/fabrics";
+import { DOOR_MODELS } from "@/lib/doorModels";
+import { STAIRCASE_KEYS } from "@/lib/architecturalModels";
+import { RADIATOR_KEYS } from "@/lib/radiators";
+import { BATH_KEYS, CABINET_KEYS } from "@/lib/roomFixtureOptions";
+/* Catalogue previews are local capped data URLs, so Next image optimisation is not applicable. */
+/* eslint-disable @next/next/no-img-element */
+
+import { useEffect, useRef, useState } from "react";
+import { DisplayNumberInput } from "@/components/DisplayNumberInput";
+import { FixturePreview } from "@/components/FixturePreview";
+import { FlooringPreview } from "@/components/FlooringControls";
+import { defaultFloorDesign, FLOORING_COLLECTIONS, type FlooringPattern } from "@/lib/flooring";
+import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import { openingCatalogueCategoryLabel } from "@/lib/openingCatalogue";
+import type { CatalogueCategory, CatalogueItem, CatalogueItemInput, MaterialCollection, MaterialFamily, MaterialItem } from "@/lib/types";
+
+interface CatalogueBrowserProps {
+  apiUrl: string;
+  open: boolean;
+  displayUnits: DisplayUnits;
+  onClose: () => void;
+  onInsert: (item: CatalogueItem) => void;
+}
+
+type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "living" | "bedroom" | "kitchen" | "staircases" | "radiators";
+type CatalogueDetailSelection =
+  | { type: "object"; item: CatalogueItem }
+  | { type: "material"; item: MaterialItem; family: MaterialFamily; collection: MaterialCollection };
+type CatalogueContextMenu = { x: number; y: number };
+
+const CATEGORY_KINDS: Record<string, CatalogueItemInput["fixture_kind"]> = {
+  ...Object.fromEntries(DOOR_MODELS.map(model => [model.family, "DOOR" as const])),
+  "living-chairs": "FURNITURE", "living-sofas": "FURNITURE", "living-armchairs": "FURNITURE", "living-tables": "FURNITURE",
+  "kitchen-sinks": "FURNITURE",
+  "kitchen-fridges": "FURNITURE",
+  "kitchen-islands": "FURNITURE",
+  "kitchen-storage": "FURNITURE",
+  "kitchen-hobs": "FURNITURE",
+  "kitchen-ovens": "FURNITURE",
+  "kitchen-washing": "FURNITURE",
+  "bedroom-wardrobes": "FURNITURE",
+  "bedroom-beds": "FURNITURE", "bedroom-chairs": "FURNITURE", "bedroom-tables": "FURNITURE",
+  showers: "SHOWER",
+  basins: "BASIN",
+  toilets: "TOILET",
+  storage: "FURNITURE",
+  doors: "DOOR",
+  windows: "WINDOW",
+  "baths": "FURNITURE", "kitchen-cabinets": "FURNITURE",
+  ...Object.fromEntries(["straight", "l-shape", "u-shape", "spiral", "curved", "bifurcated"].map(family => [`staircases-${family}`, "FURNITURE" as const])),
+  "staircases-main": "FURNITURE",
+  "radiators-horizontal": "FURNITURE",
+  "radiators-vertical": "FURNITURE",
+  "radiators-bathroom": "FURNITURE",
+};
+
+function blankEntry(): CatalogueItemInput {
+  return {
+    category_id: "storage",
+    fixture_kind: "FURNITURE",
+    name: "",
+    supplier: "",
+    sku: "",
+    width_mm: 600,
+    depth_mm: 450,
+    height_mm: 850,
+    color_hex: "#b99b77",
+    description: "",
+    stl_filename: null,
+    stl_base64: null,
+    side_clearance_mm: null,
+    front_clearance_mm: null,
+    subcategory: "General",
+    plan_shape: "RECTANGLE",
+    images: [],
+  };
+}
+
+function trapFocus(event: React.KeyboardEvent<HTMLElement>) {
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')).filter((element) => element.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable.at(-1)!;
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); event.stopPropagation(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); event.stopPropagation(); first.focus(); }
+}
+
+function normalizeCatalogueItem(item: CatalogueItem, apiUrl: string): CatalogueItem {
+  return {
+    ...item,
+    images: Array.isArray(item.images) ? item.images.map((image) => ({ ...image, data_url: image?.data_url || (image?.url ? `${apiUrl}${image.url}` : "") })) : [],
+    subcategory: item.subcategory?.trim() || "General",
+    plan_shape: item.plan_shape === "ELLIPSE" ? "ELLIPSE" : "RECTANGLE",
+  };
+}
+
+export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert }: CatalogueBrowserProps) {
+  const [categories, setCategories] = useState<CatalogueCategory[]>([]);
+  const [materialCollections, setMaterialCollections] = useState<MaterialCollection[]>([]);
+  const [items, setItems] = useState<CatalogueItem[]>([]);
+  const [navigationItems, setNavigationItems] = useState<CatalogueItem[]>([]);
+  const [categoryId, setCategoryIdState] = useState<string>("");
+  const [activeSubcategory, setActiveSubcategory] = useState("");
+  const [activeObjectGroup, setActiveObjectGroup] = useState<CatalogueObjectGroup>("bathroom");
+  const [activeMaterialId, setActiveMaterialId] = useState<string | null>(null);
+  const [activeMaterialFamilyId, setActiveMaterialFamilyId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState<CatalogueItemInput>(blankEntry);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ fixtures: true, PAINT: true, TILE: true });
+  const [catalogueContextMenu, setCatalogueContextMenu] = useState<CatalogueContextMenu | null>(null);
+  const [settingsCategory, setSettingsCategory] = useState<CatalogueCategory | null>(null);
+  const [detailEntry, setDetailEntry] = useState<CatalogueDetailSelection | null>(null);
+  const [picturePending, setPicturePending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formStatus, setFormStatus] = useState("");
+  const stlInput = useRef<HTMLInputElement>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const supplierDialog = useRef<HTMLFormElement>(null);
+  const supplierFirstControl = useRef<HTMLSelectElement>(null);
+  const supplierOpener = useRef<HTMLElement | null>(null);
+  const settingsDialog = useRef<HTMLFormElement>(null);
+  const settingsFirstControl = useRef<HTMLInputElement>(null);
+  const settingsOpener = useRef<HTMLElement | null>(null);
+  const detailDialog = useRef<HTMLElement>(null);
+  const detailCloseButton = useRef<HTMLButtonElement>(null);
+  const detailOpener = useRef<HTMLElement | null>(null);
+  const setCategoryId = (value: string) => {
+    setCategoryIdState(value);
+    if (!value) setActiveSubcategory("");
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    opener.current = document.activeElement as HTMLElement;
+    closeButton.current?.focus();
+    return () => { opener.current?.focus(); };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || showForm || settingsCategory || detailEntry) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [detailEntry, onClose, open, settingsCategory, showForm]);
+
+  useEffect(() => {
+    if (!catalogueContextMenu) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setCatalogueContextMenu(null); };
+    const closeOnPointerDown = () => setCatalogueContextMenu(null);
+    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("pointerdown", closeOnPointerDown);
+    return () => { document.removeEventListener("keydown", closeOnEscape); document.removeEventListener("pointerdown", closeOnPointerDown); };
+  }, [catalogueContextMenu]);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch(`${apiUrl}/catalog/categories`)
+      .then((response) => response.ok ? response.json() as Promise<CatalogueCategory[]> : Promise.reject(new Error("Catalogue categories are unavailable.")))
+      .then(setCategories)
+      .catch((reason: Error) => setError(reason.message));
+    fetch(`${apiUrl}/catalog/materials`)
+      .then((response) => response.ok ? response.json() as Promise<MaterialCollection[]> : Promise.reject(new Error("Catalogue materials are unavailable.")))
+      .then(setMaterialCollections)
+      .catch((reason: Error) => setError(reason.message));
+    fetch(`${apiUrl}/catalog/items`)
+      .then((response) => response.ok ? response.json() as Promise<CatalogueItem[]> : Promise.reject(new Error("Catalogue objects are unavailable.")))
+      .then((records) => setNavigationItems(records.map((item) => normalizeCatalogueItem(item, apiUrl))))
+      .catch((reason: Error) => setError(reason.message));
+  }, [apiUrl, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const parameters = new URLSearchParams();
+    if (categoryId) parameters.set("category_id", categoryId);
+    if (activeSubcategory) parameters.set("subcategory", activeSubcategory);
+    if (search.trim()) parameters.set("search", search.trim());
+    fetch(`${apiUrl}/catalog/items?${parameters}`)
+      .then((response) => response.ok ? response.json() as Promise<CatalogueItem[]> : Promise.reject(new Error("Catalogue objects are unavailable.")))
+      .then((records) => setItems(records.map((item) => normalizeCatalogueItem(item, apiUrl))))
+      .catch((reason: Error) => setError(reason.message));
+  }, [activeSubcategory, apiUrl, categoryId, open, search]);
+
+  useEffect(() => {
+    if (!showForm) return;
+    supplierFirstControl.current?.focus();
+    const keepFocusInside = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setShowForm(false); return; }
+      if (event.key !== "Tab" || !supplierDialog.current) return;
+      const focusable = Array.from(supplierDialog.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])')).filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const firstControl = focusable[0]; const lastControl = focusable.at(-1)!;
+      if (!supplierDialog.current.contains(document.activeElement)) { event.preventDefault(); (event.shiftKey ? lastControl : firstControl).focus(); return; }
+      if (event.shiftKey && document.activeElement === firstControl) { event.preventDefault(); event.stopPropagation(); lastControl.focus(); }
+      else if (!event.shiftKey && document.activeElement === lastControl) { event.preventDefault(); event.stopPropagation(); firstControl.focus(); }
+    };
+    document.addEventListener("keydown", keepFocusInside, true);
+    return () => { document.removeEventListener("keydown", keepFocusInside, true); if (supplierOpener.current?.isConnected) supplierOpener.current.focus(); };
+  }, [showForm]);
+
+  const settingsCategoryId = settingsCategory?.id;
+  useEffect(() => {
+    if (!settingsCategoryId) return;
+    settingsFirstControl.current?.focus();
+    const keepFocusInside = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setSettingsCategory(null); return; }
+      if (event.key !== "Tab" || !settingsDialog.current) return;
+      const focusable = Array.from(settingsDialog.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])')).filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const firstControl = focusable[0]; const lastControl = focusable.at(-1)!;
+      if (!settingsDialog.current.contains(document.activeElement)) { event.preventDefault(); (event.shiftKey ? lastControl : firstControl).focus(); return; }
+      if (event.shiftKey && document.activeElement === firstControl) { event.preventDefault(); event.stopPropagation(); lastControl.focus(); }
+      else if (!event.shiftKey && document.activeElement === lastControl) { event.preventDefault(); event.stopPropagation(); firstControl.focus(); }
+    };
+    document.addEventListener("keydown", keepFocusInside, true);
+    return () => { document.removeEventListener("keydown", keepFocusInside, true); if (settingsOpener.current?.isConnected) settingsOpener.current.focus(); };
+  }, [settingsCategoryId]);
+
+  const detailEntryId = detailEntry ? `${detailEntry.type}:${detailEntry.item.id}` : null;
+  useEffect(() => {
+    if (!detailEntryId) return;
+    detailCloseButton.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); setDetailEntry(null); } };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => { document.removeEventListener("keydown", closeOnEscape); if (detailOpener.current?.isConnected) detailOpener.current.focus(); };
+  }, [detailEntryId]);
+
+  if (!open) return null;
+
+  const catalogueMaterials = [...FLOORING_COLLECTIONS, ...materialCollections.filter((collection) => !FLOORING_COLLECTIONS.some((builtIn) => builtIn.id === collection.id) && !(collection.kind === "TILE" && collection.id === "tiles-default"))];
+  const activeMaterial = catalogueMaterials.find((collection) => collection.id === activeMaterialId);
+  const activeMaterialFamily = activeMaterial?.families.find((family) => family.id === activeMaterialFamilyId);
+  const visibleMaterialFamilies = activeMaterial
+    ? activeMaterialFamilyId
+      ? activeMaterial.families.filter((family) => family.id === activeMaterialFamilyId)
+      : activeMaterial.families
+    : [];
+  const activeCategory = categories.find((category) => category.id === form.category_id);
+  const useCategoryClearances = form.side_clearance_mm === null && form.front_clearance_mm === null;
+  const nestedDialogOpen = showForm || settingsCategory !== null || detailEntry !== null;
+  const bathroomFixtureCategories = categories.filter((category) => ["showers", "basins", "toilets", "baths", "storage"].includes(category.id));
+  const topLevelOpeningCategories = categories.filter((category) => ["doors", "windows"].includes(category.id));
+  const objectGroupCategories: Record<CatalogueObjectGroup, CatalogueCategory[]> = {
+    radiators: categories.filter((category) => category.id.startsWith("radiators-")),
+    staircases: categories.filter((category) => category.id.startsWith("staircases-")),
+    bathroom: bathroomFixtureCategories,
+    doors: categories.filter((category) => category.id === "doors" || category.id.startsWith("doors-")),
+    windows: categories.filter((category) => category.id === "windows"),
+    kitchen: categories.filter((category) => category.id.startsWith("kitchen-")),
+    living: categories.filter((category) => category.id.startsWith("living-")),
+    bedroom: categories.filter((category) => category.id.startsWith("bedroom-")),
+  };
+  const activeObjectGroupCategoryIds = new Set(objectGroupCategories[activeObjectGroup].map((category) => category.id));
+  const visibleObjectItems = items.filter((item) => activeObjectGroupCategoryIds.has(item.category_id));
+
+  function setAllCatalogueBranchesExpanded(value: boolean) {
+    // Keep this list derived from the same data that renders the navigation, so
+    // newly added catalogue sections are included in the bulk actions by default.
+    const branchKeys = [
+      "fixtures",
+      "doors",
+      "windows",
+      "kitchen",
+      "living",
+      "bedroom",
+      "staircases",
+      "radiators",
+      "PAINT",
+      "TILE",
+      ...categories.flatMap((category) => [
+        `category-${category.id}`,
+        `category-${category.id}-family`,
+      ]),
+      ...objectGroupCategories.doors.map(category => `category-doors-family-${category.id === "doors" ? "Internal doors" : category.name}`),
+      ...["Casement", "Bay", "Bow", "Sash"].map(family => `category-windows-family-${family} windows`),
+      ...catalogueMaterials.map((collection) => `material-${collection.id}`),
+    ];
+    setExpanded((current) => Object.fromEntries([
+      ...Object.entries(current),
+      ...branchKeys.map((key) => [key, value]),
+    ]));
+    setCatalogueContextMenu(null);
+  }
+
+  function activateCatalogueMenuAction(event: React.SyntheticEvent<HTMLButtonElement>, value: boolean) {
+    event.preventDefault();
+    event.stopPropagation();
+    setAllCatalogueBranchesExpanded(value);
+  }
+
+  function openCatalogueContextMenu(event: React.MouseEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setCatalogueContextMenu({
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 180)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 105)),
+    });
+  }
+
+  function setField<K extends keyof CatalogueItemInput>(key: K, value: CatalogueItemInput[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function beginEdit(item: CatalogueItem, control: HTMLElement) {
+    supplierOpener.current = control;
+    setForm({
+      category_id: item.category_id,
+      fixture_kind: item.fixture_kind,
+      name: item.name,
+      supplier: item.supplier,
+      sku: item.sku,
+      width_mm: item.width_mm,
+      depth_mm: item.depth_mm,
+      height_mm: item.height_mm,
+      color_hex: item.color_hex,
+      description: item.description,
+      stl_filename: item.stl_filename,
+      stl_base64: item.stl_base64,
+      side_clearance_mm: item.side_clearance_mm,
+      front_clearance_mm: item.front_clearance_mm,
+      subcategory: item.subcategory,
+      representation_key: item.representation_key,
+      representation_version: item.representation_version,
+      plan_symbol_url: item.plan_symbol_url,
+      plan_symbol_data_url: item.plan_symbol_data_url,
+      plan_shape: item.plan_shape,
+      images: item.images,
+    });
+    setEditingId(item.id);
+    setShowForm(true);
+    setError(null);
+    setFormStatus("");
+  }
+
+  function openCategorySettings(category: CatalogueCategory | null, control: HTMLElement) {
+    if (!category) return;
+    settingsOpener.current = control;
+    setSettingsCategory(category);
+  }
+
+  function openObjectDetails(item: CatalogueItem, control: HTMLElement) {
+    detailOpener.current = control;
+    setDetailEntry({ type: "object", item });
+  }
+
+  function openMaterialDetails(item: MaterialItem, family: MaterialFamily, collection: MaterialCollection, control: HTMLElement) {
+    detailOpener.current = control;
+    setDetailEntry({ type: "material", item, family, collection });
+  }
+
+  function importPictures(files: FileList | null) {
+    if (!files) return;
+    const selected = Array.from(files);
+    if (form.images.length + selected.length > 3) { setError("Each item can have up to three pictures."); return; }
+    if (selected.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 500_000)) { setError("Pictures must be JPEG, PNG or WebP and no larger than 500 KB each."); return; }
+    setPicturePending(true);
+    setFormStatus("Reading pictures…");
+    Promise.all(selected.map((file) => new Promise<{ data_url: string; alt: string }>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ data_url: String(reader.result), alt: file.name.replace(/\.[^.]+$/, "") });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    }))).then((pictures) => { setForm((current) => ({ ...current, images: [...current.images, ...pictures] })); setError(null); setFormStatus(`${pictures.length} picture${pictures.length === 1 ? "" : "s"} ready to save.`); }).catch(() => { setError("A picture could not be read."); setFormStatus("Picture import failed."); }).finally(() => setPicturePending(false));
+  }
+
+  async function saveCategoryDefaults(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!settingsCategory) return;
+    const response = await fetch(`${apiUrl}/catalog/categories/${settingsCategory.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ default_side_clearance_mm: settingsCategory.default_side_clearance_mm, default_front_clearance_mm: settingsCategory.default_front_clearance_mm }) });
+    if (!response.ok) { setError("Category settings could not be saved."); return; }
+    const saved = await response.json() as CatalogueCategory;
+    setCategories((current) => current.map((category) => category.id === saved.id ? saved : category));
+    setSettingsCategory(null);
+  }
+
+  function importStl(file?: File) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".stl")) {
+      setError("Choose an STL file.");
+      return;
+    }
+    if (file.size > 20_000_000) {
+      setError("The STL must be smaller than 20 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((current) => ({ ...current, stl_filename: file.name, stl_base64: String(reader.result) }));
+      setError(null);
+    };
+    reader.onerror = () => setError("The STL file could not be read.");
+    reader.readAsDataURL(file);
+  }
+
+  async function saveEntry() {
+    if (!form.name.trim() || !form.supplier.trim() || !form.sku.trim()) {
+      setError("Name, supplier and SKU are required.");
+      return;
+    }
+    setSaving(true);
+    setFormStatus("Saving catalogue entry and pictures…");
+    let response: Response;
+    try {
+      response = await fetch(`${apiUrl}/catalog/items${editingId ? `/${editingId}` : ""}`, {
+        method: editingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, images: form.images.map((image) => ({ ...image, data_url: image.url ? null : image.data_url })) }),
+      });
+    } catch {
+      setError("The catalogue service is unavailable.");
+      setFormStatus("Catalogue entry could not be saved.");
+      setSaving(false);
+      return;
+    }
+    if (!response.ok) {
+      const payload = await response.json() as { detail?: string };
+      setError(payload.detail ?? "The catalogue entry could not be saved.");
+      setFormStatus("Catalogue entry could not be saved.");
+      setSaving(false);
+      return;
+    }
+    const saved = normalizeCatalogueItem(await response.json() as CatalogueItem, apiUrl);
+    window.dispatchEvent(new Event("catalogue-changed"));
+    setItems((current) => editingId ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved].sort((a, b) => a.name.localeCompare(b.name)));
+    setNavigationItems((current) => editingId ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved].sort((a, b) => a.name.localeCompare(b.name)));
+    setShowForm(false);
+    setEditingId(null);
+    setError(null);
+    setFormStatus("Catalogue entry saved.");
+    setSaving(false);
+    const responseCategories = await fetch(`${apiUrl}/catalog/categories`);
+    if (responseCategories.ok) setCategories(await responseCategories.json() as CatalogueCategory[]);
+  }
+
+  async function archiveEntry() {
+    if (!editingId || !window.confirm("Remove this entry from the active catalogue?")) return;
+    const response = await fetch(`${apiUrl}/catalog/items/${editingId}`, { method: "DELETE" });
+    if (!response.ok) {
+      setError("The catalogue entry could not be removed.");
+      return;
+    }
+    window.dispatchEvent(new Event("catalogue-changed"));
+    setItems((current) => current.filter((item) => item.id !== editingId));
+    setShowForm(false);
+    setEditingId(null);
+  }
+
+  function selectObjectGroup(group: CatalogueObjectGroup, nextCategoryId = "", subcategory = "") {
+    setActiveObjectGroup(group);
+    setCategoryId(nextCategoryId);
+    setActiveSubcategory(subcategory);
+    setActiveMaterialId(null);
+    setActiveMaterialFamilyId(null);
+  }
+
+  function renderGroupAll(group: CatalogueObjectGroup) {
+    const groupCategories = objectGroupCategories[group];
+    const selected = activeObjectGroup === group && !categoryId && !activeSubcategory && !activeMaterial;
+    return <button className={selected ? "active" : ""} onClick={() => selectObjectGroup(group)}><span>All objects</span><small>{groupCategories.reduce((total, category) => total + category.item_count, 0)}</small></button>;
+  }
+
+  function renderCategoryTree(category: CatalogueCategory, group: CatalogueObjectGroup) {
+    const subcategories = [...new Set(navigationItems.filter((item) => item.category_id === category.id).map((item) => item.subcategory))];
+    const key = `category-${category.id}`;
+    return <div key={category.id} className="catalogue-tree-item">
+      <button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); selectObjectGroup(group, category.id); }} title={category.description}><span>{category.name}</span><small>{category.item_count}</small></button>
+      {(expanded[key] ?? false) && <div id={`${key}-children`} className="catalogue-branch nested">{subcategories.map((subcategory) => <button key={subcategory} className={categoryId === category.id && activeSubcategory === subcategory ? "active" : ""} onClick={() => selectObjectGroup(group, category.id, subcategory)}><span>{subcategory}</span></button>)}</div>}
+    </div>;
+  }
+
+  function renderOpeningCategory(category: CatalogueCategory, group: CatalogueObjectGroup) {
+    const key = `category-${category.id}`;
+    const families = group === "doors"
+      ? objectGroupCategories.doors.map(family => ({ id: family.id, label: family.id === "doors" ? "Internal doors" : family.name, items: navigationItems.filter(item => item.category_id === family.id) }))
+      : [...new Set(navigationItems.filter(item => item.category_id === category.id).map(openingCatalogueCategoryLabel))].map(label => ({ id: category.id, label, items: navigationItems.filter(item => item.category_id === category.id && openingCatalogueCategoryLabel(item) === label) }));
+    return <div key={category.id} className="catalogue-opening-category">
+      <button className="catalogue-disclosure" aria-expanded={expanded[key] ?? false} aria-controls={`${key}-children`} onClick={() => setExpanded(current => ({ ...current, [key]: !current[key] }))}><strong>{group === "doors" ? "Doors" : "Windows"}</strong><span aria-hidden>{expanded[key] ? "−" : "+"}</span></button>
+      {expanded[key] && <div id={`${key}-children`} className="catalogue-branch">
+        {renderGroupAll(group)}
+        {families.map(family => {
+          const familyKey = `${key}-family-${family.label}`;
+          const options = [...new Set(family.items.map(item => item.subcategory))];
+          return <div key={familyKey} className="catalogue-tree-item">
+            <button aria-expanded={expanded[familyKey] ?? false} aria-controls={`${familyKey}-children`} onClick={() => { setExpanded(current => ({ ...current, [familyKey]: !current[familyKey] })); selectObjectGroup(group, family.id); }} title={category.description}><span>{family.label}</span><small>{family.items.length}</small></button>
+            {(expanded[familyKey] ?? false) && <div id={`${familyKey}-children`} className="catalogue-branch nested">{options.map(option => <button key={option} className={categoryId === family.id && activeSubcategory === option ? "active" : ""} onClick={() => selectObjectGroup(group, family.id, option)}><span>{option}</span></button>)}</div>}
+          </div>;
+        })}
+      </div>}
+    </div>;
+  }
+
+  function renderDetailDialog() {
+    if (!detailEntry) return null;
+    if (detailEntry.type === "object") {
+      const { item } = detailEntry;
+      const category = categories.find((candidate) => candidate.id === item.category_id);
+      const preview = (/^furniture-(chair|armchair)-/.test(item.representation_key ?? "") && !item.images?.length ? `/fixture-previews/${item.representation_key}.svg` : undefined) || item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${(/^(living|bedroom)-/.test(item.category_id) || BATH_KEYS.includes(item.representation_key) || CABINET_KEYS.includes(item.representation_key)) ? "png" : /^(living|bedroom|kitchen|radiators|staircases)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
+      const hasLiveRepresentation = /^(furniture-|window-|door-|shower-|basin-|toilet-)/.test(item.representation_key ?? "");
+      const previewFixtureKind: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" = ["SHOWER", "BASIN", "TOILET"].includes(item.fixture_kind) ? item.fixture_kind as "SHOWER" | "BASIN" | "TOILET" : "FURNITURE";
+      const previewObstacle = { id: item.id, name: item.name, kind: "BOX" as const, fixture_kind: previewFixtureKind, representation_key: item.representation_key ?? undefined, center: { x: 0, y: 0 }, dimensions: { width: { value: item.width_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, depth: { value: item.depth_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, height: { value: item.height_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const } }, rotation_deg: 0, base_z_mm: 0, color_hex: item.color_hex, verified: false, source_type: "USER_MEASURED" as const };
+      const sideClearance = item.side_clearance_mm == null ? `${category?.default_side_clearance_mm ?? 0} mm (category default)` : `${item.side_clearance_mm} mm (entry override)`;
+      const frontClearance = item.front_clearance_mm == null ? `${category?.default_front_clearance_mm ?? 0} mm (category default)` : `${item.front_clearance_mm} mm (entry override)`;
+      return <div className="catalogue-form-backdrop catalogue-detail-backdrop"><section ref={detailDialog} className="catalogue-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="catalogue-detail-title" onKeyDown={trapFocus}>
+        <div className="catalogue-form-heading"><div><span className="eyebrow">Catalogue entry</span><h3 id="catalogue-detail-title">{item.name}</h3><p>{item.category_name} · {item.subcategory}</p></div><button ref={detailCloseButton} type="button" aria-label="Close catalogue entry details" onClick={() => setDetailEntry(null)}>×</button></div>
+        <div className="catalogue-detail-hero"><div className={`catalogue-detail-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${assetUrl(preview)})` : undefined } as React.CSSProperties}>{!preview && <span />}{item.stl_filename && <b>STL</b>}</div><div><strong>{item.fixture_kind}</strong><p>{item.description || "No description provided."}</p></div></div>
+        {hasLiveRepresentation && <section className="catalogue-detail-section"><h4>3D representation</h4><FixturePreview obstacle={previewObstacle} /><h4>2D plan representation</h4>{(item.plan_symbol_data_url || item.plan_symbol_url) && <img src={assetUrl(item.plan_symbol_data_url || item.plan_symbol_url)} alt={`${item.name} architectural plan`} style={{ width: "100%", maxHeight: 240, objectFit: "contain" }} />}</section>}
+        <dl className="catalogue-detail-grid">
+          <div><dt>Database ID</dt><dd><code>{item.id}</code></dd></div>
+          <div><dt>Category</dt><dd>{item.category_name}</dd></div>
+          <div><dt>Subcategory</dt><dd>{item.subcategory}</dd></div>
+          <div><dt>Supplier</dt><dd>{item.supplier || "Not specified"}</dd></div>
+          <div><dt>SKU</dt><dd><code>{item.sku || "Not specified"}</code></dd></div>
+          <div><dt>Dimensions</dt><dd>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</dd></div>
+          <div><dt>Colour</dt><dd><span className="catalogue-detail-colour" style={{ background: item.color_hex }} /> <code>{item.color_hex.toUpperCase()}</code></dd></div>
+          <div><dt>Plan shape</dt><dd>{item.plan_shape}</dd></div>
+          <div><dt>Side clearance</dt><dd>{sideClearance}</dd></div>
+          <div><dt>Front clearance</dt><dd>{frontClearance}</dd></div>
+          <div><dt>Representation</dt><dd>{item.representation_key || "Generic / uploaded model"}{item.representation_version ? ` · v${item.representation_version}` : ""}</dd></div>
+          <div><dt>STL model</dt><dd>{item.stl_filename || (item.stl_base64 ? "Embedded model" : "Not provided")}</dd></div>
+          <div><dt>Status</dt><dd>{item.is_default ? "Built-in default" : "Supplier entry"} · {item.active ? "Active" : "Inactive"} · {item.supplier_editable ? "Editable" : "Read-only"}</dd></div>
+          <div><dt>Created</dt><dd>{new Date(item.created_at).toLocaleString()}</dd></div>
+          <div><dt>Updated</dt><dd>{new Date(item.updated_at).toLocaleString()}</dd></div>
+        </dl>
+        {(item.plan_symbol_data_url || item.plan_symbol_url) && <p className="catalogue-detail-link"><a href={assetUrl(item.plan_symbol_data_url || item.plan_symbol_url)} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Open architectural plan symbol ↗</a>{item.plan_symbol_data_url && " · embedded in this entry"}</p>}
+        {item.images.length > 0 && <section className="catalogue-detail-section"><h4>Pictures</h4><div className="catalogue-detail-pictures">{item.images.map((image, index) => <img key={`${image.data_url}-${index}`} src={assetUrl(image.data_url)} alt={image.alt} />)}</div></section>}
+        <div className="catalogue-form-actions">{PROGRAMMER_TOOLS && <button type="button" onClick={(event) => { const current = detailEntry; if (current?.type !== "object") return; setDetailEntry(null); beginEdit(current.item, event.currentTarget); }}>Edit entry</button>}<button type="button" className="catalogue-insert" onClick={() => setDetailEntry(null)}>Close</button></div>
+      </section></div>;
+    }
+
+    const { item, family, collection } = detailEntry;
+    const flooringPattern = typeof item.metadata.flooring_pattern === "string" ? item.metadata.flooring_pattern as FlooringPattern : null;
+    const tileMaterialId = typeof item.metadata.tile_material_id === "string" ? item.metadata.tile_material_id : undefined;
+    const woodId = typeof item.metadata.wood_id === "string" ? item.metadata.wood_id : undefined;
+    return <div className="catalogue-form-backdrop catalogue-detail-backdrop"><section ref={detailDialog} className="catalogue-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="catalogue-detail-title" onKeyDown={trapFocus}>
+      <div className="catalogue-form-heading"><div><span className="eyebrow">Material entry</span><h3 id="catalogue-detail-title">{item.name}</h3><p>{collection.name} · {family.name}</p></div><button ref={detailCloseButton} type="button" aria-label="Close material details" onClick={() => setDetailEntry(null)}>×</button></div>
+      <div className="catalogue-detail-hero"><div className="catalogue-detail-material-preview">{flooringPattern || woodId || tileMaterialId ? <FlooringPreview design={{ ...defaultFloorDesign(flooringPattern ?? (woodId ? "wood-plank" : "tile-square")), tile_material_id: tileMaterialId, tile_colour: item.color_hex, ...(woodId ? { wood_id: woodId } : {}) }} /> : <span style={typeof item.metadata.fabric_id === "string" ? fabricSwatchStyle(item.metadata.fabric_id, item.color_hex) : { background: item.color_hex }} />}</div><div><strong>{collection.kind === "TILE" ? "Flooring finish" : "Colour"}</strong><p>{typeof item.metadata.fabric_id === "string" ? String(item.metadata.description) + " Choose Fabric on a textile component in Elements, then set any custom colour." : collection.source_url ? "Sourced catalogue material." : "Built-in catalogue material."}</p></div></div>
+      <dl className="catalogue-detail-grid">
+        <div><dt>Database ID</dt><dd><code>{item.id}</code></dd></div>
+        <div><dt>Collection</dt><dd>{collection.name}</dd></div>
+        <div><dt>Family</dt><dd>{family.name}</dd></div>
+        <div><dt>Kind</dt><dd>{collection.kind}</dd></div>
+        <div><dt>Name</dt><dd>{item.name}</dd></div>
+        <div><dt>Code</dt><dd><code>{item.code || "Not specified"}</code></dd></div>
+        <div><dt>Colour HEX</dt><dd><span className="catalogue-detail-colour" style={{ background: item.color_hex }} /> <code>{item.color_hex.toUpperCase()}</code></dd></div>
+        <div><dt>Source</dt><dd>{collection.source_url ? <a href={collection.source_url} target="_blank" rel="noreferrer">Open source ↗</a> : "Built-in"}</dd></div>
+      </dl>
+      <section className="catalogue-detail-section"><h4>Stored metadata</h4><dl className="catalogue-detail-grid catalogue-detail-metadata">{Object.entries(item.metadata).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{typeof value === "object" ? JSON.stringify(value) : String(value)}</code></dd></div>)}</dl></section>
+      <div className="catalogue-form-actions"><button type="button" className="catalogue-insert" onClick={() => setDetailEntry(null)}>Close</button></div>
+    </section></div>;
+  }
+
+  return (
+    <div className="modal-backdrop catalogue-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="catalogue-modal" role={nestedDialogOpen ? undefined : "dialog"} aria-modal={nestedDialogOpen ? undefined : "true"} aria-labelledby={nestedDialogOpen ? undefined : "catalogue-title"} onKeyDown={nestedDialogOpen ? undefined : trapFocus}>
+        <header className="catalogue-header" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}><div><h2 id="catalogue-title">Object catalogue</h2><p>Browse fixtures, paints, wood colours and flooring. Apply finishes in Selected object controls.</p></div><button ref={closeButton} className="modal-close" onClick={onClose} aria-label="Close catalogue">×</button></header>
+        {!activeMaterial && <div className="catalogue-toolbar" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}><label><span>Search catalogue</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, supplier or SKU" /></label></div>}
+        <div className="catalogue-layout" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}>
+          <nav className="catalogue-categories" aria-label="Catalogue categories" onContextMenu={openCatalogueContextMenu}>
+            <button className="catalogue-disclosure" aria-expanded={expanded.fixtures} aria-controls="catalogue-fixtures" onClick={() => setExpanded((current) => ({ ...current, fixtures: !current.fixtures }))}><strong>Bathroom fixtures</strong><span aria-hidden>{expanded.fixtures ? "−" : "+"}</span></button>
+            {expanded.fixtures && <div id="catalogue-fixtures" className="catalogue-branch">
+              {renderGroupAll("bathroom")}
+              {bathroomFixtureCategories.map((category) => renderCategoryTree(category, "bathroom"))}
+            </div>}
+            {topLevelOpeningCategories.map((category) => renderOpeningCategory(category, category.id as "doors" | "windows"))}
+            {(["kitchen", "living", "bedroom", "staircases", "radiators"] as const).map((group) => <div key={group}>
+              <button className="catalogue-disclosure" aria-expanded={expanded[group] ?? false} onClick={() => setExpanded((current) => ({ ...current, [group]: !current[group] }))}><strong>{group === "kitchen" ? "Kitchen" : group === "living" ? "Living Room" : group === "staircases" ? "Staircases" : group === "radiators" ? "Radiators" : "Bedroom"}</strong><span aria-hidden>{expanded[group] ? "−" : "+"}</span></button>
+              {expanded[group] && <div className="catalogue-branch">{renderGroupAll(group)}{categories.filter((category) => category.id.startsWith(group + "-")).map((category) => renderCategoryTree(category, group))}</div>}
+            </div>)}
+            {(["PAINT", "TILE"] as const).map((kind) => <div key={kind}><button className="catalogue-disclosure" aria-expanded={expanded[kind]} aria-controls={`catalogue-${kind}`} onClick={() => setExpanded((current) => ({ ...current, [kind]: !current[kind] }))}><strong>{kind === "PAINT" ? "Paints & Colours" : "Flooring"}</strong><span aria-hidden>{expanded[kind] ? "−" : "+"}</span></button>{expanded[kind] && <div id={`catalogue-${kind}`} className="catalogue-branch">{catalogueMaterials.filter((collection) => collection.kind === kind).map((collection) => { const key = `material-${collection.id}`; return <div key={collection.id} className="catalogue-tree-item"><button aria-expanded={expanded[key] ?? false} aria-controls={`${key}-families`} className={activeMaterialId === collection.id ? "active" : ""} onClick={() => { setExpanded((current) => ({ ...current, [key]: !(current[key] ?? false) })); setActiveMaterialId(collection.id); setActiveMaterialFamilyId(null); setCategoryId(""); }}><span>{collection.name}</span><small>{collection.families.reduce((total, family) => total + family.items.length, 0)}</small></button>{(expanded[key] ?? false) && <div id={`${key}-families`} className="catalogue-branch nested">{collection.families.map((family) => <button key={family.id} className={activeMaterialFamilyId === family.id ? "active" : ""} aria-pressed={activeMaterialFamilyId === family.id} onClick={() => { setActiveMaterialId(collection.id); setActiveMaterialFamilyId(family.id); setCategoryId(""); document.getElementById(`family-${family.id}`)?.scrollIntoView({ block: "start" }); }}><span>{family.name}</span><small>{family.items.length}</small></button>)}</div>}</div>; })}</div>}</div>)}
+          </nav>
+          {catalogueContextMenu && <div className="floorplan-context-menu catalogue-context-menu" role="menu" aria-label="Catalogue menu actions" style={{ left: catalogueContextMenu.x, top: catalogueContextMenu.y }} onPointerDown={(event) => event.stopPropagation()} onContextMenu={(event) => event.preventDefault()}>
+            <strong>Catalogue menu</strong>
+            <button type="button" role="menuitem" onPointerDown={(event) => activateCatalogueMenuAction(event, false)} onClick={(event) => activateCatalogueMenuAction(event, false)}>Collapse all</button>
+            <button type="button" role="menuitem" onPointerDown={(event) => activateCatalogueMenuAction(event, true)} onClick={(event) => activateCatalogueMenuAction(event, true)}>Expand all</button>
+          </div>}
+          <div className="catalogue-results">
+            {activeMaterial ? <>
+              <div className="catalogue-result-heading"><strong>{activeMaterialFamily?.name ?? activeMaterial.name}</strong><span>{visibleMaterialFamilies.reduce((total, family) => total + family.items.length, 0)} {activeMaterial.kind === "TILE" ? "finishes" : "colours"}</span></div>
+              <div className={`catalogue-grid ${activeMaterial.id.startsWith("flooring-") ? "catalogue-flooring-grid" : ""}`}>{visibleMaterialFamilies.map((family) => <section id={`family-${family.id}`} key={family.id} className="catalogue-material-family"><h3>{family.name}</h3><div className="catalogue-material-swatches">{family.items.map((item) => { const pattern = item.metadata.flooring_pattern || item.metadata.wood_id; return <button type="button" key={item.id} className={`catalogue-material-entry ${pattern ? "catalogue-pattern-swatch" : ""}`} title={item.code ?? item.name} aria-label={`View details for ${item.name}`} onClick={(event) => openMaterialDetails(item, family, activeMaterial, event.currentTarget)}>{pattern ? <><FlooringPreview design={{ ...defaultFloorDesign((item.metadata.flooring_pattern as FlooringPattern) ?? "wood-plank"), ...(item.metadata.wood_id ? { wood_id: String(item.metadata.wood_id) } : {}) }} /><small>{item.name}</small><code>{item.color_hex.toUpperCase()}</code></> : <><span style={typeof item.metadata.fabric_id === "string" ? fabricSwatchStyle(item.metadata.fabric_id, item.color_hex) : { background: item.color_hex }} /><div className="catalogue-material-text"><small>{item.name}</small><code>{item.color_hex.toUpperCase()}</code></div></>}</button>; })}</div></section>)}</div>
+            </> : <>
+              <div className="catalogue-result-heading"><strong>{activeSubcategory || (categoryId ? categories.find((item) => item.id === categoryId)?.name : "All objects")}</strong><span>{visibleObjectItems.length} result{visibleObjectItems.length === 1 ? "" : "s"}</span></div>
+              {PROGRAMMER_TOOLS && categoryId && <button className="category-settings-button" onClick={(event) => openCategorySettings(categories.find((item) => item.id === categoryId) ?? null, event.currentTarget)}>Category settings…</button>}
+              {visibleObjectItems.length === 0 ? <p className="catalogue-empty">No objects match this view.</p> : <div className="catalogue-grid">{visibleObjectItems.map((item) => {
+                const preview = (/^furniture-(chair|armchair)-/.test(item.representation_key ?? "") && !item.images?.length ? `/fixture-previews/${item.representation_key}.svg` : undefined) || item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${(/^(living|bedroom)-/.test(item.category_id) || BATH_KEYS.includes(item.representation_key) || CABINET_KEYS.includes(item.representation_key)) ? "png" : /^(living|bedroom|kitchen|radiators|staircases)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
+                const isOpening = item.fixture_kind === "DOOR" || item.fixture_kind === "WINDOW";
+                return <article key={item.id} tabIndex={0} role="button" aria-label={`View details for ${item.name}`} onClick={(event) => { if ((event.target as HTMLElement).closest("button, a")) return; openObjectDetails(item, event.currentTarget); }} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openObjectDetails(item, event.currentTarget); } }}><div className={`catalogue-object-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${assetUrl(preview)})` : undefined } as React.CSSProperties}><span />{item.stl_filename && <b>STL</b>}</div><div className="catalogue-object-body"><span className="catalogue-category-label">{item.category_name} · {item.subcategory}</span>{item.is_default && <span className="catalogue-default-badge">Built-in default</span>}<h3>{item.name}</h3>{(item.plan_symbol_data_url || item.plan_symbol_url) && <a className="catalogue-plan-link" href={assetUrl(item.plan_symbol_data_url || item.plan_symbol_url)} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Architectural plan symbol ↗</a>}<p>{item.supplier} · {item.sku}</p><code>{formatLength(item.width_mm, displayUnits)} × {formatLength(item.depth_mm, displayUnits)} × {formatLength(item.height_mm, displayUnits)}</code><div className="catalogue-card-actions">{PROGRAMMER_TOOLS && <button onClick={(event) => beginEdit(item, event.currentTarget)}>Edit entry</button>}<button className="catalogue-insert" disabled={isOpening} title={isOpening ? "Add this opening from the 2D Add elements window." : undefined} onClick={() => { if (!isOpening) { onInsert(item); onClose(); } }}>{isOpening ? "Use in 2D Add elements" : "Add to room"}</button></div></div></article>;
+              })}</div>}
+            </>}
+          </div>
+        </div>
+
+        {renderDetailDialog()}
+        {PROGRAMMER_TOOLS && showForm && <div className="catalogue-form-backdrop"><form ref={supplierDialog} className="catalogue-form" role="dialog" aria-modal="true" aria-labelledby="supplier-catalogue-title" onSubmit={(event) => { event.preventDefault(); void saveEntry(); }}><div className="catalogue-form-heading"><div><span className="eyebrow">Supplier catalogue</span><h3 id="supplier-catalogue-title">{editingId ? "Modify entry" : "Add new entry"}</h3></div><button type="button" aria-label="Close supplier catalogue form" onClick={() => setShowForm(false)}>×</button></div><div className="catalogue-form-grid">
+          <label className="field"><span>Category</span><select ref={supplierFirstControl} value={form.category_id} onChange={(event) => { const next = event.target.value; setForm((current) => ({ ...current, category_id: next, fixture_kind: CATEGORY_KINDS[next] })); }}>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <label className="field"><span>Colour</span><input type="color" value={form.color_hex} onChange={(event) => setField("color_hex", event.target.value)} /></label>
+          <label className="field"><span>Colour HEX</span><input value={form.color_hex.toUpperCase()} pattern="#[0-9A-Fa-f]{6}" onChange={(event) => setField("color_hex", event.target.value.toUpperCase())} /></label>
+          <label className="field"><span>Subcategory</span><input required value={form.subcategory} onChange={(event) => setField("subcategory", event.target.value)} /></label>
+          <label className="field"><span>3D model and plan symbol</span><select value={form.representation_key ?? ""} onChange={event => { setField("representation_key", event.target.value); setField("plan_symbol_url", event.target.value ? `/fixture-symbols/${event.target.value}.svg` : ""); }}><option value="">Generic / uploaded model</option>{["shower-corner","shower-quadrant","shower-walk-in","shower-alcove","shower-freestanding","shower-wet-room","basin-wall-mounted","basin-pedestal","basin-countertop","basin-undermount","basin-vanity","basin-double-vanity","basin-corner","toilet-freestanding","toilet-wall-mounted","toilet-close-coupled","toilet-back-to-wall",...DOOR_MODELS.map(model => model.key),"window-single-pane","window-double-pane","window-triple-pane","window-bay","window-bow","window-sash","window-casement",...STAIRCASE_KEYS,...RADIATOR_KEYS,...BATH_KEYS,...CABINET_KEYS].map(key => <option key={key} value={key}>{key.replaceAll("-", " ")}</option>)}</select></label>
+          <label className="field"><span>Manufacturer floorplan image (PNG, JPEG or WebP, max 500 KB)</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 500000) { setError("Plan image must be smaller than 500 KB."); return; } const reader = new FileReader(); reader.onload = () => setField("plan_symbol_data_url", String(reader.result)); reader.readAsDataURL(file); }} />{form.plan_symbol_data_url && <button type="button" onClick={() => setField("plan_symbol_data_url", null)}>Use generic symbol</button>}</label>
+          <label className="field"><span>Floorplan shape</span><select value={form.plan_shape} onChange={(event) => setField("plan_shape", event.target.value as CatalogueItemInput["plan_shape"])}><option value="RECTANGLE">Rectangle / box</option><option value="ELLIPSE">Ellipse / cylinder</option></select></label>
+          <label className="field span-two"><span>Object name</span><input value={form.name} onChange={(event) => setField("name", event.target.value)} /></label>
+          <label className="field"><span>Supplier</span><input value={form.supplier} onChange={(event) => setField("supplier", event.target.value)} /></label>
+          <label className="field"><span>Supplier SKU</span><input value={form.sku} onChange={(event) => setField("sku", event.target.value)} /></label>
+          <label className="field"><span>Width {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.width_mm} units={displayUnits} onMmChange={(value) => setField("width_mm", value)} /></label>
+          <label className="field"><span>Depth {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.depth_mm} units={displayUnits} onMmChange={(value) => setField("depth_mm", value)} /></label>
+          <label className="field"><span>Height {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={1} valueMm={form.height_mm} units={displayUnits} onMmChange={(value) => setField("height_mm", value)} /></label>
+          <label className="field span-two"><input type="checkbox" checked={useCategoryClearances} onChange={(event) => { if (event.target.checked) { setForm((current) => ({ ...current, side_clearance_mm: null, front_clearance_mm: null })); } else { setForm((current) => ({ ...current, side_clearance_mm: activeCategory?.default_side_clearance_mm ?? 0, front_clearance_mm: activeCategory?.default_front_clearance_mm ?? 0 })); } }} /><span>Use {activeCategory?.name ?? "category"} clearance defaults ({activeCategory?.default_side_clearance_mm ?? 0} mm side, {activeCategory?.default_front_clearance_mm ?? 0} mm front)</span></label>
+          <label className="field"><span>Side clearance {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={0} valueMm={form.side_clearance_mm ?? activeCategory?.default_side_clearance_mm ?? 0} units={displayUnits} onMmChange={(value) => setField("side_clearance_mm", value)} disabled={useCategoryClearances} /><small>Overrides apply only to this entry.</small></label>
+          <label className="field"><span>Front clearance {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={0} valueMm={form.front_clearance_mm ?? activeCategory?.default_front_clearance_mm ?? 0} units={displayUnits} onMmChange={(value) => setField("front_clearance_mm", value)} disabled={useCategoryClearances} /><small>Overrides apply only to this entry.</small></label>
+          <div className="field span-two stl-import-field"><span>Optional 3D model</span><div><button type="button" onClick={() => stlInput.current?.click()}>{form.stl_filename ? "Replace STL" : "Import STL"}</button>{form.stl_filename && <><strong>{form.stl_filename}</strong><button type="button" className="remove-stl" onClick={() => setForm((current) => ({ ...current, stl_filename: null, stl_base64: null }))}>Remove</button></>}</div><small>The model is scaled to the width, depth and height entered above. Maximum 20 MB.</small><input ref={stlInput} hidden type="file" accept=".stl,model/stl,application/sla" onChange={(event) => { importStl(event.target.files?.[0]); event.target.value = ""; }} /></div>
+          <div className="field span-two catalogue-picture-field">
+            <span>Pictures ({form.images.length}/3)</span>
+            <button type="button" disabled={picturePending || saving || form.images.length >= 3} onClick={() => imageInput.current?.click()}>{picturePending ? "Reading pictures…" : "Add pictures"}</button>
+            <input ref={imageInput} hidden multiple disabled={picturePending || saving} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { importPictures(event.target.files); event.target.value = ""; }} />
+            <div className="catalogue-picture-list">{form.images.map((picture, index) => <div key={`${picture.data_url.slice(-24)}-${index}`}><img src={picture.data_url} alt={picture.alt} /><label><span>Alt text</span><input required disabled={saving} value={picture.alt} onChange={(event) => setForm((current) => ({ ...current, images: current.images.map((item, itemIndex) => itemIndex === index ? { ...item, alt: event.target.value } : item) }))} /></label><div><button type="button" disabled={saving || picturePending || index === 0} onClick={() => setForm((current) => { const images = [...current.images]; [images[index - 1], images[index]] = [images[index], images[index - 1]]; return { ...current, images }; })}>Move up</button><button type="button" disabled={saving || picturePending} onClick={() => setForm((current) => ({ ...current, images: current.images.filter((_, itemIndex) => itemIndex !== index) }))}>Remove</button></div></div>)}</div>
+            <small>Up to 3 JPEG, PNG or WebP pictures, maximum 500 KB each. Pictures never define fit geometry.</small>
+          </div>
+          <label className="field span-two"><span>Description</span><textarea value={form.description} onChange={(event) => setField("description", event.target.value)} /></label>
+        </div>{error && <p className="inline-error">{error}</p>}<p className="catalogue-picture-status" role="status" aria-live="polite">{formStatus}</p><div className="catalogue-form-actions">{editingId && !items.find((item) => item.id === editingId)?.is_default && <button className="catalogue-archive" type="button" disabled={saving || picturePending} onClick={() => void archiveEntry()}>Archive</button>}<button type="button" disabled={saving} onClick={() => setShowForm(false)}>Cancel</button><button className="catalogue-insert" disabled={saving || picturePending} type="submit">{saving ? "Saving…" : editingId ? "Save changes" : "Create entry"}</button></div></form></div>}
+        {settingsCategory && <div className="catalogue-form-backdrop"><form ref={settingsDialog} className="catalogue-form category-settings-form" role="dialog" aria-modal="true" aria-labelledby="category-settings-title" onSubmit={(event) => void saveCategoryDefaults(event)}><div className="catalogue-form-heading"><h3 id="category-settings-title">{settingsCategory.name} settings</h3><button type="button" aria-label="Close category settings" onClick={() => setSettingsCategory(null)}>×</button></div><p>These millimetre clearances apply whenever an item does not define its own override.</p><div className="catalogue-form-grid"><label className="field"><span>Default side clearance (mm)</span><input ref={settingsFirstControl} type="number" min="0" max="5000" value={settingsCategory.default_side_clearance_mm} onChange={(event) => setSettingsCategory({ ...settingsCategory, default_side_clearance_mm: Number(event.target.value) })} /></label><label className="field"><span>Default front clearance (mm)</span><input type="number" min="0" max="5000" value={settingsCategory.default_front_clearance_mm} onChange={(event) => setSettingsCategory({ ...settingsCategory, default_front_clearance_mm: Number(event.target.value) })} /></label></div><div className="catalogue-form-actions"><button type="button" onClick={() => setSettingsCategory(null)}>Cancel</button><button className="catalogue-insert" type="submit">Save defaults</button></div></form></div>}
+        {error && !showForm && <p className="catalogue-error" aria-hidden={nestedDialogOpen || undefined} inert={nestedDialogOpen || undefined}>{error}</p>}
+      </section>
+    </div>
+  );
+}

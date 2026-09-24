@@ -1,0 +1,7 @@
+"""Authoritative unit and numerical policies."""
+
+INTERNAL_LENGTH_UNIT = "mm"
+GEOMETRY_EPSILON_MM = 0.01
+MAX_REASONABLE_LENGTH_MM = 100_000.0
+ENGINE_VERSION = "0.1.0"
+DOOR_SWING_SEGMENTS = 48
