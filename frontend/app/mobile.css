@@ -30,7 +30,10 @@
 .compact-workspace .full-plan-overall-properties { margin-top: 8px; }
 .compact-workspace .floating-evidence-panel { padding: 8px; }
 .compact-workspace .viewer-shell { min-height: 0; }
-.compact-workspace .placement-status { top: 8px; left: 8px; right: 8px; width: auto; max-width: calc(100% - 16px); transform: none; font-size: 11px; }
+.compact-workspace .placement-status { top: auto; right: auto; bottom: calc(56px + env(safe-area-inset-bottom)); left: 50%; width: max-content; max-width: calc(100vw - 16px); flex-wrap: nowrap; gap: 8px; padding: 6px 9px; border-radius: 999px; transform: translateX(-50%); font-size: 10px; white-space: nowrap; }
+.compact-workspace .placement-status > strong { min-width: 0; max-width: min(38vw, 180px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-workspace .placement-status > span { white-space: nowrap; }
+.compact-workspace .placement-status button { min-height: 34px; padding: 5px 8px; font-size: 10px; }
 .compact-workspace .modal-backdrop, .compact-workspace .popup-backdrop { padding: 10px; }
 .compact-workspace .popup { display: flex; flex-direction: column; max-width: calc(100vw - 20px); max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 0; }
 .compact-workspace .popup-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; }
@@ -64,6 +67,8 @@
   .compact-workspace .annotations-panel { min-width: 0; }
 }
 @media (pointer: coarse) {
+  .compact-workspace .placement-hint-desktop { display: none; }
+  .compact-workspace .placement-hint-touch { display: inline; white-space: nowrap; }
   .compact-workspace .floating-toolbar .floating-toolbar-content :is(input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea),
   .compact-workspace [role=dialog] :is(input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea),
   .compact-workspace .catalogue-toolbar input { font-size: 16px; min-height: 36px; }

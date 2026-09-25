@@ -6,13 +6,14 @@ import logging
 import os
 import socket
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend.app.model_processing import ModelProcessingError, process_model
 from backend.app.openai_render import RenderProviderError, render_reference
 from backend.app.r2_storage import R2Unavailable, r2_storage
 from backend.app.supabase_rest import SupabaseREST, SupabaseUnavailable, supabase_rest
+from backend.app.tripo_provider import ImageReference, TripoProviderError, tripo3d_provider
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("freefloorplan3d.commercial_worker")
@@ -62,6 +63,237 @@ def _complete_render(
         },
     )
     return result if isinstance(result, dict) else None
+
+
+def _complete_ai_3d(
+    db: SupabaseREST,
+    user_id: str,
+    generation_id: str,
+    *,
+    original_bytes: int = 0,
+    derived_bytes: int = 0,
+    triangles: int = 0,
+    bounds: dict[str, float] | None = None,
+    provider_usage: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> dict[str, Any] | None:
+    result = db.rpc(
+        "finish_ai_3d_generation",
+        {
+            "p_user_id": user_id,
+            "p_generation_id": generation_id,
+            "p_status": "failed" if error else "succeeded",
+            "p_original_bytes": original_bytes,
+            "p_derived_bytes": derived_bytes,
+            "p_triangles": triangles,
+            "p_bounds": bounds or {},
+            "p_provider_usage": provider_usage or {},
+            "p_error": error[:500] if error else None,
+        },
+    )
+    return result if isinstance(result, dict) else None
+
+
+def _patch_ai_generation(db: SupabaseREST, user_id: str, generation_id: str, values: dict[str, Any]) -> None:
+    db.service_request(
+        "ai_3d_generation_jobs",
+        method="PATCH",
+        query={"generation_id": f"eq.{generation_id}", "user_id": f"eq.{user_id}"},
+        body={**values, "updated_at": datetime.now(UTC).isoformat()},
+        prefer="return=minimal",
+    )
+
+
+def _schedule_ai_generation(
+    db: SupabaseREST,
+    user_id: str,
+    generation_id: str,
+    *,
+    delay_seconds: int = 10,
+) -> None:
+    db.service_request(
+        "commercial_jobs",
+        method="PATCH",
+        query={"ai_generation_id": f"eq.{generation_id}", "user_id": f"eq.{user_id}", "status": "eq.processing"},
+        body={
+            "status": "queued",
+            "attempts": 0,
+            "available_at": (datetime.now(UTC) + timedelta(seconds=delay_seconds)).isoformat(),
+            "locked_at": None,
+            "locked_by": None,
+        },
+        prefer="return=minimal",
+    )
+
+
+def _delete_ai_3d_references(storage: Any, user_id: str, references: Any) -> None:
+    if not isinstance(references, list):
+        return
+    prefix = f"temporary/ai-3d-references/{user_id}/"
+    for reference in references:
+        key = reference.get("object_key") if isinstance(reference, dict) else None
+        if isinstance(key, str) and key.startswith(prefix) and ".." not in key.split("/"):
+            try:
+                storage.delete(key)
+            except R2Unavailable:
+                logger.warning("A temporary AI 3D reference could not be deleted immediately")
+
+
+def _process_ai_3d_asset(job: dict[str, Any], db: SupabaseREST) -> None:
+    generation = job.get("generation")
+    if not isinstance(generation, dict):
+        raise ValueError("The queued AI 3D generation record is missing.")
+    user_id = str(job.get("user_id", ""))
+    generation_id = str(generation.get("generation_id", ""))
+    asset_id = str(generation.get("asset_id", ""))
+    if not user_id or not generation_id or not asset_id or str(generation.get("user_id")) != user_id:
+        raise ValueError("The AI 3D generation owner does not match its queued job.")
+    storage = r2_storage()
+    references = generation.get("reference_inputs")
+    model_key = f"users/{user_id}/assets/{asset_id}/derived/model.glb"
+    thumbnail_key = f"users/{user_id}/assets/{asset_id}/derived/thumbnail.png"
+    provider_usage: dict[str, Any] = {
+        "provider": "tripo",
+        "model": str(generation.get("provider_model", "")),
+    }
+    task_id = generation.get("provider_task_id")
+    provider = tripo3d_provider()
+    stored_keys: list[str] = []
+
+    def fail(message: str) -> None:
+        _delete_ai_3d_references(storage, user_id, references)
+        for key in stored_keys:
+            try:
+                storage.delete(key)
+            except R2Unavailable:
+                pass
+        _complete_ai_3d(db, user_id, generation_id, provider_usage=provider_usage, error=message)
+
+    if not task_id:
+        # Persist this state before the external submit. Tripo does not document
+        # an idempotency key; after an uncertain crash, fail rather than submit
+        # a second potentially billable generation.
+        if generation.get("status") == "submitting":
+            fail("The Tripo submission outcome could not be confirmed. Start a new generation.")
+            return
+        _patch_ai_generation(db, user_id, generation_id, {"status": "submitting", "progress": 5})
+        if not isinstance(references, list) or not 1 <= len(references) <= 3:
+            fail("The saved reference photos are missing. Upload them again.")
+            return
+        images: list[ImageReference] = []
+        reference_prefix = f"temporary/ai-3d-references/{user_id}/"
+        try:
+            for reference in references:
+                if not isinstance(reference, dict):
+                    raise ValueError("The saved reference-photo record is invalid.")
+                object_key = reference.get("object_key")
+                if (
+                    not isinstance(object_key, str)
+                    or not object_key.startswith(reference_prefix)
+                    or ".." in object_key.split("/")
+                ):
+                    raise ValueError("The reference photo is outside its private owner namespace.")
+                image, metadata = storage.get(object_key, max_bytes=10 * 1024 * 1024)
+                if metadata.content_type != reference.get("content_type") or len(image) > int(
+                    reference.get("expected_byte_size", 0)
+                ):
+                    raise ValueError("A reference photo does not match its saved upload.")
+                images.append(ImageReference(str(reference.get("view", "")), metadata.content_type, image))
+            task_id = provider.create_from_images(images)
+        except TripoProviderError as error:
+            fail(str(error))
+            return
+        except (R2Unavailable, KeyError, TypeError, ValueError):
+            fail("A reference photo could not be retrieved or validated.")
+            return
+        provider_usage["task_id"] = task_id
+        # Save the remote ID before queueing another poll. A worker restart can
+        # then query this task instead of creating another model.
+        _patch_ai_generation(
+            db,
+            user_id,
+            generation_id,
+            {"provider_task_id": task_id, "status": "generating", "progress": 10, "reference_inputs": []},
+        )
+        _delete_ai_3d_references(storage, user_id, references)
+        _schedule_ai_generation(db, user_id, generation_id)
+        return
+
+    task_id = str(task_id)
+    provider_usage["task_id"] = task_id
+    try:
+        task = provider.get_task(task_id)
+    except TripoProviderError as error:
+        retries = int(generation.get("retry_count", 0))
+        if error.retryable and retries < 3:
+            _patch_ai_generation(
+                db,
+                user_id,
+                generation_id,
+                {"retry_count": retries + 1, "status": "generating", "progress": int(generation.get("progress", 10))},
+            )
+            _schedule_ai_generation(db, user_id, generation_id, delay_seconds=30)
+            return
+        fail(str(error))
+        return
+
+    status = task.get("status")
+    if status in {"queued", "running"}:
+        remote_progress = task.get("progress", 0)
+        remote_progress = max(0, min(100, int(remote_progress))) if isinstance(remote_progress, (int, float)) else 0
+        progress = min(94, 10 + round(remote_progress * 0.84))
+        _patch_ai_generation(db, user_id, generation_id, {"status": "generating", "progress": progress})
+        _schedule_ai_generation(db, user_id, generation_id)
+        return
+    if status != "success":
+        code = task.get("error_code")
+        provider_usage["error_code"] = code if isinstance(code, int) else None
+        fail("Tripo could not generate a model from these photos. Review the photos and try again.")
+        return
+
+    output = task.get("output")
+    model_url = output.get("model_url") if isinstance(output, dict) else None
+    if not isinstance(model_url, str):
+        fail("Tripo completed without providing a model file.")
+        return
+    credits = task.get("credits_consumed")
+    if isinstance(credits, (int, float)) and credits >= 0:
+        provider_usage["credits_consumed"] = credits
+    _patch_ai_generation(db, user_id, generation_id, {"status": "storing", "progress": 96})
+    try:
+        source = provider.download_result(model_url)
+        if len(source) > 50 * 1024 * 1024:
+            raise ModelProcessingError("The generated model is larger than the 50 MB planner limit.")
+        derived, thumbnail, info = process_model(source, "glb", None)
+        if len(derived) + len(thumbnail) > 50 * 1024 * 1024:
+            raise ModelProcessingError("The generated model and preview exceed the 50 MB planner limit.")
+        storage.put(model_key, derived, "model/gltf-binary")
+        stored_keys.append(model_key)
+        storage.put(thumbnail_key, thumbnail, "image/png")
+        stored_keys.append(thumbnail_key)
+        provider_usage["triangle_count"] = int(info["triangles"])
+        result = _complete_ai_3d(
+            db,
+            user_id,
+            generation_id,
+            original_bytes=0,
+            derived_bytes=len(derived) + len(thumbnail),
+            triangles=int(info["triangles"]),
+            bounds=info["bounds"],
+            provider_usage=provider_usage,
+        )
+        if isinstance(result, dict) and result.get("status") != "succeeded":
+            for key in stored_keys:
+                storage.delete(key)
+    except TripoProviderError as error:
+        fail(str(error))
+    except (ModelProcessingError, R2Unavailable) as error:
+        message = (
+            str(error)
+            if isinstance(error, ModelProcessingError)
+            else "The generated model could not be saved privately."
+        )
+        fail(message)
 
 
 def _process_asset(job: dict[str, Any], db: SupabaseREST) -> None:
@@ -181,6 +413,8 @@ def process_next_job(db: SupabaseREST | None = None) -> bool:
             _process_asset(job, db)
         elif job.get("job_type") == "render":
             _process_render(job, db)
+        elif job.get("job_type") == "ai-3d-asset":
+            _process_ai_3d_asset(job, db)
         else:
             logger.error("Claimed an unsupported commercial job type")
     except Exception:

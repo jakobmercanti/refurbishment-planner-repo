@@ -8,12 +8,12 @@ import { CommercialApiError, commercialRequest, uploadSignedFile } from "@/lib/c
 import { currentSession, signOut, type AuthSession } from "@/lib/commercialAuth";
 import { projectRepository } from "@/lib/projectRepository";
 import { assetRepository } from "@/lib/assetRepository";
-import { parseProject, type ProjectDocument } from "@/lib/projectDocument";
+import { parseProject, type AssetClassification, type ProjectDocument } from "@/lib/projectDocument";
 
 type Usage = { projects: number; assets: number; storage_bytes: number };
 type Summary = { plan: string; name: string; status: string; monthly_price_pence: number; storage_limit_bytes: number; project_limit: number; asset_limit: number; medium_remaining: number; high_remaining: number; usage: Usage };
 type CloudProject = { project_id: string; title: string; revision: number; byte_size: number; updated_at: string; project_json?: unknown };
-type Asset = { asset_id: string; local_asset_key?: string | null; name: string; original_format: string; processing_status: string; processing_error?: string; triangle_count?: number; source_unit?: string };
+type Asset = { asset_id: string; local_asset_key?: string | null; name: string; original_format: string; processing_status: string; processing_error?: string; triangle_count?: number; source_unit?: string; category_id?: string; category_name?: string; subcategory?: string };
 type Render = { render_id: string; quality_class: string; status: string; safe_error?: string; created_at: string; image_url?: string };
 type Conflict = { local: ProjectDocument; remote: ProjectDocument; revision: number };
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -61,12 +61,13 @@ export default function WorkspacePage() {
     return () => window.clearInterval(timer);
   }, [assets, renders, refresh]);
 
-  async function uploadAssetFile(file: File, localAssetKey?: string, sourceUnit?: "mm" | "cm" | "in") {
+  async function uploadAssetFile(file: File, localAssetKey?: string, sourceUnit?: "mm" | "cm" | "in", classification?: AssetClassification) {
     const format = file.name.toLowerCase().endsWith(".stl") ? "stl" : "glb";
     const contentType = format === "glb" ? "model/gltf-binary" : file.type === "model/stl" || file.type === "application/sla" ? file.type : "application/octet-stream";
     const reserved = await commercialRequest<{ asset_id: string; upload_url: string; required_headers: Record<string, string> }>("/assets/upload", {
       method: "POST", body: JSON.stringify({ name: file.name, format, content_type: contentType, expected_bytes: file.size,
-        source_unit: format === "stl" ? sourceUnit ?? "mm" : null, local_asset_key: format === "glb" ? localAssetKey ?? null : null }),
+        source_unit: format === "stl" ? sourceUnit ?? "mm" : null, local_asset_key: format === "glb" ? localAssetKey ?? null : null,
+        category_id: classification?.categoryId ?? "custom", subcategory: classification?.subcategory ?? "General" }),
     });
     await uploadSignedFile(reserved.upload_url, reserved.required_headers, file);
     await commercialRequest(`/assets/${reserved.asset_id}/finalize`, { method: "POST" });
@@ -94,7 +95,9 @@ export default function WorkspacePage() {
         if (backedUp?.processing_status === "ready") continue;
         if (backedUp) throw new Error(`“${asset.name}” is ${backedUp.processing_status}. Wait for processing to finish, or remove the failed cloud asset before retrying.`);
         const blob = await assetRepository.getAssetBlob(asset.assetId);
-        await uploadAssetFile(new File([blob], asset.name, { type: "model/gltf-binary" }), asset.assetId);
+        await uploadAssetFile(new File([blob], asset.name, { type: "model/gltf-binary" }), asset.assetId, undefined, {
+          categoryId: asset.categoryId ?? "custom", categoryName: asset.categoryName ?? "Custom", subcategory: asset.subcategory ?? "General",
+        });
         setNotice(`“${asset.name}” was uploaded and is processing. Wait until its status is Ready, then back up the project.`);
         await refresh();
         return;
@@ -190,10 +193,10 @@ export default function WorkspacePage() {
     finally { setBusy(false); }
   }
 
-  if (!session) return <main className="commercial-page"><header className="commercial-header"><a className="commercial-brand" href={`${base}/`}>FreeFloorplan3D</a><nav><a href={`${base}/account/`}>Account</a><a href={`${base}/billing/`}>Plans</a></nav></header><section className="commercial-card"><h1>Sign in to your workspace</h1><p>Cloud projects and paid features are optional. Your local planner remains available without signing in.</p><a className="commercial-primary" href={`${base}/account/`}>Go to account</a></section></main>;
+  if (!session) return <main className="commercial-page"><header className="commercial-header"><a className="commercial-brand" href={`${base}/`}>FreeFloorplan3D</a><nav><a href={`${base}/account/`}>Account</a></nav></header><section className="commercial-card"><h1>Sign in to your workspace</h1><p>Cloud projects and paid features are optional. Your local planner remains available without signing in.</p><a className="commercial-primary" href={`${base}/account/`}>Go to account</a></section></main>;
 
   return <main className="commercial-page">
-    <header className="commercial-header"><a className="commercial-brand" href={`${base}/`}>FreeFloorplan3D</a><nav><a href={`${base}/`}>Planner</a><a href={`${base}/billing/`}>Plans & billing</a><button type="button" onClick={() => void signOut().then(() => { setSession(null); router.push(`${base}/account/`); })}>Sign out</button></nav></header>
+    <header className="commercial-header"><a className="commercial-brand" href={`${base}/`}>FreeFloorplan3D</a><nav><a href={`${base}/`}>Planner</a><a href={`${base}/account/`}>Account</a><button type="button" onClick={() => void signOut().then(() => { setSession(null); router.push(`${base}/account/`); })}>Sign out</button></nav></header>
     <div className="commercial-content"><div className="commercial-page-heading"><div><p className="commercial-eyebrow">CLOUD WORKSPACE</p><h1>Your projects, assets and renders</h1><p>Cloud storage is an explicit backup; local browser data is retained and is never silently overwritten.</p></div><a className="commercial-secondary" href={`${base}/`}>Return to planner</a></div>
       {error && <p className="commercial-error" role="alert">{error}</p>}{notice && <p className="commercial-status" role="status">{notice}</p>}
       {summary && <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>{summary.name} plan</h2><p>{summary.status === "free" ? "Local planner only" : `${summary.status} · £${(summary.monthly_price_pence / 100).toFixed(2)} per month`}</p></div><a href={`${base}/billing/`}>{summary.status === "free" ? "Compare plans" : "Manage plan"}</a></div><div className="commercial-metrics"><div><span>Cloud projects</span><strong>{summary.usage.projects} / {summary.project_limit || "—"}</strong></div><div><span>Assets</span><strong>{summary.usage.assets} / {summary.asset_limit || "—"}</strong></div><div><span>Storage used</span><strong>{(summary.usage.storage_bytes / 1024 ** 3).toFixed(2)} GB / {(summary.storage_limit_bytes / 1024 ** 3).toFixed(0)} GB</strong></div><div><span>Render credits</span><strong>{summary.medium_remaining} medium · {summary.high_remaining} high</strong></div></div></section>}
@@ -203,7 +206,7 @@ export default function WorkspacePage() {
       </section>
       <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>Private model assets</h2><p>GLB and STL uploads are stored privately. STL source units are converted to millimetres for bounds; those bounds remain visual-only.</p></div></div>
         <form className="commercial-inline-form" onSubmit={uploadAsset}><label>Model file<input name="model" type="file" accept=".glb,.stl,model/gltf-binary,model/stl" required /></label><label>STL coordinate units<select value={stlUnit} onChange={(event) => setStlUnit(event.target.value as "mm" | "cm" | "in")}><option value="mm">mm</option><option value="cm">cm</option><option value="in">inches</option></select></label><button className="commercial-primary" disabled={busy || summary?.status === "free"}>{busy ? "Uploading…" : "Upload privately"}</button></form>
-        {assets.length ? <ul className="commercial-list">{assets.map((asset) => <li key={asset.asset_id}><div><strong>{asset.name}</strong><small>{asset.original_format.toUpperCase()} · {asset.processing_status}{asset.source_unit ? ` · source units ${asset.source_unit}` : ""}{asset.triangle_count ? ` · ${asset.triangle_count.toLocaleString()} triangles` : ""}{asset.processing_error ? ` · ${asset.processing_error}` : ""}</small></div><button className="commercial-danger" onClick={() => void removeAsset(asset)}>Delete asset</button></li>)}</ul> : <p className="commercial-empty">No uploaded assets yet.</p>}
+        {assets.length ? <ul className="commercial-list">{assets.map((asset) => <li key={asset.asset_id}><div><strong>{asset.name}</strong><small>{asset.category_name ?? "Custom"} · {asset.subcategory ?? "General"} · {asset.original_format.toUpperCase()} · {asset.processing_status}{asset.source_unit ? ` · source units ${asset.source_unit}` : ""}{asset.triangle_count ? ` · ${asset.triangle_count.toLocaleString()} triangles` : ""}{asset.processing_error ? ` · ${asset.processing_error}` : ""}</small></div><button className="commercial-danger" onClick={() => void removeAsset(asset)}>Delete asset</button></li>)}</ul> : <p className="commercial-empty">No uploaded assets yet.</p>}
       </section>
       <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>AI concept render</h2><p>Upload a reference image. The image and text prompt are sent to the image provider; your project document and geometry are not.</p></div></div>
         <form className="commercial-stack" onSubmit={requestRender}><label>Reference image<input name="reference" type="file" accept="image/png,image/jpeg,image/webp" required /></label><label>Quality<select value={renderQuality} onChange={(event) => setRenderQuality(event.target.value as "medium" | "high")}><option value="medium">Medium · {summary?.medium_remaining ?? 0} credits</option><option value="high">High · {summary?.high_remaining ?? 0} credits</option></select></label><label>Optional visual direction<textarea maxLength={1000} rows={3} value={renderPrompt} onChange={(event) => setRenderPrompt(event.target.value)} placeholder="Materials, lighting or mood — do not use this for measured changes" /></label><button className="commercial-primary" disabled={busy || summary?.status === "free"}>{busy ? "Queueing…" : "Create concept render"}</button></form>

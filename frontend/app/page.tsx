@@ -417,7 +417,6 @@ export default function Home() {
           <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => { setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("EDITOR"); }}>2D</button>
           <button aria-pressed={mode === "ANALYSIS"} className={mode === "ANALYSIS" ? "active" : ""} onClick={enterViewer}>3D</button>
           <a className="app-nav-entry" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/account/`}>Account</a>
-          <a className="app-nav-entry" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/billing/`}>Plans</a>
         </nav>
       </header>
 
@@ -473,8 +472,8 @@ export default function Home() {
           <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
         </section>
       ) : null}
-        {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span>Click to place · Esc or right-click to cancel{!placement.opening && " · R to rotate"}</span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
-      {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} onImport={local.addAsset} onChange={local.setInstances} onClose={() => setAssetsOpen(false)} />}
+        {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && " · R to rotate"}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
+      {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={local.addAsset} onChange={local.setInstances} onClose={() => setAssetsOpen(false)} />}
       {privacyOpen && <PlannerPrivacyDialog onClose={() => setPrivacyOpen(false)} />}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
       {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} humanMockupToolbarVisible={toolbarAvailability["viewer-person"]} onHumanMockupToolbarVisibleChange={setHumanMockupToolbarVisible} uiSettings={uiSettings} onUiSettingsChange={setUiSettings} onClose={() => setCatalogueManagerOpen(false)} />}

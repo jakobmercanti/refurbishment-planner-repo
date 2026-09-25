@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import io
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -8,10 +9,12 @@ import pytest
 from fastapi import HTTPException
 from PIL import Image
 
-from backend.app.commercial_api import _stripe_signature_valid, _validate_project
+from backend.app import commercial_api
+from backend.app.commercial_api import _save_asset_classification, _stripe_signature_valid, _validate_project
 from backend.app.model_processing import process_model
 from backend.app.openai_render import RenderProviderError, render_reference
 from backend.app.stripe_gateway import StripeGateway, StripeUnavailable
+from backend.app.supabase_rest import VerifiedUser
 
 
 def _project_document(project_id: str, schema_version: object = 1) -> dict[str, Any]:
@@ -28,6 +31,62 @@ def _project_document(project_id: str, schema_version: object = 1) -> dict[str, 
         "assets": [],
         "assetInstances": [],
     }
+
+
+def test_custom_asset_category_accepts_a_private_custom_subcategory() -> None:
+    assert commercial_api._resolve_asset_classification("custom", "  Workshop furniture  ") == {
+        "category_id": "custom",
+        "category_name": "Custom",
+        "subcategory": "Workshop furniture",
+    }
+
+
+def test_asset_category_must_exist_in_the_database_taxonomy(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeSession:
+        def __enter__(self) -> "FakeSession":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def get(self, _model: object, category_id: str) -> object | None:
+            return SimpleNamespace(name="Sofas") if category_id == "living-sofas" else None
+
+        def scalar(self, _statement: object) -> str:
+            return "catalogue-subcategory-row"
+
+    monkeypatch.setattr(commercial_api, "SessionLocal", FakeSession)
+    assert commercial_api._resolve_asset_classification("living-sofas", "Two seater") == {
+        "category_id": "living-sofas",
+        "category_name": "Sofas",
+        "subcategory": "Two seater",
+    }
+
+    with pytest.raises(HTTPException) as error:
+        commercial_api._resolve_asset_classification("not-a-catalogue-category", "Two seater")
+    assert error.value.status_code == 422
+
+
+def test_saving_asset_category_is_scoped_to_the_verified_user() -> None:
+    user = VerifiedUser(uuid4(), "owner@example.test", True)
+    asset_id = str(uuid4())
+    calls: list[dict[str, Any]] = []
+
+    class FakeDatabase:
+        def service_request(self, path: str, **kwargs: Any) -> list[dict[str, str]]:
+            calls.append({"path": path, **kwargs})
+            return [{"asset_id": asset_id}]
+
+    _save_asset_classification(FakeDatabase(), user, asset_id, {
+        "category_id": "living-sofas", "category_name": "Sofas", "subcategory": "Two seater",
+    })
+
+    assert calls[0]["path"] == "asset_definitions"
+    assert calls[0]["method"] == "PATCH"
+    assert calls[0]["query"]["asset_id"] == f"eq.{asset_id}"
+    assert calls[0]["query"]["user_id"] == f"eq.{user.id}"
+    assert calls[0]["body"]["category_id"] == "living-sofas"
+    assert calls[0]["body"]["subcategory"] == "Two seater"
 
 
 def test_project_validator_accepts_canonical_document_and_trims_title() -> None:

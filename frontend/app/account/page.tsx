@@ -2,8 +2,10 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { acceptAuthRedirect, currentSession, sendMagicLink, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
+import { PlansAndBillingPanel } from "@/components/PlansAndBillingPanel";
 
 type Mode = "signin" | "signup" | "magic" | "reset";
+type AccountSection = "account" | "plans";
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export default function AccountPage() {
@@ -16,6 +18,7 @@ export default function AccountPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [section, setSection] = useState<AccountSection>("account");
 
   useEffect(() => {
     let mounted = true;
@@ -23,6 +26,8 @@ export default function AccountPage() {
       const redirect = await acceptAuthRedirect();
       const current = await currentSession();
       if (!mounted) return;
+      const requestedSection = new URLSearchParams(window.location.search).get("tab");
+      setSection(requestedSection === "plans" ? "plans" : "account");
       setSession(current);
       setRecovery(redirect === "recovery");
       if (redirect === "recovery") setNotice("Choose a new password for your account.");
@@ -61,10 +66,22 @@ export default function AccountPage() {
     await signOut(); setSession(null); setNotice("You are signed out.");
   }
 
+  function selectSection(next: AccountSection) {
+    setSection(next);
+    const url = new URL(window.location.href);
+    if (next === "plans") url.searchParams.set("tab", "plans");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
   return (
     <main className="commercial-page">
-      <header className="commercial-header"><a href={`${base}/`} className="commercial-brand">FreeFloorplan3D</a><nav><a href={`${base}/`}>Planner</a><a href={`${base}/billing/`}>Plans</a></nav></header>
-      <section className="commercial-card account-card">
+      <header className="commercial-header"><a href={`${base}/`} className="commercial-brand">FreeFloorplan3D</a><nav><a href={`${base}/`}>Planner</a></nav></header>
+      <nav className="commercial-tabs account-section-tabs" role="tablist" aria-label="Account sections">
+        <button type="button" role="tab" aria-selected={section === "account"} className={section === "account" ? "selected" : ""} onClick={() => selectSection("account")}>Account</button>
+        <button type="button" role="tab" aria-selected={section === "plans"} className={section === "plans" ? "selected" : ""} onClick={() => selectSection("plans")}>Plans</button>
+      </nav>
+      {section === "account" ? <section className="commercial-card account-card">
         <p className="commercial-eyebrow">YOUR WORKSPACE</p>
         <h1>{session ? "Account ready" : recovery ? "Set a new password" : "Sign in or create an account"}</h1>
         <p className="commercial-lede">The floorplan editor stays free and works without an account. Sign in only when you want cloud projects, paid plans or rendering.</p>
@@ -95,7 +112,7 @@ export default function AccountPage() {
           </>
         )}
         <p className="commercial-footnote">Email verification is required before paid workspace features are available. Use the same browser tab after following an email link.</p>
-      </section>
+      </section> : <PlansAndBillingPanel onSignInRequired={() => { selectSection("account"); setMode("signin"); }} />}
       <footer className="commercial-footer"><a href={`${base}/`}>Back to your floorplan</a></footer>
     </main>
   );

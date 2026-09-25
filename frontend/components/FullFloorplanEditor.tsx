@@ -83,6 +83,8 @@ type FullOpening = {
   hingeSide: "START" | "END"; doorType: "SINGLE" | "DOUBLE"; opensInward: boolean; catalogueItemId?: string; representationKey?: string; windowDepthMm?: number;
 };
 type Snapshot = { walls: Wall[]; openings: FullOpening[]; measurements: CustomMeasurement[]; annotations: FloorplanAnnotation[]; dimensionOffsets: Record<string, number>; hiddenDimensions: string[]; wallThickness?: number; rooms?: NamedOutline[]; selectedRoomId?: string | null };
+type TouchNavigationStart = { snapshot: Snapshot; history: Snapshot[]; future: Snapshot[]; draft: Point2D[]; measurementDraft: MeasurementReference[]; annotationDraft: Point2D[]; zoom: number; pan: Point2D; lockedViewport: FloorPlanViewport | null; baseViewport: FloorPlanViewport };
+type TouchNavigationGesture = { pointerIds: [number, number]; initialDistance: number; initialZoom: number; baseViewport: FloorPlanViewport; anchor: Point2D };
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
 type OpeningDrag = { openingId: string; before: Snapshot; wallId: string; segmentIndex: number; sideSign: -1 | 1; initialOpensInward: boolean };
 type RoomLabelDrag = { roomId: string; before: Snapshot; pointerStart: Point2D; labelStart: Point2D; moved: boolean };
@@ -956,6 +958,9 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const measurementDrag = useRef<{ id: string; custom: boolean; pointerStart: Point2D; offset: number; normal: Point2D; before: Snapshot } | null>(null);
   const annotationDrag = useRef<{ id: string; handle: "WHOLE" | "START" | "END" | "VERTEX" | "TEXT" | "ANCHOR" | "LABEL" | "MARKER"; vertexIndex?: number; before: Snapshot; pointerStart: Point2D; original: FloorplanAnnotation } | null>(null);
   const panDrag = useRef<{ clientX: number; clientY: number; pan: Point2D } | null>(null);
+  const touchPointers = useRef<Map<number, Point2D>>(new Map());
+  const touchNavigationStart = useRef<TouchNavigationStart | null>(null);
+  const touchNavigation = useRef<TouchNavigationGesture | null>(null);
   const fixtureDrag = useRef<{ id: string; original: Obstacle; offset: Point2D; candidate: PlacementCandidate | null } | null>(null);
   const [fixturePreview, setFixturePreview] = useState<Obstacle | null>(null);
   const [placementPoint, setPlacementPoint] = useState<Point2D | null>(null);
@@ -1742,6 +1747,134 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   function screenPointFromClient(clientX: number, clientY: number, svg: SVGSVGElement): Point2D {
     const rect = svg.getBoundingClientRect();
     return { x: (clientX - rect.left) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: (clientY - rect.top) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height };
+  }
+
+  function svgPointFromClient(clientX: number, clientY: number, svg: SVGSVGElement): Point2D {
+    const matrix = svg.getScreenCTM();
+    if (matrix) {
+      try {
+        const point = svg.createSVGPoint();
+        point.x = clientX;
+        point.y = clientY;
+        const mapped = point.matrixTransform(matrix.inverse());
+        return { x: mapped.x, y: mapped.y };
+      } catch { /* Use the regular canvas mapping if the SVG matrix is not invertible. */ }
+    }
+    return screenPointFromClient(clientX, clientY, svg);
+  }
+
+  function beginTouchNavigation(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    if (event.pointerType !== "touch") return false;
+    touchPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (touchNavigation.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
+    if (touchPointers.current.size === 1) {
+      touchNavigationStart.current = {
+        snapshot: snapshot(), history: [...history], future: [...future],
+        draft: draft.map((point) => ({ ...point })), measurementDraft: [...measurementDraft], annotationDraft: annotationDraft.map((point) => ({ ...point })),
+        zoom, pan: { ...pan }, lockedViewport, baseViewport: lockedViewport ?? viewport,
+      };
+      return false;
+    }
+    if (touchPointers.current.size < 2) return false;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const pointerIds = [...touchPointers.current.keys()].slice(0, 2) as [number, number];
+    const first = touchPointers.current.get(pointerIds[0]);
+    const second = touchPointers.current.get(pointerIds[1]);
+    const origin = touchNavigationStart.current;
+    if (!first || !second || !origin) return true;
+    const centre = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+    const initialViewport = scaleFloorPlanViewport(origin.baseViewport, origin.zoom);
+    const initialActiveViewport = {
+      ...initialViewport,
+      offsetX: initialViewport.offsetX + origin.pan.x,
+      offsetY: initialViewport.offsetY + origin.pan.y,
+    };
+    touchNavigation.current = {
+      pointerIds,
+      initialDistance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+      initialZoom: origin.zoom,
+      baseViewport: origin.baseViewport,
+      anchor: floorPlanFromClient(centre.x, centre.y, event.currentTarget, initialActiveViewport),
+    };
+
+    const changedSnapshot = JSON.stringify(snapshot()) !== JSON.stringify(origin.snapshot);
+    const changedDraft = JSON.stringify(draft) !== JSON.stringify(origin.draft)
+      || JSON.stringify(measurementDraft) !== JSON.stringify(origin.measurementDraft)
+      || JSON.stringify(annotationDraft) !== JSON.stringify(origin.annotationDraft);
+    if (changedSnapshot) {
+      restore(origin.snapshot);
+      setHistory(origin.history);
+      setFuture(origin.future);
+    }
+    if (changedSnapshot || changedDraft) {
+      setDraft(origin.draft);
+      setMeasurementDraft(origin.measurementDraft);
+      setAnnotationDraft(origin.annotationDraft);
+    }
+    pointDrag.current = null;
+    wallDrag.current = null;
+    pendingOpeningRemap.current = null;
+    openingDrag.current = null;
+    measurementDrag.current = null;
+    annotationDrag.current = null;
+    panDrag.current = null;
+    fixtureDrag.current = null;
+    roomLabelDrag.current = null;
+    placementPress.current = null;
+    setFixturePreview(null);
+    setDraggingRoomLabelId(null);
+    setPlacementPoint(null);
+    setLockedViewport(origin.lockedViewport);
+    setZoom(origin.zoom);
+    setPan(origin.pan);
+    for (const pointerId of pointerIds) {
+      try { event.currentTarget.setPointerCapture(pointerId); }
+      catch { /* The pointer may already have ended while the second touch arrived. */ }
+    }
+    return true;
+  }
+
+  function moveTouchNavigation(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    if (event.pointerType === "touch" && touchPointers.current.has(event.pointerId)) {
+      touchPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+    const gesture = touchNavigation.current;
+    if (!gesture || !touchPointers.current.has(event.pointerId)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const first = touchPointers.current.get(gesture.pointerIds[0]);
+    const second = touchPointers.current.get(gesture.pointerIds[1]);
+    if (!first || !second) return true;
+    const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+    const zoomNext = Math.max(.5, Math.min(3, gesture.initialZoom * distance / gesture.initialDistance));
+    const centre = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+    const centreOnCanvas = svgPointFromClient(centre.x, centre.y, event.currentTarget);
+    const scaledViewport = scaleFloorPlanViewport(gesture.baseViewport, zoomNext);
+    const anchorOnCanvas = floorPlanToScreen(gesture.anchor, scaledViewport);
+    setZoom(zoomNext);
+    setPan({ x: centreOnCanvas.x - anchorOnCanvas.x, y: centreOnCanvas.y - anchorOnCanvas.y });
+    return true;
+  }
+
+  function endTouchNavigation(event: ReactPointerEvent<SVGSVGElement>): boolean {
+    if (event.pointerType !== "touch" || !touchPointers.current.has(event.pointerId)) return false;
+    const navigating = Boolean(touchNavigation.current);
+    if (navigating) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    touchPointers.current.delete(event.pointerId);
+    if (touchPointers.current.size === 0) {
+      touchNavigation.current = null;
+      touchNavigationStart.current = null;
+    }
+    return navigating;
   }
 
   function resolveMeasurementReference(reference: MeasurementReference): Point2D | null {
@@ -3880,7 +4013,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         <div className="resizable-floorplan-window">
          {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div>{sourceUrl && !importing && <div className="floorplan-background-actions drawing-navigation-row" role="group" aria-label="Drawing actions"><button type="button" className="fit-view-button floorplan-background-action" onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="fit-view-button floorplan-background-action" onClick={clearImportedDrawing}>Remove drawing</button></div>}<div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><ViewToggle label="Room names" active={showRoomNames} onToggle={() => setShowRoomNames((current) => !current)} /><ViewToggle label="Measurements" active={showMeasurements} onToggle={() => { const enabled = !showMeasurements; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><ViewToggle label="Wall thickness" active={showWallThickness} onToggle={() => setShowWallThickness((current) => !current)} /><ViewToggle label="Annotations" active={showAnnotations} onToggle={() => setShowAnnotations((current) => !current)} /><ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} /><ViewToggle label="Coordinates table" active={coordinatesToolbarOpen} onToggle={() => onToggleToolbar("floorplan-coordinates")} /></div></div></FloatingToolbar>}
 <div className="full-plan-canvas">{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}
-          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={`mode-${tool.toLowerCase()}`} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onContextMenuCapture={event => { if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
+          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={`mode-${tool.toLowerCase()}`} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onContextMenuCapture={event => { if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (beginTouchNavigation(event)) return; if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMoveCapture={(event) => { moveTouchNavigation(event); }} onPointerUpCapture={(event) => { endTouchNavigation(event); }} onPointerCancelCapture={(event) => { endTouchNavigation(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
             if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && (target.classList.contains("canvas-background") || target.classList.contains("plan-grid"))); if (background && tool === "SELECT") clearActiveDrawingSelection(); return; }
             const rawRequested = canvasPoint(event, false);

@@ -15,7 +15,7 @@ See the root and `frontend/.env.example` for the full variable names. Leave blan
 ## Supabase
 
 1. Create or select the production Supabase project, configure email delivery, verification, password recovery, and the exact planner account redirect URL (for example `https://www.freefloorplan3d.com/planner/account/`). Add the local development URL only to a non-production project.
-2. Back up the database, then apply `database/migrations/202609240001_phase2_commercial.sql` once using the Supabase SQL editor or the project’s migration workflow.
+2. Back up the database, then apply `database/migrations/202609240001_phase2_commercial.sql` followed by `database/migrations/202609250001_ai_3d_generation.sql` using the Supabase SQL editor or the project’s migration workflow.
 3. Set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` on the API and worker. Keep the service-role key server-only. Keep `REQUIRE_VERIFIED_EMAIL=true` for paid features.
 4. Confirm the new tables have RLS enabled, public clients can read only active plan/pack catalogue rows, and all account-owned records remain inaccessible to other users. The API uses the service key only after it verifies the caller’s bearer token against Supabase Auth.
 
@@ -23,7 +23,7 @@ See the root and `frontend/.env.example` for the full variable names. Leave blan
 
 Create a private bucket; do not enable public reads. Create an S3-compatible credential scoped to that bucket and set `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` only on the API and worker. Add browser CORS for the exact planner origin with `PUT`, `GET`, and `HEAD`, allow the `Content-Type` request header, and expose `ETag` if operational monitoring needs it. The application issues short-lived, object-specific signed URLs.
 
-Add a bucket lifecycle rule expiring objects with the prefix `temporary/render-references/` after one day. Those objects are short-lived reference images; successful render jobs delete them sooner. Do not apply that rule to `users/`, which contains permanent model assets and generated results.
+Add bucket lifecycle rules expiring objects with the prefixes `temporary/render-references/` and `temporary/ai-3d-references/` after one day. Those objects are short-lived reference images; successful jobs delete them sooner. Do not apply those rules to `users/`, which contains permanent model assets and generated results.
 
 ## Stripe test mode
 
@@ -38,6 +38,12 @@ The checkout integration enables Stripe Managed Payments for both subscription c
 ## Image worker
 
 Set `OPENAI_API_KEY` only on the worker. The worker accepts bounded PNG/JPEG/WebP reference images, uses the selected medium/high image model, normalizes output to WebP, and does not send project JSON or geometry. It records only safe provider usage fields, and refunds a render credit on failure. Verify model access, spend limits, retention policy, and rate limits in the provider account before enabling it.
+
+## AI 3D asset generation
+
+The AI 3D feature uses the authenticated commercial API for short-lived R2 photo uploads and the existing queue worker for Tripo task submission, polling, validation, and private model storage. Set `TRIPO_API_KEY` only on the dedicated worker service. `TRIPO_GENERATION_MODEL` may be set on both API and worker; the default is `v3.1-20260211`. Set `AI_3D_GENERATION_ENABLED=true` on the API only after the worker key and private R2 storage are configured and the feature is approved for staging. The browser never receives provider credentials.
+
+The migration adds `ai_3d_generations_per_period` to each plan with a default of zero. Keep it at zero until generation costs, included allowances, and any packs/pricing are approved; the API rejects photo uploads and generation jobs without remaining entitlement. No AI 3D Stripe product or price is created by this migration. Tripo image generation does not accept exact physical dimension controls; entered dimensions are stored separately with the asset, while the generated mesh remains visual-only.
 
 ## Before live launch
 

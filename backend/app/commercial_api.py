@@ -16,10 +16,13 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from backend.app.r2_storage import R2Unavailable, r2_storage
 from backend.app.stripe_gateway import PACK_KEYS, PLAN_KEYS, StripeUnavailable, stripe_gateway
 from backend.app.supabase_rest import InvalidAccessToken, SupabaseREST, SupabaseUnavailable, VerifiedUser, supabase_rest
+from database.catalog import SessionLocal
+from database.models import FurnitureCategoryRecord, FurnitureItemRecord
 
 router = APIRouter(prefix="/commercial", tags=["commercial workspace"])
 _SAFE_SQL_ERRORS: dict[str, tuple[int, str]] = {
@@ -44,6 +47,15 @@ _SAFE_SQL_ERRORS: dict[str, tuple[int, str]] = {
         409,
         "Wait for every model asset to finish processing, then back up the project again.",
     ),
+    "ai_3d_generation_unavailable": (403, "AI 3D generation is not enabled for this account."),
+    "ai_3d_quota_exceeded": (409, "No AI 3D generation allowance remains for this billing period."),
+    "ai_3d_upload_limit": (
+        429,
+        "Too many temporary photos are waiting to be used. Wait for the upload links to expire.",
+    ),
+    "invalid_ai_3d_reference": (422, "Choose one to three supported reference photos."),
+    "ai_3d_reference_missing": (409, "A reference photo upload expired or is incomplete. Upload it again."),
+    "invalid_ai_3d_request": (422, "Enter a name and positive dimensions in millimetres."),
 }
 
 
@@ -61,6 +73,8 @@ class UploadBody(BaseModel):
     expected_bytes: int = Field(ge=20, le=100 * 1024 * 1024)
     source_unit: Literal["mm", "cm", "in"] | None = None
     local_asset_key: str | None = Field(default=None, pattern=r"^local-[a-f0-9]{64}$")
+    category_id: str = Field(default="custom", pattern=r"^[a-z0-9][a-z0-9-]{0,79}$")
+    subcategory: str = Field(default="General", min_length=1, max_length=120)
 
 
 class RenderReferenceBody(BaseModel):
@@ -76,6 +90,35 @@ class RenderBody(BaseModel):
     prompt: str = Field(default="", max_length=1000)
     project_id: UUID | None = None
     idempotency_key: str = Field(min_length=8, max_length=200)
+
+
+class Ai3DReferenceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content_type: Literal["image/png", "image/jpeg", "image/webp"]
+    expected_bytes: int = Field(ge=1, le=10 * 1024 * 1024)
+
+
+class Ai3DReferenceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reservation_id: UUID
+    view: Literal["front", "left", "right", "back"]
+
+
+class Ai3DDimensions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    width: float = Field(gt=0, le=10000, allow_inf_nan=False)
+    depth: float = Field(gt=0, le=10000, allow_inf_nan=False)
+    height: float = Field(gt=0, le=10000, allow_inf_nan=False)
+
+
+class Ai3DGenerationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    dimensions_mm: Ai3DDimensions
+    references: list[Ai3DReferenceInput] = Field(min_length=1, max_length=3)
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    category_id: str = Field(default="custom", pattern=r"^[a-z0-9][a-z0-9-]{0,79}$")
+    subcategory: str = Field(default="General", min_length=1, max_length=120)
 
 
 class CheckoutBody(BaseModel):
@@ -125,6 +168,19 @@ def _require_active_subscription(user: VerifiedUser, db: SupabaseREST) -> dict[s
     if not isinstance(summary, dict) or summary.get("status") not in {"active", "trialing"}:
         raise HTTPException(status_code=403, detail="An active paid plan is required for this feature.")
     return summary
+
+
+def _ai_3d_available(user: VerifiedUser, db: SupabaseREST) -> tuple[dict[str, Any], bool]:
+    quota = _db_call(lambda: db.rpc("ai_3d_generation_quota", {"p_user_id": str(user.id)}))
+    if not isinstance(quota, dict):
+        raise HTTPException(status_code=503, detail="AI 3D generation availability could not be checked.")
+    configured = os.getenv("AI_3D_GENERATION_ENABLED", "false").lower() == "true"
+    storage_configured = all(
+        os.getenv(key, "").strip()
+        for key in ("R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+    )
+    enabled = bool(quota.get("enabled")) and configured and storage_configured
+    return quota, enabled
 
 
 def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, str]:
@@ -209,7 +265,8 @@ def _asset_record(user: VerifiedUser, asset_id: UUID, db: SupabaseREST) -> dict[
                 "select": (
                     "asset_id,user_id,name,original_format,content_hash,original_object_key,derived_object_key,"
                     "thumbnail_object_key,original_byte_size,derived_byte_size,triangle_count,computed_bounds_mm,"
-                    "declared_dimensions_mm,source_unit,geometry_authority,processing_status,processing_error,"
+                    "declared_dimensions_mm,source_unit,geometry_authority,category_id,category_name,subcategory,"
+                    "processing_status,processing_error,"
                     "created_at,updated_at"
                 ),
                 "asset_id": f"eq.{asset_id}",
@@ -222,6 +279,46 @@ def _asset_record(user: VerifiedUser, asset_id: UUID, db: SupabaseREST) -> dict[
     if not isinstance(rows, list) or not rows:
         raise HTTPException(status_code=404, detail="The requested asset could not be found.")
     return dict(rows[0])
+
+
+def _resolve_asset_classification(category_id: str, subcategory: str) -> dict[str, str]:
+    category_id = category_id.strip()
+    subcategory = subcategory.strip()
+    if not category_id or not subcategory or len(subcategory) > 120 or any(ord(char) < 32 for char in subcategory):
+        raise HTTPException(status_code=422, detail="Choose a valid asset category and subcategory.")
+    if category_id == "custom":
+        return {"category_id": "custom", "category_name": "Custom", "subcategory": subcategory}
+    with SessionLocal() as session:
+        category = session.get(FurnitureCategoryRecord, category_id)
+        if category is None:
+            raise HTTPException(status_code=422, detail="Choose a category from the built-in catalogue or Custom.")
+        category_name = category.name
+        exists = session.scalar(
+            select(FurnitureItemRecord.id).where(
+                FurnitureItemRecord.category_id == category_id,
+                FurnitureItemRecord.subcategory == subcategory,
+                FurnitureItemRecord.active.is_(True),
+            ).limit(1)
+        )
+    if exists is None:
+        raise HTTPException(status_code=422, detail="Choose a subcategory from the selected built-in category.")
+    return {"category_id": category_id, "category_name": category_name, "subcategory": subcategory}
+
+
+def _save_asset_classification(
+    db: SupabaseREST, user: VerifiedUser, asset_id: str, classification: dict[str, str]
+) -> None:
+    updated = _db_call(
+        lambda: db.service_request(
+            "asset_definitions",
+            method="PATCH",
+            query={"asset_id": f"eq.{asset_id}", "user_id": f"eq.{user.id}", "processing_status": "neq.deleted"},
+            body={**classification, "updated_at": datetime.now(UTC).isoformat()},
+            prefer="return=representation",
+        )
+    )
+    if not isinstance(updated, list) or not updated:
+        raise HTTPException(status_code=503, detail="The private asset category could not be saved.")
 
 
 @router.get("/catalogue")
@@ -369,7 +466,7 @@ def list_assets(authorization: str | None = Header(default=None)) -> dict[str, A
             {
                 "select": (
                     "asset_id,local_asset_key,name,original_format,original_byte_size,derived_byte_size,triangle_count,"
-                    "computed_bounds_mm,declared_dimensions_mm,source_unit,geometry_authority,processing_status,"
+                    "computed_bounds_mm,declared_dimensions_mm,source_unit,geometry_authority,category_id,category_name,subcategory,processing_status,"
                     "processing_error,created_at,updated_at"
                 ),
                 "user_id": f"eq.{user.id}",
@@ -402,6 +499,7 @@ def reserve_asset_upload(payload: UploadBody, authorization: str | None = Header
         or "\\" in safe_name
     ):
         raise HTTPException(status_code=422, detail="Choose a supported format and declare the STL source unit.")
+    classification = _resolve_asset_classification(payload.category_id, payload.subcategory)
     asset_id, reservation_id = uuid4(), uuid4()
     object_key = f"users/{user.id}/assets/{asset_id}/source.{payload.format}"
     try:
@@ -425,6 +523,7 @@ def reserve_asset_upload(payload: UploadBody, authorization: str | None = Header
             },
         )
     )
+    _save_asset_classification(db, user, str(asset_id), classification)
     return {
         **reserved,
         "upload_url": signed,
@@ -542,6 +641,243 @@ def download_local_project_asset(
     except (R2Unavailable, ValueError):
         raise HTTPException(status_code=503, detail="Private asset storage is not available.") from None
     return {"url": signed, "name": rows[0].get("name"), "expires_in_seconds": 300}
+
+
+_AI_3D_JOB_SELECT = (
+    "generation_id,asset_id,asset_name,declared_dimensions_mm,status,progress,"
+    "safe_error,created_at,updated_at,completed_at"
+)
+_R2_STORAGE_ENV = ("R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+
+
+def _ai_3d_job_view(row: dict[str, Any], classification: dict[str, str] | None = None) -> dict[str, Any]:
+    fields = (
+        "generation_id",
+        "asset_id",
+        "asset_name",
+        "declared_dimensions_mm",
+        "status",
+        "progress",
+        "safe_error",
+        "created_at",
+        "updated_at",
+        "completed_at",
+    )
+    return {**{key: row.get(key) for key in fields}, **(classification or {})}
+
+
+def _asset_classifications_for_user(
+    db: SupabaseREST, user: VerifiedUser, asset_ids: list[str]
+) -> dict[str, dict[str, str]]:
+    ids = sorted({asset_id for asset_id in asset_ids if re.fullmatch(r"[0-9a-fA-F-]{36}", asset_id)})
+    if not ids:
+        return {}
+    rows = _db_call(
+        lambda: db.select(
+            "asset_definitions",
+            {
+                "select": "asset_id,category_id,category_name,subcategory",
+                "user_id": f"eq.{user.id}",
+                "asset_id": f"in.({','.join(ids)})",
+                "processing_status": "neq.deleted",
+                "limit": str(len(ids)),
+            },
+        )
+    )
+    if not isinstance(rows, list):
+        return {}
+    return {
+        str(row["asset_id"]): {
+            "category_id": str(row.get("category_id") or "custom"),
+            "category_name": str(row.get("category_name") or "Custom"),
+            "subcategory": str(row.get("subcategory") or "General"),
+        }
+        for row in rows if isinstance(row, dict) and row.get("asset_id")
+    }
+
+
+@router.get("/ai-3d/status")
+def ai_3d_status(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    db = supabase_rest()
+    user = _auth_user(authorization, db)
+    quota, enabled = _ai_3d_available(user, db)
+    reason = None
+    if os.getenv("AI_3D_GENERATION_ENABLED", "false").lower() != "true":
+        reason = "AI 3D generation is not enabled on the server yet."
+    elif not all(os.getenv(key, "").strip() for key in _R2_STORAGE_ENV):
+        reason = "Private model storage is not configured."
+    elif not quota.get("enabled"):
+        reason = "AI 3D generation is not enabled for this account yet."
+    return {"enabled": enabled, "remaining": max(0, int(quota.get("remaining", 0))), "reason": reason}
+
+
+@router.post("/ai-3d/references/upload")
+def reserve_ai_3d_reference(
+    payload: Ai3DReferenceBody, authorization: str | None = Header(default=None)
+) -> dict[str, Any]:
+    db, storage = supabase_rest(), r2_storage()
+    user = _auth_user(authorization, db)
+    _quota, enabled = _ai_3d_available(user, db)
+    if not enabled:
+        raise HTTPException(status_code=403, detail="AI 3D generation is not enabled for this account yet.")
+    reservation_id = uuid4()
+    object_key = f"temporary/ai-3d-references/{user.id}/{reservation_id}/reference"
+    reserved = _db_call(
+        lambda: db.rpc(
+            "reserve_ai_3d_reference",
+            {
+                "p_user_id": str(user.id),
+                "p_reservation_id": str(reservation_id),
+                "p_object_key": object_key,
+                "p_content_type": payload.content_type,
+                "p_expected_bytes": payload.expected_bytes,
+            },
+        )
+    )
+    try:
+        signed = storage.presign("PUT", object_key, expires_seconds=900, content_type=payload.content_type)
+    except (R2Unavailable, ValueError):
+        raise HTTPException(status_code=503, detail="Private asset storage is not available.") from None
+    return {
+        **(reserved if isinstance(reserved, dict) else {}),
+        "upload_url": signed,
+        "required_headers": {"Content-Type": payload.content_type},
+        "expires_in_seconds": 900,
+    }
+
+
+@router.post("/ai-3d/jobs")
+def create_ai_3d_job(
+    payload: Ai3DGenerationBody, authorization: str | None = Header(default=None)
+) -> dict[str, Any]:
+    db, storage = supabase_rest(), r2_storage()
+    user = _auth_user(authorization, db)
+    classification = _resolve_asset_classification(payload.category_id, payload.subcategory)
+    prior = _db_call(
+        lambda: db.select(
+            "ai_3d_generation_jobs",
+            {
+                "select": _AI_3D_JOB_SELECT,
+                "user_id": f"eq.{user.id}",
+                "idempotency_key": f"eq.{payload.idempotency_key}",
+                "limit": "1",
+            },
+        )
+    )
+    if isinstance(prior, list) and prior:
+        prior_job = dict(prior[0])
+        _save_asset_classification(db, user, str(prior_job["asset_id"]), classification)
+        return {"status": "existing", "generation": _ai_3d_job_view(prior_job, classification)}
+    _quota, enabled = _ai_3d_available(user, db)
+    if not enabled:
+        raise HTTPException(status_code=403, detail="AI 3D generation is not enabled for this account yet.")
+    views = [reference.view for reference in payload.references]
+    if len(set(views)) != len(views) or "front" not in views or (len(views) == 1 and views[0] != "front"):
+        raise HTTPException(status_code=422, detail="Use one front photo, or assign a front view plus distinct angles.")
+    safe_name = payload.name.strip()
+    if (
+        not safe_name
+        or any(ord(character) < 32 or ord(character) == 127 for character in safe_name)
+        or "/" in safe_name
+        or "\\" in safe_name
+    ):
+        raise HTTPException(status_code=422, detail="Enter a valid asset name.")
+    resolved: list[dict[str, Any]] = []
+    for reference in payload.references:
+        rows = _db_call(
+            lambda reference=reference: db.select(
+                "upload_reservations",
+                {"select": "object_key,content_type,expected_byte_size,status,expires_at",
+                 "reservation_id": f"eq.{reference.reservation_id}", "user_id": f"eq.{user.id}",
+                 "purpose": "eq.ai-3d-reference", "status": "eq.reserved", "limit": "1"},
+            )
+        )
+        if not isinstance(rows, list) or not rows:
+            raise HTTPException(status_code=409, detail="A reference photo upload expired. Upload the photos again.")
+        row = rows[0]
+        try:
+            metadata = storage.head(str(row["object_key"]))
+        except (R2Unavailable, KeyError):
+            raise HTTPException(status_code=409, detail="A reference photo upload is incomplete.") from None
+        expected = int(row["expected_byte_size"])
+        if (
+            metadata.byte_size < 1
+            or metadata.byte_size > 10 * 1024 * 1024
+            or metadata.byte_size > expected
+            or metadata.content_type != row["content_type"]
+        ):
+            raise HTTPException(status_code=422, detail="A reference photo does not match its upload reservation.")
+        resolved.append({"reservation_id": str(reference.reservation_id), "view": reference.view})
+    model = os.getenv("TRIPO_GENERATION_MODEL", "v3.1-20260211").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", model):
+        raise HTTPException(status_code=503, detail="The Tripo model setting is invalid.")
+    generation_id, asset_id = uuid4(), uuid4()
+    result = _db_call(
+        lambda: db.rpc(
+            "create_ai_3d_generation_job",
+            {
+                "p_user_id": str(user.id),
+                "p_generation_id": str(generation_id),
+                "p_asset_id": str(asset_id),
+                "p_asset_name": safe_name,
+                "p_dimensions_mm": payload.dimensions_mm.model_dump(),
+                "p_references": resolved,
+                "p_idempotency_key": payload.idempotency_key,
+                "p_provider_model": model,
+            },
+        )
+    )
+    if not isinstance(result, dict) or not isinstance(result.get("generation"), dict):
+        raise HTTPException(status_code=503, detail="The AI 3D generation could not be queued.")
+    _save_asset_classification(db, user, str(asset_id), classification)
+    return {
+        "status": result.get("status", "created"),
+        "generation": _ai_3d_job_view(result["generation"], classification),
+    }
+
+
+@router.get("/ai-3d/jobs")
+def list_ai_3d_jobs(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    db = supabase_rest()
+    user = _auth_user(authorization, db)
+    rows = _db_call(
+        lambda: db.select(
+            "ai_3d_generation_jobs",
+            {
+                "select": _AI_3D_JOB_SELECT,
+                "user_id": f"eq.{user.id}",
+                "order": "created_at.desc",
+                "limit": "20",
+            },
+        )
+    )
+    job_rows = [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    classifications = _asset_classifications_for_user(db, user, [str(row.get("asset_id", "")) for row in job_rows])
+    jobs = [_ai_3d_job_view(row, classifications.get(str(row.get("asset_id", "")))) for row in job_rows]
+    return {"jobs": jobs}
+
+
+@router.get("/ai-3d/jobs/{generation_id}")
+def get_ai_3d_job(generation_id: UUID, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    db = supabase_rest()
+    user = _auth_user(authorization, db)
+    rows = _db_call(
+        lambda: db.select(
+            "ai_3d_generation_jobs",
+            {
+                "select": _AI_3D_JOB_SELECT,
+                "generation_id": f"eq.{generation_id}",
+                "user_id": f"eq.{user.id}",
+                "limit": "1",
+            },
+        )
+    )
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=404, detail="The AI 3D generation job could not be found.")
+    job = dict(rows[0])
+    asset_id = str(job.get("asset_id", ""))
+    classification = _asset_classifications_for_user(db, user, [asset_id]).get(asset_id)
+    return _ai_3d_job_view(job, classification)
 
 
 @router.post("/render-references/upload")

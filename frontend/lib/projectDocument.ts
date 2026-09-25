@@ -21,9 +21,15 @@ export const assetSchema = z.object({
   assetId: id, assetVersion: z.literal(1), name: z.string().max(200), source: z.literal("local"), modelFormat: z.literal("glb"),
   contentHash: z.string().regex(/^[a-f0-9]{64}$/), byteSize: z.number().int().positive().max(50 * 1024 * 1024),
   computedBoundsMm: z.object({ x: number.positive(), y: number.positive(), z: number.positive() }),
+  declaredDimensionsMm: z.object({ width: number.positive(), depth: number.positive(), height: number.positive() }).optional(),
+  dimensionAuthority: z.enum(["user-declared", "user-verified"]).optional(),
+  categoryId: z.string().min(1).max(80).regex(/^[a-z0-9][a-z0-9-]*$/).optional(),
+  categoryName: z.string().min(1).max(120).optional(),
+  subcategory: z.string().min(1).max(120).optional(),
   geometryAuthority: z.literal("visual-only"), createdAt: z.iso.datetime(),
 }).strict();
 export type AssetDefinition = z.infer<typeof assetSchema>;
+export type AssetClassification = { categoryId: string; categoryName: string; subcategory: string };
 const vector = z.object({ x: number, y: number, z: number });
 const instanceSchema = z.object({ instanceId: id, assetId: id, assetVersion: z.literal(1), positionMm: vector, rotationDeg: vector, scale: z.object({ x: number.positive(), y: number.positive(), z: number.positive() }) }).strict();
 export type AssetInstance = z.infer<typeof instanceSchema>;
