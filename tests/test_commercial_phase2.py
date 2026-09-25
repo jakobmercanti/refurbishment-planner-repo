@@ -58,12 +58,19 @@ def test_stripe_signature_checks_digest_and_timestamp_tolerance() -> None:
     assert not _stripe_signature_valid(header, body, secret, now=timestamp + 301)
 
 
-def test_stripe_checkout_uses_only_active_matching_monthly_price(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("price_key", "mode", "expected_price_pence"),
+    [("pro", "subscription", 1999), ("medium_1", "payment", 50)],
+)
+def test_stripe_checkout_uses_matching_price_and_managed_payments(
+    monkeypatch: pytest.MonkeyPatch, price_key: str, mode: str, expected_price_pence: int
+) -> None:
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_example")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
-    monkeypatch.setenv("STRIPE_PRICE_PRO", "price_example")
+    monkeypatch.setenv(f"STRIPE_PRICE_{price_key.upper()}", "price_example")
     gateway = StripeGateway()
     calls: list[tuple[str, str]] = []
+    checkout_fields: list[dict[str, str]] = []
 
     def request(
         method: str,
@@ -74,29 +81,35 @@ def test_stripe_checkout_uses_only_active_matching_monthly_price(monkeypatch: py
     ) -> dict[str, Any]:
         calls.append((method, path))
         if path == "/prices/price_example":
-            return {
+            price: dict[str, Any] = {
                 "active": True,
                 "currency": "gbp",
-                "unit_amount": 1999,
-                "type": "recurring",
-                "recurring": {"interval": "month", "interval_count": 1},
+                "unit_amount": expected_price_pence,
+                "type": "recurring" if mode == "subscription" else "one_time",
             }
+            if mode == "subscription":
+                price["recurring"] = {"interval": "month", "interval_count": 1}
+            return price
+        if fields is not None:
+            checkout_fields.append(fields)
         return {"url": "https://checkout.stripe.com/cs_test_example"}
 
     monkeypatch.setattr(gateway, "request", request)
     session = gateway.create_checkout(
-        price_key="pro",
-        mode="subscription",
-        expected_price_pence=1999,
+        price_key=price_key,
+        mode=mode,
+        expected_price_pence=expected_price_pence,
         user_id="user-example",
         email=None,
         success_url="https://example.test/success",
         cancel_url="https://example.test/cancel",
-        metadata={"plan_key": "pro"},
+        metadata={"product_key": price_key},
         idempotency_key="checkout-test",
     )
 
     assert session["url"].startswith("https://checkout.stripe.com/")
+    assert checkout_fields[0]["managed_payments[enabled]"] == "true"
+    assert checkout_fields[0]["mode"] == mode
     assert calls == [("GET", "/prices/price_example"), ("POST", "/checkout/sessions")]
 
 

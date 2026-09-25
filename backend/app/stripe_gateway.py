@@ -113,6 +113,7 @@ class StripeGateway:
             raise StripeUnavailable("The configured Stripe price does not match the active product catalogue.")
         fields = {
             "mode": mode,
+            "managed_payments[enabled]": "true",
             "line_items[0][price]": price_id,
             "line_items[0][quantity]": "1",
             "client_reference_id": user_id,

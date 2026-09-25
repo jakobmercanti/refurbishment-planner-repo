@@ -31,7 +31,9 @@ Create GBP prices matching the catalogue rows seeded by the migration: Starter Â
 
 `https://www.freefloorplan3d.com/planner/engineering-api/commercial/stripe/webhook`
 
-Subscribe to checkout-session completion/async payment success, subscription created/updated/deleted, and invoice paid/payment failed events. Keep `STRIPE_ALLOW_LIVE=false` during setup. The Stripe customer portal must be configured in Stripe before users can manage or cancel a subscription. Tax collection is not enabled by this implementation; the business must settle VAT/tax treatment and configure/test it before live billing.
+Subscribe to checkout-session completion/async payment success, subscription created/updated/deleted, and invoice paid/payment failed events. Keep `STRIPE_ALLOW_LIVE=false` during setup. The Stripe customer portal must be configured in Stripe before users can manage or cancel a subscription.
+
+The checkout integration enables Stripe Managed Payments for both subscription checkouts and one-time render-credit purchases (`managed_payments[enabled]=true`). Confirm Managed Payments is enabled for the Stripe account and review its terms and eligibility before testing. Stripe becomes merchant of record for those transactions and handles indirect tax in supported jurisdictions, fraud, disputes, and transaction-level support. The Managed Payments fee is 3.5% per successful transaction on top of standard Stripe processing and any Stripe Billing fees. This does not replace advice about other business or income-tax obligations. Keep live billing disabled until staging checks and business review are complete.
 
 ## Image worker
 
