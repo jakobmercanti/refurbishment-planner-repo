@@ -6,6 +6,7 @@ import type { RenderCameraState } from "./renderCamera";
 import { projectRepository } from "./projectRepository";
 import { exportProject, importProject } from "./projectPackage";
 import { analytics, exported } from "./analytics";
+import type { ElectricalLayoutData } from "./electricalLayout";
 import type { Room } from "./types";
 
 export function useLocalProject() {
@@ -65,5 +66,6 @@ export function useLocalProject() {
   const addAsset = useCallback((asset: AssetDefinition) => { const p = current.current; if (p && !p.assets.some(a => a.assetId === asset.assetId)) update({ assets: [...p.assets, asset] }); }, [update]);
   const setInstances = useCallback((assetInstances: AssetInstance[]) => update({ assetInstances }), [update]);
   const setRenderCamera = useCallback((renderCamera: RenderCameraState) => update({ renderCamera }), [update]);
-  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera };
+  const setElectricalLayout = useCallback((electricalLayout: ElectricalLayoutData) => update({ electricalLayout }), [update]);
+  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout };
 }

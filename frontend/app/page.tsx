@@ -27,6 +27,8 @@ import { ADD_TO_PLAN_MODES, type AddToPlanMode } from "@/lib/addToPlanModes";
 import { formatLength, formatMeasurementText } from "@/lib/units";
 import type { FloorplanStyle } from "@/lib/floorplanStyles";
 import { DEFAULT_TOOLBAR_AVAILABILITY, DEFAULT_TOOLBAR_VISIBILITY, FLOORPLAN_TOOLBARS, VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
+import { commercialRequest } from "@/lib/commercialApi";
+import { canAddElectricalObstacle, DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, isElectricalObstacle, normalizeElectricalLayout } from "@/lib/electricalLayout";
 
 // Keep browser requests on the frontend origin. Next.js proxies these calls to
 // the private local engineering backend, so phones on the LAN never try to use
@@ -46,6 +48,10 @@ export default function Home() {
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [placementWalls,setPlacementWalls]=useState<PlacementWall[]>([]);
   const [placement, setPlacement] = useState<PlacementRequest | null>(null);
+  const [electricalLayoutRequest, setElectricalLayoutRequest] = useState(0);
+  const [electricalElementLimit, setElectricalElementLimit] = useState<number | null>(5);
+  const [electricalLimitLoading, setElectricalLimitLoading] = useState(false);
+  const [electricalLimitStatus, setElectricalLimitStatus] = useState<string | null>(null);
   useEffect(() => {
     if (!placement) return;
     const key = (event: KeyboardEvent) => {
@@ -97,6 +103,28 @@ export default function Home() {
   const [viewerAddToPlanMode, setViewerAddToPlanMode] = useState<AddToPlanMode>("FURNITURE");
   const [viewerOpeningSyncRequest, setViewerOpeningSyncRequest] = useState<{ room: Room; requestId: number } | null>(null);
   const [openingEditorTarget, setOpeningEditorTarget] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!electricalLayoutRequest) return;
+    let cancelled = false;
+    void commercialRequest<{ capabilities?: { maxElectricalElementsPerProject?: number | null } }>("/summary")
+      .then((summary) => {
+        if (cancelled) return;
+        const limit = summary.capabilities?.maxElectricalElementsPerProject;
+        if (limit === null) setElectricalElementLimit(null);
+        else if (typeof limit === "number" && Number.isFinite(limit)) setElectricalElementLimit(Math.max(0, limit));
+        else {
+          setElectricalElementLimit(5);
+          setElectricalLimitStatus("Plan status could not be confirmed; the Free limit is being used.");
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setElectricalElementLimit(5);
+        setElectricalLimitStatus("Plan status is unavailable; the Free limit is being used.");
+      })
+      .finally(() => { if (!cancelled) setElectricalLimitLoading(false); });
+    return () => { cancelled = true; };
+  }, [electricalLayoutRequest]);
   const handleViewerOpeningSelected = useCallback((selection: { id: string; roomId: string } | null) => {
     if (selection) {
       setViewerElementEditRequest(null);
@@ -191,6 +219,34 @@ export default function Home() {
     return current ? (rooms.length ? rooms : [current.room]) : [];
   }
 
+  function saveElectricalLayout(layout: typeof DEFAULT_ELECTRICAL_LAYOUT, rooms = roomOptions(demo)) {
+    if (!local.project) return;
+    local.setElectricalLayout(normalizeElectricalLayout(layout, electricalObstacleIds(rooms)));
+  }
+
+  function beginPlacement(request: PlacementRequest) {
+    if (isElectricalObstacle(request.obstacle)) {
+      if (electricalLimitLoading) {
+        setElectricalLimitStatus("Checking your electrical-fitting allowance. Try adding the item again in a moment.");
+        return;
+      }
+      if (!canAddElectricalObstacle(roomOptions(demo), request.obstacle, electricalElementLimit)) {
+        setElectricalLimitStatus("The Free plan allows up to 5 electrical fittings per project. Existing fittings are kept; delete one or upgrade to add more.");
+        return;
+      }
+    }
+    setPlacement(request);
+  }
+
+  function openElectricalLayout() {
+    setPlacement(null);
+    setMode("EDITOR");
+    setElectricalElementLimit(5);
+    setElectricalLimitLoading(true);
+    setElectricalLimitStatus(null);
+    setElectricalLayoutRequest((request) => request + 1);
+  }
+
   function resolveViewerRoom(current: DemoResponse | null, rooms = projectRooms, selection = viewerRoomSelection): Room | null {
     if (!current) return null;
     const options = roomOptions(current, rooms);
@@ -200,6 +256,7 @@ export default function Home() {
 
   function applyPlanRooms(rooms: Room[]) {
     setProjectRooms(rooms);
+    saveElectricalLayout(local.project?.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT, rooms);
     setDemo((current) => {
       if (!current) return current;
       const room = resolveViewerRoom(current, rooms);
@@ -209,7 +266,9 @@ export default function Home() {
   }
 
   function applyPlanRoom(room: Room) {
-    setProjectRooms(current => [...current.filter(item => item.source_floorplan_room_id !== room.source_floorplan_room_id), room]);
+    const nextRooms = [...roomOptions(demo).filter(item => item.id !== room.id && item.source_floorplan_room_id !== room.source_floorplan_room_id), room];
+    setProjectRooms(nextRooms);
+    saveElectricalLayout(local.project?.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT, nextRooms);
     setDemo(current => current ? { ...current, room } : current);
     invalidateAnalysis();
   }
@@ -223,7 +282,22 @@ export default function Home() {
       const next = geometryUnchanged ? obstacle : constrainObstacleToRoom(obstacle,target,obstacle.center,target.source_floorplan_room_id ? placementWalls : []);
       return next ? [next] : previous ? [previous] : [];
     });
-    const updated = { ...target, obstacles: bounded, version: target.version + 1 };
+    const beforeRooms = roomOptions(demo);
+    const knownElectricalIds = electricalObstacleIds(beforeRooms);
+    let available = electricalElementLimit === null ? Number.POSITIVE_INFINITY : Math.max(0, electricalElementLimit - knownElectricalIds.size);
+    const accepted = bounded.filter((obstacle) => {
+      if (!isElectricalObstacle(obstacle) || knownElectricalIds.has(obstacle.id)) return true;
+      if (available <= 0) {
+        setElectricalLimitStatus("The Free plan allows up to 5 electrical fittings per project. Existing fittings are kept; delete one or upgrade to add more.");
+        return false;
+      }
+      available -= 1;
+      knownElectricalIds.add(obstacle.id);
+      return true;
+    });
+    const updated = { ...target, obstacles: accepted, version: target.version + 1 };
+    const nextRooms = beforeRooms.map((room) => room.id === target.id ? updated : room);
+    saveElectricalLayout(local.project?.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT, nextRooms);
     setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);
     setProjectRooms((rooms) => rooms.map((room) => room.id === target.id ? updated : room));
     invalidateAnalysis();
@@ -242,6 +316,10 @@ export default function Home() {
 
   function commitPlacement(candidate: PlacementCandidate) {
     if (!placement) return;
+    if (isElectricalObstacle(candidate.obstacle) && (electricalLimitLoading || !canAddElectricalObstacle(roomOptions(demo), candidate.obstacle, electricalElementLimit))) {
+      setElectricalLimitStatus(electricalLimitLoading ? "Checking your electrical-fitting allowance. Try again in a moment." : "The Free plan allows up to 5 electrical fittings per project. Existing fittings are kept; delete one or upgrade to add more.");
+      return;
+    }
     if (placement.commit) { if (placement.commit(candidate)) setPlacement(null); return; }
     if (!candidate.roomId) return;
     if (moveElementToRoom(candidate.obstacle,candidate.roomId)) setPlacement(null);
@@ -428,7 +506,7 @@ export default function Home() {
     <main className={`planner-workspace ${compactWorkspace ? "compact-workspace" : ""} ${preferences.density === "COMPACT" ? "density-compact" : ""}`}>
       <UiTheme settings={uiSettings} />
       <header className="topbar">
-        <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
+        <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenElectricalLayout={openElectricalLayout} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
           <div className="app-nav-modes" role="group" aria-label="Planner view">
             <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => { setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("EDITOR"); }}>2D</button>
@@ -443,7 +521,7 @@ export default function Home() {
         {(mode === "EDITOR" ? [...FLOORPLAN_TOOLBARS, { id: "floorplan-coordinates" as const, name: "Coordinates" }] : VIEWER_TOOLBARS).filter(tool => toolbarAvailability[tool.id]).map(tool =>
           <button key={tool.id} type="button" aria-pressed={compactActiveTool === tool.id} onClick={() => selectCompactTool(tool.id)}>{({ "floorplan-build": "Build", "floorplan-openings": "Elements", "floorplan-view": "View", "floorplan-coordinates": "Coordinates", "viewer-analysis": "Elements", "viewer-layout-analysis": "Analysis", "viewer-person": "Person", "viewer-view": "View" })[tool.id]}</button>)}
       </nav>}
-      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor key={local.revision} initialFloorplan={local.restore?.floorplan} onPersistFloorplan={local.changeFloorplan} onPlacementWallsChange={setPlacementWalls} placement={mode === "EDITOR" ? placement : null} onBeginPlacement={setPlacement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} viewerOpeningRoom={projectRooms.find(room => room.id === viewerOpeningEditRequest?.roomId) ?? demo.room} onStandaloneRoomChange={applyStandaloneOpeningRoom} openingEditRequest={mode === "ANALYSIS" ? viewerOpeningEditRequest : null} externalOpeningSyncRequest={viewerOpeningSyncRequest} elementEditRequest={mode === "EDITOR" ? viewerElementEditRequest : null} onElementSelected={handlePlanElementSelected} openingEditorTarget={openingEditorTarget} projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} annotateRequest={floorplanAnnotateRequest} importFile={floorplanImportFile} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={visibleToolbars} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} /></section>
+      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor key={local.revision} initialFloorplan={local.restore?.floorplan} onPersistFloorplan={local.changeFloorplan} onPlacementWallsChange={setPlacementWalls} placement={mode === "EDITOR" ? placement : null} onBeginPlacement={beginPlacement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} viewerOpeningRoom={projectRooms.find(room => room.id === viewerOpeningEditRequest?.roomId) ?? demo.room} onStandaloneRoomChange={applyStandaloneOpeningRoom} openingEditRequest={mode === "ANALYSIS" ? viewerOpeningEditRequest : null} externalOpeningSyncRequest={viewerOpeningSyncRequest} elementEditRequest={mode === "EDITOR" ? viewerElementEditRequest : null} onElementSelected={handlePlanElementSelected} openingEditorTarget={openingEditorTarget} projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} annotateRequest={floorplanAnnotateRequest} importFile={floorplanImportFile} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={visibleToolbars} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} electricalLayoutWindowRequest={electricalLayoutRequest} electricalLayout={local.project.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT} onElectricalLayoutChange={saveElectricalLayout} electricalElementLimit={electricalElementLimit} electricalLimitLoading={electricalLimitLoading} electricalLimitStatus={electricalLimitStatus} onElectricalLimitStatusChange={setElectricalLimitStatus} /></section>
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
           <EngineeringViewer assetInstances={local.project?.assetInstances ?? []} placementWalls={displayedViewerRooms.some(room=>room.source_floorplan_room_id) ? placementWalls : []} placement={placement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}-${local.project?.projectId}-${local.revision}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} roomSelection={pendingSelection} roomSelectionOptions={projectRooms} fullFloorplanSelection={FULL_FLOORPLAN_SELECTION} onRoomSelectionChange={setPendingViewerRoomSelection} onOpenRoomSelection={openViewerSelection} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} onOpeningSelected={handleViewerOpeningSelected} onElementSelected={handleViewerElementSelected} wallMode={wallMode} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} fitRequest={viewerFitRequest} saveViewRequest={viewerSaveViewRequest} renderCamera={local.project?.renderCamera} onRenderCameraChange={local.setRenderCamera} />
@@ -461,7 +539,7 @@ export default function Home() {
                 refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)}
                 displayUnits={preferences.units}
                 onRoomChange={applyStandaloneOpeningRoom}
-                onBeginPlacement={setPlacement}
+                onBeginPlacement={beginPlacement}
                 onEditOpening={handleViewerOpeningSelected}
                 placementWalls={placementWalls}
               /> : <CatalogueFixtureEditor
@@ -476,7 +554,7 @@ export default function Home() {
                 onEditEnd={() => handleViewerElementSelected(null)}
                 onElementSelected={handleViewerElementSelected}
                 placementWalls={placementWalls}
-                onBeginPlacement={setPlacement}
+                onBeginPlacement={beginPlacement}
               />}
             </div>
           </aside></FloatingToolbar>}

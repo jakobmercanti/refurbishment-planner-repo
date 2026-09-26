@@ -34,6 +34,9 @@ import { ViewToggle } from "@/components/ViewToggle";
 import { MarkerSettingsPopup, markerTextSize, type MarkerSettings, type MarkerSymbol } from "@/components/MarkerSettingsPopup";
 import { openingCatalogueCategoryLabel, openingCatalogueDefaultDimensions } from "@/lib/openingCatalogue";
 import { ADD_TO_PLAN_MODES, type AddToPlanMode } from "@/lib/addToPlanModes";
+import { ElectricalLayoutPanel, type ElectricalDisplayOptions } from "@/components/ElectricalLayoutPanel";
+import { ElectricalLayoutOverlay } from "@/components/ElectricalLayoutOverlay";
+import { canAddElectricalObstacle, createElectricalConnection, DEFAULT_ELECTRICAL_CONNECTION, DEFAULT_ELECTRICAL_LAYOUT, electricalConnectionPoints, electricalObstacleIds, isElectricalObstacle, type ElectricalCircuit, type ElectricalConnection, type ElectricalLayoutData } from "@/lib/electricalLayout";
 import { propagateSquaredWallEdit } from "@/lib/wallDragGeometry";
 import { refreshWallEndpointAttachments, releaseWallLengthOverride, appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleBridgeCorners, ensureVisibleJunctionCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, trimOpenWallEndpoint, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
 import type { CatalogueItem, Obstacle, Opening, Point2D, Room, RoomFinishes } from "@/lib/types";
@@ -90,8 +93,10 @@ type TouchNavigationGesture = { pointerIds: [number, number]; initialDistance: n
 type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; historyBefore: Snapshot; points: Point2D[]; pointerStart: Point2D; detachedPointIndices: number[]; keepDetachedPointIndices: number[] };
 type OpeningDrag = { openingId: string; before: Snapshot; wallId: string; segmentIndex: number; sideSign: -1 | 1; initialOpensInward: boolean };
 type RoomLabelDrag = { roomId: string; before: Snapshot; pointerStart: Point2D; labelStart: Point2D; moved: boolean };
+type ElectricalEditorSnapshot = { layout: ElectricalLayoutData; rooms: Room[]; fixtures: Obstacle[] };
+type ElectricalSegmentDrag = { connectionId: string; segmentIndex: number; start: Point2D; points: Point2D[] };
 export type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number; roomFinishes?: Record<string, RoomFinishes>; viewSettings?: PersistedViewSettings };
-interface Props extends PlacementProps { annotateRequest?: number; viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; externalOpeningSyncRequest?: { room: Room; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
+interface Props extends PlacementProps { annotateRequest?: number; viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; externalOpeningSyncRequest?: { room: Room; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; electricalLayoutWindowRequest?: number; electricalLayout?: ElectricalLayoutData; onElectricalLayoutChange?: (layout: ElectricalLayoutData) => void; electricalElementLimit?: number | null; electricalLimitLoading?: boolean; electricalLimitStatus?: string | null; onElectricalLimitStatusChange?: (status: string | null) => void; }
 
 interface Props { initialFloorplan?: PersistedFloorplan | null; onPersistFloorplan?: (floorplan: PersistedFloorplan, rooms: Room[]) => void; }
 const DEFAULT_SIZE = { width: 1100, height: 700 };
@@ -882,7 +887,7 @@ function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultTh
   return overrides;
 }
 
-export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, externalOpeningSyncRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
+export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, externalOpeningSyncRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout, electricalLayoutWindowRequest = 0, electricalLayout = DEFAULT_ELECTRICAL_LAYOUT, onElectricalLayoutChange, electricalElementLimit = 5, electricalLimitLoading = false, electricalLimitStatus, onElectricalLimitStatusChange }: Props) {
   const [walls, setWalls] = useState<Wall[]>([]);
   const [restoredFinishes, setRestoredFinishes] = useState<Record<string, RoomFinishes>>({});
   const [openings, setOpenings] = useState<FullOpening[]>([]);
@@ -951,6 +956,31 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [hoveredOpeningCatalogueId, setHoveredOpeningCatalogueId] = useState<string | null>(null);
   const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(null);
+  const [dismissedElectricalLayoutWindowRequest, setDismissedElectricalLayoutWindowRequest] = useState(electricalLayoutWindowRequest);
+  const electricalWindowOpen = electricalLayoutWindowRequest > dismissedElectricalLayoutWindowRequest;
+  const [electricalMode, setElectricalMode] = useState(false);
+  const [electricalConnecting, setElectricalConnecting] = useState(false);
+  const [electricalSourceId, setElectricalSourceId] = useState<string | null>(null);
+  const [selectedElectricalConnectionId, setSelectedElectricalConnectionId] = useState<string | null>(null);
+  const [electricalDefaults, setElectricalDefaults] = useState(DEFAULT_ELECTRICAL_CONNECTION);
+  const [electricalDisplay, setElectricalDisplay] = useState<ElectricalDisplayOptions>({ symbols: true, connections: true, circuitLabels: false });
+  const [activeElectricalCircuitId, setActiveElectricalCircuitId] = useState<string | null>(null);
+  const [electricalPointer, setElectricalPointer] = useState<Point2D | null>(null);
+  const electricalWaypointDrag = useRef<{ connectionId: string; index: number } | null>(null);
+  const electricalSegmentDrag = useRef<ElectricalSegmentDrag | null>(null);
+  const electricalUndo = useRef<ElectricalEditorSnapshot[]>([]);
+  const electricalRedo = useRef<ElectricalEditorSnapshot[]>([]);
+  useEffect(() => {
+    if (!electricalConnecting) return;
+    const cancelConnect = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]"))) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      setElectricalConnecting(false); setElectricalSourceId(null); setElectricalPointer(null);
+      onElectricalLimitStatusChange?.("Connection cancelled.");
+    };
+    window.addEventListener("keydown", cancelConnect, true);
+    return () => window.removeEventListener("keydown", cancelConnect, true);
+  }, [electricalConnecting, onElectricalLimitStatusChange]);
   const [openingCatalogueItems, setOpeningCatalogueItems] = useState<CatalogueItem[]>([]);
   const [openingCatalogueError, setOpeningCatalogueError] = useState<string | null>(null);
   const [openingCatalogueId, setOpeningCatalogueId] = useState("");
@@ -1064,6 +1094,9 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const storedRoom = projectRooms.find(room => room.source_floorplan_room_id === selectedRoom?.id);
   const fixtures = storedRoom?.obstacles ?? (selectedRoom?.id === activeSourceRoomId ? currentFixtures : []);
   const visibleFixtures = [...projectRooms.filter(room => rooms.some(outline => outline.id === room.source_floorplan_room_id) && room.source_floorplan_room_id !== selectedRoom?.id).flatMap(room => room.obstacles), ...fixtures];
+  const electricalFixtures = visibleFixtures.map((fixture) => fixturePreview?.id === fixture.id ? fixturePreview : fixture).filter(isElectricalObstacle);
+  const electricalObjects = electricalFixtures.map((fixture) => ({ id: fixture.id, label: fixture.name }));
+  const electricalFixtureById = new Map(electricalFixtures.map((fixture) => [fixture.id, fixture]));
   useLayoutEffect(() => {
     const pending = pendingOpeningRemap.current;
     if (!pending) return;
@@ -1437,8 +1470,174 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   function snapshot(): Snapshot { return { wallThickness, rooms: rooms.map((room) => ({ ...room, vertices: room.vertices.map((point) => ({ ...point })), labelPosition: room.labelPosition ? { ...room.labelPosition } : undefined })), selectedRoomId, walls: cloneWalls(walls), openings: cloneOpenings(openings), measurements: cloneMeasurements(measurements), annotations: cloneAnnotations(annotations), dimensionOffsets: { ...dimensionOffsets }, hiddenDimensions: [...hiddenDimensions] }; }
   function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); }
   function restore(value: Snapshot) { setDefaultWallThicknessInput(null); setWallThicknessInput(null); setWalls(cloneWalls(value.walls)); if (value.wallThickness !== undefined) setWallThickness(value.wallThickness); if (value.rooms) setRooms(value.rooms); setSelectedRoomId(value.selectedRoomId ?? null); setOpenings(cloneOpenings(value.openings)); setMeasurements(cloneMeasurements(value.measurements ?? [])); setAnnotations(cloneAnnotations(value.annotations ?? [])); setDimensionOffsets({ ...(value.dimensionOffsets ?? {}) }); setHiddenDimensions([...(value.hiddenDimensions ?? [])]); setDraft([]); setMeasurementDraft([]); setAnnotationDraft([]); setSelectedAnnotationId(null); setSelectedMeasurement(null); setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); }
-  function undo() { const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous); }
-  function redo() { const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next); }
+  function electricalSnapshot(): ElectricalEditorSnapshot {
+    return {
+      layout: JSON.parse(JSON.stringify(electricalLayout)) as ElectricalLayoutData,
+      rooms: JSON.parse(JSON.stringify(projectRooms)) as Room[],
+      fixtures: JSON.parse(JSON.stringify(currentFixtures)) as Obstacle[],
+    };
+  }
+  function recordElectricalUndo(before = electricalSnapshot()) {
+    electricalUndo.current = [...electricalUndo.current.slice(-29), before];
+    electricalRedo.current = [];
+  }
+  function applyElectricalLayout(next: ElectricalLayoutData, recordUndo = true) {
+    if (recordUndo) recordElectricalUndo();
+    onElectricalLayoutChange?.(next);
+  }
+  function updateElectricalConnection(id: string, patch: Partial<ElectricalConnection>) {
+    applyElectricalLayout({ ...electricalLayout, connections: electricalLayout.connections.map((item) => item.id === id ? { ...item, ...patch } : item) });
+  }
+  function deleteElectricalConnection(id: string) {
+    if (!electricalLayout.connections.some((item) => item.id === id)) return;
+    applyElectricalLayout({ ...electricalLayout, connections: electricalLayout.connections.filter((item) => item.id !== id) });
+    setSelectedElectricalConnectionId((current) => current === id ? null : current);
+  }
+  function createElectricalCircuit() {
+    const circuit: ElectricalCircuit = {
+      id: "electrical-circuit-" + (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)),
+      name: "New circuit",
+      color: DEFAULT_ELECTRICAL_CONNECTION.color,
+    };
+    applyElectricalLayout({ ...electricalLayout, circuits: [...electricalLayout.circuits, circuit] });
+    setActiveElectricalCircuitId(circuit.id);
+  }
+  function updateElectricalCircuit(id: string, patch: Partial<ElectricalCircuit>) {
+    applyElectricalLayout({ ...electricalLayout, circuits: electricalLayout.circuits.map((item) => item.id === id ? { ...item, ...patch } : item) });
+  }
+  function deleteElectricalCircuit(id: string) {
+    applyElectricalLayout({
+      circuits: electricalLayout.circuits.filter((item) => item.id !== id),
+      connections: electricalLayout.connections.map((item) => item.circuitId === id ? { ...item, circuitId: undefined, colorOverride: true } : item),
+    });
+    setActiveElectricalCircuitId((current) => current === id ? null : current);
+  }
+  function chooseElectricalEndpoint(id: string) {
+    setSelectedFixtureId(id);
+    if (!electricalSourceId) {
+      setElectricalSourceId(id);
+      onElectricalLimitStatusChange?.("Source selected. Choose one or more destination fittings.");
+      return;
+    }
+    if (electricalSourceId === id) {
+      setElectricalSourceId(null);
+      onElectricalLimitStatusChange?.("Source cleared. Choose another source fitting.");
+      return;
+    }
+    const circuitId = activeElectricalCircuitId ?? undefined;
+    const circuit = electricalLayout.circuits.find((item) => item.id === circuitId);
+    const connection = createElectricalConnection({
+      fromId: electricalSourceId,
+      toId: id,
+      ...electricalDefaults,
+      ...(circuitId ? { circuitId, colorOverride: false } : {}),
+    }, electricalLayout.connections, electricalDefaults);
+    if (!connection) {
+      onElectricalLimitStatusChange?.("That connection already exists, or the selected endpoints are invalid.");
+      return;
+    }
+    applyElectricalLayout({ ...electricalLayout, connections: [...electricalLayout.connections, connection] });
+    setSelectedElectricalConnectionId(connection.id);
+    onElectricalLimitStatusChange?.(circuit ? "Connection added to " + circuit.name + "." : "Connection added.");
+  }
+  function beginElectricalConnectionDrag(event: ReactPointerEvent<SVGPolylineElement>, connection: ElectricalConnection) {
+    event.preventDefault(); event.stopPropagation();
+    setSelectedElectricalConnectionId(connection.id);
+    if (!electricalMode || event.button !== 0) return;
+    const from = electricalFixtureById.get(connection.fromId)?.center;
+    const to = electricalFixtureById.get(connection.toId)?.center;
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!from || !to || !svg) return;
+    const points = electricalConnectionPoints(connection, from, to);
+    const pointer = floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport);
+    let segmentIndex = 0; let closest = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < points.length - 1; index++) {
+      const a = points[index]; const b = points[index + 1];
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1, ((pointer.x - a.x) * dx + (pointer.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      const distance = Math.hypot(pointer.x - (a.x + t * dx), pointer.y - (a.y + t * dy));
+      if (distance < closest) { closest = distance; segmentIndex = index; }
+    }
+    recordElectricalUndo();
+    electricalSegmentDrag.current = { connectionId: connection.id, segmentIndex, start: pointer, points: points.map((point) => ({ ...point })) };
+    svg.setPointerCapture(event.pointerId);
+  }
+  function addElectricalWaypoint(event: ReactMouseEvent<SVGPolylineElement>, connection: ElectricalConnection) {
+    event.preventDefault(); event.stopPropagation();
+    const from = electricalFixtureById.get(connection.fromId)?.center;
+    const to = electricalFixtureById.get(connection.toId)?.center;
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!electricalMode || !from || !to || !svg) return;
+    const point = canvasPointFromClient(event.clientX, event.clientY, svg, false);
+    const points = electricalConnectionPoints(connection, from, to);
+    let segmentIndex = 0; let closest = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < points.length - 1; index++) {
+      const a = points[index]; const b = points[index + 1];
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      const distance = Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+      if (distance < closest) { closest = distance; segmentIndex = index; }
+    }
+    const waypoints = points.slice(1, -1);
+    waypoints.splice(segmentIndex, 0, point);
+    updateElectricalConnection(connection.id, { routing: "MANUAL", waypoints });
+  }
+  function beginElectricalWaypointDrag(event: ReactPointerEvent<SVGCircleElement>, connection: ElectricalConnection, index: number) {
+    event.preventDefault(); event.stopPropagation();
+    if (!electricalMode || event.button !== 0) return;
+    recordElectricalUndo();
+    electricalWaypointDrag.current = { connectionId: connection.id, index };
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId);
+  }
+  function removeElectricalWaypoint(event: ReactMouseEvent<SVGCircleElement>, connection: ElectricalConnection, index: number) {
+    event.preventDefault(); event.stopPropagation();
+    if (!electricalMode) return;
+    const waypoints = connection.waypoints.filter((_, waypointIndex) => waypointIndex !== index);
+    updateElectricalConnection(connection.id, { routing: "MANUAL", waypoints });
+  }
+  function setElectricalModeEnabled(enabled: boolean) {
+    setElectricalMode(enabled);
+    setTool("SELECT");
+    if (!enabled) {
+      setElectricalConnecting(false);
+      setElectricalSourceId(null);
+      setSelectedElectricalConnectionId(null);
+      setElectricalPointer(null);
+    } else {
+      setSelectedPoint(null); setSelectedSegment(null); setSelectedOpeningId(null);
+      setSelectedAnnotationId(null); setSelectedMeasurement(null); setSelectedFixtureId(null); onElementSelected?.(null);
+    }
+  }
+  function closeElectricalWindow() {
+    setDismissedElectricalLayoutWindowRequest(electricalLayoutWindowRequest);
+    onCancelPlacement?.();
+    setElectricalModeEnabled(false);
+    onElectricalLimitStatusChange?.(null);
+  }
+  function undo() {
+    if (electricalMode && electricalUndo.current.length) {
+      const previous = electricalUndo.current.at(-1)!;
+      electricalUndo.current = electricalUndo.current.slice(0, -1);
+      electricalRedo.current = [...electricalRedo.current.slice(-29), electricalSnapshot()];
+      if (previous.rooms.length) onPlanRoomsChange?.(previous.rooms);
+      else currentOnFixturesChange?.(previous.fixtures);
+      onElectricalLayoutChange?.(previous.layout);
+      return;
+    }
+    const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous);
+  }
+  function redo() {
+    if (electricalMode && electricalRedo.current.length) {
+      const next = electricalRedo.current.at(-1)!;
+      electricalRedo.current = electricalRedo.current.slice(0, -1);
+      electricalUndo.current = [...electricalUndo.current.slice(-29), electricalSnapshot()];
+      if (next.rooms.length) onPlanRoomsChange?.(next.rooms);
+      else currentOnFixturesChange?.(next.fixtures);
+      onElectricalLayoutChange?.(next.layout);
+      return;
+    }
+    const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next);
+  }
 
   function moveCornerPreservingTopology(baseline: Wall[], selection: PointSelection, next: Point2D, options?: { allowSubMinimumLength?: boolean }): Wall[] {
     baseline = refreshWallEndpointAttachments(baseline);
@@ -2154,6 +2353,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
 
   function beginFixtureDrag(event: ReactPointerEvent<SVGElement>, fixture: Obstacle) {
+    if (electricalMode && !isElectricalObstacle(fixture)) return;
     if (event.button !== 0 || placement) return;
     if (tool === "ADD_MEASURE") {
       event.preventDefault(); event.stopPropagation();
@@ -2161,6 +2361,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       return;
     }
     const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
+    if (electricalMode && isElectricalObstacle(fixture)) recordElectricalUndo();
     selectFixtureForEdit(fixture, owner);
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
@@ -2196,6 +2397,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
 
   function openFixtureContextMenu(event: ReactMouseEvent<SVGElement>, fixture: Obstacle) {
+    if (electricalMode && !isElectricalObstacle(fixture)) return;
     if (placement) return;
     const owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id));
     selectFixtureForEdit(fixture, owner);
@@ -2244,6 +2446,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   function confirmFixtureDeletion() {
     const fixture = fixtureDeleteConfirmation;
     if (!fixture || !onFixturesChange) return;
+    if (electricalMode && isElectricalObstacle(fixture)) recordElectricalUndo();
     onFixturesChange(fixtures.filter((item) => item.id !== fixture.id));
     if (selectedFixtureId === fixture.id) {
       setSelectedFixtureId(null);
@@ -3130,6 +3333,49 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
 
   function movePoint(event: ReactPointerEvent<SVGSVGElement>) {
+    const waypointDrag = electricalWaypointDrag.current;
+    if (waypointDrag) {
+      const point = canvasPoint(event, false);
+      const next = {
+        ...electricalLayout,
+        connections: electricalLayout.connections.map((item) => item.id === waypointDrag.connectionId
+          ? { ...item, waypoints: item.waypoints.map((waypoint, index) => index === waypointDrag.index ? point : waypoint) }
+          : item),
+      };
+      onElectricalLayoutChange?.(next);
+      return;
+    }
+    const segmentDrag = electricalSegmentDrag.current;
+    if (segmentDrag) {
+      const pointer = canvasPoint(event, false);
+      const delta = { x: pointer.x - segmentDrag.start.x, y: pointer.y - segmentDrag.start.y };
+      const baseline = segmentDrag.points;
+      const index = segmentDrag.segmentIndex;
+      const first = baseline[index]; const second = baseline[index + 1];
+      const connection = electricalLayout.connections.find((item) => item.id === segmentDrag.connectionId);
+      if (!first || !second || !connection) return;
+      const points = baseline.map((point) => ({ ...point }));
+      const horizontal = Math.abs(second.x - first.x) >= Math.abs(second.y - first.y);
+      if (horizontal) {
+        const y = (first.y + second.y) / 2 + delta.y;
+        if (index === 0) points.splice(0, 2, points[0], { x: points[0].x, y }, { x: points[1].x, y });
+        else if (index === baseline.length - 2) points.splice(index, 2, { x: first.x, y }, { x: second.x, y }, points.at(-1)!);
+        else { points[index].y = y; points[index + 1].y = y; }
+      } else {
+        const x = (first.x + second.x) / 2 + delta.x;
+        if (index === 0) points.splice(0, 2, points[0], { x, y: points[0].y }, { x, y: points[1].y });
+        else if (index === baseline.length - 2) points.splice(index, 2, { x, y: first.y }, { x, y: second.y }, points.at(-1)!);
+        else { points[index].x = x; points[index + 1].x = x; }
+      }
+      onElectricalLayoutChange?.({
+        ...electricalLayout,
+        connections: electricalLayout.connections.map((item) => item.id === connection.id
+          ? { ...item, routing: "MANUAL", waypoints: points.slice(1, -1) }
+          : item),
+      });
+      return;
+    }
+    if (electricalMode && electricalConnecting && electricalSourceId) setElectricalPointer(canvasPoint(event, false));
     if (placement) { setPlacementPoint(canvasPoint(event,false)); return; }
     const panStart = panDrag.current;
     if (panStart) {
@@ -3296,11 +3542,15 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
 
   function finishPointDrag(event?: ReactPointerEvent<SVGSVGElement>) {
+    if (electricalWaypointDrag.current) { electricalWaypointDrag.current = null; return; }
+    if (electricalSegmentDrag.current) { electricalSegmentDrag.current = null; return; }
     if (placement && event) {
       const down=placementPress.current; placementPress.current=null;
       if (event.type!=="pointercancel" && event.button===0 && down && Math.hypot(event.clientX-down.x,event.clientY-down.y)<5) {
         const point=canvasPoint(event,false), candidate=resolvePlacement(placement,point,planRooms,planPlacementWalls);
         if (candidate) {
+          if (!placement.opening && isElectricalObstacle(candidate.obstacle) && !electricalLimitLoading
+            && canAddElectricalObstacle(projectRooms.length ? projectRooms : planRooms, candidate.obstacle, electricalElementLimit)) recordElectricalUndo();
           onCommitPlacement?.(candidate);
           if (!placement.opening && candidate.roomId) {
             setElementTab(candidate.obstacle.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : "FURNITURE");
@@ -4067,7 +4317,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
           <div className="button-grid full-plan-action-row" role="group" aria-label="Room tools"><button className={addRoomPanelOpen ? "active" : ""} aria-pressed={addRoomPanelOpen} onClick={() => { cancelAnnotationMode(); onElementSelected?.(null); setAddRoomPanelOpen((current) => !current); setTool("SELECT"); setRoomActionError(null); }}>Add room</button><button className={annotationPanelOpen ? "active" : ""} type="button" aria-pressed={annotationPanelOpen} onClick={() => { cancelAnnotationMode(); onElementSelected?.(null); setAnnotationPanelOpen(true); }}>Annotate</button></div>
           {addRoomPanelOpen && <div className="room-action-panel"><p>Select a boundary wall to create a new room on the outside of it</p><label className="field"><span>Room depth ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={200} valueMm={roomDepthInput} units={displayUnits} onMmChange={setRoomDepthInput} /></label><button className="review-style-button" aria-label="Apply Add room" onClick={addSelectedRoom}>Add room</button></div>}
           {roomActionError && <p className="inline-error" role="alert">{roomActionError}</p>}
-          <div className="button-grid editor-history-row"><button title="Undo last operation (Ctrl+Z)" onClick={undo} disabled={!history.length}>↶ Undo</button><button title="Redo last operation (Ctrl+Y)" onClick={redo} disabled={!future.length}>↷ Redo</button></div>
+          <div className="button-grid editor-history-row"><button title="Undo last operation (Ctrl+Z)" onClick={undo} disabled={!history.length && !(electricalMode && electricalUndo.current.length)}>↶ Undo</button><button title="Redo last operation (Ctrl+Y)" onClick={redo} disabled={!future.length && !(electricalMode && electricalRedo.current.length)}>↷ Redo</button></div>
           <div className={`full-plan-overall-properties${overallPropertiesExpanded ? " expanded" : ""}`}>
             <button type="button" className="full-plan-overall-toggle" aria-expanded={overallPropertiesExpanded} onClick={() => setOverallPropertiesExpanded((current) => !current)}><strong>Overall properties</strong><span aria-hidden>{overallPropertiesExpanded ? "−" : "+"}</span></button>
             {overallPropertiesExpanded && <div className="full-plan-overall-content">
@@ -4097,7 +4347,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         <div className="resizable-floorplan-window">
          {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div>{sourceUrl && !importing && <div className="floorplan-background-actions drawing-navigation-row" role="group" aria-label="Drawing actions"><button type="button" className="fit-view-button floorplan-background-action" onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="fit-view-button floorplan-background-action" onClick={clearImportedDrawing}>Remove drawing</button></div>}<div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><ViewToggle label="Room names" active={showRoomNames} onToggle={() => setShowRoomNames((current) => !current)} /><ViewToggle label="Measurements" active={showMeasurements} onToggle={() => { const enabled = !showMeasurements; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><ViewToggle label="Wall thickness" active={showWallThickness} onToggle={() => setShowWallThickness((current) => !current)} /><ViewToggle label="Annotations" active={showAnnotations} onToggle={() => setShowAnnotations((current) => !current)} /><ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} /><ViewToggle label="Coordinates table" active={coordinatesToolbarOpen} onToggle={() => onToggleToolbar("floorplan-coordinates")} /></div></div></FloatingToolbar>}
 <div className="full-plan-canvas">{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}
-          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={`mode-${tool.toLowerCase()}`} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onContextMenuCapture={event => { if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (beginTouchNavigation(event)) return; if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMoveCapture={(event) => { moveTouchNavigation(event); }} onPointerUpCapture={(event) => { endTouchNavigation(event); }} onPointerCancelCapture={(event) => { endTouchNavigation(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
+          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={"mode-" + tool.toLowerCase() + (electricalMode ? " electrical-layout-active" : "")} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onContextMenuCapture={event => { if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (electricalMode) { const electricalTarget = event.target instanceof Element && event.target.closest("[data-electrical-interactive]"); if (!electricalTarget) { if (beginTouchNavigation(event)) return; if (placement && isElectricalObstacle(placement.obstacle)) { beginPan(event); return; } if (event.button === 1) { beginPan(event); return; } event.preventDefault(); event.stopPropagation(); if (electricalConnecting && electricalSourceId) onElectricalLimitStatusChange?.("Connection selection cancelled. Select a source fitting to start again."); setElectricalSourceId(null); setElectricalPointer(null); setSelectedElectricalConnectionId(null); setSelectedFixtureId(null); onElementSelected?.(null); return; } if (beginTouchNavigation(event)) return; return; } if (beginTouchNavigation(event)) return; if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMoveCapture={(event) => { moveTouchNavigation(event); }} onPointerUpCapture={(event) => { endTouchNavigation(event); }} onPointerCancelCapture={(event) => { endTouchNavigation(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
             if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && (target.classList.contains("canvas-background") || target.classList.contains("plan-grid"))); if (background && tool === "SELECT") clearActiveDrawingSelection(); return; }
             const rawRequested = canvasPoint(event, false);
@@ -4113,6 +4363,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
             if (!draft.length) setLockedViewport(viewport);
             setDraft((current) => current.length && squaredWalls ? [...current, squareDrawPoint(current.at(-1)!, requested)] : [...current, requested]);
           }} onDoubleClick={(event) => { if (annotationTool === "POLYLINE") { event.preventDefault(); event.stopPropagation(); finishAnnotationPolyline(); return; } if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { if (placement) { event.preventDefault(); onCancelPlacement?.(); return; } const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && target.classList.contains("canvas-background")); if (!background) return; event.preventDefault(); if (tool === "DRAW") { commitDraft(); return; } setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setSelectedMeasurement(null); setSelectedAnnotationId(null); setContextMenu(null); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }}>
+             <g className="electrical-architecture-layer" opacity={electricalMode ? 0.42 : 1} pointerEvents={electricalMode ? "none" : "auto"}>
              {sourceUrl && !importing && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
             {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import a drawing as a background reference</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
             {detectedRooms.map((room) => { const outline = room.vertices.map(toScreen); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } if (tool === "SELECT") { event.stopPropagation(); clearActiveDrawingSelection(); } }} />; })}
@@ -4121,7 +4372,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
               const outline = room.vertices.map(toScreen); const labelPosition = toScreen(roomLabelPosition(room)); const nameWidth = roomNameEditorWidth(room.name); const labelWidth = nameWidth + 12; const labelHeight = 30; const dragging = draggingRoomLabelId === room.id;
               return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } if (tool !== "DRAW") { event.stopPropagation(); clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className={`room-name-editor${dragging ? " dragging" : ""}`} x={labelPosition.x - labelWidth / 2} y={labelPosition.y - labelHeight / 2} width={labelWidth} height={labelHeight} onPointerDown={(event) => beginRoomLabelDrag(event, room)}><div className="room-name-drag-shell"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } event.stopPropagation(); if (tool !== "DRAW") { clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); }} /></div></foreignObject>}</g>;
             })}
-            {visibleFixtures.map((storedFixture) => {
+            {visibleFixtures.filter((fixture) => !isElectricalObstacle(fixture)).map((storedFixture) => {
               const fixture = fixturePreview?.id === storedFixture.id ? fixturePreview : storedFixture;
               const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
               const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
@@ -4267,6 +4518,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
                 return <g pointerEvents="none" stroke="#60c7f2" strokeWidth="3"><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} /><circle cx={a.x} cy={a.y} r="5" fill="white" /><circle cx={b.x} cy={b.y} r="5" fill="white" /></g>;
               })()}
             </g>}
+            </g>
+            <ElectricalLayoutOverlay fixtures={electricalFixtures} connections={electricalMode ? electricalLayout.connections : []} circuits={electricalLayout.circuits} toScreen={toScreen} showSymbols={!electricalMode || electricalDisplay.symbols} showConnections={electricalMode && electricalDisplay.connections} showLabels={electricalMode && electricalDisplay.circuitLabels} selectedFixtureId={selectedFixtureId} sourceId={electricalSourceId} selectedConnectionId={selectedElectricalConnectionId} connecting={electricalMode && electricalConnecting} cursor={electricalPointer} defaults={electricalDefaults} onFixturePointerDown={(event, fixture) => { if (electricalMode && electricalConnecting) { event.preventDefault(); event.stopPropagation(); chooseElectricalEndpoint(fixture.id); return; } beginFixtureDrag(event, fixture); }} onFixtureActivate={(fixture) => { if (electricalMode && electricalConnecting) { chooseElectricalEndpoint(fixture.id); return; } const owner = projectRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)); selectFixtureForEdit(fixture, owner); if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id); }} onFixtureContextMenu={openFixtureContextMenu} onConnectionPointerDown={beginElectricalConnectionDrag} onConnectionDoubleClick={addElectricalWaypoint} onWaypointPointerDown={beginElectricalWaypointDrag} onWaypointDoubleClick={removeElectricalWaypoint} />
             {placement && placementPoint && <PlacementPreview2D request={placement} point={placementPoint} candidate={placementCandidate} toScreen={toScreen} units={displayUnits} />}
           </FloorPlanCanvas>
           {sourceUrl && !importing && calibrating && <div className="drawing-calibration-panel" role="dialog" aria-modal="false" aria-labelledby="drawing-calibration-title" onKeyDown={(event) => {
@@ -4302,5 +4555,37 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         {toolbarVisibility["floorplan-openings"] && !openingEditRequest && <FloatingToolbar title="Add to plan" defaultPosition={{ x: 662, y: 370 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-openings") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={760} onClose={() => { onElementSelected?.(null); onToggleToolbar("floorplan-openings"); }}>{openingPanel}</FloatingToolbar>}
       </aside>
     </div>
+    {electricalWindowOpen && <FloatingToolbar title="Electrical layout" className="electrical-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 380 }} maxHeight={760} layoutResetKey={toolbarLayoutResetKey} onClose={closeElectricalWindow}>
+      <ElectricalLayoutPanel
+        mode={electricalMode}
+        onModeChange={setElectricalModeEnabled}
+        connecting={electricalConnecting}
+        onConnect={() => { setElectricalConnecting((current) => !current); setElectricalSourceId(null); setElectricalPointer(null); onElectricalLimitStatusChange?.(null); }}
+        onAdd={() => {
+          if (electricalLimitLoading) { onElectricalLimitStatusChange?.("Checking your electrical-fitting allowance. Try again in a moment."); return; }
+          selectAddToPlanMode("ELECTRICAL");
+          if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings");
+        }}
+        status={electricalLimitStatus}
+        maximum={electricalElementLimit}
+        currentCount={electricalObstacleIds(projectRooms.length ? projectRooms : planRooms).size}
+        defaults={electricalDefaults}
+        onDefaultsChange={setElectricalDefaults}
+        display={electricalDisplay}
+        onDisplayChange={setElectricalDisplay}
+        objects={electricalObjects}
+        connections={electricalLayout.connections}
+        selectedConnectionId={selectedElectricalConnectionId}
+        onSelectConnection={setSelectedElectricalConnectionId}
+        onUpdateConnection={updateElectricalConnection}
+        onDeleteConnection={deleteElectricalConnection}
+        circuits={electricalLayout.circuits}
+        activeCircuitId={activeElectricalCircuitId}
+        onActiveCircuitChange={setActiveElectricalCircuitId}
+        onCreateCircuit={createElectricalCircuit}
+        onUpdateCircuit={updateElectricalCircuit}
+        onDeleteCircuit={deleteElectricalCircuit}
+      />
+    </FloatingToolbar>}
   </section>;
 }

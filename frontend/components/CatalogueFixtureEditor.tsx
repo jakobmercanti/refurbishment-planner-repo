@@ -6,6 +6,7 @@ import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { EditableNumberInput } from "@/components/EditableNumberInput";
 import { FixturePreview } from "@/components/FixturePreview";
 import { ELECTRICAL_SUBCATEGORIES, electricalPlacement } from "@/lib/electricalAssets";
+import { isElectricalObstacle } from "@/lib/electricalLayout";
 import { constrainObstacleToRoom, DEFAULT_OBSTACLE_WALL_LOCK, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
 import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import { MACRO_CATEGORY_ORDER, macroCategoryDisplay, macroCategoryForCategoryId, type MacroCategoryId } from "@/lib/catalogueTaxonomy";
@@ -49,6 +50,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
 }) {
   const roomWalls = room.source_floorplan_room_id ? placementWalls : [];
   const electrical = categoryFilter === "electric";
+  const listedRoomObstacles = electrical ? room.obstacles.filter(isElectricalObstacle) : room.obstacles;
   const [mountingGap, setMountingGap] = useState(550);
   const [baseUnitId, setBaseUnitId] = useState("");
   const [mountingError, setMountingError] = useState("");
@@ -325,9 +327,9 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
         }
       }}>{existing ? "Done" : "Add element"}</button>
     </>}
-    {room.obstacles.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
+    {listedRoomObstacles.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={elementsListExpanded} onClick={() => setElementsListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{elementsListExpanded ? "−" : "›"}</span></button>
-      {elementsListExpanded && <div className="fixture-section-content elements-list-content"><div className="fixture-list">{room.obstacles.map(item => <article key={item.id} data-element-id={item.id} className={item.id === editingId ? "editing" : ""}>
+      {elementsListExpanded && <div className="fixture-section-content elements-list-content"><div className="fixture-list">{listedRoomObstacles.map(item => <article key={item.id} data-element-id={item.id} className={item.id === editingId ? "editing" : ""}>
         <strong>{item.name}</strong><button onClick={() => { const product = items.find(p => p.id === item.model_id); if (product && isRoomFixture(product)) { setMacroCategory(macroCategoryForCategoryId(product.category_id)); setCategory(electrical ? product.subcategory : product.category_id); setObjectId(product.id); } setWallLockPreference(item.wall_lock ?? false); setEditingId(item.id); onElementSelected?.({ id: item.id, roomId: room.id }); }}>Edit</button>
         <button aria-label={`Remove ${item.name}`} onClick={() => { onChange(room.obstacles.filter(p => p.id !== item.id)); if (item.id === editingId) { setEditingId(null); onEditEnd?.(); } }}>×</button>
       </article>)}</div></div>}

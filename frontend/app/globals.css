@@ -231,6 +231,52 @@ button { font: inherit; }
 .floating-toolbar .floating-toolbar-content .add-to-plan-mode { width: 100%; height: 38px; min-height: 38px; box-sizing: border-box; margin-bottom: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: #f9faf8; color: var(--ink); font: 700 13px/1.2 var(--font-sans); }
 .add-to-plan-mode:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .electrical-catalogue-empty { margin: 4px 0 8px; padding: 12px; border: 1px dashed #cbd6cf; border-radius: 8px; background: #fafcfb; color: var(--muted); font-size: 12px; line-height: 1.45; text-align: center; }
+.electrical-layout-window { max-width: calc(100vw - 16px); }
+.electrical-layout-panel { display: grid; gap: 9px; padding: 10px; }
+.electrical-mode-toggle { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: #f4f8fb; color: var(--ink); }
+.electrical-mode-toggle input { margin: 2px 0 0; accent-color: var(--deep); }
+.electrical-mode-toggle span { display: grid; gap: 3px; }
+.electrical-mode-toggle strong { font: 700 11px var(--font-mono); }
+.electrical-mode-toggle small, .electrical-layout-count, .electrical-layout-hint { color: var(--muted); line-height: 1.4; }
+.electrical-layout-actions, .electrical-circuit-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; align-items: end; }
+.electrical-layout-actions button { min-width: 0; }
+.electrical-layout-actions button[aria-pressed="true"] { border-color: var(--deep); background: var(--deep); color: #fff; }
+.electrical-layout-count, .electrical-layout-status, .electrical-connect-hint, .electrical-layout-empty { margin: 0; font-size: 9px; line-height: 1.45; }
+.electrical-layout-status { padding: 7px 8px; border-radius: 7px; background: #eef4f8; color: var(--muted); }
+.electrical-connect-hint { padding: 7px 8px; border-radius: 7px; background: #fff7e5; color: #705119; }
+.electrical-layout-section, .electrical-layout-help { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfb; }
+.electrical-layout-section > summary, .electrical-layout-help > summary { cursor: pointer; color: var(--ink); font: 700 10px var(--font-mono); }
+.electrical-layout-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 8px; }
+.electrical-layout-grid .field, .electrical-circuit-edit .field { min-width: 0; }
+.electrical-layout-grid input[type="color"], .electrical-circuit-edit input[type="color"] { width: 100%; min-height: 30px; padding: 3px; }
+.electrical-layout-display { display: grid; gap: 7px; margin-top: 8px; }
+.electrical-layout-display label { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 9px; }
+.electrical-layout-display input { accent-color: var(--deep); }
+.electrical-circuit-controls { margin-top: 8px; }
+.electrical-circuit-edit { display: grid; grid-template-columns: minmax(0, 1fr) 75px; gap: 7px; margin-top: 8px; align-items: end; }
+.electrical-circuit-edit .danger-button { grid-column: 1 / -1; }
+.electrical-connection-list { display: grid; gap: 5px; max-height: 125px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; }
+.electrical-connection-list button { display: grid; width: 100%; gap: 3px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); text-align: left; cursor: pointer; }
+.electrical-connection-list button.selected { border-color: var(--blue); background: #eef5fc; }
+.electrical-connection-list button span { overflow-wrap: anywhere; font-size: 9px; }
+.electrical-connection-list button small { color: var(--muted); font-size: 8px; }
+.electrical-connection-properties { display: grid; gap: 7px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.electrical-connection-endpoints { display: grid; gap: 4px; margin: 0; color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+.electrical-connection-endpoints strong { color: var(--ink); }
+.electrical-layout-hint { margin: 0; font-size: 8px; }
+.electrical-layout-help p { margin: 7px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.electrical-layout-active > .plan-grid { opacity: .2; }
+.electrical-layout-active .electrical-architecture-layer { filter: grayscale(.48); }
+.electrical-connection-preview { opacity: .8; }
+.electrical-route-waypoint { fill: white; stroke: #1769aa; stroke-width: 2; vector-effect: non-scaling-stroke; cursor: move; pointer-events: all; }
+.electrical-fixture:focus-visible { outline: none; filter: drop-shadow(0 0 3px #1769aa); }
+.electrical-connection-label, .electrical-circuit-label { fill: var(--ink); paint-order: stroke; stroke: white; stroke-width: 4px; stroke-linejoin: round; font: 700 9px var(--font-mono); pointer-events: none; }
+.electrical-source-highlight { fill: #1f80d6; fill-opacity: .12; stroke: #1f80d6; stroke-width: 2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: none; }
+@media (max-width: 480px) {
+  .electrical-layout-panel { padding: 7px; }
+  .electrical-layout-grid { gap: 5px; }
+  .electrical-layout-actions { gap: 5px; }
+}
 .catalogue-plan-link { font: 11px var(--font-mono); color: var(--deep); }
 .catalogue-object-preview.ellipse span { border-radius: 50%; }
 .catalogue-object-preview span { width: 54%; height: 42px; display: block; border-radius: 5px 5px 2px 2px; background: var(--object-colour); box-shadow: inset 0 -8px 0 rgba(0,0,0,.08), 0 8px 16px rgba(21,34,28,.16); }

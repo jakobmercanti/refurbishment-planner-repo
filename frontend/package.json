@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test:geometry": "node --test --experimental-strip-types tests/*.test.mts",
+    "test:geometry": "tsx --test tests/*.test.mts",
     "test:projects": "tsx --test tests/*.integration.mts",
     "sync:dulux-colours": "node scripts/sync-dulux-colours.mjs"
   },

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Room } from "./types";
 import type { PersistedFloorplan } from "../components/FullFloorplanEditor";
 import { normalizeRenderCameraState, type RenderCameraState } from "./renderCamera";
+import { DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, normalizeElectricalLayout, type ElectricalLayoutData } from "./electricalLayout";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -42,11 +43,13 @@ const documentSchema = z.object({
   // Camera metadata is optional and sanitized independently so a damaged,
   // non-authoritative view setting cannot prevent the project from opening.
   renderCamera: z.unknown().optional(),
+  electricalLayout: z.unknown().optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
   rooms: Room[]; floorplan: PersistedFloorplan | null; assets: AssetDefinition[]; assetInstances: AssetInstance[];
   renderCamera?: RenderCameraState;
+  electricalLayout?: ElectricalLayoutData;
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -66,9 +69,13 @@ export function parseProject(input: unknown): ProjectDocument {
   inspectJson(input);
   if (!input || typeof input !== "object" || !("schemaVersion" in input) || input.schemaVersion !== 1) throw new Error("Unsupported project schema version. This app supports version 1.");
   const parsed = documentSchema.parse(input) as unknown as ProjectDocument & { renderCamera?: unknown };
-  const { renderCamera: rawCamera, ...projectFields } = parsed;
+  const { renderCamera: rawCamera, electricalLayout: rawElectricalLayout, ...projectFields } = parsed;
   const normalizedCamera = normalizeRenderCameraState(rawCamera);
-  const p: ProjectDocument = normalizedCamera ? { ...projectFields, renderCamera: normalizedCamera } : projectFields;
+  const p: ProjectDocument = {
+    ...projectFields,
+    ...(normalizedCamera ? { renderCamera: normalizedCamera } : {}),
+    electricalLayout: normalizeElectricalLayout(rawElectricalLayout, electricalObstacleIds(parsed.rooms)),
+  };
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
   for (const room of p.rooms) {
     unique(room.obstacles.map(o => o.id)); unique(room.openings.map(o => o.id));
@@ -106,6 +113,6 @@ export function parseProject(input: unknown): ProjectDocument {
 export const migrateProject = parseProject;
 export function newProject(): ProjectDocument {
   const now = new Date().toISOString();
-  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [] };
+  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT };
 }
 export const capabilities = Object.freeze({ canSaveCloudProjects: false, canUploadCloudAssets: false, canUseAiRendering: false, canExport4K: false, cloudStorageBytes: 0, aiRenderCreditsRemaining: 0 });
