@@ -36,7 +36,7 @@ import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { ViewToggle } from "@/components/ViewToggle";
 import { VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 import { captureReferenceImage, normalizeRenderCameraState, placeRenderCameraAtRoomCentre, RENDER_CAMERA_ASPECTS, renderCameraFrameSize, renderCameraFromNavigation, renderCameraForRoom, renderCameraQuality, renderReferencePixels, withEditorOnlySceneObjectsHidden, type CameraVectorMm, type ReferenceImageCapture, type RenderCameraQuality, type RenderCameraState } from "@/lib/renderCamera";
-import { fitCameraZoomForBounds } from "@/lib/viewerCameraFraming";
+import { fitCameraZoomForBounds, updateCameraClippingForBounds } from "@/lib/viewerCameraFraming";
 
 const SCALE = 0.001;
 const DEFAULT_WALL_COLOUR = "#c8c3b9";
@@ -980,6 +980,9 @@ function CameraPreset({ preset, projection, person, target, span, resetKey, zoom
   const skipZoomAfterRestore = useRef(false);
   const [targetX, targetY, targetZ] = target;
   const [spanX, spanY, spanZ] = span;
+  // OrbitControls updates at priority -1. Refresh clipping after navigation and
+  // before rendering; a fitted parallel camera can sit beyond the old 100 m far plane.
+  useFrame(() => updateCameraClippingForBounds(camera, target, span));
   useEffect(() => {
     // A projection toggle remounts the Canvas so that R3F can create the
     // correct camera type. The current camera is restored by CameraViewSync;
@@ -1040,7 +1043,7 @@ function CameraPreset({ preset, projection, person, target, span, resetKey, zoom
       : 1;
     setCameraZoom(camera, baseZoom * zoomPercent / 100);
     camera.updateProjectionMatrix();
-  }, [camera, projection, restoreView, size, size.height, size.width, spanX, spanY, spanZ, targetX, targetY, targetZ, zoomPercent]);
+  }, [camera, preset, projection, resetKey, restoreView, size, size.height, size.width, spanX, spanY, spanZ, targetX, targetY, targetZ, zoomPercent]);
   return null;
 }
 
@@ -1876,9 +1879,8 @@ export function EngineeringViewer(props: ViewerProps) {
     if (handle) clearSelection();
   };
   const activateCameraRigControl = (handle: RenderCameraRigHandle) => {
-    setCameraRigVisible(true);
-
-    selectCameraRigHandle(handle);
+    if (!cameraRigVisible) showCameraInCurrentRoom(handle);
+    else selectCameraRigHandle(handle);
   };
   const panelRoom = panelSelection
     ? props.sceneRooms?.find((sceneRoom) => sceneRoom.id === panelSelection.roomId) ?? (panelSelection.roomId === props.room.id ? props.room : null)
@@ -1905,17 +1907,19 @@ export function EngineeringViewer(props: ViewerProps) {
   }, []);
   const applyPreset = (next: CameraView) => { setProjectionRestore(null); setPreset(next); setActivePreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
   const handleCaptureError = useCallback((message: string) => { setCaptureError(message); setCaptureMenuOpen(true); }, []);
+  function showCameraInCurrentRoom(handle: RenderCameraRigHandle = "position") {
+    // Every reveal starts in the active room, even when a saved camera was
+    // moved outside the plan. Keep its existing lens and output settings.
+    commitRenderCamera(renderCamera
+      ? placeRenderCameraAtRoomCentre(renderCamera, [props.room])
+      : renderCameraForRoom([props.room]));
+    setCameraRigVisible(true);
+    selectCameraRigHandle(handle);
+  }
   function openCameraWindow() {
-    const cameraNeedsRoomPlacement = !renderCamera || renderCamera.placementInitialized !== true;
-    if (cameraNeedsRoomPlacement) {
-      commitRenderCamera(renderCamera
-        ? placeRenderCameraAtRoomCentre(renderCamera, [props.room])
-        : renderCameraForRoom([props.room]));
-    }
-    selectCameraRigHandle("position");
+    showCameraInCurrentRoom();
     setCameraMessage(null);
     setCameraPreviewError(null);
-    setCameraRigVisible(true);
     setCameraWindowOpen(true);
   }
   function closeCameraWindow() {
@@ -2064,9 +2068,12 @@ export function EngineeringViewer(props: ViewerProps) {
 
           <div className="viewer-camera-actions" aria-label="Camera actions">
             <button className="review-style-button" type="button" onClick={() => commitRenderCamera(renderCameraFromNavigation(cameraStateRef.current, cameraRooms))}>Use current view</button>
-            <button className="review-style-button" type="button" onClick={() => commitRenderCamera(placeRenderCameraAtRoomCentre(renderCamera, [props.room]))}>Centre camera in room</button>
+            <button className="review-style-button" type="button" onClick={() => showCameraInCurrentRoom()}>Centre camera in room</button>
             <button className="review-style-button" type="button" onClick={() => commitRenderCamera(renderCameraForRoom([props.room]))}>Reset</button>
-            <label className="viewer-camera-rig-toggle"><input type="checkbox" checked={cameraRigVisible} onChange={(event) => { const visible = event.currentTarget.checked; setCameraRigVisible(visible); if (!visible) setSelectedCameraRigHandle(null); }} /><span>Show camera in scene</span></label>
+            <label className="viewer-camera-rig-toggle"><input type="checkbox" checked={cameraRigVisible} onChange={(event) => {
+              if (event.currentTarget.checked) showCameraInCurrentRoom();
+              else { setCameraRigVisible(false); setSelectedCameraRigHandle(null); }
+            }} /><span>Show camera in scene</span></label>
           </div>
           <div className="viewer-camera-manipulation" role="group" aria-label="Camera position and direction controls">
             <button className={selectedCameraRigHandle === "position" ? "active" : ""} type="button" aria-label="Edit camera position and orientation" aria-pressed={selectedCameraRigHandle === "position"} onClick={() => activateCameraRigControl("position")}>Camera position</button>
@@ -2075,9 +2082,9 @@ export function EngineeringViewer(props: ViewerProps) {
 
           <p className="viewer-camera-hint">
             {selectedCameraRigHandle === "position"
-              ? "Drag the camera to move it; use the rings to turn it. The wireframe cone shows its view direction. Choose Camera direction to aim it."
+              ? "Drag the camera to move it while keeping the objective fixed; use the rings to turn it. The cone shows the view direction."
               : selectedCameraRigHandle === "target"
-                ? "Drag the blue direction target to aim the camera while its position stays fixed; the wireframe cone shows its view. Choose Camera position to move or turn it."
+                ? "Drag the blue objective or its arrows to aim the camera. The camera stays in place and the cone and preview update live."
                 : "Choose Camera position to move or turn it, or Camera direction to aim it in the scene."}
           </p>
           <div className="viewer-camera-settings-row">

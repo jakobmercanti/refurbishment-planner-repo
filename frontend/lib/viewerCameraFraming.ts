@@ -2,6 +2,24 @@ import * as THREE from "three";
 
 export type CameraFramingVector = [number, number, number];
 
+/** Keep the whole plan inside the depth range, including after orbit/pan or a projection restore. */
+export function updateCameraClippingForBounds(
+  camera: THREE.OrthographicCamera | THREE.PerspectiveCamera,
+  center: CameraFramingVector,
+  span: CameraFramingVector,
+) {
+  const distance = Math.hypot(camera.position.x - center[0], camera.position.y - center[1], camera.position.z - center[2]);
+  const radius = Math.hypot(...span) / 2;
+  // Keep the existing range for small rooms, with room for wall thickness and
+  // floor finishes beyond the measured room boundary. Round to avoid updating
+  // the projection matrix for tiny camera movements on every animation frame.
+  const far = Math.max(100, Math.ceil(distance + radius + Math.max(1, radius * 0.1)));
+  if (Number.isFinite(far) && camera.far !== far) {
+    camera.far = far;
+    camera.updateProjectionMatrix();
+  }
+}
+
 /** Return a camera zoom that keeps every scene-bounds corner inside the current view. */
 export function fitCameraZoomForBounds(
   camera: THREE.Camera,
