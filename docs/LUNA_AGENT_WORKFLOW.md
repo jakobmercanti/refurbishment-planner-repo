@@ -6,7 +6,14 @@ This workflow is an opt-in multi-agent execution mode for substantial implementa
 
 All agents in this workflow must use **GPT-5.6 Luna ("Luna 6")** when the Codex runtime supports explicit model selection.
 
-If Luna 6 cannot be selected for the parent or spawned agents, do **not** silently substitute another model family and do not claim that the Luna workflow ran. Report the limitation and ask the user before falling back.
+Required reasoning levels:
+
+- **Parent / team lead: Max**
+- **coder: XHigh**
+- **bug_finder: XHigh**
+- **spec_reviewer: XHigh**
+
+If Luna 6 or the required reasoning level cannot be selected for any role, do **not** silently substitute another model family or lower reasoning level and do not claim that the Luna workflow ran as specified. Report the limitation and ask the user before falling back.
 
 ## Activation
 
@@ -30,11 +37,11 @@ Once activated, keep the Luna workflow active for that task and its direct imple
 
 ## Team
 
-Use one Luna 6 parent/team lead and three Luna 6 project-scoped subagents:
+Use one **Luna 6 Max** parent/team lead and three **Luna 6 XHigh** project-scoped subagents:
 
-- `coder`: the only agent allowed to modify application code, tests, fixtures, configuration, schemas, migrations, or generated project files.
-- `bug_finder`: read-only investigator; reproduces and documents defects but never fixes them.
-- `spec_reviewer`: read-only reviewer; checks the specification before implementation and verifies every acceptance criterion after implementation.
+- `coder` — **Luna 6 XHigh**: the only agent allowed to modify application code, tests, fixtures, configuration, schemas, migrations, or generated project files.
+- `bug_finder` — **Luna 6 XHigh**: read-only investigator; reproduces and documents defects but never fixes them.
+- `spec_reviewer` — **Luna 6 XHigh**: read-only reviewer; checks the specification before implementation and verifies every acceptance criterion after implementation.
 
 The parent/team lead coordinates the work, resolves decisions, evaluates evidence, and produces the final report. In Luna-agent mode the parent must not edit application code or tests.
 
