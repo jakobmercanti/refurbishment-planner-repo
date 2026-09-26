@@ -174,10 +174,12 @@ export default function RenderCameraRig({ cameraState, selectedHandle, onSelectH
           </mesh>
         </group>
       </group>
-      <lineSegments geometry={frustum} raycast={() => undefined}>
-        <lineBasicMaterial color="#52748f" transparent opacity={0.48} depthWrite={false} />
-      </lineSegments>
     </PivotControls>
+    <group matrix={pose} matrixAutoUpdate={false}>
+      <lineSegments geometry={frustum} raycast={() => undefined} renderOrder={20}>
+        <lineBasicMaterial color="#52748f" transparent opacity={0.48} depthTest={false} depthWrite={false} />
+      </lineSegments>
+    </group>
     {selectedHandle === "target" && !directDragging && <>
       <Line points={[position, target]} color="#65798c" lineWidth={1.25} transparent opacity={0.55} raycast={() => undefined} />
       <PivotControls matrix={targetPose} autoTransform={false} fixed scale={90} lineWidth={3}

@@ -247,7 +247,7 @@ export function AddCustomAssetDialog({ classification, onImport }: { classificat
               {(Object.keys(MODEL_IMPORT_FORMATS) as ModelImportFormat[]).map(format => <option value={format} key={format}>{MODEL_IMPORT_FORMATS[format].label}</option>)}
             </select>
           </label>
-          <label className="custom-asset-field">Asset name
+          <label className="custom-asset-field span-all-columns">Asset name
             <input value={assetName} maxLength={200} disabled={busy} onChange={event => setAssetName(event.target.value)} placeholder="e.g. Walnut vanity" />
           </label>
           <label className="custom-asset-field">Model units
@@ -267,7 +267,7 @@ export function AddCustomAssetDialog({ classification, onImport }: { classificat
         <h3>Create a model from photos</h3>
         <p>Upload one front photo, or up to three views of the same object. For multiple photos, include a front view and assign a different angle to each.</p>
         <div className="custom-asset-form-grid">
-          <label className="custom-asset-field span-two">Asset name
+          <label className="custom-asset-field span-all-columns">Asset name
             <input value={assetName} maxLength={200} onChange={event => setAssetName(event.target.value)} placeholder="e.g. Walnut vanity" />
           </label>
           {(["width", "depth", "height"] as const).map(axis => <label className="custom-asset-field" key={axis}>{axis[0].toUpperCase() + axis.slice(1)} (mm)

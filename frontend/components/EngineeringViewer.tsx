@@ -2129,13 +2129,18 @@ export function EngineeringViewer(props: ViewerProps) {
             <button className="review-style-button" type="button" onClick={() => commitRenderCamera(renderCameraForRoom([props.room]))}>Reset</button>
             <label className="viewer-camera-rig-toggle"><input type="checkbox" checked={cameraRigVisible} onChange={(event) => { const visible = event.currentTarget.checked; setCameraRigVisible(visible); if (!visible) setSelectedCameraRigHandle(null); }} /><span>Show camera in scene</span></label>
           </div>
-          <div className="viewer-camera-manipulation" role="group" aria-label="Camera object controls">
-            <button className={selectedCameraRigHandle === "position" ? "active" : ""} type="button" aria-pressed={selectedCameraRigHandle === "position"} onClick={() => activateCameraRigControl("position")}>Move &amp; turn camera</button>
-
-            <button className={selectedCameraRigHandle === "target" ? "active" : ""} type="button" aria-pressed={selectedCameraRigHandle === "target"} onClick={() => activateCameraRigControl("target")}>Adjust target</button>
+          <div className="viewer-camera-manipulation" role="group" aria-label="Camera position and direction controls">
+            <button className={selectedCameraRigHandle === "position" ? "active" : ""} type="button" aria-label="Edit camera position and orientation" aria-pressed={selectedCameraRigHandle === "position"} onClick={() => activateCameraRigControl("position")}>Camera position</button>
+            <button className={selectedCameraRigHandle === "target" ? "active" : ""} type="button" aria-label="Edit camera direction" aria-pressed={selectedCameraRigHandle === "target"} onClick={() => activateCameraRigControl("target")}>Camera direction</button>
           </div>
 
-          <p className="viewer-camera-hint">Drag to move · rings to turn · blue control to zoom · click scene background to finish</p>
+          <p className="viewer-camera-hint">
+            {selectedCameraRigHandle === "position"
+              ? "Drag the camera to move it; use the rings to turn it. The wireframe cone shows its view direction. Choose Camera direction to aim it."
+              : selectedCameraRigHandle === "target"
+                ? "Drag the blue direction target to aim the camera while its position stays fixed; the wireframe cone shows its view. Choose Camera position to move or turn it."
+                : "Choose Camera position to move or turn it, or Camera direction to aim it in the scene."}
+          </p>
           <div className="viewer-camera-settings-row">
             <label className="viewer-camera-fov">FOV <input type="range" min={30} max={90} step={1} value={renderCamera.fovDeg} aria-label="Field of view" onChange={(event) => commitRenderCamera({ ...renderCamera, fovDeg: event.currentTarget.valueAsNumber })} /><output>{renderCamera.fovDeg}°</output>
             </label>
@@ -2160,7 +2165,7 @@ export function EngineeringViewer(props: ViewerProps) {
             <summary>Advanced camera settings</summary>
             <div className="viewer-camera-vectors">
               {(["positionMm", "targetMm"] as const).map((field) => <fieldset key={field}>
-                <legend>{field === "positionMm" ? "Camera position" : "Look at target"} · mm</legend>
+                <legend>{field === "positionMm" ? "Camera position" : "Direction target"} · mm</legend>
                 {(["X", "Y", "Z"] as const).map((axis, index) => <label key={axis}>{axis}
                   <input type="number" min={-10_000_000} max={10_000_000} step={10} value={Math.round(renderCamera[field][index] * 10) / 10} aria-label={`${field === "positionMm" ? "Camera position" : "Camera target"} ${axis} in millimetres`} onChange={(event) => {
                     const value = event.currentTarget.valueAsNumber;
