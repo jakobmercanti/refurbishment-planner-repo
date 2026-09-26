@@ -7,6 +7,7 @@ import { projectRepository } from "./projectRepository";
 import { exportProject, importProject } from "./projectPackage";
 import { analytics, exported } from "./analytics";
 import type { ElectricalLayoutData } from "./electricalLayout";
+import type { PlannerBuildData } from "./plannerBuild";
 import type { Room } from "./types";
 
 export function useLocalProject() {
@@ -67,5 +68,6 @@ export function useLocalProject() {
   const setInstances = useCallback((assetInstances: AssetInstance[]) => update({ assetInstances }), [update]);
   const setRenderCamera = useCallback((renderCamera: RenderCameraState) => update({ renderCamera }), [update]);
   const setElectricalLayout = useCallback((electricalLayout: ElectricalLayoutData) => update({ electricalLayout }), [update]);
-  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout };
+  const setPlannerBuild = useCallback((plannerBuild: PlannerBuildData) => update({ plannerBuild }), [update]);
+  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setPlannerBuild };
 }

@@ -3,6 +3,7 @@ import type { Room } from "./types";
 import type { PersistedFloorplan } from "../components/FullFloorplanEditor";
 import { normalizeRenderCameraState, type RenderCameraState } from "./renderCamera";
 import { DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, normalizeElectricalLayout, type ElectricalLayoutData } from "./electricalLayout";
+import { DEFAULT_PLANNER_BUILD, normalizePlannerBuild, type PlannerBuildData } from "./plannerBuild";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -44,12 +45,14 @@ const documentSchema = z.object({
   // non-authoritative view setting cannot prevent the project from opening.
   renderCamera: z.unknown().optional(),
   electricalLayout: z.unknown().optional(),
+  plannerBuild: z.unknown().optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
   rooms: Room[]; floorplan: PersistedFloorplan | null; assets: AssetDefinition[]; assetInstances: AssetInstance[];
   renderCamera?: RenderCameraState;
   electricalLayout?: ElectricalLayoutData;
+  plannerBuild: PlannerBuildData;
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -68,15 +71,17 @@ function unique(values: string[]) { if (new Set(values).size !== values.length) 
 export function parseProject(input: unknown): ProjectDocument {
   inspectJson(input);
   if (!input || typeof input !== "object" || !("schemaVersion" in input) || input.schemaVersion !== 1) throw new Error("Unsupported project schema version. This app supports version 1.");
-  const parsed = documentSchema.parse(input) as unknown as ProjectDocument & { renderCamera?: unknown };
-  const { renderCamera: rawCamera, electricalLayout: rawElectricalLayout, ...projectFields } = parsed;
+  const parsed = documentSchema.parse(input) as unknown as ProjectDocument & { renderCamera?: unknown; electricalLayout?: unknown; plannerBuild?: unknown };
+  const { renderCamera: rawCamera, electricalLayout: rawElectricalLayout, plannerBuild: rawPlannerBuild, ...projectFields } = parsed;
   const normalizedCamera = normalizeRenderCameraState(rawCamera);
   const p: ProjectDocument = {
     ...projectFields,
     ...(normalizedCamera ? { renderCamera: normalizedCamera } : {}),
     electricalLayout: normalizeElectricalLayout(rawElectricalLayout, electricalObstacleIds(parsed.rooms)),
+    plannerBuild: normalizePlannerBuild(rawPlannerBuild),
   };
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
+  unique(p.plannerBuild.activities.map(activity => activity.activityId));
   for (const room of p.rooms) {
     unique(room.obstacles.map(o => o.id)); unique(room.openings.map(o => o.id));
     for (const opening of room.openings) z.object({ id, kind: z.enum(["DOOR", "WINDOW", "GENERIC"]), parent_wall_id: id, offset_mm: number.nonnegative(), width: measurement, height: measurement, sill_height_mm: number.nonnegative() }).parse(opening);
@@ -113,6 +118,6 @@ export function parseProject(input: unknown): ProjectDocument {
 export const migrateProject = parseProject;
 export function newProject(): ProjectDocument {
   const now = new Date().toISOString();
-  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT };
+  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT, plannerBuild: DEFAULT_PLANNER_BUILD };
 }
 export const capabilities = Object.freeze({ canSaveCloudProjects: false, canUploadCloudAssets: false, canUseAiRendering: false, canExport4K: false, cloudStorageBytes: 0, aiRenderCreditsRemaining: 0 });
