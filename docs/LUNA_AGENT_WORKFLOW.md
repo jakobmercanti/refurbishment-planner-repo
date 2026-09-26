@@ -19,11 +19,15 @@ If Luna 6 or the required reasoning level cannot be selected for any role, do **
 
 The default remains single-agent execution.
 
-Activate this workflow when the **current user prompt** contains the phrase:
+Activate this workflow when the **current user prompt** contains either phrase:
 
 `luna agent`
 
-Matching is case-insensitive and the phrase may appear anywhere in a longer prompt.
+or
+
+`luna agents`
+
+Matching is case-insensitive and either phrase may appear anywhere in a longer prompt.
 
 Also preserve the legacy activation phrase:
 
