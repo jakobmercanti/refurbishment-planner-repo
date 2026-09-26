@@ -3,9 +3,21 @@ import { containsPoint } from "./elementPlacement";
 import type { Opening, Point2D, Room } from "./types";
 
 export const PLANNER_BUILD_CATEGORIES = [
-  "General", "Demolition", "Structural", "Carpentry", "Plumbing", "Electrical", "Heating / HVAC",
-  "Plastering", "Painting", "Flooring", "Kitchen", "Bathroom", "Decoration", "Inspection", "Other",
+  "PRE-CONSTRUCTION", "PROCUREMENT", "SITE SETUP", "STRIP-OUT / DEMOLITION", "STRUCTURAL",
+  "BUILDING ENVELOPE", "FIRST FIX", "INTERNAL CONSTRUCTION", "WATERPROOFING / WET AREAS",
+  "FINISHES", "SECOND FIX", "KITCHEN / FITTED FURNITURE", "EXTERNAL WORKS",
+  "TESTING & COMMISSIONING", "COMPLIANCE / INSPECTIONS", "COMPLETION", "HANDOVER",
 ] as const;
+
+export type PlannerBuildActivityType = "task" | "milestone" | "delivery" | "inspection" | "decision" | "waiting" | "appointment" | "payment";
+export type PlannerBuildActivityStatus = "not_started" | "in_progress" | "completed" | "blocked" | "delayed";
+export type PlannerBuildDeliveryStatus = "not_ordered" | "ordered" | "confirmed" | "dispatched" | "delivered" | "delayed";
+export type PlannerBuildInspectionStatus = "pending" | "passed" | "failed";
+export type PlannerBuildPaymentStatus = "unpaid" | "paid";
+
+export const PLANNER_BUILD_ACTIVITY_TYPES: readonly PlannerBuildActivityType[] = ["task", "milestone", "delivery", "inspection", "decision", "waiting", "appointment", "payment"];
+export const PLANNER_BUILD_ACTIVITY_STATUSES: readonly PlannerBuildActivityStatus[] = ["not_started", "in_progress", "completed", "blocked", "delayed"];
+export const PLANNER_BUILD_DELIVERY_STATUSES: readonly PlannerBuildDeliveryStatus[] = ["not_ordered", "ordered", "confirmed", "dispatched", "delivered", "delayed"];
 
 export interface PlannerBuildActivity {
   activityId: string;
@@ -16,8 +28,46 @@ export interface PlannerBuildActivity {
   category?: string;
   roomId: string | null;
   progress: number;
+  type: PlannerBuildActivityType;
+  status: PlannerBuildActivityStatus;
+  dependencyIds: string[];
+  trade?: string;
   notes?: string;
+  supplier?: string;
+  orderDate?: string;
+  leadTimeDays?: number;
+  expectedDeliveryDate?: string;
+  actualDeliveryDate?: string;
+  orderReference?: string;
+  deliveryStatus?: PlannerBuildDeliveryStatus;
+  decisionDeadline?: string;
+  inspectionStatus?: PlannerBuildInspectionStatus;
+  paymentDueDate?: string;
+  amount?: number;
+  currency?: string;
+  paymentStatus?: PlannerBuildPaymentStatus;
+  estimatedCost?: number;
+  actualCost?: number;
+  isBlocking?: boolean;
+  blockedReason?: string;
   sortOrder: number;
+}
+
+export interface PlannerBuildWarning { warningId: string; activityId: string; message: string; severity: "warning" | "urgent" }
+export interface PlannerBuildScheduleSummary {
+  countsByCategory: Array<{ name: string; count: number }>;
+  countsByTrade: Array<{ name: string; count: number }>;
+  countsByRoom: Array<{ roomId: string | null; count: number }>;
+  countsByStatus: Array<{ name: PlannerBuildActivityStatus; count: number }>;
+  countsByType: Array<{ name: PlannerBuildActivityType; count: number }>;
+  nextMilestone: PlannerBuildActivity | null;
+  nextDelivery: PlannerBuildActivity | null;
+  delayedDeliveries: PlannerBuildActivity[];
+  pendingInspections: PlannerBuildActivity[];
+  pendingDecisions: PlannerBuildActivity[];
+  blockedActivities: PlannerBuildActivity[];
+  paymentsDue: PlannerBuildActivity[];
+  upcoming: PlannerBuildActivity[];
 }
 
 export interface PlannerBuildData {
@@ -69,6 +119,16 @@ export function normalizePlannerBuild(input: unknown): PlannerBuildData {
     const roomId = typeof item.roomId === "string" && ID_PATTERN.test(item.roomId) ? item.roomId : null;
     const notes = typeof item.notes === "string" && item.notes.trim() ? item.notes.slice(0, 5000) : undefined;
     const sortOrder = typeof item.sortOrder === "number" && Number.isFinite(item.sortOrder) ? item.sortOrder : index;
+    const type = PLANNER_BUILD_ACTIVITY_TYPES.includes(item.type as PlannerBuildActivityType) ? item.type as PlannerBuildActivityType : "task";
+    const progress = Math.max(0, Math.min(100, Math.round(rawProgress)));
+    const fallbackStatus: PlannerBuildActivityStatus = progress >= 100 ? "completed" : progress > 0 ? "in_progress" : "not_started";
+    const status = PLANNER_BUILD_ACTIVITY_STATUSES.includes(item.status as PlannerBuildActivityStatus) ? item.status as PlannerBuildActivityStatus : fallbackStatus;
+    const optionalDate = (value: unknown) => isIsoDate(value) ? value : undefined;
+    const optionalText = (value: unknown, max = 200) => typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined;
+    const optionalNumber = (value: unknown, max = Number.MAX_SAFE_INTEGER) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max ? value : undefined;
+    const deliveryStatus = PLANNER_BUILD_DELIVERY_STATUSES.includes(item.deliveryStatus as PlannerBuildDeliveryStatus) ? item.deliveryStatus as PlannerBuildDeliveryStatus : undefined;
+    const inspectionStatus = ["pending", "passed", "failed"].includes(String(item.inspectionStatus)) ? item.inspectionStatus as PlannerBuildInspectionStatus : undefined;
+    const paymentStatus = ["unpaid", "paid"].includes(String(item.paymentStatus)) ? item.paymentStatus as PlannerBuildPaymentStatus : undefined;
     activities.push({
       activityId,
       name: item.name.trim().slice(0, 200),
@@ -77,11 +137,44 @@ export function normalizePlannerBuild(input: unknown): PlannerBuildData {
       colour: typeof item.colour === "string" && COLOUR_PATTERN.test(item.colour) ? item.colour.toUpperCase() : "#287FB8",
       ...(category ? { category } : {}),
       roomId,
-      progress: Math.max(0, Math.min(100, Math.round(rawProgress))),
+      progress,
+      type,
+      status,
+      dependencyIds: Array.isArray(item.dependencyIds) ? [...new Set(item.dependencyIds.filter((id): id is string => typeof id === "string" && ID_PATTERN.test(id) && id !== activityId))] : [],
+      ...(optionalText(item.trade, 100) ? { trade: optionalText(item.trade, 100) } : {}),
       ...(notes ? { notes } : {}),
+      ...(optionalText(item.supplier, 200) ? { supplier: optionalText(item.supplier, 200) } : {}),
+      ...(optionalDate(item.orderDate) ? { orderDate: optionalDate(item.orderDate) } : {}),
+      ...(optionalNumber(item.leadTimeDays, 3650) !== undefined ? { leadTimeDays: Math.floor(optionalNumber(item.leadTimeDays, 3650)!) } : {}),
+      ...(optionalDate(item.expectedDeliveryDate) ? { expectedDeliveryDate: optionalDate(item.expectedDeliveryDate) } : {}),
+      ...(optionalDate(item.actualDeliveryDate) ? { actualDeliveryDate: optionalDate(item.actualDeliveryDate) } : {}),
+      ...(optionalText(item.orderReference, 160) ? { orderReference: optionalText(item.orderReference, 160) } : {}),
+      ...(deliveryStatus ? { deliveryStatus } : {}),
+      ...(optionalDate(item.decisionDeadline) ? { decisionDeadline: optionalDate(item.decisionDeadline) } : {}),
+      ...(inspectionStatus ? { inspectionStatus } : {}),
+      ...(optionalDate(item.paymentDueDate) ? { paymentDueDate: optionalDate(item.paymentDueDate) } : {}),
+      ...(optionalNumber(item.amount) !== undefined ? { amount: optionalNumber(item.amount)! } : {}),
+      ...(optionalText(item.currency, 3) ? { currency: optionalText(item.currency, 3)!.toUpperCase() } : {}),
+      ...(paymentStatus ? { paymentStatus } : {}),
+      ...(optionalNumber(item.estimatedCost) !== undefined ? { estimatedCost: optionalNumber(item.estimatedCost)! } : {}),
+      ...(optionalNumber(item.actualCost) !== undefined ? { actualCost: optionalNumber(item.actualCost)! } : {}),
+      ...(typeof item.isBlocking === "boolean" ? { isBlocking: item.isBlocking } : {}),
+      ...(optionalText(item.blockedReason, 1000) ? { blockedReason: optionalText(item.blockedReason, 1000) } : {}),
       sortOrder,
     });
   });
+
+  const knownIds = new Set(activities.map((activity) => activity.activityId));
+  for (const activity of activities) activity.dependencyIds = activity.dependencyIds.filter((id) => knownIds.has(id));
+  const accepted: PlannerBuildActivity[] = [];
+  for (const activity of activities) {
+    const dependencies: string[] = [];
+    for (const dependencyId of activity.dependencyIds) {
+      if (!wouldCreateDependencyCycle([...accepted, { ...activity, dependencyIds: dependencies }], activity.activityId, dependencyId)) dependencies.push(dependencyId);
+    }
+    activity.dependencyIds = dependencies;
+    accepted.push(activity);
+  }
 
   const projectStartDate = isIsoDate(source?.projectStartDate) ? source.projectStartDate : undefined;
   const targetCompletionDate = isIsoDate(source?.targetCompletionDate) ? source.targetCompletionDate : undefined;
@@ -89,6 +182,71 @@ export function normalizePlannerBuild(input: unknown): PlannerBuildData {
     activities: activities.sort((first, second) => first.sortOrder - second.sortOrder || first.activityId.localeCompare(second.activityId)),
     ...(projectStartDate ? { projectStartDate } : {}),
     ...(targetCompletionDate ? { targetCompletionDate } : {}),
+  };
+}
+
+export function wouldCreateDependencyCycle(activities: readonly PlannerBuildActivity[], activityId: string, dependencyId: string): boolean {
+  if (activityId === dependencyId) return true;
+  const byId = new Map(activities.map((activity) => [activity.activityId, activity]));
+  const pending = [dependencyId], seen = new Set<string>();
+  while (pending.length) {
+    const current = pending.pop()!;
+    if (current === activityId) return true;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    pending.push(...(byId.get(current)?.dependencyIds ?? []));
+  }
+  return false;
+}
+
+export function expectedDeliveryDate(activity: PlannerBuildActivity): string | null {
+  if (activity.actualDeliveryDate) return activity.actualDeliveryDate;
+  if (activity.expectedDeliveryDate) return activity.expectedDeliveryDate;
+  return activity.orderDate && activity.leadTimeDays !== undefined ? addCalendarDays(activity.orderDate, activity.leadTimeDays) : null;
+}
+
+export function getPlannerBuildWarnings(activities: readonly PlannerBuildActivity[], today = localDateKey()): PlannerBuildWarning[] {
+  const byId = new Map(activities.map((activity) => [activity.activityId, activity]));
+  const warnings: PlannerBuildWarning[] = [];
+  for (const activity of activities) {
+    for (const dependencyId of activity.dependencyIds) {
+      const prerequisite = byId.get(dependencyId);
+      if (!prerequisite) continue;
+      const deliveryDate = prerequisite.type === "delivery" ? expectedDeliveryDate(prerequisite) : null;
+      const decisionDeadline = prerequisite.type === "decision" ? prerequisite.decisionDeadline : null;
+      const conflict = deliveryDate ? activity.startDate < deliveryDate : decisionDeadline ? activity.startDate <= decisionDeadline : activity.startDate <= prerequisite.endDate;
+      if (!conflict) continue;
+      const message = deliveryDate
+        ? "“" + activity.name + "” starts before “" + prerequisite.name + "” is expected to arrive."
+        : decisionDeadline
+          ? "“" + activity.name + "” starts before the decision deadline for “" + prerequisite.name + "”."
+          : "“" + activity.name + "” starts before prerequisite “" + prerequisite.name + "” is due to finish.";
+      warnings.push({ warningId: activity.activityId + ":" + dependencyId, activityId: activity.activityId, message, severity: prerequisite.status === "delayed" || prerequisite.status === "blocked" ? "urgent" : "warning" });
+    }
+    if (activity.status === "blocked" && activity.isBlocking) warnings.push({ warningId: activity.activityId + ":blocked", activityId: activity.activityId, message: activity.blockedReason ? activity.name + " is blocking: " + activity.blockedReason : activity.name + " is blocking other work.", severity: "urgent" });
+    if (activity.type === "delivery" && activity.deliveryStatus === "delayed") warnings.push({ warningId: activity.activityId + ":delivery-delayed", activityId: activity.activityId, message: activity.name + " delivery is delayed.", severity: "urgent" });
+    if (activity.type === "decision" && activity.decisionDeadline && activity.decisionDeadline < today && activity.status !== "completed") warnings.push({ warningId: activity.activityId + ":decision-overdue", activityId: activity.activityId, message: activity.name + " decision deadline has passed.", severity: "warning" });
+  }
+  return warnings;
+}
+
+export function getPlannerBuildScheduleSummary(activities: readonly PlannerBuildActivity[], today = localDateKey(), upcomingDays = 7): PlannerBuildScheduleSummary {
+  const countBy = <T extends string>(values: T[]) => [...values.reduce((counts, value) => counts.set(value, (counts.get(value) ?? 0) + 1), new Map<T, number>())].map(([name, count]) => ({ name, count }));
+  const dueDate = (activity: PlannerBuildActivity) => activity.type === "delivery" ? expectedDeliveryDate(activity) : activity.type === "decision" ? activity.decisionDeadline ?? activity.startDate : activity.type === "payment" ? activity.paymentDueDate ?? activity.startDate : activity.startDate;
+  const next = (type: PlannerBuildActivityType) => [...activities].filter((activity) => activity.type === type && (dueDate(activity) ?? activity.startDate) >= today && activity.status !== "completed" && !(type === "delivery" && activity.deliveryStatus === "delivered")).sort((a, b) => (dueDate(a) ?? a.startDate).localeCompare(dueDate(b) ?? b.startDate))[0] ?? null;
+  return {
+    countsByCategory: countBy(activities.map((item) => item.category || "Uncategorised")),
+    countsByTrade: countBy(activities.map((item) => item.trade || "Unassigned")),
+    countsByRoom: [...activities.reduce((counts, item) => counts.set(item.roomId, (counts.get(item.roomId) ?? 0) + 1), new Map<string | null, number>())].map(([roomId, count]) => ({ roomId, count })),
+    countsByStatus: countBy(activities.map((item) => item.status)),
+    countsByType: countBy(activities.map((item) => item.type)),
+    nextMilestone: next("milestone"), nextDelivery: next("delivery"),
+    delayedDeliveries: activities.filter((item) => item.type === "delivery" && item.deliveryStatus === "delayed"),
+    pendingInspections: activities.filter((item) => item.type === "inspection" && (item.inspectionStatus ?? "pending") === "pending" && item.status !== "completed"),
+    pendingDecisions: activities.filter((item) => item.type === "decision" && item.status !== "completed"),
+    blockedActivities: activities.filter((item) => item.status === "blocked"),
+    paymentsDue: activities.filter((item) => item.type === "payment" && item.paymentStatus !== "paid" && (item.paymentDueDate ?? item.startDate) <= addCalendarDays(today, upcomingDays)),
+    upcoming: [...activities].filter((item) => { const due = dueDate(item); return Boolean(due && due >= today && due <= addCalendarDays(today, upcomingDays)) && item.status !== "completed" && !(item.type === "delivery" && item.deliveryStatus === "delivered"); }).sort((a, b) => (dueDate(a) ?? a.startDate).localeCompare(dueDate(b) ?? b.startDate)),
   };
 }
 
@@ -458,9 +616,9 @@ export function calculatePlannerBuildMetrics(project: PlannerBuildMetricsProject
       scheduledDays: earliestStart && latestFinish ? calendarDaysBetween(earliestStart, latestFinish) + 1 : null,
       earliestStart,
       latestFinish,
-      completedActivities: activities.filter((activity) => activity.progress >= 100).length,
-      inProgressActivities: activities.filter((activity) => activity.progress > 0 && activity.progress < 100).length,
-      notStartedActivities: activities.filter((activity) => activity.progress <= 0).length,
+      completedActivities: activities.filter((activity) => activity.status === "completed").length,
+      inProgressActivities: activities.filter((activity) => activity.status === "in_progress").length,
+      notStartedActivities: activities.filter((activity) => activity.status === "not_started").length,
     },
     rooms: roomMetrics.map((room) => ({
       ...room,

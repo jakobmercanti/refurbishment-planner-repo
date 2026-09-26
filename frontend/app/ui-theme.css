@@ -14,7 +14,7 @@ body[data-ui-style="modern"] .modal-backdrop:not(.catalogue-detail-backdrop) { z
    toolbar) otherwise override only half of a foreground/background pair.
    Limit importance to these theme-owned properties; dimensions and layout
    remain component-owned. Swatch backgrounds represent actual materials. */
-body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize, .finish-palette button, .tile-palette-presets button, .catalogue-material-entry)) {
+body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize, .finish-palette button, .tile-palette-presets button, .pb-colour-presets button, .catalogue-material-entry)) {
   --control-bg: var(--ui-button-background);
   --control-text: var(--ui-button-text);
   --control-border: var(--line);

@@ -60,7 +60,7 @@
 .plan-card { display: flex; flex-direction: column; padding: 20px; border: 1px solid #d9e2dd; border-radius: 13px; background: white; box-shadow: 0 8px 25px rgba(22,49,38,.045); }
 .plan-featured { border-color: #538272; box-shadow: 0 0 0 2px #dcebe4, 0 12px 28px rgba(22,49,38,.08); }
 .plan-card { position: relative; overflow: hidden; }
-.plan-recommended { display: block; margin: -17px -17px 13px; padding: 7px 12px; background: #28704e; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .08em; line-height: 1.2; text-align: center; text-transform: uppercase; }
+.plan-recommended { position: absolute; z-index: 2; top: 32px; right: -38px; width: 170px; padding: 7px 0; transform: rotate(45deg); background: #28704e; box-shadow: 0 2px 5px rgba(22,49,38,.14); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: .05em; line-height: 1.2; text-align: center; text-transform: uppercase; white-space: nowrap; pointer-events: none; }
 .plan-card h2 { margin: 0; color: #183d34; font-size: 20px; }
 .plan-price { min-height: 38px; margin: 14px 0; color: #183d34; font-size: 28px; font-weight: 800; letter-spacing: -.04em; }
 .plan-price small { color: #6d7c75; font-size: 11px; font-weight: 500; letter-spacing: 0; }
@@ -192,7 +192,6 @@
 .account-dialog-content .commercial-page-heading h1 { color: var(--deep); font-size: clamp(24px, 3vw, 34px); }
 .account-dialog-content .plan-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
 .account-dialog-content .plan-card { padding-top: 17px; }
-.account-dialog-content .plan-recommended { margin: -17px -17px 13px; }
 .account-dialog-content .plan-card-actions > .plan-action-note { min-height: 29px; }
 .account-dialog-content .plan-card-actions > .commercial-primary, .account-dialog-content .plan-card-actions > .commercial-secondary { min-height: 40px; }
 .account-dialog-content .commercial-content { max-width: none; }
@@ -219,7 +218,6 @@
   .account-dialog .account-dialog-header { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .account-dialog-tabs { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .account-dialog .local-assets-header .modal-close { grid-column: 2; grid-row: 1; }
-  .account-dialog-content .plan-recommended { margin-top: -17px; }
   .account-dialog .local-assets-header { padding: 14px 16px; }
   .account-dialog-content { gap: 14px; padding: 14px 16px 18px; }
   .account-dialog-content .account-section-tabs { width: 100%; }
