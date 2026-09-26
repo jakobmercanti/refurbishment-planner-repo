@@ -17,7 +17,7 @@ export type ToolbarVisibility = Record<ToolbarId, boolean>;
 
 export const FLOORPLAN_TOOLBARS: ToolbarDefinition[] = [
   { id: "floorplan-build", name: "Build floorplan" },
-  { id: "floorplan-openings", name: "Add elements" },
+  { id: "floorplan-openings", name: "Add to plan" },
   { id: "floorplan-view", name: "View properties" },
 ];
 

@@ -1,14 +1,22 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
 
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-type BillingPageProps = {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-};
+const accountUrl = `${base}/account/?tab=plans`;
 
-export default async function BillingPage({ searchParams }: BillingPageProps) {
-  const params = await searchParams;
-  const query = new URLSearchParams({ tab: "plans" });
-  const checkout = typeof params.checkout === "string" ? params.checkout : "";
-  if (checkout === "success" || checkout === "cancelled") query.set("checkout", checkout);
-  redirect(`${base}/account/?${query.toString()}`);
+export default function BillingPage() {
+  useEffect(() => {
+    const query = new URLSearchParams({ tab: "plans" });
+    const checkout = new URLSearchParams(window.location.search).get("checkout");
+    if (checkout === "success" || checkout === "cancelled") query.set("checkout", checkout);
+    window.location.replace(`${base}/account/?${query.toString()}`);
+  }, []);
+
+  return <main className="commercial-page"><div className="commercial-content">
+    <section className="commercial-panel">
+      <h1>Returning to your account…</h1>
+      <p>If the page does not continue automatically, <a href={accountUrl}>open plans and billing</a>.</p>
+    </section>
+  </div></main>;
 }

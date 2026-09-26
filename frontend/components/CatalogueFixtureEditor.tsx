@@ -5,22 +5,13 @@ import { ComponentColours } from "@/components/ComponentColours";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { EditableNumberInput } from "@/components/EditableNumberInput";
 import { FixturePreview } from "@/components/FixturePreview";
-import { constrainObstacleToRoom, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
+import { ELECTRICAL_SUBCATEGORIES, electricalPlacement } from "@/lib/electricalAssets";
+import { constrainObstacleToRoom, DEFAULT_OBSTACLE_WALL_LOCK, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
 import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
+import { MACRO_CATEGORY_ORDER, macroCategoryDisplay, macroCategoryForCategoryId, type MacroCategoryId } from "@/lib/catalogueTaxonomy";
 import type { CatalogueItem, Obstacle, Room } from "@/lib/types";
 
 const ROOM_FIXTURE_KINDS = new Set(["SHOWER", "BASIN", "TOILET", "FURNITURE"]);
-const MACRO_CATEGORY_ORDER = ["bathroom", "kitchen", "living", "bedroom", "staircases", "radiators", "other"] as const;
-type MacroCategoryId = typeof MACRO_CATEGORY_ORDER[number];
-const MACRO_CATEGORY_LABELS: Record<MacroCategoryId, string> = {
-  bathroom: "Bathroom fixtures",
-  kitchen: "Kitchen",
-  living: "Living Room",
-  bedroom: "Bedroom",
-  staircases: "Staircases",
-  radiators: "Radiators",
-  other: "Other",
-};
 type RoomCatalogueItem = CatalogueItem & { fixture_kind: NonNullable<Obstacle["fixture_kind"]> };
 type ElementEditRequest = { id: string; roomId: string; requestId: number };
 type SelectorLevel = "category" | "subcategory" | "object";
@@ -47,24 +38,17 @@ function PositiveDimensionFields({ value, displayUnits, onChange }: { value: Obs
 function isRoomFixture(item: CatalogueItem): item is RoomCatalogueItem {
   return ROOM_FIXTURE_KINDS.has(item.fixture_kind);
 }
-function macroCategoryForCategoryId(categoryId: string): MacroCategoryId {
-  if (["showers", "basins", "toilets", "baths", "storage"].includes(categoryId)) return "bathroom";
-  if (categoryId.startsWith("kitchen-")) return "kitchen";
-  if (categoryId.startsWith("living-")) return "living";
-  if (categoryId.startsWith("bedroom-")) return "bedroom";
-  if (categoryId.startsWith("radiators-")) return "radiators";
-  if (categoryId.startsWith("staircases-")) return "staircases";
-  return "other";
-}
-
-export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, refreshKey = 0, elementEditRequest, onEditEnd, onElementSelected, onBeginPlacement, placementWalls = [] }: {
+export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, refreshKey = 0, elementEditRequest, onEditEnd, onElementSelected, onBeginPlacement, placementWalls = [], categoryFilter }: {
   placementWalls?: PlacementWall[];
+  /** Restrict the shared catalogue/placement editor to a category, e.g. Electric. */
+  categoryFilter?: string;
   onBeginPlacement?: (request: PlacementRequest) => void;
   onEditEnd?: () => void;
   onElementSelected?: (selection: { id: string; roomId: string } | null) => void;
   room: Room; displayUnits: DisplayUnits; onChange: (items: Obstacle[]) => void; apiUrl: string; refreshKey?: number; elementEditRequest?: ElementEditRequest | null;
 }) {
   const roomWalls = room.source_floorplan_room_id ? placementWalls : [];
+  const electrical = categoryFilter === "electric";
   const [mountingGap, setMountingGap] = useState(550);
   const [baseUnitId, setBaseUnitId] = useState("");
   const [mountingError, setMountingError] = useState("");
@@ -77,7 +61,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const [baseHeightExpanded, setBaseHeightExpanded] = useState(false);
   const [draft, setDraft] = useState<Obstacle | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [wallLockPreference, setWallLockPreference] = useState(true);
+  const [wallLockPreference, setWallLockPreference] = useState(DEFAULT_OBSTACLE_WALL_LOCK);
   const [selectorOpen, setSelectorOpen] = useState<SelectorLevel | null>(null);
   const [selectorExpanded, setSelectorExpanded] = useState(false);
   const [elementsListExpanded, setElementsListExpanded] = useState(true);
@@ -101,7 +85,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     const frame = window.requestAnimationFrame(() => {
       if (roomProduct) {
         setMacroCategory(macroCategoryForCategoryId(roomProduct.category_id));
-        setCategory(roomProduct.category_id);
+        setCategory(electrical ? roomProduct.subcategory : roomProduct.category_id);
         setObjectId(roomProduct.id);
       }
       setEditingId(item.id);
@@ -110,7 +94,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       setDraft(null);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [elementEditRequest, items, room.id, room.obstacles]);
+  }, [elementEditRequest, items, room.id, room.obstacles, electrical]);
   useEffect(() => {
     if (!selectorOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -135,18 +119,21 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     });
     return () => window.cancelAnimationFrame(frame);
   }, [editingId, elementEditRequest, room.id]);
-  const fixtureItems = items.filter(isRoomFixture);
-  const categories = [...new Map(fixtureItems.map(item => [item.category_id, item.category_name])).entries()];
+  const fixtureItems = items.filter((item): item is RoomCatalogueItem =>
+    (categoryFilter ? item.category_id === categoryFilter : item.category_id !== "electric") && isRoomFixture(item));
+  const categories: Array<[string, string]> = electrical
+    ? [...new Set([...ELECTRICAL_SUBCATEGORIES, ...fixtureItems.map(item => item.subcategory)])].filter(name => fixtureItems.some(item => item.subcategory === name)).map(name => [name, name])
+    : [...new Map(fixtureItems.map(item => [item.category_id, item.category_name])).entries()];
   const categoriesByMacro = new Map<MacroCategoryId, Array<[string, string]>>();
   categories.forEach((entry) => {
-    const macroId = macroCategoryForCategoryId(entry[0]);
+    const macroId = electrical ? "electrical" : macroCategoryForCategoryId(entry[0]);
     categoriesByMacro.set(macroId, [...(categoriesByMacro.get(macroId) ?? []), entry]);
   });
   const availableMacroCategories = MACRO_CATEGORY_ORDER.filter((id) => categoriesByMacro.has(id));
   const activeMacroCategory = availableMacroCategories.includes(macroCategory) ? macroCategory : availableMacroCategories[0];
   const macroCategories = activeMacroCategory ? categoriesByMacro.get(activeMacroCategory) ?? [] : [];
   const activeCategory = category === "" ? "" : macroCategories.some(([id]) => id === category) ? category : macroCategories[0]?.[0] ?? "";
-  const family = fixtureItems.filter(item => item.category_id === activeCategory);
+  const family = fixtureItems.filter(item => (electrical ? item.subcategory : item.category_id) === activeCategory);
   // `subcategory` is an Object catalogue grouping, not a second family. The
   // previous filter selected only the first grouping (for example, the
   // 4-person table) and hid every sibling entry from the editor.
@@ -165,6 +152,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       base_z_mm: item.representation_key?.startsWith("furniture-kitchen-cabinet-") ? 1500 : 0, rotation_deg: 0, verified: false, source_type: "USER_MEASURED", wall_lock: wallLock,
       color_hex: item.color_hex, stl_filename: item.stl_filename ?? undefined, stl_base64: item.stl_base64 ?? undefined,
       side_clearance_mm: item.side_clearance_mm ?? undefined, front_clearance_mm: item.front_clearance_mm ?? undefined,
+      ...electricalPlacement(item.representation_key, item.height_mm, room.wall_height.value),
     };
   }
   const value = existing ?? draft ?? (selected ? fromCatalogue(selected) : null);
@@ -190,8 +178,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     if (existing) change({ ...next, id: existing.id, center: existing.center, rotation_deg: existing.rotation_deg, wall_lock: existing.wall_lock });
     else setDraft(next);
   }
-  const macroCategoryDisplay = (id: MacroCategoryId) => MACRO_CATEGORY_LABELS[id].replace(/\s+fixtures$/, "");
-  const activeCategoryDisplay = activeCategory ? (activeCategory === "storage" ? "Elements" : macroCategories.find(([id]) => id === activeCategory)?.[1] ?? "") : "";
+  const activeCategoryDisplay = activeCategory ? (activeCategory === "storage" ? "Fittings" : macroCategories.find(([id]) => id === activeCategory)?.[1] ?? "") : "";
   function selectMacroCategory(nextMacro: MacroCategoryId) {
     if (nextMacro === activeMacroCategory) {
       setSelectorExpanded(true);
@@ -208,17 +195,17 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setSelectorExpanded(true);
     setSelectorOpen("subcategory");
   }
-  function selectCategory(nextCategory: string) {
-    if (nextCategory === activeCategory) {
-      setSelectorExpanded(true);
-      setSelectorOpen("object");
-      return;
-    }
-    setCategory(nextCategory);
-    setObjectId(null);
-    setHoveredObjectId(null);
-    setDraft(null);
-    setEditingId(null);
+ function selectCategory(nextCategory: string) {
+   if (nextCategory === activeCategory) {
+     setSelectorExpanded(true);
+     setSelectorOpen("object");
+     return;
+   }
+   setCategory(nextCategory);
+    setObjectId(electrical ? "" : null);
+   setHoveredObjectId(null);
+   setDraft(null);
+   setEditingId(null);
     setBaseHeightExpanded(false);
     setSelectorExpanded(true);
     setSelectorOpen("object");
@@ -247,31 +234,31 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   }
   const dimensionsContent = value ? <PositiveDimensionFields value={value} displayUnits={displayUnits} onChange={(axis, nextValue) => change({ ...value, verified: false, dimensions: { ...value.dimensions, [axis]: { ...value.dimensions[axis], value: nextValue, verified: false, source_type: "USER_MEASURED" } } })} /> : null;
 
-  return <section className="fixture-editor element-add-editor" aria-label="Add elements">
+  return <section className="fixture-editor element-add-editor" aria-label="Add fittings">
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
     <div className="fixture-cascading-menu" ref={selectorRef}>
       {!selectorExpanded ? <div className="fixture-cascading-collapsed">
         <strong>{selectedObjectLabel || "Select object"}</strong>
-        <button type="button" aria-label="Expand element selector" aria-expanded={false} onClick={() => setSelectorExpanded(true)}>▾</button>
-      </div> : <div className="fixture-cascading-selector" aria-label="Element catalogue selector">
+        <button type="button" aria-label="Expand fittings selector" aria-expanded={false} onClick={() => setSelectorExpanded(true)}>▾</button>
+      </div> : <div className="fixture-cascading-selector" aria-label="Fittings catalogue selector">
         <div className="fixture-cascading-menu-header">
           <strong>{selectedObjectLabel || "Select object"}</strong>
-          <button type="button" aria-label="Collapse element selector" aria-expanded={true} onClick={() => { setSelectorOpen(null); setHoveredObjectId(null); setSelectorExpanded(false); }}>▴</button>
+          <button type="button" aria-label="Collapse fittings selector" aria-expanded={true} onClick={() => { setSelectorOpen(null); setHoveredObjectId(null); setSelectorExpanded(false); }}>▴</button>
         </div>
-      <div className="fixture-cascading-level">
+      {!electrical && <div className="fixture-cascading-level">
         <button type="button" className="fixture-cascading-trigger" aria-expanded={selectorOpen === "category"} aria-controls="fixture-category-options" onClick={() => setSelectorOpen(current => current === "category" ? null : "category")}>
           <span className="fixture-cascading-trigger-copy"><span>Category</span><strong className={!activeMacroCategory ? "placeholder" : undefined}>{activeMacroCategory ? macroCategoryDisplay(activeMacroCategory) : "Select category"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{selectorOpen === "category" ? "▴" : "▾"}</span>
         </button>
         {selectorOpen === "category" && <div id="fixture-category-options" className="fixture-cascading-options" role="listbox" aria-label="Category options">
           {availableMacroCategories.map(id => <button type="button" role="option" aria-selected={id === activeMacroCategory} className={id === activeMacroCategory ? "selected" : undefined} key={id} onClick={() => selectMacroCategory(id)}>{macroCategoryDisplay(id)}</button>)}
         </div>}
-      </div>
+      </div>}
       <div className="fixture-cascading-level">
         <button type="button" className="fixture-cascading-trigger" disabled={!activeMacroCategory || macroCategories.length === 0} aria-expanded={selectorOpen === "subcategory"} aria-controls="fixture-subcategory-options" onClick={() => setSelectorOpen(current => current === "subcategory" ? null : "subcategory")}>
           <span className="fixture-cascading-trigger-copy"><span>Subcategory</span><strong className={!activeCategoryDisplay ? "placeholder" : undefined}>{activeCategoryDisplay || "Select subcategory"}</strong></span><span className="fixture-cascading-chevron" aria-hidden>{selectorOpen === "subcategory" ? "▴" : "▾"}</span>
         </button>
         {selectorOpen === "subcategory" && <div id="fixture-subcategory-options" className="fixture-cascading-options" role="listbox" aria-label="Subcategory options">
-          {macroCategories.map(([id, name]) => <button type="button" role="option" aria-selected={id === activeCategory} className={id === activeCategory ? "selected" : undefined} key={id} onClick={() => selectCategory(id)}>{id === "storage" ? "Elements" : name}</button>)}
+          {macroCategories.map(([id, name]) => <button type="button" role="option" aria-selected={id === activeCategory} className={id === activeCategory ? "selected" : undefined} key={id} onClick={() => selectCategory(id)}>{id === "storage" ? "Fittings" : name}</button>)}
         </div>}
       </div>
       <div className="fixture-cascading-level">
@@ -321,7 +308,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
             {(["x", "y"] as const).map(axis => <label className="field" key={axis}><span>{axis.toUpperCase()} {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput valueMm={value.center[axis]} units={displayUnits} onMmChange={n => change({ ...value, center: { ...value.center, [axis]: n } })} /></label>)}
             <label className="field"><span>Rotation °</span><EditableNumberInput value={value.rotation_deg} onValueChange={rotation_deg => change({ ...value, rotation_deg })} /></label>
           </div></div>
-          <label className="fixture-lock-switch"><input type="checkbox" checked={value.wall_lock ?? false} onChange={event => { const wallLock = event.target.checked; setWallLockPreference(wallLock); change({ ...value, wall_lock: wallLock }); }} /><span>Keep adjacent to nearest wall</span></label>
+          <label className="fixture-lock-switch"><input type="checkbox" checked={value.wall_lock ?? DEFAULT_OBSTACLE_WALL_LOCK} onChange={event => { const wallLock = event.target.checked; setWallLockPreference(wallLock); change({ ...value, wall_lock: wallLock }); }} /><span>Keep next to wall</span></label>
         </div>}
       </section>
       {mountingError && <p role="alert">{mountingError}</p>}
@@ -341,7 +328,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     {room.obstacles.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={elementsListExpanded} onClick={() => setElementsListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{elementsListExpanded ? "−" : "›"}</span></button>
       {elementsListExpanded && <div className="fixture-section-content elements-list-content"><div className="fixture-list">{room.obstacles.map(item => <article key={item.id} data-element-id={item.id} className={item.id === editingId ? "editing" : ""}>
-        <strong>{item.name}</strong><button onClick={() => { const product = items.find(p => p.id === item.model_id); if (product && isRoomFixture(product)) { setMacroCategory(macroCategoryForCategoryId(product.category_id)); setCategory(product.category_id); setObjectId(product.id); } setWallLockPreference(item.wall_lock ?? false); setEditingId(item.id); onElementSelected?.({ id: item.id, roomId: room.id }); }}>Edit</button>
+        <strong>{item.name}</strong><button onClick={() => { const product = items.find(p => p.id === item.model_id); if (product && isRoomFixture(product)) { setMacroCategory(macroCategoryForCategoryId(product.category_id)); setCategory(electrical ? product.subcategory : product.category_id); setObjectId(product.id); } setWallLockPreference(item.wall_lock ?? false); setEditingId(item.id); onElementSelected?.({ id: item.id, roomId: room.id }); }}>Edit</button>
         <button aria-label={`Remove ${item.name}`} onClick={() => { onChange(room.obstacles.filter(p => p.id !== item.id)); if (item.id === editingId) { setEditingId(null); onEditEnd?.(); } }}>×</button>
       </article>)}</div></div>}
     </section>}

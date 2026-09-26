@@ -11,7 +11,7 @@ import { assetRepository } from "@/lib/assetRepository";
 import { parseProject, type AssetClassification, type ProjectDocument } from "@/lib/projectDocument";
 
 type Usage = { projects: number; assets: number; storage_bytes: number };
-type Summary = { plan: string; name: string; status: string; monthly_price_pence: number; storage_limit_bytes: number; project_limit: number; asset_limit: number; medium_remaining: number; high_remaining: number; usage: Usage };
+type Summary = { plan: string; name: string; status: string; monthly_price_pence: number; storage_limit_bytes: number; project_limit: number; asset_limit: number; medium_remaining: number; high_remaining: number; capabilities: { maxElectricalElementsPerProject: number | null }; usage: Usage };
 type CloudProject = { project_id: string; title: string; revision: number; byte_size: number; updated_at: string; project_json?: unknown };
 type Asset = { asset_id: string; local_asset_key?: string | null; name: string; original_format: string; processing_status: string; processing_error?: string; triangle_count?: number; source_unit?: string; category_id?: string; category_name?: string; subcategory?: string };
 type Render = { render_id: string; quality_class: string; status: string; safe_error?: string; created_at: string; image_url?: string };
@@ -49,7 +49,9 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     let mounted = true;
-    void currentSession().then((value) => { if (mounted) { setSession(value); if (value) void refresh(); } });
+    void currentSession()
+      .then((value) => { if (mounted) { setSession(value); if (value) void refresh(); } })
+      .catch(() => { if (mounted) setError("Account access is temporarily unavailable. Refresh this page to try again."); });
     return () => { mounted = false; };
   }, [refresh]);
 
@@ -102,7 +104,8 @@ export default function WorkspacePage() {
         await refresh();
         return;
       }
-      await commercialRequest(`/projects/${local.projectId}`, { method: "PUT", body: JSON.stringify({ document: local, expected_revision: null }) });
+      const existing = projects.find((project) => project.project_id === local.projectId);
+      await commercialRequest(`/projects/${local.projectId}`, { method: "PUT", body: JSON.stringify({ document: local, expected_revision: existing?.revision ?? null }) });
       setNotice(`“${local.name}” was backed up to your private cloud workspace. The browser copy remains available.`);
       await refresh();
     } catch (cause) {
@@ -199,7 +202,7 @@ export default function WorkspacePage() {
     <header className="commercial-header"><a className="commercial-brand" href={`${base}/`}>FreeFloorplan3D</a><nav><a href={`${base}/`}>Planner</a><a href={`${base}/account/`}>Account</a><button type="button" onClick={() => void signOut().then(() => { setSession(null); router.push(`${base}/account/`); })}>Sign out</button></nav></header>
     <div className="commercial-content"><div className="commercial-page-heading"><div><p className="commercial-eyebrow">CLOUD WORKSPACE</p><h1>Your projects, assets and renders</h1><p>Cloud storage is an explicit backup; local browser data is retained and is never silently overwritten.</p></div><a className="commercial-secondary" href={`${base}/`}>Return to planner</a></div>
       {error && <p className="commercial-error" role="alert">{error}</p>}{notice && <p className="commercial-status" role="status">{notice}</p>}
-      {summary && <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>{summary.name} plan</h2><p>{summary.status === "free" ? "Local planner only" : `${summary.status} · £${(summary.monthly_price_pence / 100).toFixed(2)} per month`}</p></div><a href={`${base}/billing/`}>{summary.status === "free" ? "Compare plans" : "Manage plan"}</a></div><div className="commercial-metrics"><div><span>Cloud projects</span><strong>{summary.usage.projects} / {summary.project_limit || "—"}</strong></div><div><span>Assets</span><strong>{summary.usage.assets} / {summary.asset_limit || "—"}</strong></div><div><span>Storage used</span><strong>{(summary.usage.storage_bytes / 1024 ** 3).toFixed(2)} GB / {(summary.storage_limit_bytes / 1024 ** 3).toFixed(0)} GB</strong></div><div><span>Render credits</span><strong>{summary.medium_remaining} medium · {summary.high_remaining} high</strong></div></div></section>}
+      {summary && <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>{summary.name} plan</h2><p>{summary.status === "free" ? "Local planner only" : `${summary.status} · £${(summary.monthly_price_pence / 100).toFixed(2)} per month`}</p></div><a href={`${base}/account/?tab=plans`}>{summary.status === "free" ? "Compare plans" : "Manage plan"}</a></div><div className="commercial-metrics"><div><span>Cloud projects</span><strong>{summary.usage.projects} / {summary.project_limit || "—"}</strong></div><div><span>Assets</span><strong>{summary.usage.assets} / {summary.asset_limit || "—"}</strong></div><div><span>Storage used</span><strong>{(summary.usage.storage_bytes / 1024 ** 3).toFixed(2)} GB / {(summary.storage_limit_bytes / 1024 ** 3).toFixed(0)} GB</strong></div><div><span>Render credits</span><strong>{summary.medium_remaining} medium · {summary.high_remaining} high</strong></div></div></section>}
       {conflict && <section className="commercial-panel conflict-panel"><h2>Choose which project copy to keep</h2><p>Both copies are preserved until you choose. Cloud revision {conflict.revision} is newer than this browser’s version.</p><div className="commercial-actions"><button className="commercial-primary" disabled={busy} onClick={() => void loadConflictingCloud()}>Use cloud copy on this device</button><button className="commercial-secondary" disabled={busy} onClick={() => void replaceCloudCopy()}>Replace cloud with browser copy</button></div></section>}
       <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>Cloud projects</h2><p>Back up this browser’s current project when you choose. Downloads do not change the cloud copy.</p></div><button className="commercial-primary compact-button" disabled={busy || summary?.status === "free"} onClick={() => void saveLocalProject()}>{busy ? "Working…" : "Back up current local project"}</button></div>
         {projects.length ? <ul className="commercial-list">{projects.map((project) => <li key={project.project_id}><div><strong>{project.title}</strong><small>Revision {project.revision} · {(project.byte_size / 1024).toFixed(1)} KB · {new Date(project.updated_at).toLocaleString()}</small></div><div className="commercial-actions"><button className="commercial-secondary" disabled={busy} onClick={() => void openCloudProject(project.project_id)}>Open in this browser</button><button className="commercial-danger" onClick={() => void removeCloudProject(project)}>Delete cloud copy</button></div></li>)}</ul> : <p className="commercial-empty">No cloud projects yet.</p>}

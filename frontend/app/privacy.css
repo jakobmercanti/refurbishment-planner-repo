@@ -1,9 +1,28 @@
-.planner-privacy-dialog { width: min(600px, calc(100vw - 28px)); max-height: calc(100dvh - 40px); padding: 28px; border: 1px solid #cdd4cb; border-radius: 14px; color: #25372b; background: #fff; overflow-y: auto; font: 14px/1.65 Arial, sans-serif; }
-.planner-privacy-dialog::backdrop { background: #15271ecc; }
-.planner-privacy-dialog h2 { font-size: 23px; margin: 0 0 20px; }
-.planner-privacy-dialog p { margin: 15px 0; }
-.planner-privacy-dialog a { color: #254fc4; text-decoration: underline; }
-.planner-privacy-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
-.planner-privacy-actions button { min-height: 44px; border: 1px solid #b7c4b7; border-radius: 6px; background: #f5f7f1; padding: 10px 14px; color: inherit; cursor: pointer; font: inherit; }
-.planner-privacy-actions button:focus-visible { outline: 3px solid #254fc4; outline-offset: 3px; }
-@media (max-width: 480px) { .planner-privacy-dialog { padding: 22px; } .planner-privacy-actions { flex-direction: column; } }
+.planner-privacy-window { width: min(780px, calc(100% - 16px)); }
+.planner-privacy { display: grid; gap: 12px; padding: 10px 8px 16px; color: var(--ink); font: 400 13px/1.58 var(--font-sans), sans-serif; }
+.planner-privacy-heading { padding: 8px 10px 12px; border-bottom: 1px solid var(--line); }
+.planner-privacy-heading h1 { margin: 7px 0 5px; color: var(--deep); font: 750 24px/1.15 var(--font-sans), sans-serif; letter-spacing: -.035em; }
+.floating-toolbar .floating-toolbar-content .planner-privacy .planner-privacy-lead,
+.floating-toolbar .floating-toolbar-content .planner-privacy .planner-privacy-date { margin: 5px 0; color: var(--muted); font: 400 12px/1.5 var(--font-sans), sans-serif; }
+.planner-privacy section { display: grid; gap: 6px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.floating-toolbar .floating-toolbar-content .planner-privacy h2 { margin: 0; color: var(--deep); font: 750 15px/1.35 var(--font-sans), sans-serif; }
+.floating-toolbar .floating-toolbar-content .planner-privacy h3 { margin: 0; color: var(--deep); font: 750 13px/1.35 var(--font-sans), sans-serif; }
+.floating-toolbar .floating-toolbar-content .planner-privacy p,
+.floating-toolbar .floating-toolbar-content .planner-privacy address { margin: 0; color: var(--muted); font: 400 12px/1.58 var(--font-sans), sans-serif; }
+.planner-privacy address { font-style: normal; }
+.planner-privacy a { color: #1e5d96; text-decoration: underline; text-underline-offset: 2px; }
+.planner-privacy a:focus-visible, .planner-privacy button:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+.planner-privacy code { overflow-wrap: anywhere; font: 600 11px var(--font-mono); }
+.planner-privacy-choice { display: grid; gap: 8px; padding: 11px; border: 1px solid #cbded2; border-radius: 8px; background: #f4f8f5; }
+.planner-privacy-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.floating-toolbar .floating-toolbar-content .planner-privacy-actions button { min-height: 38px; width: auto; padding: 7px 12px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--deep); font: 700 12px var(--font-sans); cursor: pointer; }
+.floating-toolbar .floating-toolbar-content .planner-privacy-actions button:last-child { border-color: var(--deep); background: var(--deep); color: #fff; }
+.floating-toolbar .floating-toolbar-content .planner-privacy .planner-privacy-error { color: var(--fail); }
+@media (max-width: 600px) {
+  .planner-privacy-window { min-width: min(220px, calc(100vw - 16px)); }
+  .planner-privacy { gap: 9px; padding: 6px 4px 12px; }
+  .planner-privacy-heading h1 { font-size: 21px; }
+  .planner-privacy section { padding: 10px; }
+  .planner-privacy-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .floating-toolbar .floating-toolbar-content .planner-privacy-actions button { width: 100%; }
+}

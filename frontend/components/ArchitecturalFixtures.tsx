@@ -1,4 +1,5 @@
 "use client";
+import { metalFinishProps } from "@/lib/metalSurface";
 import { OpeningFinishMaterial } from "@/components/OpeningFinishMaterial";
 import { CasementWindow } from "@/components/CasementWindow";
 import { useEffect, useMemo } from "react";
@@ -8,7 +9,7 @@ import { STAIRCASE_MODELS, windowPlanVertices } from "@/lib/architecturalModels"
 function Bar({ a, b, radius = .012, colour = "#394449" }: { a: [number, number, number]; b: [number, number, number]; radius?: number; colour?: string }) {
   const start = new Vector3(...a), end = new Vector3(...b), delta = end.clone().sub(start);
   const rotation = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), delta.clone().normalize());
-  return <mesh position={start.add(end).multiplyScalar(.5)} quaternion={rotation} castShadow><cylinderGeometry args={[radius, radius, delta.length(), 12]} /><meshStandardMaterial color={colour} roughness={.32} metalness={.65} /></mesh>;
+  return <mesh position={start.add(end).multiplyScalar(.5)} quaternion={rotation} castShadow><cylinderGeometry args={[radius, radius, delta.length(), 12]} /><meshStandardMaterial color={colour} roughness={.32} metalness={.65} {...metalFinishProps(colour)} /></mesh>;
 }
 
 function GlassRail({ a, b, guardA, guardB, unit, clampColour }: { a: [number, number, number]; b: [number, number, number]; guardA: number; guardB: number; unit: number; clampColour?: string }) {
@@ -21,7 +22,7 @@ function GlassRail({ a, b, guardA, guardB, unit, clampColour }: { a: [number, nu
   }, [length, rise, guardA, guardB, unit]);
   return <group position={a} rotation={[0, -Math.atan2(b[2] - a[2], b[0] - a[0]), 0]}>
     <mesh position={[0, 0, -6 * unit]} castShadow><extrudeGeometry args={[shape, { depth: 12 * unit, bevelEnabled: true, bevelSize: unit, bevelThickness: unit, bevelSegments: 2 }]} /><meshPhysicalMaterial color="#c2e0e3" transparent opacity={.3} transmission={.3} roughness={.08} metalness={.04} depthWrite={false} /></mesh>
-    {[.15, .85].map(t => <mesh key={t} position={[length * t, rise * t + 80 * unit, 0]}><boxGeometry args={[Math.min(35 * unit, length * .18), 45 * unit, 24 * unit]} /><meshStandardMaterial color={clampColour ?? "#afb8bb"} metalness={.85} roughness={.24} /></mesh>)}
+    {[.15, .85].map(t => <mesh key={t} position={[length * t, rise * t + 80 * unit, 0]}><boxGeometry args={[Math.min(35 * unit, length * .18), 45 * unit, 24 * unit]} /><meshStandardMaterial color={clampColour ?? "#afb8bb"} metalness={.85} roughness={.24} {...metalFinishProps(clampColour ?? "#afb8bb")} /></mesh>)}
   </group>;
 }
 
@@ -55,8 +56,8 @@ export function StaircaseFixture({ representation, width, depth, height, colour:
   return <group>
     {treads.map(({ shape, top }, i) => <group key={i}>
       <mesh position={[0, top - thickness, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[shape, { depth: thickness, bevelEnabled: false }]} />{colour && (explicitTreadColour || colour.toUpperCase() !== "#F4F3EE") ? <OpeningFinishMaterial colour={colour} /> : <meshStandardMaterial map={oak} color="#ffffff" roughness={.48} />}</mesh>
-      {!model.open && <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[shape, { depth: Math.max(thickness, top - thickness), bevelEnabled: false }]} /><meshStandardMaterial color={wallColour} roughness={.75} /></mesh>}
-      {model.open && <mesh position={[0, top - thickness * 2, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow><extrudeGeometry args={[shape, { depth: thickness, bevelEnabled: false }]} /><meshStandardMaterial color={supportColour} roughness={.38} metalness={.65} /></mesh>}
+      {!model.open && <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow><extrudeGeometry args={[shape, { depth: Math.max(thickness, top - thickness), bevelEnabled: false }]} /><meshStandardMaterial color={wallColour} roughness={.75} {...metalFinishProps(wallColour)} /></mesh>}
+      {model.open && <mesh position={[0, top - thickness * 2, 0]} rotation={[-Math.PI / 2, 0, 0]} castShadow><extrudeGeometry args={[shape, { depth: thickness, bevelEnabled: false }]} /><meshStandardMaterial color={supportColour} roughness={.38} metalness={.65} {...metalFinishProps(supportColour)} /></mesh>}
     </group>)}
     {model.rails.map((rail, i) => <group key={i}>
       {model.glass ? <GlassRail a={point(rail.a)} b={point(rail.b)} guardA={rail.guard_a * sy} guardB={rail.guard_b * sy} unit={sy} clampColour={colours.clamps} /> : <>
@@ -73,7 +74,7 @@ export function StaircaseFixture({ representation, width, depth, height, colour:
       })[0];
       return next ? <Bar key={i} a={centre(step)} b={centre(next)} radius={65 * sy} colour={supportColour} /> : null;
     })}
-    {model.column && <mesh position={[0, height / 2, 0]} castShadow><cylinderGeometry args={[100 * width / model.width, 100 * width / model.width, height, 32]} /><meshStandardMaterial color={supportColour} metalness={.7} roughness={.3} /></mesh>}
+    {model.column && <mesh position={[0, height / 2, 0]} castShadow><cylinderGeometry args={[100 * width / model.width, 100 * width / model.width, height, 32]} /><meshStandardMaterial color={supportColour} metalness={.7} roughness={.3} {...metalFinishProps(supportColour)} /></mesh>}
   </group>;
 }
 

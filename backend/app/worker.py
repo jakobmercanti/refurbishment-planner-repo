@@ -157,7 +157,7 @@ def _process_ai_3d_asset(job: dict[str, Any], db: SupabaseREST) -> None:
         "model": str(generation.get("provider_model", "")),
     }
     task_id = generation.get("provider_task_id")
-    provider = tripo3d_provider()
+    provider = tripo3d_provider(model=str(generation.get("provider_model") or ""))
     stored_keys: list[str] = []
 
     def fail(message: str) -> None:

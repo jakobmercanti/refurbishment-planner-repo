@@ -239,7 +239,7 @@ begin
   end if;
   if v_error is null then
     update public.asset_definitions set original_byte_size=p_original_bytes,derived_byte_size=p_derived_bytes,
-      derived_object_key=original_object_key,
+      original_object_key='users/'||p_user_id::text||'/assets/'||g.asset_id::text||'/derived/model.glb',
       derived_object_key='users/'||p_user_id::text||'/assets/'||g.asset_id::text||'/derived/model.glb',
       thumbnail_object_key='users/'||p_user_id::text||'/assets/'||g.asset_id::text||'/derived/thumbnail.png',
       triangle_count=p_triangles,computed_bounds_mm=p_bounds,geometry_authority='visual-only',
@@ -257,8 +257,12 @@ begin
       where asset_id=g.asset_id and user_id=p_user_id returning * into a;
     update public.ai_3d_generation_jobs set status='failed',safe_error=left(v_error,500),reference_inputs='[]'::jsonb,
       completed_at=now(),updated_at=now() where generation_id=p_generation_id and user_id=p_user_id returning * into g;
-    update public.ai_3d_generation_ledger set quantity_delta=1,source_type='generation_refund'
-      where user_id=p_user_id and generation_id=p_generation_id and source_type='generation_reservation';
+      insert into public.ai_3d_generation_ledger
+        (user_id,generation_id,quantity_delta,source_type,period_start,period_end)
+        select user_id,generation_id,1,'generation_refund',period_start,period_end
+          from public.ai_3d_generation_ledger
+          where user_id=p_user_id and generation_id=p_generation_id and source_type='generation_reservation'
+        on conflict (user_id,source_type,generation_id) do nothing;
     update public.commercial_jobs set status='failed',last_error=left(v_error,500),locked_at=null,locked_by=null
       where ai_generation_id=p_generation_id and user_id=p_user_id and status='processing';
     v_status:='failed';

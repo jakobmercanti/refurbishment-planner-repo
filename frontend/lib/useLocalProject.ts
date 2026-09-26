@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PersistedFloorplan } from "../components/FullFloorplanEditor";
 import { newProject, type AssetDefinition, type AssetInstance, type ProjectDocument } from "./projectDocument";
+import type { RenderCameraState } from "./renderCamera";
 import { projectRepository } from "./projectRepository";
 import { exportProject, importProject } from "./projectPackage";
 import { analytics, exported } from "./analytics";
@@ -63,5 +64,6 @@ export function useLocalProject() {
   const openFile = useCallback(async (file: File) => { const p = await importProject(file); replace(p); setStatus("Saved locally"); }, [replace]);
   const addAsset = useCallback((asset: AssetDefinition) => { const p = current.current; if (p && !p.assets.some(a => a.assetId === asset.assetId)) update({ assets: [...p.assets, asset] }); }, [update]);
   const setInstances = useCallback((assetInstances: AssetInstance[]) => update({ assetInstances }), [update]);
-  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances };
+  const setRenderCamera = useCallback((renderCamera: RenderCameraState) => update({ renderCamera }), [update]);
+  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera };
 }

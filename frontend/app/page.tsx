@@ -1,10 +1,12 @@
 "use client";
+import { electricalPlacement } from "@/lib/electricalAssets";
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
 import { useLocalProject } from "@/lib/useLocalProject";
 import { PlannerPrivacyDialog } from "@/components/PlannerPrivacyDialog";
+import { AccountDialog } from "@/components/AccountDialog";
 import { LocalAssetLibrary } from "@/components/LocalAssetLibrary";
 import starterDemo from "@/lib/starterDemo.json";
 import { EngineeringViewer } from "@/components/EngineeringViewer";
@@ -13,13 +15,15 @@ import { CatalogueBrowser } from "@/components/CatalogueBrowser";
 import { CatalogueManager } from "@/components/CatalogueManager";
 import { UiTheme, type SoftwareUi } from "@/components/UiTheme";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
+import { ViewerOpeningEditor } from "@/components/ViewerOpeningEditor";
 import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { FloatingToolbar, positionedToolbarDock } from "@/components/FloatingToolbar";
 import { PersonEditor } from "@/components/PersonEditor";
-import { constrainObstacleToRoom, obstacleFitsInRoom, transferObstacle, type PlacementCandidate, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
+import { constrainObstacleToRoom, DEFAULT_OBSTACLE_WALL_LOCK, obstacleFitsInRoom, transferObstacle, type PlacementCandidate, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
 import { normalizeRoomPerson } from "@/lib/person";
 import { type AppPreferences, SettingsDialog } from "@/components/SettingsDialog";
 import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes, WallViewMode } from "@/lib/types";
+import { ADD_TO_PLAN_MODES, type AddToPlanMode } from "@/lib/addToPlanModes";
 import { formatLength, formatMeasurementText } from "@/lib/units";
 import type { FloorplanStyle } from "@/lib/floorplanStyles";
 import { DEFAULT_TOOLBAR_AVAILABILITY, DEFAULT_TOOLBAR_VISIBILITY, FLOORPLAN_TOOLBARS, VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
@@ -69,6 +73,8 @@ export default function Home() {
   const [catalogueManagerOpen, setCatalogueManagerOpen] = useState(false);
   const [catalogueManagerOpener, setCatalogueManagerOpener] = useState<HTMLElement | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const closeAccountDialog = useCallback(() => setAccountOpen(false), []);
   const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
   const [floorplanStyle, setFloorplanStyle] = useState<FloorplanStyle>("DEFAULT");
   const [floorplanExportRequest, setFloorplanExportRequest] = useState(0);
@@ -88,11 +94,17 @@ export default function Home() {
   const [viewerFitRequest, setViewerFitRequest] = useState(0);
   const [viewerOpeningEditRequest, setViewerOpeningEditRequest] = useState<{ id: string; roomId: string; requestId: number } | null>(null);
   const [viewerElementEditRequest, setViewerElementEditRequest] = useState<{ id: string; roomId: string; requestId: number } | null>(null);
+  const [viewerAddToPlanMode, setViewerAddToPlanMode] = useState<AddToPlanMode>("FURNITURE");
+  const [viewerOpeningSyncRequest, setViewerOpeningSyncRequest] = useState<{ room: Room; requestId: number } | null>(null);
   const [openingEditorTarget, setOpeningEditorTarget] = useState<HTMLDivElement | null>(null);
   const handleViewerOpeningSelected = useCallback((selection: { id: string; roomId: string } | null) => {
-    if (selection) setViewerElementEditRequest(null);
+    if (selection) {
+      setViewerElementEditRequest(null);
+      const opening = roomOptions(demo).find(room => room.id === selection.roomId)?.openings.find(item => item.id === selection.id);
+      if (opening) setViewerAddToPlanMode(opening.kind === "WINDOW" ? "WINDOW" : "DOOR");
+    }
     setViewerOpeningEditRequest(current => selection ? { ...selection, requestId: (current?.requestId ?? 0) + 1 } : null);
-  }, []);
+  }, [demo]);
   const handlePlanElementSelected = useCallback((selection: { id: string; roomId: string } | null) => {
     if (!selection) {
       setViewerElementEditRequest(null);
@@ -238,6 +250,7 @@ export default function Home() {
   function applyStandaloneOpeningRoom(updated: Room) {
     setDemo(current => current && current.room.id === updated.id ? { ...current, room: updated } : current);
     setProjectRooms(rooms => rooms.map(room => room.id === updated.id ? updated : room));
+    if (updated.source_floorplan_room_id) setViewerOpeningSyncRequest(current => ({ room: updated, requestId: (current?.requestId ?? 0) + 1 }));
     invalidateAnalysis();
   }
 
@@ -287,11 +300,13 @@ export default function Home() {
       setViewerElementEditRequest(null);
       return;
     }
+    const selectedObstacle = roomOptions(demo).find(room => room.id === selection.roomId)?.obstacles.find(obstacle => obstacle.id === selection.id);
+    setViewerAddToPlanMode(selectedObstacle?.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : "FURNITURE");
     setViewerOpeningEditRequest(null);
     setViewerElementEditRequest((current) => ({ ...selection, requestId: (current?.requestId ?? 0) + 1 }));
     setCompactViewerTool("viewer-analysis");
     setToolbarVisibility((current) => current["viewer-analysis"] ? current : { ...current, "viewer-analysis": true });
-  }, []);
+  }, [demo]);
 
   function enterViewer() {
     setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("ANALYSIS");
@@ -356,13 +371,14 @@ export default function Home() {
       plan_symbol_url: item.plan_symbol_url,
       subcategory: item.subcategory,
       color_hex: item.color_hex,
-      // New catalogue items should begin adjacent to a wall. Users can opt out
-      // from the selected-element controls after placement.
-      wall_lock: true,
+      // Keep free-standing items freely movable; users can opt into wall
+      // adjacency in the Position controls when it is appropriate.
+      wall_lock: DEFAULT_OBSTACLE_WALL_LOCK,
       stl_filename: item.stl_filename ?? undefined,
       stl_base64: item.stl_base64 ?? undefined,
       side_clearance_mm: item.side_clearance_mm ?? undefined,
       front_clearance_mm: item.front_clearance_mm ?? undefined,
+      ...electricalPlacement(item.representation_key, item.height_mm, target.wall_height.value),
     };
     setPlacement({ id: unalignedObstacle.id, obstacle: unalignedObstacle });
   }
@@ -414,9 +430,11 @@ export default function Home() {
       <header className="topbar">
         <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
-          <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => { setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("EDITOR"); }}>2D</button>
-          <button aria-pressed={mode === "ANALYSIS"} className={mode === "ANALYSIS" ? "active" : ""} onClick={enterViewer}>3D</button>
-          <a className="app-nav-entry" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/account/`}>Account</a>
+          <div className="app-nav-modes" role="group" aria-label="Planner view">
+            <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => { setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("EDITOR"); }}>2D</button>
+            <button aria-pressed={mode === "ANALYSIS"} className={mode === "ANALYSIS" ? "active" : ""} onClick={enterViewer}>3D</button>
+          </div>
+          <button type="button" className="app-nav-entry" aria-haspopup="dialog" aria-expanded={accountOpen} onClick={() => setAccountOpen(true)}>Sign in</button>
         </nav>
       </header>
 
@@ -425,13 +443,42 @@ export default function Home() {
         {(mode === "EDITOR" ? [...FLOORPLAN_TOOLBARS, { id: "floorplan-coordinates" as const, name: "Coordinates" }] : VIEWER_TOOLBARS).filter(tool => toolbarAvailability[tool.id]).map(tool =>
           <button key={tool.id} type="button" aria-pressed={compactActiveTool === tool.id} onClick={() => selectCompactTool(tool.id)}>{({ "floorplan-build": "Build", "floorplan-openings": "Elements", "floorplan-view": "View", "floorplan-coordinates": "Coordinates", "viewer-analysis": "Elements", "viewer-layout-analysis": "Analysis", "viewer-person": "Person", "viewer-view": "View" })[tool.id]}</button>)}
       </nav>}
-      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor key={local.revision} initialFloorplan={local.restore?.floorplan} onPersistFloorplan={local.changeFloorplan} onPlacementWallsChange={setPlacementWalls} placement={mode === "EDITOR" ? placement : null} onBeginPlacement={setPlacement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} viewerOpeningRoom={projectRooms.find(room => room.id === viewerOpeningEditRequest?.roomId) ?? demo.room} onStandaloneRoomChange={applyStandaloneOpeningRoom} openingEditRequest={mode === "ANALYSIS" ? viewerOpeningEditRequest : null} elementEditRequest={mode === "EDITOR" ? viewerElementEditRequest : null} onElementSelected={handlePlanElementSelected} openingEditorTarget={openingEditorTarget} projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} annotateRequest={floorplanAnnotateRequest} importFile={floorplanImportFile} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={visibleToolbars} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} /></section>
+      <section className="environment-screen" hidden={mode !== "EDITOR"} aria-hidden={mode !== "EDITOR"}><FullFloorplanEditor key={local.revision} initialFloorplan={local.restore?.floorplan} onPersistFloorplan={local.changeFloorplan} onPlacementWallsChange={setPlacementWalls} placement={mode === "EDITOR" ? placement : null} onBeginPlacement={setPlacement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} viewerOpeningRoom={projectRooms.find(room => room.id === viewerOpeningEditRequest?.roomId) ?? demo.room} onStandaloneRoomChange={applyStandaloneOpeningRoom} openingEditRequest={mode === "ANALYSIS" ? viewerOpeningEditRequest : null} externalOpeningSyncRequest={viewerOpeningSyncRequest} elementEditRequest={mode === "EDITOR" ? viewerElementEditRequest : null} onElementSelected={handlePlanElementSelected} openingEditorTarget={openingEditorTarget} projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} annotateRequest={floorplanAnnotateRequest} importFile={floorplanImportFile} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={visibleToolbars} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} /></section>
       {mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
-          <EngineeringViewer assetInstances={local.project?.assetInstances ?? []} placementWalls={displayedViewerRooms.some(room=>room.source_floorplan_room_id) ? placementWalls : []} placement={placement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} roomSelection={pendingSelection} roomSelectionOptions={projectRooms} fullFloorplanSelection={FULL_FLOORPLAN_SELECTION} onRoomSelectionChange={setPendingViewerRoomSelection} onOpenRoomSelection={openViewerSelection} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} onOpeningSelected={handleViewerOpeningSelected} onElementSelected={handleViewerElementSelected} wallMode={wallMode} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} fitRequest={viewerFitRequest} saveViewRequest={viewerSaveViewRequest} />
+          <EngineeringViewer assetInstances={local.project?.assetInstances ?? []} placementWalls={displayedViewerRooms.some(room=>room.source_floorplan_room_id) ? placementWalls : []} placement={placement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}-${local.project?.projectId}-${local.revision}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} roomSelection={pendingSelection} roomSelectionOptions={projectRooms} fullFloorplanSelection={FULL_FLOORPLAN_SELECTION} onRoomSelectionChange={setPendingViewerRoomSelection} onOpenRoomSelection={openViewerSelection} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} onOpeningSelected={handleViewerOpeningSelected} onElementSelected={handleViewerElementSelected} wallMode={wallMode} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} fitRequest={viewerFitRequest} saveViewRequest={viewerSaveViewRequest} renderCamera={local.project?.renderCamera} onRenderCameraChange={local.setRenderCamera} />
           {viewerOpeningEditRequest && <FloatingToolbar title="Edit door or window" defaultPosition={{ x: 790, y: 200 }} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => setViewerOpeningEditRequest(null)}><div ref={setOpeningEditorTarget} /></FloatingToolbar>}
           {visibleToolbars["viewer-analysis"] && <FloatingToolbar title="Add elements" defaultPosition={{ x: 18, y: 112 }} dock={fillToolbarLayout ? positionedToolbarDock("RIGHT", 8, undefined, 340) : { side: "LEFT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={760} onClose={() => { setViewerElementEditRequest(null); toggleToolbar("viewer-analysis"); }}><aside className="evidence-panel floating-evidence-panel">
-            <CatalogueFixtureEditor key={`${(projectRooms.find(room => room.id === viewerElementEditRequest?.roomId) ?? demo.room).id}-${viewerElementEditRequest?.requestId ?? "new"}`} apiUrl={API_URL} refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)} room={projectRooms.find(room => room.id === viewerElementEditRequest?.roomId) ?? demo.room} displayUnits={preferences.units} onChange={obstacles => applyObstacles(obstacles, viewerElementEditRequest?.roomId ?? demo.room.id)} elementEditRequest={viewerElementEditRequest} onEditEnd={() => handleViewerElementSelected(null)} onElementSelected={handleViewerElementSelected} placementWalls={placementWalls} onBeginPlacement={setPlacement} />
+            <div className="viewer-add-elements-panel">
+              <select className="add-to-plan-mode" aria-label="Add to plan" value={viewerAddToPlanMode} onChange={event => { setPlacement(null); setViewerElementEditRequest(null); setViewerOpeningEditRequest(null); setViewerAddToPlanMode(event.target.value as AddToPlanMode); }}>
+                {ADD_TO_PLAN_MODES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              {viewerAddToPlanMode === "DOOR" || viewerAddToPlanMode === "WINDOW" ? <ViewerOpeningEditor
+                key={`${viewerAddToPlanMode}-${selectedViewerRoom.id}`}
+                kind={viewerAddToPlanMode}
+                room={selectedViewerRoom}
+                apiUrl={API_URL}
+                refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)}
+                displayUnits={preferences.units}
+                onRoomChange={applyStandaloneOpeningRoom}
+                onBeginPlacement={setPlacement}
+                onEditOpening={handleViewerOpeningSelected}
+                placementWalls={placementWalls}
+              /> : <CatalogueFixtureEditor
+                key={`viewer-${viewerAddToPlanMode}-${selectedViewerRoom.id}-${viewerElementEditRequest?.requestId ?? "new"}`}
+                apiUrl={API_URL}
+                refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)}
+                categoryFilter={viewerAddToPlanMode === "ELECTRICAL" ? "electric" : undefined}
+                room={selectedViewerRoom}
+                displayUnits={preferences.units}
+                onChange={obstacles => applyObstacles(obstacles, selectedViewerRoom.id)}
+                elementEditRequest={viewerElementEditRequest?.roomId === selectedViewerRoom.id ? viewerElementEditRequest : null}
+                onEditEnd={() => handleViewerElementSelected(null)}
+                onElementSelected={handleViewerElementSelected}
+                placementWalls={placementWalls}
+                onBeginPlacement={setPlacement}
+              />}
+            </div>
           </aside></FloatingToolbar>}
           {visibleToolbars["viewer-layout-analysis"] && <FloatingToolbar title="Layout analysis" defaultPosition={{ x: 380, y: 112 }} dock={fillToolbarLayout ? positionedToolbarDock("RIGHT", "calc(50% + 4px)", undefined, 340) : { side: "RIGHT", slot: 1, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={650} onClose={() => toggleToolbar("viewer-layout-analysis")}><aside className="evidence-panel floating-evidence-panel">
             {(!layoutResult || analysisIsStale) && (
@@ -475,6 +522,7 @@ export default function Home() {
         {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && " · R to rotate"}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
       {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={local.addAsset} onChange={local.setInstances} onClose={() => setAssetsOpen(false)} />}
       {privacyOpen && <PlannerPrivacyDialog onClose={() => setPrivacyOpen(false)} />}
+      {accountOpen && <AccountDialog onClose={closeAccountDialog} />}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
       {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} humanMockupToolbarVisible={toolbarAvailability["viewer-person"]} onHumanMockupToolbarVisibleChange={setHumanMockupToolbarVisible} uiSettings={uiSettings} onUiSettingsChange={setUiSettings} onClose={() => setCatalogueManagerOpen(false)} />}
       <SettingsDialog open={settingsOpen} preferences={preferences} onChange={setPreferences} onClose={() => setSettingsOpen(false)} />

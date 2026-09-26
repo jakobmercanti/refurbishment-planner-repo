@@ -22,6 +22,8 @@ export type PlacementProps = {
 };
 
 const EPS = .01;
+/** Ordinary furniture/fittings should move freely unless the user opts into a wall lock. */
+export const DEFAULT_OBSTACLE_WALL_LOCK = false;
 const cross = (a: Point2D, b: Point2D, c: Point2D) => (b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
 const distance = (a: Point2D, b: Point2D) => Math.hypot(a.x-b.x,a.y-b.y);
 function projection(p: Point2D, a: Point2D, b: Point2D) {

@@ -144,6 +144,7 @@ rooms: dict[UUID, RoomDefinition] = {}
 fit_results: dict[UUID, FitResult] = {}
 
 CATEGORY_KINDS = {
+    "electric": "FURNITURE",
     "showers": "SHOWER",
     "basins": "BASIN",
     "toilets": "TOILET",

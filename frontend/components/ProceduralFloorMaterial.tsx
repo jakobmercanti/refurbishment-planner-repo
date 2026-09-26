@@ -19,5 +19,5 @@ export function ProceduralFloorMaterial({ url, selected, roughness = .78 }: { ur
     });
     return () => { active = false; if (target) { target.map = null; target.needsUpdate = true; } texture.dispose(); };
   }, [url, invalidate]);
-  return <meshStandardMaterial ref={material} color="#ffffff" roughness={roughness} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? .08 : 0} />;
+  return <meshStandardMaterial ref={material} color="#ffffff" roughness={roughness} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? .08 : 0} userData={{ editorSelectionHighlight: selected }} />;
 }

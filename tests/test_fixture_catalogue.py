@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from database.fixture_defaults import FIXTURE_DEFAULTS, fixture_default_name, seed_fixture_defaults
+from database.catalog import CATEGORIES, seed_catalogue_categories
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.models import RoomDefinition
@@ -52,6 +53,34 @@ def test_representation_survives_room_serialisation():
     assert restored.obstacles[0].plan_symbol_url == obstacle.plan_symbol_url
     assert restored.obstacles[0].dimensions == obstacle.dimensions
     assert restored.obstacles[0].plan_symbol_data_url == obstacle.plan_symbol_data_url
+
+
+def test_electric_category_seeds_idempotently_without_items_or_overwriting_existing_categories():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(FurnitureCategoryRecord(
+            id="storage", name="Custom Storage Name", description="Keep this text.", sort_order=999,
+            default_side_clearance_mm=42, default_front_clearance_mm=84,
+        ))
+        session.flush()
+        seed_catalogue_categories(session)
+        session.commit()
+
+        electric = session.get(FurnitureCategoryRecord, "electric")
+        assert electric is not None
+        assert electric.name == "Electric"
+        assert session.scalars(select(FurnitureItemRecord).where(FurnitureItemRecord.category_id == "electric")).all() == []
+        expected_category_count = len({category[0] for category in CATEGORIES})
+        assert len(session.scalars(select(FurnitureCategoryRecord)).all()) == expected_category_count
+
+        seed_catalogue_categories(session)
+        session.commit()
+        assert len(session.scalars(select(FurnitureCategoryRecord)).all()) == expected_category_count
+        storage = session.get(FurnitureCategoryRecord, "storage")
+        assert storage is not None
+        assert (storage.name, storage.description, storage.sort_order) == ("Custom Storage Name", "Keep this text.", 999)
+        assert (storage.default_side_clearance_mm, storage.default_front_clearance_mm) == (42, 84)
 
 
 def test_rendered_previews_are_persisted_and_preserve_customisations(tmp_path, monkeypatch):

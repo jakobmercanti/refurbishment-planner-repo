@@ -19,17 +19,24 @@ export const FULL_PART_ID = "full";
 /** Glass is rendered with a fixed transparent material and is never editable. */
 export const GLASS_PART_ID = "glass";
 
+export function partSupportsFinish(part: ColourPart, material: "wood" | "metal"): boolean {
+  return part.material_type === material || part.material_type === "wood-metal";
+}
+
 function fullPartFor(source: ColourSource, parts: ColourPart[]): ColourPart {
   const textileParts = parts.filter(part => part.material_type === "textile");
-  const woodParts = parts.filter(part => part.material_type === "wood");
+  const woodParts = parts.filter(part => partSupportsFinish(part, "wood"));
+  const metalParts = parts.filter(part => partSupportsFinish(part, "metal"));
   // A full-part finish can still offer Fabric when an object contains any
   // upholstered regions; the colour itself is applied to every region,
   // while the material choice is scoped to those textile regions.
   const materialType = textileParts.length > 0
     ? "textile"
-    : parts.length > 0 && woodParts.length === parts.length
-      ? "wood"
-      : parts.some(part => part.material_type) ? "mixed" : null;
+    : parts.length > 0 && metalParts.length === parts.length
+      ? woodParts.length ? "wood-metal" : "metal"
+      : parts.length > 0 && woodParts.length === parts.length
+        ? metalParts.length ? "wood-metal" : "wood"
+        : parts.some(part => part.material_type) ? "mixed" : null;
   const defaultFabricId = textileParts.find(part => part.default_fabric_id)?.default_fabric_id ?? null;
   const defaultColour = typeof source.color_hex === "string" && source.color_hex.length > 0
     ? source.color_hex
@@ -44,16 +51,18 @@ function fullPartFor(source: ColourSource, parts: ColourPart[]): ColourPart {
 }
 
 export function colourPartsFor(source: ColourSource): ColourPart[] {
-  if (source.colour_parts?.length) {
+  const representations: Record<string, string> = manifest.representations;
+  const profiles: Record<string, ColourPart[]> = manifest.profiles;
+  const key = source.representation_key ?? ({ SHOWER: "shower-corner", BASIN: "basin-vanity", TOILET: "toilet-close-coupled", FURNITURE: "furniture-storage-unit", DOOR: "door-single", WINDOW: "window-casement" }[source.fixture_kind ?? ""] ?? "");
+  // Native meshes and their component definitions share this manifest. Older
+  // catalogue responses may still contain the former whole-object definition.
+  if (source.colour_parts?.length && !representations[key] && !source.stl_base64) {
     const parts = source.colour_parts
       .filter(part => part.id !== FULL_PART_ID && part.id !== GLASS_PART_ID)
       .map(part => ({ ...part, default_color_hex: part.default_color_hex === "$catalogue" ? source.color_hex ?? "#F4F3EE" : part.default_color_hex }));
     const distinctParts = parts.length === 1 && /whole object/i.test(parts[0].label) ? [] : parts;
     return [fullPartFor(source, distinctParts), ...distinctParts];
   }
-  const representations: Record<string, string> = manifest.representations;
-  const profiles: Record<string, ColourPart[]> = manifest.profiles;
-  const key = source.representation_key ?? ({ SHOWER: "shower-corner", BASIN: "basin-vanity", TOILET: "toilet-close-coupled", FURNITURE: "furniture-storage-unit", DOOR: "door-single", WINDOW: "window-casement" }[source.fixture_kind ?? ""] ?? "");
   const profile = source.stl_base64 ? "whole" : representations[key] ?? "whole";
   const parts = profiles[profile]
     .filter(part => part.id !== GLASS_PART_ID)

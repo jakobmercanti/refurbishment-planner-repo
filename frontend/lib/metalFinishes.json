@@ -1,0 +1,182 @@
+[
+  {
+    "id": "brushed-steel",
+    "name": "Brushed Steel",
+    "colour": "#A6ADB1",
+    "metalness": 0.8,
+    "roughness": 0.44,
+    "brushed": true,
+    "description": "Fine directional grain with a soft, diffused sheen."
+  },
+  {
+    "id": "satin-stainless",
+    "name": "Satin Stainless",
+    "colour": "#B8BEC1",
+    "metalness": 0.85,
+    "roughness": 0.35,
+    "brushed": true,
+    "description": "A softly reflective stainless finish for appliances and fittings."
+  },
+  {
+    "id": "polished-chrome",
+    "name": "Polished Chrome",
+    "colour": "#D8E0E5",
+    "metalness": 0.95,
+    "roughness": 0.08,
+    "brushed": false,
+    "description": "Bright silver with a highly polished reflective finish."
+  },
+  {
+    "id": "brushed-chrome",
+    "name": "Brushed Chrome",
+    "colour": "#BDC7CC",
+    "metalness": 0.85,
+    "roughness": 0.38,
+    "brushed": true,
+    "description": "Cool silver with fine brushed grain."
+  },
+  {
+    "id": "matt-black",
+    "name": "Matt Black",
+    "colour": "#202326",
+    "metalness": 0,
+    "roughness": 0.8,
+    "brushed": false,
+    "description": "A flat black coated finish."
+  },
+  {
+    "id": "satin-black",
+    "name": "Satin Black",
+    "colour": "#34383D",
+    "metalness": 0.15,
+    "roughness": 0.4,
+    "brushed": false,
+    "description": "Black coating with a subtle satin sheen."
+  },
+  {
+    "id": "antique-brass",
+    "name": "Antique Brass",
+    "colour": "#8C7043",
+    "metalness": 0.7,
+    "roughness": 0.48,
+    "brushed": false,
+    "description": "Warm, muted brass with an aged appearance."
+  },
+  {
+    "id": "polished-brass",
+    "name": "Polished Brass",
+    "colour": "#D3AD54",
+    "metalness": 0.9,
+    "roughness": 0.14,
+    "brushed": false,
+    "description": "Warm golden brass with a polished sheen."
+  },
+  {
+    "id": "satin-brass",
+    "name": "Satin Brass",
+    "colour": "#BC9B60",
+    "metalness": 0.8,
+    "roughness": 0.4,
+    "brushed": true,
+    "description": "Soft gold with a fine brushed texture."
+  },
+  {
+    "id": "aged-brass",
+    "name": "Unlacquered / Aged Brass",
+    "colour": "#9F864F",
+    "metalness": 0.75,
+    "roughness": 0.5,
+    "brushed": false,
+    "description": "A mellow brass tone suggesting a naturally aged surface."
+  },
+  {
+    "id": "black-nickel",
+    "name": "Black Nickel",
+    "colour": "#444B55",
+    "metalness": 0.92,
+    "roughness": 0.12,
+    "brushed": false,
+    "description": "Dark grey nickel with a reflective polished finish."
+  },
+  {
+    "id": "polished-nickel",
+    "name": "Polished Nickel",
+    "colour": "#C9C5B9",
+    "metalness": 0.92,
+    "roughness": 0.14,
+    "brushed": false,
+    "description": "Warm silver with a polished sheen."
+  },
+  {
+    "id": "satin-nickel",
+    "name": "Satin Nickel",
+    "colour": "#AEAFA6",
+    "metalness": 0.8,
+    "roughness": 0.4,
+    "brushed": true,
+    "description": "Warm grey silver with a fine satin grain."
+  },
+  {
+    "id": "polished-copper",
+    "name": "Polished Copper",
+    "colour": "#C9815B",
+    "metalness": 0.9,
+    "roughness": 0.16,
+    "brushed": false,
+    "description": "Rich copper with a bright polished surface."
+  },
+  {
+    "id": "brushed-copper",
+    "name": "Brushed Copper",
+    "colour": "#AD7357",
+    "metalness": 0.8,
+    "roughness": 0.44,
+    "brushed": true,
+    "description": "Warm copper with directional brushed grain."
+  },
+  {
+    "id": "rose-gold",
+    "name": "Rose Gold",
+    "colour": "#CEA08E",
+    "metalness": 0.85,
+    "roughness": 0.22,
+    "brushed": false,
+    "description": "A soft pink-gold metallic finish."
+  },
+  {
+    "id": "bronze",
+    "name": "Bronze",
+    "colour": "#89664A",
+    "metalness": 0.75,
+    "roughness": 0.4,
+    "brushed": false,
+    "description": "A warm brown bronze finish."
+  },
+  {
+    "id": "oil-rubbed-bronze",
+    "name": "Oil-rubbed Bronze",
+    "colour": "#493C30",
+    "metalness": 0.65,
+    "roughness": 0.55,
+    "brushed": false,
+    "description": "Deep brown bronze with a subdued aged finish."
+  },
+  {
+    "id": "pewter",
+    "name": "Pewter",
+    "colour": "#919792",
+    "metalness": 0.7,
+    "roughness": 0.5,
+    "brushed": false,
+    "description": "Muted grey metal with a soft, low-gloss surface."
+  },
+  {
+    "id": "white",
+    "name": "White",
+    "colour": "#FFFFFF",
+    "metalness": 0,
+    "roughness": 0.35,
+    "brushed": false,
+    "description": "A smooth white coated finish for metalwork and electrical fittings."
+  }
+]

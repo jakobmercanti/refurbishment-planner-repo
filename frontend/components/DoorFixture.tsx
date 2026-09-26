@@ -1,4 +1,6 @@
 "use client";
+import { metalFinishProps } from "@/lib/metalSurface";
+import { metalFinishForColour } from "@/lib/metalFinishes";
 import { OpeningFinishMaterial } from "@/components/OpeningFinishMaterial";
 import { useEffect, useMemo } from "react";
 import { CatmullRomCurve3, DataTexture, RGBAFormat, SRGBColorSpace, Path, Shape, Vector3 } from "three";
@@ -9,7 +11,7 @@ function rectangle(x: number, y: number, w: number, h: number) {
   const shape = new Shape(); shape.moveTo(x, y); shape.lineTo(x + w, y); shape.lineTo(x + w, y + h); shape.lineTo(x, y + h); shape.closePath(); return shape;
 }
 function Box({ at, size, colour, metal = false }: { at: [number, number, number]; size: [number, number, number]; colour: string; metal?: boolean }) {
-  return <mesh position={at} castShadow receiveShadow><boxGeometry args={size} />{metal ? <meshStandardMaterial color={colour} roughness={.28} metalness={.78} /> : <OpeningFinishMaterial colour={colour} />}</mesh>;
+  return <mesh position={at} castShadow receiveShadow><boxGeometry args={size} />{metal ? <meshStandardMaterial color={colour} roughness={.28} metalness={.78} {...metalFinishProps(colour)} /> : <OpeningFinishMaterial colour={colour} />}</mesh>;
 }
 
 /** A leaf built from pierced stiles/rails, recessed infills and bevelled mouldings. */
@@ -41,7 +43,7 @@ function DoorLeaf({ width: w, height: h, thickness: t, style, colour, handleSide
   const hardware = colours.hardware ?? (style === "six-panel" || style === "entrance" ? "#ad8644" : "#7c8588");
   const lever = useMemo(() => new CatmullRomCurve3([new Vector3(0, 0, 0), new Vector3(-handleSide * h * .016, h * .004, h * .006), new Vector3(-handleSide * h * .042, h * .001, h * .008), new Vector3(-handleSide * h * .050, h * .005, h * .008)]), [h, handleSide]);
   return <group>
-    <mesh position={[0, 0, -t / 2]} castShadow receiveShadow><extrudeGeometry args={[slab, { depth: t, bevelEnabled: false }]} />{grain ? <meshStandardMaterial color={colour} map={grain} roughness={.43} /> : <OpeningFinishMaterial colour={colour} />}</mesh>
+    <mesh position={[0, 0, -t / 2]} castShadow receiveShadow><extrudeGeometry args={[slab, { depth: t, bevelEnabled: false }]} />{grain && !metalFinishForColour(colour) ? <meshStandardMaterial color={colour} map={grain} roughness={.43} {...metalFinishProps(colour)} /> : <OpeningFinishMaterial colour={colour} />}</mesh>
     {panels.map((p, index) => {
       const pw = p.w * w, ph = p.h * h, trim = Math.min(w * .035, h * .014), x = (p.x + p.w / 2) * w, y = (p.y + p.h / 2) * h;
       const inset = rectangle(-pw / 2 + trim, -ph / 2 + trim, pw - trim * 2, ph - trim * 2);
@@ -65,7 +67,7 @@ function DoorLeaf({ width: w, height: h, thickness: t, style, colour, handleSide
       <group position={[0, h * .49, t * .75]} rotation={[0, 0, -Math.atan2(w * .78, h * .65)]}><Box at={[0, 0, 0]} size={[h * .06, Math.hypot(w * .78, h * .65), t * .5]} colour={colours.panels ?? colour} /></group>
       {[-1, 1].map(side => <group key={side} position={[side * w * .30, h * .96, t * .85]}>
         <Box at={[0, -h * .025, 0]} size={[w * .035, h * .09, t * .20]} colour={colours.track ?? "#303639"} metal />
-        <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[h * .017, h * .017, t * .4, 24]} /><meshStandardMaterial color={colours.track ?? "#252c2e"} roughness={.28} metalness={.8} /></mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[h * .017, h * .017, t * .4, 24]} /><meshStandardMaterial color={colours.track ?? "#252c2e"} roughness={.28} metalness={.8} {...metalFinishProps(colours.track ?? "#252c2e")} /></mesh>
       </group>)}
     </>}
     {showHandle && [-1, 1].map(side => <group key={side} position={[handleSide * w * .415, h * .46, side * t * .56]} rotation={[0, side < 0 ? Math.PI : 0, 0]}>
@@ -73,13 +75,13 @@ function DoorLeaf({ width: w, height: h, thickness: t, style, colour, handleSide
         <Box at={[0, 0, t * .08]} size={[w * .035, h * .075, t * .12]} colour={hardware} metal />
         <Box at={[0, 0, t * .18]} size={[w * .018, h * .053, t * .08]} colour="#323a3b" metal />
       </> : <>
-        <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[h * .012, h * .012, t * .18, 32]} /><meshStandardMaterial color={hardware} metalness={.85} roughness={.24} /></mesh>
-        <mesh position={[0, 0, t * .32]}><tubeGeometry args={[lever, 20, h * .0038, 10, false]} /><meshStandardMaterial color={hardware} metalness={.85} roughness={.24} /></mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[h * .012, h * .012, t * .18, 32]} /><meshStandardMaterial color={hardware} metalness={.85} roughness={.24} {...metalFinishProps(hardware)} /></mesh>
+        <mesh position={[0, 0, t * .32]}><tubeGeometry args={[lever, 20, h * .0038, 10, false]} /><meshStandardMaterial color={hardware} metalness={.85} roughness={.24} {...metalFinishProps(hardware)} /></mesh>
         <Box at={[0, -h * .04, 0]} size={[w * .009, h * .013, t * .14]} colour={hardware} metal />
       </>}
     </group>)}
     {!sliding && [.16, .5, .84].map(y => <group key={y} position={[-handleSide * (w / 2 - t * .04), h * y, t * .35]}>
-      <mesh castShadow><cylinderGeometry args={[t * .13, t * .13, h * .045, 16]} /><meshStandardMaterial color={hardware} metalness={.85} roughness={.3} /></mesh>
+      <mesh castShadow><cylinderGeometry args={[t * .13, t * .13, h * .045, 16]} /><meshStandardMaterial color={hardware} metalness={.85} roughness={.3} {...metalFinishProps(hardware)} /></mesh>
       <Box at={[handleSide * t * .22, 0, 0]} size={[t * .4, h * .045, t * .06]} colour={hardware} metal />
     </group>)}
     {style.startsWith("entrance") && <Box at={[0, h * .37, t * .58]} size={[w * .27, h * .028, t * .15]} colour={hardware} metal />}

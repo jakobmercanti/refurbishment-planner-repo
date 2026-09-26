@@ -12,7 +12,7 @@ import { calibratedDrawingSize, orthogonalCalibrationPoint } from "@/lib/drawing
 import { renderPdfDrawing } from "@/lib/pdfDrawing";
 import { FloorPlanFixtureDimensions, FloorPlanFixtureRoomSpacingDimensions, FloorPlanFixtureSpacingDimensions, nearestFixtureWallSpan, type FixtureDimensionSection } from "@/components/FloorPlanFixtureDimensions";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
-import { constrainObstacleToRoom, containsPoint, resolveObstaclePlacement, resolvePlacement, type PlacementCandidate, type PlacementProps } from "@/lib/elementPlacement";
+import { constrainObstacleToRoom, containsPoint, resolveObstaclePlacement, resolvePlacement, type PlacementCandidate, type PlacementProps, type PlacementWall } from "@/lib/elementPlacement";
 import { PlacementPreview2D } from "@/components/PlacementPreview2D";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
@@ -26,12 +26,14 @@ import { addRoomOutsideWall, removeRoomBoundary } from "@/lib/roomOperations";
 import { needsWallThicknessOverride } from "@/lib/wallThickness";
 import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import { ComponentColours } from "@/components/ComponentColours";
+import { componentColoursFromMetadata } from "@/lib/assetColours";
 import { FLOORPLAN_STYLE_OPTIONS, floorplanStyleClass, floorplanStyleCss, floorplanStyleLabel, type FloorplanStyle } from "@/lib/floorplanStyles";
 import { FloorplanAtmosphere } from "@/components/FloorplanAtmosphere";
 import { AnnotationsPanel, type AnnotationArrowEndStyle, type AnnotationPanelSelection, type AnnotationStyle, type AnnotationToolName } from "@/components/AnnotationsPanel";
 import { ViewToggle } from "@/components/ViewToggle";
 import { MarkerSettingsPopup, markerTextSize, type MarkerSettings, type MarkerSymbol } from "@/components/MarkerSettingsPopup";
 import { openingCatalogueCategoryLabel, openingCatalogueDefaultDimensions } from "@/lib/openingCatalogue";
+import { ADD_TO_PLAN_MODES, type AddToPlanMode } from "@/lib/addToPlanModes";
 import { propagateSquaredWallEdit } from "@/lib/wallDragGeometry";
 import { refreshWallEndpointAttachments, releaseWallLengthOverride, appendWallRunPreservingExistingWalls, constrainSquaredCornerTarget, ensureVisibleBridgeCorners, ensureVisibleJunctionCorners, constrainTranslatedWallDistance, enforceWallLengthOverrides, enforceWallLengthOverridesPreservingOrthogonality, followTerminatingEndpointsOnTranslatedSegments, isPreciseWallJunction, materializeWallIntersections, materializeWallJunctionsForSelection, preserveUnrelatedParallelWallSegments, preserveUnrelatedWallGeometry, reanchorAttachedWallEndpoints, reanchorAutoWallBridges, retainDraggedWallConnections, separateParallelSegmentEndForDrag, trimOpenWallEndpoint, separateParallelSegmentStartForDrag, translateHostSegmentWithDraggedEndpoint, translateIncidentWallRunsForCorner, translateStraightWallRunForCorner, type MaterializedWallSelection } from "@/lib/wallDragGeometry";
 import type { CatalogueItem, Obstacle, Opening, Point2D, Room, RoomFinishes } from "@/lib/types";
@@ -89,7 +91,7 @@ type WallDrag = { wallId: string; segmentIndex: number; before: Snapshot; histor
 type OpeningDrag = { openingId: string; before: Snapshot; wallId: string; segmentIndex: number; sideSign: -1 | 1; initialOpensInward: boolean };
 type RoomLabelDrag = { roomId: string; before: Snapshot; pointerStart: Point2D; labelStart: Point2D; moved: boolean };
 export type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number; roomFinishes?: Record<string, RoomFinishes>; viewSettings?: PersistedViewSettings };
-interface Props extends PlacementProps { annotateRequest?: number; viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
+interface Props extends PlacementProps { annotateRequest?: number; viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; externalOpeningSyncRequest?: { room: Room; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; }
 
 interface Props { initialFloorplan?: PersistedFloorplan | null; onPersistFloorplan?: (floorplan: PersistedFloorplan, rooms: Room[]) => void; }
 const DEFAULT_SIZE = { width: 1100, height: 700 };
@@ -817,6 +819,50 @@ function roomOpenings(room: NamedOutline, openings: FullOpening[], walls: Wall[]
   });
 }
 
+function fullOpeningForRoomOpening(opening: Opening, outline: NamedOutline, walls: Wall[]): FullOpening | null {
+  if (opening.kind === "GENERIC") return null;
+  const edgeIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
+  const vertices = counterClockwiseVertices(outline.vertices);
+  const start = vertices[edgeIndex];
+  const end = vertices[(edgeIndex + 1) % vertices.length];
+  const edgeLength = start && end ? Math.hypot(end.x - start.x, end.y - start.y) : 0;
+  if (!start || !end || !edgeLength || opening.offset_mm < 0 || opening.offset_mm + opening.width.value > edgeLength + 1) return null;
+  const unit = { x: (end.x - start.x) / edgeLength, y: (end.y - start.y) / edgeLength };
+  const openingStart = { x: start.x + unit.x * opening.offset_mm, y: start.y + unit.y * opening.offset_mm };
+  const openingEnd = { x: openingStart.x + unit.x * opening.width.value, y: openingStart.y + unit.y * opening.width.value };
+  for (const wall of walls) for (let segmentIndex = 0; segmentIndex < wall.points.length - 1; segmentIndex++) {
+    const segmentStart = wall.points[segmentIndex];
+    const segmentEnd = wall.points[segmentIndex + 1];
+    const length = Math.hypot(segmentEnd.x - segmentStart.x, segmentEnd.y - segmentStart.y);
+    if (!length) continue;
+    const projectedStart = pointOnSegment(openingStart, segmentStart, segmentEnd);
+    const projectedEnd = pointOnSegment(openingEnd, segmentStart, segmentEnd);
+    if (Math.hypot(openingStart.x - projectedStart.point.x, openingStart.y - projectedStart.point.y) > 1
+      || Math.hypot(openingEnd.x - projectedEnd.point.x, openingEnd.y - projectedEnd.point.y) > 1) continue;
+    const reversed = projectedStart.along > projectedEnd.along;
+    const metadata = opening.metadata ?? {};
+    return {
+      id: opening.id,
+      kind: opening.kind,
+      wallId: wall.id,
+      segmentIndex,
+      offset: Math.min(projectedStart.along, projectedEnd.along) * length,
+      width: opening.width.value,
+      height: opening.height.value,
+      sill: opening.sill_height_mm,
+      hingeSide: opening.hinge_side === "END" ? (reversed ? "START" : "END") : (reversed ? "END" : "START"),
+      doorType: opening.door_type ?? "SINGLE",
+      opensInward: opening.opens_inward ?? true,
+      catalogueItemId: typeof metadata.catalogue_item_id === "string" ? metadata.catalogue_item_id : undefined,
+      representationKey: typeof metadata.representation_key === "string" ? metadata.representation_key : undefined,
+      windowDepthMm: typeof metadata.window_depth_mm === "number" ? metadata.window_depth_mm : undefined,
+      colorHex: typeof metadata.color_hex === "string" ? metadata.color_hex : undefined,
+      componentColors: componentColoursFromMetadata(metadata),
+    };
+  }
+  return null;
+}
+
 function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultThicknessMm: number): Record<string, number> {
   const toleranceMm = 1;
   const overrides: Record<string, number> = {};
@@ -836,7 +882,7 @@ function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultTh
   return overrides;
 }
 
-export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
+export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, externalOpeningSyncRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout }: Props) {
   const [walls, setWalls] = useState<Wall[]>([]);
   const [restoredFinishes, setRestoredFinishes] = useState<Record<string, RoomFinishes>>({});
   const [openings, setOpenings] = useState<FullOpening[]>([]);
@@ -887,7 +933,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const [rooms, setRooms] = useState<NamedOutline[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [draggingRoomLabelId, setDraggingRoomLabelId] = useState<string | null>(null);
-  const [elementTab, setElementTab] = useState<"DOOR" | "WINDOW" | "FURNITURE">("DOOR");
+  const [elementTab, setElementTab] = useState<AddToPlanMode>("DOOR");
   const [openingKind, setOpeningKind] = useState<"DOOR" | "WINDOW">("DOOR");
   const [openingParent, setOpeningParent] = useState("");
   const [openingOffset, setOpeningOffset] = useState(100);
@@ -1144,6 +1190,29 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     };
   }, [activeSourceRoomId, currentFixtures, openingCatalogueItems, openings, projectRooms, restoredFinishes, wallHeight, wallThickness, walls]);
   const planRooms = useMemo(() => rooms.map(roomDraftForOutline), [roomDraftForOutline, rooms]);
+  const processedOpeningSyncRequest = useRef(0);
+  useEffect(() => {
+    const request = externalOpeningSyncRequest;
+    const sourceId = request?.room.source_floorplan_room_id;
+    if (!request || request.requestId <= processedOpeningSyncRequest.current || !sourceId) return;
+    const outline = rooms.find(room => room.id === sourceId);
+    if (!outline) return;
+    const normalizedOutline = { ...outline, vertices: counterClockwiseVertices(outline.vertices) };
+    const externalOpenings = request.room.openings.filter(opening => opening.kind !== "GENERIC");
+    const mappedOpenings = externalOpenings.flatMap(opening => {
+      const mapped = fullOpeningForRoomOpening(opening, normalizedOutline, walls);
+      return mapped ? [mapped] : [];
+    });
+    const mappedIds = new Set(mappedOpenings.map(opening => opening.id));
+    const externalIds = new Set(externalOpenings.map(opening => opening.id));
+    setOpenings(current => {
+      const managedIds = new Set(roomOpenings(normalizedOutline, current, walls, openingCatalogueItems).map(opening => opening.id));
+      const retained = current.filter(opening => !managedIds.has(opening.id) || (externalIds.has(opening.id) && !mappedIds.has(opening.id)));
+      const next = [...retained, ...mappedOpenings.filter(opening => !retained.some(existing => existing.id === opening.id))];
+      return JSON.stringify(current) === JSON.stringify(next) ? current : next;
+    });
+    processedOpeningSyncRequest.current = request.requestId;
+  }, [externalOpeningSyncRequest, openingCatalogueItems, rooms, walls]);
   const placementGeometry = useRef({ walls, openings, planRooms, viewerOpeningRoom });
   useEffect(() => { placementGeometry.current = { walls, openings, planRooms, viewerOpeningRoom }; }, [walls, openings, planRooms, viewerOpeningRoom]);
   const planPlacementWalls = useMemo(()=>walls.flatMap(wall=>wall.points.slice(0,-1).map((start,index)=>({start,end:wall.points[index+1],thickness:wallThicknessForSegment(wall,index,wallThickness)}))),[walls,wallThickness]);
@@ -1748,6 +1817,18 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const rect = svg.getBoundingClientRect();
     return { x: (clientX - rect.left) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: (clientY - rect.top) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height };
   }
+  function selectAddToPlanMode(mode: AddToPlanMode) {
+    if (mode === "DOOR" || mode === "WINDOW") {
+      selectOpeningKind(mode);
+      return;
+    }
+    setElementTab(mode);
+    if (mode === "ELECTRICAL") {
+      onElementSelected?.(null);
+      setSelectedOpeningId(null);
+      setOpeningError(null);
+    }
+  }
 
   function svgPointFromClient(clientX: number, clientY: number, svg: SVGSVGElement): Point2D {
     const matrix = svg.getScreenCTM();
@@ -2125,7 +2206,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   function selectFixtureForEdit(fixture: Obstacle, owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id))) {
     const roomId = owner?.id ?? selectedRoomDraft()?.id;
     setTool("SELECT");
-    setElementTab("FURNITURE");
+    setElementTab(fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : "FURNITURE");
     setSelectedAnnotationId(null);
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
@@ -2792,7 +2873,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const fixture = owner?.obstacles.find(item => item.id === elementEditRequest.id) ?? fixtures.find(item => item.id === elementEditRequest.id);
     if (!fixture) return;
     if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
-    setElementTab("FURNITURE");
+    setElementTab(fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : "FURNITURE");
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
     setSelectedSegment(null);
@@ -3222,7 +3303,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         if (candidate) {
           onCommitPlacement?.(candidate);
           if (!placement.opening && candidate.roomId) {
-            setElementTab("FURNITURE");
+            setElementTab(candidate.obstacle.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : "FURNITURE");
             setSelectedFixtureId(candidate.obstacle.id);
             const target = planRooms.find(room => room.id === candidate.roomId);
             if (target?.source_floorplan_room_id) setSelectedRoomId(target.source_floorplan_room_id);
@@ -3466,9 +3547,12 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const annotationPanelSelection: AnnotationPanelSelection = selectedAnnotation ? { type: selectedAnnotation.type, text: selectedAnnotation.text } : null;
-  const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add elements">
-    <div className="mode-switch element-tabs" role="tablist" aria-label="Element type">{(["DOOR", "WINDOW", "FURNITURE"] as const).filter(tab => !openingEditorTarget || tab !== "FURNITURE").map(tab => <button key={tab} role="tab" aria-selected={elementTab === tab} className={elementTab === tab ? "active" : ""} onClick={() => tab === "FURNITURE" ? setElementTab(tab) : selectOpeningKind(tab)}>{tab === "FURNITURE" ? "Elements" : tab[0] + tab.slice(1).toLowerCase()}</button>)}</div>
-    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add elements.</p> : elementTab === "FURNITURE" && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedRoom!.id}-${elementEditRequest?.requestId ?? "new"}`} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={elementEditRequest} onEditEnd={() => onElementSelected?.(null)} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
+  const selectedAddToPlanMode: AddToPlanMode = openingEditorTarget && (elementTab === "FURNITURE" || elementTab === "ELECTRICAL") ? openingKind : elementTab;
+  const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add to plan">
+    <select className="add-to-plan-mode" aria-label="Add to plan" value={selectedAddToPlanMode} onChange={event => selectAddToPlanMode(event.target.value as AddToPlanMode)}>
+      {ADD_TO_PLAN_MODES.map(option => <option key={option.value} value={option.value} disabled={Boolean(openingEditorTarget && (option.value === "FURNITURE" || option.value === "ELECTRICAL"))}>{option.label}</option>)}
+    </select>
+    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add items.</p> : (selectedAddToPlanMode === "FURNITURE" || selectedAddToPlanMode === "ELECTRICAL") && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedAddToPlanMode}-${selectedRoom!.id}-${elementEditRequest?.requestId ?? "new"}`} categoryFilter={selectedAddToPlanMode === "ELECTRICAL" ? "electric" : undefined} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={elementEditRequest} onEditEnd={() => onElementSelected?.(null)} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
     <p className="tool-note">Choose a variant and click Add. Select a wall first to use its offset, or place the preview on a wall with the cursor.</p>
     <div className="fixture-cascading-menu opening-cascading-menu" ref={openingSelectorRef}>
       {!openingSelectorExpanded ? <div className="fixture-cascading-collapsed">
@@ -4054,7 +4138,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
                   <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} selected={selectedFixtureId === fixture.id} />
                   {showMeasurements && selected && <>
                     <FloorPlanFixtureDimensions obstacle={fixture} measurementId={fixture.id} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`fixture:${fixture.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} />
-                    {wallSpan ? <FloorPlanFixtureSpacingDimensions span={wallSpan} toScreen={toScreen} displayUnits={displayUnits} wallDimensionOffset={wallDimensionOffset} /> : fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} />}
+                    {wallSpan ? <><FloorPlanFixtureSpacingDimensions span={wallSpan} toScreen={toScreen} displayUnits={displayUnits} wallDimensionOffset={wallDimensionOffset} />{fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} axisFilter={["Y"]} />}</> : fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} />}
                   </>}
                 </g>
               );
@@ -4215,7 +4299,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
           const opening = viewerOpeningRoom?.openings.find(item => item.id === openingEditRequest.id);
           return opening && viewerOpeningRoom && onStandaloneRoomChange ? <RoomOpeningEditor key={`${opening.id}-${openingEditRequest.requestId}`} room={viewerOpeningRoom} opening={opening} items={openingCatalogueItems} units={displayUnits} onChange={onStandaloneRoomChange} /> : <p>This opening has been removed. Select another door or window.</p>;
         })(), openingEditorTarget)}
-        {toolbarVisibility["floorplan-openings"] && !openingEditRequest && <FloatingToolbar title="Add elements" defaultPosition={{ x: 662, y: 370 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-openings") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={760} onClose={() => { onElementSelected?.(null); onToggleToolbar("floorplan-openings"); }}>{openingPanel}</FloatingToolbar>}
+        {toolbarVisibility["floorplan-openings"] && !openingEditRequest && <FloatingToolbar title="Add to plan" defaultPosition={{ x: 662, y: 370 }} dock={fillToolbarLayout ? floorplanDock("RIGHT", floorplanRightDockIds, "floorplan-openings") : { side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={760} onClose={() => { onElementSelected?.(null); onToggleToolbar("floorplan-openings"); }}>{openingPanel}</FloatingToolbar>}
       </aside>
     </div>
   </section>;

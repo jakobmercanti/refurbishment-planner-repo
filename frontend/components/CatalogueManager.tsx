@@ -19,6 +19,7 @@ interface CatalogueManagerProps {
 }
 
 const KINDS: Record<string, "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" | "DOOR" | "WINDOW"> = {
+  electric: "FURNITURE",
   ...Object.fromEntries(DOOR_MODELS.map(model => [model.family, "DOOR" as const])),
   "radiators-horizontal": "FURNITURE", "radiators-vertical": "FURNITURE", "radiators-bathroom": "FURNITURE",
   "baths": "FURNITURE", "kitchen-cabinets": "FURNITURE",

@@ -1,6 +1,8 @@
 "use client";
+import { MetalReflections } from "@/components/MetalReflections";
 
 import { LocalAssetScene } from "@/components/LocalAssetScene";
+import RenderCameraRig, { type RenderCameraRigHandle } from "./RenderCameraRig";
 import type { AssetInstance } from "@/lib/projectDocument";
 import { exported } from "@/lib/analytics";
 import { doorRepresentation } from "@/lib/doorModels";
@@ -17,7 +19,7 @@ import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
 import { floorDesignColour, flooringSwatch, normalizeFloorDesign, TILE_MATERIALS } from "@/lib/flooring";
 import { Grid, Html, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
@@ -33,6 +35,7 @@ import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type Toolbar
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { ViewToggle } from "@/components/ViewToggle";
 import { VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
+import { captureReferenceImage, normalizeRenderCameraState, placeRenderCameraAtRoomCentre, RENDER_CAMERA_ASPECTS, renderCameraFrameSize, renderCameraFromNavigation, renderCameraForRoom, renderCameraQuality, renderReferencePixels, withEditorOnlySceneObjectsHidden, type CameraVectorMm, type ReferenceImageCapture, type RenderCameraQuality, type RenderCameraState } from "@/lib/renderCamera";
 
 const SCALE = 0.001;
 const DEFAULT_WALL_COLOUR = "#c8c3b9";
@@ -47,6 +50,7 @@ interface Toggles {
 }
 
 type CameraView = "perspective" | "top" | "bottom" | "left" | "right" | "eye";
+
 type ProjectionMode = "perspective" | "parallel";
 type CaptureFormat = "png" | "jpg" | "pdf";
 const CAPTURE_ATTRIBUTION = "Made with FreeFloorplan3D.com";
@@ -63,6 +67,7 @@ interface CameraViewSnapshot {
   zoom: number;
   distance: number;
   viewHeight: number;
+  fov: number | null;
 }
 interface ProjectionRestore extends CameraViewSnapshot {
   sourceProjection: ProjectionMode;
@@ -109,6 +114,8 @@ interface ViewerProps extends PlacementProps {
   fillToolbarLayout: boolean;
   fitRequest: number;
   saveViewRequest: number;
+  renderCamera?: RenderCameraState;
+  onRenderCameraChange: (camera: RenderCameraState) => void;
 }
 
 type Selection = { type: "OPENING"; id: string; roomId: string } | { type: "ELEMENT"; id: string; roomId: string } | { type: "PERSON"; roomId: string } | { type: "WALL"; id: string; ids: string[]; roomId: string } | { type: "FLOOR"; roomId: string } | null;
@@ -307,7 +314,7 @@ function WallPiece({
   wallMode: WallViewMode;
   selected: boolean;
   paintOnly?: boolean;
-  onSelect: (additive: boolean) => void;
+  onSelect?: (additive: boolean) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const solidMeshRef = useRef<THREE.Mesh>(null);
@@ -364,7 +371,7 @@ function WallPiece({
         receiveShadow
         position={[0, base * SCALE, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
-        onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
+        onPointerDown={onSelect ? (event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); } : undefined}
       >
         <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
         <meshStandardMaterial color={DEFAULT_WALL_COLOUR} roughness={0.86} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
@@ -381,10 +388,10 @@ function WallPiece({
         rotation={[0, vector.angle, 0]}
         castShadow={false}
         receiveShadow={false}
-        onPointerDown={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); }}
+        onPointerDown={onSelect ? (event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); } : undefined}
       >
         <planeGeometry args={[length * SCALE, height * SCALE]} />
-        <meshStandardMaterial color={colour} roughness={0.88} metalness={0} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
+        <meshStandardMaterial color={colour} roughness={0.88} metalness={0} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} userData={{ editorSelectionHighlight: selected }} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>
     </group>
   );
@@ -415,7 +422,7 @@ function WallWithOpenings({
   wallMode: WallViewMode;
   selected: boolean;
   paintOnly?: boolean;
-  onSelect: (additive: boolean) => void;
+  onSelect?: (additive: boolean) => void;
 }) {
   const vector = wallVector(start, end);
   const thickness = wallThickness(room, index);
@@ -531,7 +538,7 @@ function WallWithOpenings({
   return <>{pieces}</>;
 }
 
-function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; onSelect: () => void }) {
+function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; onSelect?: () => void }) {
   const vertices = room.vertices;
   const shape = useMemo(() => {
     const next = new THREE.Shape();
@@ -586,19 +593,20 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
         <extrudeGeometry args={[shape, { depth: 0.01, bevelEnabled: false }]} />
         <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
       </mesh>
-      <mesh geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(); }}>
+      <mesh geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={onSelect ? (event) => { event.stopPropagation(); onSelect(); } : undefined}>
         {swatch ? <ProceduralFloorMaterial url={swatch.url} selected={selected} roughness={design && !design.pattern.startsWith("wood-") ? ({ polished: .18, gloss: .12, satin: .4, honed: .6, matt: .8, textured: .95, rustic: .9, tumbled: .9 }[TILE_MATERIALS.find((tile) => tile.id === design.tile_material_id)?.finish ?? "matt"] ?? .78) : .78} /> : renderedTile ? (
           <shaderMaterial
             uniforms={tileUniforms}
             vertexShader={FLOOR_VERTEX_SHADER}
             fragmentShader={FLOOR_FRAGMENT_SHADER}
+            userData={{ editorSelectionHighlight: true }}
             side={THREE.DoubleSide}
             polygonOffset
             polygonOffsetFactor={-4}
             polygonOffsetUnits={-4}
           />
         ) : (
-          <meshStandardMaterial color={colour} roughness={0.78} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} />
+          <meshStandardMaterial color={colour} roughness={0.78} side={THREE.DoubleSide} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} userData={{ editorSelectionHighlight: selected }} />
         )}
       </mesh>
     </group>
@@ -652,7 +660,7 @@ function safeRenderDimension(value: number, fallback: number) {
 function ProceduralFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
   const fixtureKind = fixtureKindForObstacle(obstacle);
   const customColour = obstacle.color_hex;
-  if (["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
+  if (obstacle.representation_key?.startsWith("electrical-") || ["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
     return <ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} />;
   }
 
@@ -705,10 +713,12 @@ function FixtureMesh({ obstacle, selected, onPointerDown, onPointerMove, onPoint
   const rotation: [number, number, number] = [0, THREE.MathUtils.degToRad(rotationValue), 0];
   const interactionProps = { onPointerDown, onPointerMove, onPointerUp };
   const selectionRing = selected ? (
-    <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[Math.max(width, depth) * 0.62, Math.max(width, depth) * 0.68, 48]} />
-      <meshBasicMaterial color="#b8640c" transparent opacity={0.9} side={THREE.DoubleSide} />
-    </mesh>
+    <group userData={{ editorOnly: true }}>
+      <mesh position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[Math.max(width, depth) * 0.62, Math.max(width, depth) * 0.68, 48]} />
+        <meshBasicMaterial color="#b8640c" transparent opacity={0.9} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
   ) : null;
   const procedural = <ProceduralFixture obstacle={obstacle} width={width} depth={depth} height={height} />;
 
@@ -799,7 +809,7 @@ function OpeningFixture({ room, opening, selected, onSelect }: { room: Room; ope
   // rotation, so turn projected windows around to keep the bow outside.
   const openingRotation = windowProjection && signedPolygonArea(room.vertices) >= 0 ? vector.angle + Math.PI : vector.angle;
   return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, openingRotation, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
-    {selected && <Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} />}
+    {selected && <group userData={{ editorOnly: true }}><Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} /></group>}
     {opening.kind === "DOOR" ? (
       <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture colours={resolvedPartColours({ representation_key: doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type), color_hex: doorColour, component_colors: componentColoursFromMetadata(opening.metadata) })} representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
     ) : <group position={[0, sill, windowProjection ? -windowDepth * .44 : 0]}>
@@ -895,17 +905,17 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
 
   return (
     <group position={[person.center.x * SCALE, 0, -person.center.y * SCALE]} rotation={[0, THREE.MathUtils.degToRad(person.rotation_deg), 0]} {...interactionProps}>
-      {showClearance && <>
+      {showClearance && <group userData={{ editorOnly: true }}>
         <RoundedBox args={[clearanceWidth, height, clearanceDepth]} radius={Math.min(clearance, 0.18)} smoothness={4} position={[0, height / 2, 0]}>
           <meshBasicMaterial color={collision ? "#e04545" : "#e2a73a"} transparent opacity={0.055} depthWrite={false} />
         </RoundedBox>
         <Line points={clearancePoints} color={collision ? "#d63737" : "#bd7611"} lineWidth={1.6} dashed dashSize={0.07} gapSize={0.04} />
         <Line points={clearanceTopPoints} color={collision ? "#d63737" : "#bd7611"} lineWidth={1.6} dashed dashSize={0.07} gapSize={0.04} />
         {clearancePoints.slice(0, -1).map(([x, y, z], index) => <Line key={`clearance-side-${index}`} points={[[x, y, z], [x, height, z]]} color={collision ? "#d63737" : "#bd7611"} lineWidth={1.2} dashed dashSize={0.07} gapSize={0.04} />)}
-      </>}
-      {selected && <Line points={clearancePoints.map(([x, y, z]) => [x, y + 0.012, z] as VectorTuple)} color="#0d6b59" lineWidth={3} />}
+      </group>}
+      {selected && <group userData={{ editorOnly: true }}><Line points={clearancePoints.map(([x, y, z]) => [x, y + 0.012, z] as VectorTuple)} color="#0d6b59" lineWidth={3} /></group>}
       <RoundedBox args={[width * 0.72, torsoHeight, depth * 0.76]} radius={Math.min(width, depth) * 0.22} smoothness={5} position={[0, torsoY, torsoZ]} rotation={[torsoTilt, 0, 0]} castShadow>
-        <meshStandardMaterial color={clothing} roughness={0.72} />
+      <meshStandardMaterial color={clothing} roughness={0.72} userData={collision ? { editorReferenceColor: "#315f78" } : undefined} />
       </RoundedBox>
       <RoundedBox args={[width * 0.5, height * 0.11, depth * 0.72]} radius={Math.min(width, depth) * 0.18} smoothness={4} position={[0, hipY, hipZ]} castShadow><meshStandardMaterial color={trousers} roughness={0.76} /></RoundedBox>
       <mesh position={[0, neckBottom + neckHeight / 2, shoulderZ * 0.9]} castShadow><cylinderGeometry args={[headRadius * 0.34, headRadius * 0.42, neckHeight, 18]} /><meshStandardMaterial color={skin} roughness={0.64} /></mesh>
@@ -924,7 +934,7 @@ function PersonMesh({ person, showClearance, collision, selected, onPointerDown,
       <Limb from={hipRight} to={kneeRight} radius={limbRadius * 1.25} colour={trousers} />
       <Limb from={kneeRight} to={ankleRight} radius={limbRadius * 1.05} colour={trousers} />
       {[ankleLeft, ankleRight].map((ankle, index) => <RoundedBox key={`foot-${index}`} args={[width * 0.23, footHeight, depth * 0.76]} radius={0.025} smoothness={3} position={[ankle[0], footHeight / 2, ankle[2] + footForwardOffset]} castShadow><meshStandardMaterial color={shoe} roughness={0.82} /></RoundedBox>)}
-      <mesh position={[0, 0.023, depth * 0.7]} rotation={[-Math.PI / 2, 0, 0]}><coneGeometry args={[0.06, 0.16, 3]} /><meshStandardMaterial color="#e2a73a" emissive="#e2a73a" emissiveIntensity={0.25} /></mesh>
+      <group userData={{ editorOnly: true }}><mesh position={[0, 0.023, depth * 0.7]} rotation={[-Math.PI / 2, 0, 0]}><coneGeometry args={[0.06, 0.16, 3]} /><meshStandardMaterial color="#e2a73a" emissive="#e2a73a" emissiveIntensity={0.25} /></mesh></group>
     </group>
   );
 }
@@ -1167,6 +1177,7 @@ function CameraViewSync({ restoreView, fallbackTarget, stateRef, onRestored }: {
       zoom: camera.zoom,
       distance,
       viewHeight: cameraViewHeight(camera, distance),
+      fov: camera instanceof THREE.PerspectiveCamera ? camera.fov : null,
     };
   });
   return null;
@@ -1247,22 +1258,27 @@ function CaptureController({ request, format, fileHandle, includeAttribution, on
     capturedRequest.current = request;
     const previousClearColour = gl.getClearColor(new THREE.Color());
     const previousClearAlpha = gl.getClearAlpha();
-    gl.setClearColor("#fff", 1);
-    gl.render(scene, camera);
+    try {
+      gl.setClearColor("#fff", 1);
+      withEditorOnlySceneObjectsHidden(scene, () => gl.render(scene, camera));
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "The view image could not be rendered.");
+      return;
+    } finally {
+      gl.setClearColor(previousClearColour, previousClearAlpha);
+    }
     const source = gl.domElement;
     const canvas = document.createElement("canvas");
     canvas.width = source.width;
     canvas.height = source.height;
     const context = canvas.getContext("2d");
     if (!context) {
-      gl.setClearColor(previousClearColour, previousClearAlpha);
       onError("The browser could not create an export canvas.");
       return;
     }
     context.fillStyle = "#fff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(source, 0, 0);
-    gl.setClearColor(previousClearColour, previousClearAlpha);
     if (includeAttribution) drawCaptureAttribution(context, canvas.width, canvas.height);
     const mimeType = format === "jpg" || format === "pdf" ? "image/jpeg" : "image/png";
     canvas.toBlob(async (blob) => {
@@ -1293,7 +1309,87 @@ function CaptureController({ request, format, fileHandle, includeAttribution, on
   }, [camera, fileHandle, format, gl, includeAttribution, onError, request, scene]);
   return null;
 }
-function PlacementCursor({ request, rooms, walls, onCommit, onCancel }: { request: PlacementRequest; rooms: Room[]; walls: PlacementWall[]; onCommit?: (candidate: PlacementCandidate)=>void; onCancel?: ()=>void }) {
+
+interface ReferenceCameraPreviewHandle {
+  capture(width: number, height: number): Promise<ReferenceImageCapture>;
+}
+
+interface ReferenceCameraPreviewProps {
+  cameraState: RenderCameraState;
+  canvasRef: { current: HTMLCanvasElement | null };
+  active: boolean;
+  onError: (message: string | null) => void;
+}
+
+function applyRenderCamera(camera: THREE.PerspectiveCamera, cameraState: RenderCameraState, aspect: number) {
+  camera.position.set(...cameraState.positionMm.map((value) => value * SCALE) as VectorTuple);
+  camera.up.set(...cameraState.up);
+  camera.fov = cameraState.fovDeg;
+  camera.aspect = aspect;
+  const target = new THREE.Vector3(...cameraState.targetMm.map((value) => value * SCALE) as VectorTuple);
+  const viewDistance = camera.position.distanceTo(target);
+  camera.near = Math.max(0.001, viewDistance * 0.001);
+  camera.far = Math.max(100, viewDistance * 20);
+  camera.lookAt(target);
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
+}
+
+function createReferencePreviewTarget(renderer: THREE.WebGLRenderer) {
+  const target = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: true, stencilBuffer: false, samples: 4 });
+  target.texture.colorSpace = renderer.outputColorSpace;
+  return target;
+}
+
+function resizeReferencePreviewTarget(target: THREE.WebGLRenderTarget, width: number, height: number) {
+  if (target.width !== width || target.height !== height) target.setSize(width, height);
+}
+
+const ReferenceCameraPreview = forwardRef<ReferenceCameraPreviewHandle, ReferenceCameraPreviewProps>(function ReferenceCameraPreview({ cameraState, canvasRef, active, onError }, ref) {
+  const { gl, scene } = useThree();
+  const renderCamera = useMemo(() => new THREE.PerspectiveCamera(50, 16 / 9, 0.001, 100_000), []);
+  const renderTarget = useMemo(() => createReferencePreviewTarget(gl), [gl]);
+  const lastFrameAt = useRef(0);
+  const lastError = useRef<string | null>(null);
+
+  useEffect(() => () => renderTarget.dispose(), [renderTarget]);
+
+  useImperativeHandle(ref, () => ({
+    capture(width, height) {
+      applyRenderCamera(renderCamera, cameraState, width / height);
+      return captureReferenceImage({ renderer: gl, scene, camera: renderCamera, cameraId: cameraState.cameraId, width, height, cleanScene: true });
+    },
+  }), [cameraState, gl, renderCamera, scene]);
+
+  useFrame(() => {
+    const canvas = canvasRef.current;
+    if (!active || !canvas) return;
+    const now = performance.now();
+    if (now - lastFrameAt.current < 33) return;
+    lastFrameAt.current = now;
+    const [ratioWidth, ratioHeight] = cameraState.aspectRatio.split(":").map(Number);
+    const scale = 960 / Math.max(ratioWidth, ratioHeight);
+    const width = Math.max(1, Math.round(ratioWidth * scale));
+    const height = Math.max(1, Math.round(ratioHeight * scale));
+    try {
+      if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+      resizeReferencePreviewTarget(renderTarget, width, height);
+      applyRenderCamera(renderCamera, cameraState, width / height);
+      const pixels = renderReferencePixels(gl, scene, renderCamera, renderTarget, true);
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("The browser could not create the live preview surface.");
+      context.putImageData(new ImageData(pixels, width, height), 0, 0);
+      if (lastError.current) { lastError.current = null; onError(null); }
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "The live camera preview is temporarily unavailable.";
+      if (lastError.current !== message) { lastError.current = message; onError(message); }
+    }
+  });
+  return null;
+});
+
+
+function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewCandidate }: { request: PlacementRequest; rooms: Room[]; walls: PlacementWall[]; onCommit?: (candidate: PlacementCandidate)=>void; onCancel?: ()=>void; onPreviewCandidate?: (candidate: PlacementCandidate | null) => void }) {
   const { events, camera }=useThree();
   const [point,setPoint]=useState<Point2D | null>(null);
   const client=useRef<{x:number;y:number}|null>(null);
@@ -1326,6 +1422,7 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel }: { reques
     const next=point?resolvePlacement(request,point,rooms,walls):null;
     return next?.roomId && !rooms.some(room=>room.id===next.roomId) ? null : next;
   },[point,request,rooms,walls]);
+  useEffect(() => { onPreviewCandidate?.(candidate ?? null); }, [candidate, onPreviewCandidate]);
   useFrame(()=>{
     const mouse=client.current, next=mouse?pointAt(mouse.x,mouse.y):null, previous=previousPoint.current;
     if ((!next)!==(!previous) || (next && previous && Math.hypot(next.x-previous.x,next.y-previous.y)>.01)) {
@@ -1383,7 +1480,7 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel }: { reques
   </group>;
 }
 
-function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete }: ViewerProps & {
+function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, onRenderCameraChange, renderCamera, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete, cameraRigVisible, selectedCameraRigHandle, onCameraRigHandleSelect }: ViewerProps & {
   lighting: LightingSettings;
   toggles: Toggles;
   preset: CameraView;
@@ -1399,6 +1496,10 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   cameraStateRef: { current: CameraViewSnapshot | null };
   onCameraViewRestored: (token: number) => void;
   onFitComplete: (zoomPercent: number) => void;
+  cameraRigVisible: boolean;
+  selectedCameraRigHandle: RenderCameraRigHandle | null;
+
+  onCameraRigHandleSelect: (handle: RenderCameraRigHandle | null) => void;
 }) {
   const [dragging, setDragging] = useState<{ id: string; offset: Point2D; original: Obstacle } | null>(null);
   const dragCandidate = useRef<PlacementCandidate | null>(null);
@@ -1423,7 +1524,9 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   }, [events]);
   const [personDragging, setPersonDragging] = useState<{ offset: Point2D } | null>(null);
   const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
+  const [previewPlacementCandidate, setPreviewPlacementCandidate] = useState<PlacementCandidate | null>(null);
   const [previewPerson, setPreviewPerson] = useState<PersonMockup | null>(null);
+  useEffect(() => { setPreviewPlacementCandidate(null); }, [placement?.id]);
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
@@ -1558,6 +1661,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
     <>
       <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} restoreView={restoreView} />
       <CameraFit request={fitViewRequest} preset={preset} projection={projection} center={roomTarget} span={roomSpan} onFit={onFitComplete} />
+      <MetalReflections intensity={.3 * lightPower} />
       <ambientLight intensity={0.3 * lightPower} />
       <hemisphereLight args={["#F4F7FF", "#B6AA96", 0.65 * lightPower]} />
       <primitive object={lightTarget} />
@@ -1577,14 +1681,20 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
         shadow-bias={0.001} shadow-normalBias={0.006} shadow-radius={3}
       />
       <directionalLight target={lightTarget} position={[roomTarget[0] - shadowExtent, roomTarget[1] + shadowExtent * 0.7, roomTarget[2] - shadowExtent]} color="#DFE9FF" intensity={0.35 * lightPower} />
+      {cameraRigVisible && renderCamera && <RenderCameraRig cameraState={renderCamera} selectedHandle={selectedCameraRigHandle} onSelectHandle={onCameraRigHandleSelect} onCameraChange={onRenderCameraChange} />}
       {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd, paintOnly }) => {
         if (wallMode === "INVISIBLE") return null;
-        const sceneInteractive = multiRoom || wallRoom.id === room.id;
+        const sceneInteractive = selectedCameraRigHandle === null && (multiRoom || wallRoom.id === room.id);
+        const previewOpeningModel = previewPlacementCandidate?.openingModel;
+        const previewOpening = previewOpeningModel?.room.id === wallRoom.id ? previewOpeningModel.opening : null;
+        const wallRenderRoom = previewOpening && !wallRoom.openings.some(opening => opening.id === previewOpening.id)
+          ? { ...wallRoom, openings: [...wallRoom.openings, previewOpening] }
+          : wallRoom;
         return (
           <WallWithOpenings
             key={`wall-${wallRoom.id}-${index}-${Math.round(sourceOffsetMm)}-${wallSegmentKey(start, end)}`}
             index={index}
-            room={wallRoom}
+            room={wallRenderRoom}
             start={start}
             end={end}
             sourceOffsetMm={sourceOffsetMm}
@@ -1594,18 +1704,18 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
             paintOnly={paintOnly}
             wallMode={wallMode}
             selected={sceneInteractive && selection?.type === "WALL" && selection.roomId === wallRoom.id && selection.ids.includes(wallId(index))}
-            onSelect={sceneInteractive ? (additive) => selectWall(wallRoom.id, wallId(index), additive) : () => undefined}
+            onSelect={sceneInteractive ? (additive) => selectWall(wallRoom.id, wallId(index), additive) : undefined}
           />
         );
       })}
       <SkirtingBoards walls={renderedWalls} wallMode={wallMode} defaultWallColour={DEFAULT_WALL_COLOUR} />
       {renderedRooms.map((sceneRoom) => {
-        const sceneInteractive = multiRoom || sceneRoom.id === room.id;
+        const sceneInteractive = selectedCameraRigHandle === null && (multiRoom || sceneRoom.id === room.id);
         const sceneObstacles = sceneRoom.id === room.id ? displayedObstacles : sceneRoom.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
         const scenePerson = sceneRoom.id === room.id ? displayedPerson : sceneRoom.person_mockup;
         return (
           <group key={`room-${sceneRoom.id}`}>
-            <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id }) : () => undefined} />
+            <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id }) : undefined} />
             {sceneRoom.openings.map((opening) => <OpeningFixture key={`fixture-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} selected={selection?.type === "OPENING" && selection.id === opening.id && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "OPENING", id: opening.id, roomId: sceneRoom.id }) : undefined} />)}
             {toggles.elements && sceneObstacles.map((obstacle) => (
               <FixtureMesh
@@ -1617,22 +1727,22 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
                 onPointerUp={sceneInteractive ? (event) => endDrag(event, sceneRoom, obstacle) : undefined}
               />
             ))}
-            {toggles.openingImprints && <>
+            {toggles.openingImprints && <group userData={{ editorOnly: true }}>
               {sceneRoom.openings.map((opening) => <OpeningImprint key={`imprint-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} />)}
               {sceneRoom.openings.filter((item) => item.kind === "DOOR").map((door) => <DoorSwing key={`swing-${sceneRoom.id}-${door.id}`} room={sceneRoom} door={door} />)}
-            </>}
+            </group>}
             {toggles.person && scenePerson?.enabled && <PersonMesh person={scenePerson} showClearance={toggles.clearance && scenePerson.show_clearance !== false} collision={collisionIds.includes(scenePerson.id)} selected={sceneInteractive && selection?.type === "PERSON" && selection.roomId === sceneRoom.id} onPointerDown={sceneInteractive ? (event) => startPersonDrag(event, sceneRoom, scenePerson) : undefined} onPointerMove={sceneInteractive ? (event) => movePersonDrag(event, sceneRoom, scenePerson) : undefined} onPointerUp={sceneInteractive ? (event) => endPersonDrag(event, sceneRoom, scenePerson) : undefined} />}
-            {toggles.collisions && sceneRoom.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
+            {toggles.collisions && <group userData={{ editorOnly: true }}>{sceneRoom.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
               <mesh key={`collision-${sceneRoom.id}-${obstacle.id}`} position={[obstacle.center.x * SCALE, 0.9, -obstacle.center.y * SCALE]}>
                 <sphereGeometry args={[0.11, 24, 24]} />
                 <meshStandardMaterial color="#ff2d2d" emissive="#ff2d2d" emissiveIntensity={1.2} />
               </mesh>
-            ))}
+            ))}</group>}
           </group>
         );
       })}
-      {showGrid && <Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} />}
-      {placement && <PlacementCursor key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} />}
+      {showGrid && <group userData={{ editorOnly: true }}><Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} /></group>}
+      {placement && <group userData={{ editorOnly: true }}><PlacementCursor key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} onPreviewCandidate={setPreviewPlacementCandidate} /></group>}
       <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
       <CameraViewSync restoreView={restoreView} fallbackTarget={orbitTarget} stateRef={cameraStateRef} onRestored={onCameraViewRestored} />
     </>
@@ -1734,9 +1844,24 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
 }
 
 export function EngineeringViewer(props: ViewerProps) {
+  const onRenderCameraChange = props.onRenderCameraChange;
   const [lighting, setLighting] = useState<LightingSettings>(DEFAULT_LIGHTING);
   const [lightingExpanded, setLightingExpanded] = useState(false);
   const [roomSelectorExpanded, setRoomSelectorExpanded] = useState(false);
+  const [cameraWindowOpen, setCameraWindowOpen] = useState(false);
+  const [cameraRigVisible, setCameraRigVisible] = useState(true);
+  const [selectedCameraRigHandle, setSelectedCameraRigHandle] = useState<RenderCameraRigHandle | null>(null);
+
+  const [previousRenderCamera, setPreviousRenderCamera] = useState(props.renderCamera);
+  const [renderCamera, setRenderCamera] = useState<RenderCameraState | null>(props.renderCamera ?? null);
+  if (props.renderCamera !== previousRenderCamera) {
+    setPreviousRenderCamera(props.renderCamera);
+    setRenderCamera(props.renderCamera ?? null);
+  }
+  const [cameraCaptureBusy, setCameraCaptureBusy] = useState(false);
+  const [cameraMessage, setCameraMessage] = useState<string | null>(null);
+  const [cameraPreviewError, setCameraPreviewError] = useState<string | null>(null);
+  const [cameraPreviewStageWidth, setCameraPreviewStageWidth] = useState(600);
   const [preset, setPreset] = useState<CameraView>("perspective");
   const [projection, setProjection] = useState<ProjectionMode>("parallel");
   const [captureRequest, setCaptureRequest] = useState(0);
@@ -1750,6 +1875,9 @@ export function EngineeringViewer(props: ViewerProps) {
   const [fitViewRequest, setFitViewRequest] = useState(0);
   const [activePreset, setActivePreset] = useState<CameraView | null>(null);
   const cameraStateRef = useRef<CameraViewSnapshot | null>(null);
+  const cameraPreviewRef = useRef<ReferenceCameraPreviewHandle>(null);
+  const cameraPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cameraPreviewStageRef = useRef<HTMLDivElement>(null);
   const projectionRestoreToken = useRef(0);
   const [projectionRestore, setProjectionRestore] = useState<ProjectionRestore | null>(null);
   const [showGrid, setShowGrid] = useState(true);
@@ -1765,6 +1893,26 @@ export function EngineeringViewer(props: ViewerProps) {
     person: true,
     clearance: true,
   });
+  const cameraRooms = props.sceneRooms?.length ? props.sceneRooms : [props.room];
+  useEffect(() => {
+    if (!cameraWindowOpen || !cameraPreviewStageRef.current) return;
+    const stage = cameraPreviewStageRef.current;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setCameraPreviewStageWidth(Math.max(1, Math.floor(entry.contentRect.width)));
+    });
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [cameraWindowOpen]);
+  const commitRenderCamera = useCallback((next: RenderCameraState) => {
+    const normalized = normalizeRenderCameraState({ ...next, placementInitialized: true });
+    if (!normalized) {
+      setCameraMessage("Camera position must remain at least 1 mm from its target.");
+      return;
+    }
+    setRenderCamera(normalized);
+    onRenderCameraChange(normalized);
+    setCameraMessage(null);
+  }, [onRenderCameraChange]);
   const flip = (key: keyof Toggles) => setToggles((current) => ({ ...current, [key]: !current[key] }));
   const selectObject = (nextSelection: Selection) => {
     setSelection(nextSelection);
@@ -1783,6 +1931,15 @@ export function EngineeringViewer(props: ViewerProps) {
     props.onOpeningSelected?.(null);
     setPanelSelection(null);
     props.onElementSelected?.(null);
+  };
+  const selectCameraRigHandle = (handle: RenderCameraRigHandle | null) => {
+    setSelectedCameraRigHandle(handle);
+    if (handle) clearSelection();
+  };
+  const activateCameraRigControl = (handle: RenderCameraRigHandle) => {
+    setCameraRigVisible(true);
+
+    selectCameraRigHandle(handle);
   };
   const panelRoom = panelSelection
     ? props.sceneRooms?.find((sceneRoom) => sceneRoom.id === panelSelection.roomId) ?? (panelSelection.roomId === props.room.id ? props.room : null)
@@ -1809,6 +1966,44 @@ export function EngineeringViewer(props: ViewerProps) {
   }, []);
   const applyPreset = (next: CameraView) => { setProjectionRestore(null); setPreset(next); setActivePreset(next); setZoomPercent(100); setCameraResetKey((current) => current + 1); };
   const handleCaptureError = useCallback((message: string) => { setCaptureError(message); setCaptureMenuOpen(true); }, []);
+  function openCameraWindow() {
+    const cameraNeedsRoomPlacement = !renderCamera || renderCamera.placementInitialized !== true;
+    if (cameraNeedsRoomPlacement) {
+      commitRenderCamera(renderCamera
+        ? placeRenderCameraAtRoomCentre(renderCamera, [props.room])
+        : renderCameraForRoom([props.room]));
+    }
+    selectCameraRigHandle("position");
+    setCameraMessage(null);
+    setCameraPreviewError(null);
+    setCameraRigVisible(true);
+    setCameraWindowOpen(true);
+  }
+  function closeCameraWindow() {
+    setCameraWindowOpen(false);
+    setCameraRigVisible(false);
+    setSelectedCameraRigHandle(null);
+  }
+  async function captureCameraReference() {
+    if (!renderCamera || !cameraPreviewRef.current || cameraCaptureBusy) return;
+    setCameraCaptureBusy(true);
+    setCameraMessage(null);
+    try {
+      const captured = await cameraPreviewRef.current.capture(renderCamera.referenceWidth, renderCamera.referenceHeight);
+      const url = URL.createObjectURL(captured.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `freefloorplan3d-reference-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setCameraMessage(`Reference image saved · ${captured.width} × ${captured.height} px`);
+      exported("png");
+    } catch (reason) {
+      setCameraMessage(reason instanceof Error ? reason.message : "The reference image could not be captured.");
+    } finally {
+      setCameraCaptureBusy(false);
+    }
+  }
   useEffect(() => {
     if (!props.saveViewRequest || props.placement) return;
     const openRequest = window.setTimeout(() => {
@@ -1851,6 +2046,9 @@ export function EngineeringViewer(props: ViewerProps) {
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [captureMenuOpen]);
+  const cameraOutputSize = renderCamera ? { width: renderCamera.referenceWidth, height: renderCamera.referenceHeight } : null;
+  const previewScale = cameraOutputSize ? Math.min(1, Math.max(1, cameraPreviewStageWidth) / cameraOutputSize.width) : 1;
+  const livePreviewSize = cameraOutputSize ? { width: Math.round(cameraOutputSize.width * previewScale), height: Math.round(cameraOutputSize.height * previewScale) } : null;
   return (
     <div className="viewer-shell" onPointerDownCapture={(event) => { if (event.button === 2) rightPointerRef.current = { x: event.clientX, y: event.clientY, moved: false }; }} onPointerMoveCapture={(event) => { const pointer = rightPointerRef.current; if (pointer && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) pointer.moved = true; }} onPointerUpCapture={(event) => { if (event.button === 2 && rightPointerRef.current?.moved) window.setTimeout(() => { rightPointerRef.current = null; }, 0); }} onContextMenu={(event) => { if (!(event.target instanceof Element) || !event.target.closest(".stable-canvas-host")) return; event.preventDefault(); const wasPan = rightPointerRef.current?.moved; rightPointerRef.current = null; if (wasPan) return; clearSelection(); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
       {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={props.fillToolbarLayout ? viewerLeftDock("viewer-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
@@ -1908,12 +2106,86 @@ export function EngineeringViewer(props: ViewerProps) {
             <button className="review-style-button" type="button" onClick={props.onOpenRoomSelection}>Open selection in 3D</button>
           </div>}
         </div>
+        <div className="viewer-view-control-group viewer-camera-entry" role="group" aria-label="Reference camera">
+          <button type="button" aria-expanded={cameraWindowOpen} onClick={openCameraWindow}>Camera</button>
+        </div>
         <div className="viewer-save-row"><div className="viewer-save-menu"><button ref={saveViewButton} type="button" aria-label="Save 3D view" disabled={Boolean(props.placement)} onClick={() => { setCaptureError(null); setCaptureMenuOpen(true); }} aria-expanded={captureMenuOpen} aria-haspopup="dialog">Save view…</button></div></div>
       </div></FloatingToolbar>}
+      {cameraWindowOpen && renderCamera && <FloatingToolbar className="viewer-camera-window" title="Camera" defaultPosition={{ x: 8, y: 54 }} initialSize={{ width: 640 }} maxHeight={700} bringToFront onClose={closeCameraWindow}>
+        <div className="viewer-camera-panel">
+          <section className="viewer-camera-live" aria-label="Live camera preview">
+            <div className="viewer-camera-preview-stage" ref={cameraPreviewStageRef}>
+              {livePreviewSize && <div className="viewer-camera-frame" style={{ width: `${livePreviewSize.width}px`, height: `${livePreviewSize.height}px` }}>
+                <canvas ref={cameraPreviewCanvasRef} aria-label="Live view from the render camera" />
+              </div>}
+            </div>
+            <div className="viewer-camera-preview-caption"><strong>Live preview</strong><span>{renderCamera.aspectRatio} · {renderCameraQuality(renderCamera) === "high" ? "High" : "Standard"}{cameraOutputSize && ` · ${cameraOutputSize.width} × ${cameraOutputSize.height} px`}</span></div>
+            {cameraPreviewError && <p className="viewer-camera-error" role="status">{cameraPreviewError}</p>}
+          </section>
+
+          <div className="viewer-camera-actions" aria-label="Camera actions">
+            <button className="review-style-button" type="button" onClick={() => commitRenderCamera(renderCameraFromNavigation(cameraStateRef.current, cameraRooms))}>Use current view</button>
+            <button className="review-style-button" type="button" onClick={() => commitRenderCamera(placeRenderCameraAtRoomCentre(renderCamera, [props.room]))}>Centre camera in room</button>
+            <button className="review-style-button" type="button" onClick={() => commitRenderCamera(renderCameraForRoom([props.room]))}>Reset</button>
+            <label className="viewer-camera-rig-toggle"><input type="checkbox" checked={cameraRigVisible} onChange={(event) => { const visible = event.currentTarget.checked; setCameraRigVisible(visible); if (!visible) setSelectedCameraRigHandle(null); }} /><span>Show camera in scene</span></label>
+          </div>
+          <div className="viewer-camera-manipulation" role="group" aria-label="Camera object controls">
+            <button className={selectedCameraRigHandle === "position" ? "active" : ""} type="button" aria-pressed={selectedCameraRigHandle === "position"} onClick={() => activateCameraRigControl("position")}>Move &amp; turn camera</button>
+
+            <button className={selectedCameraRigHandle === "target" ? "active" : ""} type="button" aria-pressed={selectedCameraRigHandle === "target"} onClick={() => activateCameraRigControl("target")}>Adjust target</button>
+          </div>
+
+          <p className="viewer-camera-hint">Drag to move · rings to turn · blue control to zoom · click scene background to finish</p>
+          <div className="viewer-camera-settings-row">
+            <label className="viewer-camera-fov">FOV <input type="range" min={30} max={90} step={1} value={renderCamera.fovDeg} aria-label="Field of view" onChange={(event) => commitRenderCamera({ ...renderCamera, fovDeg: event.currentTarget.valueAsNumber })} /><output>{renderCamera.fovDeg}°</output>
+            </label>
+            <div className="viewer-camera-output-fields">
+              <label>Frame
+                <select value={renderCamera.aspectRatio} aria-label="Output aspect ratio" onChange={(event) => {
+                  const aspectRatio = event.currentTarget.value as RenderCameraState["aspectRatio"];
+                  const frame = renderCameraFrameSize(aspectRatio, renderCameraQuality(renderCamera));
+                  commitRenderCamera({ ...renderCamera, aspectRatio, referenceWidth: frame.width, referenceHeight: frame.height });
+                }}>{RENDER_CAMERA_ASPECTS.map((aspect) => <option key={aspect} value={aspect}>{aspect}</option>)}</select>
+              </label>
+              <label>Size
+                <select value={renderCameraQuality(renderCamera)} aria-label="Reference image resolution" onChange={(event) => {
+                  const frame = renderCameraFrameSize(renderCamera.aspectRatio, event.currentTarget.value as RenderCameraQuality);
+                  commitRenderCamera({ ...renderCamera, referenceWidth: frame.width, referenceHeight: frame.height });
+                }}><option value="standard">Standard</option><option value="high">High</option></select>
+              </label>
+            </div>
+          </div>
+
+          <details className="viewer-camera-section">
+            <summary>Advanced camera settings</summary>
+            <div className="viewer-camera-vectors">
+              {(["positionMm", "targetMm"] as const).map((field) => <fieldset key={field}>
+                <legend>{field === "positionMm" ? "Camera position" : "Look at target"} · mm</legend>
+                {(["X", "Y", "Z"] as const).map((axis, index) => <label key={axis}>{axis}
+                  <input type="number" min={-10_000_000} max={10_000_000} step={10} value={Math.round(renderCamera[field][index] * 10) / 10} aria-label={`${field === "positionMm" ? "Camera position" : "Camera target"} ${axis} in millimetres`} onChange={(event) => {
+                    const value = event.currentTarget.valueAsNumber;
+                    if (!Number.isFinite(value)) return;
+                    const vector = [...renderCamera[field]] as CameraVectorMm;
+                    vector[index] = value;
+                    commitRenderCamera({ ...renderCamera, [field]: vector });
+                  }} />
+                </label>)}
+              </fieldset>)}
+            </div>
+          </details>
+
+          <div className="viewer-camera-capture">
+            <button className="viewer-camera-capture-button" type="button" disabled={cameraCaptureBusy} onClick={() => void captureCameraReference()}>{cameraCaptureBusy ? "Capturing…" : "Capture reference"}</button>
+            <small>Clean PNG · saved locally only</small>
+            {cameraMessage && <p role="status">{cameraMessage}</p>}
+          </div>
+        </div>
+      </FloatingToolbar>}
       {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
-      <StableCanvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={clearSelection}>
-        <Scene {...props} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} />
+      <StableCanvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={() => { clearSelection(); setSelectedCameraRigHandle(null); }}>
+        <Scene {...props} renderCamera={renderCamera ?? undefined} onRenderCameraChange={commitRenderCamera} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} cameraRigVisible={cameraWindowOpen && cameraRigVisible} selectedCameraRigHandle={selectedCameraRigHandle} onCameraRigHandleSelect={selectCameraRigHandle} />
         <LocalAssetScene instances={props.assetInstances ?? []} />
+        {cameraWindowOpen && renderCamera && <ReferenceCameraPreview ref={cameraPreviewRef} cameraState={renderCamera} canvasRef={cameraPreviewCanvasRef} active={cameraWindowOpen} onError={setCameraPreviewError} />}
         <WheelZoom onManualViewChange={clearActivePreset} />
         <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} includeAttribution={includeCaptureAttribution} onError={handleCaptureError} />
       </StableCanvas>

@@ -1,0 +1,4 @@
+The local CAD import feature uses occt-import-js v0.0.23 for IGES/STEP tessellation.
+The JavaScript interface and Open CASCADE runtime are licensed under LGPL-2.1 (the Open CASCADE runtime includes the Open CASCADE exception).
+The runtime and accompanying upstream license texts are distributed in the adjacent occt-import-js/ directory.
+Upstream source: https://github.com/kovacsv/occt-import-js

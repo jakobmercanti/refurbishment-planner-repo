@@ -33,6 +33,7 @@ interface FloatingToolbarProps {
   children: ReactNode;
   className?: string;
   compact?: boolean;
+  initialSize?: { width: number; height?: number | null };
   defaultPosition: { x: number; y: number };
   maxHeight?: number;
   dock?: ToolbarDock;
@@ -102,14 +103,14 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
   return <FloatingToolbarWindow key={props.layoutResetKey ?? 0} {...props} />;
 }
 
-function FloatingToolbarWindow({ title, children, className = "", compact = false, defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
+function FloatingToolbarWindow({ title, children, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<{ pointerX: number; pointerY: number; left: number; top: number; parentWidth: number; parentHeight: number; width: number; height: number } | null>(null);
   const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number; minimumHeight: number } | null>(null);
   const mouseDragRef = useRef(false);
   const [position, setPosition] = useState(defaultPosition);
-  const [size, setSize] = useState<{ width: number; height: number | null }>({ width: DEFAULT_FLOATING_WINDOW_WIDTH, height: null });
+  const [size, setSize] = useState<{ width: number; height: number | null }>(() => ({ width: initialSize?.width ?? DEFAULT_FLOATING_WINDOW_WIDTH, height: initialSize?.height ?? null }));
   const [minimumHeight, setMinimumHeight] = useState(compact ? 0 : MIN_FLOATING_WINDOW_HEIGHT);
   const [zIndex, setZIndex] = useState(20);
   const [isDocked, setIsDocked] = useState(Boolean(dock));

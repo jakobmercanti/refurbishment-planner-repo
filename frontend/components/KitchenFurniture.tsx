@@ -1,11 +1,12 @@
 "use client";
+import { metalFinishProps } from "@/lib/metalSurface";
 import { RoundedBox } from "@react-three/drei";
 import { CatmullRomCurve3, Vector3 } from "three";
 
 function UpperCabinet({ representation, colour, carcassColour, hardwareColour, width, depth, height, colours }: { colours: Record<string, string>; representation: string; colour: string; carcassColour: string; hardwareColour: string; width: number; depth: number; height: number }) {
   const glazed = representation.includes("glass"), open = representation.endsWith("open"), count = representation.includes("double") ? 2 : 1;
   const t = Math.min(width * .035, depth * .055, height * .035), front = depth / 2 - t * 1.7;
-  const box = (x: number, y: number, z: number, w: number, h: number, d: number, paint = carcassColour, metal = false) => <RoundedBox position={[x, y, z]} args={[w, h, d]} radius={Math.min(w, h, d) * .08} smoothness={3} castShadow receiveShadow><meshStandardMaterial color={paint} roughness={metal ? .22 : .4} metalness={metal ? .85 : 0} /></RoundedBox>;
+  const box = (x: number, y: number, z: number, w: number, h: number, d: number, paint = carcassColour, metal = false) => <RoundedBox position={[x, y, z]} args={[w, h, d]} radius={Math.min(w, h, d) * .08} smoothness={3} castShadow receiveShadow><meshStandardMaterial color={paint} roughness={metal ? .22 : .4} metalness={metal ? .85 : 0} {...metalFinishProps(paint)} /></RoundedBox>;
   return <group>
     {[-1, 1].map(side => <group key={side}>{box(side * (width - t) / 2, height / 2, 0, t, height, depth)}</group>)}
     {[t / 2, height - t / 2].map(y => <group key={y}>{box(0, y, 0, width - 2 * t, t, depth)}</group>)}
@@ -45,7 +46,7 @@ export function KitchenFurniture({ representation: key, colour, width, depth, he
     return "body";
   };
   const box = (id: string, x: number, y: number, z: number, w: number, h: number, d: number, color = colour, metallic = false) =>
-    <RoundedBox key={id} args={[w,h,d]} position={[x,y,z]} radius={Math.min(w,h,d)*.08} smoothness={3} castShadow receiveShadow><meshStandardMaterial color={id.endsWith("glass") ? color : colours[partId(id)] ?? color} roughness={metallic ? .23 : .48} metalness={metallic ? .85 : 0} /></RoundedBox>;
+    <RoundedBox key={id} args={[w,h,d]} position={[x,y,z]} radius={Math.min(w,h,d)*.08} smoothness={3} castShadow receiveShadow><meshStandardMaterial color={id.endsWith("glass") ? color : colours[partId(id)] ?? color} roughness={metallic ? .23 : .48} metalness={metallic ? .85 : 0} {...metalFinishProps(id.endsWith("glass") ? color : colours[partId(id)] ?? color)} /></RoundedBox>;
   const doors = double ? 2 : 1;
   const faceTop = top-.045;
   const parts = [
@@ -77,22 +78,22 @@ export function KitchenFurniture({ representation: key, colour, width, depth, he
         box("bowl-front"+i,x,top-.065,.255,bw,.13,.015,metal,true),
         box("bowl-l"+i,x-bw/2,top-.065,0,.012,.13,.51,metal,true),
         box("bowl-r"+i,x+bw/2,top-.065,0,.012,.13,.51,metal,true));
-      parts.push(<mesh key={"drain"+i} position={[x,top-.12,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.025,24]}/><meshStandardMaterial color={colours.drain ?? dark} metalness={.8} roughness={.2}/></mesh>);
+      parts.push(<mesh key={"drain"+i} position={[x,top-.12,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.025,24]}/><meshStandardMaterial color={colours.drain ?? dark} metalness={.8} roughness={.2}{...metalFinishProps(colours.drain ?? dark)} /></mesh>);
     }
     const tap = new CatmullRomCurve3([new Vector3(0,top,-.37),new Vector3(0,.94,-.37),new Vector3(0,.985,-.25),new Vector3(0,.94,-.13)]);
-    parts.push(<mesh key="tap" castShadow><tubeGeometry args={[tap,32,.009,12,false]}/><meshStandardMaterial color={colours.tap ?? metal} metalness={.95} roughness={.15}/></mesh>);
+    parts.push(<mesh key="tap" castShadow><tubeGeometry args={[tap,32,.009,12,false]}/><meshStandardMaterial color={colours.tap ?? metal} metalness={.95} roughness={.15}{...metalFinishProps(colours.tap ?? metal)} /></mesh>);
   }
   if(hob) {
     parts.push(box("hob-glass",0,.999,0,.88,.006,.82,"#141B20"));
-    for(const x of [-.23,.23]) for(const z of [-.22,.2]) parts.push(<mesh key={`ring${x}${z}`} position={[x,1.004,z]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.12,.127,48]}/><meshStandardMaterial color={colours.rings ?? (key.includes("electric") ? "#797C7D" : "#BBC0C3")} roughness={.35}/></mesh>);
+    for(const x of [-.23,.23]) for(const z of [-.22,.2]) parts.push(<mesh key={`ring${x}${z}`} position={[x,1.004,z]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.12,.127,48]}/><meshStandardMaterial color={colours.rings ?? (key.includes("electric") ? "#797C7D" : "#BBC0C3")} roughness={.35}{...metalFinishProps(colours.rings ?? (key.includes("electric") ? "#797C7D" : "#BBC0C3"))} /></mesh>);
   }
   if(oven || washing) {
     parts.push(box("appliance",0,.52,.425,.94,.78,.13,colour),
       box("controls",0,.84,.5,.87,.1,.016,metal,true));
     if(oven) parts.push(box("oven-glass",0,.48,.5,.8,.48,.015,dark),box("oven-handle",0,.76,.518,.72,.022,.025,metal,true));
-    else parts.push(<group key="drum" position={[0,.47,.51]}><mesh><torusGeometry args={[.255,.035,16,48]}/><meshStandardMaterial color={metal} metalness={.9} roughness={.2}/></mesh><mesh position={[0,0,-.012]}><circleGeometry args={[.235,48]}/><meshPhysicalMaterial color="#283B44" metalness={.25} roughness={.15}/></mesh></group>);
+    else parts.push(<group key="drum" position={[0,.47,.51]}><mesh><torusGeometry args={[.255,.035,16,48]}/><meshStandardMaterial color={metal} metalness={.9} roughness={.2}{...metalFinishProps(metal)} /></mesh><mesh position={[0,0,-.012]}><circleGeometry args={[.235,48]}/><meshPhysicalMaterial color="#283B44" metalness={.25} roughness={.15}/></mesh></group>);
     parts.push(box("drawer",0,.16,.482,.91,.08,.03));
-    for(const x of [-.3,.3]) parts.push(<mesh key={"dial"+x} position={[x,.84,.518]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[.026,.026,.025,24]}/><meshStandardMaterial color={colours.controls ?? dark}/></mesh>);
+    for(const x of [-.3,.3]) parts.push(<mesh key={"dial"+x} position={[x,.84,.518]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[.026,.026,.025,24]}/><meshStandardMaterial color={colours.controls ?? dark}{...metalFinishProps(colours.controls ?? dark)} /></mesh>);
   }
   return <group scale={[width,height,depth]}>{parts}</group>;
 }

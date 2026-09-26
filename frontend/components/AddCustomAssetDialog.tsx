@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { CommercialApiError, commercialRequest, uploadSignedFile } from "@/lib/commercialApi";
 import { assetRepository } from "@/lib/assetRepository";
+import { convertCadToGlb, convertGlbUnitsAndScale, type CadFormat, type ModelUnit } from "@/lib/cadToGlb";
 import { convertStlToGlb, type StlUnit } from "@/lib/stlToLocalAsset";
 import type { AssetClassification, AssetDefinition } from "@/lib/projectDocument";
 
-type Mode = "stl" | "photos";
+type Mode = "import" | "photos";
 type View = "front" | "left" | "right" | "back";
 type DimensionsMm = { width: number; depth: number; height: number };
 type GenerationJob = {
@@ -26,10 +27,20 @@ type Availability = { enabled: boolean; remaining: number; reason: string | null
 
 const VIEW_NAMES: View[] = ["front", "left", "right", "back"];
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+type ModelImportFormat = "stl" | "glb" | CadFormat;
+const MODEL_IMPORT_FORMATS: Record<ModelImportFormat, { label: string; accept: string; filename: RegExp }> = {
+  stl: { label: "STL", accept: ".stl,model/stl,application/sla", filename: /\.stl$/i },
+  glb: { label: "GLB", accept: ".glb,model/gltf-binary", filename: /\.glb$/i },
+  igs: { label: "IGS", accept: ".igs,.iges", filename: /\.(?:igs|iges)$/i },
+  stp: { label: "STP", accept: ".stp,.step", filename: /\.(?:stp|step)$/i },
+};
 
 export function AddCustomAssetDialog({ classification, onImport }: { classification: AssetClassification; onImport: (asset: AssetDefinition) => void }) {
-  const [mode, setMode] = useState<Mode>("stl");
-  const [stlUnit, setStlUnit] = useState<StlUnit>("mm");
+  const [mode, setMode] = useState<Mode>("import");
+  const [importFormat, setImportFormat] = useState<ModelImportFormat>("stl");
+  const [modelUnits, setModelUnits] = useState<Record<ModelImportFormat, ModelUnit>>({ stl: "mm", glb: "m", igs: "mm", stp: "mm" });
+  const modelUnit = modelUnits[importFormat];
+  const [assetScale, setAssetScale] = useState("1");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -44,6 +55,14 @@ export function AddCustomAssetDialog({ classification, onImport }: { classificat
   const [importingJobId, setImportingJobId] = useState("");
   const [importedJobs, setImportedJobs] = useState<Set<string>>(() => new Set());
   const idempotencyKey = useRef<string | null>(null);
+  const importWorker = useRef<Worker | null>(null);
+
+  useEffect(() => () => { importWorker.current?.terminate(); importWorker.current = null; }, []);
+
+  useEffect(() => {
+    // A retry of an uncertain submission keeps its key; changed inputs start a new job.
+    idempotencyKey.current = null;
+  }, [assetName, dimensions.width, dimensions.depth, dimensions.height, photos, views, classification.categoryId, classification.subcategory]);
 
   useEffect(() => {
     let mounted = true;
@@ -83,17 +102,40 @@ export function AddCustomAssetDialog({ classification, onImport }: { classificat
     return () => { mounted = false; window.clearInterval(timer); };
   }, [selectedGenerationId, selectedJobStatus]);
 
-  async function importStl(file?: File) {
+  async function importModel(file?: File) {
     if (!file) return;
-    setBusy(true); setError(""); setNotice("");
+    setError(""); setNotice("");
+    const format = MODEL_IMPORT_FORMATS[importFormat];
+    if (!format.filename.test(file.name)) { setError(`Choose a ${format.label} file.`); return; }
+    if (file.size < 1 || file.size > 50 * 1024 * 1024) { setError("Choose a model file of 50 MB or less."); return; }
+    if (!classification.categoryId || !classification.subcategory) { setError("Choose a category and subcategory first."); return; }
+    const scale = Number(assetScale);
+    if (!Number.isFinite(scale) || scale <= 0 || scale > 1000) { setError("Enter a scale greater than 0 and no greater than 1,000."); return; }
+    const requestedName = assetName.trim() || file.name.replace(/\.(?:stl|glb|igs|iges|stp|step)$/i, "").trim() || "Imported 3D model";
+    setAssetName(current => current.trim() ? current : requestedName);
+    setBusy(true);
     try {
-      const glb = await convertStlToGlb(file, stlUnit);
-      const asset = await assetRepository.importLocalAsset(glb, undefined, undefined, classification);
-      onImport(asset);
-      setNotice("STL converted and saved in this browser. No AI service or cloud upload was used.");
+      let glb: File;
+      if (importFormat === "stl") {
+        // STL has no embedded units. Its existing converter bakes mm/cm/in to metres;
+        // metres are handled as an explicit 1,000× reinterpretation of raw STL values.
+        const stlUnit: StlUnit = modelUnit === "m" ? "mm" : modelUnit;
+        const converted = await convertStlToGlb(file, stlUnit);
+        const metreCompensation = modelUnit === "m" ? 1000 : 1;
+        glb = scale * metreCompensation === 1 ? converted : await convertGlbUnitsAndScale(converted, "m", scale * metreCompensation);
+      } else if (importFormat === "glb") {
+        glb = modelUnit === "m" && scale === 1 ? file : await convertGlbUnitsAndScale(file, modelUnit, scale);
+      } else {
+        glb = await convertCadToGlb(file, importFormat, modelUnit, scale, worker => { importWorker.current = worker; });
+      }
+      const safeName = requestedName.replace(/[\\/:*?"<>|]/g, "-").slice(0, 180) || "Imported 3D model";
+      const namedGlb = new File([glb], `${safeName}.glb`, { type: "model/gltf-binary" });
+      const asset = await assetRepository.importLocalAsset(namedGlb, undefined, undefined, classification);
+      onImport({ ...asset, name: requestedName.slice(0, 200) });
+      setNotice(`${format.label} imported and saved in this browser. No file was uploaded to an external service.`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The STL could not be imported.");
-    } finally { setBusy(false); }
+      setError(reason instanceof Error ? reason.message : `The ${format.label} file could not be imported.`);
+    } finally { importWorker.current = null; setBusy(false); }
   }
 
   function selectPhotos(files: FileList | null) {
@@ -192,22 +234,35 @@ export function AddCustomAssetDialog({ classification, onImport }: { classificat
   const selectedJobWasImported = selectedJob ? importedJobs.has(selectedJob.generation_id) : false;
   return <div className="custom-asset-content">
       <div className="custom-asset-tabs" role="tablist" aria-label="Custom asset method">
-        <button type="button" role="tab" aria-selected={mode === "stl"} className={mode === "stl" ? "active" : ""} onClick={() => { setMode("stl"); setError(""); }}>Free STL</button>
-        <button type="button" role="tab" aria-selected={mode === "photos"} className={mode === "photos" ? "active" : ""} onClick={() => { setMode("photos"); setError(""); }}>Generate from photos</button>
+        <button type="button" role="tab" aria-selected={mode === "import"} className={mode === "import" ? "active" : ""} disabled={busy} onClick={() => { setMode("import"); setError(""); }}>3D obj import (free)</button>
+        <button type="button" role="tab" aria-selected={mode === "photos"} className={mode === "photos" ? "active" : ""} disabled={busy} onClick={() => { setMode("photos"); setError(""); }}>Generate from photos</button>
       </div>
 
-      {mode === "stl" ? <section className="custom-asset-panel" role="tabpanel">
-        <h3>Import a model for free</h3>
-        <p>Choose an STL file and its coordinate unit. It is converted to GLB locally and stays in this browser; no account or AI generation is used.</p>
-        <label className="custom-asset-field">STL units
-          <select value={stlUnit} onChange={event => setStlUnit(event.target.value as StlUnit)} disabled={busy}>
-            <option value="mm">Millimetres (mm)</option><option value="cm">Centimetres (cm)</option><option value="in">Inches (in)</option>
-          </select>
+      {mode === "import" ? <section className="custom-asset-panel" role="tabpanel">
+        <h3>Import a 3D object for free</h3>
+        <p>Choose STL, GLB, IGS or STP. Files are processed locally in your browser and saved with this planner.</p>
+        <div className="custom-asset-import-fields">
+          <label className="custom-asset-field">Format
+            <select value={importFormat} disabled={busy} onChange={event => { setImportFormat(event.target.value as ModelImportFormat); setError(""); setNotice(""); }}>
+              {(Object.keys(MODEL_IMPORT_FORMATS) as ModelImportFormat[]).map(format => <option value={format} key={format}>{MODEL_IMPORT_FORMATS[format].label}</option>)}
+            </select>
+          </label>
+          <label className="custom-asset-field">Asset name
+            <input value={assetName} maxLength={200} disabled={busy} onChange={event => setAssetName(event.target.value)} placeholder="e.g. Walnut vanity" />
+          </label>
+          <label className="custom-asset-field">Model units
+            <select value={modelUnit} onChange={event => setModelUnits(current => ({ ...current, [importFormat]: event.target.value as ModelUnit }))} disabled={busy}>
+              <option value="mm">Millimetres (mm)</option><option value="cm">Centimetres (cm)</option><option value="m">Metres (m)</option><option value="in">Inches (in)</option>
+            </select>
+          </label>
+          <label className="custom-asset-field">Scale
+            <input type="number" min="0.001" max="1000" step="0.1" value={assetScale} disabled={busy} onChange={event => setAssetScale(event.target.value)} />
+          </label>
+        </div>
+        <label className="custom-asset-file">Choose {MODEL_IMPORT_FORMATS[importFormat].label} file (up to 50 MB)
+          <input type="file" accept={MODEL_IMPORT_FORMATS[importFormat].accept} disabled={busy} onChange={event => { void importModel(event.target.files?.[0]); event.target.value = ""; }} />
         </label>
-        <label className="custom-asset-file">Choose STL file (up to 50 MB)
-          <input type="file" accept=".stl,model/stl,application/sla" disabled={busy} onChange={event => { void importStl(event.target.files?.[0]); event.target.value = ""; }} />
-        </label>
-        {busy && <p role="status">Converting STL to GLB locally…</p>}
+        {busy && <p role="status">{importFormat === "glb" ? "Validating GLB locally…" : `Converting ${MODEL_IMPORT_FORMATS[importFormat].label} to GLB locally…`}</p>}
       </section> : <section className="custom-asset-panel" role="tabpanel">
         <h3>Create a model from photos</h3>
         <p>Upload one front photo, or up to three views of the same object. For multiple photos, include a front view and assign a different angle to each.</p>

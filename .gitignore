@@ -11,6 +11,7 @@ htmlcov/
 *.FCStd
 cad/output/
 frontend/node_modules/
+frontend/public/vendor/occt-import-js/
 frontend/.next/
 frontend/out/
 frontend/tsconfig.tsbuildinfo

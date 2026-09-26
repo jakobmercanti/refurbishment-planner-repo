@@ -35,14 +35,32 @@ export async function uploadSignedFile(url: string, headers: Record<string, stri
   if (!response.ok) throw new Error("The private upload failed. Start the upload again.");
 }
 
-export async function createCheckout(productKey: string): Promise<void> {
-  const result = await commercialRequest<{ url: string }>("/billing/checkout", {
-    method: "POST", body: JSON.stringify({ product_key: productKey }),
-  });
-  window.location.assign(result.url);
+export async function createCheckout(productKey: string, keepPlannerOpen = false): Promise<void> {
+  const checkoutWindow = keepPlannerOpen ? window.open("about:blank", "_blank") : null;
+  if (keepPlannerOpen && !checkoutWindow) throw new Error("Allow pop-ups to open secure Stripe checkout without closing your planner.");
+  if (checkoutWindow) checkoutWindow.opener = null;
+  try {
+    const result = await commercialRequest<{ url: string }>("/billing/checkout", {
+      method: "POST", body: JSON.stringify({ product_key: productKey }),
+    });
+    if (checkoutWindow) checkoutWindow.location.replace(result.url);
+    else window.location.assign(result.url);
+  } catch (cause) {
+    checkoutWindow?.close();
+    throw cause;
+  }
 }
 
-export async function openBillingPortal(): Promise<void> {
-  const result = await commercialRequest<{ url: string }>("/billing/portal", { method: "POST" });
-  window.location.assign(result.url);
+export async function openBillingPortal(keepPlannerOpen = false): Promise<void> {
+  const portalWindow = keepPlannerOpen ? window.open("about:blank", "_blank") : null;
+  if (keepPlannerOpen && !portalWindow) throw new Error("Allow pop-ups to open the billing portal without closing your planner.");
+  if (portalWindow) portalWindow.opener = null;
+  try {
+    const result = await commercialRequest<{ url: string }>("/billing/portal", { method: "POST" });
+    if (portalWindow) portalWindow.location.replace(result.url);
+    else window.location.assign(result.url);
+  } catch (cause) {
+    portalWindow?.close();
+    throw cause;
+  }
 }

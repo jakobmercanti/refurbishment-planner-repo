@@ -97,7 +97,7 @@ body[data-ui-style="modern"] :is(.popup-actions, .catalogue-toolbar, .catalogue-
   background-color: var(--paper);
   border-color: var(--line);
 }
-body[data-ui-style="modern"] :is(.catalogue-results, .catalogue-sidebar, .app-nav) { background-color: var(--paper); }
+body[data-ui-style="modern"] :is(.catalogue-results, .catalogue-sidebar, .app-nav-modes, .app-nav-entry) { background-color: var(--paper); }
 body[data-ui-style="modern"] .catalogue-branch { border-color: var(--line); }
 body[data-ui-style="modern"] .catalogue-categories small { background: rgb(96 112 135 / 12%); }
 body[data-ui-style="modern"] :is(.catalogue-object-body code, .catalogue-plan-link) { color: var(--muted); }

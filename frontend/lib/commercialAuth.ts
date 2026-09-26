@@ -10,11 +10,21 @@ export interface AuthSession {
 const SESSION_KEY = "freefloorplan3d:commercial-session:v1";
 let refreshInFlight: Promise<AuthSession | null> | null = null;
 
+class AuthRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 function configuration() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
   if (!url || !key) throw new Error("Account access is not configured yet.");
   return { url, key };
+}
+
+export function isAuthConfigured(): boolean {
+  try { configuration(); return true; } catch { return false; }
 }
 
 function saveSession(session: AuthSession | null) {
@@ -46,7 +56,7 @@ async function authRequest<T>(path: string, body?: unknown, accessToken?: string
   const result = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
     const known = typeof result.msg === "string" ? result.msg : typeof result.message === "string" ? result.message : "Account request failed.";
-    throw new Error(known.slice(0, 240));
+    throw new AuthRequestError(known.slice(0, 240), response.status);
   }
   return result as T;
 }
@@ -65,7 +75,13 @@ export async function currentSession(): Promise<AuthSession | null> {
   if (!refreshInFlight) {
     refreshInFlight = authRequest<Record<string, unknown>>("token?grant_type=refresh_token", { refresh_token: session.refresh_token })
       .then((result) => { const updated = normalizeSession(result); saveSession(updated); return updated; })
-      .catch(() => { saveSession(null); return null; })
+      .catch((error) => {
+        if (error instanceof AuthRequestError && [400, 401, 403].includes(error.status)) {
+          saveSession(null);
+          return null;
+        }
+        throw error;
+      })
       .finally(() => { refreshInFlight = null; });
   }
   return refreshInFlight;

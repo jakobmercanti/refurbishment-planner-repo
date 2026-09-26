@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
 from database.catalogue_assets import migrate_legacy_pictures
-from database.colour_parts import colour_parts_for
+from database.colour_parts import colour_parts_for, MANIFEST as COLOUR_PART_MANIFEST
+from database.electrical_defaults import seed_electrical_defaults
 from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults, DOOR_FAMILIES, STAIRCASE_FAMILIES
 
 
@@ -69,6 +70,7 @@ CATEGORIES = [
     ("storage", "Storage & furniture", "Cabinets, benches and freestanding bathroom furniture.", 40, 0.0, 0.0),
     ("doors", "Internal doors", "Internal single, double, flush and shaker doors.", 50, 0.0, 0.0),
     ("windows", "Windows", "Single-, double- and triple-pane windows for the floorplan.", 60, 0.0, 0.0),
+    ("electric", "Electrical", "Hardwired electrical fittings, lighting and ventilation.", 120, 0.0, 0.0),
 ]
 
 CATEGORIES.extend((family, name, f"{name} with parametric leaves and matching plan symbols.", 51 + index, 0.0, 0.0)
@@ -96,6 +98,11 @@ def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tupl
         families.append((family_id, "paints-dulux", family["name"], index))
         for shade in family["shades"]:
             items.append((f"dulux-{family['id'].lower()}-{shade['id']}", family_id, shade["name"], shade["colour"], {"code": shade["name"], "ral_code": shade["ralCode"], "ral_name": shade["ralName"]}))
+    collections.append(("metals", "PAINT", "Metals", "", 32))
+    families.append(("metal-finishes", "metals", "Metal finishes", 0))
+    for finish in json.loads((root / "frontend/lib/metalFinishes.json").read_text(encoding="utf8")):
+        items.append((f"metal-{finish['id']}", "metal-finishes", finish["name"], finish["colour"],
+                      {**finish, "metal_finish_id": finish["id"]}))
     collections.append(("fabric", "PAINT", "Fabric", "", 35))
     families.append(("fabric-types", "fabric", "Fabric types", 0))
     for fabric in json.loads((root / "frontend/lib/fabrics.json").read_text(encoding="utf8")):
@@ -158,6 +165,21 @@ def _backfill_new_clearance_columns(session: Session, *, side_added: bool, front
                 category.default_side_clearance_mm = side
             if front_added:
                 category.default_front_clearance_mm = front
+
+
+def seed_catalogue_categories(session: Session) -> None:
+    """Insert the stable catalogue categories while retaining existing settings."""
+    for category_id, name, description, sort_order, side, front in CATEGORIES:
+        category = session.get(FurnitureCategoryRecord, category_id)
+        if category is not None and category_id == "doors" and category.name == "Doors":
+            category.name = "Internal doors"
+        if category is not None and category_id == "living-armchairs" and category.name == "Arm chair":
+            category.name = "Armchairs"
+        if category is None:
+            session.add(FurnitureCategoryRecord(
+                id=category_id, name=name, description=description, sort_order=sort_order,
+                default_side_clearance_mm=side, default_front_clearance_mm=front,
+            ))
 
 
 def _archive_obsolete_default_items(session: Session) -> None:
@@ -224,18 +246,12 @@ def initialise_catalogue() -> None:
         # Keep catalogue upgrades additive. Existing installations may already
         # contain custom category clearance settings, so only missing categories
         # receive the defaults while existing records retain their settings.
-        for category_id, name, description, sort_order, side, front in CATEGORIES:
-            category = session.get(FurnitureCategoryRecord, category_id)
-            if category is not None and category_id == "doors" and category.name == "Doors":
-                category.name = "Internal doors"
-            if category is not None and category_id == "living-armchairs" and category.name == "Arm chair":
-                category.name = "Armchairs"
-            if category is None:
-                session.add(FurnitureCategoryRecord(id=category_id, name=name, description=description, sort_order=sort_order, default_side_clearance_mm=side, default_front_clearance_mm=front))
+        seed_catalogue_categories(session)
         session.flush()
         _backfill_new_clearance_columns(session, side_added=added_side_clearance, front_added=added_front_clearance)
         _archive_obsolete_default_items(session)
         seed_fixture_defaults(session)
+        seed_electrical_defaults(session)
         session.flush()
         obsolete_stair_category = session.get(FurnitureCategoryRecord, "staircases-main")
         if obsolete_stair_category and not session.scalar(select(FurnitureItemRecord.id).where(FurnitureItemRecord.category_id == "staircases-main").limit(1)):
@@ -244,7 +260,7 @@ def initialise_catalogue() -> None:
         _seed_materials(session)
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
             # Definitions are application-owned; refresh finish eligibility on upgrades.
-            if not catalogue_item.colour_parts or catalogue_item.representation_key.startswith(("furniture-bed-", "furniture-sofa-", "furniture-armchair-", "furniture-chair-", "furniture-table-")):
+            if not catalogue_item.colour_parts or (not catalogue_item.stl_base64 and catalogue_item.representation_key in COLOUR_PART_MANIFEST["representations"]):
                 catalogue_item.colour_parts = colour_parts_for(catalogue_item.representation_key, catalogue_item.color_hex, imported_mesh=bool(catalogue_item.stl_base64))
             catalogue_item.image_data_json = migrate_legacy_pictures(catalogue_item.id, catalogue_item.image_data_json)
         session.commit()

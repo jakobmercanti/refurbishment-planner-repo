@@ -1,12 +1,349 @@
 {
   "profiles": {
+    "electrical-switch": [
+      {
+        "id": "body",
+        "label": "Faceplate",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Rockers",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-dimmer": [
+      {
+        "id": "body",
+        "label": "Faceplate",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Dimmer knob",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-pull": [
+      {
+        "id": "body",
+        "label": "Ceiling housing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Pull handle",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "cable",
+        "label": "Pull cord",
+        "default_color_hex": "#DEDCD5",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-socket": [
+      {
+        "id": "body",
+        "label": "Faceplate",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Rockers and socket faces",
+        "default_color_hex": "#FAF9F4",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-ceiling": [
+      {
+        "id": "body",
+        "label": "Light housing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "mounting",
+        "label": "Mounting plate / ceiling rose",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-ceiling-drum": [
+      {
+        "id": "body",
+        "label": "Light housing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "mounting",
+        "label": "Mounting plate / ceiling rose",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-pendant": [
+      {
+        "id": "body",
+        "label": "Shade / light housing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "mounting",
+        "label": "Mounting plate / ceiling rose",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "cable",
+        "label": "Suspension cable",
+        "default_color_hex": "#262D33",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-wall": [
+      {
+        "id": "body",
+        "label": "Light housing and arm",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "mounting",
+        "label": "Mounting plate / ceiling rose",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-bulkhead": [
+      {
+        "id": "body",
+        "label": "Outer housing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "mounting",
+        "label": "Mounting plate / ceiling rose",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-sensor": [
+      {
+        "id": "body",
+        "label": "Housing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Test / reset button",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-heat": [
+      {
+        "id": "body",
+        "label": "Housing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Test button",
+        "default_color_hex": "#D9DBD6",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-fan": [
+      {
+        "id": "body",
+        "label": "Housing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "grille",
+        "label": "Front cover / grille",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "blades",
+        "label": "Fan blades",
+        "default_color_hex": "#BEC5C7",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-hood": [
+      {
+        "id": "body",
+        "label": "Canopy",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "chimney",
+        "label": "Chimney / flue cover",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "filters",
+        "label": "Grease filters",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Control buttons",
+        "default_color_hex": "#262D33",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-canopy": [
+      {
+        "id": "body",
+        "label": "Extractor casing",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "filters",
+        "label": "Grease filters",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Control buttons",
+        "default_color_hex": "#262D33",
+        "material_type": "metal"
+      }
+    ],
+    "electrical-board": [
+      {
+        "id": "body",
+        "label": "Cabinet and latch",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "metal"
+      },
+      {
+        "id": "panel",
+        "label": "Inner panel",
+        "default_color_hex": "#B1B8BC",
+        "material_type": "metal"
+      },
+      {
+        "id": "breakers",
+        "label": "Circuit breaker bodies",
+        "default_color_hex": "#F8F7F1",
+        "material_type": "metal"
+      },
+      {
+        "id": "controls",
+        "label": "Breaker switches",
+        "default_color_hex": "#262D33",
+        "material_type": "metal"
+      },
+      {
+        "id": "hardware",
+        "label": "Screws and fittings",
+        "default_color_hex": "#AEB7BD",
+        "material_type": "metal"
+      }
+    ],
     "table": [
       {
         "id": "legs",
         "label": "Legs",
         "default_color_hex": "#715840",
         "legacy_field": "hardware_color_hex",
-        "material_type": "wood"
+        "material_type": "wood-metal"
       },
       {
         "id": "top",
@@ -22,7 +359,7 @@
         "label": "Legs",
         "default_color_hex": "#715840",
         "legacy_field": "hardware_color_hex",
-        "material_type": "wood"
+        "material_type": "wood-metal"
       },
       {
         "id": "frame",
@@ -78,7 +415,7 @@
         "label": "Legs",
         "default_color_hex": "#715840",
         "legacy_field": "hardware_color_hex",
-        "material_type": "wood"
+        "material_type": "wood-metal"
       }
     ],
     "chair": [
@@ -102,23 +439,27 @@
         "id": "body",
         "label": "Cabinet body",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Doors and drawers",
-        "default_color_hex": "#C5AF94"
+        "default_color_hex": "#C5AF94",
+        "material_type": "wood"
       },
       {
         "id": "top",
         "label": "Top",
-        "default_color_hex": "#F4F3EF"
+        "default_color_hex": "#F4F3EF",
+        "material_type": "wood"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "cabinet-open": [
@@ -126,13 +467,15 @@
         "id": "body",
         "label": "Cabinet structure",
         "default_color_hex": "#F4F3EE",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "wood"
       },
       {
         "id": "shelves",
         "label": "Shelves",
         "default_color_hex": "#F4F3EE",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "wood"
       }
     ],
     "cabinet": [
@@ -140,25 +483,29 @@
         "id": "body",
         "label": "Cabinet structure",
         "default_color_hex": "#F4F3EE",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "wood"
       },
       {
         "id": "shelves",
         "label": "Shelves",
         "default_color_hex": "#F4F3EE",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Door fronts",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "cabinet-glass": [
@@ -166,25 +513,29 @@
         "id": "body",
         "label": "Cabinet structure",
         "default_color_hex": "#F4F3EE",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "wood"
       },
       {
         "id": "shelves",
         "label": "Shelves",
         "default_color_hex": "#F4F3EE",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Door fronts",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "kitchen": [
@@ -192,30 +543,35 @@
         "id": "body",
         "label": "Cabinet body",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Door fronts",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "top",
         "label": "Worktop",
         "default_color_hex": "#77736B",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "stone"
       },
       {
         "id": "plinth",
         "label": "Plinth",
-        "default_color_hex": "#5B554C"
+        "default_color_hex": "#5B554C",
+        "material_type": "wood"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "wardrobe": [
@@ -223,24 +579,28 @@
         "id": "body",
         "label": "Carcass and top",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Doors",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "plinth",
         "label": "Plinth",
-        "default_color_hex": "#5B554C"
+        "default_color_hex": "#5B554C",
+        "material_type": "wood"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "fridge": [
@@ -248,29 +608,34 @@
         "id": "body",
         "label": "Carcass and top",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "metal"
       },
       {
         "id": "fronts",
         "label": "Doors",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "metal"
       },
       {
         "id": "plinth",
         "label": "Plinth",
-        "default_color_hex": "#5B554C"
+        "default_color_hex": "#5B554C",
+        "material_type": "metal"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "display",
         "label": "Display and trim",
-        "default_color_hex": "#20282D"
+        "default_color_hex": "#20282D",
+        "material_type": "paint"
       }
     ],
     "sink": [
@@ -278,41 +643,48 @@
         "id": "body",
         "label": "Cabinet body",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Door fronts",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "plinth",
         "label": "Plinth",
-        "default_color_hex": "#5B554C"
+        "default_color_hex": "#5B554C",
+        "material_type": "wood"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "sink",
         "label": "Sink and drainer",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "tap",
         "label": "Tap",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "drain",
         "label": "Waste outlet",
-        "default_color_hex": "#20282D"
+        "default_color_hex": "#20282D",
+        "material_type": "metal"
       }
     ],
     "hob": [
@@ -320,35 +692,41 @@
         "id": "body",
         "label": "Cabinet body",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Door fronts",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "top",
         "label": "Worktop",
         "default_color_hex": "#77736B",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "stone"
       },
       {
         "id": "plinth",
         "label": "Plinth",
-        "default_color_hex": "#5B554C"
+        "default_color_hex": "#5B554C",
+        "material_type": "wood"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "rings",
         "label": "Cooking zone markings",
-        "default_color_hex": "#BBC0C3"
+        "default_color_hex": "#BBC0C3",
+        "material_type": "paint"
       }
     ],
     "hob-electric": [
@@ -356,35 +734,41 @@
         "id": "body",
         "label": "Cabinet body",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Door fronts",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "top",
         "label": "Worktop",
         "default_color_hex": "#77736B",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "stone"
       },
       {
         "id": "plinth",
         "label": "Plinth",
-        "default_color_hex": "#5B554C"
+        "default_color_hex": "#5B554C",
+        "material_type": "wood"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "rings",
         "label": "Cooking zone markings",
-        "default_color_hex": "#797C7D"
+        "default_color_hex": "#797C7D",
+        "material_type": "paint"
       }
     ],
     "oven": [
@@ -392,35 +776,41 @@
         "id": "body",
         "label": "Cabinet body",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "metal"
       },
       {
         "id": "top",
         "label": "Worktop",
         "default_color_hex": "#77736B",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "stone"
       },
       {
         "id": "plinth",
         "label": "Plinth",
-        "default_color_hex": "#5B554C"
+        "default_color_hex": "#5B554C",
+        "material_type": "metal"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "fronts",
         "label": "Appliance front",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "metal"
       },
       {
         "id": "controls",
         "label": "Control knobs",
-        "default_color_hex": "#20282D"
+        "default_color_hex": "#20282D",
+        "material_type": "metal"
       }
     ],
     "washing": [
@@ -428,77 +818,90 @@
         "id": "body",
         "label": "Cabinet body",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "metal"
       },
       {
         "id": "top",
         "label": "Worktop",
         "default_color_hex": "#77736B",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "stone"
       },
       {
         "id": "plinth",
         "label": "Plinth",
-        "default_color_hex": "#5B554C"
+        "default_color_hex": "#5B554C",
+        "material_type": "metal"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "fronts",
         "label": "Appliance front",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "metal"
       },
       {
         "id": "controls",
         "label": "Control knobs",
-        "default_color_hex": "#20282D"
+        "default_color_hex": "#20282D",
+        "material_type": "metal"
       }
     ],
     "bath": [
       {
         "id": "body",
         "label": "Outer shell and apron",
-        "default_color_hex": "#F4F3EE"
+        "default_color_hex": "#F4F3EE",
+        "material_type": "ceramic"
       },
       {
         "id": "interior",
         "label": "Inner bowl and rim",
-        "default_color_hex": "#FFFFFF"
+        "default_color_hex": "#FFFFFF",
+        "material_type": "ceramic"
       },
       {
         "id": "hardware",
         "label": "Taps and waste",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "bath-feet": [
       {
         "id": "body",
         "label": "Outer shell and apron",
-        "default_color_hex": "#F4F3EE"
+        "default_color_hex": "#F4F3EE",
+        "material_type": "ceramic"
       },
       {
         "id": "interior",
         "label": "Inner bowl and rim",
-        "default_color_hex": "#FFFFFF"
+        "default_color_hex": "#FFFFFF",
+        "material_type": "ceramic"
       },
       {
         "id": "hardware",
         "label": "Taps and waste",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "legs",
         "label": "Feet",
         "default_color_hex": "#B6BEC1",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "radiator": [
@@ -506,222 +909,260 @@
         "id": "body",
         "label": "Radiator body",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "metal"
       },
       {
         "id": "brackets",
         "label": "Mounting brackets",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "metal"
       },
       {
         "id": "valves",
         "label": "Valve fittings",
-        "default_color_hex": "#B6BFC2"
+        "default_color_hex": "#B6BFC2",
+        "material_type": "metal"
       },
       {
         "id": "caps",
         "label": "Valve caps",
-        "default_color_hex": "#EEEEEB"
+        "default_color_hex": "#EEEEEB",
+        "material_type": "metal"
       }
     ],
     "toilet": [
       {
         "id": "body",
         "label": "Ceramic bowl and base",
-        "default_color_hex": "#FAF9F5"
+        "default_color_hex": "#FAF9F5",
+        "material_type": "ceramic"
       },
       {
         "id": "seat",
         "label": "Seat",
-        "default_color_hex": "#FFFFFF"
+        "default_color_hex": "#FFFFFF",
+        "material_type": "plastic"
       },
       {
         "id": "hardware",
         "label": "Hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "toilet-cistern": [
       {
         "id": "body",
         "label": "Ceramic bowl and base",
-        "default_color_hex": "#FAF9F5"
+        "default_color_hex": "#FAF9F5",
+        "material_type": "ceramic"
       },
       {
         "id": "seat",
         "label": "Seat",
-        "default_color_hex": "#FFFFFF"
+        "default_color_hex": "#FFFFFF",
+        "material_type": "plastic"
       },
       {
         "id": "hardware",
         "label": "Hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "cistern",
         "label": "Cistern and lid",
-        "default_color_hex": "#F4F3EF"
+        "default_color_hex": "#F4F3EF",
+        "material_type": "ceramic"
       },
       {
         "id": "flush",
         "label": "Flush button",
         "default_color_hex": "#BAC4C3",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "basin": [
       {
         "id": "basin",
         "label": "Basin and ceramic supports",
-        "default_color_hex": "#FAFAF7"
+        "default_color_hex": "#FAFAF7",
+        "material_type": "ceramic"
       },
       {
         "id": "tap",
         "label": "Tap",
         "default_color_hex": "#BAC4C3",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "drain",
         "label": "Waste outlet",
-        "default_color_hex": "#89928F"
+        "default_color_hex": "#89928F",
+        "material_type": "metal"
       }
     ],
     "basin-countertop": [
       {
         "id": "basin",
         "label": "Basin and ceramic supports",
-        "default_color_hex": "#FAFAF7"
+        "default_color_hex": "#FAFAF7",
+        "material_type": "ceramic"
       },
       {
         "id": "tap",
         "label": "Tap",
         "default_color_hex": "#BAC4C3",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "drain",
         "label": "Waste outlet",
-        "default_color_hex": "#89928F"
+        "default_color_hex": "#89928F",
+        "material_type": "metal"
       },
       {
         "id": "top",
         "label": "Countertop",
-        "default_color_hex": "#A78D70"
+        "default_color_hex": "#A78D70",
+        "material_type": "stone"
       }
     ],
     "vanity": [
       {
         "id": "basin",
         "label": "Basin and ceramic supports",
-        "default_color_hex": "#FAFAF7"
+        "default_color_hex": "#FAFAF7",
+        "material_type": "ceramic"
       },
       {
         "id": "tap",
         "label": "Tap",
         "default_color_hex": "#BAC4C3",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "drain",
         "label": "Waste outlet",
-        "default_color_hex": "#89928F"
+        "default_color_hex": "#89928F",
+        "material_type": "metal"
       },
       {
         "id": "body",
         "label": "Cabinet structure",
-        "default_color_hex": "#A78D70"
+        "default_color_hex": "#A78D70",
+        "material_type": "wood"
       },
       {
         "id": "fronts",
         "label": "Cabinet fronts",
         "default_color_hex": "#B7A187",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood"
       },
       {
         "id": "top",
         "label": "Countertop",
-        "default_color_hex": "#F4F3EF"
+        "default_color_hex": "#F4F3EF",
+        "material_type": "stone"
       },
       {
         "id": "hardware",
         "label": "Handles and fittings",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "shower": [
       {
         "id": "tray",
         "label": "Shower tray",
-        "default_color_hex": "#F4F3EF"
+        "default_color_hex": "#F4F3EF",
+        "material_type": "ceramic"
       },
       {
         "id": "tap",
         "label": "Shower head and mixer",
         "default_color_hex": "#BAC4C3",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "drain",
         "label": "Waste outlet",
-        "default_color_hex": "#737F7C"
+        "default_color_hex": "#737F7C",
+        "material_type": "metal"
       }
     ],
     "shower-frame": [
       {
         "id": "tray",
         "label": "Shower tray",
-        "default_color_hex": "#F4F3EF"
+        "default_color_hex": "#F4F3EF",
+        "material_type": "ceramic"
       },
       {
         "id": "tap",
         "label": "Shower head and mixer",
         "default_color_hex": "#BAC4C3",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "drain",
         "label": "Waste outlet",
-        "default_color_hex": "#737F7C"
+        "default_color_hex": "#737F7C",
+        "material_type": "metal"
       },
       {
         "id": "frame",
         "label": "Enclosure frame",
-        "default_color_hex": "#AEB8B8"
+        "default_color_hex": "#AEB8B8",
+        "material_type": "metal"
       },
       {
         "id": "hardware",
         "label": "Door handle",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "shower-quadrant": [
       {
         "id": "tray",
         "label": "Shower tray",
-        "default_color_hex": "#F4F3EF"
+        "default_color_hex": "#F4F3EF",
+        "material_type": "ceramic"
       },
       {
         "id": "tap",
         "label": "Shower head and mixer",
         "default_color_hex": "#BAC4C3",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "drain",
         "label": "Waste outlet",
-        "default_color_hex": "#737F7C"
+        "default_color_hex": "#737F7C",
+        "material_type": "metal"
       },
       {
         "id": "hardware",
         "label": "Door handle",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "door": [
@@ -729,19 +1170,22 @@
         "id": "leaf",
         "label": "Door leaf",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "frame",
         "label": "Frame and architrave",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "hardware",
         "label": "Handles and hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       }
     ],
     "door-panel": [
@@ -749,25 +1193,29 @@
         "id": "leaf",
         "label": "Door leaf",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "frame",
         "label": "Frame and architrave",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "hardware",
         "label": "Handles and hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "panels",
         "label": "Panels and mouldings",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       }
     ],
     "door-glass": [
@@ -775,25 +1223,29 @@
         "id": "leaf",
         "label": "Door leaf",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "frame",
         "label": "Frame and architrave",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "hardware",
         "label": "Handles and hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "panels",
         "label": "Panels and mouldings",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       }
     ],
     "door-barn": [
@@ -801,30 +1253,35 @@
         "id": "leaf",
         "label": "Door leaf",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "frame",
         "label": "Frame and architrave",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "hardware",
         "label": "Handles and hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "panels",
         "label": "Bracing and rails",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "track",
         "label": "Track and rollers",
-        "default_color_hex": "#303639"
+        "default_color_hex": "#303639",
+        "material_type": "metal"
       }
     ],
     "door-sliding": [
@@ -832,24 +1289,28 @@
         "id": "leaf",
         "label": "Door leaf",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "frame",
         "label": "Frame and architrave",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "hardware",
         "label": "Handles and hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "track",
         "label": "Track",
-        "default_color_hex": "#5A6061"
+        "default_color_hex": "#5A6061",
+        "material_type": "metal"
       }
     ],
     "door-sliding-glass": [
@@ -857,30 +1318,35 @@
         "id": "leaf",
         "label": "Door leaf",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "frame",
         "label": "Frame and architrave",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "hardware",
         "label": "Handles and hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "panels",
         "label": "Panels and mouldings",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "track",
         "label": "Track",
-        "default_color_hex": "#5A6061"
+        "default_color_hex": "#5A6061",
+        "material_type": "metal"
       }
     ],
     "window": [
@@ -888,30 +1354,35 @@
         "id": "frame",
         "label": "Frame",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "sash",
         "label": "Sashes and glazing bars",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "sill",
         "label": "Sill",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "hardware",
         "label": "Handles and hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "seals",
         "label": "Seals and vent",
-        "default_color_hex": "#414747"
+        "default_color_hex": "#414747",
+        "material_type": "plastic"
       }
     ],
     "window-projected": [
@@ -919,19 +1390,22 @@
         "id": "frame",
         "label": "Frame",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "sash",
         "label": "Sashes and glazing bars",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "sill",
         "label": "Sill",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       }
     ],
     "whole": [
@@ -939,7 +1413,8 @@
         "id": "body",
         "label": "Whole object",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "paint"
       }
     ],
     "stair-filled": [
@@ -947,25 +1422,29 @@
         "id": "treads",
         "label": "Treads",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "handrail",
         "label": "Handrails",
         "default_color_hex": "#725236",
-        "legacy_field": "handrail_color_hex"
+        "legacy_field": "handrail_color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "balusters",
         "label": "Balusters and lower rails",
         "default_color_hex": "#725236",
-        "legacy_field": "handrail_color_hex"
+        "legacy_field": "handrail_color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "infill",
         "label": "Wall and risers",
         "default_color_hex": "#E5DED2",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "paint"
       }
     ],
     "stair-filled-glass": [
@@ -973,18 +1452,21 @@
         "id": "treads",
         "label": "Treads",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "clamps",
         "label": "Glass clamps",
-        "default_color_hex": "#AFB8BB"
+        "default_color_hex": "#AFB8BB",
+        "material_type": "metal"
       },
       {
         "id": "infill",
         "label": "Wall and risers",
         "default_color_hex": "#E5DED2",
-        "legacy_field": "secondary_color_hex"
+        "legacy_field": "secondary_color_hex",
+        "material_type": "paint"
       }
     ],
     "stair-open": [
@@ -992,25 +1474,29 @@
         "id": "treads",
         "label": "Treads",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "handrail",
         "label": "Handrails",
         "default_color_hex": "#725236",
-        "legacy_field": "handrail_color_hex"
+        "legacy_field": "handrail_color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "balusters",
         "label": "Balusters and lower rails",
         "default_color_hex": "#725236",
-        "legacy_field": "handrail_color_hex"
+        "legacy_field": "handrail_color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "structure",
         "label": "Supporting structure",
         "default_color_hex": "#465052",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood-metal"
       }
     ],
     "stair-open-glass": [
@@ -1018,18 +1504,21 @@
         "id": "treads",
         "label": "Treads",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "clamps",
         "label": "Glass clamps",
-        "default_color_hex": "#AFB8BB"
+        "default_color_hex": "#AFB8BB",
+        "material_type": "metal"
       },
       {
         "id": "structure",
         "label": "Supporting structure",
         "default_color_hex": "#465052",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood-metal"
       }
     ],
     "stair-open-column": [
@@ -1037,25 +1526,29 @@
         "id": "treads",
         "label": "Treads",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "handrail",
         "label": "Handrails",
         "default_color_hex": "#725236",
-        "legacy_field": "handrail_color_hex"
+        "legacy_field": "handrail_color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "balusters",
         "label": "Balusters and lower rails",
         "default_color_hex": "#725236",
-        "legacy_field": "handrail_color_hex"
+        "legacy_field": "handrail_color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "structure",
         "label": "Supporting structure",
         "default_color_hex": "#465052",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood-metal"
       }
     ],
     "stair-open-column-glass": [
@@ -1063,41 +1556,48 @@
         "id": "treads",
         "label": "Treads",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "clamps",
         "label": "Glass clamps",
-        "default_color_hex": "#AFB8BB"
+        "default_color_hex": "#AFB8BB",
+        "material_type": "metal"
       },
       {
         "id": "structure",
         "label": "Supporting structure",
         "default_color_hex": "#465052",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "wood-metal"
       }
     ],
     "shower-walk-in": [
       {
         "id": "tray",
         "label": "Shower tray",
-        "default_color_hex": "#F4F3EF"
+        "default_color_hex": "#F4F3EF",
+        "material_type": "ceramic"
       },
       {
         "id": "tap",
         "label": "Shower head and mixer",
         "default_color_hex": "#BAC4C3",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "drain",
         "label": "Waste outlet",
-        "default_color_hex": "#737F7C"
+        "default_color_hex": "#737F7C",
+        "material_type": "metal"
       },
       {
         "id": "frame",
         "label": "Enclosure frame",
-        "default_color_hex": "#AEB8B8"
+        "default_color_hex": "#AEB8B8",
+        "material_type": "metal"
       }
     ],
     "door-sliding-panel": [
@@ -1105,30 +1605,35 @@
         "id": "leaf",
         "label": "Door leaf",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "frame",
         "label": "Frame and architrave",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "hardware",
         "label": "Handles and hinges",
         "default_color_hex": "#B6BABB",
-        "legacy_field": "hardware_color_hex"
+        "legacy_field": "hardware_color_hex",
+        "material_type": "metal"
       },
       {
         "id": "panels",
         "label": "Panels and mouldings",
         "default_color_hex": "$catalogue",
-        "legacy_field": "color_hex"
+        "legacy_field": "color_hex",
+        "material_type": "wood-metal"
       },
       {
         "id": "track",
         "label": "Track",
-        "default_color_hex": "#5A6061"
+        "default_color_hex": "#5A6061",
+        "material_type": "metal"
       }
     ],
     "armchair-scandi": [
@@ -1164,6 +1669,33 @@
     ]
   },
   "representations": {
+    "electrical-switch-single": "electrical-switch",
+    "electrical-switch-double": "electrical-switch",
+    "electrical-switch-dimmer": "electrical-dimmer",
+    "electrical-switch-pull": "electrical-pull",
+    "electrical-socket-single": "electrical-socket",
+    "electrical-socket-double": "electrical-socket",
+    "electrical-socket-usb": "electrical-socket",
+    "electrical-socket-weatherproof": "electrical-socket",
+    "electrical-ceiling-round": "electrical-ceiling",
+    "electrical-ceiling-square": "electrical-ceiling",
+    "electrical-ceiling-downlight": "electrical-ceiling",
+    "electrical-ceiling-drum": "electrical-ceiling-drum",
+    "electrical-pendant-dome": "electrical-pendant",
+    "electrical-pendant-globe": "electrical-pendant",
+    "electrical-pendant-linear": "electrical-pendant",
+    "electrical-wall-cylinder": "electrical-wall",
+    "electrical-wall-globe": "electrical-wall",
+    "electrical-wall-bulkhead": "electrical-bulkhead",
+    "electrical-sensor-smoke": "electrical-sensor",
+    "electrical-sensor-heat": "electrical-heat",
+    "electrical-sensor-co": "electrical-sensor",
+    "electrical-fan-axial": "electrical-fan",
+    "electrical-fan-silent": "electrical-fan",
+    "electrical-fan-hood": "electrical-hood",
+    "electrical-fan-canopy": "electrical-canopy",
+    "electrical-board-compact": "electrical-board",
+    "electrical-board-large": "electrical-board",
     "basin-corner": "basin",
     "basin-countertop": "basin-countertop",
     "basin-double-vanity": "vanity",

@@ -1,13 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { assetRepository } from "@/lib/assetRepository";
+import { MACRO_CATEGORY_ORDER, macroCategoryDisplay, macroCategoryForCategoryId, type MacroCategoryId } from "@/lib/catalogueTaxonomy";
 import type { AssetClassification, AssetDefinition, AssetInstance } from "@/lib/projectDocument";
 import type { CatalogueCategory, CatalogueItem } from "@/lib/types";
 import { AddCustomAssetDialog } from "@/components/AddCustomAssetDialog";
-
-type View = "library" | "add";
-type SubcategoryOptions = { categoryId: string; values: string[] };
 
 export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChange, onClose }: {
   assets: AssetDefinition[];
@@ -17,23 +14,35 @@ export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChang
   onChange: (instances: AssetInstance[]) => void;
   onClose: () => void;
 }) {
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<View>("library");
   const [categories, setCategories] = useState<CatalogueCategory[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [electricalSubcategories, setElectricalSubcategories] = useState<string[]>([]);
+  const [electricalSubcategoriesLoading, setElectricalSubcategoriesLoading] = useState(false);
+  const [electricalSubcategory, setElectricalSubcategory] = useState("");
   const [categoryError, setCategoryError] = useState("");
-  const [categoryId, setCategoryId] = useState("custom");
-  const [subcategory, setSubcategory] = useState("General");
-  const [subcategoryOptions, setSubcategoryOptions] = useState<SubcategoryOptions>({ categoryId: "", values: [] });
-  const categoryOptions = useMemo(() => [...categories, { id: "custom", name: "Custom", description: "Personal assets without a built-in category.", item_count: 0, default_side_clearance_mm: 0, default_front_clearance_mm: 0 }], [categories]);
-  const selectedCategory = categoryOptions.find(category => category.id === categoryId);
-  const selectedSubcategories = subcategoryOptions.categoryId === categoryId ? subcategoryOptions.values : [];
-  const subcategoriesLoading = categoryId !== "custom" && categoryId !== "" && subcategoryOptions.categoryId !== categoryId;
+  const [macroCategoryId, setMacroCategoryId] = useState<MacroCategoryId | "custom">("bathroom");
+  const [databaseCategoryId, setDatabaseCategoryId] = useState("");
+  const [customSubcategory, setCustomSubcategory] = useState("General");
+  const categoriesByMacro = useMemo(() => {
+    const grouped = new Map<MacroCategoryId, CatalogueCategory[]>();
+    categories.forEach(category => {
+      const macroId = macroCategoryForCategoryId(category.id);
+      grouped.set(macroId, [...(grouped.get(macroId) ?? []), category]);
+    });
+    return grouped;
+  }, [categories]);
+  const availableMacroCategories = MACRO_CATEGORY_ORDER.filter(id => (categoriesByMacro.get(id)?.length ?? 0) > 0);
+  const activeMacroCategory = macroCategoryId === "custom" || availableMacroCategories.includes(macroCategoryId)
+    ? macroCategoryId
+    : availableMacroCategories[0] ?? "custom";
+  const isElectricalCategory = activeMacroCategory === "electrical";
+  const databaseCategories = activeMacroCategory === "custom" ? [] : categoriesByMacro.get(activeMacroCategory) ?? [];
+  const selectedDatabaseCategory = databaseCategories.find(category => category.id === databaseCategoryId) ?? databaseCategories[0];
+  const databaseCategoryById = useMemo(() => new Map(categories.map(category => [category.id, category])), [categories]);
   const classification: AssetClassification = {
-    categoryId,
-    categoryName: selectedCategory?.name ?? "Custom",
-    subcategory: subcategory.trim(),
+    categoryId: activeMacroCategory === "custom" ? "custom" : selectedDatabaseCategory?.id ?? "",
+    categoryName: activeMacroCategory === "custom" ? "Custom" : macroCategoryDisplay(activeMacroCategory),
+    subcategory: activeMacroCategory === "custom" ? customSubcategory.trim() : isElectricalCategory ? electricalSubcategory : selectedDatabaseCategory?.name ?? "",
   };
 
   useEffect(() => {
@@ -47,35 +56,39 @@ export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChang
   }, [apiUrl]);
 
   useEffect(() => {
-    if (!categoryId || categoryId === "custom") return;
-    let mounted = true;
-    const query = new URLSearchParams({ category_id: categoryId });
+    if (!isElectricalCategory || !selectedDatabaseCategory) {
+      setElectricalSubcategories([]);
+      setElectricalSubcategory("");
+      setElectricalSubcategoriesLoading(false);
+      return;
+    }
+    const controller = new AbortController();
     const base = apiUrl.replace(/\/+$/, "");
-    void fetch(`${base}/catalog/items?${query.toString()}`)
-      .then(response => response.ok ? response.json() as Promise<CatalogueItem[]> : Promise.reject(new Error("Subcategories are unavailable.")))
+    setElectricalSubcategoriesLoading(true);
+    void fetch(base + "/catalog/items?category_id=" + encodeURIComponent(selectedDatabaseCategory.id), { signal: controller.signal })
+      .then(response => response.ok ? response.json() as Promise<CatalogueItem[]> : Promise.reject(new Error("Electrical catalogue items are unavailable.")))
       .then(items => {
-        if (!mounted) return;
-        const values = [...new Set(items.map(item => item.subcategory.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-        setSubcategoryOptions({ categoryId, values });
-        setSubcategory(current => values.includes(current) ? current : values[0] ?? "General");
+        if (controller.signal.aborted) return;
+        const subcategories = [...new Set(items.map(item => item.subcategory.trim()).filter(Boolean))]
+          .sort((left, right) => left.localeCompare(right));
+        setElectricalSubcategories(subcategories);
+        setElectricalSubcategory(current => subcategories.includes(current) ? current : subcategories[0] ?? "");
+        setCategoryError("");
       })
-      .catch(reason => { if (mounted) setCategoryError(reason instanceof Error ? reason.message : "Subcategories are unavailable."); });
-    return () => { mounted = false; };
-  }, [apiUrl, categoryId]);
+      .catch(reason => {
+        if (!controller.signal.aborted) {
+          setElectricalSubcategories([]);
+          setElectricalSubcategory("");
+          setCategoryError(reason instanceof Error ? reason.message : "Electrical catalogue items are unavailable.");
+        }
+      })
+      .finally(() => { if (!controller.signal.aborted) setElectricalSubcategoriesLoading(false); });
+    return () => controller.abort();
+  }, [apiUrl, isElectricalCategory, selectedDatabaseCategory?.id]);
 
-  async function add(file?: File) {
-    if (!file) return;
-    if (!classification.categoryId || !classification.subcategory) { setError("Choose a category and subcategory first."); return; }
-    setBusy(true); setError("");
-    try { onImport(await assetRepository.importLocalAsset(file, undefined, undefined, classification)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Model import failed."); }
-    finally { setBusy(false); }
-  }
-
-  function selectCategory(nextId: string) {
-    setCategoryId(nextId);
-    setSubcategory(nextId === "custom" ? "General" : "");
-    setError("");
+  function selectMacroCategory(nextId: string) {
+    setMacroCategoryId(nextId === "custom" ? "custom" : nextId as MacroCategoryId);
+    setDatabaseCategoryId("");
     setCategoryError("");
   }
 
@@ -84,9 +97,6 @@ export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChang
       <header className="local-assets-header">
         <div><span className="eyebrow">MY 3D MODELS</span><h2 id="local-assets-title">My 3D models</h2></div>
         <div className="local-asset-actions">
-          <button type="button" className="local-asset-action" onClick={() => { setView(current => current === "library" ? "add" : "library"); setError(""); }}>
-            {view === "library" ? "Add custom 3D asset…" : "Back to models"}
-          </button>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close models">×</button>
         </div>
       </header>
@@ -95,41 +105,44 @@ export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChang
         <p className="local-assets-intro">Your personal models stay with your planner and can also be backed up to your private account. They are visual-only and never added to the shared built-in catalogue or used as fit evidence.</p>
         <div className="local-asset-classification" aria-label="Personal asset category">
           <label>Category
-            <select value={categoryId} disabled={categoriesLoading} onChange={event => selectCategory(event.target.value)}>
-              {!categoriesLoading && !selectedCategory && <option value="" disabled>Select category</option>}
-              {categoryOptions.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}
+            <select value={activeMacroCategory} disabled={categoriesLoading} onChange={event => selectMacroCategory(event.target.value)}>
+              {availableMacroCategories.map(categoryId => <option value={categoryId} key={categoryId}>{macroCategoryDisplay(categoryId)}</option>)}
+              <option value="custom">Custom</option>
             </select>
           </label>
-          {categoryId === "custom" ? <label>Subcategory
-            <input value={subcategory} maxLength={120} onChange={event => setSubcategory(event.target.value)} placeholder="e.g. Workshop furniture" />
+          {activeMacroCategory === "custom" ? <label>Subcategory
+            <input value={customSubcategory} maxLength={120} onChange={event => setCustomSubcategory(event.target.value)} placeholder="e.g. Workshop furniture" />
           </label> : <label>Subcategory
-            <select value={subcategory} disabled={!categoryId || subcategoriesLoading || selectedSubcategories.length === 0} onChange={event => setSubcategory(event.target.value)}>
-              {subcategoriesLoading ? <option value="">Loading subcategories…</option> : selectedSubcategories.length ? selectedSubcategories.map(value => <option value={value} key={value}>{value}</option>) : <option value="General">General</option>}
+            <select
+              aria-label="Catalogue subcategory"
+              value={isElectricalCategory ? electricalSubcategory : selectedDatabaseCategory?.id ?? ""}
+              disabled={categoriesLoading || databaseCategories.length === 0 || (isElectricalCategory && (electricalSubcategoriesLoading || electricalSubcategories.length === 0))}
+              onChange={event => isElectricalCategory ? setElectricalSubcategory(event.target.value) : setDatabaseCategoryId(event.target.value)}
+            >
+              {isElectricalCategory
+                ? electricalSubcategories.length
+                  ? electricalSubcategories.map(subcategory => <option value={subcategory} key={subcategory}>{subcategory}</option>)
+                  : <option value="">{electricalSubcategoriesLoading ? "Loading subcategories…" : "No subcategories available"}</option>
+                : databaseCategories.length
+                  ? databaseCategories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)
+                  : <option value="">No subcategories available</option>}
             </select>
           </label>}
         </div>
         {categoryError && <p className="local-asset-taxonomy-note" role="status">Catalogue taxonomy could not be refreshed. “Custom” remains available; database categories need the catalogue service.</p>}
 
-        {view === "add" ? <AddCustomAssetDialog
+        <AddCustomAssetDialog
           classification={classification}
           onImport={onImport}
-        /> : <>
-          <section className="local-glb-import">
-            <div><strong>Import a GLB model</strong><p>Self-contained GLB, up to 50 MB. The file stays in this browser until you choose to back up your project.</p></div>
-            <label className="local-asset-file">Choose GLB file
-              <input aria-label="Import GLB" type="file" accept=".glb,model/gltf-binary" disabled={busy} onChange={event => { void add(event.target.files?.[0]); event.target.value = ""; }} />
-            </label>
-          </section>
-          {busy && <p className="local-asset-status" role="status">Checking model…</p>}
-          {error && <p className="custom-asset-error" role="alert">{error}</p>}
+        />
           {assets.length ? <div className="local-asset-list" aria-label="Personal models">
             {assets.map(asset => <article className="local-asset-card" key={asset.assetId}>
-              <div className="local-asset-card-heading"><div><span>{asset.categoryName ?? categoryOptions.find(category => category.id === (asset.categoryId ?? "custom"))?.name ?? "Custom"} · {asset.subcategory ?? "General"}</span><strong>{asset.name}</strong></div>
+              <div className="local-asset-card-heading"><div><span>{asset.categoryName ?? databaseCategoryById.get(asset.categoryId ?? "")?.name ?? "Custom"} · {asset.subcategory ?? "General"}</span><strong>{asset.name}</strong></div>
                 <code>{Object.values(asset.computedBoundsMm).map(value => Math.round(value)).join(" × ")} mm</code></div>
               {asset.declaredDimensionsMm && <p>Declared size: {asset.declaredDimensionsMm.width} × {asset.declaredDimensionsMm.depth} × {asset.declaredDimensionsMm.height} mm ({asset.dimensionAuthority ?? "unverified"})</p>}
               <button type="button" className="local-asset-secondary" onClick={() => onChange([...instances, { instanceId: crypto.randomUUID(), assetId: asset.assetId, assetVersion: 1, positionMm: { x: 1000, y: 1000, z: 0 }, rotationDeg: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }])}>Place in 3D</button>
             </article>)}
-          </div> : <div className="local-asset-empty"><strong>No personal models yet</strong><span>Import a GLB, add a free STL, or generate a model from photos.</span></div>}
+          </div> : <div className="local-asset-empty"><strong>No personal models yet</strong><span>Import a 3D model or generate one from photos.</span></div>}
           {instances.length > 0 && <section className="local-asset-placements"><h3>Placed in this project</h3>
             {instances.map((instance, index) => <fieldset key={instance.instanceId}>
               <legend>{index + 1}. {assets.find(asset => asset.assetId === instance.assetId)?.name ?? "3D model"}</legend>
@@ -140,7 +153,6 @@ export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChang
               </div>
             </fieldset>)}
           </section>}
-        </>}
       </div>
     </section>
   </div>;

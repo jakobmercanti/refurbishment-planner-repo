@@ -15,7 +15,8 @@ See the root and `frontend/.env.example` for the full variable names. Leave blan
 ## Supabase
 
 1. Create or select the production Supabase project, configure email delivery, verification, password recovery, and the exact planner account redirect URL (for example `https://www.freefloorplan3d.com/planner/account/`). Add the local development URL only to a non-production project.
-2. Back up the database, then apply `database/migrations/202609240001_phase2_commercial.sql` followed by `database/migrations/202609250001_ai_3d_generation.sql` using the Supabase SQL editor or the project’s migration workflow.
+2. Back up the database, then apply `database/migrations/202609240001_phase2_commercial.sql`, `database/migrations/202609250001_ai_3d_generation.sql`, `database/migrations/202609260001_private_asset_categories.sql`, and `database/migrations/202609270001_electrical_layout_foundation.sql` in that order using the Supabase SQL editor or the project’s migration workflow.
+   The electrical foundation migration sets Free to 5 electrical fittings per project and active paid plans to `NULL` (unlimited); `/commercial/summary` returns this under `capabilities.maxElectricalElementsPerProject`. It does not rewrite any saved project data.
 3. Set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` on the API and worker. Keep the service-role key server-only. Keep `REQUIRE_VERIFIED_EMAIL=true` for paid features.
 4. Confirm the new tables have RLS enabled, public clients can read only active plan/pack catalogue rows, and all account-owned records remain inaccessible to other users. The API uses the service key only after it verifies the caller’s bearer token against Supabase Auth.
 
@@ -47,4 +48,4 @@ The migration adds `ai_3d_generations_per_period` to each plan with a default of
 
 ## Before live launch
 
-Complete staging end-to-end checks for sign-up/verification/recovery, subscription checkout and cancellation, every credit pack, webhook retries/out-of-order events, cloud project conflict handling, signed GLB/STL upload/download/deletion, worker retry/refund behavior, storage quotas, and render retention. Confirm the public privacy/terms and support/refund contacts with the business owner. Do not set `STRIPE_ALLOW_LIVE=true` or enable paid checkout until the business answers the pending pricing/VAT/legal/support questions and all staging checks pass. No production credentials or external services are configured by this code change.
+Complete staging end-to-end checks for sign-up/verification/recovery, subscription checkout and cancellation, every credit pack, webhook retries/out-of-order events, cloud project conflict handling, signed GLB/STL upload/download/deletion, AI 3D generation and refund behavior, worker retry/refund behavior, storage quotas, and render retention. Confirm the public privacy/terms and support/refund contacts with the business owner. Do not set `STRIPE_ALLOW_LIVE=true` or enable paid checkout until the business answers the pending pricing/VAT/legal/support questions and all staging checks pass. No production credentials or external services are configured by this code change.

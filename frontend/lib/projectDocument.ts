@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Room } from "./types";
 import type { PersistedFloorplan } from "../components/FullFloorplanEditor";
+import { normalizeRenderCameraState, type RenderCameraState } from "./renderCamera";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -38,10 +39,14 @@ const documentSchema = z.object({
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), generated: z.boolean(),
   rooms: z.array(roomSchema).max(1000), floorplan: layoutSchema.nullable(),
   assets: z.array(assetSchema).max(100), assetInstances: z.array(instanceSchema).max(1000),
+  // Camera metadata is optional and sanitized independently so a damaged,
+  // non-authoritative view setting cannot prevent the project from opening.
+  renderCamera: z.unknown().optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
   rooms: Room[]; floorplan: PersistedFloorplan | null; assets: AssetDefinition[]; assetInstances: AssetInstance[];
+  renderCamera?: RenderCameraState;
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -60,7 +65,10 @@ function unique(values: string[]) { if (new Set(values).size !== values.length) 
 export function parseProject(input: unknown): ProjectDocument {
   inspectJson(input);
   if (!input || typeof input !== "object" || !("schemaVersion" in input) || input.schemaVersion !== 1) throw new Error("Unsupported project schema version. This app supports version 1.");
-  const p = documentSchema.parse(input) as unknown as ProjectDocument;
+  const parsed = documentSchema.parse(input) as unknown as ProjectDocument & { renderCamera?: unknown };
+  const { renderCamera: rawCamera, ...projectFields } = parsed;
+  const normalizedCamera = normalizeRenderCameraState(rawCamera);
+  const p: ProjectDocument = normalizedCamera ? { ...projectFields, renderCamera: normalizedCamera } : projectFields;
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
   for (const room of p.rooms) {
     unique(room.obstacles.map(o => o.id)); unique(room.openings.map(o => o.id));

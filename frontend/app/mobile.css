@@ -6,8 +6,10 @@
 .compact-workspace .brand-mark { width: 28px; height: 28px; }
 .compact-workspace .software-menu { margin-left: 0; min-width: 0; flex: 1; justify-content: space-between; }
 .compact-workspace .software-menu-item > button { min-height: 40px; padding: 6px; font: 600 11px var(--font-sans); }
-.compact-workspace .app-nav { grid-column: 2; grid-row: 1; gap: 2px; padding: 2px; }
-.compact-workspace .app-nav button { min-width: 34px; min-height: 36px; padding: 4px 7px; font-size: 11px; }
+.compact-workspace .app-nav { grid-column: 2; grid-row: 1; gap: 6px; padding: 0; border: 0; background: transparent; }
+.compact-workspace .app-nav-modes { gap: 2px; padding: 2px; }
+.compact-workspace .app-nav button { min-width: 34px; height: 36px; min-height: 36px; padding: 4px 7px; font-size: 11px; }
+.compact-workspace .app-nav-entry { height: auto; min-height: 0; align-self: stretch; padding: 4px 8px; font-size: 10px; }
 .compact-workspace .local-save-status { position: static; flex: 0 0 auto; min-height: 20px; max-width: 100%; padding: 3px 10px; font: 500 10px/1.4 var(--font-sans); background: var(--panel); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; z-index: auto; }
 .compact-tool-switcher { order: 10; flex: 0 0 auto; display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; background: var(--panel); border-top: 1px solid var(--line); }
 .compact-tool-switcher button { flex: 1 0 auto; min-height: 40px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--deep); font: 650 12px var(--font-sans); touch-action: manipulation; }
@@ -79,3 +81,10 @@
   .compact-tool-switcher { padding-block: 3px; }
   .compact-tool-switcher button { min-height: 34px; padding-block: 4px; }
 }
+.compact-workspace .floating-toolbar.viewer-camera-window { top: 8px !important; right: 8px !important; bottom: 8px !important; left: 8px !important; width: auto !important; min-width: 0 !important; max-width: none !important; height: auto !important; min-height: 0 !important; max-height: calc(100dvh - 16px) !important; }
+.compact-workspace .viewer-camera-window .floating-toolbar-content { margin: 0 8px 8px; }
+.compact-workspace .viewer-camera-panel { gap: 8px; }
+.compact-workspace .viewer-camera-preview-stage { min-height: 112px; max-height: 316px; }
+.compact-workspace .viewer-camera-section { padding: 8px; }
+.compact-workspace .viewer-camera-vectors input, .compact-workspace .viewer-camera-output-fields select { min-height: 38px; }
+.compact-workspace .viewer-camera-capture-button { min-height: 42px; font-size: 12px !important; }

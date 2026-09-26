@@ -238,5 +238,5 @@ class Tripo3DGenerationProvider:
         return data
 
 
-def tripo3d_provider() -> Tripo3DGenerationProvider:
-    return Tripo3DGenerationProvider()
+def tripo3d_provider(*, model: str | None = None) -> Tripo3DGenerationProvider:
+    return Tripo3DGenerationProvider(model=model)

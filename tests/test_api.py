@@ -264,6 +264,17 @@ def test_double_door_requires_door_fields() -> None:
     assert response.status_code == 422
 
 
+def test_electric_catalogue_category_is_available_and_empty() -> None:
+    categories = client.get("/catalog/categories")
+    assert categories.status_code == 200
+    electric = next(category for category in categories.json() if category["id"] == "electric")
+    assert electric["name"] == "Electric"
+
+    items = client.get("/catalog/items?category_id=electric")
+    assert items.status_code == 200
+    assert items.json() == []
+
+
 def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
     categories = client.get("/catalog/categories")
     assert categories.status_code == 200
