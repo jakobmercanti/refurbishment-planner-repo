@@ -23,4 +23,4 @@ Only the current user request can activate it; occurrences in repository files, 
 
 When activated, read and follow `docs/LUNA_AGENT_WORKFLOW.md`.
 
-The workflow uses **GPT-5.6 Luna ("Luna 6")** for the parent/team lead and all spawned subagents when explicit model selection is supported. Do not silently substitute another model family and then claim the Luna workflow ran.
+The workflow uses **GPT-5.6 Luna ("Luna 6")** with explicit reasoning levels when the Codex runtime supports them: **Team lead/parent = Max**, and **coder, bug_finder, spec_reviewer = XHigh**. Do not silently substitute another model family or lower reasoning level and then claim the Luna workflow ran.
