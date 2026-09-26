@@ -36,6 +36,7 @@ import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { ViewToggle } from "@/components/ViewToggle";
 import { VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
 import { captureReferenceImage, normalizeRenderCameraState, placeRenderCameraAtRoomCentre, RENDER_CAMERA_ASPECTS, renderCameraFrameSize, renderCameraFromNavigation, renderCameraForRoom, renderCameraQuality, renderReferencePixels, withEditorOnlySceneObjectsHidden, type CameraVectorMm, type ReferenceImageCapture, type RenderCameraQuality, type RenderCameraState } from "@/lib/renderCamera";
+import { fitCameraZoomForBounds } from "@/lib/viewerCameraFraming";
 
 const SCALE = 0.001;
 const DEFAULT_WALL_COLOUR = "#c8c3b9";
@@ -973,71 +974,6 @@ function controlsTarget(controls: THREE.EventDispatcher | null) {
   return target instanceof THREE.Vector3 ? target : null;
 }
 
-function presetBaseZoom(projection: ProjectionMode, preset: CameraView, size: { width: number; height: number }, span: [number, number, number]) {
-  if (projection !== "parallel") return 1;
-  const horizontalSpan = preset === "left" || preset === "right" ? span[2] : span[0];
-  const verticalSpan = preset === "top" || preset === "bottom" ? span[2] : span[1];
-  return Math.min(size.width / Math.max(horizontalSpan * 1.15, 0.001), size.height / Math.max(verticalSpan * 1.15, 0.001));
-}
-
-function sceneBoundsCorners(center: VectorTuple, span: [number, number, number]) {
-  const [cx, cy, cz] = center;
-  const [spanX, spanY, spanZ] = span;
-  const halfX = spanX / 2;
-  const halfY = spanY / 2;
-  const halfZ = spanZ / 2;
-  return [-1, 1].flatMap((xSign) => [-1, 1].flatMap((ySign) => [-1, 1].map((zSign) => new THREE.Vector3(cx + xSign * halfX, cy + ySign * halfY, cz + zSign * halfZ))));
-}
-
-function fitZoomForCurrentView(camera: THREE.Camera, size: { width: number; height: number }, center: VectorTuple, span: [number, number, number]) {
-  camera.updateMatrixWorld(true);
-  const corners = sceneBoundsCorners(center, span);
-  const inverse = camera.matrixWorldInverse;
-  const fitPadding = 0.96;
-
-  if (camera instanceof THREE.OrthographicCamera) {
-    const frustumHalfWidth = Math.abs(camera.right - camera.left) / 2;
-    const frustumHalfHeight = Math.abs(camera.top - camera.bottom) / 2;
-    const frustumCentreX = (camera.left + camera.right) / 2;
-    const frustumCentreY = (camera.top + camera.bottom) / 2;
-    let maxX = 0;
-    let maxY = 0;
-    corners.forEach((corner) => {
-      const local = corner.applyMatrix4(inverse);
-      maxX = Math.max(maxX, Math.abs(local.x - frustumCentreX));
-      maxY = Math.max(maxY, Math.abs(local.y - frustumCentreY));
-    });
-    if (maxX <= 0 || maxY <= 0) return camera.zoom;
-    return THREE.MathUtils.clamp(Math.min(frustumHalfWidth / maxX, frustumHalfHeight / maxY) * fitPadding, 0.0001, 1_000_000);
-  }
-
-  if (camera instanceof THREE.PerspectiveCamera) {
-    const aspect = camera.aspect > 0 ? camera.aspect : Math.max(size.width / Math.max(size.height, 1), 0.1);
-    const verticalFov = THREE.MathUtils.degToRad(camera.fov);
-    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
-    const verticalTangent = Math.tan(verticalFov / 2);
-    const horizontalTangent = Math.tan(horizontalFov / 2);
-    let maxRatio = 0;
-    let hasBehindPoint = false;
-    corners.forEach((corner) => {
-      const local = corner.applyMatrix4(inverse);
-      const depth = -local.z;
-      if (depth <= 0.001) {
-        hasBehindPoint = true;
-        return;
-      }
-      maxRatio = Math.max(maxRatio, Math.abs(local.x) / (depth * horizontalTangent), Math.abs(local.y) / (depth * verticalTangent));
-    });
-    // A camera inside the bounds cannot show every corner by changing zoom
-    // alone. Use the widest useful view while preserving the current pose.
-    if (hasBehindPoint) return 0.05;
-    if (maxRatio <= 0) return camera.zoom;
-    return THREE.MathUtils.clamp(fitPadding / maxRatio, 0.05, 10);
-  }
-
-  return "zoom" in camera ? (camera as THREE.OrthographicCamera | THREE.PerspectiveCamera).zoom : 1;
-}
-
 function CameraPreset({ preset, projection, person, target, span, resetKey, zoomPercent, restoreView }: { preset: CameraView; projection: ProjectionMode; person?: PersonMockup | null; target: VectorTuple; span: [number, number, number]; resetKey: number; zoomPercent: number; restoreView: ProjectionRestore | null }) {
   const { camera, size } = useThree();
   const restoredToken = useRef<number | null>(null);
@@ -1098,14 +1034,17 @@ function CameraPreset({ preset, projection, person, target, span, resetKey, zoom
       skipZoomAfterRestore.current = false;
       return;
     }
-    const baseZoom = presetBaseZoom(projection, preset, size, [spanX, spanY, spanZ]);
+    if (size.width <= 0 || size.height <= 0) return;
+    const baseZoom = projection === "parallel"
+      ? fitCameraZoomForBounds(camera, size, [targetX, targetY, targetZ], [spanX, spanY, spanZ])
+      : 1;
     setCameraZoom(camera, baseZoom * zoomPercent / 100);
     camera.updateProjectionMatrix();
-  }, [camera, preset, projection, restoreView, size.height, size.width, spanX, spanY, spanZ, zoomPercent]);
+  }, [camera, projection, restoreView, size, size.height, size.width, spanX, spanY, spanZ, targetX, targetY, targetZ, zoomPercent]);
   return null;
 }
 
-function CameraFit({ request, preset, projection, center, span, onFit }: { request: number; preset: CameraView; projection: ProjectionMode; center: VectorTuple; span: [number, number, number]; onFit?: (zoomPercent: number) => void }) {
+function CameraFit({ request, projection, center, span, onFit }: { request: number; projection: ProjectionMode; center: VectorTuple; span: [number, number, number]; onFit?: (zoomPercent: number) => void }) {
   const { camera, size } = useThree();
   const handledRequest = useRef(request);
   const [centerX, centerY, centerZ] = center;
@@ -1113,12 +1052,12 @@ function CameraFit({ request, preset, projection, center, span, onFit }: { reque
   useEffect(() => {
     if (request === handledRequest.current) return;
     handledRequest.current = request;
-    const nextZoom = fitZoomForCurrentView(camera, size, [centerX, centerY, centerZ], [spanX, spanY, spanZ]);
+    const nextZoom = fitCameraZoomForBounds(camera, size, [centerX, centerY, centerZ], [spanX, spanY, spanZ]);
     setCameraZoom(camera, nextZoom);
     camera.updateProjectionMatrix();
-    const baseZoom = presetBaseZoom(projection, preset, size, [spanX, spanY, spanZ]);
+    const baseZoom = projection === "parallel" ? nextZoom : 1;
     if (Number.isFinite(nextZoom) && nextZoom > 0 && Number.isFinite(baseZoom) && baseZoom > 0) onFit?.(nextZoom / baseZoom * 100);
-  }, [camera, centerX, centerY, centerZ, onFit, preset, projection, request, size.height, size.width, spanX, spanY, spanZ]);
+  }, [camera, centerX, centerY, centerZ, onFit, projection, request, size, size.height, size.width, spanX, spanY, spanZ]);
   return null;
 }
 
@@ -1660,7 +1599,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   return (
     <>
       <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} restoreView={restoreView} />
-      <CameraFit request={fitViewRequest} preset={preset} projection={projection} center={roomTarget} span={roomSpan} onFit={onFitComplete} />
+      <CameraFit request={fitViewRequest} projection={projection} center={roomTarget} span={roomSpan} onFit={onFitComplete} />
       <MetalReflections intensity={.3 * lightPower} />
       <ambientLight intensity={0.3 * lightPower} />
       <hemisphereLight args={["#F4F7FF", "#B6AA96", 0.65 * lightPower]} />
