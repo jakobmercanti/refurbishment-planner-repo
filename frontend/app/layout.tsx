@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import "./ui-theme.css";
 import "./mobile.css";
@@ -22,7 +23,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}<noscript><div style={{ padding: 24 }}><h2>Free floorplan creator in 2D and 3D</h2><p>Enable JavaScript to draw your floorplan, explore in 3D and download it for free. No registration or payment required.</p><a href="https://www.freefloorplan3d.com/">About FreeFloorplan3D</a> · <a href="/guides/">Read the planning guides</a></div></noscript></body>
+      <body>{children}<noscript><div style={{ padding: 24 }}><h2>Free floorplan creator in 2D and 3D</h2><p>Enable JavaScript to draw your floorplan, explore in 3D and download it for free. No registration or payment required.</p><a href="https://www.freefloorplan3d.com/">About FreeFloorplan3D</a> · <a href="/guides/">Read the planning guides</a></div></noscript><Script src="/google-consent.js?v=ads-consent-20260926" strategy="beforeInteractive" /></body>
     </html>
   );
 }
