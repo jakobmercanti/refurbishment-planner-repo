@@ -1,14 +1,16 @@
+import base64
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from backend.app.schemas import CatalogueItemInput
+from backend.app.schemas import CatalogueItemInput, validate_svg_plan_symbol
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from database.fixture_defaults import FIXTURE_DEFAULTS, fixture_default_name, seed_fixture_defaults
 from database.catalog import CATEGORIES, seed_catalogue_categories
+from database.electrical_defaults import seed_electrical_defaults
+from database.fixture_defaults import FIXTURE_DEFAULTS, fixture_default_name, seed_fixture_defaults
 from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.models import RoomDefinition
@@ -81,6 +83,32 @@ def test_electric_category_seeds_idempotently_without_items_or_overwriting_exist
         assert storage is not None
         assert (storage.name, storage.description, storage.sort_order) == ("Custom Storage Name", "Keep this text.", 999)
         assert (storage.default_side_clearance_mm, storage.default_front_clearance_mm) == (42, 84)
+
+
+def test_electrical_default_symbols_are_safe_and_upgrade_legacy_cooker_hood():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        seed_electrical_defaults(session)
+        session.flush()
+
+        items = session.scalars(select(FurnitureItemRecord).where(FurnitureItemRecord.category_id == "electric")).all()
+        assert items
+        for item in items:
+            if item.plan_symbol_data_url:
+                validate_svg_plan_symbol(item.plan_symbol_data_url)
+
+        cooker_hood = next(item for item in items if item.default_key == "generic-electrical-fan-hood")
+        legacy_svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g transform="rotate(0 50 50)"><path d="M10 10L90 90"/></g></svg>'
+        cooker_hood.plan_symbol_data_url = "data:image/svg+xml;base64," + base64.b64encode(legacy_svg.encode()).decode()
+        cooker_hood.representation_version = 2
+        session.flush()
+
+        seed_electrical_defaults(session)
+        session.flush()
+
+        assert cooker_hood.representation_version == 3
+        validate_svg_plan_symbol(cooker_hood.plan_symbol_data_url)
 
 
 def test_rendered_previews_are_persisted_and_preserve_customisations(tmp_path, monkeypatch):

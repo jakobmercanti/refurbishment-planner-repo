@@ -4,6 +4,7 @@ import { DOOR_MODELS } from "@/lib/doorModels";
 import { useEffect, useRef, useState } from "react";
 import type { CatalogueCategory, CatalogueItem } from "@/lib/types";
 import type { SoftwareUi } from "@/components/UiTheme";
+import type { PlanKey } from "@/lib/commercialCatalogue";
 
 interface CatalogueManagerProps {
   apiUrl: string;
@@ -16,6 +17,8 @@ interface CatalogueManagerProps {
   onClose: () => void;
   uiSettings: SoftwareUi | null;
   onUiSettingsChange: (settings: SoftwareUi) => void;
+  tierPreview: PlanKey | null;
+  onTierPreviewChange: (plan: PlanKey | null) => void;
 }
 
 const KINDS: Record<string, "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" | "DOOR" | "WINDOW"> = {
@@ -38,7 +41,7 @@ function trapFocus(event: React.KeyboardEvent<HTMLElement>) {
 
 type ManagerTab = "IMPORT" | "TOOLBARS" | "UI";
 
-export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVisible, onLayoutAnalysisToolbarVisibleChange, humanMockupToolbarVisible, onHumanMockupToolbarVisibleChange, onClose, uiSettings, onUiSettingsChange }: CatalogueManagerProps) {
+export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVisible, onLayoutAnalysisToolbarVisibleChange, humanMockupToolbarVisible, onHumanMockupToolbarVisibleChange, onClose, uiSettings, onUiSettingsChange, tierPreview, onTierPreviewChange }: CatalogueManagerProps) {
   const [categories, setCategories] = useState<CatalogueCategory[]>([]);
   const [status, setStatus] = useState<string>("");
   const [pending, setPending] = useState(false);
@@ -126,7 +129,7 @@ export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVi
         <button type="button" role="tab" id="catalogue-manager-toolbars-tab" aria-controls="catalogue-manager-toolbars-panel" aria-selected={activeTab === "TOOLBARS"} className={activeTab === "TOOLBARS" ? "active" : ""} onClick={() => setActiveTab("TOOLBARS")}>Toolbars activation</button>
         <button type="button" role="tab" id="catalogue-manager-ui-tab" aria-controls="catalogue-manager-ui-panel" aria-selected={activeTab === "UI"} className={activeTab === "UI" ? "active" : ""} onClick={() => setActiveTab("UI")}>UI style</button>
       </div>
-      {activeTab === "UI" ? <section id="catalogue-manager-ui-panel" role="tabpanel" aria-labelledby="catalogue-manager-ui-tab" className="catalogue-manager-panel"><h3>UI style</h3><p>Choose the appearance of buttons, menus, colours and windows across the software.</p><label className="field"><span>Interface style</span><select aria-label="Interface style" value={uiSettings?.style ?? "DEFAULT"} disabled={settingsPending || !uiSettings} onChange={(event) => void saveUiStyle(event.target.value as SoftwareUi["style"])}><option value="DEFAULT">Default</option><option value="MODERN">Modern</option></select></label><p>Default preserves the original appearance. Modern follows FreeFloorplan3D’s navy and blue design.</p><p>The selected style and both theme profiles are stored in <code>data/software_settings.json</code>.</p></section> : activeTab === "IMPORT" ? <section id="catalogue-manager-import-panel" role="tabpanel" aria-labelledby="catalogue-manager-import-tab" className="catalogue-manager-panel"><h3>Import from website</h3><p>The server reads Product JSON-LD when available. Enter verified fallback geometry in millimetres; website images and text never determine fit dimensions.</p>
+      {activeTab === "UI" ? <section id="catalogue-manager-ui-panel" role="tabpanel" aria-labelledby="catalogue-manager-ui-tab" className="catalogue-manager-panel"><h3>UI style</h3><p>Choose the appearance of buttons, menus, colours and windows across the software.</p><label className="field"><span>Interface style</span><select aria-label="Interface style" value={uiSettings?.style ?? "DEFAULT"} disabled={settingsPending || !uiSettings} onChange={(event) => void saveUiStyle(event.target.value as SoftwareUi["style"])}><option value="DEFAULT">Default</option><option value="MODERN">Modern</option></select></label><p>Default preserves the original appearance. Modern follows FreeFloorplan3D’s navy and blue design.</p><p>The selected style and both theme profiles are stored in <code>data/software_settings.json</code>.</p><h3>Tier preview</h3><p>Preview tier-based planner access while checking the interface.</p><label className="field"><span>Preview subscription tier</span><select aria-label="Preview subscription tier" value={tierPreview ?? "actual"} onChange={(event) => onTierPreviewChange(event.target.value === "actual" ? null : event.target.value as PlanKey)}><option value="actual">Use actual account</option><option value="free">Free</option><option value="starter">Starter</option><option value="pro">Pro</option><option value="studio">Studio</option></select></label><p>This is a temporary, frontend-only preview for gated planner tools. It does not change your account, billing, or server-side entitlements. Cloud and billing features continue to use the real account.</p></section> : activeTab === "IMPORT" ? <section id="catalogue-manager-import-panel" role="tabpanel" aria-labelledby="catalogue-manager-import-tab" className="catalogue-manager-panel"><h3>Import from website</h3><p>The server reads Product JSON-LD when available. Enter verified fallback geometry in millimetres; website images and text never determine fit dimensions.</p>
       <form onSubmit={(event) => void submit(event)} className="catalogue-manager-form">
         <label className="field span-two"><span>Website / source URL</span><input required type="url" value={form.source_url} onChange={(event) => set("source_url", event.target.value)} placeholder="https://supplier.example" /></label>
         <label className="field span-two"><span>Page or path</span><input value={form.page} onChange={(event) => set("page", event.target.value)} placeholder="products/bathroom" /></label>

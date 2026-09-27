@@ -34,7 +34,7 @@ const HELP_COPY: Record<HelpTopic, HelpContent> = {
   },
   electrical: {
     title: "Electrical layout",
-    body: "Free projects can contain up to 5 electrical fittings. Any paid plan allows unlimited electrical fittings per project. Doors, windows and ordinary fittings do not count toward this limit.",
+    body: "The full furniture and electrical-item catalogue is available on every plan. The Electrical Layout module for creating schematic connections, circuits and focused electrical drawings is included with any active paid plan.",
   },
 };
 
@@ -104,7 +104,7 @@ function PlanHelpDialog({ content, packs, onClose }: { content: HelpContent; pac
 
 function planHighlights(plan: CommercialCatalogue["plans"][number]): string[] {
   if (plan.plan_key === "free") {
-    return ["Unlimited local floorplans", "Browser saving and portable files", "5 electrical fittings per project"];
+    return ["Unlimited local floorplans", "Browser saving and portable files", "Full furniture & electrical catalogue", "Electrical Layout module on paid plans"];
   }
   const storage = `${Math.round(plan.storage_limit_bytes / 1024 ** 3)} GB private cloud`;
   const assets = `${plan.asset_limit.toLocaleString("en-GB")} private assets`;
@@ -113,7 +113,7 @@ function planHighlights(plan: CommercialCatalogue["plans"][number]): string[] {
     plan.included_medium ? `${plan.included_medium} Medium renders / month` : "",
     plan.included_high ? `${plan.included_high} High renders / month` : "",
   ].filter(Boolean).join(" + ");
-  return [storage, assets, projects, renders, "Unlimited electrical fittings"].filter(Boolean);
+  return [storage, assets, projects, renders, "Electrical Layout module"].filter(Boolean);
 }
 
 export function PlansAndBillingPanel({
@@ -250,7 +250,7 @@ export function PlansAndBillingPanel({
 
   return <div className="commercial-content account-plans-content">
     <section className="commercial-page-heading plan-page-heading">
-      <div><p className="commercial-eyebrow">PLANS &amp; BILLING</p><h1>Keep planning free. Add cloud when you need it.</h1><p>Every plan includes the full floorplan editor. Paid plans add private cloud storage, project backup and AI rendering allowances.</p></div>
+      <div><p className="commercial-eyebrow">PLANS &amp; BILLING</p><h1>Keep planning free. Add cloud when you need it.</h1><p>Every plan includes the full floorplan editor and furniture/electrical catalogue. Paid plans unlock Electrical Layout, private cloud storage, project backup and AI rendering allowances.</p></div>
     </section>
 
     {actionError && <p className="commercial-error plan-action-error" role="alert">{actionError}</p>}

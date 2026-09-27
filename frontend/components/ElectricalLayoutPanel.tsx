@@ -11,7 +11,7 @@ const routings: [ElectricalRouting, string][] = [["ORTHOGONAL", "Orthogonal"], [
 const types: [ElectricalConnectionType, string][] = [["GENERIC", "Generic"], ["CONTROL", "Control"], ["POWER", "Power / circuit"]];
 type Props = {
   mode: boolean; onModeChange: (value: boolean) => void; connecting: boolean; onConnect: () => void; onAdd: () => void;
-  status?: string | null; maximum: number | null; currentCount: number; defaults: ElectricalConnectionDefaults;
+  status?: string | null; currentCount: number; defaults: ElectricalConnectionDefaults;
   onDefaultsChange: (value: ElectricalConnectionDefaults) => void; display: ElectricalDisplayOptions;
   onDisplayChange: (value: ElectricalDisplayOptions) => void; objects: ElectricalObjectOption[];
   connections: ElectricalConnection[]; selectedConnectionId: string | null; onSelectConnection: (id: string) => void;
@@ -29,7 +29,7 @@ export function ElectricalLayoutPanel(p: Props) {
   return <div className="electrical-layout-panel evidence-panel">
     <label className="electrical-mode-toggle"><input type="checkbox" checked={p.mode} onChange={(event) => p.onModeChange(event.target.checked)} /><span><strong>Electrical layout mode</strong><small>Keep the plan as context while editing electrical fittings and schematic connections.</small></span></label>
     <div className="electrical-layout-actions"><button type="button" className="review-style-button" onClick={p.onAdd}>Add electrical fitting…</button><button type="button" className="review-style-button" aria-pressed={p.connecting} disabled={!p.mode || p.objects.length < 2} onClick={p.onConnect}>{p.connecting ? "Cancel connect" : "Connect"}</button></div>
-    <p className="electrical-layout-count" role="status">{p.maximum === null ? p.currentCount + " electrical fittings · unlimited" : p.currentCount + " of " + p.maximum + " free electrical fittings used"}</p>
+    <p className="electrical-layout-count" role="status">{p.currentCount} electrical fittings in this project</p>
     {p.status && <p className="electrical-layout-status" role="status">{p.status}</p>}
     {p.connecting && <p className="electrical-connect-hint" role="status">Select a source, then one or more destinations. Esc cancels.</p>}
     <details className="electrical-layout-section" open><summary>New connection defaults</summary><div className="electrical-layout-grid">

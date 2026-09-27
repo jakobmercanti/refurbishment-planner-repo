@@ -9,7 +9,6 @@ export type CommercialPlan = {
   project_limit: number;
   included_medium: number;
   included_high: number;
-  max_electrical_elements_per_project: number | null;
   description: string;
 };
 
@@ -46,7 +45,6 @@ export const FALLBACK_PLANS: CommercialPlan[] = [
     project_limit: 0,
     included_medium: 0,
     included_high: 0,
-    max_electrical_elements_per_project: 5,
     description: "Everything you need to create and save floorplans locally.",
   },
   {
@@ -58,7 +56,6 @@ export const FALLBACK_PLANS: CommercialPlan[] = [
     project_limit: 50,
     included_medium: 10,
     included_high: 0,
-    max_electrical_elements_per_project: null,
     description: "For occasional cloud backup and rendering.",
   },
   {
@@ -70,7 +67,6 @@ export const FALLBACK_PLANS: CommercialPlan[] = [
     project_limit: 250,
     included_medium: 30,
     included_high: 5,
-    max_electrical_elements_per_project: null,
     description: "For regular projects and larger asset libraries.",
   },
   {
@@ -82,7 +78,6 @@ export const FALLBACK_PLANS: CommercialPlan[] = [
     project_limit: 1000,
     included_medium: 60,
     included_high: 15,
-    max_electrical_elements_per_project: null,
     description: "For frequent rendering and large project libraries.",
   },
 ];
@@ -113,18 +108,11 @@ function isValidRemotePlan(value: unknown): value is Record<string, unknown> {
     "monthly_price_pence", "storage_limit_bytes", "asset_limit", "project_limit", "included_medium", "included_high",
   ];
   if (!numericFields.every((field) => typeof value[field] === "number" && Number.isFinite(value[field]) && (value[field] as number) >= 0)) return false;
-  const electricalLimit = value.max_electrical_elements_per_project;
-  return electricalLimit === null || electricalLimit === undefined || (typeof electricalLimit === "number" && Number.isFinite(electricalLimit) && electricalLimit >= 0);
+  return true;
 }
 
 function planFromRemote(fallback: CommercialPlan, remote: unknown): CommercialPlan {
   if (!isRecord(remote)) return fallback;
-  const rawLimit = remote.max_electrical_elements_per_project;
-  const electricalLimit = rawLimit === null
-    ? null
-    : rawLimit === undefined
-      ? fallback.max_electrical_elements_per_project
-      : finiteNonNegative(rawLimit, fallback.max_electrical_elements_per_project ?? 0);
   return {
     ...fallback,
     name: typeof remote.name === "string" && remote.name.trim() ? remote.name : fallback.name,
@@ -134,7 +122,6 @@ function planFromRemote(fallback: CommercialPlan, remote: unknown): CommercialPl
     project_limit: finiteNonNegative(remote.project_limit, fallback.project_limit),
     included_medium: finiteNonNegative(remote.included_medium, fallback.included_medium),
     included_high: finiteNonNegative(remote.included_high, fallback.included_high),
-    max_electrical_elements_per_project: electricalLimit,
   };
 }
 
@@ -220,7 +207,7 @@ export function buildPlanComparison(plans: CommercialPlan[], renderPacksAvailabl
     {
       title: "Other",
       rows: [
-        { label: "Electrical elements / project", values: value((plan) => plan.max_electrical_elements_per_project === null ? "Unlimited" : plan.max_electrical_elements_per_project.toLocaleString("en-GB")), help: "electrical" },
+        { label: "Electrical Layout module", values: value((plan) => plan.plan_key === "free" ? "Not included" : "Included"), help: "electrical" },
       ],
     },
   ];

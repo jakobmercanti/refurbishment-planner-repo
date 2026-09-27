@@ -24,6 +24,8 @@ export interface PlannerBuildActivity {
   name: string;
   startDate: string;
   endDate: string;
+  actualStartDate?: string;
+  actualEndDate?: string;
   colour: string;
   category?: string;
   roomId: string | null;
@@ -124,6 +126,8 @@ export function normalizePlannerBuild(input: unknown): PlannerBuildData {
     const fallbackStatus: PlannerBuildActivityStatus = progress >= 100 ? "completed" : progress > 0 ? "in_progress" : "not_started";
     const status = PLANNER_BUILD_ACTIVITY_STATUSES.includes(item.status as PlannerBuildActivityStatus) ? item.status as PlannerBuildActivityStatus : fallbackStatus;
     const optionalDate = (value: unknown) => isIsoDate(value) ? value : undefined;
+    const actualStartDate = optionalDate(item.actualStartDate);
+    const actualEndDate = optionalDate(item.actualEndDate);
     const optionalText = (value: unknown, max = 200) => typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined;
     const optionalNumber = (value: unknown, max = Number.MAX_SAFE_INTEGER) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max ? value : undefined;
     const deliveryStatus = PLANNER_BUILD_DELIVERY_STATUSES.includes(item.deliveryStatus as PlannerBuildDeliveryStatus) ? item.deliveryStatus as PlannerBuildDeliveryStatus : undefined;
@@ -134,6 +138,8 @@ export function normalizePlannerBuild(input: unknown): PlannerBuildData {
       name: item.name.trim().slice(0, 200),
       startDate: item.startDate,
       endDate: item.endDate,
+      ...(actualStartDate ? { actualStartDate } : {}),
+      ...(actualEndDate && (!actualStartDate || actualEndDate >= actualStartDate) ? { actualEndDate } : {}),
       colour: typeof item.colour === "string" && COLOUR_PATTERN.test(item.colour) ? item.colour.toUpperCase() : "#287FB8",
       ...(category ? { category } : {}),
       roomId,

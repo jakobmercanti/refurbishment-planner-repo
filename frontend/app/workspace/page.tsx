@@ -11,7 +11,7 @@ import { assetRepository } from "@/lib/assetRepository";
 import { parseProject, type AssetClassification, type ProjectDocument } from "@/lib/projectDocument";
 
 type Usage = { projects: number; assets: number; storage_bytes: number };
-type Summary = { plan: string; name: string; status: string; monthly_price_pence: number; storage_limit_bytes: number; project_limit: number; asset_limit: number; medium_remaining: number; high_remaining: number; capabilities: { maxElectricalElementsPerProject: number | null }; usage: Usage };
+type Summary = { plan: string; name: string; status: string; monthly_price_pence: number; storage_limit_bytes: number; project_limit: number; asset_limit: number; medium_remaining: number; high_remaining: number; usage: Usage };
 type CloudProject = { project_id: string; title: string; revision: number; byte_size: number; updated_at: string; project_json?: unknown };
 type Asset = { asset_id: string; local_asset_key?: string | null; name: string; original_format: string; processing_status: string; processing_error?: string; triangle_count?: number; source_unit?: string; category_id?: string; category_name?: string; subcategory?: string };
 type Render = { render_id: string; quality_class: string; status: string; safe_error?: string; created_at: string; image_url?: string };

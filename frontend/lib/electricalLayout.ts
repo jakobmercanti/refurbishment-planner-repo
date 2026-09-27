@@ -65,12 +65,6 @@ export function electricalObstacleIds(rooms: readonly Room[]): Set<string> {
   return new Set(rooms.flatMap((room) => room.obstacles.filter(isElectricalObstacle).map((obstacle) => obstacle.id)));
 }
 
-export function canAddElectricalObstacle(rooms: readonly Room[], obstacle: Obstacle, maximum: number | null): boolean {
-  if (!isElectricalObstacle(obstacle) || maximum === null) return true;
-  const ids = electricalObstacleIds(rooms);
-  return ids.has(obstacle.id) || ids.size < maximum;
-}
-
 function safeId(value: unknown): value is string {
   return typeof value === "string" && idPattern.test(value);
 }

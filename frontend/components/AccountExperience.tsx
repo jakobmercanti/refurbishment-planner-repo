@@ -1,11 +1,11 @@
 "use client";
 
 import { type FormEvent, useEffect, useState } from "react";
-import { acceptAuthRedirect, currentSession, sendMagicLink, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
+import { acceptAuthRedirect, currentSession, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
 import { PlansAndBillingPanel } from "@/components/PlansAndBillingPanel";
 import type { PlanKey } from "@/lib/commercialCatalogue";
 
-type Mode = "signin" | "signup" | "magic" | "reset";
+type Mode = "signin" | "signup" | "reset";
 type AccountSection = "account" | "plans";
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
@@ -55,9 +55,6 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
         setSession(registered);
         if (registered && pendingPlanKey) selectSection("plans");
         setNotice(registered ? "Account created." : "Check your email to verify your account, then sign in.");
-      } else if (mode === "magic") {
-        await sendMagicLink(email);
-        setNotice("If the address can receive account email, a sign-in link is on its way.");
       } else {
         await sendPasswordReset(email);
         setNotice("If the address can receive account email, a password-reset link is on its way.");
@@ -98,9 +95,9 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       </div>
     ) : !ready ? <p role="status">Checking account…</p> : (
       <>
-        {!recovery && <div className="commercial-tabs" role="tablist" aria-label="Account options">
-          {(["signin", "signup", "magic"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} className={mode === value ? "selected" : ""} onClick={() => { setMode(value); setError(""); setNotice(""); }}>
-            {value === "signin" ? "Sign in" : value === "signup" ? "Create account" : "Email link"}
+        {!recovery && <div className="commercial-tabs account-auth-tabs" role="tablist" aria-label="Account options">
+          {(["signin", "signup"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} className={mode === value ? "selected" : ""} onClick={() => { setMode(value); setError(""); setNotice(""); }}>
+            {value === "signin" ? "Sign in" : "Create account"}
           </button>)}
         </div>}
         <form className="commercial-stack" onSubmit={submit}>
@@ -110,10 +107,10 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
           </>}
           {error && <p className="commercial-error" role="alert">{error}</p>}
           {notice && <p className="commercial-status" role="status">{notice}</p>}
-          <button className="commercial-primary" type="submit" disabled={busy}>{busy ? "Please wait…" : recovery ? "Update password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : mode === "magic" ? "Send sign-in link" : "Send reset link"}</button>
+          <button className="commercial-primary" type="submit" disabled={busy}>{busy ? "Please wait…" : recovery ? "Update password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
         </form>
-        {!recovery && mode === "signin" && <button className="commercial-text-button" type="button" onClick={() => { setMode("reset"); setError(""); setNotice(""); }}>Forgot your password?</button>}
-        {mode === "reset" && !recovery && <button className="commercial-text-button" type="button" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}>Back to sign in</button>}
+        {!recovery && mode === "signin" && <button className="commercial-secondary account-recovery-button" type="button" onClick={() => { setMode("reset"); setError(""); setNotice(""); }}>Forgot your password?</button>}
+        {mode === "reset" && !recovery && <button className="commercial-secondary account-recovery-button" type="button" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}>Back to sign in</button>}
       </>
     )}
     <p className="commercial-footnote">Email verification is required before paid workspace features are available. Use the same browser tab after following an email link.</p>

@@ -18,6 +18,7 @@
 .commercial-stack input, .commercial-stack select, .commercial-stack textarea, .commercial-inline-form input, .commercial-inline-form select { width: 100%; min-height: 43px; padding: 10px 12px; border: 1px solid #cbd8d1; border-radius: 8px; background: white; color: #17211d; font: 500 14px var(--font-sans); }
 .commercial-stack textarea { resize: vertical; }
 .commercial-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 0 0 18px; padding: 4px; border-radius: 9px; background: #edf2ef; }
+.account-auth-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .account-section-tabs { width: min(520px, 100%); margin: 0 auto 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .commercial-tabs button { min-height: 37px; border: 0; border-radius: 7px; background: transparent; color: #52655d; font: 700 12px var(--font-sans); cursor: pointer; }
 .commercial-tabs button.selected { background: white; color: #183d34; box-shadow: 0 1px 4px #193e3315; }
@@ -28,7 +29,6 @@
 .commercial-secondary:hover:not(:disabled) { background: #edf4f0; }
 .commercial-danger { border-color: #eed0cd; background: #fff5f4; color: #a43a35; }
 .commercial-danger:hover { background: #fce9e7; }
-.commercial-text-button { margin-top: 13px; padding: 6px 0; border: 0; background: transparent; color: #245b4d; font: 650 12px var(--font-sans); cursor: pointer; }
 .commercial-footnote { margin: 20px 0 0; color: #6c7a74; font-size: 11px; line-height: 1.55; }
 .commercial-footer { width: min(520px, 100%); margin: 18px auto; text-align: center; font-size: 12px; }
 .commercial-footer a, .commercial-panel-heading a { color: #245b4d; font-weight: 700; }
@@ -182,7 +182,7 @@
 .account-dialog-content .account-card > .commercial-tabs { grid-area: tabs; align-self: end; margin: 0; }
 .account-dialog-content .account-card > .commercial-stack,
 .account-dialog-content .account-card > p[role="status"] { grid-area: form; align-self: start; }
-.account-dialog-content .account-card > .commercial-text-button { grid-area: forgot; justify-self: start; align-self: start; margin: 0; }
+.account-dialog-content .account-card > .account-recovery-button { grid-area: forgot; justify-self: start; align-self: start; margin: 0; }
 .account-dialog-content .account-card > .commercial-footnote { grid-area: footnote; margin: 0; padding-top: 14px; border-top: 1px solid var(--line); }
 .account-dialog-content .commercial-card h1, .account-dialog-content .commercial-panel h2, .account-dialog-content .plan-card h2 { color: var(--deep); }
 .account-dialog-content .commercial-primary { border-color: var(--deep); background: var(--deep); }

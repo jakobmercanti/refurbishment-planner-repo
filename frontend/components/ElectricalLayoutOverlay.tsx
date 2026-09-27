@@ -2,6 +2,7 @@
 
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
+import { electricalDevicePlanSize, electricalDevicePlanSymbol } from "@/lib/electricalPlanSymbols";
 import { electricalConnectionPoints, electricalDashArray, electricalStrokeWidth, type ElectricalCircuit, type ElectricalConnection, type ElectricalConnectionDefaults } from "@/lib/electricalLayout";
 import type { Obstacle, Point2D } from "@/lib/types";
 
@@ -13,6 +14,7 @@ interface Props {
   showSymbols: boolean;
   showConnections: boolean;
   showLabels: boolean;
+  active: boolean;
   selectedFixtureId: string | null;
   sourceId: string | null;
   selectedConnectionId: string | null;
@@ -31,6 +33,7 @@ interface Props {
 export function ElectricalLayoutOverlay(props: Props) {
   const fixtures = new Map(props.fixtures.map((fixture) => [fixture.id, fixture]));
   const circuits = new Map(props.circuits.map((circuit) => [circuit.id, circuit]));
+  const connectedFixtureIds = new Set(props.connections.flatMap((connection) => [connection.fromId, connection.toId]));
   const polylinePoints = (points: Point2D[]) => points.map((point) => {
     const screen = props.toScreen(point);
     return screen.x + "," + screen.y;
@@ -64,10 +67,25 @@ export function ElectricalLayoutOverlay(props: Props) {
       const bottomRight = props.toScreen({ x: fixture.center.x + fixture.dimensions.width.value / 2, y: fixture.center.y - fixture.dimensions.depth.value / 2 });
       const centre = props.toScreen(fixture.center);
       const selected = props.selectedFixtureId === fixture.id || props.sourceId === fixture.id;
-      return <g key={fixture.id} data-electrical-interactive="true" className={"floorplan-fixture electrical-fixture" + (selected ? " selected" : "")} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
+      const actualWidth = Math.abs(bottomRight.x - topLeft.x);
+      const actualDepth = Math.abs(bottomRight.y - topLeft.y);
+      const deviceSymbol = electricalDevicePlanSymbol(fixture.representation_key, props.active);
+      const readableSymbol = props.active || Boolean(deviceSymbol);
+      const deviceSize = electricalDevicePlanSize(fixture.representation_key, actualWidth, actualDepth, props.active);
+      const symbolWidth = Math.max(deviceSize.width, props.active ? 26 : 0);
+      const symbolDepth = Math.max(deviceSize.depth, props.active ? 26 : 0);
+      const hitWidth = readableSymbol ? Math.max(symbolWidth + (props.active ? 12 : 8), props.active ? 44 : 28) : actualWidth;
+      const hitDepth = readableSymbol ? Math.max(symbolDepth + (props.active ? 12 : 8), props.active ? 44 : 24) : actualDepth;
+      const connected = connectedFixtureIds.has(fixture.id);
+      const classes = ["floorplan-fixture", "electrical-fixture", props.active ? "is-active" : "", readableSymbol ? "is-readable" : "", connected ? "is-connected" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
+      return <g key={fixture.id} data-electrical-interactive="true" className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
         <title>{fixture.name}</title>
-        {props.sourceId === fixture.id && <circle className="electrical-source-highlight" cx={centre.x} cy={centre.y} r={Math.max(18, (bottomRight.x - topLeft.x) / 2 + 8)} />}
-        <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} selected={selected} />
+        {readableSymbol && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>
+          <rect className="electrical-fixture-hit-area" x={-hitWidth / 2} y={-hitDepth / 2} width={hitWidth} height={hitDepth} rx={Math.min(10, hitDepth / 3)} />
+          {props.active && <rect className="electrical-fixture-backplate" x={-symbolWidth / 2 - 3} y={-symbolDepth / 2 - 3} width={symbolWidth + 6} height={symbolDepth + 6} rx={Math.min(8, symbolDepth / 3)} />}
+        </g>}
+        {props.sourceId === fixture.id && <circle className="electrical-source-highlight" cx={centre.x} cy={centre.y} r={Math.max(18, Math.max(symbolWidth, symbolDepth) / 2 + 8)} />}
+        <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={symbolWidth} depth={symbolDepth} selected={selected} electricalMode={props.active} />
       </g>;
     })}
   </g>;

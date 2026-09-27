@@ -1,26 +1,14 @@
-"""Pure entitlement decisions shared by future project-placement flows."""
+"""Pure plan-entitlement decisions for paid planner modules."""
 
-from collections.abc import Iterable
-
-ELECTRIC_CATEGORY_ID = "electric"
+ACTIVE_SUBSCRIPTION_STATES = frozenset({"active", "trialing"})
 
 
-def can_add_electrical_element(
-    max_electrical_elements_per_project: int | None,
-    project_element_category_ids: Iterable[str],
-) -> bool:
-    """Return whether this project may add one more Electric-category object.
-
-    Callers provide category IDs for placed objects in the current project only.
-    Re-counting on every decision means deleting an object frees its slot, while
-    an over-limit project after downgrade remains unchanged and blocks additions.
-    ``None`` is the shared database convention for an unlimited allowance.
-    """
-    if max_electrical_elements_per_project is not None and (
-        type(max_electrical_elements_per_project) is not int
-        or max_electrical_elements_per_project < 0
-    ):
-        raise ValueError("The electrical element limit must be a non-negative integer or None.")
-
-    electrical_count = sum(category_id == ELECTRIC_CATEGORY_ID for category_id in project_element_category_ids)
-    return max_electrical_elements_per_project is None or electrical_count < max_electrical_elements_per_project
+def can_use_electrical_layout(plan_key: object, status: object) -> bool:
+    """Electrical Layout is a paid module; item catalogue access is not gated."""
+    return (
+        isinstance(plan_key, str)
+        and bool(plan_key.strip())
+        and plan_key.strip().casefold() != "free"
+        and isinstance(status, str)
+        and status in ACTIVE_SUBSCRIPTION_STATES
+    )

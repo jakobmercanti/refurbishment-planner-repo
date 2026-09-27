@@ -18,6 +18,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from backend.app.commercial_entitlements import can_use_electrical_layout
 from backend.app.r2_storage import R2Unavailable, r2_storage
 from backend.app.stripe_gateway import PACK_KEYS, PLAN_KEYS, StripeUnavailable, stripe_gateway
 from backend.app.supabase_rest import InvalidAccessToken, SupabaseREST, SupabaseUnavailable, VerifiedUser, supabase_rest
@@ -354,7 +355,7 @@ def catalogue() -> dict[str, Any]:
             {
                 "select": (
                     "plan_key,name,monthly_price_pence,storage_limit_bytes,asset_limit,project_limit,"
-                    "included_medium,included_high,max_electrical_elements_per_project"
+                    "included_medium,included_high"
                 ),
                 "active": "eq.true",
                 "order": "monthly_price_pence.asc",
@@ -391,28 +392,15 @@ def summary(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     if not isinstance(result, dict):
         raise HTTPException(status_code=503, detail="Account usage is temporarily unavailable.")
     plan_key = result.get("plan")
-    if not isinstance(plan_key, str) or not plan_key:
-        raise HTTPException(status_code=503, detail="Account capabilities are temporarily unavailable.")
-    plan_rows = _db_call(lambda: db.select(
-        "commercial_plans",
-        {
-            "select": "max_electrical_elements_per_project",
-            "plan_key": f"eq.{plan_key}",
-            "active": "eq.true",
-            "limit": "1",
-        },
-    ))
-    if not isinstance(plan_rows, list) or not plan_rows or not isinstance(plan_rows[0], dict):
-        raise HTTPException(status_code=503, detail="Account capabilities are temporarily unavailable.")
-    electrical_limit = plan_rows[0].get("max_electrical_elements_per_project")
-    if electrical_limit is not None and (type(electrical_limit) is not int or electrical_limit < 0):
+    status = result.get("status")
+    if not isinstance(plan_key, str) or not plan_key or not isinstance(status, str):
         raise HTTPException(status_code=503, detail="Account capabilities are temporarily unavailable.")
     current_capabilities = result.get("capabilities", {})
     if not isinstance(current_capabilities, dict):
         raise HTTPException(status_code=503, detail="Account capabilities are temporarily unavailable.")
     result["capabilities"] = {
         **current_capabilities,
-        "maxElectricalElementsPerProject": electrical_limit,
+        "canUseElectricalLayout": can_use_electrical_layout(plan_key, status),
     }
     return result
 

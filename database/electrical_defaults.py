@@ -44,9 +44,15 @@ def _plan_symbol(asset: dict) -> str:
         content = f'<circle cx="50" cy="50" r="40"/><text x="50" y="61" text-anchor="middle" font-family="sans-serif" font-size="30" fill="#071B38" stroke="none">{label}</text>'
     elif family == "Extractor fans":
         content = '<rect x="7" y="7" width="86" height="86" rx="5"/>'
-        # Repeat one smooth blade by exact quarter-turns for four-way symmetry.
-        blade = '<path d="M54 47 C59 38 68 19 77 17 C86 16 88 25 82 32 C76 39 63 47 53 52 Z"/>'
-        content += ''.join(f'<g transform="rotate({angle} 50 50)">{blade}</g>' for angle in (0, 90, 180, 270))
+        # Keep the symbol inside the sanitizer's inert SVG subset: transforms
+        # are deliberately unsupported for catalogue-provided plan symbols.
+        blades = (
+            "M54 47 C59 38 68 19 77 17 C86 16 88 25 82 32 C76 39 63 47 53 52 Z",
+            "M53 54 C62 59 81 68 83 77 C84 86 75 88 68 82 C61 76 53 63 48 53 Z",
+            "M46 53 C41 62 32 81 23 83 C14 84 12 75 18 68 C24 61 37 53 47 48 Z",
+            "M47 46 C38 41 19 32 17 23 C16 14 25 12 32 18 C39 24 47 37 52 47 Z",
+        )
+        content += "".join(f'<path d="{blade}"/>' for blade in blades)
         content += '<circle cx="50" cy="50" r="8" fill="#fff"/>'
     else:
         content = '<rect x="7" y="7" width="86" height="86" rx="4"/><path d="M15 35h70M15 70h70"/>'
@@ -70,16 +76,17 @@ def seed_electrical_defaults(session) -> None:
         default_key = "generic-" + asset["key"]
         existing = session.scalar(select(FurnitureItemRecord).where(FurnitureItemRecord.default_key == default_key))
         if existing:
-            # Upgrade the original cooker-hood icon in existing installations.
-            if asset["key"] == "electrical-fan-hood" and existing.representation_version < 2:
+            # Replace the legacy cooker-hood icon, whose SVG transform is not
+            # accepted by the current plan-symbol sanitizer.
+            if asset["key"] == "electrical-fan-hood" and existing.representation_version < 3:
                 existing.plan_symbol_data_url = _plan_symbol(asset)
-                existing.representation_version = 2
+                existing.representation_version = 3
             continue  # Retain edits to dimensions, appearance, descriptions and visibility.
         session.add(FurnitureItemRecord(
             id=default_key, default_key=default_key, is_default=True, category_id="electric",
             fixture_kind="FURNITURE", name=asset["name"], supplier="FreeFloorplan3D",
             sku=asset["key"].upper(), subcategory=asset["subcategory"], representation_key=asset["key"],
-            representation_version=2 if asset["key"] == "electrical-fan-hood" else 1,
+            representation_version=3 if asset["key"] == "electrical-fan-hood" else 1,
             plan_symbol_url="", plan_symbol_data_url=_plan_symbol(asset),
             plan_shape="ELLIPSE" if asset["key"].endswith(("round", "downlight", "drum", "globe", "smoke", "heat", "pull")) else "RECTANGLE",
             width_mm=asset["width"], depth_mm=asset["depth"], height_mm=asset["height"],

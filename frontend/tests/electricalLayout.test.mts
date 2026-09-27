@@ -4,7 +4,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ElectricalLayoutPanel } from "../components/ElectricalLayoutPanel.tsx";
 import {
-  canAddElectricalObstacle,
   createElectricalConnection,
   DEFAULT_ELECTRICAL_CONNECTION,
   electricalConnectionPoints,
@@ -17,15 +16,9 @@ import { newProject, parseProject } from "../lib/projectDocument.ts";
 
 const fixture = (id: string) => ({ id, representation_key: "electrical-wall-socket" });
 
-test("electrical catalogue classification and free limit count only placed Electric fittings", () => {
-  const rooms = [{ obstacles: [fixture("one"), fixture("two")] }] as unknown as Parameters<typeof canAddElectricalObstacle>[0];
+test("electrical catalogue classification remains separate from the paid layout module", () => {
   assert.equal(isElectricalObstacle(fixture("one")), true);
   assert.equal(isElectricalObstacle({ representation_key: "bathroom-basin" }), false);
-  assert.equal(canAddElectricalObstacle(rooms, fixture("three") as Parameters<typeof canAddElectricalObstacle>[1], 5), true);
-  assert.equal(canAddElectricalObstacle(rooms, fixture("six") as Parameters<typeof canAddElectricalObstacle>[1], null), true);
-  const full = [{ obstacles: Array.from({ length: 5 }, (_, index) => fixture("electric-" + index)) }] as unknown as Parameters<typeof canAddElectricalObstacle>[0];
-  assert.equal(canAddElectricalObstacle(full, fixture("six") as Parameters<typeof canAddElectricalObstacle>[1], 5), false);
-  assert.equal(canAddElectricalObstacle(full, fixture("electric-0") as Parameters<typeof canAddElectricalObstacle>[1], 5), true);
 });
 
 test("electrical connections reject self-links and exact duplicates while allowing a fan-out", () => {
@@ -81,7 +74,7 @@ test("electrical panel exposes mode, routing and display controls with inherited
   };
   const markup = renderToStaticMarkup(createElement(ElectricalLayoutPanel, {
     mode: true, onModeChange: () => {}, connecting: false, onConnect: () => {}, onAdd: () => {},
-    maximum: 5, currentCount: 2, defaults: DEFAULT_ELECTRICAL_CONNECTION, onDefaultsChange: () => {},
+    currentCount: 2, defaults: DEFAULT_ELECTRICAL_CONNECTION, onDefaultsChange: () => {},
     display: { symbols: true, connections: true, circuitLabels: false }, onDisplayChange: () => {},
     objects: [{ id: "switch-1", label: "Wall switch" }, { id: "light-1", label: "Ceiling light" }],
     connections: [connection], selectedConnectionId: connection.id, onSelectConnection: () => {},

@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { AccountExperience } from "@/components/AccountExperience";
 
-export function AccountDialog({ onClose }: { onClose: () => void }) {
+export function AccountDialog({ onClose, initialSection = "account" }: { onClose: () => void; initialSection?: "account" | "plans" }) {
   const dialog = useRef<HTMLElement>(null);
-  const [section, setSection] = useState<"account" | "plans">("account");
+  const [section, setSection] = useState<"account" | "plans">(initialSection);
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;

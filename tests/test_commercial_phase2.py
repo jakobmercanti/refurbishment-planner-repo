@@ -41,9 +41,14 @@ def test_custom_asset_category_accepts_a_private_custom_subcategory() -> None:
     }
 
 
-@pytest.mark.parametrize(("plan", "limit"), [("free", 5), ("starter", None), ("pro", None), ("studio", None)])
-def test_commercial_summary_exposes_the_plan_electrical_capability(
-    monkeypatch: pytest.MonkeyPatch, plan: str, limit: int | None,
+@pytest.mark.parametrize(("plan", "status", "allowed"), [
+    ("free", "free", False),
+    ("starter", "active", True),
+    ("pro", "active", True),
+    ("studio", "trialing", True),
+])
+def test_commercial_summary_exposes_paid_electrical_layout_access(
+    monkeypatch: pytest.MonkeyPatch, plan: str, status: str, allowed: bool,
 ) -> None:
     user = VerifiedUser(uuid4(), "owner@example.test", True)
 
@@ -52,21 +57,14 @@ def test_commercial_summary_exposes_the_plan_electrical_capability(
             return user
 
         def rpc(self, _function: str, _parameters: dict[str, Any]) -> dict[str, Any]:
-            return {"plan": plan, "status": "free" if plan == "free" else "active", "capabilities": {"can_use_cloud": plan != "free"}}
-
-        def select(self, table: str, query: dict[str, str]) -> list[dict[str, Any]]:
-            assert table == "commercial_plans"
-            assert query["plan_key"] == f"eq.{plan}"
-            assert query["active"] == "eq.true"
-            assert query["select"] == "max_electrical_elements_per_project"
-            return [{"max_electrical_elements_per_project": limit}]
+            return {"plan": plan, "status": status, "capabilities": {"can_use_cloud": plan != "free"}}
 
     monkeypatch.setattr(commercial_api, "supabase_rest", FakeDatabase)
     result = commercial_api.summary("Bearer test-token")
 
     assert result["capabilities"] == {
         "can_use_cloud": plan != "free",
-        "maxElectricalElementsPerProject": limit,
+        "canUseElectricalLayout": allowed,
     }
 
 
