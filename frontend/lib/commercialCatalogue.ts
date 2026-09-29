@@ -1,5 +1,9 @@
 export type PlanKey = "free" | "starter" | "pro" | "studio";
 
+export function includesPlannerBuild(planKey: PlanKey): boolean {
+  return planKey === "studio";
+}
+
 export type CommercialPlan = {
   plan_key: PlanKey;
   name: string;
@@ -207,7 +211,8 @@ export function buildPlanComparison(plans: CommercialPlan[], renderPacksAvailabl
     {
       title: "Other",
       rows: [
-        { label: "Electrical Layout module", values: value((plan) => plan.plan_key === "free" ? "Not included" : "Included"), help: "electrical" },
+        { label: "Full Electrical Layout module", values: value((plan) => plan.plan_key === "free" ? "Not included" : "Included"), help: "electrical" },
+        { label: "Full PlannerBuild project-planning module", values: value((plan) => includesPlannerBuild(plan.plan_key) ? "Included" : "Not included") },
       ],
     },
   ];

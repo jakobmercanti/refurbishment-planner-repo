@@ -35,7 +35,7 @@ import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type Toolbar
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { ViewToggle } from "@/components/ViewToggle";
 import { VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
-import { captureReferenceImage, normalizeRenderCameraState, placeRenderCameraAtRoomCentre, RENDER_CAMERA_ASPECTS, renderCameraFrameSize, renderCameraFromNavigation, renderCameraForRoom, renderCameraQuality, renderReferencePixels, withEditorOnlySceneObjectsHidden, type CameraVectorMm, type ReferenceImageCapture, type RenderCameraQuality, type RenderCameraState } from "@/lib/renderCamera";
+import { captureReferenceImage, normalizeRenderCameraState, placeRenderCameraAtRoomCentre, RENDER_CAMERA_ASPECTS, renderCameraAnglesDegrees, renderCameraFrameSize, renderCameraFromNavigation, renderCameraForRoom, renderCameraQuality, renderCameraWithAnglesDegrees, renderReferencePixels, withEditorOnlySceneObjectsHidden, type CameraAnglesDegrees, type CameraVectorMm, type ReferenceImageCapture, type RenderCameraQuality, type RenderCameraState } from "@/lib/renderCamera";
 import { fitCameraZoomForBounds, updateCameraClippingForBounds } from "@/lib/viewerCameraFraming";
 
 const SCALE = 0.001;
@@ -1422,7 +1422,7 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewC
   </group>;
 }
 
-function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, onRenderCameraChange, renderCamera, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete, cameraRigVisible, selectedCameraRigHandle, onCameraRigHandleSelect }: ViewerProps & {
+function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, onRenderCameraChange, renderCamera, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete, cameraRigVisible, selectedCameraRigHandle, onCameraRigHandleSelect, onOpenCameraProperties }: ViewerProps & {
   lighting: LightingSettings;
   toggles: Toggles;
   preset: CameraView;
@@ -1440,7 +1440,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   onFitComplete: (zoomPercent: number) => void;
   cameraRigVisible: boolean;
   selectedCameraRigHandle: RenderCameraRigHandle | null;
-
+  onOpenCameraProperties: (clientX: number, clientY: number, eventTarget: EventTarget | null) => void;
   onCameraRigHandleSelect: (handle: RenderCameraRigHandle | null) => void;
 }) {
   const [dragging, setDragging] = useState<{ id: string; offset: Point2D; original: Obstacle } | null>(null);
@@ -1623,7 +1623,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
         shadow-bias={0.001} shadow-normalBias={0.006} shadow-radius={3}
       />
       <directionalLight target={lightTarget} position={[roomTarget[0] - shadowExtent, roomTarget[1] + shadowExtent * 0.7, roomTarget[2] - shadowExtent]} color="#DFE9FF" intensity={0.35 * lightPower} />
-      {cameraRigVisible && renderCamera && <RenderCameraRig cameraState={renderCamera} selectedHandle={selectedCameraRigHandle} onSelectHandle={onCameraRigHandleSelect} onCameraChange={onRenderCameraChange} />}
+      {cameraRigVisible && renderCamera && <RenderCameraRig cameraState={renderCamera} selectedHandle={selectedCameraRigHandle} onSelectHandle={onCameraRigHandleSelect} onCameraChange={onRenderCameraChange} onOpenProperties={onOpenCameraProperties} />}
       {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd, paintOnly }) => {
         if (wallMode === "INVISIBLE") return null;
         const sceneInteractive = selectedCameraRigHandle === null && (multiRoom || wallRoom.id === room.id);
@@ -1791,6 +1791,8 @@ export function EngineeringViewer(props: ViewerProps) {
   const [lightingExpanded, setLightingExpanded] = useState(false);
   const [roomSelectorExpanded, setRoomSelectorExpanded] = useState(false);
   const [cameraWindowOpen, setCameraWindowOpen] = useState(false);
+  const [cameraPropertiesOpen, setCameraPropertiesOpen] = useState(false);
+  const [cameraPropertiesPosition, setCameraPropertiesPosition] = useState({ x: 18, y: 58 });
   const [cameraRigVisible, setCameraRigVisible] = useState(true);
   const [selectedCameraRigHandle, setSelectedCameraRigHandle] = useState<RenderCameraRigHandle | null>(null);
 
@@ -1855,6 +1857,14 @@ export function EngineeringViewer(props: ViewerProps) {
     onRenderCameraChange(normalized);
     setCameraMessage(null);
   }, [onRenderCameraChange]);
+  const openCameraProperties = useCallback((clientX: number, clientY: number, eventTarget: EventTarget | null) => {
+    const canvas = eventTarget instanceof Element ? eventTarget : null;
+    const bounds = canvas?.closest(".viewer-shell")?.getBoundingClientRect();
+    setCameraPropertiesPosition({ x: Math.max(8, clientX - (bounds?.left ?? 0) + 12), y: Math.max(8, clientY - (bounds?.top ?? 0) + 12) });
+    setCameraPropertiesOpen(true);
+    setSelectedCameraRigHandle("position");
+    setToolbarContextMenu(null);
+  }, []);
   const flip = (key: keyof Toggles) => setToggles((current) => ({ ...current, [key]: !current[key] }));
   const selectObject = (nextSelection: Selection) => {
     setSelection(nextSelection);
@@ -1992,6 +2002,7 @@ export function EngineeringViewer(props: ViewerProps) {
   const cameraOutputSize = renderCamera ? { width: renderCamera.referenceWidth, height: renderCamera.referenceHeight } : null;
   const previewScale = cameraOutputSize ? Math.min(1, Math.max(1, cameraPreviewStageWidth) / cameraOutputSize.width) : 1;
   const livePreviewSize = cameraOutputSize ? { width: Math.round(cameraOutputSize.width * previewScale), height: Math.round(cameraOutputSize.height * previewScale) } : null;
+  const cameraAngles = renderCamera ? renderCameraAnglesDegrees(renderCamera) : null;
   return (
     <div className="viewer-shell" onPointerDownCapture={(event) => { if (event.button === 2) rightPointerRef.current = { x: event.clientX, y: event.clientY, moved: false }; }} onPointerMoveCapture={(event) => { const pointer = rightPointerRef.current; if (pointer && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) pointer.moved = true; }} onPointerUpCapture={(event) => { if (event.button === 2 && rightPointerRef.current?.moved) window.setTimeout(() => { rightPointerRef.current = null; }, 0); }} onContextMenu={(event) => { if (!(event.target instanceof Element) || !event.target.closest(".stable-canvas-host")) return; event.preventDefault(); const wasPan = rightPointerRef.current?.moved; rightPointerRef.current = null; if (wasPan) return; clearSelection(); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
       {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={props.fillToolbarLayout ? viewerLeftDock("viewer-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
@@ -2132,9 +2143,37 @@ export function EngineeringViewer(props: ViewerProps) {
           </div>
         </div>
       </FloatingToolbar>}
+      {cameraPropertiesOpen && renderCamera && cameraAngles && <FloatingToolbar className="viewer-camera-properties-window" title="Camera properties" defaultPosition={cameraPropertiesPosition} initialSize={{ width: 380 }} maxHeight={360} bringToFront onClose={() => setCameraPropertiesOpen(false)}>
+        <div className="viewer-camera-properties">
+          <p>Set the camera position and orientation precisely. Updates appear in the camera preview immediately.</p>
+          <fieldset className="viewer-camera-property-fields">
+            <legend>Position <small>millimetres</small></legend>
+            {(["X", "Y", "Z"] as const).map((axis, index) => <label key={axis}><span>{axis}</span><input type="number" step={10} value={Math.round(renderCamera.positionMm[index] * 10) / 10} aria-label={`Camera position ${axis} in millimetres`} onChange={(event) => {
+              const value = event.currentTarget.valueAsNumber;
+              if (!Number.isFinite(value)) return;
+              const position = [...renderCamera.positionMm] as CameraVectorMm;
+              position[index] = value;
+              commitRenderCamera({ ...renderCamera, positionMm: position });
+            }} /></label>)}
+          </fieldset>
+          <fieldset className="viewer-camera-property-fields">
+            <legend>Rotation <small>XYZ degrees</small></legend>
+            {(["X", "Y", "Z"] as const).map((axis, index) => <label key={axis}><span>{axis}</span><input type="number" step={0.1} value={Math.round(cameraAngles[index] * 10) / 10} aria-label={`Camera rotation ${axis} in degrees`} onChange={(event) => {
+              const value = event.currentTarget.valueAsNumber;
+              if (!Number.isFinite(value)) return;
+              const angles = [...cameraAngles] as CameraAnglesDegrees;
+              angles[index] = value;
+              commitRenderCamera(renderCameraWithAnglesDegrees(renderCamera, angles));
+            }} /></label>)}
+          </fieldset>
+          {cameraMessage && <p className="viewer-camera-error" role="status">{cameraMessage}</p>}
+          <small className="viewer-camera-properties-note">Angles use Three.js XYZ Euler order. Position is stored in millimetres.</small>
+          <button className="review-style-button" type="button" onClick={() => setCameraPropertiesOpen(false)}>Done</button>
+        </div>
+      </FloatingToolbar>}
       {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
       <StableCanvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={() => { clearSelection(); setSelectedCameraRigHandle(null); }}>
-        <Scene {...props} renderCamera={renderCamera ?? undefined} onRenderCameraChange={commitRenderCamera} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} cameraRigVisible={cameraWindowOpen && cameraRigVisible} selectedCameraRigHandle={selectedCameraRigHandle} onCameraRigHandleSelect={selectCameraRigHandle} />
+        <Scene {...props} renderCamera={renderCamera ?? undefined} onRenderCameraChange={commitRenderCamera} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} cameraRigVisible={cameraWindowOpen && cameraRigVisible} selectedCameraRigHandle={selectedCameraRigHandle} onCameraRigHandleSelect={selectCameraRigHandle} onOpenCameraProperties={openCameraProperties} />
         <LocalAssetScene instances={props.assetInstances ?? []} />
         {cameraWindowOpen && renderCamera && <ReferenceCameraPreview ref={cameraPreviewRef} cameraState={renderCamera} canvasRef={cameraPreviewCanvasRef} active={cameraWindowOpen} onError={setCameraPreviewError} />}
         <WheelZoom onManualViewChange={clearActivePreset} />

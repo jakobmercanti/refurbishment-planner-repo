@@ -327,11 +327,12 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
         const next = { ...value, id: `fixture-${crypto.randomUUID()}` };
         if (onBeginPlacement) {
           onBeginPlacement({ id: next.id, obstacle: next });
-          setDraft(null); setEditingId(null);
+          // Keep the configured draft as the template for the next placement.
+          setEditingId(null);
         } else {
           const positioned = constrainObstacleToRoom(next, room, next.center, roomWalls);
           if (!positioned) { setMountingError("This element is too large for the room."); return; }
-          onChange([...room.obstacles, positioned]); setEditingId(next.id); setDraft(null);
+          onChange([...room.obstacles, positioned]); setEditingId(null);
         }
       }}>{existing ? "Done" : "Add element"}</button>
     </>}

@@ -14,9 +14,10 @@ import type { DisplayUnits } from "@/lib/units";
 import { formatPlannerBuildArea, formatPlannerBuildLength } from "@/lib/plannerBuildPresentation";
 import { ViewToggle } from "@/components/ViewToggle";
 import { PlannerBuildDashboard } from "@/components/PlannerBuildDashboard";
+import { canAddPlannerActivityInDemo, FREE_DEMO_MAX_PLANNER_ACTIVITIES } from "@/lib/freeModuleDemo";
 
 export type PlannerBuildView = "GANTT" | "TABLE";
-interface Props { project: ProjectDocument; view: PlannerBuildView; displayUnits: DisplayUnits; onActivitiesChange: (activities: PlannerBuildActivity[]) => void }
+interface Props { project: ProjectDocument; view: PlannerBuildView; displayUnits: DisplayUnits; onActivitiesChange: (activities: PlannerBuildActivity[]) => void; demoMode?: boolean; onDemoLimitReached?: () => void }
 type ActivityDraft = {
   activityId: string | null; name: string; startDate: string; endDate: string; colour: string; category: string;
   roomId: string; progress: number; notes: string; type: PlannerBuildActivityType; status: PlannerBuildActivity["status"];
@@ -34,7 +35,7 @@ type GanttGrouping = "NONE" | "CATEGORY" | "ROOM" | "TRADE";
 type GanttEntry = { kind: "GROUP"; key: string; label: string } | { kind: "ACTIVITY"; activity: PlannerBuildActivity };
 type DragState = { activityId: string; kind: DragKind; pointerId: number; originX: number; startDate: string; endDate: string };
 type ActivityRange = { activityId: string; startDate: string; endDate: string };
-const COLOUR_PRESETS = ["#287FB8", "#008CBA", "#0F766E", "#2E8B57", "#6B8E23", "#B7791F", "#D97706", "#C53030", "#C2185B", "#7251A3", "#475569", "#7B4B2A"];
+const COLOUR_PRESETS = ["#2563EB", "#EA580C", "#0F766E", "#C026D3", "#65A30D", "#DC2626", "#0891B2", "#7C3AED", "#B45309", "#DB2777", "#15803D", "#475569"];
 const SCALE_DAY_WIDTH: Record<GanttScale, number> = { DAY: 42, WEEK: 18, MONTH: 5 };
 const LABEL_WIDTH = 290;
 const EMPTY_ACTIVITIES: PlannerBuildActivity[] = [];
@@ -63,7 +64,7 @@ function activityTypeMark(type: PlannerBuildActivityType) {
   return ({ milestone: "◆", delivery: "↓", inspection: "✓", decision: "?", waiting: "Ⅱ", appointment: "◷", payment: "£" } as Partial<Record<PlannerBuildActivityType, string>>)[type] ?? "•";
 }
 
-export function PlannerBuildWorkspace({ project, view, onActivitiesChange }: Props) {
+export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoMode = false, onDemoLimitReached }: Props) {
   const activities = project.plannerBuild?.activities ?? EMPTY_ACTIVITIES;
   const rooms = project.rooms;
   const metrics = useMemo(() => calculatePlannerBuildMetrics(project), [project]);
@@ -110,9 +111,15 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange }: Pro
     setFuture((items) => items.slice(1)); setPast((items) => [...items.slice(-39), activities]); onActivitiesChange(next);
   }
   function openEditor(activity?: PlannerBuildActivity) { setSelectedId(activity?.activityId ?? null); setDraft(newDraft(activity)); setAddStep(null); setFormError(""); }
-  function startAdd() { setAddStep("CHOICE"); setLibrarySearch(""); setLibraryCategory("ALL"); setFormError(""); }
+  function startAdd() {
+    if (!canAddPlannerActivityInDemo(demoMode, activities.length)) { onDemoLimitReached?.(); return; }
+    setAddStep("CHOICE"); setLibrarySearch(""); setLibraryCategory("ALL"); setFormError("");
+  }
   function openCustomDraft() { setAddStep(null); setDraft(newDraft()); setSelectedId(null); setFormError(""); }
-  function openDeliveryDraft() { setAddStep(null); setDraft({ ...newDraft(), type: "delivery", category: "PROCUREMENT" }); setSelectedId(null); setFormError(""); }
+  function openDeliveryDraft() {
+    if (!canAddPlannerActivityInDemo(demoMode, activities.length)) { onDemoLimitReached?.(); return; }
+    setAddStep(null); setDraft({ ...newDraft(), type: "delivery", category: "PROCUREMENT" }); setSelectedId(null); setFormError("");
+  }
   function openTemplateDraft(template: PlannerBuildActivityTemplate) { setAddStep(null); setDraft(newDraft(undefined, template)); setSelectedId(null); setFormError(""); }
   function saveActivity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!draft) return;
@@ -133,6 +140,11 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange }: Pro
     if (dependencies.length !== draft.dependencyIds.length) { setFormError("A dependency cannot point to the same activity twice or to itself."); return; }
     if (dependencies.some((id) => wouldCreateDependencyCycle(activities, activityId, id))) { setFormError("That dependency would create a circular schedule."); return; }
     const existing = activities.find((item) => item.activityId === draft.activityId);
+    if (!existing && !canAddPlannerActivityInDemo(demoMode, activities.length)) {
+      setDraft(null);
+      onDemoLimitReached?.();
+      return;
+    }
     const savedStatus = draft.actualEndDate ? "completed" : draft.status;
     const item: PlannerBuildActivity = {
       activityId, name: draft.name.trim().slice(0, 200), startDate, endDate,
@@ -388,7 +400,10 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange }: Pro
         </section>
       </div>}
   </>;
-  return <div className="planner-build-content">{rendered}</div>;
+  return <div className="planner-build-content">
+    {demoMode && <div className="pb-free-demo-banner" role="status"><span>Free demo · {activities.length}/{FREE_DEMO_MAX_PLANNER_ACTIVITIES} activities saved. The full PlannerBuild module is included with Studio.</span><button type="button" className="pb-secondary-button" onClick={onDemoLimitReached}>See plans</button></div>}
+    {rendered}
+  </div>;
 }
 
 function MetricCard({ label, value, detail }: { label: string; value: string | number; detail?: string }) {
@@ -723,6 +738,6 @@ function PlannerBuildTable({ project, metrics, onEditActivity, onAddActivity, on
     {section("costs", "Resources", "Costs & trade workload", estimatedTotals.length || actualTotals.length ? costText(estimatedTotals) + " estimated · " + costText(actualTotals) + " actual" : "No estimated or actual costs entered", <><div className="pb-service-summary"><span>Estimated: <strong>{costText(estimatedTotals)}</strong></span><span>Actual recorded: <strong>{costText(actualTotals)}</strong></span><span>Trades assigned: <strong>{tradeCount}</strong></span></div><p className="pb-table-note">Costs use values entered on schedule activities. Currencies stay separate; unknown costs are not treated as zero.</p>{openButton("Open costs & resources", "COSTS")}</>)}
     </div>
     <div className="pb-dashboard-footnote">Floorplan quantities update from the current project. Project wall totals count unique physical segments; room wall surfaces may include shared boundaries. Missing data remains unset rather than estimated.</div>
-    {panel && <div className="pb-dashboard-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setPanel(null); }}><section className={"pb-dashboard-dialog " + (panel.kind === "QUANTITIES" ? "pb-dashboard-dialog-wide" : "")} role="dialog" aria-modal="true" aria-labelledby="pb-dashboard-dialog-title"><header><div><span className="pb-eyebrow">PlannerBuild · Project detail</span><h2 id="pb-dashboard-dialog-title">{panelTitles[panel.kind]}</h2></div><button type="button" className="pb-close-button" aria-label="Close details" onClick={() => setPanel(null)}>×</button></header><div className="pb-dashboard-dialog-content">{panelContent}</div></section></div>}
+    {panel && <div className="pb-dashboard-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setPanel(null); }}><section className={"pb-dashboard-dialog " + (panel.kind === "QUANTITIES" ? "pb-dashboard-dialog-wide" : panel.kind === "ACTIVITIES" ? "pb-dashboard-dialog-register" : "")} role="dialog" aria-modal="true" aria-labelledby="pb-dashboard-dialog-title"><header><div><span className="pb-eyebrow">PlannerBuild · Project detail</span><h2 id="pb-dashboard-dialog-title">{panelTitles[panel.kind]}</h2></div><button type="button" className="pb-close-button" aria-label="Close details" onClick={() => setPanel(null)}>×</button></header><div className="pb-dashboard-dialog-content">{panelContent}</div></section></div>}
   </section>;
 }

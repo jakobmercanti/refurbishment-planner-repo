@@ -1,8 +1,12 @@
 let connection: Promise<IDBDatabase> | undefined;
 export function localDatabase(): Promise<IDBDatabase> {
   return connection ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open("freefloorplan3d", 1);
-    request.onupgradeneeded = () => { for (const name of ["projects", "backups", "assets", "meta"]) request.result.createObjectStore(name); };
+    const request = indexedDB.open("freefloorplan3d", 2);
+    request.onupgradeneeded = (event) => {
+      const db = request.result;
+      if (event.oldVersion < 1) for (const name of ["projects", "backups", "assets", "meta"]) db.createObjectStore(name);
+      if (!db.objectStoreNames.contains("electricalAttachments")) db.createObjectStore("electricalAttachments");
+    };
     request.onsuccess = () => { request.result.onversionchange = () => { request.result.close(); connection = undefined; }; resolve(request.result); };
     request.onerror = () => { connection = undefined; reject(new Error("Local storage could not open. Check your browser storage settings.")); };
     request.onblocked = () => { connection = undefined; reject(new Error("Close other planner tabs to update local storage.")); };

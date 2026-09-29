@@ -6,6 +6,7 @@ export type RenderCameraAspect = (typeof RENDER_CAMERA_ASPECTS)[number];
 export type RenderCameraQuality = "standard" | "high";
 export type CameraVectorMm = [number, number, number];
 export type RenderCameraSceneVector = [number, number, number];
+export type CameraAnglesDegrees = [number, number, number];
 
 /** Convert the viewer's scene coordinates to its serialised millimetre axes. */
 export function renderCameraCoordinatesFromScene(position: RenderCameraSceneVector): CameraVectorMm {
@@ -30,6 +31,25 @@ export function renderCameraFromScenePose(cameraState: RenderCameraState, nextPo
     nextPosition[2] + direction.z * distance,
   ]);
   return normalizeRenderCameraState({ ...cameraState, positionMm: renderCameraCoordinatesFromScene(nextPosition), targetMm, up: [up.x, up.y, up.z] }) ?? cameraState;
+}
+
+/** Read the camera's XYZ Euler orientation from its persisted position/target/up pose. */
+export function renderCameraAnglesDegrees(cameraState: RenderCameraState): CameraAnglesDegrees {
+  const camera = new THREE.PerspectiveCamera();
+  camera.position.fromArray(cameraState.positionMm.map((value) => value / 1000));
+  camera.up.fromArray(cameraState.up);
+  camera.lookAt(...cameraState.targetMm.map((value) => value / 1000) as RenderCameraSceneVector);
+  const angles = new THREE.Euler().setFromQuaternion(camera.quaternion, "XYZ");
+  return [angles.x, angles.y, angles.z].map(THREE.MathUtils.radToDeg) as CameraAnglesDegrees;
+}
+
+/** Apply XYZ Euler angles while keeping the camera position and focal distance. */
+export function renderCameraWithAnglesDegrees(cameraState: RenderCameraState, angles: CameraAnglesDegrees): RenderCameraState {
+  const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    ...angles.map(THREE.MathUtils.degToRad) as CameraAnglesDegrees,
+    "XYZ",
+  ));
+  return renderCameraFromSceneRotation(cameraState, rotation);
 }
 
 export interface RenderCameraState {

@@ -18,7 +18,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from backend.app.commercial_entitlements import can_use_electrical_layout
+from backend.app.commercial_entitlements import can_use_electrical_layout, can_use_planner_build
 from backend.app.r2_storage import R2Unavailable, r2_storage
 from backend.app.stripe_gateway import PACK_KEYS, PLAN_KEYS, StripeUnavailable, stripe_gateway
 from backend.app.supabase_rest import InvalidAccessToken, SupabaseREST, SupabaseUnavailable, VerifiedUser, supabase_rest
@@ -401,6 +401,7 @@ def summary(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     result["capabilities"] = {
         **current_capabilities,
         "canUseElectricalLayout": can_use_electrical_layout(plan_key, status),
+        "canUsePlannerBuild": can_use_planner_build(plan_key, status),
     }
     return result
 

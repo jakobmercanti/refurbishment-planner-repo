@@ -5,12 +5,14 @@ import {
   centreRenderCameraOnRooms,
   hideEditorOnlySceneObjects,
   normalizeRenderCameraState,
+  renderCameraAnglesDegrees,
   renderCameraCoordinatesFromScene,
   renderCameraFrameSize,
   renderCameraFromNavigation,
   renderCameraFromSceneRotation,
   renderCameraFromScenePose,
   renderCameraForRoom,
+  renderCameraWithAnglesDegrees,
   withEditorOnlySceneObjectsHidden,
 } from "../lib/renderCamera.ts";
 
@@ -120,6 +122,41 @@ test("rotating the render camera changes its target and up vector while preservi
   assert.notDeepEqual(rotated.targetMm, camera.targetMm);
   assert.ok(Math.abs(distance(rotated) - distance(camera)) < 0.1);
   assert.ok(Math.abs(Math.hypot(...rotated.up) - 1) < 1e-9);
+});
+
+test("rolling around the camera's direction axis keeps its aim and rotates its up vector", () => {
+  const camera = {
+    ...renderCameraForRoom([]),
+    positionMm: [0, 1800, 4000] as [number, number, number],
+    targetMm: [0, 1200, 0] as [number, number, number],
+  };
+  const initialPose = new THREE.PerspectiveCamera();
+  initialPose.position.fromArray(camera.positionMm.map((value) => value / 1000));
+  initialPose.up.fromArray(camera.up);
+  initialPose.lookAt(...camera.targetMm.map((value) => value / 1000) as [number, number, number]);
+  const localRoll = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 4);
+  const rolled = renderCameraFromSceneRotation(camera, initialPose.quaternion.clone().multiply(localRoll));
+  const initialDirection = new THREE.Vector3(...camera.targetMm).sub(new THREE.Vector3(...camera.positionMm)).normalize();
+  const rolledDirection = new THREE.Vector3(...rolled.targetMm).sub(new THREE.Vector3(...rolled.positionMm)).normalize();
+
+  assert.deepEqual(rolled.positionMm, camera.positionMm);
+  assert.ok(rolledDirection.distanceTo(initialDirection) < 1e-9);
+  assert.ok(new THREE.Vector3(...rolled.up).distanceTo(new THREE.Vector3(...camera.up)) > 0.1);
+});
+
+test("camera properties expose editable XYZ angles and preserve position and focal distance", () => {
+  const camera = {
+    ...renderCameraForRoom([]),
+    positionMm: [0, 1500, 4000] as [number, number, number],
+    targetMm: [0, 1500, 0] as [number, number, number],
+  };
+  const rotated = renderCameraWithAnglesDegrees(camera, [12, 25, -7]);
+  const angles = renderCameraAnglesDegrees(rotated);
+  const distance = (state: typeof camera) => Math.hypot(...state.targetMm.map((value, index) => value - state.positionMm[index]));
+
+  assert.deepEqual(rotated.positionMm, camera.positionMm);
+  assert.ok(angles.every((value, index) => Math.abs(value - [12, 25, -7][index]) < 1e-8));
+  assert.ok(Math.abs(distance(rotated) - distance(camera)) < 1e-8);
 });
 
 test("editor-only camera helpers stay out of clean renders and restore even after errors", () => {

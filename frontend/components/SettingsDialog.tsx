@@ -1,10 +1,9 @@
 "use client";
 
-export interface AppPreferences {
-  density: "COMFORTABLE" | "COMPACT";
-  confirmBeforeOpen: boolean;
-  units: "MM" | "CM" | "INCHES" | "FEET" | "METERS";
-}
+import type { AppPreferences } from "@/lib/appPreferences";
+
+export { DEFAULT_APP_PREFERENCES } from "@/lib/appPreferences";
+export type { AppPreferences } from "@/lib/appPreferences";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -22,12 +21,35 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
           <div><span className="eyebrow">Application settings</span><h2 id="settings-title">Preferences</h2></div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close settings">×</button>
         </header>
+        <section className="settings-appearance" aria-labelledby="settings-appearance-title">
+          <h3 id="settings-appearance-title">Appearance</h3>
+          <div className="settings-appearance-option">
+            <strong>Theme</strong>
+            <p>Use your system setting or choose a fixed appearance.</p>
+            <div className="settings-choice settings-theme-choice" role="group" aria-label="Theme">
+              <button type="button" className={preferences.theme === "SYSTEM" ? "active" : ""} aria-pressed={preferences.theme === "SYSTEM"} onClick={() => onChange({ ...preferences, theme: "SYSTEM" })}>System</button>
+              <button type="button" className={preferences.theme === "LIGHT" ? "active" : ""} aria-pressed={preferences.theme === "LIGHT"} onClick={() => onChange({ ...preferences, theme: "LIGHT" })}>Light</button>
+              <button type="button" className={preferences.theme === "DARK" ? "active" : ""} aria-pressed={preferences.theme === "DARK"} onClick={() => onChange({ ...preferences, theme: "DARK" })}>Dark</button>
+            </div>
+          </div>
+          <div className="settings-appearance-option">
+            <strong>Workspace density</strong>
+            <p>Compact keeps the interface tight. Comfortable makes text larger and easier to read.</p>
+            <div className="settings-choice" role="group" aria-label="Workspace density">
+              <button type="button" className={preferences.density === "COMFORTABLE" ? "active" : ""} aria-pressed={preferences.density === "COMFORTABLE"} onClick={() => onChange({ ...preferences, density: "COMFORTABLE" })}>Comfortable</button>
+              <button type="button" className={preferences.density === "COMPACT" ? "active" : ""} aria-pressed={preferences.density === "COMPACT"} onClick={() => onChange({ ...preferences, density: "COMPACT" })}>Compact</button>
+            </div>
+          </div>
+        </section>
         <div className="settings-section">
-          <strong>Workspace density</strong>
-          <p>Choose the amount of space used by planner controls.</p>
-          <div className="settings-choice" role="group" aria-label="Workspace density">
-            <button type="button" className={preferences.density === "COMFORTABLE" ? "active" : ""} aria-pressed={preferences.density === "COMFORTABLE"} onClick={() => onChange({ ...preferences, density: "COMFORTABLE" })}>Comfortable</button>
-            <button type="button" className={preferences.density === "COMPACT" ? "active" : ""} aria-pressed={preferences.density === "COMPACT"} onClick={() => onChange({ ...preferences, density: "COMPACT" })}>Compact</button>
+          <strong>Display units</strong>
+          <p>Choose how dimensions are presented. Calculations remain millimetre-authoritative.</p>
+          <div className="settings-choice unit-choice" role="group" aria-label="Display units">
+            <button type="button" className={preferences.units === "MM" ? "active" : ""} aria-pressed={preferences.units === "MM"} onClick={() => onChange({ ...preferences, units: "MM" })}>Millimetres</button>
+            <button type="button" className={preferences.units === "CM" ? "active" : ""} aria-pressed={preferences.units === "CM"} onClick={() => onChange({ ...preferences, units: "CM" })}>Centimetres</button>
+            <button type="button" className={preferences.units === "INCHES" ? "active" : ""} aria-pressed={preferences.units === "INCHES"} onClick={() => onChange({ ...preferences, units: "INCHES" })}>Inches</button>
+            <button type="button" className={preferences.units === "FEET" ? "active" : ""} aria-pressed={preferences.units === "FEET"} onClick={() => onChange({ ...preferences, units: "FEET" })}>Feet</button>
+            <button type="button" className={preferences.units === "METERS" ? "active" : ""} aria-pressed={preferences.units === "METERS"} onClick={() => onChange({ ...preferences, units: "METERS" })}>Meters</button>
           </div>
         </div>
         <label className="settings-check">

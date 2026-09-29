@@ -20,11 +20,12 @@ type DirectDrag = {
 };
 
 /** The gizmo and body drive the same serialisable state as the panel and preview. */
-export default function RenderCameraRig({ cameraState, selectedHandle, onSelectHandle, onCameraChange }: {
+export default function RenderCameraRig({ cameraState, selectedHandle, onSelectHandle, onCameraChange, onOpenProperties }: {
   cameraState: RenderCameraState;
   selectedHandle: RenderCameraRigHandle | null;
   onSelectHandle: (handle: RenderCameraRigHandle | null) => void;
   onCameraChange: (camera: RenderCameraState) => void;
+  onOpenProperties: (clientX: number, clientY: number, eventTarget: EventTarget | null) => void;
 }) {
   const get = useThree((state) => state.get);
   const glyph = useRef<THREE.Group>(null);
@@ -153,9 +154,16 @@ export default function RenderCameraRig({ cameraState, selectedHandle, onSelectH
     event.stopPropagation();
     finishDrag();
   };
+  const openProperties = (event: ThreeEvent<MouseEvent>) => {
+    if (event.button !== 2) return;
+    event.nativeEvent.preventDefault();
+    event.stopPropagation();
+    event.nativeEvent.stopPropagation();
+    onOpenProperties(event.clientX, event.clientY, event.nativeEvent.target);
+  };
 
-  return <group userData={{ editorOnly: true }}>
-    <PivotControls matrix={pose} autoTransform={false} fixed scale={100} lineWidth={3} rotationLimits={[undefined, undefined, [0, 0]]}
+  return <group userData={{ editorOnly: true }} onContextMenu={openProperties}>
+    <PivotControls matrix={pose} autoTransform={false} fixed scale={100} lineWidth={3}
       enabled={selectedHandle === "position" && !directDragging} visible={selectedHandle === "position" && !directDragging} disableSliders disableScaling depthTest={false}
       onDragStart={({ component }) => { gizmoStart.current = cameraState; rotating.current = component === "Rotator"; lockNavigation(); onSelectHandle("position"); }}
       onDrag={(matrix) => {

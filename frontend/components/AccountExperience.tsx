@@ -129,7 +129,6 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       />
     </div>}
     {!embedded && <footer className="commercial-footer"><a href={base + "/"}>Back to your floorplan</a></footer>}
-    {embedded && onClose && <button type="button" className="commercial-secondary account-dialog-return" onClick={onClose}>Return to planner</button>}
   </>;
 
   return embedded ? <div className="account-dialog-content">{content}</div> : <main className="commercial-page">

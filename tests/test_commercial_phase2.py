@@ -65,6 +65,7 @@ def test_commercial_summary_exposes_paid_electrical_layout_access(
     assert result["capabilities"] == {
         "can_use_cloud": plan != "free",
         "canUseElectricalLayout": allowed,
+        "canUsePlannerBuild": plan == "studio" and status in {"active", "trialing"},
     }
 
 

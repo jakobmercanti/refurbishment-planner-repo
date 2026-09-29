@@ -1,0 +1,27 @@
+:root {
+  --density-font-scale: 1;
+  --toolbar-control-gap: 8px;
+  --density-window-padding: 14px;
+  --density-section-gap: 8px;
+  --density-control-min-height: 34px;
+  --density-table-cell-padding-y: 7px;
+}
+
+:root[data-density="comfortable"] {
+  --density-font-scale: 1.2;
+  --toolbar-control-gap: 14px;
+  --density-window-padding: 18px;
+  --density-section-gap: 13px;
+  --density-control-min-height: 40px;
+  --density-table-cell-padding-y: 10px;
+}
+
+.planner-workspace {
+  font-size: calc(16px * var(--density-font-scale));
+}
+
+/* Floorplan labels and other SVG drawing text keep their drawing scale. */
+.planner-workspace svg:not(.floor-canvas) {
+  --density-font-scale: 1;
+  font-size: 16px;
+}
