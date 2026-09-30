@@ -4,6 +4,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { calendarDaysBetween, formatDateKey, type calculatePlannerBuildMetrics, type PlannerBuildActivity } from "@/lib/plannerBuild";
 import { calculatePlannerBuildDashboard, dashboardDueDate, plannedDeliveryDate } from "@/lib/plannerBuildDashboard";
 import { formatPlannerBuildArea } from "@/lib/plannerBuildPresentation";
+import type { CurrencyCode } from "@/lib/appPreferences";
 import styles from "./PlannerBuildDashboard.module.css";
 
 type Metrics = ReturnType<typeof calculatePlannerBuildMetrics>;
@@ -15,11 +16,11 @@ const money = (value: number | null, currency: string) => {
 };
 const date = (value: string | null | undefined) => value ? formatDateKey(value, { day: "numeric", month: "short", year: "numeric" }) : "Not set";
 
-export function PlannerBuildDashboard({ activities, metrics, today, onEdit, onOpen, onAddDelivery }: {
-  activities: PlannerBuildActivity[]; metrics: Metrics; today: string;
+export function PlannerBuildDashboard({ activities, metrics, today, defaultCurrency = "GBP", onEdit, onOpen, onAddDelivery }: {
+  activities: PlannerBuildActivity[]; metrics: Metrics; today: string; defaultCurrency?: CurrencyCode;
   onEdit: (activity: PlannerBuildActivity) => void; onOpen: (kind: Detail) => void; onAddDelivery: () => void;
 }) {
-  const data = useMemo(() => calculatePlannerBuildDashboard(activities, today), [activities, today]);
+  const data = useMemo(() => calculatePlannerBuildDashboard(activities, today, defaultCurrency), [activities, today, defaultCurrency]);
   const [allDeliveries, setAllDeliveries] = useState(false);
   const [allDates, setAllDates] = useState(false);
   const costs = data.costs.filter((row) => row.estimated !== null || row.actual !== null);

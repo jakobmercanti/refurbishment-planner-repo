@@ -19,29 +19,30 @@ type Props = {
   onDisplayChange: (value: ElectricalDisplayOptions) => void; objects: ElectricalObjectOption[];
   connections: ElectricalConnection[]; selectedConnectionId: string | null; onSelectConnection: (id: string) => void;
   onUpdateConnection: (id: string, patch: Partial<ElectricalConnection>) => void; onDeleteConnection: (id: string) => void;
-  circuits: ElectricalCircuit[]; activeCircuitId: string | null; onActiveCircuitChange: (id: string | null) => void;
+  circuits: ElectricalCircuit[]; activeCircuitId: string | null; onActiveCircuitChange: (id: string) => void;
   onCreateCircuit: () => void; onUpdateCircuit: (id: string, patch: Partial<ElectricalCircuit>) => void; onDeleteCircuit: (id: string) => void;
 };
 
 export function ElectricalLayoutPanel(p: Props) {
-  const circuit = p.circuits.find((item) => item.id === p.activeCircuitId) ?? null;
+  const circuit = p.circuits.find((item) => item.id === p.activeCircuitId) ?? p.circuits[0] ?? null;
+  const activeCircuitId = circuit?.id ?? null;
   const name = (id: string) => p.objects.find((item) => item.id === id)?.label ?? "Missing fitting";
-  const connectionGroup = (circuitId: string | null) => {
-    const groupedConnections = p.connections.filter((item) => (item.circuitId ?? null) === circuitId);
+  const connectionGroup = (circuitId: string) => {
+    const groupedConnections = p.connections.filter((item) => item.circuitId === circuitId);
     const selected = groupedConnections.find((item) => item.id === p.selectedConnectionId) ?? null;
-    const selectedCircuit = circuitId ? p.circuits.find((item) => item.id === circuitId) : null;
+    const selectedCircuit = p.circuits.find((item) => item.id === circuitId);
     const selectedColour = selected?.colorOverride === false && selectedCircuit ? selectedCircuit.color : selected?.color;
-    const title = circuitId ? `Connections (${groupedConnections.length})` : `Unassigned connections (${groupedConnections.length})`;
+    const title = `Connections (${groupedConnections.length})`;
     const updateSelected = (patch: Partial<ElectricalConnection>) => {
       if (!selected) return;
       p.onUpdateConnection(selected.id, patch);
-      if (Object.hasOwn(patch, "circuitId")) p.onActiveCircuitChange(patch.circuitId ?? null);
+      if (Object.hasOwn(patch, "circuitId")) p.onActiveCircuitChange(patch.circuitId ?? circuitId);
     };
     const selectConnection = (id: string) => {
       p.onActiveCircuitChange(circuitId);
       p.onSelectConnection(id);
     };
-    return <details className="electrical-layout-section electrical-circuit-connections" open key={circuitId ?? "unassigned"}>
+    return <details className="electrical-layout-section electrical-circuit-connections" open key={circuitId}>
       <summary>{title}</summary>
       {groupedConnections.length ? <ul className="electrical-connection-list">{groupedConnections.map((item) => {
         const from = name(item.fromId);
@@ -51,7 +52,7 @@ export function ElectricalLayoutPanel(p: Props) {
           <button type="button" className="electrical-connection-action" aria-label={`Edit connection from ${from} to ${to}`} title="Edit connection" onClick={() => selectConnection(item.id)}>Edit</button>
           <button type="button" className="electrical-connection-action delete" aria-label={`Delete connection from ${from} to ${to}`} title="Delete connection" onClick={() => p.onDeleteConnection(item.id)}>Delete</button>
         </li>;
-      })}</ul> : <p className="electrical-layout-empty">{circuitId ? "No connections in this circuit yet." : "No unassigned connections."}</p>}
+      })}</ul> : <p className="electrical-layout-empty">No connections in this circuit yet.</p>}
       {selected && <div className="electrical-connection-properties">
         <p className="electrical-connection-endpoints">From <strong>{name(selected.fromId)}</strong> → To <strong>{name(selected.toId)}</strong></p>
         <div className="electrical-layout-grid">
@@ -60,7 +61,7 @@ export function ElectricalLayoutPanel(p: Props) {
           <label className="field"><span>Style</span><select value={selected.lineStyle} onChange={(e) => updateSelected({ lineStyle: e.target.value as ElectricalLineStyle })}>{styles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="field"><span>Width</span><select value={selected.width} onChange={(e) => updateSelected({ width: e.target.value as ElectricalLineWidth })}>{widths.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="field"><span>Routing</span><select value={selected.routing} disabled={p.forceOrthogonalRouting} onChange={(e) => updateSelected({ routing: e.target.value as ElectricalRouting })}>{routings.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label className="field"><span>Circuit</span><select value={selected.circuitId ?? ""} onChange={(e) => updateSelected({ circuitId: e.target.value || undefined, colorOverride: e.target.value ? false : true })}>{p.demoMode && !selected.circuitId && <option value="" disabled>Select circuit</option>}{!p.demoMode && <option value="">No circuit</option>}{p.circuits.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label className="field"><span>Circuit</span><select value={selected.circuitId ?? circuitId} onChange={(e) => updateSelected({ circuitId: e.target.value, colorOverride: false })}>{p.circuits.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         </div>
         {selected.circuitId && <button type="button" className="review-style-button" onClick={() => updateSelected({ colorOverride: false })}>Use circuit colour</button>}
         <label className="field"><span>Optional label</span><input value={selected.label ?? ""} maxLength={100} onChange={(e) => updateSelected({ label: e.target.value || undefined })} /></label>
@@ -80,7 +81,7 @@ export function ElectricalLayoutPanel(p: Props) {
       <button type="button" className="review-style-button" onClick={p.onAdd}>Add electrical fitting…</button>
     </div>
     <p className="electrical-layout-count" role="status">{p.currentCount} electrical fittings in this project</p>
-    {p.demoMode && <div className="electrical-demo-notice" role="status"><span>Free demo · {p.connections.length}/5 connections · create and select one circuit before connecting.</span><button type="button" className="review-style-button" onClick={p.onDemoLimitReached}>See plans</button></div>}
+    {p.demoMode && <div className="electrical-demo-notice" role="status"><span>Free demo · {p.connections.length}/5 connections · connections are added to the selected circuit.</span><button type="button" className="review-style-button" onClick={p.onDemoLimitReached}>See plans</button></div>}
     {p.status && <p className="electrical-layout-status" role="status">{p.status}</p>}
     {p.connecting && <p className="electrical-connect-hint" role="status">{p.repeatConnecting ? "Select a source and destination. After each connection, choose any new pair. Esc cancels." : "Select a source and destination. The command ends after one connection. Esc cancels."}</p>}
     <details className="electrical-layout-section" open><summary>New connection defaults</summary><div className="electrical-layout-grid">
@@ -97,28 +98,26 @@ export function ElectricalLayoutPanel(p: Props) {
     </div></details>
     <details className="electrical-layout-section" open><summary>Circuits ({p.circuits.length})</summary>
       {p.circuits.length ? <ul className="electrical-connection-list electrical-circuit-list">{p.circuits.map((item) => <li className="electrical-circuit-row" key={item.id}>
-        <button type="button" className={`electrical-circuit-select ${item.id === p.activeCircuitId ? "selected" : ""}`} aria-pressed={item.id === p.activeCircuitId} onClick={() => p.onActiveCircuitChange(item.id)}><span className="electrical-circuit-name"><i style={{ backgroundColor: item.color }} aria-hidden="true" />{item.name}</span><small>{item.id === p.activeCircuitId ? "Selected for new connections" : "Select for new connections"}</small></button>
-        <button type="button" className="electrical-connection-action delete electrical-circuit-delete" aria-label={`Delete circuit ${item.name}`} title={`Delete ${item.name}`} onClick={() => p.onDeleteCircuit(item.id)}>Delete</button>
+        <button type="button" className={`electrical-circuit-select ${item.id === activeCircuitId ? "selected" : ""}`} aria-pressed={item.id === activeCircuitId} onClick={() => p.onActiveCircuitChange(item.id)}><span className="electrical-circuit-name"><i style={{ backgroundColor: item.color }} aria-hidden="true" />{item.name}</span><small>{item.id === activeCircuitId ? "Selected for new connections" : "Select for new connections"}</small></button>
+        {p.circuits.length > 1 && <button type="button" className="electrical-connection-action delete electrical-circuit-delete" aria-label={`Delete circuit ${item.name}`} title={`Delete ${item.name}`} onClick={() => p.onDeleteCircuit(item.id)}>Delete</button>}
       </li>)}</ul> : <p className="electrical-layout-empty">No circuits yet.</p>}
       {circuit && <div className="electrical-circuit-edit">
         <label key={circuit.id} className="field"><span>Name</span><input defaultValue={circuit.name} maxLength={100} onBlur={(e) => { const value = e.target.value.trim(); if (value && value !== circuit.name) p.onUpdateCircuit(circuit.id, { name: value }); else if (!value) e.currentTarget.value = circuit.name; }} /></label>
         <label className="field"><span>Colour</span><input aria-label="Circuit colour" type="color" value={circuit.color} onChange={(e) => p.onUpdateCircuit(circuit.id, { color: e.target.value })} /></label>
         <div className="electrical-circuit-edit-actions">
-          <button type="button" className="review-style-button" onClick={() => p.onActiveCircuitChange(null)}>Cancel</button>
           <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>
         </div>
       </div>}
       {!circuit && <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>}
       {circuit && connectionGroup(circuit.id)}
-      {p.connections.some((item) => !item.circuitId) && connectionGroup(null)}
     </details>
     <details className="electrical-layout-help"><summary>Electrical layout help</summary><div className="electrical-layout-help-content">
       <p><strong>Place fittings.</strong> Click <em>Add electrical fitting…</em>, choose a catalogue item, then click on the plan to place it. The add window keeps your last item selected so you can place several of the same fitting.</p>
-      <p><strong>Create and select a circuit.</strong> Click <em>New circuit</em>, then select its row. Edit the circuit name or colour while selected. Connections are stored inside their circuit; without a selected circuit, new connections appear under <em>Unassigned connections</em>.</p>
+      <p><strong>Circuits and connections.</strong> A first circuit is created and selected automatically. Every new connection is added to the currently selected circuit. Click <em>New circuit</em> to add more circuits, then select a circuit row to choose where future connections go.</p>
       <p><strong>Connect two fittings.</strong> Click <em>Connect</em> once, select a source fitting, then its destination. The command exits after one connection. Double-click <em>Connect</em> to connect several pairs; after each connection, select any new source and destination. Press Esc or click the active Cancel button to stop.</p>
-      <p><strong>Edit or delete connections.</strong> Open a circuit’s <em>Connections</em> list. Select a row or click <em>Edit</em> to change its relationship, colour, style, width, route, circuit or label. Click <em>Delete</em> to remove just that connection, not its fittings. Unassigned connections have their own list.</p>
+      <p><strong>Edit or delete connections.</strong> Open a circuit’s <em>Connections</em> list. Select a row or click <em>Edit</em> to change its relationship, colour, style, width, route, circuit or label. Click <em>Delete</em> to remove just that connection, not its fittings.</p>
       <p><strong>Shape a route.</strong> Right-click a connection line to add a corner on that leg. Drag a corner to reshape the line; right-click a corner to remove it. <em>Force horizontal / vertical circuit routes</em> keeps legs axis-aligned and is on by default. Turn it off to allow diagonal legs.</p>
-      <p><strong>Manage circuits and files.</strong> Click <em>Delete</em> beside a circuit to remove it; its connections are kept and become unassigned. <em>Save layout</em> downloads an electrical-only file. <em>Load layout</em> lets you merge or replace electrical data without replacing the floorplan. Normal project saving also stores the electrical layout.</p>
+      <p><strong>Manage circuits and files.</strong> The last remaining circuit cannot be deleted. Deleting a circuit moves its connections to another circuit. <em>Save layout</em> downloads an electrical-only file. <em>Load layout</em> lets you merge or replace electrical data without replacing the floorplan. Normal project saving also stores the electrical layout.</p>
       {p.demoMode && <p><strong>Free demo.</strong> The demo allows one circuit and up to five connections. Click <em>See plans</em> to continue beyond the limit.</p>}
       <p className="electrical-layout-help-note"><strong>Important:</strong> connection lines show schematic relationships, not physical cable routes or cable lengths. Room geometry remains unchanged.</p>
     </div></details>

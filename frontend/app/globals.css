@@ -254,7 +254,7 @@ button { font: inherit; }
 .electrical-layout-window { max-width: calc(100vw - 16px); }
 .electrical-layout-window .floating-toolbar-content { container-name: electrical-layout-window; container-type: inline-size; }
 .full-plan-page.electrical-layout-open .full-plan-build-toolbar,
-.full-plan-page.electrical-layout-open .floorplan-add-elements-toolbar { display: none; }
+.full-plan-page.electrical-layout-open:not(.electrical-add-elements-open) .floorplan-add-elements-toolbar { display: none; }
 .electrical-schedule-window { width: min(980px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .electrical-export-window { width: min(450px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .electrical-layout-panel { display: grid; gap: 9px; padding: 10px; }
@@ -286,7 +286,7 @@ button { font: inherit; }
 .electrical-layout-display input { accent-color: var(--deep); }
 .electrical-circuit-edit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 8px; align-items: end; }
 .electrical-circuit-edit .field { min-width: 0; }
-.electrical-circuit-edit-actions { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.electrical-circuit-edit-actions { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); gap: 7px; }
 .electrical-circuit-edit-actions .electrical-new-circuit { margin-top: 0; }
 .electrical-connection-list { display: grid; gap: 5px; max-height: 125px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; }
 .electrical-circuit-list { max-height: 145px; }
@@ -450,8 +450,8 @@ button { font: inherit; }
   .electrical-layout-display { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .electrical-circuit-edit { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .electrical-circuit-edit > .field:first-child { grid-column: span 2; }
-  .electrical-circuit-edit-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .electrical-circuit-edit-actions .electrical-new-circuit { grid-column: span 2; white-space: nowrap; }
+  .electrical-circuit-edit-actions { grid-template-columns: minmax(0, 1fr); }
+  .electrical-circuit-edit-actions .electrical-new-circuit { grid-column: 1 / -1; white-space: nowrap; }
 }
 @media (max-width: 480px) {
   .electrical-layout-panel { padding: 7px; }
@@ -571,6 +571,8 @@ button { font: inherit; }
 .settings-section, .settings-check, .settings-readonly { margin-top: var(--density-section-gap, 16px); padding-top: 14px; border-top: 1px solid var(--line); }
 .settings-section > strong, .settings-check strong { font-size: calc((11px) * var(--density-font-scale, 1)); }
 .settings-section > p { margin: 5px 0 10px; color: var(--muted); font-size: calc((10px) * var(--density-font-scale, 1)); }
+.settings-currency-label { display: block; font-size: calc((11px) * var(--density-font-scale, 1)); font-weight: 700; }
+.settings-currency-select { width: 100%; min-height: var(--density-control-min-height, 36px); padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); color: var(--ink); font: 600 calc(10px * var(--density-font-scale, 1)) var(--font-mono); }
 .settings-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .settings-choice button { min-height: var(--density-control-min-height, 34px); padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--muted); font: 600 calc(9px * var(--density-font-scale, 1)) var(--font-mono); cursor: pointer; }
 .settings-choice button.active { border-color: var(--deep); background: #eaf1ed; color: var(--deep); }
@@ -1399,6 +1401,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .floorplan-context-menu button { width: 100%; padding: 8px 9px; border: 1px solid var(--line); border-radius: 6px; background: #f8faf8; color: var(--ink); font: 650 calc(10px * var(--density-font-scale, 1)) var(--font-mono); text-align: left; cursor: pointer; }
 .floorplan-context-menu button:hover, .floorplan-context-menu button:focus-visible { border-color: var(--deep); outline: none; background: #edf4ef; }
 .floorplan-context-menu .danger-button { border-color: #efc5c1; background: var(--fail-soft); color: var(--fail); }
+.pb-activity-context-menu button:not(.danger-button) { border-color: var(--line); background: var(--surface-muted); color: var(--ink); }
 .floorplan-context-menu.floorplan-value-menu { width: 224px; max-height: min(520px, calc(100vh - 16px)); overflow-y: auto; }
 .floorplan-value-menu label { display: grid; gap: 4px; padding: 3px 5px; color: var(--muted); font: 650 calc(8px * var(--density-font-scale, 1)) var(--font-mono); }
 .floorplan-value-menu .context-help { padding: 0 5px 4px; color: var(--muted); font: 500 calc(8px * var(--density-font-scale, 1)) var(--font-mono); }
@@ -1587,8 +1590,17 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .viewer-toolbar.floating-view-controls .viewer-view-control-group button, .viewer-toolbar.floating-view-controls .toggle-row button { min-width: 0; min-height: 31px; border: 1px solid transparent; border-radius: 6px; padding: 7px 8px; color: var(--muted); font: 700 calc(10px * var(--density-font-scale, 1))/1.1 var(--font-mono); }
 .viewer-view-control-group button:hover, .viewer-toolbar.floating-view-controls .toggle-row button:hover { border-color: #cbd8d0; background: #edf4ef; color: var(--deep); }
 .viewer-view-control-group button.active, .viewer-toolbar.floating-view-controls .toggle-row button.active { border-color: var(--deep); color: white; background: var(--deep); }
-.viewer-zoom-controls { grid-template-columns: 40px minmax(0, 1fr) 40px minmax(0, 1.15fr); }
-.viewer-zoom-controls button:nth-child(2) { background: #f0f4f1; color: var(--deep); }
+.viewer-zoom-controls {
+  grid-template-columns: 40px minmax(0, 1fr) 40px minmax(0, 1.15fr);
+  --ui-button-background: var(--surface-muted);
+  --ui-button-text: var(--ink);
+  --ui-button-hoverBackground: var(--surface-selected);
+  --ui-button-activeBackground: var(--primary-action);
+  --ui-button-activeText: var(--primary-action-text);
+}
+.viewer-zoom-controls button { border-color: var(--line); background: var(--surface-muted); color: var(--ink); }
+.viewer-zoom-controls button:nth-child(2) { font-variant-numeric: tabular-nums; }
+.viewer-zoom-controls button:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-selected); color: var(--ink); }
 .viewer-projection-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .viewer-camera-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .floating-toolbar.viewer-camera-window { min-width: min(540px, calc(100% - 16px)); max-width: calc(100% - 16px); }

@@ -18,6 +18,7 @@ interface Props {
   selectedFixtureId: string | null;
   sourceId: string | null;
   selectedConnectionId: string | null;
+  activeCircuitId: string;
   connecting: boolean;
   forceOrthogonalRouting: boolean;
   cursor: Point2D | null;
@@ -62,7 +63,7 @@ export function ElectricalLayoutOverlay(props: Props) {
         {label && <text className="electrical-circuit-label" x={labelPoint.x} y={labelPoint.y - 8} textAnchor="middle">{label}</text>}
       </g>;
     })}
-    {props.connecting && props.sourceId && props.cursor && fixtures.get(props.sourceId) && props.showConnections && <polyline className="electrical-connection-preview" points={polylinePoints(electricalConnectionPoints({ ...props.defaults, id: "preview", fromId: props.sourceId, toId: "preview", waypoints: [], label: undefined }, fixtures.get(props.sourceId)!.center, props.cursor, props.forceOrthogonalRouting))} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}
+    {props.connecting && props.sourceId && props.cursor && fixtures.get(props.sourceId) && props.showConnections && <polyline className="electrical-connection-preview" points={polylinePoints(electricalConnectionPoints({ ...props.defaults, id: "preview", fromId: props.sourceId, toId: "preview", circuitId: props.activeCircuitId, waypoints: [], label: undefined }, fixtures.get(props.sourceId)!.center, props.cursor, props.forceOrthogonalRouting))} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}
     {props.showSymbols && props.fixtures.map((fixture) => {
       const topLeft = props.toScreen({ x: fixture.center.x - fixture.dimensions.width.value / 2, y: fixture.center.y + fixture.dimensions.depth.value / 2 });
       const bottomRight = props.toScreen({ x: fixture.center.x + fixture.dimensions.width.value / 2, y: fixture.center.y - fixture.dimensions.depth.value / 2 });

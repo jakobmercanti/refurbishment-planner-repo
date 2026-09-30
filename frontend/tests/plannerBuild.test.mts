@@ -6,6 +6,7 @@ import { PlannerBuildWorkspace } from "../components/PlannerBuildWorkspace.tsx";
 import { addCalendarDays, calculatePlannerBuildMetrics, expectedDeliveryDate, getPlannerBuildScheduleSummary, getPlannerBuildWarnings, normalizePlannerBuild, wouldCreateDependencyCycle, type PlannerBuildActivity } from "../lib/plannerBuild.ts";
 import { PLANNER_BUILD_ACTIVITY_LIBRARY, searchPlannerBuildActivityLibrary } from "../lib/plannerBuildActivityLibrary.ts";
 import { formatPlannerBuildArea, formatPlannerBuildLength } from "../lib/plannerBuildPresentation.ts";
+import { calculatePlannerBuildDashboard } from "../lib/plannerBuildDashboard.ts";
 import { newProject, parseProject, type ProjectDocument } from "../lib/projectDocument.ts";
 import type { Room } from "../lib/types.ts";
 import starterDemo from "../lib/starterDemo.json";
@@ -101,6 +102,12 @@ test("schedule dashboard summarizes upcoming events, pending work and counts", (
   assert.equal(summary.countsByRoom[0].count, 4);
 });
 
+test("PlannerBuild cost summaries use the application currency for activities without one", () => {
+  const dashboard = calculatePlannerBuildDashboard([activity({ estimatedCost: 125 })], "2026-10-01", "USD");
+  assert.equal(dashboard.costs[0].currency, "USD");
+  assert.equal(dashboard.costs[0].estimated, 125);
+});
+
 test("legacy project files open with an empty PlannerBuild schedule", () => {
   const legacy = newProject();
   delete (legacy as unknown as { plannerBuild?: unknown }).plannerBuild;
@@ -182,6 +189,20 @@ test("PlannerBuild table view renders the live project dashboard and detail entr
   assert.match(markup, /L-shaped room/);
   assert.match(markup, /Required paint/);
   assert.match(markup, /Coverage \/ coats not set/);
+});
+
+test("PlannerBuild views format costs using the selected default currency", () => {
+  const project = testProject();
+  project.plannerBuild = { activities: [
+    activity({ estimatedCost: 125 }),
+    activity({ activityId: "explicit-currency", name: "Imported cost", actualCost: 80, currency: "EUR" }),
+  ] };
+  const markup = renderToStaticMarkup(createElement(PlannerBuildWorkspace, {
+    project, view: "TABLE", displayUnits: "MM", defaultCurrency: "USD", onActivitiesChange: () => {},
+  }));
+
+  assert.ok(markup.includes(new Intl.NumberFormat("en-GB", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(125)));
+  assert.ok(markup.includes(new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(80)));
 });
 
 test("Gantt view has a useful empty state and renders saved activity bars", () => {

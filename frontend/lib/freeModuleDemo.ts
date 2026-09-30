@@ -1,9 +1,9 @@
-export const FREE_DEMO_MAX_PLANNER_ACTIVITIES = 5;
+export const PLANNER_BUILD_DEMO_MAX_ACTIVITIES = 5;
 export const FREE_DEMO_MAX_ELECTRICAL_CONNECTIONS = 5;
 export const FREE_DEMO_MAX_ELECTRICAL_CIRCUITS = 1;
 
 export function canAddPlannerActivityInDemo(demoMode: boolean, activityCount: number): boolean {
-  return !demoMode || activityCount < FREE_DEMO_MAX_PLANNER_ACTIVITIES;
+  return !demoMode || activityCount < PLANNER_BUILD_DEMO_MAX_ACTIVITIES;
 }
 
 export function canAddElectricalCircuitInDemo(demoMode: boolean, circuitCount: number): boolean {

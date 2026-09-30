@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import {
   addCalendarDays, calculatePlannerBuildMetrics, calendarDaysBetween, expectedDeliveryDate, formatDateKey, getPlannerBuildScheduleSummary,
@@ -11,13 +11,14 @@ import {
 } from "@/lib/plannerBuild";
 import { PLANNER_BUILD_ACTIVITY_LIBRARY, searchPlannerBuildActivityLibrary, type PlannerBuildActivityTemplate } from "@/lib/plannerBuildActivityLibrary";
 import type { DisplayUnits } from "@/lib/units";
+import { currencySymbol, type CurrencyCode } from "@/lib/appPreferences";
 import { formatPlannerBuildArea, formatPlannerBuildLength } from "@/lib/plannerBuildPresentation";
 import { ViewToggle } from "@/components/ViewToggle";
 import { PlannerBuildDashboard } from "@/components/PlannerBuildDashboard";
-import { canAddPlannerActivityInDemo, FREE_DEMO_MAX_PLANNER_ACTIVITIES } from "@/lib/freeModuleDemo";
+import { canAddPlannerActivityInDemo, PLANNER_BUILD_DEMO_MAX_ACTIVITIES } from "@/lib/freeModuleDemo";
 
 export type PlannerBuildView = "GANTT" | "TABLE";
-interface Props { project: ProjectDocument; view: PlannerBuildView; displayUnits: DisplayUnits; onActivitiesChange: (activities: PlannerBuildActivity[]) => void; demoMode?: boolean; onDemoLimitReached?: () => void }
+interface Props { project: ProjectDocument; view: PlannerBuildView; displayUnits: DisplayUnits; defaultCurrency?: CurrencyCode; onActivitiesChange: (activities: PlannerBuildActivity[]) => void; demoMode?: boolean; onDemoLimitReached?: () => void }
 type ActivityDraft = {
   activityId: string | null; name: string; startDate: string; endDate: string; colour: string; category: string;
   roomId: string; progress: number; notes: string; type: PlannerBuildActivityType; status: PlannerBuildActivity["status"];
@@ -35,12 +36,13 @@ type GanttGrouping = "NONE" | "CATEGORY" | "ROOM" | "TRADE";
 type GanttEntry = { kind: "GROUP"; key: string; label: string } | { kind: "ACTIVITY"; activity: PlannerBuildActivity };
 type DragState = { activityId: string; kind: DragKind; pointerId: number; originX: number; startDate: string; endDate: string };
 type ActivityRange = { activityId: string; startDate: string; endDate: string };
+type ActivityContextMenu = { activityId: string; x: number; y: number };
 const COLOUR_PRESETS = ["#2563EB", "#EA580C", "#0F766E", "#C026D3", "#65A30D", "#DC2626", "#0891B2", "#7C3AED", "#B45309", "#DB2777", "#15803D", "#475569"];
 const SCALE_DAY_WIDTH: Record<GanttScale, number> = { DAY: 42, WEEK: 18, MONTH: 5 };
 const LABEL_WIDTH = 290;
 const EMPTY_ACTIVITIES: PlannerBuildActivity[] = [];
 
-function newDraft(activity?: PlannerBuildActivity, template?: PlannerBuildActivityTemplate): ActivityDraft {
+function newDraft(activity?: PlannerBuildActivity, template?: PlannerBuildActivityTemplate, defaultCurrency: CurrencyCode = "GBP"): ActivityDraft {
   return {
     activityId: activity?.activityId ?? null, name: activity?.name ?? template?.name ?? "",
     startDate: activity?.startDate ?? "", endDate: activity?.endDate ?? "", colour: activity?.colour ?? template?.colour ?? COLOUR_PRESETS[0],
@@ -52,7 +54,7 @@ function newDraft(activity?: PlannerBuildActivity, template?: PlannerBuildActivi
     expectedDeliveryDate: activity?.expectedDeliveryDate ?? "", actualDeliveryDate: activity?.actualDeliveryDate ?? "",
     orderReference: activity?.orderReference ?? "", deliveryStatus: activity?.deliveryStatus ?? "not_ordered",
     decisionDeadline: activity?.decisionDeadline ?? "", inspectionStatus: activity?.inspectionStatus ?? "pending",
-    paymentDueDate: activity?.paymentDueDate ?? "", amount: activity?.amount?.toString() ?? "", currency: activity?.currency ?? "GBP",
+    paymentDueDate: activity?.paymentDueDate ?? "", amount: activity?.amount?.toString() ?? "", currency: activity?.currency ?? defaultCurrency,
     paymentStatus: activity?.paymentStatus ?? "unpaid", estimatedCost: activity?.estimatedCost?.toString() ?? "",
     actualCost: activity?.actualCost?.toString() ?? "", isBlocking: activity?.isBlocking ?? false, blockedReason: activity?.blockedReason ?? "",
   };
@@ -60,11 +62,11 @@ function newDraft(activity?: PlannerBuildActivity, template?: PlannerBuildActivi
 function stableId() { return globalThis.crypto?.randomUUID?.() ?? `activity-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; }
 function progressLabel(activity: PlannerBuildActivity) { return activity.status.replaceAll("_", " "); }
 function activityTypeLabel(type: PlannerBuildActivityType) { return type[0].toUpperCase() + type.slice(1); }
-function activityTypeMark(type: PlannerBuildActivityType) {
-  return ({ milestone: "◆", delivery: "↓", inspection: "✓", decision: "?", waiting: "Ⅱ", appointment: "◷", payment: "£" } as Partial<Record<PlannerBuildActivityType, string>>)[type] ?? "•";
+function activityTypeMark(type: PlannerBuildActivityType, currency: string = "GBP") {
+  return type === "payment" ? currencySymbol(currency) : ({ milestone: "◆", delivery: "↓", inspection: "✓", decision: "?", waiting: "Ⅱ", appointment: "◷" } as Partial<Record<PlannerBuildActivityType, string>>)[type] ?? "•";
 }
 
-export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoMode = false, onDemoLimitReached }: Props) {
+export function PlannerBuildWorkspace({ project, view, onActivitiesChange, defaultCurrency = "GBP", demoMode = false, onDemoLimitReached }: Props) {
   const activities = project.plannerBuild?.activities ?? EMPTY_ACTIVITIES;
   const rooms = project.rooms;
   const metrics = useMemo(() => calculatePlannerBuildMetrics(project), [project]);
@@ -84,6 +86,7 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoM
   const [libraryCategory, setLibraryCategory] = useState("ALL");
   const [past, setPast] = useState<PlannerBuildActivity[][]>([]);
   const [future, setFuture] = useState<PlannerBuildActivity[][]>([]);
+  const [activityContextMenu, setActivityContextMenu] = useState<ActivityContextMenu | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [previewRange, setPreviewRange] = useState<ActivityRange | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -96,6 +99,28 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoM
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [draft, addStep]);
+
+  useEffect(() => {
+    if (!activityContextMenu) return;
+    const dismissOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest(".pb-activity-context-menu")) return;
+      setActivityContextMenu(null);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setActivityContextMenu(null);
+    };
+    const dismissOnBlur = () => setActivityContextMenu(null);
+    window.addEventListener("pointerdown", dismissOnOutsidePointer);
+    window.addEventListener("keydown", dismissOnEscape);
+    window.addEventListener("blur", dismissOnBlur);
+    return () => {
+      window.removeEventListener("pointerdown", dismissOnOutsidePointer);
+      window.removeEventListener("keydown", dismissOnEscape);
+      window.removeEventListener("blur", dismissOnBlur);
+    };
+  }, [activityContextMenu]);
 
   function commitActivities(next: PlannerBuildActivity[]) {
     setPast((items) => [...items.slice(-39), activities]);
@@ -110,17 +135,17 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoM
     const next = future[0]; if (!next) return;
     setFuture((items) => items.slice(1)); setPast((items) => [...items.slice(-39), activities]); onActivitiesChange(next);
   }
-  function openEditor(activity?: PlannerBuildActivity) { setSelectedId(activity?.activityId ?? null); setDraft(newDraft(activity)); setAddStep(null); setFormError(""); }
+  function openEditor(activity?: PlannerBuildActivity) { setSelectedId(activity?.activityId ?? null); setDraft(newDraft(activity, undefined, defaultCurrency)); setAddStep(null); setFormError(""); }
   function startAdd() {
     if (!canAddPlannerActivityInDemo(demoMode, activities.length)) { onDemoLimitReached?.(); return; }
     setAddStep("CHOICE"); setLibrarySearch(""); setLibraryCategory("ALL"); setFormError("");
   }
-  function openCustomDraft() { setAddStep(null); setDraft(newDraft()); setSelectedId(null); setFormError(""); }
+  function openCustomDraft() { setAddStep(null); setDraft(newDraft(undefined, undefined, defaultCurrency)); setSelectedId(null); setFormError(""); }
   function openDeliveryDraft() {
     if (!canAddPlannerActivityInDemo(demoMode, activities.length)) { onDemoLimitReached?.(); return; }
-    setAddStep(null); setDraft({ ...newDraft(), type: "delivery", category: "PROCUREMENT" }); setSelectedId(null); setFormError("");
+    setAddStep(null); setDraft({ ...newDraft(undefined, undefined, defaultCurrency), type: "delivery", category: "PROCUREMENT" }); setSelectedId(null); setFormError("");
   }
-  function openTemplateDraft(template: PlannerBuildActivityTemplate) { setAddStep(null); setDraft(newDraft(undefined, template)); setSelectedId(null); setFormError(""); }
+  function openTemplateDraft(template: PlannerBuildActivityTemplate) { setAddStep(null); setDraft(newDraft(undefined, template, defaultCurrency)); setSelectedId(null); setFormError(""); }
   function saveActivity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!draft) return;
     if (!draft.name.trim()) { setFormError("Enter an activity name."); return; }
@@ -165,10 +190,10 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoM
       ...(draft.decisionDeadline ? { decisionDeadline: draft.decisionDeadline } : {}),
       ...(draft.type === "inspection" ? { inspectionStatus: draft.inspectionStatus } : {}),
       ...(draft.paymentDueDate ? { paymentDueDate: draft.paymentDueDate } : {}),
-      ...(amount !== undefined ? { amount, currency: (draft.currency || "GBP").toUpperCase().slice(0, 3) } : {}),
+      ...(amount !== undefined ? { amount, currency: (draft.currency || defaultCurrency).toUpperCase().slice(0, 3) } : {}),
       ...(draft.type === "payment" ? { paymentStatus: draft.paymentStatus } : {}),
-      ...(estimatedCost !== undefined ? { estimatedCost, currency: (draft.currency || "GBP").toUpperCase().slice(0, 3) } : {}),
-      ...(actualCost !== undefined ? { actualCost, currency: (draft.currency || "GBP").toUpperCase().slice(0, 3) } : {}),
+      ...(estimatedCost !== undefined ? { estimatedCost, currency: (draft.currency || defaultCurrency).toUpperCase().slice(0, 3) } : {}),
+      ...(actualCost !== undefined ? { actualCost, currency: (draft.currency || defaultCurrency).toUpperCase().slice(0, 3) } : {}),
       ...(savedStatus === "blocked" ? { isBlocking: draft.isBlocking, ...(draft.blockedReason.trim() ? { blockedReason: draft.blockedReason.trim().slice(0, 1000) } : {}) } : {}),
       sortOrder: existing?.sortOrder ?? activities.reduce((max, current) => Math.max(max, current.sortOrder), -1) + 1,
     };
@@ -178,6 +203,44 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoM
   function deleteActivity() {
     if (!draft?.activityId) return;
     commitActivities(activities.filter((item) => item.activityId !== draft.activityId).map((item) => ({ ...item, dependencyIds: item.dependencyIds.filter((id) => id !== draft.activityId) }))); setSelectedId(null); setDraft(null);
+  }
+  function openActivityContextMenu(event: ReactMouseEvent<HTMLButtonElement>, activity: PlannerBuildActivity) {
+    event.preventDefault();
+    setSelectedId(activity.activityId);
+    setActivityContextMenu({
+      activityId: activity.activityId,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 184)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 112)),
+    });
+  }
+  function duplicateActivity(activityId: string) {
+    const original = activities.find((item) => item.activityId === activityId);
+    setActivityContextMenu(null);
+    if (!original) return;
+    if (!canAddPlannerActivityInDemo(demoMode, activities.length)) { onDemoLimitReached?.(); return; }
+    let copyNumber = 1;
+    let name = "";
+    do {
+      const suffix = copyNumber === 1 ? " (copy)" : ` (copy ${copyNumber})`;
+      name = `${original.name.slice(0, 200 - suffix.length)}${suffix}`;
+      copyNumber += 1;
+    } while (activities.some((item) => item.name === name));
+    const activityIdForCopy = stableId();
+    const duplicate: PlannerBuildActivity = {
+      ...original,
+      activityId: activityIdForCopy,
+      name,
+      dependencyIds: [...original.dependencyIds],
+      sortOrder: activities.reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1,
+    };
+    commitActivities([...activities, duplicate]);
+    setSelectedId(activityIdForCopy);
+  }
+  function deleteActivityById(activityId: string) {
+    if (!activities.some((item) => item.activityId === activityId)) return;
+    commitActivities(activities.filter((item) => item.activityId !== activityId).map((item) => ({ ...item, dependencyIds: item.dependencyIds.filter((id) => id !== activityId) })));
+    setSelectedId((current) => current === activityId ? null : current);
+    setActivityContextMenu(null);
   }
 
   const sortedActivities = useMemo(() => [...activities].sort((a, b) => a.sortOrder - b.sortOrder || a.activityId.localeCompare(b.activityId)), [activities]);
@@ -336,12 +399,12 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoM
               const isEvent = activity.type !== "task" && activity.type !== "waiting";
               return <div className={`pb-gantt-row ${selected ? "selected" : ""}`} key={activity.activityId} role="row">
                 <div className="pb-gantt-activity-cell" role="rowheader">
-                  <button type="button" className="pb-activity-name" onClick={() => setSelectedId(activity.activityId)} onDoubleClick={() => openEditor(activity)} aria-label={activity.name + ", " + progressLabel(activity) + ". " + activityTypeLabel(activity.type) + ". Double-click to edit."}><strong><i className={"pb-type-mark type-" + activity.type} aria-hidden="true">{activityTypeMark(activity.type)}</i>{activity.name}</strong><span>{formatDateKey(activity.startDate, { day: "2-digit", month: "short" })} – {formatDateKey(activity.endDate, { day: "2-digit", month: "short" })} · {progressLabel(activity)}</span></button>
+                  <button type="button" className="pb-activity-name" onClick={() => setSelectedId(activity.activityId)} onDoubleClick={() => openEditor(activity)} onContextMenu={(event) => openActivityContextMenu(event, activity)} aria-label={activity.name + ", " + progressLabel(activity) + ". " + activityTypeLabel(activity.type) + ". Double-click to edit."}><strong><i className={"pb-type-mark type-" + activity.type} aria-hidden="true">{activityTypeMark(activity.type, activity.currency ?? defaultCurrency)}</i>{activity.name}</strong><span>{formatDateKey(activity.startDate, { day: "2-digit", month: "short" })} – {formatDateKey(activity.endDate, { day: "2-digit", month: "short" })} · {progressLabel(activity)}</span></button>
                   <button type="button" className="pb-edit-activity" onClick={() => openEditor(activity)} aria-label={`Edit ${activity.name}`} title="Edit activity">···</button>
                 </div>
                 <div className="pb-gantt-lane" role="cell" style={{ width: timelineWidth, backgroundSize: `${dayWidth}px 100%` }}>
                   <div className={`pb-gantt-bar status-${activity.status} ${isEvent ? "event-type-" + activity.type : ""} ${selected ? "selected" : ""} ${drag?.activityId === activity.activityId ? "dragging" : ""}`} style={{ left, width, backgroundColor: activity.colour }} role="group" aria-label={activity.name + ": " + formatDateKey(shown.startDate) + " to " + formatDateKey(shown.endDate) + ", " + activityTypeLabel(activity.type) + ", " + activity.progress + "% complete, " + progressLabel(activity)} tabIndex={0} onPointerDown={(event) => beginDrag(event, activity, "MOVE")} onClick={() => setSelectedId(activity.activityId)} onDoubleClick={() => openEditor(activity)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openEditor(activity); } }} title={activity.name + " - " + activity.progress + "% · drag to move · double-click to edit"}>
-                    <span className="pb-gantt-progress" style={{ width: activity.progress + "%" }} />{isEvent ? <span className="pb-gantt-event-mark" aria-hidden="true">{activityTypeMark(activity.type)}</span> : width > 76 && <span className="pb-gantt-bar-label" aria-hidden="true"><span className="pb-gantt-bar-name">{activity.name}</span><span className="pb-gantt-bar-progress-label">- {activity.progress}%</span></span>}
+                    <span className="pb-gantt-progress" style={{ width: activity.progress + "%" }} />{isEvent ? <span className="pb-gantt-event-mark" aria-hidden="true">{activityTypeMark(activity.type, activity.currency ?? defaultCurrency)}</span> : width > 76 && <span className="pb-gantt-bar-label" aria-hidden="true"><span className="pb-gantt-bar-name">{activity.name}</span><span className="pb-gantt-bar-progress-label">- {activity.progress}%</span></span>}
                     {!isEvent && <><button type="button" className="pb-gantt-resize pb-gantt-resize-start" aria-label={"Change start date for " + activity.name} onPointerDown={(event) => beginDrag(event, activity, "START")} /><button type="button" className="pb-gantt-resize pb-gantt-resize-end" aria-label={"Change end date for " + activity.name} onPointerDown={(event) => beginDrag(event, activity, "END")} /></>}
                   </div>
                 </div>
@@ -352,7 +415,7 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoM
         </div>
       </div>}
     </section>
-  ) : <PlannerBuildTable project={project} metrics={metrics} onEditActivity={openEditor} onAddActivity={startAdd} onAddDelivery={openDeliveryDraft} historyActions={<div className="pb-history-actions" aria-label="Schedule history"><button type="button" disabled={!past.length} onClick={undo}>Undo</button><button type="button" disabled={!future.length} onClick={redo}>Redo</button></div>} />}
+  ) : <PlannerBuildTable project={project} metrics={metrics} defaultCurrency={defaultCurrency} onEditActivity={openEditor} onAddActivity={startAdd} onAddDelivery={openDeliveryDraft} historyActions={<div className="pb-history-actions" aria-label="Schedule history"><button type="button" disabled={!past.length} onClick={undo}>Undo</button><button type="button" disabled={!future.length} onClick={redo}>Redo</button></div>} />}
       {addStep && <div className="pb-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAddStep(null); }}>
         {addStep === "CHOICE" ? <section className="pb-library-dialog" role="dialog" aria-modal="true" aria-labelledby="pb-add-choice-title">
           <header><div><span className="pb-eyebrow">PlannerBuild · Schedule</span><h2 id="pb-add-choice-title">Add activity</h2></div><button type="button" className="pb-close-button" aria-label="Close" onClick={() => setAddStep(null)}>×</button></header>
@@ -401,8 +464,13 @@ export function PlannerBuildWorkspace({ project, view, onActivitiesChange, demoM
       </div>}
   </>;
   return <div className="planner-build-content">
-    {demoMode && <div className="pb-free-demo-banner" role="status"><span>Free demo · {activities.length}/{FREE_DEMO_MAX_PLANNER_ACTIVITIES} activities saved. The full PlannerBuild module is included with Studio.</span><button type="button" className="pb-secondary-button" onClick={onDemoLimitReached}>See plans</button></div>}
+    {demoMode && <div className="pb-free-demo-banner" role="status"><span>PlannerBuild demo · {activities.length}/{PLANNER_BUILD_DEMO_MAX_ACTIVITIES} activities saved. Studio includes the full module with unlimited activities.</span><button type="button" className="pb-secondary-button" onClick={onDemoLimitReached}>See plans</button></div>}
     {rendered}
+    {activityContextMenu && activities.some((item) => item.activityId === activityContextMenu.activityId) && <div className="floorplan-context-menu pb-activity-context-menu" role="group" aria-label="Activity actions" style={{ left: activityContextMenu.x, top: activityContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
+      <strong>Activity</strong>
+      <button type="button" onClick={() => duplicateActivity(activityContextMenu.activityId)}>Duplicate</button>
+      <button type="button" className="danger-button" onClick={() => deleteActivityById(activityContextMenu.activityId)}>Delete activity</button>
+    </div>}
   </div>;
 }
 
@@ -563,15 +631,15 @@ type DashboardPanel = { kind: "ROOM" | "WALL" | "FINISHES" | "ELECTRICAL" | "PLU
 type DashboardCostGroup = { label: string; currency: string; estimated: number | null; actual: number | null; activityCount: number };
 const DEFAULT_DASHBOARD_SECTIONS: Record<DashboardSectionId, boolean> = { rooms: false, walls: false, finishes: false, electrical: false, plumbing: false, assets: false, programme: false, costs: false };
 
-function formatPlannerBuildCost(value: number, currency: string) {
-  const code = currency.trim().toUpperCase() || "GBP";
+function formatPlannerBuildCost(value: number, currency: string, defaultCurrency = "GBP") {
+  const code = currency.trim().toUpperCase() || defaultCurrency;
   try { return new Intl.NumberFormat("en-GB", { style: "currency", currency: code, maximumFractionDigits: 2 }).format(value); }
   catch { return code + " " + value.toLocaleString("en-GB", { maximumFractionDigits: 2 }); }
 }
 
-function PlannerBuildTable({ project, metrics, onEditActivity, onAddActivity, onAddDelivery, historyActions }: {
+function PlannerBuildTable({ project, metrics, defaultCurrency, onEditActivity, onAddActivity, onAddDelivery, historyActions }: {
   project: ProjectDocument; metrics: ReturnType<typeof calculatePlannerBuildMetrics>; onEditActivity: (activity?: PlannerBuildActivity) => void;
-  onAddActivity: () => void; onAddDelivery: () => void; historyActions: ReactNode;
+  defaultCurrency: CurrencyCode; onAddActivity: () => void; onAddDelivery: () => void; historyActions: ReactNode;
 }) {
   const [panel, setPanel] = useState<DashboardPanel | null>(null);
   const [costBreakdown, setCostBreakdown] = useState<"PHASE" | "TRADE" | "ROOM">("PHASE");
@@ -603,12 +671,12 @@ function PlannerBuildTable({ project, metrics, onEditActivity, onAddActivity, on
   }
   const costTotals = (field: "estimatedCost" | "actualCost") => {
     const totals = new Map<string, number>();
-    activities.forEach((activity) => { const value = activity[field]; if (typeof value === "number" && Number.isFinite(value)) { const currency = activity.currency?.trim().toUpperCase() || "GBP"; totals.set(currency, (totals.get(currency) ?? 0) + value); } });
+    activities.forEach((activity) => { const value = activity[field]; if (typeof value === "number" && Number.isFinite(value)) { const currency = activity.currency?.trim().toUpperCase() || defaultCurrency; totals.set(currency, (totals.get(currency) ?? 0) + value); } });
     return [...totals].sort(([a], [b]) => a.localeCompare(b));
   };
   const estimatedTotals = costTotals("estimatedCost");
   const actualTotals = costTotals("actualCost");
-  const costText = (totals: Array<[string, number]>) => totals.length ? totals.map(([currency, value]) => formatPlannerBuildCost(value, currency)).join(" · ") : "—";
+  const costText = (totals: Array<[string, number]>) => totals.length ? totals.map(([currency, value]) => formatPlannerBuildCost(value, currency, defaultCurrency)).join(" · ") : "—";
   const statusCount = (status: PlannerBuildActivity["status"]) => schedule.countsByStatus.find((item) => item.name === status)?.count ?? 0;
   const completedCount = statusCount("completed");
   const inProgressCount = statusCount("in_progress");
@@ -631,7 +699,7 @@ function PlannerBuildTable({ project, metrics, onEditActivity, onAddActivity, on
     activities.forEach((activity) => {
       const label = costBreakdown === "PHASE" ? activity.category || "Uncategorised" : costBreakdown === "TRADE" ? activity.trade || "Unassigned" : roomName(activity.roomId);
       if (activity.estimatedCost === undefined && activity.actualCost === undefined) return;
-      const currency = activity.currency?.trim().toUpperCase() || "GBP"; const key = label + "|" + currency;
+      const currency = activity.currency?.trim().toUpperCase() || defaultCurrency; const key = label + "|" + currency;
       const row = groups.get(key) ?? { label, currency, estimated: null, actual: null, activityCount: 0 };
       if (typeof activity.estimatedCost === "number" && Number.isFinite(activity.estimatedCost)) row.estimated = (row.estimated ?? 0) + activity.estimatedCost;
       if (typeof activity.actualCost === "number" && Number.isFinite(activity.actualCost)) row.actual = (row.actual ?? 0) + activity.actualCost;
@@ -644,8 +712,8 @@ function PlannerBuildTable({ project, metrics, onEditActivity, onAddActivity, on
       <th scope="row"><button type="button" className="pb-link-button" onClick={() => editActivity(activity)}><i style={{ backgroundColor: activity.colour }} aria-hidden="true" />{activity.name}</button></th>
       <td>{activityTypeLabel(activity.type)}</td><td>{activity.category || "—"}</td><td>{roomName(activity.roomId)}</td><td>{formatDateKey(activity.startDate)}</td><td>{formatDateKey(activity.endDate)}</td><td>{activity.actualStartDate ? formatDateKey(activity.actualStartDate) : "—"}</td><td>{activity.actualEndDate ? formatDateKey(activity.actualEndDate) : "—"}</td><td>{activity.actualEndDate ? `${calendarDaysBetween(activity.endDate, activity.actualEndDate)} days` : "—"}</td><td>{duration(activity)}</td>
       <td><span className={"pb-status-pill status-" + activity.status}>{activity.status.replaceAll("_", " ")}</span></td><td>{Number.isFinite(activity.progress) ? activity.progress + "%" : "—"}</td><td>{activity.trade || "—"}</td>
-      <td>{typeof activity.estimatedCost === "number" ? formatPlannerBuildCost(activity.estimatedCost, activity.currency || "GBP") : "—"}</td>
-      <td>{typeof activity.actualCost === "number" ? formatPlannerBuildCost(activity.actualCost, activity.currency || "GBP") : "—"}</td>
+      <td>{typeof activity.estimatedCost === "number" ? formatPlannerBuildCost(activity.estimatedCost, activity.currency || defaultCurrency, defaultCurrency) : "—"}</td>
+      <td>{typeof activity.actualCost === "number" ? formatPlannerBuildCost(activity.actualCost, activity.currency || defaultCurrency, defaultCurrency) : "—"}</td>
       <td>{activity.dependencyIds.length ? activity.dependencyIds.map((id) => activities.find((candidate) => candidate.activityId === id)?.name ?? "Unavailable").join(", ") : "—"}</td>
     </tr>)}</tbody></QuantityTable> : <p className="pb-table-note">No activities yet.</p>;
   const roomPanel = panel?.kind === "ROOM" ? metrics.rooms.find((room) => room.roomId === panel.id) : undefined;
@@ -659,7 +727,7 @@ function PlannerBuildTable({ project, metrics, onEditActivity, onAddActivity, on
   if (panel?.kind === "ROOM") {
     const linked = activities.filter((activity) => activity.roomId === panel.id);
     const roomCosts = new Map<string, number>();
-    linked.forEach((activity) => { if (typeof activity.estimatedCost === "number" && Number.isFinite(activity.estimatedCost)) { const code = activity.currency?.toUpperCase() || "GBP"; roomCosts.set(code, (roomCosts.get(code) ?? 0) + activity.estimatedCost); } });
+    linked.forEach((activity) => { if (typeof activity.estimatedCost === "number" && Number.isFinite(activity.estimatedCost)) { const code = activity.currency?.toUpperCase() || defaultCurrency; roomCosts.set(code, (roomCosts.get(code) ?? 0) + activity.estimatedCost); } });
     panelContent = roomPanel ? <><div className="pb-detail-facts"><div><span>Floor area</span><strong>{area(roomPanel.areaMm2)}</strong></div><div><span>Perimeter</span><strong>{length(roomPanel.perimeterMm)}</strong></div><div><span>Wall boundaries</span><strong>{roomPanel.boundaryCount}</strong></div><div><span>Net wall area</span><strong>{wallArea(roomPanel.netWallAreaMm2)}</strong></div><div><span>Doors · windows</span><strong>{roomPanel.doors} · {roomPanel.windows}</strong></div><div><span>Electrical · plumbing</span><strong>{count(roomPanel.electrical)} · {count(roomPanel.plumbing)}</strong></div><div><span>Other fittings</span><strong>{roomPanel.otherFittings}</strong></div><div><span>Floor finish</span><strong>{roomPanel.floorFinish ?? "Not set"}</strong></div><div><span>Linked estimates</span><strong>{roomCosts.size ? costText([...roomCosts]) : "—"}</strong></div></div><h3 className="pb-detail-subheading">Room activities</h3>{activityRegister(linked)}</> : <p className="pb-table-note">This room is no longer available. Its schedule records remain intact.</p>;
   } else if (panel?.kind === "WALL") {
     const linked = wallPanel ? activities.filter((activity) => activity.roomId === wallPanel.roomId) : [];
@@ -682,15 +750,15 @@ function PlannerBuildTable({ project, metrics, onEditActivity, onAddActivity, on
     activities.forEach((activity) => { const trade = activity.trade?.trim() || "Unassigned"; const row = workloads.get(trade) ?? { activities: 0, days: 0 }; row.activities += 1; row.days += Math.max(0, calendarDaysBetween(activity.startDate, activity.endDate) + 1); workloads.set(trade, row); });
     const payments = activities.filter((activity) => activity.type === "payment" && typeof activity.amount === "number");
     const paymentTotals = new Map<string, number>();
-    payments.forEach((activity) => { const code = activity.currency?.toUpperCase() || "GBP"; paymentTotals.set(code, (paymentTotals.get(code) ?? 0) + (activity.amount ?? 0)); });
+    payments.forEach((activity) => { const code = activity.currency?.toUpperCase() || defaultCurrency; paymentTotals.set(code, (paymentTotals.get(code) ?? 0) + (activity.amount ?? 0)); });
     panelContent = <><div className="pb-detail-facts"><div><span>Estimated</span><strong>{costText(estimatedTotals)}</strong></div><div><span>Actual recorded</span><strong>{costText(actualTotals)}</strong></div><div><span>Payment amounts recorded</span><strong>{costText([...paymentTotals])}</strong></div><div><span>Trades with activities</span><strong>{tradeCount}</strong></div></div>
       <div className="pb-detail-toolbar"><label>Group costs by<select value={costBreakdown} onChange={(event) => setCostBreakdown(event.target.value as typeof costBreakdown)}><option value="PHASE">Phase</option><option value="TRADE">Trade</option><option value="ROOM">Room</option></select></label></div>
-      {groups.length ? <QuantityTable><thead><tr><th>{costBreakdown === "PHASE" ? "Phase" : costBreakdown === "TRADE" ? "Trade" : "Room"}</th><th>Currency</th><th>Estimated</th><th>Actual</th><th>Activities with costs</th></tr></thead><tbody>{groups.map((item) => <tr key={item.label + item.currency}><th scope="row">{item.label}</th><td>{item.currency}</td><td>{item.estimated === null ? "—" : formatPlannerBuildCost(item.estimated, item.currency)}</td><td>{item.actual === null ? "—" : formatPlannerBuildCost(item.actual, item.currency)}</td><td>{item.activityCount}</td></tr>)}</tbody></QuantityTable> : <p className="pb-table-note">No estimated or actual activity costs have been entered. A dash means unknown, not £0.</p>}
+      {groups.length ? <QuantityTable><thead><tr><th>{costBreakdown === "PHASE" ? "Phase" : costBreakdown === "TRADE" ? "Trade" : "Room"}</th><th>Currency</th><th>Estimated</th><th>Actual</th><th>Activities with costs</th></tr></thead><tbody>{groups.map((item) => <tr key={item.label + item.currency}><th scope="row">{item.label}</th><td>{item.currency}</td><td>{item.estimated === null ? "—" : formatPlannerBuildCost(item.estimated, item.currency, defaultCurrency)}</td><td>{item.actual === null ? "—" : formatPlannerBuildCost(item.actual, item.currency, defaultCurrency)}</td><td>{item.activityCount}</td></tr>)}</tbody></QuantityTable> : <p className="pb-table-note">No estimated or actual activity costs have been entered. A dash means unknown, not zero.</p>}
       <h3 className="pb-detail-subheading">Activity costs · update estimates and actual spending</h3>
       {activities.length ? <QuantityTable><thead><tr><th>Activity</th><th>Predicted</th><th>Actual recorded</th><th>Actual − predicted</th><th /></tr></thead><tbody>{activities.map((activity) => {
-        const currency = activity.currency?.trim().toUpperCase() || "GBP";
+        const currency = activity.currency?.trim().toUpperCase() || defaultCurrency;
         const difference = activity.actualCost !== undefined && activity.estimatedCost !== undefined ? activity.actualCost - activity.estimatedCost : null;
-        return <tr key={activity.activityId}><th scope="row">{activity.name}</th><td>{activity.estimatedCost === undefined ? "Not set" : formatPlannerBuildCost(activity.estimatedCost, currency)}</td><td>{activity.actualCost === undefined ? "Not set" : formatPlannerBuildCost(activity.actualCost, currency)}</td><td className={difference !== null && difference > 0 ? "pb-cost-overrun" : undefined}>{difference === null ? "—" : `${difference > 0 ? "+" : ""}${formatPlannerBuildCost(difference, currency)}`}</td><td><button type="button" className="pb-inline-action" onClick={() => editActivity(activity)}>Edit costs</button></td></tr>;
+        return <tr key={activity.activityId}><th scope="row">{activity.name}</th><td>{activity.estimatedCost === undefined ? "Not set" : formatPlannerBuildCost(activity.estimatedCost, currency, defaultCurrency)}</td><td>{activity.actualCost === undefined ? "Not set" : formatPlannerBuildCost(activity.actualCost, currency, defaultCurrency)}</td><td className={difference !== null && difference > 0 ? "pb-cost-overrun" : undefined}>{difference === null ? "—" : `${difference > 0 ? "+" : ""}${formatPlannerBuildCost(difference, currency, defaultCurrency)}`}</td><td><button type="button" className="pb-inline-action" onClick={() => editActivity(activity)}>Edit costs</button></td></tr>;
       })}</tbody></QuantityTable> : <p className="pb-table-note">Add an activity to start recording costs.</p>}
       <p className="pb-table-note">Differences compare entered values on the same activity. Actual spending may still be incomplete.</p>
       <h3 className="pb-detail-subheading">Trade workload</h3><QuantityTable><thead><tr><th>Trade</th><th>Activities</th><th>Scheduled activity-days</th></tr></thead><tbody>{[...workloads].sort(([a], [b]) => a.localeCompare(b)).map(([trade, row]) => <tr key={trade}><th scope="row">{trade}</th><td>{row.activities}</td><td>{row.days}</td></tr>)}</tbody></QuantityTable><p className="pb-table-note">Activity-days sum inclusive date ranges; overlapping work is not netted.</p>
@@ -710,7 +778,7 @@ function PlannerBuildTable({ project, metrics, onEditActivity, onAddActivity, on
 
   return <section className="planner-build-table-view pb-dashboard-view" aria-label="PlannerBuild project dashboard">
     <header className="pb-dashboard-heading"><div><span className="pb-eyebrow">PlannerBuild · {project.name}</span><h1>Project dashboard</h1><p>Track spending, programme progress and materials. Updated from your saved project.</p></div><div className="pb-dashboard-actions">{historyActions}<button type="button" className="pb-primary-button" onClick={onAddActivity}>＋ Activity</button>{openButton("Activity register", "ACTIVITIES")}{openButton("Full quantity tables", "QUANTITIES")}</div></header>
-    <PlannerBuildDashboard activities={activities} metrics={metrics} today={today} onEdit={editActivity} onOpen={openPanel} onAddDelivery={onAddDelivery} />
+    <PlannerBuildDashboard activities={activities} metrics={metrics} today={today} defaultCurrency={defaultCurrency} onEdit={editActivity} onOpen={openPanel} onAddDelivery={onAddDelivery} />
     <div className="pb-dashboard-detail-heading"><div><span className="pb-eyebrow">Explore the project</span><h2>Detailed quantities & registers</h2></div><span>{summary.roomCount} rooms · {area(summary.totalFloorAreaMm2)} floor area · {summary.uniqueWallCount} walls</span></div>
     <div className="pb-dashboard-detail-grid">
     {section("rooms", "Floorplan", "Rooms", metrics.rooms.length + " rooms · " + area(summary.totalFloorAreaMm2) + " total floor area", <>

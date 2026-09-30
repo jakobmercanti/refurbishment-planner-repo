@@ -1,6 +1,6 @@
 "use client";
 
-import type { AppPreferences } from "@/lib/appPreferences";
+import { CURRENCY_OPTIONS, type AppPreferences, type CurrencyCode } from "@/lib/appPreferences";
 
 export { DEFAULT_APP_PREFERENCES } from "@/lib/appPreferences";
 export type { AppPreferences } from "@/lib/appPreferences";
@@ -51,6 +51,13 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
             <button type="button" className={preferences.units === "FEET" ? "active" : ""} aria-pressed={preferences.units === "FEET"} onClick={() => onChange({ ...preferences, units: "FEET" })}>Feet</button>
             <button type="button" className={preferences.units === "METERS" ? "active" : ""} aria-pressed={preferences.units === "METERS"} onClick={() => onChange({ ...preferences, units: "METERS" })}>Meters</button>
           </div>
+        </div>
+        <div className="settings-section">
+          <label className="settings-currency-label" htmlFor="settings-default-currency">Default currency</label>
+          <p>Used for costs without an item-specific currency. Changing this never converts existing amounts.</p>
+          <select id="settings-default-currency" className="settings-currency-select" value={preferences.currency} onChange={(event) => onChange({ ...preferences, currency: event.target.value as CurrencyCode })}>
+            {CURRENCY_OPTIONS.map(({ code, name, symbol }) => <option key={code} value={code}>{code} · {symbol} — {name}</option>)}
+          </select>
         </div>
         <label className="settings-check">
           <input type="checkbox" checked={preferences.confirmBeforeOpen} onChange={(event) => onChange({ ...preferences, confirmBeforeOpen: event.target.checked })} />

@@ -1,7 +1,7 @@
 import { addCalendarDays, calendarDaysBetween, type PlannerBuildActivity } from "./plannerBuild";
 
 const knownAmount = (value: number | undefined): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
-export const activityCurrency = (activity: PlannerBuildActivity) => activity.currency?.trim().toUpperCase() || "GBP";
+export const activityCurrency = (activity: PlannerBuildActivity, defaultCurrency = "GBP") => activity.currency?.trim().toUpperCase() || defaultCurrency;
 export const plannedDeliveryDate = (activity: PlannerBuildActivity) => activity.expectedDeliveryDate || (activity.orderDate && activity.leadTimeDays !== undefined ? addCalendarDays(activity.orderDate, activity.leadTimeDays) : activity.startDate);
 export const dashboardDueDate = (activity: PlannerBuildActivity) => activity.type === "delivery" ? plannedDeliveryDate(activity) : activity.type === "payment" ? activity.paymentDueDate || activity.startDate : activity.type === "decision" ? activity.decisionDeadline || activity.startDate : activity.endDate;
 export const dashboardActivityDone = (activity: PlannerBuildActivity) => activity.status === "completed" || (activity.type === "delivery" && (activity.deliveryStatus === "delivered" || Boolean(activity.actualDeliveryDate))) || (activity.type === "payment" && activity.paymentStatus === "paid") || (activity.type === "inspection" && activity.inspectionStatus === "passed");
@@ -20,13 +20,13 @@ export interface DashboardCurrencyCosts {
 }
 
 /** Derived only: never persist totals, infer prices, or combine different currencies. */
-export function calculatePlannerBuildDashboard(activities: readonly PlannerBuildActivity[], today: string) {
+export function calculatePlannerBuildDashboard(activities: readonly PlannerBuildActivity[], today: string, defaultCurrency = "GBP") {
   const currencies = new Map<string, DashboardCurrencyCosts>();
   const work = activities.filter((activity) => activity.type === "task" || activity.type === "waiting");
   let totalDays = 0, recordedDays = 0, plannedDays = 0;
   for (const activity of activities) {
     if (!knownAmount(activity.estimatedCost) && !knownAmount(activity.actualCost) && !(activity.type === "payment" && knownAmount(activity.amount))) continue;
-    const currency = activityCurrency(activity);
+    const currency = activityCurrency(activity, defaultCurrency);
     const row = currencies.get(currency) ?? { currency, estimated: null, actual: null, estimatedCount: 0, actualCount: 0, pairedCount: 0, pairedEstimated: 0, pairedActual: 0, paid: null, unpaid: null };
     if (knownAmount(activity.estimatedCost)) { row.estimated = (row.estimated ?? 0) + activity.estimatedCost; row.estimatedCount++; }
     if (knownAmount(activity.actualCost)) { row.actual = (row.actual ?? 0) + activity.actualCost; row.actualCount++; }

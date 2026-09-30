@@ -42,11 +42,24 @@ interface FloatingToolbarProps {
   onClose: () => void;
 }
 
-let nextFloatingZIndex = 20;
+let floatingPanelStack: HTMLElement[] = [];
 
-function claimNextFloatingZIndex() {
-  nextFloatingZIndex += 1;
-  return nextFloatingZIndex;
+function reindexFloatingPanels() {
+  floatingPanelStack = floatingPanelStack.filter((panel) => panel.isConnected);
+  floatingPanelStack.forEach((panel, index) => {
+    panel.style.zIndex = String(21 + index);
+  });
+}
+
+function bringFloatingPanelToFront(panel: HTMLElement) {
+  floatingPanelStack = floatingPanelStack.filter((current) => current !== panel && current.isConnected);
+  floatingPanelStack.push(panel);
+  reindexFloatingPanels();
+}
+
+function removeFloatingPanel(panel: HTMLElement) {
+  floatingPanelStack = floatingPanelStack.filter((current) => current !== panel);
+  reindexFloatingPanels();
 }
 
 function getToolbarWorkspace(panel: HTMLElement) {
@@ -109,13 +122,30 @@ function FloatingToolbarWindow({ title, children, className = "", compact = fals
   const dragRef = useRef<{ pointerX: number; pointerY: number; left: number; top: number; parentWidth: number; parentHeight: number; width: number; height: number } | null>(null);
   const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number; minimumHeight: number } | null>(null);
   const mouseDragRef = useRef(false);
+  const previousBringToFront = useRef(bringToFront);
   const [position, setPosition] = useState(defaultPosition);
   const [size, setSize] = useState<{ width: number; height: number | null }>(() => ({ width: initialSize?.width ?? DEFAULT_FLOATING_WINDOW_WIDTH, height: initialSize?.height ?? null }));
   const [minimumHeight, setMinimumHeight] = useState(compact ? 0 : MIN_FLOATING_WINDOW_HEIGHT);
-  const [zIndex, setZIndex] = useState(20);
   const [isDocked, setIsDocked] = useState(Boolean(dock));
   const [heightMaximized, setHeightMaximized] = useState(false);
   const heightMaximizeRestoreRef = useRef<{ position: { x: number; y: number }; size: { width: number; height: number | null }; isDocked: boolean } | null>(null);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    bringFloatingPanelToFront(panel);
+    return () => removeFloatingPanel(panel);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!bringToFront || previousBringToFront.current) {
+      previousBringToFront.current = bringToFront;
+      return;
+    }
+    const panel = panelRef.current;
+    if (panel) bringFloatingPanelToFront(panel);
+    previousBringToFront.current = bringToFront;
+  }, [bringToFront]);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
@@ -145,7 +175,7 @@ function FloatingToolbarWindow({ title, children, className = "", compact = fals
     };
   }, [compact, heightMaximized, maxHeight]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
     const parent = getToolbarWorkspace(panel);
@@ -191,7 +221,7 @@ function FloatingToolbarWindow({ title, children, className = "", compact = fals
   }, []);
 
   function focusPanel() {
-    setZIndex(claimNextFloatingZIndex());
+    if (panelRef.current) bringFloatingPanelToFront(panelRef.current);
   }
 
   function toggleHeightMaximized(event: ReactMouseEvent<HTMLElement>) {
@@ -344,7 +374,7 @@ function FloatingToolbarWindow({ title, children, className = "", compact = fals
     maxHeight: heightMaximized ? "calc(100% - 16px)" : size.height === null
       ? (docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `min(${maxHeight}px, calc(100% - 16px))`)
       : "calc(100% - 16px)",
-    zIndex: bringToFront ? 1000 : zIndex,
+    zIndex: 20,
   } as CSSProperties;
   return <section ref={panelRef} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onPointerDown={focusPanel}>
     <header className="floating-toolbar-titlebar" aria-label={`Move ${title}`} title={`${heightMaximized ? "Double-click to restore" : "Double-click to maximise height"} · Drag to move ${title}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onMouseDown={beginMouseDrag} onDoubleClick={toggleHeightMaximized}>

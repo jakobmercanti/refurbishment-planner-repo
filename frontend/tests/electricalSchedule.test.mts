@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { electricalBomRows, electricalConnectionRows } from "../lib/electricalSchedule.ts";
-import { DEFAULT_ELECTRICAL_DOCUMENTATION, DEFAULT_ELECTRICAL_LAYOUT, type ElectricalConnection, type ElectricalLayoutData } from "../lib/electricalLayout.ts";
+import { DEFAULT_ELECTRICAL_CIRCUIT, DEFAULT_ELECTRICAL_DOCUMENTATION, DEFAULT_ELECTRICAL_LAYOUT, type ElectricalConnection, type ElectricalLayoutData } from "../lib/electricalLayout.ts";
 import { planElectricalLayoutImport, type ElectricalLayoutPackage } from "../lib/electricalLayoutPackage.ts";
 import type { Obstacle, Room } from "../lib/types.ts";
 import { ElectricalScheduleWindow } from "../components/ElectricalScheduleWindow.tsx";
@@ -21,14 +21,14 @@ const room = (id: string, obstacles: Obstacle[] = []): Room => ({
 } as unknown as Room);
 
 function connection(id: string, fromId: string, toId: string, routing: ElectricalConnection["routing"] = "STRAIGHT", waypoints: ElectricalConnection["waypoints"] = []): ElectricalConnection {
-  return { id, fromId, toId, type: "POWER", color: "#287fb8", lineStyle: "DASHED", width: "MEDIUM", routing, waypoints };
+  return { id, fromId, toId, type: "POWER", circuitId: DEFAULT_ELECTRICAL_CIRCUIT.id, color: "#287fb8", lineStyle: "DASHED", width: "MEDIUM", routing, waypoints };
 }
 
 function archive(items: Array<{ roomId: string; obstacle: Obstacle }>, connections: ElectricalConnection[] = [], forceOrthogonalRouting = true): ElectricalLayoutPackage {
   return {
     packageType: "freefloorplan3d-electrical-layout", schemaVersion: 1, projectName: "Example", exportedAt: "",
     items, assets: [], assetInstances: [],
-    electricalLayout: { forceOrthogonalRouting, connections, circuits: [], documentation: structuredClone(DEFAULT_ELECTRICAL_DOCUMENTATION) },
+    electricalLayout: { forceOrthogonalRouting, connections, circuits: [{ ...DEFAULT_ELECTRICAL_CIRCUIT }], documentation: structuredClone(DEFAULT_ELECTRICAL_DOCUMENTATION) },
   };
 }
 
@@ -89,6 +89,26 @@ test("electrical schedule keeps notes and photos in BOM entry details without se
   assert.match(markup, /Switch reference/);
   assert.match(markup, /White finish/);
   assert.match(markup, /Project-wide notes, photos &amp; document details/);
+});
+
+test("electrical BOM uses the settings currency unless a row has its own currency", () => {
+  const switchItem = obstacle("switch-1", { x: 500, y: 500 }, "electrical-switch-single", "Single rocker switch");
+  const bomKey = "catalogue:electrical-switch-single";
+  const layout: ElectricalLayoutData = {
+    ...DEFAULT_ELECTRICAL_LAYOUT,
+    documentation: {
+      ...DEFAULT_ELECTRICAL_DOCUMENTATION,
+      bomOverrides: { [bomKey]: { unitCost: 250 } },
+      manualBomItems: [{ bomRowId: "manual-cable", description: "Cable", quantity: 1, unitCost: 80, currency: "EUR" }],
+    },
+  };
+  const markup = renderToStaticMarkup(createElement(ElectricalScheduleWindow, {
+    rooms: [room("room-1", [switchItem])], assets: [], instances: [], layout, projectName: "Example", defaultCurrency: "USD", onLayoutChange: () => {},
+  }));
+
+  assert.ok(markup.includes(new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(250)));
+  assert.ok(markup.includes(new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" }).format(80)));
+  assert.match(markup, /value="USD"/);
 });
 
 test("Replace changes only electrical data and frees wall-mounted items without a wall reference", () => {

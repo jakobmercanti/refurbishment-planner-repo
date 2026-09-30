@@ -45,6 +45,8 @@ test("offline catalogue keeps all plan information but cannot start billing acti
   assert.ok(!markup.includes("<td>Included</td>"));
   assert.ok(!markup.includes("<td>Not included</td>"));
   assert.equal(includesPlannerBuild("studio"), true);
+  assert.equal(includesPlannerBuild("free"), false);
+  assert.equal(includesPlannerBuild("starter"), false);
   assert.equal(includesPlannerBuild("pro"), false);
   const freeCardFeatures = markup.match(/<article class="plan-card [^>]*>.*?<ul>(.*?)<\/ul>/s)?.[1] ?? "";
   assert.ok(!freeCardFeatures.includes("Full Electrical Layout module on paid plans"));

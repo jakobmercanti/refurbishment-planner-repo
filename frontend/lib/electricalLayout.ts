@@ -18,7 +18,7 @@ export interface ElectricalConnection {
   /** False means the assigned circuit supplies the displayed colour. */
   colorOverride?: boolean;
   label?: string;
-  circuitId?: string;
+  circuitId: string;
 }
 
 export interface ElectricalCircuit {
@@ -108,13 +108,23 @@ export const DEFAULT_ELECTRICAL_DOCUMENTATION: ElectricalLayoutDocumentation = {
   bomOverrides: {}, hiddenBomKeys: [], manualBomItems: [], connectionNotes: {}, circuitNotes: {},
   generalNotes: "", attachments: [], exportMetadata: {},
 };
-export const DEFAULT_ELECTRICAL_LAYOUT: ElectricalLayoutData = { forceOrthogonalRouting: true, connections: [], circuits: [], documentation: DEFAULT_ELECTRICAL_DOCUMENTATION };
 export const DEFAULT_ELECTRICAL_CONNECTION: ElectricalConnectionDefaults = {
   color: "#287fb8",
   lineStyle: "DASHED",
   width: "MEDIUM",
   routing: "ORTHOGONAL",
   type: "GENERIC",
+};
+export const DEFAULT_ELECTRICAL_CIRCUIT: ElectricalCircuit = {
+  id: "electrical-circuit-default",
+  name: "Circuit 1",
+  color: DEFAULT_ELECTRICAL_CONNECTION.color,
+};
+export const DEFAULT_ELECTRICAL_LAYOUT: ElectricalLayoutData = {
+  forceOrthogonalRouting: true,
+  connections: [],
+  circuits: [{ ...DEFAULT_ELECTRICAL_CIRCUIT }],
+  documentation: DEFAULT_ELECTRICAL_DOCUMENTATION,
 };
 
 const colours = /^#[\da-f]{6}$/i;
@@ -242,12 +252,12 @@ function fallbackId(prefix: string): string {
 }
 
 export function createElectricalConnection(
-  input: Pick<ElectricalConnection, "fromId" | "toId"> & Partial<Omit<ElectricalConnection, "fromId" | "toId">>,
+  input: Pick<ElectricalConnection, "fromId" | "toId" | "circuitId"> & Partial<Omit<ElectricalConnection, "fromId" | "toId" | "circuitId">>,
   existing: readonly ElectricalConnection[],
   defaults: ElectricalConnectionDefaults = DEFAULT_ELECTRICAL_CONNECTION,
 ): ElectricalConnection | null {
   const type = input.type ?? defaults.type;
-  if (!input.fromId || !input.toId || input.fromId === input.toId || !connectionTypes.has(type)) return null;
+  if (!safeId(input.fromId) || !safeId(input.toId) || !safeId(input.circuitId) || input.fromId === input.toId || !connectionTypes.has(type)) return null;
   if (existing.some((item) => item.fromId === input.fromId && item.toId === input.toId && item.type === type && item.circuitId === input.circuitId)) return null;
   return {
     id: input.id && safeId(input.id) ? input.id : fallbackId("electrical-connection"),
@@ -261,12 +271,12 @@ export function createElectricalConnection(
     waypoints: (input.waypoints ?? []).filter(safePoint).map((point) => ({ ...point })).slice(0, 500),
     ...(typeof input.colorOverride === "boolean" ? { colorOverride: input.colorOverride } : {}),
     ...(typeof input.label === "string" && input.label.trim() ? { label: input.label.trim().slice(0, 100) } : {}),
-    ...(input.circuitId ? { circuitId: input.circuitId } : {}),
+    circuitId: input.circuitId,
   };
 }
 
 export function normalizeElectricalLayout(value: unknown, validElectricalIds: ReadonlySet<string>): ElectricalLayoutData {
-  if (!value || typeof value !== "object") return { forceOrthogonalRouting: true, connections: [], circuits: [], documentation: DEFAULT_ELECTRICAL_DOCUMENTATION };
+  if (!value || typeof value !== "object") return { ...DEFAULT_ELECTRICAL_LAYOUT, circuits: [{ ...DEFAULT_ELECTRICAL_CIRCUIT }] };
   const raw = value as { forceOrthogonalRouting?: unknown; connections?: unknown; circuits?: unknown; documentation?: unknown };
   const circuits: ElectricalCircuit[] = [];
   const circuitIds = new Set<string>();
@@ -279,6 +289,8 @@ export function normalizeElectricalLayout(value: unknown, validElectricalIds: Re
       circuits.push({ id: item.id, name: item.name.trim().slice(0, 100), color: typeof item.color === "string" && colours.test(item.color) ? item.color : DEFAULT_ELECTRICAL_CONNECTION.color, ...(typeof item.description === "string" ? { description: item.description.slice(0, 500) } : {}) });
     }
   }
+  if (!circuits.length) circuits.push({ ...DEFAULT_ELECTRICAL_CIRCUIT });
+  const fallbackCircuitId = circuits[0].id;
   const connections: ElectricalConnection[] = [];
   const ids = new Set<string>();
   const pairs = new Set<string>();
@@ -288,10 +300,10 @@ export function normalizeElectricalLayout(value: unknown, validElectricalIds: Re
       const item = candidate as Partial<ElectricalConnection>;
       if (!safeId(item.id) || ids.has(item.id) || !safeId(item.fromId) || !safeId(item.toId) || item.fromId === item.toId) continue;
       if (!validElectricalIds.has(item.fromId) || !validElectricalIds.has(item.toId) || !connectionTypes.has(item.type as ElectricalConnectionType)) continue;
-      if (item.circuitId && !circuitIds.has(item.circuitId)) continue;
-      const pair = `${item.fromId}\u0000${item.toId}\u0000${item.type}\u0000${item.circuitId ?? ""}`;
+      const circuitId = item.circuitId && circuitIds.has(item.circuitId) ? item.circuitId : fallbackCircuitId;
+      const pair = `${item.fromId}\u0000${item.toId}\u0000${item.type}\u0000${circuitId}`;
       if (pairs.has(pair)) continue;
-      const connection = createElectricalConnection(item as Pick<ElectricalConnection, "fromId" | "toId"> & Partial<Omit<ElectricalConnection, "id" | "fromId" | "toId">> & { id: string }, connections);
+      const connection = createElectricalConnection({ ...item, circuitId } as ElectricalConnection, connections);
       if (!connection) continue;
       connection.id = item.id;
       if (typeof item.colorOverride === "boolean") connection.colorOverride = item.colorOverride;

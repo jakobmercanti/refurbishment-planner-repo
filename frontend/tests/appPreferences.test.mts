@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SettingsDialog } from "../components/SettingsDialog.tsx";
 import {
   APP_APPEARANCE_STORAGE_KEY,
+  DEFAULT_APP_PREFERENCES,
   readAppearancePreferences,
   resolveTheme,
   watchThemePreference,
@@ -25,22 +29,36 @@ class FakeMediaQuery {
   }
 }
 
-test("appearance preferences persist theme and density together as app-local values", () => {
+test("application preferences persist theme, density and currency together", () => {
   const storage = new MemoryStorage();
-  writeAppearancePreferences({ theme: "DARK", density: "COMFORTABLE" }, storage);
+  writeAppearancePreferences({ theme: "DARK", density: "COMFORTABLE", currency: "GBP" }, storage);
   assert.deepEqual(JSON.parse(storage.getItem(APP_APPEARANCE_STORAGE_KEY)!), {
     theme: "dark",
     density: "comfortable",
+    currency: "GBP",
   });
-  assert.deepEqual(readAppearancePreferences(storage), { theme: "DARK", density: "COMFORTABLE" });
+  assert.deepEqual(readAppearancePreferences(storage), { theme: "DARK", density: "COMFORTABLE", currency: "GBP" });
 
-  writeAppearancePreferences({ theme: "SYSTEM", density: "COMPACT" }, storage);
-  assert.deepEqual(readAppearancePreferences(storage), { theme: "SYSTEM", density: "COMPACT" });
+  writeAppearancePreferences({ theme: "SYSTEM", density: "COMPACT", currency: "USD" }, storage);
+  assert.deepEqual(readAppearancePreferences(storage), { theme: "SYSTEM", density: "COMPACT", currency: "USD" });
+});
+
+test("settings exposes the selected default currency and explains that values are not converted", () => {
+  const markup = renderToStaticMarkup(createElement(SettingsDialog, {
+    open: true,
+    preferences: { ...DEFAULT_APP_PREFERENCES, currency: "USD" },
+    onChange: () => {},
+    onClose: () => {},
+  }));
+  assert.match(markup, /Default currency/);
+  assert.match(markup, /id="settings-default-currency"/);
+  assert.match(markup, /value="USD" selected/);
+  assert.match(markup, /never converts existing amounts/);
 });
 
 test("malformed or unsupported stored appearance values fall back independently", () => {
   const storage = new MemoryStorage();
-  storage.setItem(APP_APPEARANCE_STORAGE_KEY, JSON.stringify({ theme: "sepia", density: "compact" }));
+  storage.setItem(APP_APPEARANCE_STORAGE_KEY, JSON.stringify({ theme: "sepia", density: "compact", currency: "not-a-currency" }));
   assert.deepEqual(readAppearancePreferences(storage), { density: "COMPACT" });
   storage.setItem(APP_APPEARANCE_STORAGE_KEY, "{");
   assert.deepEqual(readAppearancePreferences(storage), {});
@@ -89,5 +107,5 @@ test("storage failures do not interrupt the in-memory preference workflow", () =
     setItem() { throw new Error("blocked"); },
   };
   assert.deepEqual(readAppearancePreferences(unavailable), {});
-  assert.doesNotThrow(() => writeAppearancePreferences({ theme: "LIGHT", density: "COMPACT" }, unavailable));
+  assert.doesNotThrow(() => writeAppearancePreferences({ theme: "LIGHT", density: "COMPACT", currency: "GBP" }, unavailable));
 });

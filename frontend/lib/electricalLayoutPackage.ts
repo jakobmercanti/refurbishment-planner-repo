@@ -2,7 +2,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { assetRepository, contentHash, MAX_GLB_BYTES, validateGlb } from "./assetRepository";
 import { completed, localDatabase } from "./localDatabase";
 import { getElectricalImage, validateElectricalImageBytes } from "./electricalAttachments";
-import { isElectricalObstacle, type ElectricalLayoutData } from "./electricalLayout";
+import { DEFAULT_ELECTRICAL_CIRCUIT, isElectricalObstacle, type ElectricalLayoutData } from "./electricalLayout";
 import { newProject, parseProject, type AssetDefinition, type AssetInstance } from "./projectDocument";
 import type { Obstacle, Room } from "./types";
 
@@ -54,7 +54,28 @@ function validatePackageData(raw: unknown): ElectricalLayoutPackage {
     openings: [], obstacles,
   }));
   const project = parseProject({ ...newProject(), name: typeof candidate.projectName === "string" ? candidate.projectName.slice(0, 200) : "Electrical layout", rooms, assets: candidate.assets, assetInstances: candidate.assetInstances, electricalLayout: candidate.electricalLayout });
-  if (project.electricalLayout!.circuits.length !== candidate.electricalLayout?.circuits.length
+  const rawCircuits = candidate.electricalLayout.circuits as unknown[];
+  const circuitsAreValid = rawCircuits.length === 0
+    ? project.electricalLayout!.circuits.length === 1
+      && project.electricalLayout!.circuits[0].id === DEFAULT_ELECTRICAL_CIRCUIT.id
+      && project.electricalLayout!.circuits[0].name === DEFAULT_ELECTRICAL_CIRCUIT.name
+    : project.electricalLayout!.circuits.length === rawCircuits.length
+      && rawCircuits.every((rawCircuit, index) => {
+        if (!rawCircuit || typeof rawCircuit !== "object") return false;
+        const circuit = rawCircuit as { id?: unknown; name?: unknown };
+        return typeof circuit.id === "string"
+          && typeof circuit.name === "string"
+          && project.electricalLayout!.circuits[index].id === circuit.id
+          && project.electricalLayout!.circuits[index].name === circuit.name.trim().slice(0, 100);
+      });
+  const rawCircuitIds = new Set(rawCircuits.flatMap((rawCircuit) => rawCircuit && typeof rawCircuit === "object" && typeof (rawCircuit as { id?: unknown }).id === "string" ? [(rawCircuit as { id: string }).id] : []));
+  const hasBrokenCircuitReference = candidate.electricalLayout.connections.some((rawConnection) => {
+    if (!rawConnection || typeof rawConnection !== "object") return false;
+    const circuitId = (rawConnection as { circuitId?: unknown }).circuitId;
+    return typeof circuitId === "string" && circuitId.length > 0 && !rawCircuitIds.has(circuitId);
+  });
+  if (!circuitsAreValid
+    || hasBrokenCircuitReference
     || project.electricalLayout!.connections.length !== candidate.electricalLayout?.connections.length
     || project.electricalLayout!.documentation.attachments.length !== candidate.electricalLayout?.documentation.attachments.length
     || project.assetInstances.length !== candidate.assetInstances.length) throw new Error("Electrical layout contains a broken connection, circuit, picture or asset reference.");
@@ -276,13 +297,15 @@ export function planElectricalLayoutImport(
   if (missingAssets) warnings.push(`${missingAssets} placed electrical asset${missingAssets === 1 ? "" : "s"} could not be matched to this project’s local catalogue and were not imported.`);
   const assetInstances = [...retainedInstances, ...nextElectricalInstances];
 
+  const archivedCircuits = archive.electricalLayout.circuits.length ? archive.electricalLayout.circuits : [{ ...DEFAULT_ELECTRICAL_CIRCUIT }];
   const occupiedCircuitIds = new Set((mode === "REPLACE" ? [] : currentLayout.circuits).map((circuit) => circuit.id));
   const remappedCircuitIds = new Map<string, string>();
-  const circuits = archive.electricalLayout.circuits.map((circuit) => {
+  const circuits = archivedCircuits.map((circuit) => {
     const nextId = occupiedCircuitIds.has(circuit.id) ? id("electrical-circuit") : circuit.id;
     occupiedCircuitIds.add(nextId); remappedCircuitIds.set(circuit.id, nextId);
     return { ...circuit, id: nextId };
   });
+  const fallbackCircuitId = remappedCircuitIds.get(archivedCircuits[0].id)!;
   const occupiedConnectionIds = new Set((mode === "REPLACE" ? [] : currentLayout.connections).map((connection) => connection.id));
   const remappedConnectionIds = new Map<string, string>();
   let skippedConnections = 0;
@@ -293,7 +316,7 @@ export function planElectricalLayoutImport(
     const nextId = occupiedConnectionIds.has(connection.id) ? id("electrical-connection") : connection.id;
     occupiedConnectionIds.add(nextId);
     remappedConnectionIds.set(connection.id, nextId);
-    return [{ ...connection, id: nextId, fromId, toId, ...(connection.circuitId ? { circuitId: remappedCircuitIds.get(connection.circuitId) } : {}), waypoints: connection.waypoints.map((point) => ({ ...point })) }];
+    return [{ ...connection, id: nextId, fromId, toId, circuitId: remappedCircuitIds.get(connection.circuitId) ?? fallbackCircuitId, waypoints: connection.waypoints.map((point) => ({ ...point })) }];
   });
   if (skippedConnections) warnings.push(`${skippedConnections} connection${skippedConnections === 1 ? " was" : "s were"} not imported because one or both fittings could not be matched.`);
   const importedDocs = archive.electricalLayout.documentation;

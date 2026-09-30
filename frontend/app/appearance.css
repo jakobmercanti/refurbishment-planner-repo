@@ -43,14 +43,19 @@ html[data-theme="dark"] body {
   color: var(--ink);
 }
 
-/* Keep the 2D drawing and 3D scene as project/document surfaces. The floorplan
-   SVG restores its configured drawing tokens; no material or connection color
-   is derived from the application theme. */
-html[data-theme="dark"] :is(.environment-screen, .analysis-workspace, .full-plan-page) {
-  background-color: #f6f5f0;
+/* Keep workspace surfaces halfway between their dark and light appearances.
+   Room fills, symbols, dimensions, imported images and 3D materials stay project-owned. */
+html[data-theme="dark"] {
+  --workspace-view-background: color-mix(in srgb, #111b27 50%, var(--configured-paper, #f6f5f0) 50%);
+  --workspace-canvas-background: color-mix(in srgb, #1b2837 50%, #eef1ed 50%);
+  --workspace-canvas-grid: #70797f;
+}
+html[data-theme="dark"] :is(.environment-screen, .analysis-workspace, .full-plan-page, .viewer-shell) {
+  background-color: var(--workspace-view-background);
 }
 html[data-theme="dark"] svg.floor-canvas {
   color-scheme: light;
+  background-color: var(--workspace-canvas-background);
   --ink: var(--configured-ink, #17211d);
   --muted: var(--configured-muted, #68746e);
   --line: var(--configured-line, #d8ddd8);
@@ -62,6 +67,17 @@ html[data-theme="dark"] svg.floor-canvas {
   --fit: var(--configured-fit, #197a50);
   --verify: var(--configured-verify, #a86600);
   --fail: var(--configured-fail, #b73939);
+}
+/* The full-plan editor injects per-style SVG rules, so explicitly theme only
+   the blank canvas rect and grid in the interactive view. */
+html[data-theme="dark"] svg.floor-canvas .canvas-background:not(.underlay) {
+  fill: var(--workspace-canvas-background) !important;
+}
+html[data-theme="dark"] svg.floor-canvas .canvas-background.underlay {
+  fill: transparent !important;
+}
+html[data-theme="dark"] svg.floor-canvas .plan-grid line {
+  stroke: var(--workspace-canvas-grid);
 }
 
 /* Raised application surfaces, including windows rendered through portals. */
@@ -216,6 +232,9 @@ html[data-theme="dark"] :is(
 
 /* PlannerBuild surfaces adapt, while user-selected Gantt bar fills stay intact. */
 html[data-theme="dark"] :is(.planner-build-screen, .pb-gantt-scroll, .pb-dashboard-dialog-content) { background-color: var(--paper); }
+html[data-theme="dark"] .pb-dashboard-heading .pb-eyebrow,
+html[data-theme="dark"] .pb-dashboard-heading p { color: #26332d; }
+html[data-theme="dark"] .pb-dashboard-heading h1 { color: #183d34; }
 html[data-theme="dark"] :is(.pb-gantt-header, .pb-gantt-header-label, .pb-gantt-group-row) { background-color: var(--surface-muted); color: var(--ink); border-color: var(--line); }
 html[data-theme="dark"] :is(.pb-gantt-row, .pb-gantt-activity-cell, .pb-dashboard-columns > section, .pb-dashboard-overview, .pb-programme-health) { border-color: var(--line); }
 html[data-theme="dark"] .pb-gantt-lane { background-color: var(--paper); }
@@ -263,6 +282,21 @@ html[data-theme="dark"] :is(.custom-asset-success, .electrical-layout-status, .p
 }
 
 html[data-theme="dark"] :is(.local-save-status, .app-nav-entry:hover, .popup-actions, .catalogue-results, .catalogue-categories, .catalogue-toolbar, .electrical-schedule-tab-content, .electrical-project-documentation-content) {
+  color: var(--ink);
+}
+html[data-theme="dark"] .local-save-status {
+  background: var(--ui-window-headerBackground);
+}
+html[data-theme="dark"] .element-add-editor > .fixture-save {
+  box-shadow: none;
+}
+html[data-theme="dark"] .element-add-editor .fixture-add-section {
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+html[data-theme="dark"] .element-add-editor .fixture-list article {
+  background: var(--surface-subtle);
+  border-color: var(--line);
   color: var(--ink);
 }
 html[data-theme="dark"] :is(.catalogue-branch, .electrical-schedule-circuit, .electrical-schedule-connection, .electrical-schedule-table th, .electrical-schedule-table td) { border-color: var(--line); }
