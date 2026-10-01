@@ -1,4 +1,5 @@
 "use client";
+import { metalFinishProps } from "@/lib/metalSurface";
 import { useEffect, useMemo } from "react";
 import { CatmullRomCurve3, LatheGeometry, Path, Shape, Vector2, Vector3 } from "three";
 
@@ -45,20 +46,20 @@ export function BathFixture({ representation, width, depth, height, colour = "#F
     {(inset || corner) && <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .84, 0]} castShadow receiveShadow><extrudeGeometry args={[deck, { depth: .035, bevelEnabled: false, curveSegments: 64 }]} /><meshPhysicalMaterial color={interiorColour} roughness={.2} clearcoat={.65} /></mesh>
       {(corner ? [-1] : [-1, 1]).map(side => <group key={side}>
-        <mesh position={[0, .42, (corner ? 1 : side) * .48]} castShadow><boxGeometry args={[.96, .8, .025]} /><meshStandardMaterial color={colour} roughness={.35} /></mesh>
-        <mesh position={[side * .48, .42, 0]} castShadow><boxGeometry args={[.025, .8, .96]} /><meshStandardMaterial color={colour} roughness={.35} /></mesh>
+        <mesh position={[0, .42, (corner ? 1 : side) * .48]} castShadow><boxGeometry args={[.96, .8, .025]} /><meshStandardMaterial color={colour} roughness={.35} {...metalFinishProps(colour)} /></mesh>
+        <mesh position={[side * .48, .42, 0]} castShadow><boxGeometry args={[.025, .8, .96]} /><meshStandardMaterial color={colour} roughness={.35} {...metalFinishProps(colour)} /></mesh>
       </group>)}
       {corner && <>
-        <mesh position={[.48, .42, .3]} castShadow><boxGeometry args={[.025, .8, .4]} /><meshStandardMaterial color={colour} roughness={.3} /></mesh>
-        <mesh position={[-.3, .42, -.48]} castShadow><boxGeometry args={[.4, .8, .025]} /><meshStandardMaterial color={colour} roughness={.3} /></mesh>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .02, 0]} castShadow><extrudeGeometry args={[apron, { depth: .82, bevelEnabled: false, curveSegments: 64 }]} /><meshStandardMaterial color={colour} roughness={.3} /></mesh></>}
+        <mesh position={[.48, .42, .3]} castShadow><boxGeometry args={[.025, .8, .4]} /><meshStandardMaterial color={colour} roughness={.3} {...metalFinishProps(colour)} /></mesh>
+        <mesh position={[-.3, .42, -.48]} castShadow><boxGeometry args={[.4, .8, .025]} /><meshStandardMaterial color={colour} roughness={.3} {...metalFinishProps(colour)} /></mesh>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .02, 0]} castShadow><extrudeGeometry args={[apron, { depth: .82, bevelEnabled: false, curveSegments: 64 }]} /><meshStandardMaterial color={colour} roughness={.3} {...metalFinishProps(colour)} /></mesh></>}
     </>}
     {slipper && [-1, 1].flatMap(x => [-1, 1].map(z => <group key={`${x}-${z}`} position={[x * .29, .07, z * .28]}>
-      <mesh castShadow rotation={[z * .15, 0, -x * .2]}><cylinderGeometry args={[.025, .045, .14, 20]} /><meshStandardMaterial color={legsColour} metalness={.85} roughness={.22} /></mesh>
-      <mesh position={[x * .015, -.045, z * .015]} scale={[1.6, .5, 1]} castShadow><sphereGeometry args={[.035, 20, 12]} /><meshStandardMaterial color={legsColour} metalness={.85} roughness={.22} /></mesh>
+      <mesh castShadow rotation={[z * .15, 0, -x * .2]}><cylinderGeometry args={[.025, .045, .14, 20]} /><meshStandardMaterial color={legsColour} metalness={.85} roughness={.22} {...metalFinishProps(legsColour)} /></mesh>
+      <mesh position={[x * .015, -.045, z * .015]} scale={[1.6, .5, 1]} castShadow><sphereGeometry args={[.035, 20, 12]} /><meshStandardMaterial color={legsColour} metalness={.85} roughness={.22} {...metalFinishProps(legsColour)} /></mesh>
     </group>))}
-    <mesh position={[0, lift + .18 * (slipper ? .78 : 1) * bodyScale + .003, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.025, 32]} /><meshStandardMaterial color={hardwareColour} metalness={.9} roughness={.18} /></mesh>
-    <mesh castShadow><tubeGeometry args={[tap, 40, .012, 12, false]} /><meshStandardMaterial color={hardwareColour} metalness={.9} roughness={.18} /></mesh>
-    {[-.06, .06].map(x => <mesh key={x} position={[x, .9, -.43]} castShadow><cylinderGeometry args={[.018, .022, .035, 20]} /><meshStandardMaterial color={hardwareColour} metalness={.9} roughness={.18} /></mesh>)}
+    <mesh position={[0, lift + .18 * (slipper ? .78 : 1) * bodyScale + .003, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[.025, 32]} /><meshStandardMaterial color={hardwareColour} metalness={.9} roughness={.18} {...metalFinishProps(hardwareColour)} /></mesh>
+    <mesh castShadow><tubeGeometry args={[tap, 40, .012, 12, false]} /><meshStandardMaterial color={hardwareColour} metalness={.9} roughness={.18} {...metalFinishProps(hardwareColour)} /></mesh>
+    {[-.06, .06].map(x => <mesh key={x} position={[x, .9, -.43]} castShadow><cylinderGeometry args={[.018, .022, .035, 20]} /><meshStandardMaterial color={hardwareColour} metalness={.9} roughness={.18} {...metalFinishProps(hardwareColour)} /></mesh>)}
   </group>;
 }

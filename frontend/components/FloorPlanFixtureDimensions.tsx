@@ -12,6 +12,7 @@ type FixtureRoomSpacingProps = {
   toScreen: (point: Point2D) => Point2D;
   displayUnits: DisplayUnits;
   viewportScale?: number;
+  axisFilter?: ReadonlyArray<"X" | "Y">;
 };
 
 /** The selected element's projection onto its nearest wall. */
@@ -218,8 +219,11 @@ export function FloorPlanFixtureSpacingDimensions({ span, toScreen, displayUnits
   const points = [wallStart, elementStart, elementEnd, wallEnd].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
   const values = [span.startOffsetMm, span.widthMm, span.endOffsetMm];
 
-  return <g className="fixture-dimension fixture-spacing-dimension" aria-label={`Element spacing: ${values.map((value) => formatLength(value, displayUnits)).join(", ")}`}>
+  return <g className="fixture-dimension fixture-spacing-dimension" aria-label={`Element clearances: ${formatLength(span.startOffsetMm, displayUnits)}, ${formatLength(span.endOffsetMm, displayUnits)}`}>
     {values.map((value, index) => {
+      // The object's own X-width/Y-depth dimensions are rendered separately.
+      // Keep the clearance rails, but do not repeat the same size on this rail.
+      if (index === 1) return null;
       const first = points[index];
       const second = points[index + 1];
       const label = { x: (first.x + second.x) / 2 + outward.x * 9, y: (first.y + second.y) / 2 + outward.y * 9 };
@@ -236,12 +240,12 @@ export function FloorPlanFixtureSpacingDimensions({ span, toScreen, displayUnits
 }
 
 /**
- * Renders the six room-relative values needed to position a floating element:
- * left, span and right in X, plus top, span and bottom in Y. The rails are
- * placed just beyond the element and use polygon intersections, so concave
- * rooms still receive measurements from the room section containing the item.
+ * Renders room clearances around a floating element. The element's existing
+ * width/depth dimensions provide the middle values, so this only labels the
+ * left/right X and top/bottom Y gaps. Polygon intersections keep concave rooms
+ * tied to the actual room section containing the item.
  */
-export function FloorPlanFixtureRoomSpacingDimensions({ obstacle, roomVertices, toScreen, displayUnits, viewportScale = 0.1 }: FixtureRoomSpacingProps) {
+export function FloorPlanFixtureRoomSpacingDimensions({ obstacle, roomVertices, toScreen, displayUnits, viewportScale = 0.1, axisFilter }: FixtureRoomSpacingProps) {
   const corners = fixtureCorners(obstacle);
   if (corners.length < 4 || roomVertices.length < 3) return null;
   const minX = Math.min(...corners.map((point) => point.x));
@@ -275,7 +279,7 @@ export function FloorPlanFixtureRoomSpacingDimensions({ obstacle, roomVertices, 
       ],
       anchors: [{ x: minX, y: horizontal.side === "before" ? minY : maxY }, { x: maxX, y: horizontal.side === "before" ? minY : maxY }],
       values: [minX - horizontal.interval[0], maxX - minX, horizontal.interval[1] - maxX],
-      labels: ["X left", "X span", "X right"],
+      labels: ["X left clearance", "X span", "X right clearance"],
       side: horizontal.side,
     },
     vertical && {
@@ -288,10 +292,12 @@ export function FloorPlanFixtureRoomSpacingDimensions({ obstacle, roomVertices, 
       ],
       anchors: [{ x: vertical.side === "before" ? minX : maxX, y: maxY }, { x: vertical.side === "before" ? minX : maxX, y: minY }],
       values: [vertical.interval[1] - maxY, maxY - minY, minY - vertical.interval[0]],
-      labels: ["Y top", "Y span", "Y bottom"],
+      labels: ["Y top clearance", "Y span", "Y bottom clearance"],
       side: vertical.side,
     },
-  ].filter((axis): axis is { axis: string; points: Point2D[]; anchors: Point2D[]; values: number[]; labels: string[]; side: "before" | "after" } => Boolean(axis));
+  ].filter((axis): axis is { axis: "X" | "Y"; points: Point2D[]; anchors: Point2D[]; values: number[]; labels: string[]; side: "before" | "after" } => Boolean(axis));
+  const visibleAxes = axisFilter ? axes.filter((axis) => axisFilter.includes(axis.axis)) : axes;
+  if (visibleAxes.length === 0) return null;
 
   const renderAxis = (axis: { axis: string; points: Point2D[]; anchors: Point2D[]; values: number[]; labels: string[]; side: "before" | "after" }) => {
     const screenPoints = axis.points.map(toScreen);
@@ -307,6 +313,9 @@ export function FloorPlanFixtureRoomSpacingDimensions({ obstacle, roomVertices, 
         return <line key={`anchor-${index}`} className="dimension-extension" x1={anchor.x} y1={anchor.y} x2={railPoint.x} y2={railPoint.y} />;
       })}
       {axis.values.map((value, index) => {
+        // The local object dimension in FloorPlanFixtureDimensions is the
+        // central measurement. Only the two room clearances belong on this rail.
+        if (index === 1) return null;
         const first = screenPoints[index];
         const second = screenPoints[index + 1];
         const labelPoint = { x: (first.x + second.x) / 2 + screenNormal.x * 10, y: (first.y + second.y) / 2 + screenNormal.y * 10 };
@@ -320,7 +329,7 @@ export function FloorPlanFixtureRoomSpacingDimensions({ obstacle, roomVertices, 
     </g>;
   };
 
-  return <g className="fixture-dimension fixture-room-spacing" aria-label={`Floating element spacing: ${axes.flatMap((axis) => axis.values.map((value, index) => `${axis.labels[index]} ${formatLength(Math.max(0, value), displayUnits)}`)).join(", ")}`}>
-    {axes.map(renderAxis)}
+  return <g className="fixture-dimension fixture-room-spacing" aria-label={`Floating element clearances: ${visibleAxes.flatMap((axis) => [0, 2].map((index) => `${axis.labels[index]} ${formatLength(Math.max(0, axis.values[index]), displayUnits)}`)).join(", ")}`}>
+    {visibleAxes.map(renderAxis)}
   </g>;
 }

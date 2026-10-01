@@ -1,4 +1,5 @@
 "use client";
+import { metalFinishProps } from "@/lib/metalSurface";
 
 import { useCallback } from "react";
 import type { MeshPhysicalMaterial } from "three";
@@ -63,5 +64,5 @@ export function FabricMaterial({ fabricId, colour, physicalSize }: { fabricId?: 
       vec3 fabricGradient = sign(fabricDet) * (dFdx(yarnHeight)*fabricR1 + dFdy(yarnHeight)*fabricR2);
       normal = normalize(max(abs(fabricDet),.0001)*normal - ${relief.toFixed(3)}*fabricGradient);`);
   }, [fabric,relief,x,y,z]);
-  return <meshPhysicalMaterial key={`${fabricId}-${x}-${y}-${z}`} color={colour} roughness={fabric?.roughness ?? .7} sheen={fabric?.sheen ?? 0} sheenColor={colour} sheenRoughness={.75} onBeforeCompile={compile} customProgramCacheKey={() => `fabric-v2-${fabricId}`} />;
+  return <meshPhysicalMaterial key={`${fabricId}-${x}-${y}-${z}`} color={colour} {...(!fabric ? metalFinishProps(colour) : {})} roughness={fabric?.roughness ?? metalFinishProps(colour).roughness ?? .7} sheen={fabric?.sheen ?? 0} sheenColor={colour} sheenRoughness={.75} onBeforeCompile={compile} customProgramCacheKey={() => `fabric-v2-${fabricId}`} />;
 }

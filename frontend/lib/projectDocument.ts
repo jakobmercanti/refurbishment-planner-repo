@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { Room } from "./types";
 import type { PersistedFloorplan } from "../components/FullFloorplanEditor";
+import { normalizeRenderCameraState, type RenderCameraState } from "./renderCamera";
+import { DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, normalizeElectricalLayout, type ElectricalLayoutData } from "./electricalLayout";
+import { DEFAULT_PLANNER_BUILD, normalizePlannerBuild, type PlannerBuildData } from "./plannerBuild";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -21,9 +24,15 @@ export const assetSchema = z.object({
   assetId: id, assetVersion: z.literal(1), name: z.string().max(200), source: z.literal("local"), modelFormat: z.literal("glb"),
   contentHash: z.string().regex(/^[a-f0-9]{64}$/), byteSize: z.number().int().positive().max(50 * 1024 * 1024),
   computedBoundsMm: z.object({ x: number.positive(), y: number.positive(), z: number.positive() }),
+  declaredDimensionsMm: z.object({ width: number.positive(), depth: number.positive(), height: number.positive() }).optional(),
+  dimensionAuthority: z.enum(["user-declared", "user-verified"]).optional(),
+  categoryId: z.string().min(1).max(80).regex(/^[a-z0-9][a-z0-9-]*$/).optional(),
+  categoryName: z.string().min(1).max(120).optional(),
+  subcategory: z.string().min(1).max(120).optional(),
   geometryAuthority: z.literal("visual-only"), createdAt: z.iso.datetime(),
 }).strict();
 export type AssetDefinition = z.infer<typeof assetSchema>;
+export type AssetClassification = { categoryId: string; categoryName: string; subcategory: string };
 const vector = z.object({ x: number, y: number, z: number });
 const instanceSchema = z.object({ instanceId: id, assetId: id, assetVersion: z.literal(1), positionMm: vector, rotationDeg: vector, scale: z.object({ x: number.positive(), y: number.positive(), z: number.positive() }) }).strict();
 export type AssetInstance = z.infer<typeof instanceSchema>;
@@ -32,10 +41,18 @@ const documentSchema = z.object({
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), generated: z.boolean(),
   rooms: z.array(roomSchema).max(1000), floorplan: layoutSchema.nullable(),
   assets: z.array(assetSchema).max(100), assetInstances: z.array(instanceSchema).max(1000),
+  // Camera metadata is optional and sanitized independently so a damaged,
+  // non-authoritative view setting cannot prevent the project from opening.
+  renderCamera: z.unknown().optional(),
+  electricalLayout: z.unknown().optional(),
+  plannerBuild: z.unknown().optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
   rooms: Room[]; floorplan: PersistedFloorplan | null; assets: AssetDefinition[]; assetInstances: AssetInstance[];
+  renderCamera?: RenderCameraState;
+  electricalLayout?: ElectricalLayoutData;
+  plannerBuild: PlannerBuildData;
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -54,8 +71,17 @@ function unique(values: string[]) { if (new Set(values).size !== values.length) 
 export function parseProject(input: unknown): ProjectDocument {
   inspectJson(input);
   if (!input || typeof input !== "object" || !("schemaVersion" in input) || input.schemaVersion !== 1) throw new Error("Unsupported project schema version. This app supports version 1.");
-  const p = documentSchema.parse(input) as unknown as ProjectDocument;
+  const parsed = documentSchema.parse(input) as unknown as ProjectDocument & { renderCamera?: unknown; electricalLayout?: unknown; plannerBuild?: unknown };
+  const { renderCamera: rawCamera, electricalLayout: rawElectricalLayout, plannerBuild: rawPlannerBuild, ...projectFields } = parsed;
+  const normalizedCamera = normalizeRenderCameraState(rawCamera);
+  const p: ProjectDocument = {
+    ...projectFields,
+    ...(normalizedCamera ? { renderCamera: normalizedCamera } : {}),
+    electricalLayout: normalizeElectricalLayout(rawElectricalLayout, electricalObstacleIds(parsed.rooms)),
+    plannerBuild: normalizePlannerBuild(rawPlannerBuild),
+  };
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
+  unique(p.plannerBuild.activities.map(activity => activity.activityId));
   for (const room of p.rooms) {
     unique(room.obstacles.map(o => o.id)); unique(room.openings.map(o => o.id));
     for (const opening of room.openings) z.object({ id, kind: z.enum(["DOOR", "WINDOW", "GENERIC"]), parent_wall_id: id, offset_mm: number.nonnegative(), width: measurement, height: measurement, sill_height_mm: number.nonnegative() }).parse(opening);
@@ -92,6 +118,6 @@ export function parseProject(input: unknown): ProjectDocument {
 export const migrateProject = parseProject;
 export function newProject(): ProjectDocument {
   const now = new Date().toISOString();
-  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [] };
+  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT, plannerBuild: DEFAULT_PLANNER_BUILD };
 }
 export const capabilities = Object.freeze({ canSaveCloudProjects: false, canUploadCloudAssets: false, canUseAiRendering: false, canExport4K: false, cloudStorageBytes: 0, aiRenderCreditsRemaining: 0 });

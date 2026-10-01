@@ -104,3 +104,11 @@ The internal authoritative unit is always millimetres. See `docs/UNITS.md` and
 `docs/GEOMETRY.md` before changing geometry code.
 
 Current milestone boundaries and known limitations are recorded in `docs/LIMITATIONS.md`.
+
+## Portable electrical layouts
+
+The Full Electrical Layout module lets you save the electrical overlay independently as a versioned `.electricallayout` ZIP package.
+Version 1 contains `electrical-layout.json` plus only the referenced electrical custom models and
+electrical reference pictures; it does not contain or replace room geometry or the rest of the
+project. Loading supports replace and merge modes, while normal project saves continue to include
+the electrical layout and its schedule documentation.

@@ -21,11 +21,14 @@ export function UiTheme({ settings }: { settings: SoftwareUi | null }) {
     const root = document.documentElement;
     document.body.dataset.uiStyle = settings.style.toLowerCase();
     const properties: Record<string, string> = {};
-    for (const [key, value] of Object.entries(theme.colours)) properties[`--${key}`] = value;
+    // Keep administrator-configured colours as inputs to the Light palette.
+    // Appearance preferences can then supply Dark semantic values without
+    // fighting inline styles or changing the saved programmer configuration.
+    for (const [key, value] of Object.entries(theme.colours)) properties[`--configured-${key}`] = value;
     properties["--font-sans"] = theme.typography.sans;
     properties["--font-mono"] = theme.typography.controls;
-    for (const [key, value] of Object.entries(theme.buttons)) properties[`--ui-button-${key}`] = value;
-    for (const [key, value] of Object.entries(theme.windows)) properties[`--ui-window-${key}`] = value;
+    for (const [key, value] of Object.entries(theme.buttons)) properties[`--configured-ui-button-${key}`] = value;
+    for (const [key, value] of Object.entries(theme.windows)) properties[`--configured-ui-window-${key}`] = value;
     for (const [key, value] of Object.entries(properties)) root.style.setProperty(key, value);
     return () => {
       delete document.body.dataset.uiStyle;

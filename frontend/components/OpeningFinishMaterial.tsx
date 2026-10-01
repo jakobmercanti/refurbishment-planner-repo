@@ -1,4 +1,5 @@
 "use client";
+import { metalFinishProps } from "@/lib/metalSurface";
 import { useEffect, useMemo } from "react";
 import { DataTexture, RGBAFormat, SRGBColorSpace } from "three";
 import { CUSTOM_FINISH_ID, finishChoiceForColour } from "@/lib/finishOptions";
@@ -19,5 +20,5 @@ export function OpeningFinishMaterial({ colour = "#F4F3EE" }: { colour?: string 
     return texture;
   }, [wood]);
   useEffect(() => () => grain?.dispose(), [grain]);
-  return <meshStandardMaterial color={colour} map={grain} roughness={wood ? .48 : .34} />;
+  return <meshStandardMaterial color={colour} map={grain} roughness={wood ? .48 : .34} {...metalFinishProps(colour)} />;
 }

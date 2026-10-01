@@ -1,0 +1,376 @@
+/* Application appearance is rooted on <html>, so body portals inherit the
+   same theme and density as the planner without changing project documents. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e7edf5;
+  --muted: #aab8c8;
+  --line: #3b4b5e;
+  --paper: #131c28;
+  --panel: #1d2a39;
+  --deep: #b8d1e6;
+  --accent: #78b9f1;
+  --soft: #26374a;
+  --fit: #68ca96;
+  --fit-soft: #1e3c31;
+  --verify: #e9bd62;
+  --verify-soft: #40351f;
+  --fail: #f28b88;
+  --fail-soft: #452e34;
+  --primary-hover: #3a7199;
+  --primary-action: #2b5f86;
+  --primary-action-text: #ffffff;
+  --surface-muted: #243447;
+  --surface-raised: #263648;
+  --surface-subtle: #192635;
+  --surface-accent: #243a50;
+  --surface-selected: #2b4359;
+  --focus-ring: #78b9f1;
+  --ui-button-radius: var(--configured-ui-button-radius, 9px);
+  --ui-button-background: #263648;
+  --ui-button-text: #e7edf5;
+  --ui-button-hoverBackground: #30445a;
+  --ui-button-activeBackground: #2b5f86;
+  --ui-button-activeText: #ffffff;
+  --ui-window-radius: var(--configured-ui-window-radius, 12px);
+  --ui-window-headerBackground: #223449;
+  --ui-window-shadow: 0 18px 55px rgb(0 0 0 / 38%);
+  --ui-window-backdrop: rgb(2 7 13 / 66%);
+  scrollbar-color: var(--line) var(--paper);
+}
+
+html[data-theme="dark"] body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* Keep workspace surfaces halfway between their dark and light appearances.
+   Room fills, symbols, dimensions, imported images and 3D materials stay project-owned. */
+html[data-theme="dark"] {
+  --workspace-view-background: color-mix(in srgb, #111b27 50%, var(--configured-paper, #f6f5f0) 50%);
+  --workspace-canvas-background: color-mix(in srgb, #1b2837 50%, #eef1ed 50%);
+  --workspace-canvas-grid: #70797f;
+}
+html[data-theme="dark"] :is(.environment-screen, .analysis-workspace, .full-plan-page, .viewer-shell) {
+  background-color: var(--workspace-view-background);
+}
+html[data-theme="dark"] svg.floor-canvas {
+  color-scheme: light;
+  background-color: var(--workspace-canvas-background);
+  --ink: var(--configured-ink, #17211d);
+  --muted: var(--configured-muted, #68746e);
+  --line: var(--configured-line, #d8ddd8);
+  --paper: var(--configured-paper, #f6f5f0);
+  --panel: var(--configured-panel, #ffffff);
+  --deep: var(--configured-deep, #183d34);
+  --accent: var(--configured-accent, #1678bd);
+  --soft: var(--configured-soft, #edf3ef);
+  --fit: var(--configured-fit, #197a50);
+  --verify: var(--configured-verify, #a86600);
+  --fail: var(--configured-fail, #b73939);
+}
+/* The full-plan editor injects per-style SVG rules, so explicitly theme only
+   the blank canvas rect and grid in the interactive view. */
+html[data-theme="dark"] svg.floor-canvas .canvas-background:not(.underlay) {
+  fill: var(--workspace-canvas-background) !important;
+}
+html[data-theme="dark"] svg.floor-canvas .canvas-background.underlay {
+  fill: transparent !important;
+}
+html[data-theme="dark"] svg.floor-canvas .plan-grid line {
+  stroke: var(--workspace-canvas-grid);
+}
+
+/* Raised application surfaces, including windows rendered through portals. */
+html[data-theme="dark"] :is(
+  .topbar, .floating-toolbar, .popup, .settings-dialog, .save-as-dialog,
+  .catalogue-modal, .catalogue-header, .catalogue-toolbar, .catalogue-categories,
+  .catalogue-grid article, .catalogue-material-family, .catalogue-detail-dialog,
+  .catalogue-manager-modal, .local-assets, .local-assets-header, .local-asset-card,
+  .local-asset-classification, .custom-asset-panel, .custom-asset-tabs,
+  .tool-section, .selected-properties, .fixture-editor, .person-editor,
+  .catalogue-manager-toggle, .catalogue-manager-tabs, .tile-colour-editor,
+  .context-controls, .viewer-toolbar, .viewer-view-control-group,
+  .electrical-layout-section, .electrical-layout-help, .electrical-mode-toggle,
+  .electrical-layout-status, .electrical-circuit-connections,
+  .electrical-connection-list button, .electrical-schedule-stats > div,
+  .electrical-schedule-tabs, .electrical-schedule-circuit,
+  .electrical-schedule-connection, .electrical-entry-photos,
+  .electrical-project-documentation, .electrical-schedule-table-scroll,
+  .electrical-connection-segments, .electrical-export-metadata,
+  .electrical-manual-bom-add, .electrical-layout-window .electrical-circuit-row,
+  .pb-gantt-toolbar, .pb-gantt-scroll, .pb-gantt-activity-cell,
+  .pb-dashboard-overview, .pb-programme-health, .pb-dashboard-columns > section,
+  .pb-dashboard-dialog, .pb-dashboard-detail-grid .pb-dashboard-section,
+  .commercial-card, .commercial-panel, .plan-card, .plan-comparison-scroll,
+  .plan-help-dialog, .account-dialog, .account-dialog-content .account-card,
+  .pack-grid article, .materialFacts, .tableScroll, .empty, .render-preview,
+  .marker-symbol-menu, .marker-symbol-trigger, .marker-settings-panel
+) {
+  background-color: var(--panel);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+}
+
+html[data-theme="dark"] :is(
+  .topbar, .catalogue-header, .catalogue-toolbar, .floating-toolbar-titlebar,
+  .popup-titlebar, .settings-dialog > header, .save-as-dialog > header,
+  .catalogue-manager-modal > header, .catalogue-detail-dialog > .catalogue-form-heading,
+  .pb-dashboard-dialog > header, .plan-help-dialog > header,
+  .local-assets-header, .commercial-header
+) {
+  background: var(--ui-window-headerBackground);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] :is(
+  .software-dropdown, .toolbar-context-menu, .toolbar-context-submenu,
+  .floorplan-context-menu, .viewer-save-menu > div, .catalogue-context-menu,
+  .marker-symbol-menu, .viewer-room-selector-menu
+) {
+  background: var(--panel);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 42%);
+}
+
+html[data-theme="dark"] :is(.modal-backdrop, .popup-backdrop, .pb-dashboard-overlay, .plan-help-backdrop) {
+  background: var(--ui-window-backdrop);
+}
+
+/* Inputs and native controls. Color/material pickers remain genuine swatches. */
+html[data-theme="dark"] body :is(input, select, textarea):not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]) {
+  color-scheme: dark;
+  background-color: var(--panel);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-theme="dark"] body :is(input, textarea)::placeholder { color: var(--muted); opacity: 1; }
+html[data-theme="dark"] body :is(input[type="checkbox"], input[type="radio"], input[type="range"]) { accent-color: var(--accent); }
+html[data-theme="dark"] body button:not(.finish-palette button, .tile-palette-presets button, .pb-colour-presets button, .catalogue-material-entry, .pb-gantt-bar) {
+  color: var(--ink);
+}
+html[data-theme="dark"] body :is(button, input, select, textarea, summary, a, [tabindex="0"]):focus-visible {
+  outline-color: var(--focus-ring);
+}
+
+/* Secondary controls and selected states share the semantic surface tokens. */
+html[data-theme="dark"] :is(
+  .review-style-button, .app-nav-entry, .modal-close,
+  .popup-actions button:not(.primary), .save-as-dialog footer button:not(.primary),
+  .settings-choice button, .software-unit-setting select,
+  .electrical-connection-action, .electrical-schedule-toolbar button,
+  .pb-secondary-button, .pb-inline-action, .viewer-save-menu > button,
+  .viewer-save-menu button, .app-nav-modes button, .compact-tool-switcher button,
+  .local-asset-secondary, .custom-asset-secondary, .commercial-secondary,
+  .account-dialog-tabs button, .commercial-tabs button, .catalogue-categories button,
+  .catalogue-manager-tabs button, .catalogue-manager-actions button,
+  .marker-symbol-grid button, .marker-settings-row button
+) {
+  background-color: var(--surface-muted);
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-theme="dark"] :is(
+  .software-menu-item > button:hover, .software-menu-item > button.active,
+  .software-dropdown button:hover:not(:disabled), .software-unit-setting:hover,
+  .catalogue-categories button:hover, .catalogue-categories button.active,
+  .floorplan-context-menu button:hover, .floorplan-context-menu button:focus-visible,
+  .settings-choice button.active, .app-nav-modes button[aria-pressed="true"],
+  .compact-tool-switcher button[aria-pressed="true"],
+  .electrical-connection-list button.selected, .electrical-connection-action:hover,
+  .electrical-connection-action:focus-visible, .electrical-schedule-tabs button[aria-pressed="true"],
+  .account-dialog-tabs button.selected, .commercial-tabs button.selected,
+  .catalogue-manager-tabs button.active, .marker-symbol-grid button.selected
+) {
+  background-color: var(--surface-selected);
+  color: var(--ink);
+  border-color: var(--accent);
+}
+html[data-theme="dark"] body button:is(.active, .selected, [aria-pressed="true"]):not(.pb-gantt-bar):not(.catalogue-material-entry):not(.finish-palette button):not(.tile-palette-presets button):not(.pb-colour-presets button) {
+  background-color: var(--surface-selected);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+html[data-theme="dark"] :is(
+  .software-dropdown button:disabled, button:disabled, input:disabled,
+  select:disabled, textarea:disabled
+) { color: #8797a9; }
+
+html[data-theme="dark"] :is(
+  .settings-done, .primary, .primary-small, .validate-button, .save-button,
+  .fixture-save, .person-update, .catalogue-toolbar > button,
+  .skirting-summary-check, .catalogue-object-preview b, .catalogue-detail-preview b,
+  .catalogue-insert, .catalogue-manager-actions .primary, .catalogue-manager-tabs button.active,
+  .custom-asset-tabs button.active, .pb-primary-button,
+  .custom-asset-primary, .commercial-primary, .viewer-camera-capture-button,
+  .electrical-layout-actions button[aria-pressed="true"],
+  .electrical-schedule-tabs button[aria-pressed="true"],
+  .mode-switch button.active, .full-floorplan-actions button.active,
+  .full-floorplan-actions button.primary, .full-floorplan-rooms button,
+  .app-nav-modes button[aria-pressed="true"], .annotation-tool-grid button.active,
+  .view-toggle.active, .viewer-toolbar button.active,
+  .viewer-view-control-group button.active,
+  .viewer-toolbar.floating-view-controls .toggle-row button.active,
+  .viewer-camera-manipulation button.active, .fixture-cascading-options button.selected,
+  .planner-privacy-actions button:last-child, .compact-tool-switcher button[aria-pressed="true"],
+  .project-download-actions a.primary, .account-dialog-tabs button.selected,
+  .commercial-tabs button.selected
+) {
+  background-color: var(--primary-action);
+  border-color: var(--primary-action);
+  color: var(--primary-action-text);
+}
+
+html[data-theme="dark"] :is(
+  .electrical-layout-actions button[aria-pressed="true"],
+  .electrical-schedule-tabs button[aria-pressed="true"],
+  .settings-choice button.active, .account-dialog-tabs button.selected,
+  .commercial-tabs button.selected
+) { background-color: var(--surface-selected); color: var(--ink); border-color: var(--accent); }
+
+/* PlannerBuild surfaces adapt, while user-selected Gantt bar fills stay intact. */
+html[data-theme="dark"] :is(.planner-build-screen, .pb-gantt-scroll, .pb-dashboard-dialog-content) { background-color: var(--paper); }
+html[data-theme="dark"] .pb-dashboard-heading .pb-eyebrow,
+html[data-theme="dark"] .pb-dashboard-heading p { color: #26332d; }
+html[data-theme="dark"] .pb-dashboard-heading h1 { color: #183d34; }
+html[data-theme="dark"] :is(.pb-gantt-header, .pb-gantt-header-label, .pb-gantt-group-row) { background-color: var(--surface-muted); color: var(--ink); border-color: var(--line); }
+html[data-theme="dark"] :is(.pb-gantt-row, .pb-gantt-activity-cell, .pb-dashboard-columns > section, .pb-dashboard-overview, .pb-programme-health) { border-color: var(--line); }
+html[data-theme="dark"] .pb-gantt-lane { background-color: var(--paper); }
+html[data-theme="dark"] .pb-gantt-bar { border-color: rgb(230 240 250 / 45%); }
+html[data-theme="dark"] .pb-gantt-bar.selected { outline-color: var(--focus-ring); }
+html[data-theme="dark"] .pb-gantt-timeline-head,
+html[data-theme="dark"] .pb-gantt-lane {
+  background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(var(--pb-day-width, 18px) - 1px), rgb(142 164 188 / 18%) calc(var(--pb-day-width, 18px) - 1px), rgb(142 164 188 / 18%) var(--pb-day-width, 18px));
+}
+
+/* Table surfaces, including the BOM, schedules, billing comparison and PlannerBuild. */
+html[data-theme="dark"] :is(.electrical-schedule-table, .plan-comparison-table, .tableScroll table, .pb-quantity-table, .pb-activity-table) {
+  color: var(--ink);
+}
+html[data-theme="dark"] :is(.electrical-schedule-table th, .electrical-schedule-table td, .plan-comparison-table th, .plan-comparison-table td, .tableScroll th, .tableScroll td, .pb-quantity-table th, .pb-quantity-table td, .pb-activity-table th, .pb-activity-table td) {
+  color: var(--ink);
+  border-color: var(--line);
+}
+html[data-theme="dark"] :is(.electrical-schedule-table thead th, .plan-comparison-table thead th, .tableScroll thead th, .pb-quantity-table thead th, .pb-activity-table thead th) {
+  background-color: var(--surface-muted);
+  color: var(--ink);
+}
+html[data-theme="dark"] :is(.electrical-schedule-table tbody tr:nth-child(even), .plan-comparison-table tbody tr:not(.plan-comparison-group):nth-child(even), .tableScroll tbody tr:nth-child(even), .pb-quantity-table tbody tr:nth-child(even), .pb-activity-table tbody tr:nth-child(even)) {
+  background-color: #202e3e;
+}
+html[data-theme="dark"] :is(.electrical-schedule-table tbody tr:hover, .plan-comparison-table tbody tr:hover, .tableScroll tbody tr:hover, .pb-quantity-table tbody tr:hover, .pb-activity-table tbody tr:hover) {
+  background-color: #293b50;
+}
+
+/* Status notices retain their meaning without bright white panels. */
+html[data-theme="dark"] :is(.electrical-demo-notice, .electrical-connect-hint, .electrical-layout-help-note, .electrical-schedule-disclaimer, .pb-free-demo-banner, .custom-asset-dimension-note, .conflict-panel) {
+  background-color: #3d351f;
+  border-color: #8a713b;
+  color: #f0d58e;
+}
+html[data-theme="dark"] :is(.project-error, .inline-error, .commercial-error, .commercial-status, .commercial-danger, .danger-button, .pb-dashboard-columns li.warning, .pb-dashboard-columns li.urgent) {
+  background-color: #402b31;
+  border-color: #79505a;
+  color: #f3a4a2;
+}
+html[data-theme="dark"] :is(.custom-asset-success, .electrical-layout-status, .pb-health-clear, .pb-issue-count) {
+  background-color: #20392f;
+  border-color: #3c765a;
+  color: #9cdeba;
+}
+
+html[data-theme="dark"] :is(.local-save-status, .app-nav-entry:hover, .popup-actions, .catalogue-results, .catalogue-categories, .catalogue-toolbar, .electrical-schedule-tab-content, .electrical-project-documentation-content) {
+  color: var(--ink);
+}
+html[data-theme="dark"] .local-save-status {
+  background: var(--ui-window-headerBackground);
+}
+html[data-theme="dark"] .element-add-editor > .fixture-save {
+  box-shadow: none;
+}
+html[data-theme="dark"] .element-add-editor .fixture-add-section {
+  background: var(--surface-muted);
+  border-color: var(--line);
+}
+html[data-theme="dark"] .element-add-editor .fixture-list article {
+  background: var(--surface-subtle);
+  border-color: var(--line);
+  color: var(--ink);
+}
+html[data-theme="dark"] :is(.catalogue-branch, .electrical-schedule-circuit, .electrical-schedule-connection, .electrical-schedule-table th, .electrical-schedule-table td) { border-color: var(--line); }
+html[data-theme="dark"] :is(.electrical-schedule-stats > div, .electrical-schedule-connection, .electrical-schedule-circuit, .electrical-entry-photos, .electrical-project-documentation) { background-color: var(--surface-muted); }
+html[data-theme="dark"] .electrical-schedule-table tbody tr { background-color: var(--panel); }
+html[data-theme="dark"] .electrical-schedule-table thead th { background-color: var(--surface-muted); }
+html[data-theme="dark"] :is(.plan-comparison-table tbody th[scope="row"], .plan-comparison-scroll, .account-dialog-content .commercial-tabs, .pb-dashboard-metrics .pb-metric-card, .pb-dashboard-columns > section) { background-color: var(--surface-muted); }
+html[data-theme="dark"] :is(.plan-comparison-table .plan-comparison-group th, .pb-gantt-group-row) { background-color: #293a4c; color: var(--muted); }
+
+/* Keep common app popovers and local tools legible. Images/canvas contents are
+   never filtered, inverted or recoloured. */
+html[data-theme="dark"] :is(.tool-section, .local-asset-empty, .electrical-layout-section, .electrical-layout-help, .electrical-circuit-connections, .electrical-layout-status, .electrical-schedule-tabs, .electrical-manual-bom-add, .pb-dashboard-section, .pb-dashboard-columns > section, .pb-dashboard-overview, .pb-programme-health, .pb-metric-card, .pb-detail-facts, .plan-render-pack-note, .render-preview, .empty) {
+  background-color: var(--surface-muted);
+  border-color: var(--line);
+  color: var(--ink);
+}
+html[data-theme="dark"] :is(.settings-dialog h2, .settings-appearance h3, .settings-appearance-option > strong, .settings-section > strong, .pb-dashboard-dialog h2, .catalogue-header h2, .commercial-page h1, .commercial-page h2, .plan-card h2) { color: var(--ink); }
+html[data-theme="dark"] :is(.commercial-card, .commercial-panel, .plan-card, .account-dialog-content .account-card, .plan-help-dialog, .plan-comparison-scroll) { box-shadow: 0 14px 38px rgb(0 0 0 / 20%); }
+html[data-theme="dark"] :is(.plan-comparison-table tbody tr:not(.plan-comparison-group):nth-child(even) th[scope="row"], .plan-comparison-table tbody tr:not(.plan-comparison-group):nth-child(even) td) { background-color: #202e3e; }
+html[data-theme="dark"] .commercial-page {
+  background: var(--paper);
+  color: var(--ink);
+}
+html[data-theme="dark"] :is(.commercial-brand, .plan-price) { color: var(--ink); }
+html[data-theme="dark"] .commercial-header :is(nav a, nav button) { color: var(--ink); }
+html[data-theme="dark"] .commercial-header :is(nav a:hover, nav button:hover) { background: var(--surface-selected); }
+html[data-theme="dark"] :is(.plan-card li::before, .plan-comparison-included) { color: #68ca96; }
+html[data-theme="dark"] .commercial-page :is(h1, h2, h3, strong, label, th, td) { color: var(--ink); }
+html[data-theme="dark"] .commercial-page :is(p, small, li, .commercial-eyebrow, .plan-price small, .plan-card ul) { color: var(--muted); }
+html[data-theme="dark"] :is(
+  .commercial-tabs, .account-dialog-tabs, .commercial-inline-form,
+  .commercial-metrics > div, .commercial-list li, .plan-service-status,
+  .plan-current-badge, .plan-render-pack-note, .free-planner-note,
+  .free-planner-check, .plan-help-pack-list
+) {
+  background: var(--surface-muted);
+  border-color: var(--line);
+  color: var(--ink);
+}
+html[data-theme="dark"] :is(.commercial-footer a, .commercial-panel-heading a, .plan-help-trigger) { color: var(--accent); }
+html[data-theme="dark"] .plan-current-badge { color: #a9e0bd; }
+html[data-theme="dark"] .plan-comparison-table tbody td { color: var(--ink); }
+html[data-theme="dark"] .plan-help-trigger { background: var(--surface-muted); border-color: var(--line); }
+html[data-theme="dark"] .plan-help-trigger:hover { background: var(--surface-selected); }
+html[data-theme="dark"] .plan-recommended { color: #ffffff; }
+html[data-theme="dark"] :is(.local-asset-empty, .local-asset-job, .custom-asset-photo-row, .custom-asset-job, .catalogue-detail-hero, .catalogue-form, .catalogue-form-actions, .electrical-manual-bom-add, .viewer-camera-section) { background-color: var(--surface-muted); color: var(--ink); border-color: var(--line); }
+html[data-theme="dark"] :is(.settings-section, .settings-check, .settings-readonly) { border-color: var(--line); }
+html[data-theme="dark"] :is(.settings-dialog h2, .settings-appearance h3, .settings-appearance-option > strong, .settings-section > strong, .pb-dashboard-dialog h2, .catalogue-header h2, .commercial-page h1, .commercial-page h2, .plan-card h2) { color: var(--ink); }
+html[data-theme="dark"] :is(.software-dropdown button:hover:not(:disabled), .toolbar-context-menu button:hover, .toolbar-context-submenu button:hover) { background-color: var(--surface-selected); }
+html[data-theme="dark"] :is(.catalogue-grid article[role="button"]:hover, .catalogue-grid article[role="button"]:focus-visible) { border-color: var(--accent); }
+html[data-theme="dark"] :is(.catalogue-object-preview, .electrical-catalogue-preview) { background-color: var(--surface-subtle); }
+html[data-theme="dark"] .viewer-warning { background: rgb(19 28 40 / 88%); color: var(--ink); }
+html[data-theme="dark"] .drawing-scale { background: rgb(255 255 255 / 92%); color: #52625a; }
+
+@media print {
+  html[data-theme="dark"] {
+    color-scheme: light;
+    --ink: #17211d;
+    --muted: #68746e;
+    --line: #d8ddd8;
+    --paper: #f6f5f0;
+    --panel: #ffffff;
+    --deep: #183d34;
+    --accent: #1678bd;
+    --soft: #edf3ef;
+    --fit: #197a50;
+    --fit-soft: #e5f4ec;
+    --verify: #a86600;
+    --verify-soft: #fff2d6;
+    --fail: #b73939;
+    --fail-soft: #fde9e7;
+    --primary-action: #183d34;
+    --surface-muted: #f4f7f5;
+    --ui-window-headerBackground: #f4f7f5;
+  }
+  html[data-theme="dark"] body { background: #ffffff; color: #17211d; }
+}

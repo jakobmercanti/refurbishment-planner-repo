@@ -1,7 +1,7 @@
 import { Box3, LoadingManager, Mesh, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { completed, localDatabase, requestValue } from "./localDatabase";
-import { assetSchema, type AssetDefinition } from "./projectDocument";
+import { assetSchema, type AssetClassification, type AssetDefinition } from "./projectDocument";
 
 export const MAX_GLB_BYTES = 50 * 1024 * 1024;
 export async function contentHash(bytes: Uint8Array): Promise<string> { const hash = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)); return Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join(""); }
@@ -34,16 +34,36 @@ export async function validateGlb(bytes: Uint8Array) {
   const model = await loadGlb(bytes);
   try { const size = new Box3().setFromObject(model.scene).getSize(new Vector3()).multiplyScalar(1000); if (![size.x, size.y, size.z].every(v => Number.isFinite(v) && v > 0 && v < 1e7)) throw new Error("The model has invalid or empty bounds."); return { x: size.x, y: size.y, z: size.z }; } finally { disposeModel(model.scene); }
 }
-export interface AssetRepository { getAsset(id: string): Promise<AssetDefinition | null>; getAssetBlob(id: string): Promise<Blob>; listAssets(): Promise<AssetDefinition[]>; importLocalAsset(file: File): Promise<AssetDefinition>; }
+export interface AssetRepository { getAsset(id: string): Promise<AssetDefinition | null>; getAssetBlob(id: string): Promise<Blob>; listAssets(): Promise<AssetDefinition[]>; importLocalAsset(file: File, dimensions?: { width: number; depth: number; height: number }, dimensionAuthority?: "user-declared" | "user-verified", classification?: AssetClassification): Promise<AssetDefinition>; }
 export class LocalAssetRepository implements AssetRepository {
   async getAsset(id: string) { const db = await localDatabase(); const value = await requestValue(db.transaction("assets").objectStore("assets").get(id)); return value ? assetSchema.parse(value.metadata) : null; }
   async getAssetBlob(id: string) { const db = await localDatabase(); const value = await requestValue(db.transaction("assets").objectStore("assets").get(id)); if (!value?.blob) throw new Error("Local model is missing. Reopen a complete .floorplan3d backup."); return value.blob as Blob; }
   async listAssets() { const db = await localDatabase(); return (await requestValue(db.transaction("assets").objectStore("assets").getAll())).map(v => assetSchema.parse(v.metadata)); }
-  async importLocalAsset(file: File) {
+  async importLocalAsset(file: File, dimensions?: { width: number; depth: number; height: number }, dimensionAuthority: "user-declared" | "user-verified" = "user-declared", classification?: AssetClassification) {
     if (!file.name.toLowerCase().endsWith(".glb") || file.size > MAX_GLB_BYTES) throw new Error("Choose a .glb file of 50 MB or less.");
     const bytes = new Uint8Array(await file.arrayBuffer()); const bounds = await validateGlb(bytes); const hash = await contentHash(bytes);
-    const existing = (await this.listAssets()).find(a => a.contentHash === hash); if (existing) return existing;
-    const metadata: AssetDefinition = { assetId: `local-${hash}`, assetVersion: 1, name: file.name.slice(0, 200), source: "local", modelFormat: "glb", contentHash: hash, byteSize: bytes.length, computedBoundsMm: bounds, geometryAuthority: "visual-only", createdAt: new Date().toISOString() };
+    const existing = (await this.listAssets()).find(a => a.contentHash === hash);
+    if (existing) {
+      if (dimensions && existing.declaredDimensionsMm &&
+          (existing.declaredDimensionsMm.width !== dimensions.width || existing.declaredDimensionsMm.depth !== dimensions.depth || existing.declaredDimensionsMm.height !== dimensions.height)) {
+        throw new Error("This model is already in your local library with different declared dimensions.");
+      }
+      const changes: Partial<AssetDefinition> = {};
+      if (dimensions && !existing.declaredDimensionsMm) { changes.declaredDimensionsMm = dimensions; changes.dimensionAuthority = dimensionAuthority; }
+      if (dimensions && existing.dimensionAuthority !== dimensionAuthority) changes.dimensionAuthority = dimensionAuthority;
+      if (classification && (existing.categoryId !== classification.categoryId || existing.categoryName !== classification.categoryName || existing.subcategory !== classification.subcategory)) Object.assign(changes, classification);
+      if (Object.keys(changes).length) {
+        const metadata = assetSchema.parse({ ...existing, ...changes });
+        const blob = await this.getAssetBlob(existing.assetId);
+        const db = await localDatabase(), tx = db.transaction("assets", "readwrite"), done = completed(tx);
+        tx.objectStore("assets").put({ metadata, blob }, metadata.assetId);
+        await done;
+        return metadata;
+      }
+      return existing;
+    }
+    const metadata: AssetDefinition = { assetId: `local-${hash}`, assetVersion: 1, name: file.name.slice(0, 200), source: "local", modelFormat: "glb", contentHash: hash, byteSize: bytes.length, computedBoundsMm: bounds, geometryAuthority: "visual-only", createdAt: new Date().toISOString(), ...classification };
+    if (dimensions) { metadata.declaredDimensionsMm = dimensions; metadata.dimensionAuthority = dimensionAuthority; }
     const db = await localDatabase(), tx = db.transaction("assets", "readwrite"), done = completed(tx); tx.objectStore("assets").put({ metadata, blob: new Blob([bytes], { type: "model/gltf-binary" }) }, metadata.assetId); await done; return metadata;
   }
 }

@@ -8,16 +8,20 @@ from sqlalchemy import select
 
 from database.models import FurnitureItemRecord
 from database.fixture_defaults import FIXTURE_DEFAULTS
+from database.electrical_defaults import ELECTRICAL_ASSETS
 from database.catalogue_assets import decode_picture, stage_item_picture_replacement
 
 REPRESENTATION_VERSION = 2
 KNOWN_KEYS = {f"{kind.lower()}-{variant[0]}" for kind, variants in FIXTURE_DEFAULTS.values() for variant in variants}
+KNOWN_KEYS.update(asset["key"] for asset in ELECTRICAL_ASSETS)
 
 
-def install_fixture_previews(session):
+def install_fixture_previews(session, *, representation_prefix: str | None = None):
     replacements = []
     try:
         for item in session.scalars(select(FurnitureItemRecord)).all():
+            if representation_prefix and not (item.representation_key or "").startswith(representation_prefix):
+                continue
             if not item.default_key or not item.default_key.startswith("generic-") or item.stl_base64:
                 continue
             if item.representation_key not in KNOWN_KEYS:
@@ -35,6 +39,8 @@ def install_fixture_previews(session):
             version = 3 if item.representation_key.startswith("door-") or item.representation_key in {"window-casement", "window-single-pane", "window-double-pane", "window-triple-pane"} else REPRESENTATION_VERSION
             if item.representation_key.startswith(("furniture-bath-", "furniture-kitchen-cabinet-")):
                 version = 4
+            if item.representation_key.startswith("electrical-"):
+                version = max(item.representation_version, 4)
             item.representation_version = version
             previous = json.loads(item.image_data_json or "[]")
             if previous and not all(record.get("generated_representation") for record in previous):

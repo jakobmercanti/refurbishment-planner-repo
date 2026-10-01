@@ -230,7 +230,7 @@ def seed_fixture_defaults(session):
     for item in session.scalars(select(FurnitureItemRecord)).all():
         if item.category_id == "staircases-main" and item.representation_key in STAIRCASE_DEFAULTS:
             item.category_id = f"staircases-{STAIRCASE_DEFAULTS[item.representation_key]['family']}"
-        if item.representation_key and not item.plan_symbol_url:
+        if item.representation_key and not item.plan_symbol_url and not item.plan_symbol_data_url:
             item.plan_symbol_url = f"/fixture-symbols/{item.representation_key}.svg"
         if item.default_key in LEGACY and not item.representation_key:
             subcategory, key = LEGACY[item.default_key]

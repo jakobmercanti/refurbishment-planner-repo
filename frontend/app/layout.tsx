@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import Script from "next/script";
+import { APP_APPEARANCE_STORAGE_KEY } from "@/lib/appPreferences";
 import "./globals.css";
 import "./ui-theme.css";
 import "./mobile.css";
 import "./privacy.css";
+import "./commercial.css";
+import "./density.css";
+import "./appearance.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.freefloorplan3d.com"),
@@ -20,10 +25,26 @@ export const metadata: Metadata = {
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
+const appearanceBootstrap = `(() => {
+  const root = document.documentElement;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(${JSON.stringify(APP_APPEARANCE_STORAGE_KEY)}) || "null"); } catch {}
+  const requestedTheme = ["system", "light", "dark"].includes(saved?.theme) ? saved.theme : "system";
+  let systemPrefersDark = false;
+  try { systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches; } catch {}
+  root.dataset.themeMode = requestedTheme;
+  root.dataset.theme = requestedTheme === "system" ? (systemPrefersDark ? "dark" : "light") : requestedTheme;
+  root.dataset.density = ["comfortable", "compact"].includes(saved?.density) ? saved.density : "comfortable";
+})();`;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body>{children}<noscript><div style={{ padding: 24 }}><h2>Free floorplan creator in 2D and 3D</h2><p>Enable JavaScript to draw your floorplan, explore in 3D and download it for free. No registration or payment required.</p><a href="https://www.freefloorplan3d.com/">About FreeFloorplan3D</a> · <a href="/guides/">Read the planning guides</a></div></noscript><Script src="/google-consent.js?v=ads-consent-20260926" strategy="beforeInteractive" /></body>
+    <html lang="en" data-theme="light" data-theme-mode="system" data-density="comfortable" suppressHydrationWarning>
+      <body>
+        <Script id="appearance-preferences-bootstrap" strategy="beforeInteractive">{appearanceBootstrap}</Script>
+        {children}<noscript><div style={{ padding: 24 }}><h1>Free floorplan creator in 2D and 3D</h1><p>Enable JavaScript to draw your floorplan, explore in 3D and download it for free. No registration or payment required.</p><Link href="/">About FreeFloorplan3D</Link> · <Link href="/guides/">Read the planning guides</Link></div></noscript>
+        <Script src="/google-consent.js?v=ads-consent-20260926" strategy="beforeInteractive" />
+      </body>
     </html>
   );
 }

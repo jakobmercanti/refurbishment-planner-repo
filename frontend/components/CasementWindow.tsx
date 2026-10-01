@@ -1,4 +1,5 @@
 "use client";
+import { metalFinishProps } from "@/lib/metalSurface";
 import { OpeningFinishMaterial } from "@/components/OpeningFinishMaterial";
 import { useMemo } from "react";
 import { Path, Shape } from "three";
@@ -19,7 +20,7 @@ export function CasementWindow({ representation, width: w, depth: d, height: h, 
   const gasket = useMemo(() => section(sashWidth - rail * 1.6, sashHeight - rail * 1.6, 3 * unit), [sashWidth, sashHeight, rail, unit]);
   const bead = useMemo(() => section(sashWidth - rail * 1.9, sashHeight - rail * 1.9, 6 * unit), [sashWidth, sashHeight, rail, unit]);
   function box(x: number, y: number, z: number, width: number, height: number, depth: number, colour = frameColour, metal = false) {
-    return <mesh position={[x, y, z]} castShadow receiveShadow><boxGeometry args={[width, height, depth]} />{metal ? <meshStandardMaterial color={colour} roughness={.24} metalness={.8} /> : <OpeningFinishMaterial colour={colour} />}</mesh>;
+    return <mesh position={[x, y, z]} castShadow receiveShadow><boxGeometry args={[width, height, depth]} />{metal ? <meshStandardMaterial color={colour} roughness={.24} metalness={.8} {...metalFinishProps(colour)} /> : <OpeningFinishMaterial colour={colour} />}</mesh>;
   }
   return <group>
     <mesh position={[0, 0, -frameDepth / 2]} castShadow receiveShadow><extrudeGeometry args={[outer, { depth: frameDepth, bevelEnabled: false }]} /><OpeningFinishMaterial colour={frameColour} /></mesh>
@@ -27,7 +28,7 @@ export function CasementWindow({ representation, width: w, depth: d, height: h, 
       const x = -w / 2 + border + gap + sashWidth / 2 + i * (sashWidth + gap * 2 + border * .55), side = i === count - 1 && count > 1 ? -1 : 1;
       return <group key={i} position={[x, border + gap, frameDepth * .18]}>
         <mesh position={[0, 0, -frameDepth * .26]} castShadow receiveShadow><extrudeGeometry args={[sash, { depth: frameDepth * .54, bevelEnabled: true, bevelSize: 1.2 * unit, bevelThickness: 1.2 * unit, bevelSegments: 2 }]} /><OpeningFinishMaterial colour={colours.sash ?? frameColour} /></mesh>
-        <mesh position={[0, rail * .8, frameDepth * .04]}><extrudeGeometry args={[gasket, { depth: 2 * unit, bevelEnabled: false }]} /><meshStandardMaterial color={colours.seals ?? "#414747"} roughness={.8} /></mesh>
+        <mesh position={[0, rail * .8, frameDepth * .04]}><extrudeGeometry args={[gasket, { depth: 2 * unit, bevelEnabled: false }]} /><meshStandardMaterial color={colours.seals ?? "#414747"} roughness={.8} {...metalFinishProps(colours.seals ?? "#414747")} /></mesh>
         <mesh position={[0, rail * .95, frameDepth * .08]}><extrudeGeometry args={[bead, { depth: 5 * unit, bevelEnabled: true, bevelSize: unit, bevelThickness: unit, bevelSegments: 2 }]} /><OpeningFinishMaterial colour={colours.sash ?? frameColour} /></mesh>
         {[-1, 1].map(face => <mesh key={face} position={[0, sashHeight / 2, face * 7 * unit]}><boxGeometry args={[sashWidth - 2 * rail, sashHeight - 2 * rail, 4 * unit]} /><meshPhysicalMaterial color="#b8d0d7" transparent opacity={.19} roughness={.025} metalness={.05} depthWrite={false} /></mesh>)}
         {box(side * (sashWidth / 2 - rail * .5), sashHeight * .46, frameDepth * .43, rail * .35, 45 * unit, 8 * unit, colours.hardware ?? "#aab0ad", true)}

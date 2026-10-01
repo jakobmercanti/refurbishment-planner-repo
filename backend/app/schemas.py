@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from datetime import datetime
+import re
+from xml.etree import ElementTree
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
@@ -8,6 +12,65 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
 
 from geometry.models import FitResult, Placement, Point2D, ProductDefinition, RoomDefinition
+
+
+_PLAN_SVG_PREFIX = "data:image/svg+xml;base64,"
+_PLAN_SVG_TAGS = {"svg", "g", "rect", "circle", "path", "text"}
+_PLAN_SVG_ATTRIBUTES = {
+    "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray",
+    "cx", "cy", "r", "x", "y", "d", "width", "height", "rx", "ry", "text-anchor",
+    "font-family", "font-size",
+}
+_PLAN_SVG_COLOUR = re.compile(r"^(?:none|#[0-9a-fA-F]{3,8}|black|white)$")
+_PLAN_SVG_NUMBERS = re.compile(r"^[\d.\s,+-]+$")
+_PLAN_SVG_PATH = re.compile(r"^[MmLlHhVvCcSsQqTtAaZzEe\d.\s,+-]+$")
+
+
+def validate_svg_plan_symbol(data_url: str) -> None:
+    """Accept only a small, inert SVG subset for inline floorplan symbols."""
+    if not data_url.startswith(_PLAN_SVG_PREFIX):
+        raise ValueError("plan symbol must be a supported image data URL")
+    try:
+        encoded = data_url[len(_PLAN_SVG_PREFIX):]
+        source = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("plan symbol SVG must contain valid base64 data") from error
+    if not source or len(source) > 500_000:
+        raise ValueError("plan symbol SVG must be 500 KB or smaller")
+    if re.search(rb"<!\s*(?:DOCTYPE|ENTITY)", source, re.IGNORECASE):
+        raise ValueError("plan symbol SVG cannot contain document types or entities")
+    try:
+        root = ElementTree.fromstring(source)
+    except ElementTree.ParseError as error:
+        raise ValueError("plan symbol SVG is malformed") from error
+    namespace, separator, root_name = root.tag.rpartition("}")
+    if (separator and namespace.lstrip("{") != "http://www.w3.org/2000/svg") or (root_name if separator else root.tag) != "svg":
+        raise ValueError("plan symbol must have an SVG root element")
+    view_box = root.attrib.get("viewBox", "")
+    if not re.fullmatch(r"[\d.\s,+-]+", view_box) or len(view_box.replace(",", " ").split()) != 4:
+        raise ValueError("plan symbol SVG must define a numeric viewBox")
+    for element in root.iter():
+        namespace, separator, name = element.tag.rpartition("}")
+        if (separator and namespace.lstrip("{") != "http://www.w3.org/2000/svg") or (name if separator else element.tag) not in _PLAN_SVG_TAGS:
+            raise ValueError("plan symbol SVG contains an unsupported element")
+        for attribute, value in element.attrib.items():
+            if attribute not in _PLAN_SVG_ATTRIBUTES:
+                raise ValueError("plan symbol SVG contains an unsupported attribute")
+            if attribute in {"fill", "stroke"} and not _PLAN_SVG_COLOUR.fullmatch(value):
+                raise ValueError("plan symbol SVG contains an unsupported colour")
+            if attribute == "d" and not _PLAN_SVG_PATH.fullmatch(value):
+                raise ValueError("plan symbol SVG contains an unsupported path")
+            if attribute == "viewBox" or attribute in {"stroke-width", "stroke-dasharray", "cx", "cy", "r", "x", "y", "width", "height", "rx", "ry", "font-size"}:
+                if not _PLAN_SVG_NUMBERS.fullmatch(value):
+                    raise ValueError("plan symbol SVG contains an invalid numeric value")
+            if attribute == "stroke-linecap" and value not in {"butt", "round", "square"}:
+                raise ValueError("plan symbol SVG contains an unsupported line cap")
+            if attribute == "stroke-linejoin" and value not in {"miter", "round", "bevel"}:
+                raise ValueError("plan symbol SVG contains an unsupported line join")
+            if attribute == "text-anchor" and value not in {"start", "middle", "end"}:
+                raise ValueError("plan symbol SVG contains an unsupported text anchor")
+            if attribute == "font-family" and value not in {"sans-serif", "serif", "monospace"}:
+                raise ValueError("plan symbol SVG contains an unsupported font family")
 
 
 class ProjectCreate(BaseModel):
@@ -149,7 +212,10 @@ class CatalogueItemInput(BaseModel):
     @classmethod
     def validate_plan_picture(cls, value: str | None) -> str | None:
         if value:
-            CatalogueImage(data_url=value, alt="Floorplan symbol")
+            if value.startswith(_PLAN_SVG_PREFIX):
+                validate_svg_plan_symbol(value)
+            else:
+                CatalogueImage(data_url=value, alt="Floorplan symbol")
         return value
 
     images: list[CatalogueImage] = Field(default_factory=list, max_length=3)
