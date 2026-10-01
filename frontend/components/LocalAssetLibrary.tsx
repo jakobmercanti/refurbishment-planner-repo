@@ -57,6 +57,8 @@ export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChang
 
   useEffect(() => {
     if (!isElectricalCategory || !selectedDatabaseCategory) {
+      // Clear the asynchronous catalogue result when its fetch is no longer applicable.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setElectricalSubcategories([]);
       setElectricalSubcategory("");
       setElectricalSubcategoriesLoading(false);
@@ -84,7 +86,7 @@ export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChang
       })
       .finally(() => { if (!controller.signal.aborted) setElectricalSubcategoriesLoading(false); });
     return () => controller.abort();
-  }, [apiUrl, isElectricalCategory, selectedDatabaseCategory?.id]);
+  }, [apiUrl, isElectricalCategory, selectedDatabaseCategory]);
 
   function selectMacroCategory(nextId: string) {
     setMacroCategoryId(nextId === "custom" ? "custom" : nextId as MacroCategoryId);

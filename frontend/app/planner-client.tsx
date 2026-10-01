@@ -140,11 +140,11 @@ export default function Home() {
   const handleViewerOpeningSelected = useCallback((selection: { id: string; roomId: string } | null) => {
     if (selection) {
       setViewerElementEditRequest(null);
-      const opening = roomOptions(demo).find(room => room.id === selection.roomId)?.openings.find(item => item.id === selection.id);
+      const opening = (demo ? (projectRooms.length ? projectRooms : [demo.room]) : []).find(room => room.id === selection.roomId)?.openings.find(item => item.id === selection.id);
       if (opening) setViewerAddToPlanMode(opening.kind === "WINDOW" ? "WINDOW" : "DOOR");
     }
     setViewerOpeningEditRequest(current => selection ? { ...selection, requestId: (current?.requestId ?? 0) + 1 } : null);
-  }, [demo]);
+  }, [demo, projectRooms]);
   const handlePlanElementSelected = useCallback((selection: { id: string; roomId: string } | null) => {
     if (!selection) {
       setViewerElementEditRequest(null);
@@ -426,13 +426,13 @@ export default function Home() {
       setViewerElementEditRequest(null);
       return;
     }
-    const selectedObstacle = roomOptions(demo).find(room => room.id === selection.roomId)?.obstacles.find(obstacle => obstacle.id === selection.id);
+    const selectedObstacle = (demo ? (projectRooms.length ? projectRooms : [demo.room]) : []).find(room => room.id === selection.roomId)?.obstacles.find(obstacle => obstacle.id === selection.id);
     setViewerAddToPlanMode(selectedObstacle?.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : "FURNITURE");
     setViewerOpeningEditRequest(null);
     setViewerElementEditRequest((current) => ({ ...selection, requestId: (current?.requestId ?? 0) + 1 }));
     setCompactViewerTool("viewer-analysis");
     setToolbarVisibility((current) => current["viewer-analysis"] ? current : { ...current, "viewer-analysis": true });
-  }, [demo]);
+  }, [demo, projectRooms]);
 
   function enterViewer() {
     setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("ANALYSIS");

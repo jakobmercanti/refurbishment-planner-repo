@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { colourForPart, colourPartsFor, partSupportsFinish, FULL_PART_ID, GLASS_PART_ID, type ColourSource } from "@/lib/assetColours";
 import { woodFinishOptions } from "@/lib/finishOptions";
@@ -23,7 +23,11 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
   const sourceRecord = source as ColourSource & { id?: string; model_id?: string; name?: string };
   const appearanceObjectName = (previewObstacle?.name ?? sourceRecord.name)?.replace(/^Default /i, "").trim();
   const sourceIdentity = `${sourceRecord.id ?? sourceRecord.model_id ?? ""}|${source.representation_key ?? ""}|${source.fixture_kind ?? ""}|${source.color_hex ?? ""}`;
-  useEffect(() => { setSelected(FULL_PART_ID); }, [sourceIdentity]);
+  const [selectedSourceIdentity, setSelectedSourceIdentity] = useState(sourceIdentity);
+  if (selectedSourceIdentity !== sourceIdentity) {
+    setSelectedSourceIdentity(sourceIdentity);
+    setSelected(FULL_PART_ID);
+  }
   const part = parts.find(part => part.id === selected) ?? parts[0];
   if (!part) return null;
   const colour = colourForPart(source, part);

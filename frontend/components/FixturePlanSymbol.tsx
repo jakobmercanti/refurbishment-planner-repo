@@ -30,7 +30,7 @@ export function FixturePlanSymbol({ obstacle, x, y, width: footprintWidth, depth
     secondary_color_hex: obstacle.secondary_color_hex,
     hardware_color_hex: obstacle.hardware_color_hex,
     handrail_color_hex: obstacle.handrail_color_hex,
-    component_colors: obstacle.component_colors,
+    component_colors: JSON.parse(componentColoursSignature),
     stl_base64: obstacle.stl_base64,
   }), [obstacle.representation_key, obstacle.fixture_kind, obstacle.color_hex, obstacle.secondary_color_hex, obstacle.hardware_color_hex, obstacle.handrail_color_hex, obstacle.stl_base64, componentColoursSignature]);
   const partColoursSignature = Object.entries(partColours).sort(([left], [right]) => left.localeCompare(right)).map(([part, colour]) => `${part}:${colour}`).join("|");

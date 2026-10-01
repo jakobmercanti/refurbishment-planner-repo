@@ -1290,6 +1290,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     });
     const mappedIds = new Set(mappedOpenings.map(opening => opening.id));
     const externalIds = new Set(externalOpenings.map(opening => opening.id));
+    // Reconcile an explicit opening-sync request from the external 3D viewer.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpenings(current => {
       const managedIds = new Set(roomOpenings(normalizedOutline, current, walls, openingCatalogueItems).map(opening => opening.id));
       const retained = current.filter(opening => !managedIds.has(opening.id) || (externalIds.has(opening.id) && !mappedIds.has(opening.id)));
@@ -3370,6 +3372,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     }
   });
   useEffect(() => {
+    // External viewer request, not state derived for rendering.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (openingEditRequest) editOpeningFromViewer();
   }, [openingEditRequest]);
 
@@ -3390,6 +3394,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     setSelectedAnnotationId(null);
   });
   useEffect(() => {
+    // External viewer request, not state derived for rendering.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (elementEditRequest) editElementFromViewer();
   }, [elementEditRequest]);
 
@@ -4051,6 +4057,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     setSelectedOpeningId(null); resetOpeningForm("DOOR"); setOpeningParent(""); setOpeningPositionExpanded(false); setElementTab("DOOR");
   });
   useEffect(() => {
+    // Apply an explicit parent request to open the addition editor.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (openingEditorTarget && !openingEditRequest) prepareOpeningAddition();
   }, [openingEditorTarget, openingEditRequest]);
 

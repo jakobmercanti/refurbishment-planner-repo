@@ -167,6 +167,8 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
   function renderAttachmentCard(attachment: (typeof documentation.attachments)[number]) {
     const value = relationKey(attachment.relation);
     return <article key={attachment.attachmentId} className="electrical-photo-card">
+      {/* Local object URLs cannot be processed by the Next.js image optimizer. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       {previews[attachment.attachmentId] && <img src={previews[attachment.attachmentId]} alt={attachment.title || "Electrical reference"} />}
       <div className="electrical-photo-fields">
         <label>Title<input defaultValue={attachment.title} onBlur={(event) => updateAttachment(attachment.attachmentId, { title: event.target.value })} /></label>

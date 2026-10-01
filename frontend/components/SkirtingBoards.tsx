@@ -26,7 +26,7 @@ function SkirtingWall({ wall, walls, wallMode, defaultWallColour }: { wall: Rend
     const result = new THREE.DataTexture(data, 256, 64, THREE.RGBAFormat);
     result.colorSpace = THREE.SRGBColorSpace; result.wrapS = result.wrapT = THREE.RepeatWrapping; result.magFilter = THREE.LinearFilter; result.minFilter = THREE.LinearFilter; result.needsUpdate = true;
     return result;
-  }, [wood?.base, wood?.grain, wood?.seed]);
+  }, [wood]);
   useEffect(() => () => texture?.dispose(), [texture]);
   const geometry = useMemo(() => {
     const { height_mm: h, thickness_mm: t } = normalizeSkirting(wall.room.finishes?.skirting_board);

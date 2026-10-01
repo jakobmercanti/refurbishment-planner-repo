@@ -13,6 +13,8 @@ export function ProjectDownloadDialog({ file, onClose }: { file: File; onClose: 
   const canShare = typeof navigator !== "undefined" && !!navigator.canShare?.({ files: [shareFile] });
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
+    // Publish an externally allocated URL; cleanup owns its resource lifetime.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrl(objectUrl);
     return () => { setTimeout(() => URL.revokeObjectURL(objectUrl), 60000); };
   }, [file]);

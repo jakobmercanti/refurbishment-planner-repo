@@ -69,7 +69,8 @@ Stripe integration and the associated tax/refund responsibilities.
 
 Once Supabase and R2 are ready, deploy the same master Docker image as a separate
 Railway worker. Start command: `.venv/bin/python -m backend.app.worker`.
-Use a worker-specific Railway config without the API's `/health` HTTP check.
+Set the worker Railway config path to `/deployment/railway-worker.json`, which
+deliberately omits the API's `/health` HTTP check.
 Set `COMMERCIAL_WORKER_ENABLED=true` only there and share Supabase/R2 settings.
 Put `OPENAI_API_KEY` only on the worker; after verifying it works, set
 `AI_RENDERING_ENABLED=true` on the API. Keep Tripo/AI 3D disabled until its

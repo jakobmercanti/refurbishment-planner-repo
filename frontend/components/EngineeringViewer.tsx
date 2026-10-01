@@ -1375,7 +1375,7 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewC
     const eventSource=events.connected;
     if (!eventSource) return;
     const cursor=eventSource.style.cursor;
-    eventSource.style.cursor="crosshair";
+    eventSource.style.setProperty("cursor", "crosshair");
     let down: {x:number;y:number}|null=null;
     const move=(event:PointerEvent)=>{ event.stopImmediatePropagation(); client.current={x:event.clientX,y:event.clientY}; };
     const press=(event:PointerEvent)=>{
@@ -1404,7 +1404,7 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewC
     eventSource.addEventListener("pointerup",release,true); eventSource.addEventListener("pointercancel",release,true);
     eventSource.addEventListener("pointerleave",leave); eventSource.addEventListener("contextmenu",context,true);
     return ()=>{
-      eventSource.style.cursor=cursor;
+      eventSource.style.setProperty("cursor", cursor);
       eventSource.removeEventListener("pointermove",move,true); eventSource.removeEventListener("pointerdown",press,true);
       eventSource.removeEventListener("pointerup",release,true); eventSource.removeEventListener("pointercancel",release,true);
       eventSource.removeEventListener("pointerleave",leave); eventSource.removeEventListener("contextmenu",context,true);
@@ -1447,6 +1447,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   const dragCandidate = useRef<PlacementCandidate | null>(null);
   const dragCapture = useRef<{ target: { releasePointerCapture: (id: number)=>void }; pointerId: number } | null>(null);
   const orbitInteraction = useRef(false);
+  const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const { events } = useThree();
   useEffect(() => {
     const cancel = () => {
@@ -1465,10 +1466,13 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
     return () => { eventSource.removeEventListener("pointercancel",cancel); window.removeEventListener("keydown",key); window.removeEventListener("blur",cancel); };
   }, [events]);
   const [personDragging, setPersonDragging] = useState<{ offset: Point2D } | null>(null);
-  const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const [previewPlacementCandidate, setPreviewPlacementCandidate] = useState<PlacementCandidate | null>(null);
   const [previewPerson, setPreviewPerson] = useState<PersonMockup | null>(null);
-  useEffect(() => { setPreviewPlacementCandidate(null); }, [placement?.id]);
+  const [previewPlacementId, setPreviewPlacementId] = useState(placement?.id);
+  if (previewPlacementId !== placement?.id) {
+    setPreviewPlacementId(placement?.id);
+    setPreviewPlacementCandidate(null);
+  }
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
