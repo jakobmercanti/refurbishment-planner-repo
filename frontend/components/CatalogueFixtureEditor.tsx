@@ -139,11 +139,15 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   // `subcategory` is an Object catalogue grouping, not a second family. The
   // previous filter selected only the first grouping (for example, the
   // 4-person table) and hid every sibling entry from the editor.
-  const rockerSwitchOrder: Record<string, number> = { "electrical-switch-single": 0, "electrical-switch-double": 1 };
+  const rockerSwitchOrder: Record<string, number> = {
+    "electrical-switch-single": 0, "electrical-switch-double": 1,
+    "electrical-switch-triple": 2, "electrical-switch-quadruple": 3,
+    "electrical-switch-dimmer": 4, "electrical-switch-dimmer-double": 5,
+  };
   const objects = [...family].sort((a, b) => {
     if (electrical && activeCategory === "Switches") {
-      const firstPriority = rockerSwitchOrder[a.representation_key ?? ""] ?? 2;
-      const secondPriority = rockerSwitchOrder[b.representation_key ?? ""] ?? 2;
+      const firstPriority = rockerSwitchOrder[a.representation_key ?? ""] ?? 6;
+      const secondPriority = rockerSwitchOrder[b.representation_key ?? ""] ?? 6;
       if (firstPriority !== secondPriority) return firstPriority - secondPriority;
     }
     return a.subcategory.localeCompare(b.subcategory) || Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name);

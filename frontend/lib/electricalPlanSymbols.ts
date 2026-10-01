@@ -29,13 +29,23 @@ const standardSocketPins = (x: number) =>
 const DEVICE_SYMBOLS = new Map<string, PlanPresentation>([
   ["electrical-switch-single", { electricalLayout: deviceFace(rocker(32, 36)), standardPlan: svgSymbol(rockerInset(40, 20), 100, 52) }],
   ["electrical-switch-double", { electricalLayout: deviceFace(rocker(19, 27) + rocker(54, 27)), standardPlan: svgSymbol(rockerInset(27, 16) + rockerInset(57, 16), 100, 52) }],
+  ["electrical-switch-triple", { electricalLayout: deviceFace([16, 41, 66].map(x => rocker(x, 18)).join("")), standardPlan: svgSymbol([20, 44, 68].map(x => rockerInset(x, 12)).join(""), 100, 52) }],
+  ["electrical-switch-quadruple", { electricalLayout: deviceFace([20, 52, 84, 116].map(x => rocker(x, 24)).join(""), 160), standardPlan: svgSymbol([23, 51, 79, 107].map(x => rockerInset(x, 12)).join(""), 140, 52) }],
   ["electrical-switch-dimmer", { electricalLayout: deviceFace('<circle cx="50" cy="50" r="25"/><path d="M50 30v12"/>'), standardPlan: svgSymbol('<circle cx="50" cy="26" r="9" fill="#fff"/><path d="M50 20v6"/>', 100, 52) }],
+  ["electrical-switch-dimmer-double", { electricalLayout: deviceFace([46, 114].map(x => '<circle cx="' + x + '" cy="50" r="22"/><path d="M' + x + ' 32v10"/>').join(""), 160), standardPlan: svgSymbol([40, 100].map(x => '<circle cx="' + x + '" cy="26" r="9" fill="#fff"/><path d="M' + x + ' 20v6"/>').join(""), 140, 52) }],
   ["electrical-switch-pull", { electricalLayout: deviceFace('<circle cx="50" cy="37" r="20"/><path d="M50 57v20"/><circle cx="50" cy="82" r="5" fill="#071b38"/>'), standardPlan: svgSymbol('<circle cx="50" cy="17" r="6" fill="#fff"/><path d="M50 23v15"/><circle cx="50" cy="40" r="2" fill="#071b38"/>', 100, 52) }],
   ["electrical-socket-single", { electricalLayout: deviceFace(socketPins(50)), standardPlan: svgSymbol(standardSocketPins(36), 72, 52) }],
   ["electrical-socket-double", { electricalLayout: deviceFace(socketPins(43) + socketPins(117), 160), standardPlan: svgSymbol(standardSocketPins(36) + standardSocketPins(84), 120, 68) }],
   ["electrical-socket-usb", { electricalLayout: deviceFace(socketPins(43) + socketPins(117) + '<rect x="57" y="76" width="20" height="9" rx="1"/><rect x="87" y="76" width="16" height="9" rx="4"/>', 160), standardPlan: svgSymbol(standardSocketPins(31) + standardSocketPins(65) + '<rect x="49" y="43" width="7" height="4" rx="1"/><rect x="58" y="43" width="6" height="4" rx="2"/>', 96, 58) }],
   ["electrical-socket-weatherproof", { electricalLayout: deviceFace(socketPins(43) + socketPins(117) + '<path d="M17 16h126M17 77h126"/>', 160), standardPlan: svgSymbol(standardSocketPins(36) + standardSocketPins(84) + '<path d="M9 11h102M9 51h102"/>', 120, 68) }],
 ]);
+
+// Mirror-symmetric fan face, also used for older placed items with stale SVGs.
+const fanFace = '<path d="M44 44 C38 32 38 14 50 14 C62 14 62 32 56 44 Z"/><path d="M56 44 C68 38 86 38 86 50 C86 62 68 62 56 56 Z"/><path d="M56 56 C62 68 62 86 50 86 C38 86 38 68 44 56 Z"/><path d="M44 56 C32 62 14 62 14 50 C14 38 32 38 44 44 Z"/><circle cx="50" cy="50" r="8" fill="#fff"/>';
+for (const variant of ["axial", "silent", "hood", "canopy"]) {
+  const symbol = deviceFace(fanFace);
+  DEVICE_SYMBOLS.set(`electrical-fan-${variant}`, { electricalLayout: symbol, standardPlan: symbol });
+}
 
 export function electricalDevicePlanSymbol(key: string | null | undefined, electricalLayout = false) {
   const presentation = key ? DEVICE_SYMBOLS.get(key) : undefined;

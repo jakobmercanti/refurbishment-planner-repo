@@ -22,6 +22,12 @@ function Disc({ at, size, colour, front = false, metallic = false }: { at: Point
 function Ball({ at, size, colour }: { at: Point; size: Point; colour: string }) {
   return <mesh position={at} scale={size} castShadow><sphereGeometry args={[.5,40,24]} /><meshPhysicalMaterial color={colour} roughness={.24} clearcoat={.28} {...metalFinishProps(colour)} /></mesh>;
 }
+function FaceDisc({ at, size, colour, metallic = false }: { at: Point; size: Point; colour: string; metallic?: boolean }) {
+  return <group position={at} scale={size}><mesh rotation={[Math.PI / 2,0,0]} castShadow receiveShadow>
+    <cylinderGeometry args={[.5,.5,1,48]} />
+    <meshStandardMaterial color={colour} metalness={metallic ? .72 : .04} roughness={.36} {...metalFinishProps(colour)} />
+  </mesh></group>;
+}
 function Screw({ x, y, z, colour = metal }: { x: number; y: number; z: number; colour?: string }) {
   return <><Disc at={[x,y,z]} size={[.046,.046,.012]} colour={colour} front metallic /><Block at={[x,y,z+.008]} size={[.03,.007,.005]} colour={dark} /></>;
 }
@@ -61,9 +67,21 @@ export function ElectricalFixture({ representation, width, depth, height, colour
       <Disc at={[0,.49,0]} size={[.028,.84,.028]} colour={colours.cable ?? "#DEDCD5"} /><Ball at={[0,.045,0]} size={[.18,.09,.18]} colour={controls} />
       {[-.3,.3].map(x => <Disc key={x} at={[x,.936,0]} size={[.07,.003,.07]} colour={hardware} metallic />)}</>;
   } else if (key.startsWith("switch-")) {
-    model = <><group scale={[1,1,key === "switch-dimmer" ? .4 : 1]} position={[0,0,key === "switch-dimmer" ? -.3 : 0]}><Plate colour={colour} hardware={hardware} metallic={key === "switch-dimmer"} /></group>
-      {key === "switch-dimmer" ? <><Disc at={[0,.5,.16]} size={[.38,.38,.65]} colour={controls} metallic front /><Block at={[0,.64,.493]} size={[.027,.06,.008]} colour={dark} /></>
-        : (key === "switch-double" ? [-.18,.18] : [0]).map(x => <group key={x} rotation={[.04,0,0]}><Block at={[x,.5,.365]} size={[key === "switch-double" ? .28 : .40,.58,.24]} colour={controls} /><Block at={[x,.735,.491]} size={[.08,.012,.008]} colour="#B7BDC0" /></group>)}</>;
+    const dimmer = key.startsWith("switch-dimmer");
+    const count = key === "switch-double" || key === "switch-dimmer-double" ? 2 : key === "switch-triple" ? 3 : key === "switch-quadruple" ? 4 : 1;
+    const spacing = dimmer ? .47 : count === 2 ? .36 : count === 3 ? .245 : .20;
+    const rockerWidth = count === 1 ? .40 : count === 2 ? .28 : count === 3 ? .19 : .16;
+    model = <><group scale={[1,1,dimmer ? .4 : 1]} position={[0,0,dimmer ? -.3 : 0]}><Plate colour={colour} hardware={hardware} metallic /></group>
+      {Array.from({ length: count }, (_, index) => (index - (count - 1) / 2) * spacing).map(x => dimmer
+        ? <group key={x}>
+          <FaceDisc at={[x,.5,-.145]} size={[count === 2 ? .27 : .44,.44,.04]} colour={colour} metallic />
+          <FaceDisc at={[x,.5,.16]} size={[count === 2 ? .23 : .38,.38,.65]} colour={controls} metallic />
+          <Block at={[x,.64,.493]} size={[count === 2 ? .016 : .027,.06,.008]} colour={dark} />
+        </group>
+        : <group key={x} rotation={[.04,0,0]}>
+          <Block at={[x,.5,.365]} size={[rockerWidth,.58,.24]} colour={controls} metallic />
+          <Block at={[x,.735,.491]} size={[rockerWidth * .25,.012,.008]} colour={hardware} />
+        </group>)}</>;
   } else if (key.startsWith("socket-")) {
     const single = key === "socket-single", weather = key === "socket-weatherproof";
     model = <><Plate colour={colour} hardware={hardware} />{(single ? [0] : [-.235,.235]).map(x => <SocketFace key={x} x={x} controls={colours.controls ?? "#FAF9F4"} hardware={hardware} width={single ? .6 : .36} usb={key === "socket-usb"} />)}
@@ -79,6 +97,26 @@ export function ElectricalFixture({ representation, width, depth, height, colour
     model = <>{!linear && <><Disc at={[0,.974,0]} size={[.28,.05,.28]} colour={mounting} metallic /><Disc at={[0,.946,0]} size={[.08,.018,.08]} colour={hardware} metallic /><Disc at={[0,.62,0]} size={[.007,.69,.007]} colour={cable} /></>}
       {key === "pendant-dome" ? <><mesh position={[0,.015,0]} scale={[1,.31,1]} castShadow><latheGeometry args={[domeProfile,64]} /><meshStandardMaterial color={colour} metalness={.45} roughness={.3} side={DoubleSide} {...metalFinishProps(colour)} /></mesh><Disc at={[0,.012,0]} size={[.90,.02,.90]} colour={opal} /></>
         : key === "pendant-globe" ? <><Ball at={[0,.18,0]} size={[1,.35,1]} colour={opal} /><Disc at={[0,.365,0]} size={[.16,.04,.16]} colour={colour} metallic /></>
+        : key === "pendant-cone" ? <>
+          <Disc at={[0,.335,0]} size={[.16,.06,.16]} colour={colour} metallic />
+          <mesh position={[0,.175,0]} castShadow receiveShadow>
+            <cylinderGeometry args={[.08,.5,.30,64,1,true]} />
+            <meshStandardMaterial color={colour} metalness={.72} roughness={.4} side={DoubleSide} {...metalFinishProps(colour)} />
+          </mesh>
+          <Disc at={[0,.025,0]} size={[1,.018,1]} colour={colour} metallic />
+          <Disc at={[0,.014,0]} size={[.92,.012,.92]} colour={opal} />
+        </>
+        : key === "pendant-cage" ? <>
+          <Disc at={[0,.335,0]} size={[.16,.07,.16]} colour={colour} metallic />
+          <Ball at={[0,.21,0]} size={[.23,.20,.23]} colour={opal} />
+          {[.03,.30].map(y => <CageTube key={y} points={Array.from({ length: 32 }, (_, i) => [Math.cos(i * Math.PI / 16) * .47,y,Math.sin(i * Math.PI / 16) * .47] as Point)} colour={colour} radius={.014} closed />)}
+          {Array.from({ length: 8 }, (_, i) => i * Math.PI / 4).map(angle => <CageTube key={angle} colour={colour} radius={.012} points={[
+            [.10 * Math.cos(angle),.37,.10 * Math.sin(angle)],
+            [.47 * Math.cos(angle),.30,.47 * Math.sin(angle)],
+            [.47 * Math.cos(angle),.03,.47 * Math.sin(angle)],
+            [.10 * Math.cos(angle),.015,.10 * Math.sin(angle)],
+          ]} />)}
+        </>
         : <>
           {[-.36,.36].map(x => <group key={x}>
             <Disc at={[x,.985,0]} size={[.075,.03,.90]} colour={mounting} metallic />
@@ -91,50 +129,96 @@ export function ElectricalFixture({ representation, width, depth, height, colour
         </>}</>;
   } else if (key.startsWith("wall-")) {
     if (key === "wall-bulkhead") {
-      // The glass is a shallow ellipsoidal dome. Keep every guard segment on
-      // its front surface so the cage reads as one fitted assembly, not loose
-      // loops passing through or behind the luminaire.
-      const domeDepth = (x: number, y: number) => .075 + .14 * Math.sqrt(Math.max(0,
-        1 - (x / .385) ** 2 - ((y - .5) / .42) ** 2,
+      // All oval faces lie in XY, with their depth along Z. The cage and glass
+      // share a surface profile so the guard follows the protruding diffuser.
+      const domeDepth = (x: number, y: number) => -.04 + .44 * Math.sqrt(Math.max(0,
+        1 - (x / .41) ** 2 - ((y - .5) / .44) ** 2,
       ));
       const perimeter: Point[] = Array.from({ length: 48 }, (_, index) => {
         const angle = index * Math.PI * 2 / 48;
-        const x = .385 * Math.cos(angle);
-        const y = .5 + .42 * Math.sin(angle);
-        return [x, y, domeDepth(x, y) + .014];
+        return [.41 * Math.cos(angle), .5 + .44 * Math.sin(angle), -.025];
       });
-      const horizontalGuards: Point[][] = [.34,.66].map(y => {
-        const halfWidth = .385 * Math.sqrt(1 - ((y - .5) / .42) ** 2) * .98;
+      const crossSection = (y: number, clearance: number): Point[] => {
+        const halfWidth = .41 * Math.sqrt(Math.max(0, 1 - ((y - .5) / .44) ** 2));
         return Array.from({ length: 17 }, (_, index) => {
           const x = -halfWidth + 2 * halfWidth * index / 16;
-          return [x, y, domeDepth(x, y) + .022] as Point;
+          return [x, y, domeDepth(x, y) + clearance] as Point;
         });
-      });
-      const verticalGuards: Point[][] = [-.31,.31].map(x => {
-        const halfHeight = .42 * Math.sqrt(1 - (x / .385) ** 2) * .96;
-        return Array.from({ length: 17 }, (_, index) => {
-          const y = .5 - halfHeight + 2 * halfHeight * index / 16;
-          return [x, y, domeDepth(x, y) + .022] as Point;
-        });
+      };
+      const upright: Point[] = Array.from({ length: 33 }, (_, index) => {
+        const y = .06 + .88 * index / 32;
+        return [0, y, domeDepth(0, y) + .015];
       });
       model = <>
         {/* Oval wall plate, deep sealed housing and a distinct raised bezel. */}
-        <Disc at={[0,.5,-.18]} size={[.96,.28,.98]} colour={mounting} front metallic />
-        <Disc at={[0,.5,-.015]} size={[.88,.16,.91]} colour={colour} front />
-        <Disc at={[0,.5,.065]} size={[.82,.07,.85]} colour={mounting} front metallic />
-        {/* Single opal diffuser: a smooth, softly translucent front dome. */}
-        <mesh position={[0,.5,.075]} scale={[.77,.84,.28]} castShadow receiveShadow>
-          <sphereGeometry args={[.5,64,40]} />
-          <meshPhysicalMaterial color="#F5F3E9" roughness={.34} clearcoat={.22} transparent opacity={.92} />
+        {[
+          { z: -.34, size: [.96,.94,.32] as Point, tint: mounting },
+          { z: -.17, size: [.92,.92,.12] as Point, tint: colour },
+          { z: -.075, size: [.88,.90,.07] as Point, tint: mounting },
+        ].map(({ z, size, tint }) => <group key={z} position={[0,.5,z]} scale={size}>
+          <mesh rotation={[Math.PI / 2,0,0]} castShadow receiveShadow>
+            <cylinderGeometry args={[.5,.5,1,64]} />
+            <meshStandardMaterial color={tint} metalness={.35} roughness={.42} {...metalFinishProps(tint)} />
+          </mesh>
+        </group>)}
+        {/* Forward-facing hemisphere, not a full globe embedded in the body. */}
+        <group position={[0,.5,-.04]} scale={[.82,.88,.88]}>
+          <mesh rotation={[Math.PI / 2,0,0]} castShadow receiveShadow>
+            <sphereGeometry args={[.5,64,40,0,Math.PI * 2,0,Math.PI / 2]} />
+            <meshPhysicalMaterial color="#F5F3E9" roughness={.48} clearcoat={.16} />
+          </mesh>
+        </group>
+        {/* Fine moulded ribs in the frosted glass. */}
+        {Array.from({ length: 37 }, (_, index) => .095 + index * .0225).map(y => <mesh key={y}>
+          <tubeGeometry args={[new CatmullRomCurve3(crossSection(y,.0015).map(point => new Vector3(...point))),64,.0015,6,false]} />
+          <meshStandardMaterial color="#E7E4DA" roughness={.55} />
+        </mesh>)}
+        {/* Reference cage: oval rim, two crossbars and one central upright. */}
+        <CageTube points={perimeter} colour={grille} radius={.017} closed />
+        {[.31,.69].map(y => <CageTube key={y} points={crossSection(y,.015)} colour={grille} radius={.013} />)}
+        <CageTube points={upright} colour={grille} radius={.013} />
+        {[.035,.965].map(y => <group key={y}>
+          <Block at={[0,y,-.075]} size={[.18,.07,.15]} colour={mounting} metallic />
+          <group position={[0,y,.008]} scale={[.052,.035,.022]}>
+            <mesh rotation={[Math.PI / 2,0,0]} castShadow>
+              <cylinderGeometry args={[.5,.5,1,24]} />
+              <meshStandardMaterial color={hardware} metalness={.75} roughness={.3} {...metalFinishProps(hardware)} />
+            </mesh>
+          </group>
+          <Block at={[0,y,.022]} size={[.031,.005,.005]} colour={dark} />
+        </group>)}
+      </>;
+    } else if (key === "wall-spotlight") {
+      model = <>
+        <FaceDisc at={[0,.58,-.445]} size={[.72,.48,.11]} colour={mounting} metallic />
+        <Block at={[0,.58,-.22]} size={[.11,.10,.36]} colour={colour} metallic />
+        <Ball at={[0,.58,-.025]} size={[.18,.12,.12]} colour={hardware} />
+        <group position={[0,.46,.16]} rotation={[.24,0,0]}>
+          <FaceDisc at={[0,0,0]} size={[.58,.39,.42]} colour={colour} metallic />
+          <FaceDisc at={[0,0,.217]} size={[.48,.32,.012]} colour={dark} />
+          <FaceDisc at={[0,0,.225]} size={[.40,.267,.01]} colour={opal} />
+        </group>
+        <FaceDisc at={[0,.73,-.379]} size={[.08,.053,.025]} colour={hardware} metallic />
+      </>;
+    } else if (key === "wall-lantern") {
+      model = <>
+        <Block at={[0,.58,-.455]} size={[.43,.80,.09]} colour={mounting} metallic />
+        <Block at={[0,.80,-.075]} size={[.075,.055,.70]} colour={colour} metallic />
+        <Block at={[0,.405,.16]} size={[.70,.035,.60]} colour={colour} metallic />
+        <Block at={[0,.145,.16]} size={[.70,.04,.60]} colour={colour} metallic />
+        {[-.32,.32].flatMap(x => [-.115,.435].map(z => <Block key={`${x}-${z}`} at={[x,.42,z]} size={[.035,.52,.035]} colour={colour} metallic />))}
+        <mesh position={[0,.42,.16]}>
+          <boxGeometry args={[.60,.50,.50]} />
+          <meshPhysicalMaterial color="#DCE8E6" roughness={.12} transparent opacity={.18} depthWrite={false} />
         </mesh>
-        {/* One oval perimeter plus two horizontal and two upright guard wires. */}
-        <CageTube points={perimeter} colour={grille} radius={.012} closed />
-        {horizontalGuards.map((points,index) => <CageTube key={"crossbar-" + index} points={points} colour={grille} radius={.011} />)}
-        {verticalGuards.map((points,index) => <CageTube key={"upright-" + index} points={points} colour={grille} radius={.011} />)}
-        {[.12,.88].flatMap(y => [-.30,.30].map(x => <group key={`${x}-${y}`}>
-          <Disc at={[x,y,.075]} size={[.038,.038,.018]} colour={hardware} front metallic />
-          <Block at={[x,y,.087]} size={[.022,.004,.003]} colour={dark} />
-        </group>))}
+        <Disc at={[0,.20,.16]} size={[.16,.09,.16]} colour={hardware} metallic />
+        <Ball at={[0,.34,.16]} size={[.20,.21,.17]} colour={opal} />
+        <mesh position={[0,.75,.16]} scale={[1,.15,.80]} castShadow receiveShadow>
+          <cylinderGeometry args={[.06,.5,1,4,1,false,Math.PI / 4]} />
+          <meshStandardMaterial color={colour} metalness={.45} roughness={.4} {...metalFinishProps(colour)} />
+        </mesh>
+        <Ball at={[0,.85,.16]} size={[.10,.07,.08]} colour={colour} />
+        <Ball at={[0,.10,.16]} size={[.10,.05,.08]} colour={colour} />
       </>;
     } else if (key === "wall-cylinder") {
       model = <><Block at={[0,.5,-.41]} size={[.7,.65,.18]} colour={mounting} />

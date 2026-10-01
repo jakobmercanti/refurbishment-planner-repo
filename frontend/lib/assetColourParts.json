@@ -33,7 +33,7 @@
       {
         "id": "controls",
         "label": "Dimmer knob",
-        "default_color_hex": "#AEB7BD",
+        "default_color_hex": "$catalogue",
         "material_type": "metal"
       },
       {
@@ -1671,7 +1671,10 @@
   "representations": {
     "electrical-switch-single": "electrical-switch",
     "electrical-switch-double": "electrical-switch",
+    "electrical-switch-triple": "electrical-switch",
+    "electrical-switch-quadruple": "electrical-switch",
     "electrical-switch-dimmer": "electrical-dimmer",
+    "electrical-switch-dimmer-double": "electrical-dimmer",
     "electrical-switch-pull": "electrical-pull",
     "electrical-socket-single": "electrical-socket",
     "electrical-socket-double": "electrical-socket",
@@ -1684,9 +1687,13 @@
     "electrical-pendant-dome": "electrical-pendant",
     "electrical-pendant-globe": "electrical-pendant",
     "electrical-pendant-linear": "electrical-pendant",
+    "electrical-pendant-cone": "electrical-pendant",
+    "electrical-pendant-cage": "electrical-pendant",
     "electrical-wall-cylinder": "electrical-wall",
     "electrical-wall-globe": "electrical-wall",
     "electrical-wall-bulkhead": "electrical-bulkhead",
+    "electrical-wall-spotlight": "electrical-wall",
+    "electrical-wall-lantern": "electrical-wall",
     "electrical-sensor-smoke": "electrical-sensor",
     "electrical-sensor-heat": "electrical-heat",
     "electrical-sensor-co": "electrical-sensor",
