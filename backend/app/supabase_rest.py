@@ -36,7 +36,10 @@ class SupabaseREST:
     def __init__(self) -> None:
         self.url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
         self.publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
-        self.service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        self.service_key = (
+            os.getenv("SUPABASE_SECRET_KEY", "").strip()
+            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        )
         self.opener = build_opener(ProxyHandler({}))
 
     @property
@@ -121,9 +124,12 @@ class SupabaseREST:
         data = None if body is None else json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         headers = {
             "apikey": self.service_key,
-            "Authorization": f"Bearer {self.service_key}",
             "Accept": "application/json",
         }
+        # Modern secret keys are opaque API keys, not JWT bearer tokens.
+        # Retain the legacy header for installations still using service_role JWTs.
+        if not self.service_key.startswith("sb_secret_"):
+            headers["Authorization"] = f"Bearer {self.service_key}"
         if data is not None:
             headers["Content-Type"] = "application/json"
         if prefer:

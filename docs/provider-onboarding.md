@@ -7,16 +7,20 @@ Never paste secret keys into chat, Git, browser build settings, or screenshots.
 
 Create a project at https://supabase.com/dashboard (or select your existing project).
 Keep the database password in your password manager. In project settings, find
-the project URL and API keys. The URL and publishable key are public; the legacy
-service-role key is secret and bypasses row-level security.
+the project URL and API keys. The URL and publishable key are public; the
+recommended Secret API key is private and bypasses row-level security.
 
 Open https://railway.com/project/45ec36d9-5b66-437c-a1b3-d85bdfb5a97f,
 select production, then freefloorplan3d-api → Variables → New Variable. Set:
 
 - `SUPABASE_URL`: your project URL.
 - `SUPABASE_PUBLISHABLE_KEY`: your publishable key.
-- `SUPABASE_SERVICE_ROLE_KEY`: your legacy service-role key (server only).
+- `SUPABASE_SECRET_KEY`: your Secret API key beginning `sb_secret_` (server only).
 - `REQUIRE_VERIFIED_EMAIL`: `true`.
+
+Existing installations may retain `SUPABASE_SERVICE_ROLE_KEY` as a compatibility
+fallback. A nonempty `SUPABASE_SECRET_KEY` takes precedence. Never put either
+privileged key in any `NEXT_PUBLIC_` variable.
 
 Before deployment, apply the five SQL migrations in the exact order listed in
 `commercial-phase-2-setup.md`. For a new project, use SQL Editor → New query,
