@@ -8,6 +8,7 @@ export interface AuthSession {
 }
 
 const SESSION_KEY = "freefloorplan3d:commercial-session:v1";
+export const AUTH_SESSION_CHANGED = "freefloorplan3d:auth-session-changed";
 let refreshInFlight: Promise<AuthSession | null> | null = null;
 
 class AuthRequestError extends Error {
@@ -31,6 +32,7 @@ function saveSession(session: AuthSession | null) {
   if (typeof window === "undefined") return;
   if (session) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
   else sessionStorage.removeItem(SESSION_KEY);
+  window.dispatchEvent(new Event(AUTH_SESSION_CHANGED));
 }
 
 function readStoredSession(): AuthSession | null {

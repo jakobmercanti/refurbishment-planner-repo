@@ -8,6 +8,7 @@ import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
 import { useLocalProject } from "@/lib/useLocalProject";
 import { PlannerPrivacyDialog } from "@/components/PlannerPrivacyDialog";
 import { AccountDialog } from "@/components/AccountDialog";
+import { AccountStatusButton } from "@/components/AccountStatusButton";
 import { LocalAssetLibrary } from "@/components/LocalAssetLibrary";
 import starterDemo from "@/lib/starterDemo.json";
 import { EngineeringViewer } from "@/components/EngineeringViewer";
@@ -566,7 +567,7 @@ export default function Home() {
               <button aria-pressed={plannerBuildView === "TABLE"} className={plannerBuildView === "TABLE" ? "active" : ""} onClick={() => setPlannerBuildView("TABLE")}>Overview</button>
             </>}
           </div>
-          <button type="button" className="app-nav-entry" aria-haspopup="dialog" aria-expanded={accountOpen} onClick={() => { setAccountInitialSection("account"); setAccountOpen(true); }}>Sign in</button>
+          <AccountStatusButton open={accountOpen} onOpen={() => { setAccountInitialSection("account"); setAccountOpen(true); }} />
         </nav>
       </header>
 

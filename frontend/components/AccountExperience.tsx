@@ -79,7 +79,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   }
 
   const sectionTabs = <nav className="commercial-tabs account-section-tabs" role="tablist" aria-label="Account sections">
-    <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>Account</button>
+    <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>{session ? "Account" : "Sign in"}</button>
     <button id="plans-section-tab" type="button" role="tab" aria-controls="plans-section-panel" aria-selected={(embedded ? embeddedSection : section) === "plans"} className={(embedded ? embeddedSection : section) === "plans" ? "selected" : ""} onClick={() => selectSection("plans")}>Plans</button>
   </nav>;
 
