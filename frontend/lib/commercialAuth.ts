@@ -50,7 +50,7 @@ async function authRequest<T>(path: string, body?: unknown, accessToken?: string
   const { url, key } = configuration();
   const response = await fetch(`${url}/auth/v1/${path}`, {
     method: body === undefined ? "GET" : "POST",
-    headers: { apikey: key, Authorization: `Bearer ${accessToken ?? key}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    headers: { apikey: key, ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const result = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -96,7 +96,7 @@ export async function signIn(email: string, password: string): Promise<AuthSessi
 }
 
 export async function signUp(email: string, password: string): Promise<AuthSession | null> {
-  const result = await authRequest<Record<string, unknown>>("signup", { email: email.trim(), password });
+  const result = await authRequest<Record<string, unknown>>("signup?redirect_to=" + encodeURIComponent(accountRedirect()), { email: email.trim(), password });
   const session = normalizeSession(result);
   saveSession(session);
   return session;

@@ -10,6 +10,17 @@ const headers = {
 function respond(response) { const out = new Response(response.body, response); for (const [k, v] of Object.entries(headers)) out.headers.set(k, v); return out; }
 export default {
   async fetch(request, env) {
+    // Only explicit HTTPS provider origins may extend the browser policy.
+    const providerOrigins = [env.SUPABASE_URL, env.R2_ORIGIN].flatMap(value => {
+      if (!value) return [];
+      try { const provider = new URL(value); return provider.protocol === 'https:' && !provider.username && !provider.password ? [provider.origin] : []; }
+      catch { return []; }
+    });
+    const secureRespond = response => {
+      const out = respond(response);
+      if (providerOrigins.length) out.headers.set('Content-Security-Policy', headers['Content-Security-Policy'].replace("connect-src 'self' blob:", `connect-src 'self' blob: ${providerOrigins.join(' ')}`).replace("img-src 'self' data: blob:", `img-src 'self' data: blob: ${providerOrigins.join(' ')}`));
+      return out;
+    };
     const url = new URL(request.url);
     if (url.pathname === '/planner-test' || url.pathname.startsWith('/planner-test/')) {
       url.pathname = BASE + url.pathname.slice('/planner-test'.length);
@@ -22,6 +33,57 @@ export default {
     const path = url.pathname.slice(BASE.length);
     if (path.startsWith('/engineering-api/')) {
       const endpoint = path.slice('/engineering-api'.length);
+      if (endpoint.startsWith('/commercial/')) {
+        const resource = endpoint.slice('/commercial'.length);
+        const id = '[A-Za-z0-9_-]+';
+        const routes = {
+          GET: new RegExp(`^/(catalogue|summary|projects(?:/${id})?|assets|assets/${id}/download|assets/local/${id}/download|ai-3d/status|ai-3d/jobs(?:/${id})?|renders(?:/${id})?)$`),
+          POST: new RegExp(`^/(assets/upload|assets/${id}/finalize|ai-3d/references/upload|ai-3d/jobs|render-references/upload|renders|billing/checkout|billing/portal|stripe/webhook)$`),
+          PUT: new RegExp(`^/projects/${id}$`),
+          DELETE: new RegExp(`^/(projects|assets)/${id}$`),
+        };
+        if (!routes[request.method]?.test(resource)) return secureRespond(new Response('Forbidden', { status: 403 }));
+        const webhook = resource === '/stripe/webhook';
+        const publicCatalogue = resource === '/catalogue';
+        if (!['GET', 'HEAD'].includes(request.method) && !webhook && request.headers.get('Origin') !== url.origin)
+          return secureRespond(new Response('Forbidden', { status: 403 }));
+        const authorization = request.headers.get('Authorization');
+        if (!webhook && !publicCatalogue && !/^Bearer\s+\S+$/i.test(authorization || ''))
+          return secureRespond(new Response('Authentication required', { status: 401 }));
+        if (webhook && !request.headers.get('Stripe-Signature')) return secureRespond(new Response('Signature required', { status: 400 }));
+        try {
+          const upstream = new URL(env.ENGINEERING_API_ORIGIN);
+          if (upstream.protocol !== 'https:') throw new Error('Invalid API origin');
+          const limit = webhook ? 1_000_000 : 34_000_000;
+          if (Number(request.headers.get('Content-Length') || 0) > limit) return secureRespond(new Response('Request too large', { status: 413 }));
+          let body;
+          if (request.body) {
+            const reader = request.body.getReader();
+            const chunks = [];
+            let length = 0;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              length += value.byteLength;
+              if (length > limit) { await reader.cancel(); return secureRespond(new Response('Request too large', { status: 413 })); }
+              chunks.push(value);
+            }
+            body = new Uint8Array(length);
+            let offset = 0;
+            for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+          }
+          const forwarded = { 'Content-Type': 'application/json' };
+          if (webhook) forwarded['Stripe-Signature'] = request.headers.get('Stripe-Signature');
+          else if (authorization) forwarded.Authorization = authorization;
+          const idempotency = request.headers.get('Idempotency-Key');
+          if (!webhook && idempotency) forwarded['Idempotency-Key'] = idempotency.slice(0, 200);
+          const result = await fetch(new URL(endpoint + url.search, upstream), { method: request.method, headers: forwarded, body, redirect: 'manual', signal: AbortSignal.timeout(25000) });
+          if (result.status >= 300 && result.status < 400) throw new Error('Unexpected redirect');
+          const out = secureRespond(result);
+          out.headers.set('Cache-Control', 'no-store');
+          return out;
+        } catch { return secureRespond(Response.json({ detail: 'Account services are temporarily unavailable.' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })); }
+      }
       if (endpoint === '/analytics/event') {
         if (request.method !== 'POST') return respond(new Response('Method not allowed', { status: 405 }));
         if (request.headers.get('Origin') !== url.origin || url.hostname !== 'www.freefloorplan3d.com')
@@ -80,9 +142,9 @@ export default {
       } catch (error) { console.error('Engineering proxy failure:', error instanceof Error ? error.message : 'Unknown upstream error'); return respond(Response.json({ detail: 'Engineering service is temporarily unavailable. Your local project is safe.' }, { status: 502 })); }
     }
     if (!['GET', 'HEAD'].includes(request.method) || path.startsWith('/fixture-studio')) return respond(new Response('Not found', { status: 404 }));
-    url.pathname = path === '/' ? '/index.html' : path;
+    url.pathname = path.endsWith('/') ? path + 'index.html' : path;
     const result = await env.ASSETS.fetch(new Request(url, { method: request.method, headers: request.headers }));
-    const out = respond(result);
+    const out = secureRespond(result);
     if (url.hostname !== 'www.freefloorplan3d.com' || result.status >= 400 || path !== '/') out.headers.set('X-Robots-Tag', 'noindex');
     if (path === '/' || path.endsWith('.html') || path.endsWith('.txt')) out.headers.set('Cache-Control', 'no-cache');
     return out;

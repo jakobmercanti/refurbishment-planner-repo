@@ -167,6 +167,23 @@ def test_stripe_signature_checks_digest_and_timestamp_tolerance() -> None:
     assert not _stripe_signature_valid(header, body, secret, now=timestamp + 301)
 
 
+@pytest.mark.parametrize("item_periods", [True, False])
+def test_subscription_uses_current_price_and_supports_stripe_billing_period_versions(
+    monkeypatch: pytest.MonkeyPatch, item_periods: bool,
+) -> None:
+    for plan in ("starter", "pro", "studio"):
+        monkeypatch.setenv(f"STRIPE_PRICE_{plan.upper()}", f"price_{plan}")
+    item: dict[str, Any] = {"price": {"id": "price_studio"}}
+    subscription: dict[str, Any] = {"metadata": {"plan_key": "starter"}, "items": {"data": [item]}}
+    periods = item if item_periods else subscription
+    periods.update(current_period_start=100, current_period_end=200)
+    gateway = StripeGateway()
+    assert gateway.subscription_details(subscription) == ("studio", 100, 200)
+    item["price"] = {"id": "price_unknown"}
+    with pytest.raises(StripeUnavailable, match="outside"):
+        gateway.subscription_details(subscription)
+
+
 @pytest.mark.parametrize(
     ("price_key", "mode", "expected_price_pence"),
     [("pro", "subscription", 1999), ("medium_1", "payment", 50)],

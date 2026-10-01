@@ -138,6 +138,24 @@ class StripeGateway:
             raise ValueError("Invalid Stripe subscription reference.")
         return self.request("GET", f"/subscriptions/{subscription_id}")
 
+    def subscription_details(self, subscription: dict[str, Any]) -> tuple[str | None, Any, Any]:
+        """Use the current price, not stale checkout metadata after portal changes.
+
+        Stripe Basil moved billing periods from subscriptions to their items.
+        Older webhook snapshots retain subscription-level periods.
+        """
+        items = subscription.get("items")
+        data = items.get("data", []) if isinstance(items, dict) else []
+        if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+            raise StripeUnavailable("Subscription must contain one configured plan price.")
+        item = data[0]
+        price = item.get("price")
+        price_id = price.get("id") if isinstance(price, dict) else price
+        plan = next((key for key in PLAN_KEYS if self.price_id(key) == price_id), None)
+        if plan is None:
+            raise StripeUnavailable("Subscription price is outside the configured catalogue.")
+        return plan, item.get("current_period_start", subscription.get("current_period_start")), item.get("current_period_end", subscription.get("current_period_end"))
+
 
 def stripe_gateway() -> StripeGateway:
     return StripeGateway()

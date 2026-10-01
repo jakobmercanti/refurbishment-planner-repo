@@ -38,7 +38,7 @@ The checkout integration enables Stripe Managed Payments for both subscription c
 
 ## Image worker
 
-Set `OPENAI_API_KEY` only on the worker. The worker accepts bounded PNG/JPEG/WebP reference images, uses the selected medium/high image model, normalizes output to WebP, and does not send project JSON or geometry. It records only safe provider usage fields, and refunds a render credit on failure. Verify model access, spend limits, retention policy, and rate limits in the provider account before enabling it.
+Set `OPENAI_API_KEY` only on the worker. Set `AI_RENDERING_ENABLED=true` on the API only after that worker and its storage/queue access are ready. The worker accepts bounded PNG/JPEG/WebP reference images, uses the selected medium/high image model, normalizes output to WebP, and does not send project JSON or geometry. It records only safe provider usage fields, and refunds a render credit on failure. Verify model access, spend limits, retention policy, and rate limits in the provider account before enabling it.
 
 ## AI 3D asset generation
 

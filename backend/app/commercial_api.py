@@ -380,7 +380,7 @@ def catalogue() -> dict[str, Any]:
         "packs": packs,
         "billing_enabled": stripe_gateway().billing_enabled,
         "cloud_enabled": db.database_configured,
-        "ai_enabled": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+        "ai_enabled": os.getenv("AI_RENDERING_ENABLED", "false").lower() == "true",
     }
 
 
@@ -1254,6 +1254,10 @@ async def stripe_webhook(
     checkout_id = obj.get("id") if event_type.startswith("checkout.session.") else None
 
     if event_type.startswith("customer.subscription."):
+        try:
+            plan_key, period_start, period_end = stripe.subscription_details(obj)
+        except StripeUnavailable:
+            raise HTTPException(status_code=503, detail="Stripe subscription price could not be verified.") from None
         if status == "incomplete_expired" or event_type.endswith("deleted"):
             status = "canceled"
         if plan_key not in PLAN_KEYS:
@@ -1285,8 +1289,11 @@ async def stripe_webhook(
             sub_metadata_value = subscription.get("metadata")
             sub_metadata: dict[str, Any] = sub_metadata_value if isinstance(sub_metadata_value, dict) else {}
             user_id = user_id or sub_metadata.get("user_id")
-            plan_key, status = sub_metadata.get("plan_key"), subscription.get("status")
-            period_start, period_end = subscription.get("current_period_start"), subscription.get("current_period_end")
+            try:
+                plan_key, period_start, period_end = stripe.subscription_details(subscription)
+            except StripeUnavailable:
+                raise HTTPException(status_code=503, detail="Stripe subscription price could not be verified.") from None
+            status = subscription.get("status")
             cancel_at_period_end = bool(subscription.get("cancel_at_period_end", False))
             sub_customer = subscription.get("customer")
             customer_id = sub_customer if isinstance(sub_customer, str) else customer_id

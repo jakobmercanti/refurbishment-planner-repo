@@ -24,6 +24,18 @@ Do not deploy the historical freefloorplan3d/ or landing/ folders over that site
 
 ## Publishing
 
+Commercial configuration is described in `docs/commercial-phase-2-setup.md`.
+The planner Worker permits only the enumerated commercial API routes and forwards
+user bearer tokens (never cookies). Stripe webhook bytes/signatures are preserved.
+Set Worker variables `SUPABASE_URL` and `R2_ORIGIN` to the exact HTTPS provider
+origins to permit authentication and signed storage requests in its CSP.
+Build the frontend with `NEXT_PUBLIC_COMMERCIAL_API_URL=/planner/engineering-api`,
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; never use
+the service-role key in a browser build. Rebuild after changing public auth values.
+On the API set `AI_RENDERING_ENABLED=true` only after the dedicated worker has
+its OpenAI key, storage access and queue migrations. The API does not need that key.
+
+
 Build from frontend/ with:
 - PLANNER_STATIC_EXPORT=true
 - NEXT_PUBLIC_BASE_PATH=/planner
