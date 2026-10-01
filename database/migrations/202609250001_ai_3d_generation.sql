@@ -148,7 +148,7 @@ begin
     where user_id=p_user_id and coalesce(period_start,'epoch'::timestamptz)=coalesce(s.current_period_start,'epoch'::timestamptz)
       and source_type in ('generation_reservation','generation_refund','admin_adjustment');
   if v_allowance+v_used <= 0 then raise exception 'ai_3d_quota_exceeded' using errcode='54000'; end if;
-  if case
+  if (case
        when jsonb_typeof(p_dimensions_mm)='object' and
          jsonb_typeof(p_dimensions_mm->'width')='number' and
          jsonb_typeof(p_dimensions_mm->'depth')='number' and
@@ -157,14 +157,14 @@ begin
          (p_dimensions_mm->>'depth')::numeric between 1 and 10000 and
          (p_dimensions_mm->>'height')::numeric between 1 and 10000
        else false
-     end is not true or
+     end) is not true or
      p_asset_name is null or length(trim(p_asset_name)) not between 1 and 200 or
      p_provider_model is null or length(p_provider_model) not between 1 and 100 or
      p_idempotency_key is null or length(p_idempotency_key) not between 8 and 200 then
     raise exception 'invalid_ai_3d_request' using errcode='22023';
   end if;
-  if case when jsonb_typeof(p_references)='array'
-    then jsonb_array_length(p_references) between 1 and 3 else false end is not true then
+  if (case when jsonb_typeof(p_references)='array'
+    then jsonb_array_length(p_references) between 1 and 3 else false end) is not true then
     raise exception 'invalid_ai_3d_reference' using errcode='22023';
   end if;
   select count(*),count(distinct value->>'view') into v_count,v_distinct
@@ -217,11 +217,11 @@ begin
   v_error:=p_error;
   if v_error is null and p_status='succeeded' then
     if p_original_bytes not between 0 and 52428800 or p_derived_bytes not between 20 and 52428800 or
-       p_triangles not between 1 and 2000000 or case
+       p_triangles not between 1 and 2000000 or (case
          when jsonb_typeof(p_bounds)='object' and jsonb_typeof(p_bounds->'x')='number' and
            jsonb_typeof(p_bounds->'y')='number' and jsonb_typeof(p_bounds->'z')='number'
          then (p_bounds->>'x')::numeric>0 and (p_bounds->>'y')::numeric>0 and (p_bounds->>'z')::numeric>0
-         else false end is not true then
+         else false end) is not true then
       v_error:='The generated model did not pass the supported size and geometry checks.';
     else
       select * into p from public.commercial_plans where plan_key=(select plan_key from public.commercial_subscriptions
