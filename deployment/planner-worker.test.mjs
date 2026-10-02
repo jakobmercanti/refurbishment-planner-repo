@@ -7,7 +7,7 @@ test('normal Plans uses the proven plain navigation without app assets or framew
   const response = await worker.fetch(new Request(origin + '/planner/plans/?plan=studio'), { ASSETS: { fetch: async () => { throw new Error('Must bypass planner assets'); } } });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Cache-Control'), 'no-store, max-age=0');
-  assert.equal(response.headers.get('X-Plans-Page-Version'), 'plans-20261002-v3');
+  assert.equal(response.headers.get('X-Plans-Page-Version'), 'plans-20261002-v4');
   const html = await response.text();
   assert.ok(!html.includes('/_next/'));
   assert.ok(html.includes('Continue with Studio'));
@@ -19,6 +19,7 @@ test('normal Plans uses the proven plain navigation without app assets or framew
   assert.ok(!html.includes('checkout directly'));
   assert.ok(html.includes('Cancel your subscription anytime'));
   assert.ok(html.includes('/commercial/billing/sync'));
+  assert.ok(html.includes("input.form.action='/planner/account/'"));
 });
 
 test('checkout success and billing return include an immediate way back to the planner', async () => {

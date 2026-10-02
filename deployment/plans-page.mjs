@@ -1,6 +1,6 @@
 import { buildPlanComparison, formatPounds, resolveCommercialCatalogue } from '../frontend/lib/commercialCatalogue.ts';
 
-export const PLANS_PAGE_VERSION = 'plans-20261002-v3';
+export const PLANS_PAGE_VERSION = 'plans-20261002-v4';
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
 export function plansPage(catalogueValue, query = new URLSearchParams()) {
@@ -44,7 +44,11 @@ ${!catalogue.serviceAvailable || !catalogue.billingEnabled ? '<p class="lede">Ch
   var status=document.getElementById('account-status');
   try{
     var session=JSON.parse(sessionStorage.getItem('freefloorplan3d:commercial-session:v1')||'null');
-    if(!session||typeof session.access_token!=='string'||!session.user||typeof session.user.id!=='string')return;
+    if(!session||typeof session.access_token!=='string'||!session.user||typeof session.user.id!=='string'){
+      // Keep native GET buttons, but send guests straight to the real sign-in form.
+      document.querySelectorAll('.actions form input[name="plan"]').forEach(function(input){input.form.action='/planner/account/';});
+      return;
+    }
     status.textContent='Signed in · Checking your plan…';
     var response=await fetch('/planner/engineering-api/commercial/billing/sync',{method:'POST',headers:{Authorization:'Bearer '+session.access_token},cache:'no-store',signal:AbortSignal.timeout(25000)});
     if(response.status===404||response.status===403)response=await fetch('/planner/engineering-api/commercial/summary',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store',signal:AbortSignal.timeout(10000)});

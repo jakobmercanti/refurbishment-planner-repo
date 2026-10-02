@@ -12,6 +12,15 @@ test("plan choices submit native browser GET forms without client click handling
   assert.ok(!source.includes("canUsePaidActions"));
 });
 
+test("signed-out checkout goes directly to the real sign-in form, not another sign-in prompt", () => {
+  const source = readFileSync(new URL("../components/CheckoutExperience.tsx", import.meta.url), "utf8");
+  assert.ok(source.includes('window.location.replace(`${base}/account/${plan ? `?plan=${plan}` : ""}`)'));
+  assert.ok(!source.includes('phase === "signin"'));
+  assert.ok(!source.includes('Sign in{state.plan'));
+  const account = readFileSync(new URL("../components/AccountExperience.tsx", import.meta.url), "utf8");
+  assert.ok(account.includes('Your selection is kept; no payment has been taken.'));
+});
+
 test("only paid plans and HTTPS Stripe destinations are accepted", () => {
   for (const plan of ["starter", "pro", "studio"]) assert.equal(paidPlan(plan), plan);
   for (const plan of [null, "free", "evil", "https://example.com"]) assert.equal(paidPlan(plan), null);

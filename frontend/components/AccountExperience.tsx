@@ -50,7 +50,6 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
       const requestedPlan = embedded ? null : new URLSearchParams(window.location.search).get("plan");
       if (requestedPlan === "starter" || requestedPlan === "pro" || requestedPlan === "studio") {
         setPendingPlanKey(requestedPlan);
-        setNotice(`Sign in to continue with ${requestedPlan}. No payment has been taken.`);
       }
       setSection(requestedSection === "plans" ? "plans" : "account");
       if (redirect !== "recovery" && (redirect === "session" || (current && requestedPlan))) selectSection("plans");
@@ -99,8 +98,10 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
 
   const accountContent = <section className="commercial-card account-card">
     <p className="commercial-eyebrow">YOUR WORKSPACE</p>
-    <h1>{session ? "Account ready" : recovery ? "Set a new password" : "Sign in when you want cloud features"}</h1>
-    <p className="commercial-lede">FreeFloorplan3D works without an account. Create an account only if you want cloud backups, paid plans or AI rendering.</p>
+    <h1>{session ? "Account ready" : recovery ? "Set a new password" : pendingPlanKey ? "Sign in to continue" : "Sign in when you want cloud features"}</h1>
+    <p className="commercial-lede">{pendingPlanKey && !session && !recovery
+      ? `Sign in to continue with ${pendingPlanKey.charAt(0).toUpperCase() + pendingPlanKey.slice(1)}. Your selection is kept; no payment has been taken.`
+      : "FreeFloorplan3D works without an account. Create an account only if you want cloud backups, paid plans or AI rendering."}</p>
     {session ? (
       <div className="commercial-stack">
         <p className="commercial-status">Signed in{session.user.email ? " as " + session.user.email : ""}.</p>
