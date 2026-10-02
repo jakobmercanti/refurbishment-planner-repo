@@ -1,10 +1,25 @@
-/* PlannerBuild adds controls to the compact header; keep menu and view controls
-   on separate rows rather than allowing the menu to cover the view buttons. */
-.plannerbuild-workspace.compact-workspace .topbar { grid-template-columns:minmax(0,1fr); height:auto; min-height:96px; flex:0 0 auto; padding:4px 8px; gap:4px; }
-.plannerbuild-workspace.compact-workspace .app-identity { grid-column:1; grid-row:1; width:100%; gap:4px; }
-.plannerbuild-workspace.compact-workspace .app-nav { grid-column:1; grid-row:2; width:100%; min-width:0; flex-wrap:wrap; justify-content:space-between; gap:4px; }
-.plannerbuild-workspace.compact-workspace .workspace-mode-label { display:none; }
-.plannerbuild-workspace.compact-workspace .workspace-mode-select { min-width:0; width:104px; padding:0 20px 0 7px; }
-.plannerbuild-workspace.compact-workspace .software-menu { flex-wrap:wrap; }
-.plannerbuild-workspace.compact-workspace .software-menu-item > button { padding:6px 4px; }
-.plannerbuild-workspace.compact-workspace .app-nav-modes button { padding:4px 5px; }
+/* Keep the same compact header in Floorplan and PlannerBuild. */
+.software-menu-toggle { display:none; }
+.software-menu-items { display:contents; }
+.compact-workspace .topbar { height:48px; min-height:48px; flex:0 0 48px; }
+.compact-workspace .app-nav { flex-wrap:nowrap; }
+.compact-workspace .workspace-mode-label { display:none; }
+.compact-workspace .workspace-mode-select { min-width:0; width:120px; padding:0 20px 0 8px; }
+.compact-workspace .app-nav-modes { flex:0 0 132px; width:132px; }
+.compact-workspace .app-nav-modes button { flex:1; min-width:0; padding:4px 5px; }
+.compact-workspace .app-nav-entry { max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width:700px) {
+  .compact-workspace .topbar { grid-template-columns:44px minmax(0,1fr); gap:4px; padding:0 6px; }
+  .compact-workspace .brand { display:none; }
+  .compact-workspace .software-menu { flex:0 0 44px; }
+  .compact-workspace .software-menu-toggle { display:block; width:44px; height:40px; padding:0; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--deep); font:650 calc(11px * var(--density-font-scale, 1)) var(--font-sans); }
+  .compact-workspace .software-menu-items { display:none; }
+  .compact-workspace .software-menu-expanded .software-menu-items { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); position:fixed; top:calc(env(safe-area-inset-top) + 49px); left:8px; right:8px; padding:6px; gap:4px; border:1px solid var(--line); border-radius:10px; background:var(--panel); box-shadow:0 6px 24px rgba(0,0,0,.15); }
+  .compact-workspace .software-menu-item > button { width:100%; min-height:44px; }
+  .compact-workspace .software-dropdown { top:calc(env(safe-area-inset-top) + 153px); max-height:calc(100dvh - 170px - env(safe-area-inset-top)); }
+  .compact-workspace .app-nav { display:grid; grid-template-columns:100px minmax(0,1fr) 58px; width:100%; gap:4px; }
+  .compact-workspace .workspace-mode-select { width:100px; }
+  .compact-workspace .app-nav-modes { width:100%; min-width:0; gap:0; }
+  .compact-workspace .app-nav-modes button { min-width:0; padding:4px 3px; height:40px; font-size:calc(9px * var(--density-font-scale, 1)); }
+  .compact-workspace .app-nav-entry { width:58px; padding:4px; height:40px; font-size:calc(10px * var(--density-font-scale, 1)); }
+}
