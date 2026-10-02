@@ -250,15 +250,17 @@ export function PlansAndBillingPanel({
           <ul>{planHighlights(plan).map((highlight) => <li key={highlight}>{highlight}</li>)}</ul>
           <div className="plan-card-actions">
             {plan.plan_key === "free" ? (
-              <a className="commercial-secondary" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`}>Continue free</a>
+              <form action={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`} method="get">
+                <button className="commercial-secondary" type="submit">Continue free</button>
+              </form>
             ) : (
               <>
-              <a
-                className={plan.plan_key === "pro" ? "commercial-primary" : "commercial-secondary"}
-                href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/checkout/?plan=${plan.plan_key}`}
-              >
-                {active ? (isCurrent ? "Manage plan" : "Change plan") : selectedPlanKey === plan.plan_key ? `Continue with ${plan.name}` : `Choose ${plan.name}`}
-              </a>
+              <form action={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/checkout/`} method="get">
+                <input type="hidden" name="plan" value={plan.plan_key} />
+                <button className={plan.plan_key === "pro" ? "commercial-primary" : "commercial-secondary"} type="submit">
+                  {active ? (isCurrent ? "Manage plan" : "Change plan") : selectedPlanKey === plan.plan_key ? `Continue with ${plan.name}` : `Choose ${plan.name}`}
+                </button>
+              </form>
               {!loading && unavailableReason && <small className="plan-action-note">Availability will be checked on the next page.</small>}
               </>
             )}

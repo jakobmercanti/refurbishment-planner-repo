@@ -4,9 +4,10 @@ import { createCheckout } from "../lib/commercialApi.ts";
 import { paidPlan, prepareBillingNavigation, stripeDestination } from "../lib/billingNavigation.ts";
 import { readFileSync } from "node:fs";
 
-test("plan choices are native links, not dependent on click handlers or availability hydration", () => {
+test("plan choices submit native browser GET forms without client click handling", () => {
   const source = readFileSync(new URL("../components/PlansAndBillingPanel.tsx", import.meta.url), "utf8");
-  assert.ok(source.includes('/checkout/?plan=${plan.plan_key}'));
+  assert.ok(source.includes('/checkout/`} method="get"'));
+  assert.ok(source.includes('type="hidden" name="plan" value={plan.plan_key}'));
   assert.ok(!source.includes("createCheckout"));
   assert.ok(!source.includes("canUsePaidActions"));
 });
