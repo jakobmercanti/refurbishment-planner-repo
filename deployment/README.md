@@ -45,6 +45,13 @@ Build from frontend/ with:
 Run pnpm build, then from the repository root:
 pnpm dlx wrangler deploy --config deployment/wrangler.jsonc
 
+Production builds explicitly use Webpack. In the isolated DOM reproduction of
+the Next.js 16.3.3 static export, the Turbopack bootstrap failed its currentScript
+invariant before hydration. The Webpack export passed account tab navigation,
+signed-out plan selection, and mocked signed-in checkout-handler checks. Do not
+switch production bundlers without repeating exported-page interaction checks;
+a successful compile or HTTP 200 alone does not verify functioning buttons.
+
 The browser no longer contains a PostHog project token or sends to PostHog directly.
 The Railway backend uses POSTHOG_PROJECT_TOKEN, set in the deployment Dockerfile
 to the existing public project token. This is not an administrative API credential.
