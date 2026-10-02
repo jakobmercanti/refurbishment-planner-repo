@@ -7,15 +7,26 @@ test('normal Plans uses the proven plain navigation without app assets or framew
   const response = await worker.fetch(new Request(origin + '/planner/plans/?plan=studio'), { ASSETS: { fetch: async () => { throw new Error('Must bypass planner assets'); } } });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Cache-Control'), 'no-store, max-age=0');
-  assert.equal(response.headers.get('X-Plans-Page-Version'), 'plans-20261002-v2');
+  assert.equal(response.headers.get('X-Plans-Page-Version'), 'plans-20261002-v3');
   const html = await response.text();
   assert.ok(!html.includes('/_next/'));
   assert.ok(html.includes('Continue with Studio'));
   assert.ok(html.includes('Compare plans'));
   assert.equal((html.match(/<article class="card/g) ?? []).length, 4);
   for (const tier of ['starter', 'pro', 'studio']) {
-    assert.ok(html.includes(`href="/planner/checkout/?plan=${tier}"`));
     assert.ok(html.includes(`name="plan" value="${tier}"`));
+  }
+  assert.ok(!html.includes('checkout directly'));
+  assert.ok(html.includes('Cancel your subscription anytime'));
+  assert.ok(html.includes('/commercial/billing/sync'));
+});
+
+test('checkout success and billing return include an immediate way back to the planner', async () => {
+  for (const query of ['checkout=success', 'checkout=cancelled', 'billing=updated']) {
+    const html = await (await worker.fetch(new Request(origin + '/planner/plans/?' + query), {})).text();
+    assert.ok(html.includes('id="billing-notice"'));
+    assert.ok(html.includes('<a class="button" href="/planner/">Back to planner</a>'));
+    assert.ok(html.includes('Cancellation confirmed. Your subscription will not renew.'));
   }
 });
 

@@ -388,6 +388,10 @@ def catalogue() -> dict[str, Any]:
 def summary(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     db = supabase_rest()
     user = _auth_user(authorization, db)
+    return _account_summary(db, user)
+
+
+def _account_summary(db: SupabaseREST, user: VerifiedUser) -> dict[str, Any]:
     result = _db_call(lambda: db.rpc("commercial_summary", {"p_user_id": str(user.id)}))
     if not isinstance(result, dict):
         raise HTTPException(status_code=503, detail="Account usage is temporarily unavailable.")
@@ -1121,8 +1125,8 @@ def create_checkout(
             expected_price_pence=expected_price,
             user_id=str(user.id),
             email=user.email,
-            success_url=_public_app_url("/billing/?checkout=success"),
-            cancel_url=_public_app_url("/billing/?checkout=cancelled"),
+            success_url=_public_app_url("/plans/?checkout=success"),
+            cancel_url=_public_app_url("/plans/?checkout=cancelled"),
             metadata=metadata,
             idempotency_key=idempotency_key or f"checkout-{user.id}-{key}-{uuid4()}",
         )
@@ -1132,6 +1136,60 @@ def create_checkout(
     if not isinstance(url, str) or not url.startswith("https://checkout.stripe.com/"):
         raise HTTPException(status_code=502, detail="Stripe did not return a valid checkout link.")
     return {"url": url}
+
+
+@router.post("/billing/sync")
+def sync_billing(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    """Refresh this user's stored subscription from Stripe after a portal return.
+
+    This never cancels, charges, or trusts client-supplied subscription references.
+    Reuse the webhook projection and its ordering guard so delayed deliveries
+    cannot restore a subscription that Stripe has already ended.
+    """
+    db, stripe = supabase_rest(), stripe_gateway()
+    user = _auth_user(authorization, db)
+    rows = _db_call(lambda: db.select("commercial_subscriptions", {
+        "select": "stripe_subscription_id,stripe_customer_id",
+        "user_id": f"eq.{user.id}", "limit": "1",
+    }))
+    row = rows[0] if isinstance(rows, list) and rows else {}
+    subscription_id = row.get("stripe_subscription_id")
+    if subscription_id:
+        # Timestamp before the provider read, not afterwards: a concurrent newer
+        # webhook must win over this snapshot in apply_stripe_event.
+        observed_at = int(time.time())
+        try:
+            subscription = stripe.get_subscription(str(subscription_id))
+            customer = subscription.get("customer")
+            metadata = subscription.get("metadata", {})
+            if (
+                subscription.get("id") != subscription_id
+                or not isinstance(customer, str)
+                or customer != row.get("stripe_customer_id")
+                or not isinstance(metadata, dict)
+                or metadata.get("user_id") != str(user.id)
+            ):
+                raise StripeUnavailable("Subscription ownership could not be verified.")
+            plan, start, end = stripe.subscription_details(subscription)
+            status = subscription.get("status")
+            if status == "incomplete_expired":
+                status = "canceled"
+            if status not in {"incomplete", "trialing", "active", "past_due", "unpaid", "canceled", "paused"}:
+                raise StripeUnavailable("Subscription status could not be verified.")
+        except (StripeUnavailable, ValueError) as error:
+            raise HTTPException(status_code=503, detail=str(error)) from None
+        _db_call(lambda: db.rpc("apply_stripe_event", {
+            "p_event_id": f"sync_{uuid4()}", "p_event_type": "customer.subscription.updated",
+            "p_user_id": str(user.id), "p_customer_id": customer,
+            "p_subscription_id": subscription_id, "p_plan_key": plan,
+            "p_subscription_status": status, "p_period_start": _stripe_epoch(start),
+            "p_period_end": _stripe_epoch(end),
+            "p_cancel_at_period_end": bool(subscription.get("cancel_at_period_end", False)),
+            "p_event_created": observed_at, "p_invoice_id": None,
+            "p_credit_pack_key": None, "p_checkout_id": None,
+            "p_invoice_period_start": None, "p_invoice_period_end": None,
+        }))
+    return _account_summary(db, user)
 
 
 @router.post("/billing/portal")
@@ -1147,7 +1205,7 @@ def create_billing_portal(authorization: str | None = Header(default=None)) -> d
     if not isinstance(customer, str) or not customer.startswith("cus_"):
         raise HTTPException(status_code=404, detail="No billing customer is linked to this account yet.")
     try:
-        session = stripe.create_portal(customer, _public_app_url("/billing/"))
+        session = stripe.create_portal(customer, _public_app_url("/plans/?billing=updated"))
     except StripeUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error)) from None
     url = session.get("url")

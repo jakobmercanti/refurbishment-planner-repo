@@ -60,7 +60,7 @@ export default {
         const id = '[A-Za-z0-9_-]+';
         const routes = {
           GET: new RegExp(`^/(catalogue|summary|projects(?:/${id})?|assets|assets/${id}/download|assets/local/${id}/download|ai-3d/status|ai-3d/jobs(?:/${id})?|renders(?:/${id})?)$`),
-          POST: new RegExp(`^/(assets/upload|assets/${id}/finalize|ai-3d/references/upload|ai-3d/jobs|render-references/upload|renders|billing/checkout|billing/portal|stripe/webhook)$`),
+          POST: new RegExp(`^/(assets/upload|assets/${id}/finalize|ai-3d/references/upload|ai-3d/jobs|render-references/upload|renders|billing/checkout|billing/portal|billing/sync|stripe/webhook)$`),
           PUT: new RegExp(`^/projects/${id}$`),
           DELETE: new RegExp(`^/(projects|assets)/${id}$`),
         };

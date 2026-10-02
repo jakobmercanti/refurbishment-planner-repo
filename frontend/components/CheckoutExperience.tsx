@@ -18,7 +18,7 @@ export function CheckoutExperience() {
     void request.current.then((url) => {
       if (!mounted) return;
       setState(url ? { phase: "ready", plan, url } : { phase: "signin", plan });
-      if (url) window.location.assign(url);
+      if (url) window.location.replace(url);
     }).catch((cause) => {
       if (!mounted) return;
       setState({ phase: "error", plan, error: cause instanceof Error && cause.name === "TimeoutError"
@@ -29,7 +29,7 @@ export function CheckoutExperience() {
   }, []);
 
   return <main className="commercial-page">
-    <header className="commercial-header"><a className="commercial-brand" href={`${base}/`}>FreeFloorplan3D</a><a href={`${base}/plans/`}>Plans</a></header>
+    <header className="commercial-header"><a className="commercial-brand" href={`${base}/`}>FreeFloorplan3D</a><nav><a href={`${base}/plans/`}>Plans</a> · <a href={`${base}/`}>Back to planner</a></nav></header>
     <section className="commercial-card account-card">
       <p className="commercial-eyebrow">SECURE BILLING</p>
       <h1>{state.phase === "signin" ? "Sign in to continue" : "Opening Stripe"}</h1>
@@ -39,6 +39,7 @@ export function CheckoutExperience() {
       {state.phase === "error" && <div className="commercial-stack"><p className="commercial-error" role="alert">{state.error}</p><a className="commercial-secondary" href={`${base}/checkout/${state.plan ? `?plan=${state.plan}` : "?action=portal"}`}>Retry</a></div>}
       <p className="commercial-footnote">No payment is taken until you confirm it on Stripe. Test-mode checkout is labelled by Stripe on its payment page.</p>
       <a href={`${base}/plans/`}>Back to plans</a>
+      <p><a href={`${base}/`}>Back to planner</a></p>
       <noscript><p>JavaScript must be enabled to securely sign in and prepare Stripe checkout.</p></noscript>
     </section>
   </main>;
