@@ -1,6 +1,8 @@
-const {chromium}=require('C:/Users/Dell/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
-const assert=require('node:assert/strict');
-const fs=require('node:fs');const path=require('node:path');
+import {chromium} from 'file:///C:/Users/Dell/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+const __dirname=import.meta.dirname;
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
  const output=path.resolve(__dirname,'../out');const screenshots=path.resolve(__dirname,'../../.local-logs/compact-header');fs.mkdirSync(screenshots,{recursive:true});
