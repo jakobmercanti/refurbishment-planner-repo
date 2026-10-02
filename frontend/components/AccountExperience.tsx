@@ -2,7 +2,7 @@
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { acceptAuthRedirect, currentSession, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
-import { PlansAndBillingPanel } from "@/components/PlansAndBillingPanel";
+import { PlansRedirect } from "@/components/PlansRedirect";
 import type { PlanKey } from "@/lib/commercialCatalogue";
 
 type Mode = "signin" | "signup" | "reset";
@@ -94,7 +94,7 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
 
   const sectionTabs = <nav className="commercial-tabs account-section-tabs" role="tablist" aria-label="Account sections">
     <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>{session ? "Account" : "Sign in"}</button>
-    <button id="plans-section-tab" type="button" role="tab" aria-controls="plans-section-panel" aria-selected={(embedded ? embeddedSection : section) === "plans"} className={(embedded ? embeddedSection : section) === "plans" ? "selected" : ""} onClick={() => selectSection("plans")}>Plans</button>
+    <a id="plans-section-tab" href={`${base}/plans/`}>Plans</a>
   </nav>;
 
   const accountContent = <section className="commercial-card account-card">
@@ -136,7 +136,7 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
     {(embedded ? embeddedSection : section) === "account" ? <div id="account-section-panel" role="tabpanel" aria-labelledby="account-section-tab" className="account-tab-panel">
       {accountContent}
     </div> : <div id="plans-section-panel" role="tabpanel" aria-labelledby="plans-section-tab" className="account-tab-panel">
-      <PlansAndBillingPanel
+      <PlansRedirect
         selectedPlanKey={pendingPlanKey}
       />
     </div>}
