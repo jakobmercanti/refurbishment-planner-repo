@@ -51,6 +51,7 @@ function readStoredSession(): AuthSession | null {
 async function authRequest<T>(path: string, body?: unknown, accessToken?: string): Promise<T> {
   const { url, key } = configuration();
   const response = await fetch(`${url}/auth/v1/${path}`, {
+    signal: AbortSignal.timeout(20_000),
     method: body === undefined ? "GET" : "POST",
     headers: { apikey: key, ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),

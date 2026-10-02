@@ -37,6 +37,11 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       const current = await currentSession();
       if (!mounted) return;
       const requestedSection = embedded ? null : new URLSearchParams(window.location.search).get("tab");
+      const requestedPlan = embedded ? null : new URLSearchParams(window.location.search).get("plan");
+      if (requestedPlan === "starter" || requestedPlan === "pro" || requestedPlan === "studio") {
+        setPendingPlanKey(requestedPlan);
+        setNotice(`Sign in to continue with ${requestedPlan}. No payment has been taken.`);
+      }
       setSection(requestedSection === "plans" ? "plans" : "account");
       setSession(current);
       setRecovery(redirect === "recovery");
@@ -57,11 +62,9 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       } else if (mode === "signin") {
         const signedIn = await signIn(email, password);
         setSession(signedIn);
-        if (signedIn && pendingPlanKey) selectSection("plans");
       } else if (mode === "signup") {
         const registered = await signUp(email, password);
         setSession(registered);
-        if (registered && pendingPlanKey) selectSection("plans");
         setNotice(registered ? "Account created." : "Check your email to verify your account, then sign in.");
       } else {
         await sendPasswordReset(email);
@@ -98,6 +101,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
     {session ? (
       <div className="commercial-stack">
         <p className="commercial-status">Signed in{session.user.email ? " as " + session.user.email : ""}.</p>
+        {pendingPlanKey && <a className="commercial-primary" href={`${base}/checkout/?plan=${pendingPlanKey}`}>Continue with {pendingPlanKey}</a>}
         <a className="commercial-primary" href={base + "/workspace/"} target={embedded ? "_blank" : undefined} rel={embedded ? "noopener noreferrer" : undefined}>Open cloud workspace</a>
         <button className="commercial-secondary" type="button" onClick={() => void leaveAccount()}>Sign out</button>
       </div>
@@ -131,8 +135,6 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       {accountContent}
     </div> : <div id="plans-section-panel" role="tabpanel" aria-labelledby="plans-section-tab" className="account-tab-panel">
       <PlansAndBillingPanel
-        onSignInRequired={(planKey) => { setPendingPlanKey(planKey); selectSection("account"); setMode("signin"); setNotice("Sign in to continue with your selected plan. No payment has been taken."); }}
-        keepPlannerOpen={embedded}
         onContinueFree={embedded ? onClose : undefined}
         selectedPlanKey={pendingPlanKey}
       />

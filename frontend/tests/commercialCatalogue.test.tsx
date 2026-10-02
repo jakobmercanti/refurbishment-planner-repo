@@ -28,14 +28,14 @@ test("fallback offer contains the approved four plans and render pack prices", (
   ]);
 });
 
-test("offline catalogue keeps all plan information but cannot start billing actions", () => {
+test("initial catalogue renders working native plan links before hydration without starting billing", () => {
   const catalogue = resolveCommercialCatalogue(null);
   assert.equal(catalogue.serviceAvailable, false);
   assert.equal(catalogue.billingEnabled, false);
   assert.equal(catalogue.plans.length, 4);
   assert.equal(catalogue.availablePlanKeys.size, 0);
 
-  const markup = renderToStaticMarkup(createElement(PlansAndBillingPanel, { onSignInRequired: () => undefined }));
+  const markup = renderToStaticMarkup(createElement(PlansAndBillingPanel, {}));
   assert.equal((markup.match(/<article class="plan-card/g) ?? []).length, 4);
   for (const label of ["Free", "Starter", "Pro", "Studio", "£9.90", "£19.99", "£29.99", "10 GB private cloud", "100 private assets", "Full furniture &amp; electrical catalogue", "Full Electrical Layout module", "Full PlannerBuild project planning"]) {
     assert.ok(markup.includes(label), `expected initial Plans markup to include ${label}`);
@@ -50,7 +50,10 @@ test("offline catalogue keeps all plan information but cannot start billing acti
   assert.equal(includesPlannerBuild("pro"), false);
   const freeCardFeatures = markup.match(/<article class="plan-card [^>]*>.*?<ul>(.*?)<\/ul>/s)?.[1] ?? "";
   assert.ok(!freeCardFeatures.includes("Full Electrical Layout module on paid plans"));
-  assert.match(markup, /Checking availability/);
+  for (const plan of ["starter", "pro", "studio"]) {
+    assert.ok(markup.includes(`/checkout/?plan=${plan}`));
+  }
+  assert.ok(!markup.includes("disabled=\"\""));
 });
 
 test("live catalogue values override fallback while electrical module access remains plan-based", () => {

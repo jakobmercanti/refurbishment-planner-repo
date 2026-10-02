@@ -20,7 +20,7 @@ export async function commercialRequest<T>(path: string, init: RequestInit = {},
     if (!session) throw new CommercialApiError("Sign in to continue.", 401);
     headers.set("Authorization", `Bearer ${session.access_token}`);
   }
-  const response = await fetch(`${baseUrl}/commercial${path}`, { ...init, headers, cache: "no-store" });
+  const response = await fetch(`${baseUrl}/commercial${path}`, { ...init, signal: init.signal ?? AbortSignal.timeout(25_000), headers, cache: "no-store" });
   const result = await response.json().catch(() => ({})) as { detail?: unknown; message?: string };
   if (!response.ok) {
     const detail = result.detail;

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { commercialRequest, createCheckout, openBillingPortal } from "@/lib/commercialApi";
+import { commercialRequest } from "@/lib/commercialApi";
 import {
   buildPlanComparison,
   formatPounds,
@@ -125,13 +125,9 @@ function planHighlights(plan: CommercialCatalogue["plans"][number]): string[] {
 }
 
 export function PlansAndBillingPanel({
-  onSignInRequired,
-  keepPlannerOpen = false,
   onContinueFree,
   selectedPlanKey,
 }: {
-  onSignInRequired: (planKey: PlanKey) => void;
-  keepPlannerOpen?: boolean;
   onContinueFree?: () => void;
   selectedPlanKey?: PlanKey | null;
 }) {
@@ -141,25 +137,15 @@ export function PlansAndBillingPanel({
   const [catalogueUnavailable, setCatalogueUnavailable] = useState(true);
   const [accountUnavailable, setAccountUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
-  const [actionError, setActionError] = useState("");
-  const actionErrorRef = useRef<HTMLParagraphElement>(null);
   const [notice, setNotice] = useState("");
   const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
   const closeHelp = useCallback(() => setHelpTopic(null), []);
-
-  useEffect(() => {
-    if (!actionError) return;
-    actionErrorRef.current?.scrollIntoView({ block: "nearest" });
-    actionErrorRef.current?.focus();
-  }, [actionError]);
 
   function retryServices() {
     setLoading(true);
     setCatalogueUnavailable(false);
     setAccountUnavailable(false);
-    setActionError("");
     setReload((value) => value + 1);
   }
 
@@ -169,7 +155,6 @@ export function PlansAndBillingPanel({
       setLoading(true);
       setCatalogueUnavailable(false);
       setAccountUnavailable(false);
-      setActionError("");
       const [catalogueResult, sessionResult] = await Promise.allSettled([
         commercialRequest<unknown>("/catalogue", {}, false),
         currentSession(),
@@ -225,39 +210,11 @@ export function PlansAndBillingPanel({
     return () => { mounted = false; };
   }, [reload]);
 
-  async function checkout(planKey: PlanKey) {
-    setBusy(true);
-    setActionError("");
-    try {
-      if (!await currentSession()) {
-        onSignInRequired(planKey);
-        return;
-      }
-      await createCheckout(planKey, keepPlannerOpen);
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : "Checkout could not be started.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function portal() {
-    setBusy(true);
-    setActionError("");
-    try {
-      await openBillingPortal(keepPlannerOpen);
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : "The billing portal could not be opened.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const active = summary?.status === "active" || summary?.status === "trialing";
   const currentPlanKey = isPlanKey(summary?.plan) ? summary.plan : !session ? "free" : null;
   const onlineUnavailable = !loading && (catalogueUnavailable || accountUnavailable);
   const serviceMessage = onlineUnavailable
-    ? "Online account services are temporarily unavailable. Plan information is still shown; purchase actions are disabled."
+    ? "Online account services are temporarily unavailable. Open your selected plan to check again; no payment will be taken here."
     : !loading && !catalogue.billingEnabled
       ? "Checkout is not configured in this environment. Plan information is still shown; no payment will be taken."
       : "";
@@ -268,7 +225,6 @@ export function PlansAndBillingPanel({
       <div><p className="commercial-eyebrow">PLANS &amp; BILLING</p><h1>Keep planning free. Add cloud when you need it.</h1><p>Every plan includes the full floorplan editor and furniture/electrical catalogue. Paid plans unlock the Full Electrical Layout module, private cloud storage, project backup and AI rendering allowances. Studio and higher tiers also include the full PlannerBuild project-planning module.</p></div>
     </section>
 
-    {actionError && <p ref={actionErrorRef} tabIndex={-1} className="commercial-error plan-action-error" role="alert">{actionError}</p>}
     {notice && <p className="commercial-status plan-action-error" role="status">{notice}</p>}
 
     <section className="plan-grid" aria-label="Monthly plans">
@@ -284,7 +240,6 @@ export function PlansAndBillingPanel({
               : accountUnavailable
                 ? "Your account status could not be checked. Retry before choosing a plan."
                 : "";
-        const canUsePaidActions = !loading && !unavailableReason && !busy;
 
         return <article className={`plan-card ${plan.plan_key === "pro" ? "plan-featured" : ""}`} key={plan.plan_key} aria-current={isCurrent ? "true" : undefined}>
           {plan.plan_key === "pro" && <span className="plan-recommended">Recommended</span>}
@@ -302,17 +257,13 @@ export function PlansAndBillingPanel({
                 : <a className="commercial-secondary" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`}>Continue free</a>
             ) : (
               <>
-              <button
+              <a
                 className={plan.plan_key === "pro" ? "commercial-primary" : "commercial-secondary"}
-                type="button"
-                disabled={!canUsePaidActions}
-                title={unavailableReason || undefined}
-                aria-describedby={!canUsePaidActions ? `plan-${plan.plan_key}-action-note` : undefined}
-                onClick={() => void (active ? portal() : checkout(plan.plan_key))}
+                href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/checkout/?plan=${plan.plan_key}`}
               >
-                {busy ? "Please wait…" : active ? (isCurrent ? "Manage plan" : "Change plan") : selectedPlanKey === plan.plan_key ? `Continue with ${plan.name}` : `Choose ${plan.name}`}
-              </button>
-              {!canUsePaidActions && <small id={`plan-${plan.plan_key}-action-note`} className="plan-action-note">{loading ? "Checking availability…" : unavailableReason}</small>}
+                {active ? (isCurrent ? "Manage plan" : "Change plan") : selectedPlanKey === plan.plan_key ? `Continue with ${plan.name}` : `Choose ${plan.name}`}
+              </a>
+              {!loading && unavailableReason && <small className="plan-action-note">Availability will be checked on the next page.</small>}
               </>
             )}
           </div>
@@ -327,7 +278,7 @@ export function PlansAndBillingPanel({
 
     {active && <section className="commercial-panel plan-current-subscription" aria-label="Current subscription">
       <div><h2>Current subscription</h2><p>{summary?.plan} · {summary?.status}{summary?.cancel_at_period_end ? " · Cancels at period end" : ""}{summary?.current_period_end ? ` · Renews/ends ${new Date(summary.current_period_end).toLocaleDateString()}` : ""}</p></div>
-      <button className="commercial-secondary" type="button" disabled={busy || loading || onlineUnavailable || !catalogue.billingEnabled} onClick={() => void portal()}>Manage or cancel plan</button>
+      <a className="commercial-secondary" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/checkout/?action=portal`}>Manage or cancel plan</a>
     </section>}
 
     <section className="plan-comparison-section" aria-labelledby="plan-comparison-title">
