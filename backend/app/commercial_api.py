@@ -1143,21 +1143,18 @@ def sync_billing(authorization: str | None = Header(default=None)) -> dict[str, 
     """Refresh this user's stored subscription from Stripe after a portal return.
 
     This never cancels, charges, or trusts client-supplied subscription references.
-    Reuse the webhook projection and its ordering guard so delayed deliveries
-    cannot restore a subscription that Stripe has already ended.
+    Compare-and-set the existing row without advancing webhook timestamps. A
+    later re-subscription must never be blocked by a browser refresh timestamp.
     """
     db, stripe = supabase_rest(), stripe_gateway()
     user = _auth_user(authorization, db)
     rows = _db_call(lambda: db.select("commercial_subscriptions", {
-        "select": "stripe_subscription_id,stripe_customer_id",
+        "select": "stripe_subscription_id,stripe_customer_id,updated_at",
         "user_id": f"eq.{user.id}", "limit": "1",
     }))
     row = rows[0] if isinstance(rows, list) and rows else {}
     subscription_id = row.get("stripe_subscription_id")
     if subscription_id:
-        # Timestamp before the provider read, not afterwards: a concurrent newer
-        # webhook must win over this snapshot in apply_stripe_event.
-        observed_at = int(time.time())
         try:
             subscription = stripe.get_subscription(str(subscription_id))
             customer = subscription.get("customer")
@@ -1178,16 +1175,16 @@ def sync_billing(authorization: str | None = Header(default=None)) -> dict[str, 
                 raise StripeUnavailable("Subscription status could not be verified.")
         except (StripeUnavailable, ValueError) as error:
             raise HTTPException(status_code=503, detail=str(error)) from None
-        _db_call(lambda: db.rpc("apply_stripe_event", {
-            "p_event_id": f"sync_{uuid4()}", "p_event_type": "customer.subscription.updated",
-            "p_user_id": str(user.id), "p_customer_id": customer,
-            "p_subscription_id": subscription_id, "p_plan_key": plan,
-            "p_subscription_status": status, "p_period_start": _stripe_epoch(start),
-            "p_period_end": _stripe_epoch(end),
-            "p_cancel_at_period_end": bool(subscription.get("cancel_at_period_end", False)),
-            "p_event_created": observed_at, "p_invoice_id": None,
-            "p_credit_pack_key": None, "p_checkout_id": None,
-            "p_invoice_period_start": None, "p_invoice_period_end": None,
+        if not isinstance(row.get("updated_at"), str):
+            raise HTTPException(status_code=503, detail="Subscription refresh could not be verified.")
+        _db_call(lambda: db.service_request("commercial_subscriptions", method="PATCH", query={
+            "user_id": f"eq.{user.id}", "stripe_subscription_id": f"eq.{subscription_id}",
+            "updated_at": f"eq.{row['updated_at']}",
+        }, body={
+            "plan_key": plan, "status": status,
+            "current_period_start": _stripe_epoch(start), "current_period_end": _stripe_epoch(end),
+            "cancel_at_period_end": bool(subscription.get("cancel_at_period_end", False)),
+            "updated_at": datetime.now(UTC).isoformat(),
         }))
     return _account_summary(db, user)
 
@@ -1313,8 +1310,19 @@ async def stripe_webhook(
 
     if event_type.startswith("customer.subscription."):
         try:
-            plan_key, period_start, period_end = stripe.subscription_details(obj)
-        except StripeUnavailable:
+            # A delayed active snapshot must not undo a cancellation that was
+            # already reconciled on portal return. Stripe's current state wins.
+            subscription = stripe.get_subscription(str(subscription_id))
+            current_metadata = subscription.get("metadata", {})
+            if (subscription.get("id") != subscription_id or not isinstance(current_metadata, dict)
+                    or (user_id and current_metadata.get("user_id") != user_id)):
+                raise StripeUnavailable("Subscription ownership could not be verified.")
+            user_id = current_metadata.get("user_id") or user_id
+            plan_key, period_start, period_end = stripe.subscription_details(subscription)
+            status = subscription.get("status")
+            cancel_at_period_end = bool(subscription.get("cancel_at_period_end", False))
+            customer_id = subscription.get("customer") if isinstance(subscription.get("customer"), str) else customer_id
+        except (StripeUnavailable, ValueError):
             raise HTTPException(status_code=503, detail="Stripe subscription price could not be verified.") from None
         if status == "incomplete_expired" or event_type.endswith("deleted"):
             status = "canceled"
