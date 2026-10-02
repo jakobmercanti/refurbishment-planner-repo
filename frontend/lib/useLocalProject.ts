@@ -6,6 +6,7 @@ import type { RenderCameraState } from "./renderCamera";
 import { projectRepository } from "./projectRepository";
 import { exportProject, importProject } from "./projectPackage";
 import { analytics, exported } from "./analytics";
+import { capturePlannerBuildEvent } from "./plannerBuildBrand";
 import type { ElectricalLayoutData } from "./electricalLayout";
 import type { PlannerBuildData } from "./plannerBuild";
 import type { Room } from "./types";
@@ -35,7 +36,7 @@ export function useLocalProject() {
     if (!project || JSON.stringify(project) === lastSaved.current) return;
     const timer = setTimeout(() => {
       setStatus("Saving locally…");
-      void projectRepository.saveProject(project).then(() => { lastSaved.current = JSON.stringify(project); setStatus("Saved locally"); }).catch(e => setStatus(e instanceof Error ? e.message : "Local save failed. Download a backup."));
+      void projectRepository.saveProject(project).then(() => { lastSaved.current = JSON.stringify(project); setStatus("Saved locally"); if (project.plannerBuild.activities.length) capturePlannerBuildEvent("project_created", project.projectId); }).catch(e => setStatus(e instanceof Error ? e.message : "Local save failed. Download a backup."));
     }, 900);
     return () => clearTimeout(timer);
   }, [project]);
@@ -69,6 +70,10 @@ export function useLocalProject() {
   const setRenderCamera = useCallback((renderCamera: RenderCameraState) => update({ renderCamera }), [update]);
   const setElectricalLayout = useCallback((electricalLayout: ElectricalLayoutData) => update({ electricalLayout }), [update]);
   const setElectricalProjectData = useCallback((rooms: Room[], electricalLayout: ElectricalLayoutData, assetInstances: AssetInstance[], assets?: AssetDefinition[]) => update({ rooms, electricalLayout, assetInstances, ...(assets ? { assets } : {}) }), [update]);
-  const setPlannerBuild = useCallback((plannerBuild: PlannerBuildData) => update({ plannerBuild }), [update]);
+  const setPlannerBuild = useCallback((plannerBuild: PlannerBuildData) => {
+    const project = current.current;
+    if (project && !project.plannerBuild.activities.length && plannerBuild.activities.length) capturePlannerBuildEvent("project_started", project.projectId);
+    update({ plannerBuild });
+  }, [update]);
   return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild };
 }

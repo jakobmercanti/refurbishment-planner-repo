@@ -2,6 +2,7 @@
 import { electricalPlacement } from "@/lib/electricalAssets";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { isPlannerBuildHost } from "@/lib/plannerBuildBrand";
 import Image from "next/image";
 import styles from "./planner-guide.module.css";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
@@ -67,6 +68,7 @@ export default function Home() {
   const [electricalStatus, setElectricalStatus] = useState<string | null>(null);
   const [electricalDemoMode, setElectricalDemoMode] = useState(false);
   const [plannerBuildDemoMode, setPlannerBuildDemoMode] = useState(false);
+  const [plannerBuildBrand, setPlannerBuildBrand] = useState(false);
   useEffect(() => {
     if (!placement) return;
     const key = (event: KeyboardEvent) => {
@@ -100,6 +102,26 @@ export default function Home() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountInitialSection, setAccountInitialSection] = useState<"account" | "plans">("account");
   const closeAccountDialog = useCallback(() => setAccountOpen(false), []);
+  useEffect(() => {
+    if (!isPlannerBuildHost()) return;
+    let cancelled = false;
+    queueMicrotask(() => setPlannerBuildBrand(true));
+    void commercialRequest<{capabilities?: {canUsePlannerBuild?: boolean}}>("/summary").then(summary => {
+      if (cancelled) return;
+      setPlannerBuildDemoMode(summary.capabilities?.canUsePlannerBuild !== true);
+      setWorkspaceMode("PLANNERBUILD");
+    }).catch(cause => {
+      if (cancelled) return;
+      if (cause instanceof CommercialApiError && cause.status === 401) {
+        setPlannerBuildDemoMode(true);
+        setWorkspaceMode("PLANNERBUILD");
+      } else {
+        setAccountInitialSection("plans");
+        setAccountOpen(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
   const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
   const [floorplanStyle, setFloorplanStyle] = useState<FloorplanStyle>("DEFAULT");
   const [floorplanExportRequest, setFloorplanExportRequest] = useState(0);
@@ -552,10 +574,10 @@ export default function Home() {
   }
 
   return (
-    <main className={`planner-workspace ${compactWorkspace ? "compact-workspace" : ""}`}>
+    <main className={`planner-workspace ${compactWorkspace ? "compact-workspace" : ""} ${workspaceMode === "PLANNERBUILD" ? "plannerbuild-workspace" : ""}`}>
       <UiTheme settings={uiSettings} />
       <header className="topbar">
-        <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} workspaceMode={workspaceMode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onDisplayUnitsChange={(units) => setPreferences((current) => ({ ...current, units }))} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenElectricalLayout={openElectricalLayout} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
+        <div className="app-identity"><a className="brand" href={plannerBuildBrand ? "/" : "https://www.freefloorplan3d.com/"} target={plannerBuildBrand ? "_top" : undefined} title={plannerBuildBrand ? "Return to PlannerBuild website" : "Return to FreeFloorplan3D website"}><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt={plannerBuildBrand ? "PlannerBuild" : "FreeFloorplan3D"} width={34} height={34} priority /><span>{plannerBuildBrand ? "PlannerBuild" : "FreeFloorplan3D"}</span></a><ApplicationMenuBar onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} workspaceMode={workspaceMode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onDisplayUnitsChange={(units) => setPreferences((current) => ({ ...current, units }))} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenElectricalLayout={openElectricalLayout} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
           <label className="workspace-mode-control"><span className="workspace-mode-label">Workspace</span><select className="workspace-mode-select" aria-label="Workspace" value={workspaceMode} onChange={(event) => void changeWorkspaceMode(event.target.value as "FLOORPLAN" | "PLANNERBUILD")}><option value="FLOORPLAN">Floorplan</option><option value="PLANNERBUILD">PlannerBuild</option></select></label>
           <div className="app-nav-modes" role="group" aria-label={workspaceMode === "FLOORPLAN" ? "Floorplan view" : "PlannerBuild view"}>

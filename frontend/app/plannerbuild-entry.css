@@ -1,0 +1,10 @@
+/* PlannerBuild adds controls to the compact header; keep menu and view controls
+   on separate rows rather than allowing the menu to cover the view buttons. */
+.plannerbuild-workspace.compact-workspace .topbar { grid-template-columns:minmax(0,1fr); height:auto; min-height:96px; flex:0 0 auto; padding:4px 8px; gap:4px; }
+.plannerbuild-workspace.compact-workspace .app-identity { grid-column:1; grid-row:1; width:100%; gap:4px; }
+.plannerbuild-workspace.compact-workspace .app-nav { grid-column:1; grid-row:2; width:100%; min-width:0; flex-wrap:wrap; justify-content:space-between; gap:4px; }
+.plannerbuild-workspace.compact-workspace .workspace-mode-label { display:none; }
+.plannerbuild-workspace.compact-workspace .workspace-mode-select { min-width:0; width:104px; padding:0 20px 0 7px; }
+.plannerbuild-workspace.compact-workspace .software-menu { flex-wrap:wrap; }
+.plannerbuild-workspace.compact-workspace .software-menu-item > button { padding:6px 4px; }
+.plannerbuild-workspace.compact-workspace .app-nav-modes button { padding:4px 5px; }

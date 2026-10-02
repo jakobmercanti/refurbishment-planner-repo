@@ -5,6 +5,7 @@ import { APP_APPEARANCE_STORAGE_KEY } from "@/lib/appPreferences";
 import "./globals.css";
 import "./ui-theme.css";
 import "./mobile.css";
+import "./plannerbuild-entry.css";
 import "./privacy.css";
 import "./commercial.css";
 import "./density.css";

@@ -175,16 +175,16 @@ test("PlannerBuild table view renders the live project dashboard and detail entr
     project, view: "TABLE", displayUnits: "METERS", onActivitiesChange: () => {},
   }));
   assert.match(markup, /Project dashboard/);
-  assert.match(markup, /pb-primary-metric-grid/);
+  assert.match(markup, /aria-label="Project performance"/);
   assert.match(markup, /\d+\.\d m²/);
-  assert.match(markup, /Estimated cost/);
-  assert.match(markup, /Programme health/);
+  assert.match(markup, /Predicted cost/);
+  assert.match(markup, /Programme and progress/);
   assert.match(markup, /Activity register/);
   assert.match(markup, /Full quantity tables/);
   assert.match(markup, /Walls &amp; openings/);
   assert.match(markup, /Costs &amp; trade workload/);
-  assert.match(markup, /Next milestone/);
-  assert.match(markup, /25% average activity progress/);
+  assert.match(markup, /Dates and priorities/);
+  assert.match(markup, /Recorded work progress: 25%/);
   assert.doesNotMatch(markup, /£0\.00/);
   assert.match(markup, /L-shaped room/);
   assert.match(markup, /Required paint/);
