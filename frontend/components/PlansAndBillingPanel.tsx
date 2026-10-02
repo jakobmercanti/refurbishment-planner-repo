@@ -125,10 +125,8 @@ function planHighlights(plan: CommercialCatalogue["plans"][number]): string[] {
 }
 
 export function PlansAndBillingPanel({
-  onContinueFree,
   selectedPlanKey,
 }: {
-  onContinueFree?: () => void;
   selectedPlanKey?: PlanKey | null;
 }) {
   const [catalogue, setCatalogue] = useState(() => resolveCommercialCatalogue(null));
@@ -252,9 +250,7 @@ export function PlansAndBillingPanel({
           <ul>{planHighlights(plan).map((highlight) => <li key={highlight}>{highlight}</li>)}</ul>
           <div className="plan-card-actions">
             {plan.plan_key === "free" ? (
-              onContinueFree
-                ? <button className="commercial-secondary" type="button" onClick={onContinueFree}>Continue free</button>
-                : <a className="commercial-secondary" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`}>Continue free</a>
+              <a className="commercial-secondary" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`}>Continue free</a>
             ) : (
               <>
               <a
