@@ -3,6 +3,25 @@ import assert from 'node:assert/strict';
 import worker from './planner-worker.mjs';
 
 const origin = 'https://www.freefloorplan3d.com';
+test('plain plans test bypasses app assets, disables caching and wires every tier', async () => {
+  const env = { ASSETS: { fetch: async () => { throw new Error('Diagnostic page must not depend on app assets'); } } };
+  const response = await worker.fetch(new Request(origin + '/planner/plans-test/'), env);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store, max-age=0');
+  assert.equal(response.headers.get('X-Plans-Test-Version'), 'plans-test-20261002-v1');
+  assert.equal(response.headers.get('X-Robots-Tag'), 'noindex');
+  const html = await response.text();
+  assert.ok(!html.includes('/_next/'));
+  assert.ok(html.includes('plans-test-20261002-v1'));
+  for (const tier of ['starter', 'pro', 'studio']) {
+    assert.ok(html.includes(`href="/planner/checkout/?plan=${tier}"`));
+    assert.ok(html.includes(`name="plan" value="${tier}"`));
+  }
+  assert.equal((html.match(/action="\/planner\/checkout\/" method="get"/g) ?? []).length, 3);
+  const head = await worker.fetch(new Request(origin + '/planner/plans-test/', { method: 'HEAD' }), env);
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), '');
+});
 test('exported account pages and explicit provider CSP origins work', async () => {
   const env = { SUPABASE_URL: 'https://project.supabase.co', R2_ORIGIN: 'https://account.r2.cloudflarestorage.com', ASSETS: { fetch: async request => new Response(new URL(request.url).pathname) } };
   const response = await worker.fetch(new Request(origin + '/planner/account/'), env);

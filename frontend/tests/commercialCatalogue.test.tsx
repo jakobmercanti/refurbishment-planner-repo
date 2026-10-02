@@ -28,7 +28,7 @@ test("fallback offer contains the approved four plans and render pack prices", (
   ]);
 });
 
-test("initial catalogue renders working native plan links before hydration without starting billing", () => {
+test("initial catalogue renders working native plan forms before hydration without starting billing", () => {
   const catalogue = resolveCommercialCatalogue(null);
   assert.equal(catalogue.serviceAvailable, false);
   assert.equal(catalogue.billingEnabled, false);
@@ -51,9 +51,9 @@ test("initial catalogue renders working native plan links before hydration witho
   const freeCardFeatures = markup.match(/<article class="plan-card [^>]*>.*?<ul>(.*?)<\/ul>/s)?.[1] ?? "";
   assert.ok(!freeCardFeatures.includes("Full Electrical Layout module on paid plans"));
   for (const plan of ["starter", "pro", "studio"]) {
-    assert.match(markup, new RegExp(`<a[^>]+href="[^"]*/checkout/\\?plan=${plan}"[^>]*>`));
+    assert.match(markup, new RegExp(`<form action="[^"]*/checkout/" method="get"><input type="hidden" name="plan" value="${plan}"/>.*?<button[^>]+type="submit"`));
   }
-  assert.match(markup, /<a[^>]+href="[^\"]*\/"[^>]*>Continue free<\/a>/);
+  assert.match(markup, /<form action="[^\"]*\/" method="get"><button[^>]+type="submit">Continue free<\/button><\/form>/);
   assert.ok(!markup.includes("disabled=\"\""));
 });
 
