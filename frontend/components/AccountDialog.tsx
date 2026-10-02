@@ -29,7 +29,7 @@ export function AccountDialog({ onClose, initialSection = "account" }: { onClose
         <div><span className="eyebrow">YOUR WORKSPACE</span><h2 id="account-dialog-title">Account &amp; plans</h2></div>
         <nav className="commercial-tabs account-dialog-tabs" role="tablist" aria-label="Account sections">
           <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={section === "account"} className={section === "account" ? "selected" : ""} onClick={() => setSection("account")}>Account</button>
-          <button id="plans-section-tab" type="button" role="tab" aria-controls="plans-section-panel" aria-selected={section === "plans"} className={section === "plans" ? "selected" : ""} onClick={() => setSection("plans")}>Plans</button>
+          <a id="plans-section-tab" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/plans/`}>Plans</a>
         </nav>
         <button type="button" className="modal-close" onClick={onClose} aria-label="Close account window">×</button>
       </header>

@@ -4,6 +4,9 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PlansAndBillingPanel } from "../components/PlansAndBillingPanel";
+import { PlansRedirect } from "../components/PlansRedirect";
+import { AccountDialog } from "../components/AccountDialog";
+import { AccountExperience } from "../components/AccountExperience";
 import {
   FALLBACK_PLANS,
   FALLBACK_RENDER_PACKS,
@@ -11,6 +14,17 @@ import {
   includesPlannerBuild,
   resolveCommercialCatalogue,
 } from "../lib/commercialCatalogue";
+
+test("all account Plans entry points use the standalone page and retain a selected tier", () => {
+  const redirected = renderToStaticMarkup(createElement(PlansRedirect, { selectedPlanKey: "studio" }));
+  assert.match(redirected, /<form[^>]+action="[^\"]*\/plans\/" method="get"/);
+  assert.match(redirected, /name="plan" value="studio"/);
+  const embedded = renderToStaticMarkup(createElement(AccountDialog, { initialSection: "plans", onClose: () => undefined }));
+  assert.match(embedded, /id="plans-section-tab" href="[^\"]*\/plans\/"/);
+  assert.ok(embedded.includes('data-plans-redirect="true"'));
+  const standalone = renderToStaticMarkup(createElement(AccountExperience));
+  assert.match(standalone, /id="plans-section-tab" href="[^\"]*\/plans\/"/);
+});
 
 test("fallback offer contains the approved four plans and render pack prices", () => {
   assert.deepEqual(FALLBACK_PLANS.map((plan) => [plan.plan_key, plan.monthly_price_pence]), [

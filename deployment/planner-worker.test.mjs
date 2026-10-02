@@ -3,6 +3,53 @@ import assert from 'node:assert/strict';
 import worker from './planner-worker.mjs';
 
 const origin = 'https://www.freefloorplan3d.com';
+test('normal Plans uses the proven plain navigation without app assets or framework scripts', async () => {
+  const response = await worker.fetch(new Request(origin + '/planner/plans/?plan=studio'), { ASSETS: { fetch: async () => { throw new Error('Must bypass planner assets'); } } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store, max-age=0');
+  assert.equal(response.headers.get('X-Plans-Page-Version'), 'plans-20261002-v2');
+  const html = await response.text();
+  assert.ok(!html.includes('/_next/'));
+  assert.ok(html.includes('Continue with Studio'));
+  assert.ok(html.includes('Compare plans'));
+  assert.equal((html.match(/<article class="card/g) ?? []).length, 4);
+  for (const tier of ['starter', 'pro', 'studio']) {
+    assert.ok(html.includes(`href="/planner/checkout/?plan=${tier}"`));
+    assert.ok(html.includes(`name="plan" value="${tier}"`));
+  }
+});
+
+test('old Plans bookmarks and Stripe billing returns preserve checkout state', async () => {
+  for (const path of ['/account/?tab=plans&plan=pro', '/billing/?checkout=cancelled', '/billing/?checkout=success']) {
+    const response = await worker.fetch(new Request(origin + '/planner' + path), {});
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    const destination = new URL(response.headers.get('Location'));
+    assert.equal(destination.pathname, '/planner/plans/');
+    assert.equal(destination.searchParams.has('tab'), false);
+    const original = new URL(origin + '/planner' + path);
+    for (const key of ['plan', 'checkout']) assert.equal(destination.searchParams.get(key), original.searchParams.get(key));
+  }
+});
+
+test('plain normal plans use live catalogue data safely and fall back on service failure', async () => {
+  const previous = globalThis.fetch;
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  try {
+    globalThis.fetch = async url => {
+      assert.equal(String(url), env.ENGINEERING_API_ORIGIN + '/commercial/catalogue');
+      return Response.json({ plans: [{ plan_key: 'starter', name:'<script>unsafe</script>', monthly_price_pence:1090, storage_limit_bytes:1024**3, asset_limit:1, project_limit:2, included_medium:3, included_high:0 }], packs:[], billing_enabled:true });
+    };
+    const html = await (await worker.fetch(new Request(origin + '/planner/plans/'), env)).text();
+    assert.ok(html.includes('£10.90'));
+    assert.ok(html.includes('&lt;script&gt;unsafe&lt;/script&gt;'));
+    assert.ok(!html.includes('<script>unsafe</script>'));
+    globalThis.fetch = async () => { throw new Error('Offline'); };
+    const fallback = await (await worker.fetch(new Request(origin + '/planner/plans/'), env)).text();
+    assert.ok(fallback.includes('£9.90'));
+    assert.ok(fallback.includes('name="plan" value="starter"'));
+  } finally { globalThis.fetch = previous; }
+});
 test('plain plans test bypasses app assets, disables caching and wires every tier', async () => {
   const env = { ASSETS: { fetch: async () => { throw new Error('Diagnostic page must not depend on app assets'); } } };
   const response = await worker.fetch(new Request(origin + '/planner/plans-test/'), env);
