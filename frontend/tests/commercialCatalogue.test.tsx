@@ -51,8 +51,9 @@ test("initial catalogue renders working native plan links before hydration witho
   const freeCardFeatures = markup.match(/<article class="plan-card [^>]*>.*?<ul>(.*?)<\/ul>/s)?.[1] ?? "";
   assert.ok(!freeCardFeatures.includes("Full Electrical Layout module on paid plans"));
   for (const plan of ["starter", "pro", "studio"]) {
-    assert.ok(markup.includes(`/checkout/?plan=${plan}`));
+    assert.match(markup, new RegExp(`<a[^>]+href="[^"]*/checkout/\\?plan=${plan}"[^>]*>`));
   }
+  assert.match(markup, /<a[^>]+href="[^\"]*\/"[^>]*>Continue free<\/a>/);
   assert.ok(!markup.includes("disabled=\"\""));
 });
 

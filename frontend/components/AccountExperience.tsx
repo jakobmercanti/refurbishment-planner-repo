@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { acceptAuthRedirect, currentSession, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
 import { PlansAndBillingPanel } from "@/components/PlansAndBillingPanel";
 import type { PlanKey } from "@/lib/commercialCatalogue";
@@ -9,7 +9,7 @@ type Mode = "signin" | "signup" | "reset";
 type AccountSection = "account" | "plans";
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-export function AccountExperience({ embedded = false, onClose, embeddedSection, onEmbeddedSectionChange }: { embedded?: boolean; onClose?: () => void; embeddedSection?: AccountSection; onEmbeddedSectionChange?: (section: AccountSection) => void }) {
+export function AccountExperience({ embedded = false, embeddedSection, onEmbeddedSectionChange }: { embedded?: boolean; onClose?: () => void; embeddedSection?: AccountSection; onEmbeddedSectionChange?: (section: AccountSection) => void }) {
   const [mode, setMode] = useState<Mode>("signin");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [email, setEmail] = useState("");
@@ -23,6 +23,16 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   const [section, setSection] = useState<AccountSection>("account");
   const [pendingPlanKey, setPendingPlanKey] = useState<PlanKey | null>(null);
   const authForm = useRef<HTMLFormElement>(null);
+
+  const selectSection = useCallback((next: AccountSection) => {
+    setSection(next);
+    onEmbeddedSectionChange?.(next);
+    if (embedded) return;
+    const url = new URL(window.location.href);
+    if (next === "plans") url.searchParams.set("tab", "plans");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }, [embedded, onEmbeddedSectionChange]);
 
   useEffect(() => {
     if (!pendingPlanKey || session || !ready || (embedded ? embeddedSection : section) !== "account") return;
@@ -43,6 +53,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
         setNotice(`Sign in to continue with ${requestedPlan}. No payment has been taken.`);
       }
       setSection(requestedSection === "plans" ? "plans" : "account");
+      if (redirect !== "recovery" && (redirect === "session" || (current && requestedPlan))) selectSection("plans");
       setSession(current);
       setRecovery(redirect === "recovery");
       if (redirect === "recovery") setNotice("Choose a new password for your account.");
@@ -50,7 +61,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       setReady(true);
     })().catch((cause) => { if (mounted) { setError(cause instanceof Error ? cause.message : "Account access is temporarily unavailable."); setReady(true); } });
     return () => { mounted = false; };
-  }, [embedded]);
+  }, [embedded, selectSection]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,9 +73,11 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       } else if (mode === "signin") {
         const signedIn = await signIn(email, password);
         setSession(signedIn);
+        selectSection("plans");
       } else if (mode === "signup") {
         const registered = await signUp(email, password);
         setSession(registered);
+        if (registered) selectSection("plans");
         setNotice(registered ? "Account created." : "Check your email to verify your account, then sign in.");
       } else {
         await sendPasswordReset(email);
@@ -79,16 +92,6 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
     await signOut(); setSession(null); setNotice("You are signed out.");
   }
 
-  function selectSection(next: AccountSection) {
-    setSection(next);
-    onEmbeddedSectionChange?.(next);
-    if (embedded) return;
-    const url = new URL(window.location.href);
-    if (next === "plans") url.searchParams.set("tab", "plans");
-    else url.searchParams.delete("tab");
-    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }
-
   const sectionTabs = <nav className="commercial-tabs account-section-tabs" role="tablist" aria-label="Account sections">
     <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>{session ? "Account" : "Sign in"}</button>
     <button id="plans-section-tab" type="button" role="tab" aria-controls="plans-section-panel" aria-selected={(embedded ? embeddedSection : section) === "plans"} className={(embedded ? embeddedSection : section) === "plans" ? "selected" : ""} onClick={() => selectSection("plans")}>Plans</button>
@@ -101,7 +104,6 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
     {session ? (
       <div className="commercial-stack">
         <p className="commercial-status">Signed in{session.user.email ? " as " + session.user.email : ""}.</p>
-        {pendingPlanKey && <a className="commercial-primary" href={`${base}/checkout/?plan=${pendingPlanKey}`}>Continue with {pendingPlanKey}</a>}
         <a className="commercial-primary" href={base + "/workspace/"} target={embedded ? "_blank" : undefined} rel={embedded ? "noopener noreferrer" : undefined}>Open cloud workspace</a>
         <button className="commercial-secondary" type="button" onClick={() => void leaveAccount()}>Sign out</button>
       </div>
@@ -135,7 +137,6 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       {accountContent}
     </div> : <div id="plans-section-panel" role="tabpanel" aria-labelledby="plans-section-tab" className="account-tab-panel">
       <PlansAndBillingPanel
-        onContinueFree={embedded ? onClose : undefined}
         selectedPlanKey={pendingPlanKey}
       />
     </div>}
