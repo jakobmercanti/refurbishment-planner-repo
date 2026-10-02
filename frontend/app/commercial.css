@@ -53,6 +53,9 @@
 .commercial-inline-form input[type=file] { padding: 8px; font-size: calc((12px) * var(--density-font-scale, 1)); }
 .commercial-error, .commercial-status { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #efcbc8; border-radius: 8px; background: #fff4f3; color: #9c302b; font-size: calc((13px) * var(--density-font-scale, 1)); line-height: 1.45; }
 .commercial-status { border-color: #c9dfd2; background: #eff8f2; color: #23583c; }
+html[data-theme="dark"] .commercial-status { border-color: #397454; background: #193c2c; color: #91e0b1; }
+html[data-theme="dark"] :is(.commercial-page, .account-dialog-content) p.commercial-status { color: #91e0b1; }
+.account-password-toggle { justify-self: start; min-height: 44px; }
 .commercial-retry { margin-left: 12px; }
 .conflict-panel { border-color: #e5c991; background: #fffbf2; }
 .conflict-panel p { color: #6e603e; font-size: calc((13px) * var(--density-font-scale, 1)); line-height: 1.5; }

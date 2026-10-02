@@ -144,9 +144,16 @@ export function PlansAndBillingPanel({
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
   const [actionError, setActionError] = useState("");
+  const actionErrorRef = useRef<HTMLParagraphElement>(null);
   const [notice, setNotice] = useState("");
   const [helpTopic, setHelpTopic] = useState<HelpTopic | null>(null);
   const closeHelp = useCallback(() => setHelpTopic(null), []);
+
+  useEffect(() => {
+    if (!actionError) return;
+    actionErrorRef.current?.scrollIntoView({ block: "nearest" });
+    actionErrorRef.current?.focus();
+  }, [actionError]);
 
   function retryServices() {
     setLoading(true);
@@ -219,13 +226,13 @@ export function PlansAndBillingPanel({
   }, [reload]);
 
   async function checkout(planKey: PlanKey) {
-    if (!session) {
-      onSignInRequired(planKey);
-      return;
-    }
     setBusy(true);
     setActionError("");
     try {
+      if (!await currentSession()) {
+        onSignInRequired(planKey);
+        return;
+      }
       await createCheckout(planKey, keepPlannerOpen);
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "Checkout could not be started.");
@@ -261,7 +268,7 @@ export function PlansAndBillingPanel({
       <div><p className="commercial-eyebrow">PLANS &amp; BILLING</p><h1>Keep planning free. Add cloud when you need it.</h1><p>Every plan includes the full floorplan editor and furniture/electrical catalogue. Paid plans unlock the Full Electrical Layout module, private cloud storage, project backup and AI rendering allowances. Studio and higher tiers also include the full PlannerBuild project-planning module.</p></div>
     </section>
 
-    {actionError && <p className="commercial-error plan-action-error" role="alert">{actionError}</p>}
+    {actionError && <p ref={actionErrorRef} tabIndex={-1} className="commercial-error plan-action-error" role="alert">{actionError}</p>}
     {notice && <p className="commercial-status plan-action-error" role="status">{notice}</p>}
 
     <section className="plan-grid" aria-label="Monthly plans">

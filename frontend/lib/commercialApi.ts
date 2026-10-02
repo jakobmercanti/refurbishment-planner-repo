@@ -37,11 +37,12 @@ export async function uploadSignedFile(url: string, headers: Record<string, stri
 
 export async function createCheckout(productKey: string, keepPlannerOpen = false): Promise<void> {
   const checkoutWindow = keepPlannerOpen ? window.open("about:blank", "_blank") : null;
-  if (keepPlannerOpen && !checkoutWindow) throw new Error("Allow pop-ups to open secure Stripe checkout without closing your planner.");
+  // Mobile/in-app browsers often block new windows. Continue in this tab instead
+  // of aborting checkout before the API request is even made.
   if (checkoutWindow) checkoutWindow.opener = null;
   try {
     const result = await commercialRequest<{ url: string }>("/billing/checkout", {
-      method: "POST", body: JSON.stringify({ product_key: productKey }),
+      method: "POST", body: JSON.stringify({ product_key: productKey }), signal: AbortSignal.timeout(25_000),
     });
     if (checkoutWindow) checkoutWindow.location.replace(result.url);
     else window.location.assign(result.url);
@@ -53,7 +54,6 @@ export async function createCheckout(productKey: string, keepPlannerOpen = false
 
 export async function openBillingPortal(keepPlannerOpen = false): Promise<void> {
   const portalWindow = keepPlannerOpen ? window.open("about:blank", "_blank") : null;
-  if (keepPlannerOpen && !portalWindow) throw new Error("Allow pop-ups to open the billing portal without closing your planner.");
   if (portalWindow) portalWindow.opener = null;
   try {
     const result = await commercialRequest<{ url: string }>("/billing/portal", { method: "POST" });

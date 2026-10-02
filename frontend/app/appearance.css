@@ -270,7 +270,7 @@ html[data-theme="dark"] :is(.electrical-demo-notice, .electrical-connect-hint, .
   border-color: #8a713b;
   color: #f0d58e;
 }
-html[data-theme="dark"] :is(.project-error, .inline-error, .commercial-error, .commercial-status, .commercial-danger, .danger-button, .pb-dashboard-columns li.warning, .pb-dashboard-columns li.urgent) {
+html[data-theme="dark"] :is(.project-error, .inline-error, .commercial-error, .commercial-danger, .danger-button, .pb-dashboard-columns li.warning, .pb-dashboard-columns li.urgent) {
   background-color: #402b31;
   border-color: #79505a;
   color: #f3a4a2;

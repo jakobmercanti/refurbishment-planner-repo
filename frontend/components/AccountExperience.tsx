@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { acceptAuthRedirect, currentSession, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
 import { PlansAndBillingPanel } from "@/components/PlansAndBillingPanel";
 import type { PlanKey } from "@/lib/commercialCatalogue";
@@ -14,6 +14,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   const [session, setSession] = useState<AuthSession | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [recovery, setRecovery] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -21,6 +22,13 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   const [ready, setReady] = useState(false);
   const [section, setSection] = useState<AccountSection>("account");
   const [pendingPlanKey, setPendingPlanKey] = useState<PlanKey | null>(null);
+  const authForm = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (!pendingPlanKey || session || !ready || (embedded ? embeddedSection : section) !== "account") return;
+    authForm.current?.scrollIntoView({ block: "nearest" });
+    authForm.current?.querySelector<HTMLInputElement>('input[type="email"]')?.focus();
+  }, [pendingPlanKey, session, ready, embedded, embeddedSection, section]);
 
   useEffect(() => {
     let mounted = true;
@@ -61,7 +69,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The account request could not be completed.");
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setShowPassword(false); }
   }
 
   async function leaveAccount() {
@@ -100,11 +108,12 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
             {value === "signin" ? "Sign in" : "Create account"}
           </button>)}
         </div>}
-        <form className="commercial-stack" onSubmit={submit}>
-          {recovery ? <label>New password<input autoComplete="new-password" type="password" minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label> : <>
+        <form ref={authForm} className="commercial-stack" onSubmit={submit}>
+          {recovery ? <label>New password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label> : <>
             <label>Email<input autoComplete="email" type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            {(mode === "signin" || mode === "signup") && <label>Password<input autoComplete={mode === "signup" ? "new-password" : "current-password"} type="password" minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
+            {(mode === "signin" || mode === "signup") && <label>Password<input autoComplete={mode === "signup" ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
           </>}
+          {(recovery || mode === "signin" || mode === "signup") && <button className="commercial-secondary account-password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide password" : "Show password"}</button>}
           {error && <p className="commercial-error" role="alert">{error}</p>}
           {notice && <p className="commercial-status" role="status">{notice}</p>}
           <button className="commercial-primary" type="submit" disabled={busy}>{busy ? "Please wait…" : recovery ? "Update password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
@@ -122,7 +131,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       {accountContent}
     </div> : <div id="plans-section-panel" role="tabpanel" aria-labelledby="plans-section-tab" className="account-tab-panel">
       <PlansAndBillingPanel
-        onSignInRequired={(planKey) => { setPendingPlanKey(planKey); selectSection("account"); setMode("signin"); }}
+        onSignInRequired={(planKey) => { setPendingPlanKey(planKey); selectSection("account"); setMode("signin"); setNotice("Sign in to continue with your selected plan. No payment has been taken."); }}
         keepPlannerOpen={embedded}
         onContinueFree={embedded ? onClose : undefined}
         selectedPlanKey={pendingPlanKey}
