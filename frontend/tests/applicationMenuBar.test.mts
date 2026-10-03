@@ -37,7 +37,8 @@ test("application menu keeps the requested top-level order", () => {
   }));
   const firstMenuLabels = [...markup.matchAll(/<button[^>]*>([^<]+)<\/button>/g)]
     .map((match) => match[1])
-    .slice(0, 6);
+    .slice(0, 5);
 
-  assert.deepEqual(firstMenuLabels, ["File", "Tools", "Library", "View", "Toolbar", "Settings"]);
+  assert.deepEqual(firstMenuLabels, ["File", "Tools", "Library", "Toolbar", "Settings"]);
+  assert.doesNotMatch(markup, /<button[^>]*>View<\/button>/);
 });
