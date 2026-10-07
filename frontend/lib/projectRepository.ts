@@ -34,6 +34,11 @@ export class LocalProjectRepository implements ProjectRepository {
     await done;
   }
   async deleteProject(id: string) { const db = await localDatabase(), tx = db.transaction(["projects", "backups", "meta"], "readwrite"), done = completed(tx); tx.objectStore("projects").delete(id); tx.objectStore("backups").delete(id); const current = tx.objectStore("meta").get("current"); current.onsuccess = () => { if (current.result === id) tx.objectStore("meta").delete("current"); }; await done; }
-  async duplicateProject(id: string) { const p = await this.getProject(id); if (!p) throw new Error("Project not found."); const copy = { ...p, projectId: crypto.randomUUID(), name: `${p.name} copy`, generated: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; await this.saveProject(copy); return copy; }
+  async duplicateProject(id: string) {
+    const p = await this.getProject(id); if (!p) throw new Error("Project not found.");
+    const projectId = crypto.randomUUID();
+    const copy = { ...p, projectId, name: `${p.name} copy`, generated: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), quotes: (p.quotes ?? []).map(quote => ({ ...structuredClone(quote), projectId, quoteId: crypto.randomUUID() })) };
+    await this.saveProject(copy); return copy;
+  }
 }
 export const projectRepository = new LocalProjectRepository();

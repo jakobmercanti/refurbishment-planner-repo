@@ -9,6 +9,7 @@ import { analytics, exported } from "./analytics";
 import type { ElectricalLayoutData } from "./electricalLayout";
 import type { PlannerBuildData } from "./plannerBuild";
 import type { Room } from "./types";
+import type { QuoteDocument } from "./quoteDocument";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
@@ -70,5 +71,6 @@ export function useLocalProject() {
   const setElectricalLayout = useCallback((electricalLayout: ElectricalLayoutData) => update({ electricalLayout }), [update]);
   const setElectricalProjectData = useCallback((rooms: Room[], electricalLayout: ElectricalLayoutData, assetInstances: AssetInstance[], assets?: AssetDefinition[]) => update({ rooms, electricalLayout, assetInstances, ...(assets ? { assets } : {}) }), [update]);
   const setPlannerBuild = useCallback((plannerBuild: PlannerBuildData) => update({ plannerBuild }), [update]);
-  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild };
+  const setQuotes = useCallback((quotes: QuoteDocument[]) => update({ quotes }), [update]);
+  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes };
 }

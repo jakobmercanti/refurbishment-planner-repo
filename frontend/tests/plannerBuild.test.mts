@@ -172,19 +172,19 @@ test("PlannerBuild table view renders the live project dashboard and detail entr
   const project = testProject();
   project.plannerBuild = { activities: [activity()] };
   const markup = renderToStaticMarkup(createElement(PlannerBuildWorkspace, {
-    project, view: "TABLE", displayUnits: "METERS", onActivitiesChange: () => {},
+    project, view: "DASHBOARD", displayUnits: "METERS", onActivitiesChange: () => {}, onQuotesChange: () => {},
   }));
   assert.match(markup, /Project dashboard/);
-  assert.match(markup, /pb-primary-metric-grid/);
+  assert.match(markup, /aria-label="Project performance"/);
   assert.match(markup, /\d+\.\d m²/);
-  assert.match(markup, /Estimated cost/);
-  assert.match(markup, /Programme health/);
+  assert.match(markup, /Predicted cost/);
+  assert.match(markup, /Progress &amp; timing/);
   assert.match(markup, /Activity register/);
   assert.match(markup, /Full quantity tables/);
   assert.match(markup, /Walls &amp; openings/);
   assert.match(markup, /Costs &amp; trade workload/);
-  assert.match(markup, /Next milestone/);
-  assert.match(markup, /25% average activity progress/);
+  assert.match(markup, /Overdue &amp; next 14 days/);
+  assert.match(markup, /Recorded work progress: 25%/);
   assert.doesNotMatch(markup, /£0\.00/);
   assert.match(markup, /L-shaped room/);
   assert.match(markup, /Required paint/);
@@ -198,7 +198,7 @@ test("PlannerBuild views format costs using the selected default currency", () =
     activity({ activityId: "explicit-currency", name: "Imported cost", actualCost: 80, currency: "EUR" }),
   ] };
   const markup = renderToStaticMarkup(createElement(PlannerBuildWorkspace, {
-    project, view: "TABLE", displayUnits: "MM", defaultCurrency: "USD", onActivitiesChange: () => {},
+    project, view: "DASHBOARD", displayUnits: "MM", defaultCurrency: "USD", onActivitiesChange: () => {}, onQuotesChange: () => {},
   }));
 
   assert.ok(markup.includes(new Intl.NumberFormat("en-GB", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(125)));
@@ -208,14 +208,14 @@ test("PlannerBuild views format costs using the selected default currency", () =
 test("Gantt view has a useful empty state and renders saved activity bars", () => {
   const project = testProject();
   const emptyMarkup = renderToStaticMarkup(createElement(PlannerBuildWorkspace, {
-    project, view: "GANTT", displayUnits: "MM", onActivitiesChange: () => {},
+    project, view: "GANTT", displayUnits: "MM", onActivitiesChange: () => {}, onQuotesChange: () => {},
   }));
   assert.match(emptyMarkup, /No activities yet/);
   assert.match(emptyMarkup, /Add first activity/);
 
   project.plannerBuild = { activities: [activity()] };
   const scheduleMarkup = renderToStaticMarkup(createElement(PlannerBuildWorkspace, {
-    project, view: "GANTT", displayUnits: "MM", onActivitiesChange: () => {},
+    project, view: "GANTT", displayUnits: "MM", onActivitiesChange: () => {}, onQuotesChange: () => {},
   }));
   assert.match(scheduleMarkup, /Project activity schedule/);
   assert.match(scheduleMarkup, /Electrical first fix/);
@@ -230,7 +230,7 @@ test("Gantt highlights a conflicting prerequisite warning and its matching depen
   const dependent = activity({ activityId: "electrical", name: "Electrical fix", startDate: "2026-10-13", endDate: "2026-11-02", dependencyIds: ["survey"] });
   project.plannerBuild = { activities: [dependent, prerequisite] };
   const markup = renderToStaticMarkup(createElement(PlannerBuildWorkspace, {
-    project, view: "GANTT", displayUnits: "MM", onActivitiesChange: () => {},
+    project, view: "GANTT", displayUnits: "MM", onActivitiesChange: () => {}, onQuotesChange: () => {},
   }));
 
   assert.match(markup, /class="pb-schedule-warning warning"/);

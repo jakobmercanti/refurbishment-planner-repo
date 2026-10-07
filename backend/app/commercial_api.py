@@ -199,7 +199,8 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
         "assetInstances",
     }
     if (
-        set(document) != required
+        not required.issubset(document)
+        or bool(set(document) - required - {"plannerBuild", "electricalLayout", "renderCamera", "quotes"})
         or type(document.get("schemaVersion")) is not int
         or document.get("schemaVersion") != 1
         or document.get("units") != "mm"
@@ -213,6 +214,33 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
         value = document.get(field)
         if not isinstance(value, list) or len(value) > maximum:
             raise HTTPException(status_code=422, detail="The project contains too many items or an invalid collection.")
+
+    for field in ("plannerBuild", "electricalLayout", "renderCamera"):
+        if field in document and not isinstance(document[field], dict):
+            raise HTTPException(status_code=422, detail="Invalid optional project document.")
+    quotes = document.get("quotes", [])
+    if not isinstance(quotes, list) or len(quotes) > 100:
+        raise HTTPException(status_code=422, detail="Invalid quotation collection.")
+    quote_ids: set[str] = set()
+    for quote in quotes:
+        if (
+            not isinstance(quote, dict)
+            or type(quote.get("version")) is not int or quote.get("version") != 1
+            or quote.get("projectId") != str(project_id)
+            or not isinstance(quote.get("quoteId"), str)
+            or not re.fullmatch(r"[\w:-]{1,150}", quote["quoteId"])
+            or quote["quoteId"] in quote_ids
+            or not isinstance(quote.get("sections"), list) or len(quote["sections"]) > 200
+        ):
+            raise HTTPException(status_code=422, detail="Invalid or unsupported quotation document.")
+        quote_ids.add(quote["quoteId"])
+        if any(
+            not isinstance(section, dict)
+            or not isinstance(section.get("items"), list)
+            or len(section["items"]) > 2000
+            for section in quote["sections"]
+        ):
+            raise HTTPException(status_code=422, detail="Invalid quotation sections.")
 
     def inspect(value: Any, depth: int = 0) -> None:
         if depth > 40:

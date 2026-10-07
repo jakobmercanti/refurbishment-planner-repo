@@ -4,6 +4,7 @@ import type { PersistedFloorplan } from "../components/FullFloorplanEditor";
 import { normalizeRenderCameraState, type RenderCameraState } from "./renderCamera";
 import { DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, normalizeElectricalLayout, type ElectricalLayoutData } from "./electricalLayout";
 import { DEFAULT_PLANNER_BUILD, normalizePlannerBuild, type PlannerBuildData } from "./plannerBuild";
+import { quoteSchema, type QuoteDocument } from "./quoteDocument";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -46,6 +47,7 @@ const documentSchema = z.object({
   renderCamera: z.unknown().optional(),
   electricalLayout: z.unknown().optional(),
   plannerBuild: z.unknown().optional(),
+  quotes: z.array(quoteSchema).max(100).optional().default([]),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
@@ -53,6 +55,7 @@ export interface ProjectDocument {
   renderCamera?: RenderCameraState;
   electricalLayout?: ElectricalLayoutData;
   plannerBuild: PlannerBuildData;
+  quotes?: QuoteDocument[];
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -81,6 +84,8 @@ export function parseProject(input: unknown): ProjectDocument {
     plannerBuild: normalizePlannerBuild(rawPlannerBuild),
   };
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
+  unique((p.quotes ?? []).map(quote => quote.quoteId));
+  if (p.quotes?.some(quote => quote.projectId !== p.projectId)) throw new Error("A quotation belongs to a different project.");
   unique(p.plannerBuild.activities.map(activity => activity.activityId));
   for (const room of p.rooms) {
     unique(room.obstacles.map(o => o.id)); unique(room.openings.map(o => o.id));
@@ -118,6 +123,6 @@ export function parseProject(input: unknown): ProjectDocument {
 export const migrateProject = parseProject;
 export function newProject(): ProjectDocument {
   const now = new Date().toISOString();
-  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT, plannerBuild: DEFAULT_PLANNER_BUILD };
+  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT, plannerBuild: DEFAULT_PLANNER_BUILD, quotes: [] };
 }
 export const capabilities = Object.freeze({ canSaveCloudProjects: false, canUploadCloudAssets: false, canUseAiRendering: false, canExport4K: false, cloudStorageBytes: 0, aiRenderCreditsRemaining: 0 });

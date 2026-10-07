@@ -145,6 +145,27 @@ def test_project_validator_accepts_canonical_document_and_trims_title() -> None:
     assert _validate_project(_project_document(str(project_id)), project_id) == (1, "Bathroom")
 
 
+def test_project_validator_preserves_versioned_local_planning_and_quote_documents() -> None:
+    project_id = uuid4()
+    document = _project_document(str(project_id))
+    document.update({"plannerBuild": {"activities": []}, "electricalLayout": {"circuits": []}, "renderCamera": {},
+                     "quotes": [{"version": 1, "quoteId": str(uuid4()), "projectId": str(project_id), "sections": []}]})
+    assert _validate_project(document, project_id) == (1, "Bathroom")
+    document["quotes"][0]["projectId"] = str(uuid4())
+    with pytest.raises(HTTPException):
+        _validate_project(document, project_id)
+
+
+@pytest.mark.parametrize("quotes", [None, {}, ["bad"], [{"version": True}], [{"version": 2}]])
+def test_project_validator_rejects_invalid_quote_documents(quotes: object) -> None:
+    project_id = uuid4()
+    document = _project_document(str(project_id))
+    document["quotes"] = quotes
+    with pytest.raises(HTTPException) as error:
+        _validate_project(document, project_id)
+    assert error.value.status_code == 422
+
+
 @pytest.mark.parametrize("schema_version", [True, 1.0, "1", 2])
 def test_project_validator_rejects_noncanonical_schema_version(schema_version: object) -> None:
     project_id = uuid4()

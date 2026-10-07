@@ -21,7 +21,8 @@ import { ViewerOpeningEditor } from "@/components/ViewerOpeningEditor";
 import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { FloatingToolbar, positionedToolbarDock } from "@/components/FloatingToolbar";
 import { PersonEditor } from "@/components/PersonEditor";
-import { PlannerBuildWorkspace, type PlannerBuildView } from "@/components/PlannerBuildWorkspace";
+import { PlannerBuildWorkspace } from "@/components/PlannerBuildWorkspace";
+import { usePlannerBuildView } from "@/lib/plannerBuildView";
 import { constrainObstacleToRoom, DEFAULT_OBSTACLE_WALL_LOCK, obstacleFitsInRoom, transferObstacle, type PlacementCandidate, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
 import { normalizeRoomPerson } from "@/lib/person";
 import { SettingsDialog } from "@/components/SettingsDialog";
@@ -31,7 +32,7 @@ import { ADD_TO_PLAN_MODES, type AddToPlanMode } from "@/lib/addToPlanModes";
 import { formatLength, formatMeasurementText } from "@/lib/units";
 import type { FloorplanStyle } from "@/lib/floorplanStyles";
 import { DEFAULT_TOOLBAR_AVAILABILITY, DEFAULT_TOOLBAR_VISIBILITY, FLOORPLAN_TOOLBARS, VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
-import { CommercialApiError, commercialRequest } from "@/lib/commercialApi";
+import { commercialRequest } from "@/lib/commercialApi";
 import { includesPlannerBuild, type PlanKey } from "@/lib/commercialCatalogue";
 import { DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, normalizeElectricalLayout } from "@/lib/electricalLayout";
 import type { ElectricalLayoutImportPlan } from "@/lib/electricalLayoutPackage";
@@ -83,7 +84,7 @@ export default function Home() {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
   const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
   const [workspaceMode, setWorkspaceMode] = useState<"FLOORPLAN" | "PLANNERBUILD">("FLOORPLAN");
-  const [plannerBuildView, setPlannerBuildView] = useState<PlannerBuildView>("GANTT");
+  const [plannerBuildView, setPlannerBuildView] = usePlannerBuildView();
   const [projectRooms, setProjectRooms] = useState<Room[]>([]);
   const [viewerRoomSelection, setViewerRoomSelection] = useState(FULL_FLOORPLAN_SELECTION);
   const [pendingViewerRoomSelection, setPendingViewerRoomSelection] = useState(FULL_FLOORPLAN_SELECTION);
@@ -264,8 +265,9 @@ export default function Home() {
           const summary = await commercialRequest<{ plan?: string; capabilities?: { canUsePlannerBuild?: boolean } }>("/summary");
           available = summary.capabilities?.canUsePlannerBuild === true;
           demoMode = !available;
-        } catch (cause) {
-          demoMode = cause instanceof CommercialApiError && cause.status === 401;
+        } catch {
+          // Local planning and quotations must remain usable without account services.
+          demoMode = true;
         }
       }
       if (!available && !demoMode) {
@@ -542,10 +544,7 @@ export default function Home() {
             {workspaceMode === "FLOORPLAN" ? <>
               <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => { setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("EDITOR"); }}>2D</button>
               <button aria-pressed={mode === "ANALYSIS"} className={mode === "ANALYSIS" ? "active" : ""} onClick={enterViewer}>3D</button>
-            </> : <>
-              <button aria-pressed={plannerBuildView === "GANTT"} className={plannerBuildView === "GANTT" ? "active" : ""} onClick={() => setPlannerBuildView("GANTT")}>Gantt</button>
-              <button aria-pressed={plannerBuildView === "TABLE"} className={plannerBuildView === "TABLE" ? "active" : ""} onClick={() => setPlannerBuildView("TABLE")}>Overview</button>
-            </>}
+            </> : <select className="workspace-mode-select planner-build-view-select" aria-label="PlannerBuild view" value={plannerBuildView} onChange={event => setPlannerBuildView(event.target.value as "GANTT" | "DASHBOARD" | "QUOTE")}><option value="GANTT">Gantt</option><option value="DASHBOARD">Dashboard</option><option value="QUOTE">Quote Generator</option></select>}
           </div>
           <AccountStatusButton open={accountOpen} onOpen={() => { setAccountInitialSection("account"); setAccountOpen(true); }} />
         </nav>
@@ -632,7 +631,7 @@ export default function Home() {
           <footer className="viewer-warning"><strong>Engineering view</strong><span>Browser geometry is informational. Layout decisions are calculated by the backend kernel.</span></footer>
         </section>
       ) : null}
-      <section className="planner-build-screen" hidden={workspaceMode !== "PLANNERBUILD"} aria-hidden={workspaceMode !== "PLANNERBUILD"}>{local.project ? <PlannerBuildWorkspace project={local.project} view={plannerBuildView} displayUnits={preferences.units} defaultCurrency={defaultCurrency} onActivitiesChange={(activities) => local.setPlannerBuild({ ...(local.project?.plannerBuild ?? { activities: [] }), activities })} demoMode={plannerBuildDemoMode} onDemoLimitReached={openPlansDialog} /> : <p className="pb-loading-state" role="status">Loading project data…</p>}</section>
+      <section className="planner-build-screen" hidden={workspaceMode !== "PLANNERBUILD"} aria-hidden={workspaceMode !== "PLANNERBUILD"}>{local.project ? <PlannerBuildWorkspace project={local.project} view={plannerBuildView} displayUnits={preferences.units} defaultCurrency={defaultCurrency} onQuotesChange={local.setQuotes} onActivitiesChange={(activities) => local.setPlannerBuild({ ...(local.project?.plannerBuild ?? { activities: [] }), activities })} demoMode={plannerBuildDemoMode} onDemoLimitReached={openPlansDialog} /> : <p className="pb-loading-state" role="status">Loading project data…</p>}</section>
         {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && " · R to rotate"}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
       {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={local.addAsset} onChange={local.setInstances} onClose={() => setAssetsOpen(false)} />}
       {privacyOpen && <PlannerPrivacyDialog onClose={() => setPrivacyOpen(false)} />}
