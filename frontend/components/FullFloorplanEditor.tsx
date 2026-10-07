@@ -39,7 +39,6 @@ import { ElectricalScheduleWindow } from "@/components/ElectricalScheduleWindow"
 import { ElectricalExportWindow, type ElectricalExportOptions } from "@/components/ElectricalExportWindow";
 import { ElectricalLayoutOverlay } from "@/components/ElectricalLayoutOverlay";
 import { createElectricalConnection, DEFAULT_ELECTRICAL_CIRCUIT, DEFAULT_ELECTRICAL_CONNECTION, DEFAULT_ELECTRICAL_LAYOUT, electricalConnectionPoints, electricalDashArray, electricalObstacleIds, electricalStrokeWidth, isElectricalObstacle, normalizeElectricalLayout, type ElectricalCircuit, type ElectricalConnection, type ElectricalLayoutData } from "@/lib/electricalLayout";
-import { canAddElectricalCircuitInDemo, canAddElectricalConnectionInDemo, FREE_DEMO_MAX_ELECTRICAL_CONNECTIONS } from "@/lib/freeModuleDemo";
 import { exportElectricalLayoutPackage, persistElectricalImportFiles, planElectricalLayoutImport, readElectricalLayoutPackage, type ElectricalLayoutImportPlan, type ElectricalLayoutPackage } from "@/lib/electricalLayoutPackage";
 import { electricalBomRows, electricalConnectionRows, formatDrawingLength } from "@/lib/electricalSchedule";
 import { getElectricalImage } from "@/lib/electricalAttachments";
@@ -108,7 +107,7 @@ type RoomLabelDrag = { roomId: string; before: Snapshot; pointerStart: Point2D; 
 type ElectricalEditorSnapshot = { layout: ElectricalLayoutData; rooms: Room[]; fixtures: Obstacle[]; assetInstances: AssetInstance[] };
 type ElectricalSegmentDrag = { connectionId: string; segmentIndex: number; start: Point2D; points: Point2D[] };
 export type PersistedFloorplan = Snapshot & { canvasSize: { width: number; height: number }; rooms: NamedOutline[]; selectedRoomId: string | null; snapEnabled?: boolean; snapSize?: number; squaredWalls?: boolean; wallHeight?: number; wallThickness?: number; roomFinishes?: Record<string, RoomFinishes>; viewSettings?: PersistedViewSettings };
-interface Props extends PlacementProps { annotateRequest?: number; viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; externalOpeningSyncRequest?: { room: Room; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; defaultCurrency?: CurrencyCode; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; electricalLayoutWindowRequest?: number; electricalLayout?: ElectricalLayoutData; onElectricalLayoutChange?: (layout: ElectricalLayoutData) => void; electricalLimitStatus?: string | null; onElectricalLimitStatusChange?: (status: string | null) => void; electricalDemoMode?: boolean; onElectricalDemoLimitReached?: () => void; projectName?: string; electricalAssets?: AssetDefinition[]; electricalAssetInstances?: AssetInstance[]; onElectricalAssetInstancesChange?: (instances: AssetInstance[]) => void; onApplyElectricalImport?: (plan: ElectricalLayoutImportPlan) => void; }
+interface Props extends PlacementProps { annotateRequest?: number; viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; externalOpeningSyncRequest?: { room: Room; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; defaultCurrency?: CurrencyCode; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; electricalLayoutWindowRequest?: number; electricalLayout?: ElectricalLayoutData; onElectricalLayoutChange?: (layout: ElectricalLayoutData) => void; electricalLimitStatus?: string | null; onElectricalLimitStatusChange?: (status: string | null) => void; projectName?: string; electricalAssets?: AssetDefinition[]; electricalAssetInstances?: AssetInstance[]; onElectricalAssetInstancesChange?: (instances: AssetInstance[]) => void; onApplyElectricalImport?: (plan: ElectricalLayoutImportPlan) => void; }
 
 interface Props { initialFloorplan?: PersistedFloorplan | null; onPersistFloorplan?: (floorplan: PersistedFloorplan, rooms: Room[]) => void; }
 const DEFAULT_SIZE = { width: 1100, height: 700 };
@@ -913,7 +912,7 @@ function roomWallThicknessOverrides(room: NamedOutline, walls: Wall[], defaultTh
   return overrides;
 }
 
-export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, externalOpeningSyncRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, defaultCurrency = "GBP", floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout, electricalLayoutWindowRequest = 0, electricalLayout = DEFAULT_ELECTRICAL_LAYOUT, onElectricalLayoutChange, electricalLimitStatus, onElectricalLimitStatusChange, electricalDemoMode = false, onElectricalDemoLimitReached, projectName = "My project", electricalAssets = [], electricalAssetInstances = [], onElectricalAssetInstancesChange, onApplyElectricalImport }: Props) {
+export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, externalOpeningSyncRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, defaultCurrency = "GBP", floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout, electricalLayoutWindowRequest = 0, electricalLayout = DEFAULT_ELECTRICAL_LAYOUT, onElectricalLayoutChange, electricalLimitStatus, onElectricalLimitStatusChange, projectName = "My project", electricalAssets = [], electricalAssetInstances = [], onElectricalAssetInstancesChange, onApplyElectricalImport }: Props) {
   const [walls, setWalls] = useState<Wall[]>([]);
   const [restoredFinishes, setRestoredFinishes] = useState<Record<string, RoomFinishes>>({});
   const [openings, setOpenings] = useState<FullOpening[]>([]);
@@ -1638,16 +1637,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     try {
       const plan = planElectricalLayoutImport(pendingElectricalImport.data, electricalDocumentRooms, electricalLayout, electricalAssets, electricalAssetInstances, mode, pendingElectricalImport.attachmentBlobs, pendingElectricalImport.assetBlobs);
       plan.electricalLayout = normalizeElectricalLayout(plan.electricalLayout, electricalObstacleIds(plan.rooms));
-      if (electricalDemoMode && (
-        plan.electricalLayout.connections.length > FREE_DEMO_MAX_ELECTRICAL_CONNECTIONS
-        || plan.electricalLayout.circuits.length > 1
-        || (plan.electricalLayout.connections.length > 0 && plan.electricalLayout.circuits.length !== 1)
-        || plan.electricalLayout.connections.some((connection) => connection.circuitId !== plan.electricalLayout.circuits[0]?.id)
-      )) {
-        setElectricalImportError("The free demo of the Full Electrical Layout module supports up to five connections on one circuit. Choose a plan to import a larger layout.");
-        onElectricalDemoLimitReached?.();
-        return;
-      }
       await persistElectricalImportFiles(plan.assetBlobs, plan.assets, plan.attachmentBlobs, plan.electricalLayout);
       recordElectricalUndo();
       if (onApplyElectricalImport) onApplyElectricalImport(plan);
@@ -1675,11 +1664,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     setElectricalWaypointContextMenu((current) => current?.connectionId === id ? null : current);
   }
   function createElectricalCircuit() {
-    if (!canAddElectricalCircuitInDemo(electricalDemoMode, electricalLayout.circuits.length)) {
-      onElectricalLimitStatusChange?.("The Free demo supports one circuit. Choose a plan to add more.");
-      onElectricalDemoLimitReached?.();
-      return;
-    }
     const circuit: ElectricalCircuit = {
       id: "electrical-circuit-" + (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)),
       name: "New circuit",
@@ -1719,23 +1703,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       setElectricalSourceId(null);
       onElectricalLimitStatusChange?.("Source cleared. Choose another source fitting.");
       return;
-    }
-    if (electricalDemoMode) {
-      if (electricalLayout.connections.length >= FREE_DEMO_MAX_ELECTRICAL_CONNECTIONS || electricalLayout.circuits.length > 1) {
-        setElectricalConnecting(false);
-        setElectricalRepeatConnect(false);
-        setElectricalSourceId(null);
-        setElectricalPointer(null);
-        onElectricalLimitStatusChange?.("The Free demo limit has been reached. Choose a plan to continue adding connections.");
-        onElectricalDemoLimitReached?.();
-        return;
-      }
-      if (electricalLayout.circuits.length !== 1 || !selectedElectricalCircuitId) {
-        setElectricalSourceId(null);
-        onElectricalLimitStatusChange?.("Select the single demo circuit before connecting fittings.");
-        return;
-      }
-      if (!canAddElectricalConnectionInDemo(true, electricalLayout.connections.length, electricalLayout.circuits.length, selectedElectricalCircuitId)) return;
     }
     const circuitId = selectedElectricalCircuitId ?? electricalLayout.circuits[0]?.id;
     if (!circuitId) return;
@@ -5020,18 +4987,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         repeatConnecting={electricalRepeatConnect}
         onConnect={(connectMode) => {
           if (connectMode === "repeat") {
-            if (electricalDemoMode) {
-              if (electricalLayout.connections.length >= FREE_DEMO_MAX_ELECTRICAL_CONNECTIONS || electricalLayout.circuits.length > 1) {
-                onElectricalLimitStatusChange?.("The Free demo limit has been reached. Choose a plan to continue adding connections.");
-                onElectricalDemoLimitReached?.();
-                return;
-              }
-              if (electricalLayout.circuits.length !== 1 || !selectedElectricalCircuitId) {
-                onElectricalLimitStatusChange?.("Select the single demo circuit before connecting fittings.");
-                return;
-              }
-              if (!canAddElectricalConnectionInDemo(true, electricalLayout.connections.length, electricalLayout.circuits.length, selectedElectricalCircuitId)) return;
-            }
             setElectricalConnecting(true); setElectricalRepeatConnect(true); setElectricalSourceId(null); setElectricalPointer(null);
             onElectricalLimitStatusChange?.("Repeat connect enabled. Select any source and destination pair.");
             return;
@@ -5040,18 +4995,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
             setElectricalConnecting(false); setElectricalRepeatConnect(false); setElectricalSourceId(null); setElectricalPointer(null); onElectricalLimitStatusChange?.(null);
             return;
           }
-          if (electricalDemoMode) {
-            if (electricalLayout.connections.length >= FREE_DEMO_MAX_ELECTRICAL_CONNECTIONS || electricalLayout.circuits.length > 1) {
-              onElectricalLimitStatusChange?.("The Free demo limit has been reached. Choose a plan to continue adding connections.");
-              onElectricalDemoLimitReached?.();
-              return;
-            }
-            if (electricalLayout.circuits.length !== 1 || !selectedElectricalCircuitId) {
-              onElectricalLimitStatusChange?.("Select the single demo circuit before connecting fittings.");
-              return;
-            }
-            if (!canAddElectricalConnectionInDemo(true, electricalLayout.connections.length, electricalLayout.circuits.length, selectedElectricalCircuitId)) return;
-          }
           setElectricalConnecting(true); setElectricalRepeatConnect(false); setElectricalSourceId(null); setElectricalPointer(null); onElectricalLimitStatusChange?.(null);
         }}
         onAdd={() => { setElectricalAddElementsOpen(true); selectAddToPlanMode("ELECTRICAL"); if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings"); }}
@@ -5059,8 +5002,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         onLoadLayout={() => electricalImportInput.current?.click()}
         onExport={() => { setElectricalExportStatus(null); setElectricalExportOpen(true); }}
         onSchedule={() => setElectricalScheduleOpen(true)}
-        demoMode={electricalDemoMode}
-        onDemoLimitReached={onElectricalDemoLimitReached}
         status={electricalImportError ?? electricalFileStatus ?? electricalExportStatus ?? electricalLimitStatus}
         currentCount={electricalObstacleIds(projectRooms.length ? projectRooms : planRooms).size}
         defaults={electricalDefaults}

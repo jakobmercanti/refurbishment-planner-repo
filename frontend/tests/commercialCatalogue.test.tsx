@@ -63,7 +63,7 @@ test("initial catalogue renders working native plan forms before hydration witho
   assert.equal(includesPlannerBuild("starter"), false);
   assert.equal(includesPlannerBuild("pro"), false);
   const freeCardFeatures = markup.match(/<article class="plan-card [^>]*>.*?<ul>(.*?)<\/ul>/s)?.[1] ?? "";
-  assert.ok(!freeCardFeatures.includes("Full Electrical Layout module on paid plans"));
+  assert.ok(freeCardFeatures.includes("Full Electrical Layout module"));
   for (const plan of ["starter", "pro", "studio"]) {
     assert.match(markup, new RegExp(`<form action="[^"]*/checkout/" method="get"><input type="hidden" name="plan" value="${plan}"/>.*?<button[^>]+type="submit"`));
   }
@@ -71,7 +71,7 @@ test("initial catalogue renders working native plan forms before hydration witho
   assert.ok(!markup.includes("disabled=\"\""));
 });
 
-test("live catalogue values override fallback while electrical module access remains plan-based", () => {
+test("live catalogue values override fallback without gating electrical module access", () => {
   const catalogue = resolveCommercialCatalogue({
     plans: [
       { plan_key: "free", name: "Free", monthly_price_pence: 0, storage_limit_bytes: 0, asset_limit: 0, project_limit: 0, included_medium: 0, included_high: 0 },
@@ -89,7 +89,7 @@ test("live catalogue values override fallback while electrical module access rem
   assert.equal(catalogue.packs.length, 0);
 });
 
-test("comparison table shows the Full Electrical Layout module on paid plans and PlannerBuild on Studio+", () => {
+test("comparison table includes the Full Electrical Layout module on every plan and PlannerBuild on Studio+", () => {
   const sections = buildPlanComparison(FALLBACK_PLANS, true);
   const row = (sectionName: string, label: string) => {
     const section = sections.find((item) => item.title === sectionName);
@@ -102,7 +102,7 @@ test("comparison table shows the Full Electrical Layout module on paid plans and
   assert.deepEqual(row("Cloud", "Cloud projects"), { free: "—", starter: "50", pro: "250", studio: "1,000" });
   assert.deepEqual(row("AI rendering", "Medium renders / month"), { free: "—", starter: "10", pro: "30", studio: "60" });
   assert.deepEqual(row("AI rendering", "High renders / month"), { free: "—", starter: "—", pro: "5", studio: "15" });
-  assert.deepEqual(row("Other", "Full Electrical Layout module"), { free: "Not included", starter: "Included", pro: "Included", studio: "Included" });
+  assert.deepEqual(row("Other", "Full Electrical Layout module"), { free: "Included", starter: "Included", pro: "Included", studio: "Included" });
   assert.deepEqual(row("Other", "Full PlannerBuild project-planning module"), { free: "Not included", starter: "Not included", pro: "Not included", studio: "Included" });
   const packRow = buildPlanComparison(FALLBACK_PLANS, false).find((section) => section.title === "AI rendering")?.rows;
   assert.deepEqual(packRow?.[packRow.length - 1]?.values, {

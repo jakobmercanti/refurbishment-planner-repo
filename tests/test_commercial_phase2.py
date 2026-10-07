@@ -42,12 +42,12 @@ def test_custom_asset_category_accepts_a_private_custom_subcategory() -> None:
 
 
 @pytest.mark.parametrize(("plan", "status", "allowed"), [
-    ("free", "free", False),
+    ("free", "free", True),
     ("starter", "active", True),
     ("pro", "active", True),
     ("studio", "trialing", True),
 ])
-def test_commercial_summary_exposes_paid_electrical_layout_access(
+def test_commercial_summary_exposes_free_electrical_layout_access(
     monkeypatch: pytest.MonkeyPatch, plan: str, status: str, allowed: bool,
 ) -> None:
     user = VerifiedUser(uuid4(), "owner@example.test", True)

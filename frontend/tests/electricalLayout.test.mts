@@ -17,7 +17,7 @@ import { newProject, parseProject } from "../lib/projectDocument.ts";
 
 const fixture = (id: string) => ({ id, representation_key: "electrical-wall-socket" });
 
-test("electrical catalogue classification remains separate from the paid layout module", () => {
+test("electrical catalogue classification remains separate from layout data", () => {
   assert.equal(isElectricalObstacle(fixture("one")), true);
   assert.equal(isElectricalObstacle({ representation_key: "bathroom-basin" }), false);
 });

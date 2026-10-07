@@ -35,7 +35,7 @@ const HELP_COPY: Record<HelpTopic, HelpContent> = {
   },
   electrical: {
     title: "Full Electrical Layout module",
-    body: "The full furniture and electrical-item catalogue is available on every plan. The Full Electrical Layout module for creating schematic connections, circuits and focused electrical drawings is included with any active paid plan.",
+    body: "The full furniture and electrical-item catalogue and Full Electrical Layout module are free for everyone, without an account. Create schematic connections, circuits and focused electrical drawings without subscription limits.",
   },
 };
 
@@ -105,7 +105,7 @@ function PlanHelpDialog({ content, packs, onClose }: { content: HelpContent; pac
 
 function planHighlights(plan: CommercialCatalogue["plans"][number]): string[] {
   if (plan.plan_key === "free") {
-    return ["Unlimited local floorplans", "Browser saving and portable files", "Full furniture & electrical catalogue"];
+    return ["Unlimited local floorplans", "Browser saving and portable files", "Full furniture & electrical catalogue", "Full Electrical Layout module"];
   }
   const storage = `${Math.round(plan.storage_limit_bytes / 1024 ** 3)} GB private cloud`;
   const assets = `${plan.asset_limit.toLocaleString("en-GB")} private assets`;
@@ -220,7 +220,7 @@ export function PlansAndBillingPanel({
 
   return <div className="commercial-content account-plans-content">
     <section className="commercial-page-heading plan-page-heading">
-      <div><p className="commercial-eyebrow">PLANS &amp; BILLING</p><h1>Keep planning free. Add cloud when you need it.</h1><p>Every plan includes the full floorplan editor and furniture/electrical catalogue. Paid plans unlock the Full Electrical Layout module, private cloud storage, project backup and AI rendering allowances. Studio and higher tiers also include the full PlannerBuild project-planning module.</p></div>
+      <div><p className="commercial-eyebrow">PLANS &amp; BILLING</p><h1>Keep planning free. Add cloud when you need it.</h1><p>Every plan includes the full floorplan editor, furniture/electrical catalogue and unlimited Full Electrical Layout module. Paid plans add private cloud storage, project backup and AI rendering allowances. Studio and higher tiers also include the full PlannerBuild project-planning module.</p></div>
     </section>
 
     {notice && <p className="commercial-status plan-action-error" role="status">{notice}</p>}

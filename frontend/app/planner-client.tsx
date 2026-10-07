@@ -65,7 +65,6 @@ export default function Home() {
   const [placement, setPlacement] = useState<PlacementRequest | null>(null);
   const [electricalLayoutRequest, setElectricalLayoutRequest] = useState(0);
   const [electricalStatus, setElectricalStatus] = useState<string | null>(null);
-  const [electricalDemoMode, setElectricalDemoMode] = useState(false);
   const [plannerBuildDemoMode, setPlannerBuildDemoMode] = useState(false);
   useEffect(() => {
     if (!placement) return;
@@ -246,28 +245,9 @@ export default function Home() {
     setPlacement(request);
   }
 
-  async function openElectricalLayout() {
-    let available = false;
-    let demoMode = false;
-    if (CATALOGUE_MANAGER_AVAILABLE && tierPreview !== null) {
-      available = tierPreview !== "free";
-      demoMode = tierPreview === "free";
-    } else {
-      try {
-        const summary = await commercialRequest<{ plan?: string; capabilities?: { canUseElectricalLayout?: boolean } }>("/summary");
-        available = summary.capabilities?.canUseElectricalLayout === true;
-        demoMode = !available && summary.plan === "free";
-      } catch (cause) {
-        demoMode = cause instanceof CommercialApiError && cause.status === 401;
-      }
-    }
-    if (!available && !demoMode) {
-      openPlansDialog();
-      return;
-    }
+  function openElectricalLayout() {
     setPlacement(null);
     setMode("EDITOR");
-    setElectricalDemoMode(demoMode);
     setElectricalStatus(null);
     setElectricalLayoutRequest((request) => request + 1);
   }
@@ -576,7 +556,7 @@ export default function Home() {
         {(mode === "EDITOR" ? [...FLOORPLAN_TOOLBARS, { id: "floorplan-coordinates" as const, name: "Coordinates" }] : VIEWER_TOOLBARS).filter(tool => toolbarAvailability[tool.id]).map(tool =>
           <button key={tool.id} type="button" aria-pressed={compactActiveTool === tool.id} onClick={() => selectCompactTool(tool.id)}>{({ "floorplan-build": "Build", "floorplan-openings": "Elements", "floorplan-view": "View", "floorplan-coordinates": "Coordinates", "viewer-analysis": "Elements", "viewer-layout-analysis": "Analysis", "viewer-person": "Person", "viewer-view": "View" })[tool.id]}</button>)}
       </nav>}
-      <section className="environment-screen" hidden={workspaceMode !== "FLOORPLAN" || mode !== "EDITOR"} aria-hidden={workspaceMode !== "FLOORPLAN" || mode !== "EDITOR"}><FullFloorplanEditor key={local.revision} initialFloorplan={local.restore?.floorplan} onPersistFloorplan={local.changeFloorplan} onPlacementWallsChange={setPlacementWalls} placement={mode === "EDITOR" ? placement : null} onBeginPlacement={beginPlacement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} viewerOpeningRoom={projectRooms.find(room => room.id === viewerOpeningEditRequest?.roomId) ?? demo.room} onStandaloneRoomChange={applyStandaloneOpeningRoom} openingEditRequest={mode === "ANALYSIS" ? viewerOpeningEditRequest : null} externalOpeningSyncRequest={viewerOpeningSyncRequest} elementEditRequest={mode === "EDITOR" ? viewerElementEditRequest : null} onElementSelected={handlePlanElementSelected} openingEditorTarget={openingEditorTarget} projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} defaultCurrency={defaultCurrency} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} annotateRequest={floorplanAnnotateRequest} importFile={floorplanImportFile} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={visibleToolbars} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} electricalLayoutWindowRequest={electricalLayoutRequest} electricalLayout={local.project.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT} onElectricalLayoutChange={saveElectricalLayout} electricalLimitStatus={electricalStatus} onElectricalLimitStatusChange={setElectricalStatus} electricalDemoMode={electricalDemoMode} onElectricalDemoLimitReached={openPlansDialog} projectName={local.project.name} electricalAssets={local.project.assets} electricalAssetInstances={local.project.assetInstances} onElectricalAssetInstancesChange={local.setInstances} onApplyElectricalImport={applyElectricalImport} /></section>
+      <section className="environment-screen" hidden={workspaceMode !== "FLOORPLAN" || mode !== "EDITOR"} aria-hidden={workspaceMode !== "FLOORPLAN" || mode !== "EDITOR"}><FullFloorplanEditor key={local.revision} initialFloorplan={local.restore?.floorplan} onPersistFloorplan={local.changeFloorplan} onPlacementWallsChange={setPlacementWalls} placement={mode === "EDITOR" ? placement : null} onBeginPlacement={beginPlacement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} viewerOpeningRoom={projectRooms.find(room => room.id === viewerOpeningEditRequest?.roomId) ?? demo.room} onStandaloneRoomChange={applyStandaloneOpeningRoom} openingEditRequest={mode === "ANALYSIS" ? viewerOpeningEditRequest : null} externalOpeningSyncRequest={viewerOpeningSyncRequest} elementEditRequest={mode === "EDITOR" ? viewerElementEditRequest : null} onElementSelected={handlePlanElementSelected} openingEditorTarget={openingEditorTarget} projectRooms={projectRooms} onPlanRoomChange={applyPlanRoom} onPlanRoomsChange={applyPlanRooms} apiUrl={API_URL} displayUnits={preferences.units} defaultCurrency={defaultCurrency} floorplanStyle={floorplanStyle} exportRequest={floorplanExportRequest} annotateRequest={floorplanAnnotateRequest} importFile={floorplanImportFile} activeSourceRoomId={demo.room.source_floorplan_room_id} fixtures={demo.room.obstacles} onFixturesChange={applyObstacles} toolbarVisibility={visibleToolbars} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} electricalLayoutWindowRequest={electricalLayoutRequest} electricalLayout={local.project.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT} onElectricalLayoutChange={saveElectricalLayout} electricalLimitStatus={electricalStatus} onElectricalLimitStatusChange={setElectricalStatus} projectName={local.project.name} electricalAssets={local.project.assets} electricalAssetInstances={local.project.assetInstances} onElectricalAssetInstancesChange={local.setInstances} onApplyElectricalImport={applyElectricalImport} /></section>
       {workspaceMode === "FLOORPLAN" && mode === "ANALYSIS" ? (
         <section className="analysis-workspace">
           <EngineeringViewer assetInstances={local.project?.assetInstances ?? []} placementWalls={displayedViewerRooms.some(room=>room.source_floorplan_room_id) ? placementWalls : []} placement={placement} onCancelPlacement={() => setPlacement(null)} onCommitPlacement={commitPlacement} onTransferObstacle={moveElementToRoom} key={`engineering-viewer-${appliedViewerSelection}-${selectedViewerRoom.id}-${local.project?.projectId}-${local.revision}`} apiUrl={API_URL} room={selectedViewerRoom} sceneRooms={displayedViewerRooms} roomSelection={pendingSelection} roomSelectionOptions={projectRooms} fullFloorplanSelection={FULL_FLOORPLAN_SELECTION} onRoomSelectionChange={setPendingViewerRoomSelection} onOpenRoomSelection={openViewerSelection} collisionIds={layoutResult?.collision_ids ?? []} onObstaclesChange={applyObstacles} onFinishesChange={applyFinishes} onPersonChange={applyPerson} onOpeningSelected={handleViewerOpeningSelected} onElementSelected={handleViewerElementSelected} wallMode={wallMode} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} toolbarLayoutResetKey={toolbarLayoutResetKey} fillToolbarLayout={fillToolbarLayout} fitRequest={viewerFitRequest} saveViewRequest={viewerSaveViewRequest} renderCamera={local.project?.renderCamera} onRenderCameraChange={local.setRenderCamera} />

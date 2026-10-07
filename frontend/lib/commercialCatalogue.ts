@@ -211,7 +211,7 @@ export function buildPlanComparison(plans: CommercialPlan[], renderPacksAvailabl
     {
       title: "Other",
       rows: [
-        { label: "Full Electrical Layout module", values: value((plan) => plan.plan_key === "free" ? "Not included" : "Included"), help: "electrical" },
+        { label: "Full Electrical Layout module", values: value(() => "Included"), help: "electrical" },
         { label: "Full PlannerBuild project-planning module", values: value((plan) => includesPlannerBuild(plan.plan_key) ? "Included" : "Not included") },
       ],
     },

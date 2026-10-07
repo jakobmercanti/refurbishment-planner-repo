@@ -13,7 +13,6 @@ type Props = {
   mode: boolean; onModeChange: (value: boolean) => void; connecting: boolean; repeatConnecting?: boolean; onConnect: (mode: "single" | "repeat") => void; onAdd: () => void;
   forceOrthogonalRouting: boolean; onForceOrthogonalRoutingChange: (value: boolean) => void;
   onSaveLayout?: () => void; onLoadLayout?: () => void; onExport?: () => void; onSchedule?: () => void;
-  demoMode?: boolean; onDemoLimitReached?: () => void;
   status?: string | null; currentCount: number; defaults: ElectricalConnectionDefaults;
   onDefaultsChange: (value: ElectricalConnectionDefaults) => void; display: ElectricalDisplayOptions;
   onDisplayChange: (value: ElectricalDisplayOptions) => void; objects: ElectricalObjectOption[];
@@ -81,7 +80,6 @@ export function ElectricalLayoutPanel(p: Props) {
       <button type="button" className="review-style-button" onClick={p.onAdd}>Add electrical fitting…</button>
     </div>
     <p className="electrical-layout-count" role="status">{p.currentCount} electrical fittings in this project</p>
-    {p.demoMode && <div className="electrical-demo-notice" role="status"><span>Free demo · {p.connections.length}/5 connections · connections are added to the selected circuit.</span><button type="button" className="review-style-button" onClick={p.onDemoLimitReached}>See plans</button></div>}
     {p.status && <p className="electrical-layout-status" role="status">{p.status}</p>}
     {p.connecting && <p className="electrical-connect-hint" role="status">{p.repeatConnecting ? "Select a source and destination. After each connection, choose any new pair. Esc cancels." : "Select a source and destination. The command ends after one connection. Esc cancels."}</p>}
     <details className="electrical-layout-section" open><summary>New connection defaults</summary><div className="electrical-layout-grid">
@@ -118,7 +116,6 @@ export function ElectricalLayoutPanel(p: Props) {
       <p><strong>Edit or delete connections.</strong> Open a circuit’s <em>Connections</em> list. Select a row or click <em>Edit</em> to change its relationship, colour, style, width, route, circuit or label. Click <em>Delete</em> to remove just that connection, not its fittings.</p>
       <p><strong>Shape a route.</strong> Right-click a connection line to add a corner on that leg. Drag a corner to reshape the line; right-click a corner to remove it. <em>Force horizontal / vertical circuit routes</em> keeps legs axis-aligned and is on by default. Turn it off to allow diagonal legs.</p>
       <p><strong>Manage circuits and files.</strong> The last remaining circuit cannot be deleted. Deleting a circuit moves its connections to another circuit. <em>Save layout</em> downloads an electrical-only file. <em>Load layout</em> lets you merge or replace electrical data without replacing the floorplan. Normal project saving also stores the electrical layout.</p>
-      {p.demoMode && <p><strong>Free demo.</strong> The demo allows one circuit and up to five connections. Click <em>See plans</em> to continue beyond the limit.</p>}
       <p className="electrical-layout-help-note"><strong>Important:</strong> connection lines show schematic relationships, not physical cable routes or cable lengths. Room geometry remains unchanged.</p>
     </div></details>
   </div>;

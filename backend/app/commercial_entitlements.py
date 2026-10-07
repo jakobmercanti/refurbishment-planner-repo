@@ -5,14 +5,8 @@ PLAN_RANKS = {"free": 0, "starter": 1, "pro": 2, "studio": 3}
 
 
 def can_use_electrical_layout(plan_key: object, status: object) -> bool:
-    """Electrical Layout is a paid module; item catalogue access is not gated."""
-    return (
-        isinstance(plan_key, str)
-        and bool(plan_key.strip())
-        and plan_key.strip().casefold() != "free"
-        and isinstance(status, str)
-        and status in ACTIVE_SUBSCRIPTION_STATES
-    )
+    """Electrical Layout is free, independent of subscription state."""
+    return True
 
 
 def can_use_planner_build(plan_key: object, status: object) -> bool:
