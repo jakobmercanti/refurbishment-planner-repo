@@ -1,0 +1,652 @@
+[
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "purmo-c22-600-600",
+    "manufacturer": "Purmo",
+    "model": "Compact C22 600 × 600",
+    "category": "Type 22",
+    "emitterTechnology": "Hydronic",
+    "widthMm": 600,
+    "heightMm": 600,
+    "depthMm": 102,
+    "ratedOutputW": 1025,
+    "exponent": 1.3358,
+    "performanceReference": "https://www.purmo.com/au/products/panels/purmo-compact.htm",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 75,
+        "returnC": 65,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1025,
+        "electricalW": 0
+      },
+      {
+        "flowC": 70,
+        "returnC": 55,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 817,
+        "electricalW": 0
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "purmo-c22-600-800",
+    "manufacturer": "Purmo",
+    "model": "Compact C22 600 × 800",
+    "category": "Type 22",
+    "emitterTechnology": "Hydronic",
+    "widthMm": 800,
+    "heightMm": 600,
+    "depthMm": 102,
+    "ratedOutputW": 1367,
+    "exponent": 1.3358,
+    "performanceReference": "https://www.purmo.com/au/products/panels/purmo-compact.htm",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 75,
+        "returnC": 65,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1367,
+        "electricalW": 0
+      },
+      {
+        "flowC": 70,
+        "returnC": 55,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1090,
+        "electricalW": 0
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "purmo-c22-600-1000",
+    "manufacturer": "Purmo",
+    "model": "Compact C22 600 × 1000",
+    "category": "Type 22",
+    "emitterTechnology": "Hydronic",
+    "widthMm": 1000,
+    "heightMm": 600,
+    "depthMm": 102,
+    "ratedOutputW": 1709,
+    "exponent": 1.3358,
+    "performanceReference": "https://www.purmo.com/au/products/panels/purmo-compact.htm",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 75,
+        "returnC": 65,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1709,
+        "electricalW": 0
+      },
+      {
+        "flowC": 70,
+        "returnC": 55,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1362,
+        "electricalW": 0
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "purmo-c22-600-1200",
+    "manufacturer": "Purmo",
+    "model": "Compact C22 600 × 1200",
+    "category": "Type 22",
+    "emitterTechnology": "Hydronic",
+    "widthMm": 1200,
+    "heightMm": 600,
+    "depthMm": 102,
+    "ratedOutputW": 2051,
+    "exponent": 1.3358,
+    "performanceReference": "https://www.purmo.com/au/products/panels/purmo-compact.htm",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 75,
+        "returnC": 65,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 2051,
+        "electricalW": 0
+      },
+      {
+        "flowC": 70,
+        "returnC": 55,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1635,
+        "electricalW": 0
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "purmo-c22-600-1400",
+    "manufacturer": "Purmo",
+    "model": "Compact C22 600 × 1400",
+    "category": "Type 22",
+    "emitterTechnology": "Hydronic",
+    "widthMm": 1400,
+    "heightMm": 600,
+    "depthMm": 102,
+    "ratedOutputW": 2393,
+    "exponent": 1.3358,
+    "performanceReference": "https://www.purmo.com/au/products/panels/purmo-compact.htm",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 75,
+        "returnC": 65,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 2393,
+        "electricalW": 0
+      },
+      {
+        "flowC": 70,
+        "returnC": 55,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1907,
+        "electricalW": 0
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "purmo-c22-600-1600",
+    "manufacturer": "Purmo",
+    "model": "Compact C22 600 × 1600",
+    "category": "Type 22",
+    "emitterTechnology": "Hydronic",
+    "widthMm": 1600,
+    "heightMm": 600,
+    "depthMm": 102,
+    "ratedOutputW": 2734,
+    "exponent": 1.3358,
+    "performanceReference": "https://www.purmo.com/au/products/panels/purmo-compact.htm",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 75,
+        "returnC": 65,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 2734,
+        "electricalW": 0
+      },
+      {
+        "flowC": 70,
+        "returnC": 55,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 2180,
+        "electricalW": 0
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "purmo-c22-600-1800",
+    "manufacturer": "Purmo",
+    "model": "Compact C22 600 × 1800",
+    "category": "Type 22",
+    "emitterTechnology": "Hydronic",
+    "widthMm": 1800,
+    "heightMm": 600,
+    "depthMm": 102,
+    "ratedOutputW": 3076,
+    "exponent": 1.3358,
+    "performanceReference": "https://www.purmo.com/au/products/panels/purmo-compact.htm",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 75,
+        "returnC": 65,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 3076,
+        "electricalW": 0
+      },
+      {
+        "flowC": 70,
+        "returnC": 55,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 2452,
+        "electricalW": 0
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "purmo-c22-600-2000",
+    "manufacturer": "Purmo",
+    "model": "Compact C22 600 × 2000",
+    "category": "Type 22",
+    "emitterTechnology": "Hydronic",
+    "widthMm": 2000,
+    "heightMm": 600,
+    "depthMm": 102,
+    "ratedOutputW": 3418,
+    "exponent": 1.3358,
+    "performanceReference": "https://www.purmo.com/au/products/panels/purmo-compact.htm",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 75,
+        "returnC": 65,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 3418,
+        "electricalW": 0
+      },
+      {
+        "flowC": 70,
+        "returnC": 55,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 2725,
+        "electricalW": 0
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "jaga-strw-035-600-16",
+    "manufacturer": "Jaga",
+    "model": "Strada Hybrid STRW 035 060 16",
+    "category": "Custom",
+    "emitterTechnology": "Hybrid",
+    "widthMm": 600,
+    "heightMm": 350,
+    "depthMm": 170,
+    "ratedOutputW": null,
+    "exponent": 1.3,
+    "performanceReference": "https://jaga.com/ex/download/strada-hybrid-brochure-ex/?wpdmdl=42784#page=10",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 301,
+        "electricalW": 4.8,
+        "soundDb": 26
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 581,
+        "electricalW": 4.8,
+        "soundDb": 26
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 726,
+        "electricalW": 4.8,
+        "soundDb": 26
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 793,
+        "electricalW": 4.8,
+        "soundDb": 26
+      },
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 323,
+        "electricalW": 5.5,
+        "soundDb": 30
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 624,
+        "electricalW": 5.5,
+        "soundDb": 30
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 779,
+        "electricalW": 5.5,
+        "soundDb": 30
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 851,
+        "electricalW": 5.5,
+        "soundDb": 30
+      },
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 428,
+        "electricalW": 7.2,
+        "soundDb": 41.1
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 826,
+        "electricalW": 7.2,
+        "soundDb": 41.1
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 1031,
+        "electricalW": 7.2,
+        "soundDb": 41.1
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 1126,
+        "electricalW": 7.2,
+        "soundDb": 41.1
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "jaga-strw-035-800-21",
+    "manufacturer": "Jaga",
+    "model": "Strada Hybrid STRW 035 080 21",
+    "category": "Custom",
+    "emitterTechnology": "Hybrid",
+    "widthMm": 800,
+    "heightMm": 350,
+    "depthMm": 220,
+    "ratedOutputW": null,
+    "exponent": 1.3,
+    "performanceReference": "https://jaga.com/ex/download/strada-hybrid-brochure-ex/?wpdmdl=42784#page=10",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 606,
+        "electricalW": 6,
+        "soundDb": 26
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 1135,
+        "electricalW": 6,
+        "soundDb": 26
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 1404,
+        "electricalW": 6,
+        "soundDb": 26
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 1527,
+        "electricalW": 6,
+        "soundDb": 26
+      },
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 650,
+        "electricalW": 6.7,
+        "soundDb": 30
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1217,
+        "electricalW": 6.7,
+        "soundDb": 30
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1505,
+        "electricalW": 6.7,
+        "soundDb": 30
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1638,
+        "electricalW": 6.7,
+        "soundDb": 30
+      },
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 873,
+        "electricalW": 9,
+        "soundDb": 42.4
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 1634,
+        "electricalW": 9,
+        "soundDb": 42.4
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 2020,
+        "electricalW": 9,
+        "soundDb": 42.4
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 2197,
+        "electricalW": 9,
+        "soundDb": 42.4
+      }
+    ]
+  },
+  {
+    "ratedDeltaTK": 50,
+    "electricalInputW": 0,
+    "fanMode": "Normal",
+    "catalogueId": "jaga-strw-035-1000-16",
+    "manufacturer": "Jaga",
+    "model": "Strada Hybrid STRW 035 100 16",
+    "category": "Custom",
+    "emitterTechnology": "Hybrid",
+    "widthMm": 1000,
+    "heightMm": 350,
+    "depthMm": 170,
+    "ratedOutputW": null,
+    "exponent": 1.3,
+    "performanceReference": "https://jaga.com/ex/download/strada-hybrid-brochure-ex/?wpdmdl=42784#page=10",
+    "manufacturerPerformanceData": [
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 566,
+        "electricalW": 7,
+        "soundDb": 26
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 1092,
+        "electricalW": 7,
+        "soundDb": 26
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 1364,
+        "electricalW": 7,
+        "soundDb": 26
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Silent",
+        "outputW": 1490,
+        "electricalW": 7,
+        "soundDb": 26
+      },
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 606,
+        "electricalW": 7.7,
+        "soundDb": 30
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1169,
+        "electricalW": 7.7,
+        "soundDb": 30
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1460,
+        "electricalW": 7.7,
+        "soundDb": 30
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Normal",
+        "outputW": 1595,
+        "electricalW": 7.7,
+        "soundDb": 30
+      },
+      {
+        "flowC": 35,
+        "returnC": 30,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 836,
+        "electricalW": 10.7,
+        "soundDb": 44.1
+      },
+      {
+        "flowC": 45,
+        "returnC": 40,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 1612,
+        "electricalW": 10.7,
+        "soundDb": 44.1
+      },
+      {
+        "flowC": 50,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 2013,
+        "electricalW": 10.7,
+        "soundDb": 44.1
+      },
+      {
+        "flowC": 55,
+        "returnC": 45,
+        "roomC": 20,
+        "fanMode": "Boost",
+        "outputW": 2199,
+        "electricalW": 10.7,
+        "soundDb": 44.1
+      }
+    ]
+  }
+]

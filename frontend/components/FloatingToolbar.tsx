@@ -3,6 +3,7 @@
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WINDOW_HEIGHT, resizeFloatingWindow, type FloatingWindowResizeEdge } from "@/lib/floatingWindowGeometry";
 import { WindowIcon } from "@/components/WindowIcon";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
 
 export interface ToolbarDock {
@@ -30,6 +31,7 @@ export function positionedToolbarDock(side: ToolbarDock["side"], top: CSSPropert
 
 interface FloatingToolbarProps {
   title: string;
+  help?: boolean;
   children: ReactNode;
   className?: string;
   compact?: boolean;
@@ -116,7 +118,7 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
   return <FloatingToolbarWindow key={props.layoutResetKey ?? 0} {...props} />;
 }
 
-function FloatingToolbarWindow({ title, children, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
+function FloatingToolbarWindow({ title, help = true, children, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<{ pointerX: number; pointerY: number; left: number; top: number; parentWidth: number; parentHeight: number; width: number; height: number } | null>(null);
@@ -381,7 +383,7 @@ function FloatingToolbarWindow({ title, children, className = "", compact = fals
       <span className="floating-toolbar-drag" aria-hidden>⠿</span>
       <span className="floating-toolbar-icon"><WindowIcon title={title} /></span>
       <strong>{title}</strong>
-      <button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button>
+      <div className="window-header-actions">{help && <WindowHelpButton title={title} />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
     </header>
     <div className="floating-toolbar-content" hidden={compact}>{children}</div>
     {(["TOP", "LEFT", "RIGHT", "BOTTOM"] as const).map((edge) => <button key={edge} type="button" tabIndex={-1} className={`floating-toolbar-resize floating-toolbar-resize-${edge.toLowerCase()}`} aria-label={`Resize ${title} from the ${edge.toLowerCase()} edge`} onPointerDown={(event) => beginResize(edge, event)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} />)}

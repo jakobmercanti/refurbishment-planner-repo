@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
 
 from geometry.models import FitResult, Placement, Point2D, ProductDefinition, RoomDefinition
+from geometry.heating import HeatingElementSpec
 
 
 _PLAN_SVG_PREFIX = "data:image/svg+xml;base64,"
@@ -187,6 +188,7 @@ class CatalogueImage(BaseModel):
 
 
 class CatalogueItemInput(BaseModel):
+    heating_spec: "HeatingElementSpec | None" = None
     category_id: str = Field(min_length=1, max_length=50)
     fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE", "DOOR", "WINDOW"]
     name: str = Field(min_length=1, max_length=200)

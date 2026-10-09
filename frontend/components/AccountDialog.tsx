@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { AccountExperience } from "@/components/AccountExperience";
 
 export function AccountDialog({ onClose, initialSection = "account" }: { onClose: () => void; initialSection?: "account" | "plans" }) {
@@ -31,7 +32,7 @@ export function AccountDialog({ onClose, initialSection = "account" }: { onClose
           <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={section === "account"} className={section === "account" ? "selected" : ""} onClick={() => setSection("account")}>Account</button>
           <a id="plans-section-tab" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/plans/`}>Plans</a>
         </nav>
-        <button type="button" className="modal-close" onClick={onClose} aria-label="Close account window">×</button>
+        <div className="window-header-actions"><WindowHelpButton title="Account & plans" /><button type="button" className="modal-close" onClick={onClose} aria-label="Close account window">×</button></div>
       </header>
       <AccountExperience embedded onClose={onClose} embeddedSection={section} onEmbeddedSectionChange={setSection} />
     </section>

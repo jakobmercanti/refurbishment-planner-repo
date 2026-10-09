@@ -46,6 +46,7 @@ export interface ColourPart {
 }
 
 export interface Obstacle {
+  heating_spec?: import("./heatingElements").HeatingElementSpec;
   id: string;
   name: string;
   kind?: "BOX" | "CYLINDER";
@@ -84,6 +85,7 @@ export interface CatalogueCategory {
 }
 
 export interface CatalogueItem {
+  heating_spec?: import("./heatingElements").HeatingElementSpec | null;
   colour_parts?: ColourPart[];
   id: string;
   category_id: string;

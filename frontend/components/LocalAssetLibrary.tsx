@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { MACRO_CATEGORY_ORDER, macroCategoryDisplay, macroCategoryForCategoryId, type MacroCategoryId } from "@/lib/catalogueTaxonomy";
 import type { AssetClassification, AssetDefinition, AssetInstance } from "@/lib/projectDocument";
 import type { CatalogueCategory, CatalogueItem } from "@/lib/types";
@@ -99,7 +100,7 @@ export function LocalAssetLibrary({ assets, instances, apiUrl, onImport, onChang
       <header className="local-assets-header">
         <div><span className="eyebrow">MY 3D MODELS</span><h2 id="local-assets-title">My 3D models</h2></div>
         <div className="local-asset-actions">
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close models">×</button>
+          <div className="window-header-actions"><WindowHelpButton title="Local asset library" /><button type="button" className="modal-close" onClick={onClose} aria-label="Close models">×</button></div>
         </div>
       </header>
 

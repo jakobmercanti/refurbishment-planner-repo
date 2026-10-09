@@ -5,7 +5,8 @@ import { normalizeRenderCameraState, type RenderCameraState } from "./renderCame
 import { DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, normalizeElectricalLayout, type ElectricalLayoutData } from "./electricalLayout";
 import { DEFAULT_PLANNER_BUILD, normalizePlannerBuild, type PlannerBuildData } from "./plannerBuild";
 import { quoteSchema, type QuoteDocument } from "./quoteDocument";
-import { heatingSchema, parseHeatingProject, type HeatingProject } from "./heatingDocument";
+import { heatingSchema, heatingElementSpecSchema, parseHeatingProject, type HeatingProject } from "./heatingDocument";
+import { migrateHeatingElements, isHeatingElement } from "./heatingElements";
 import { energySchema, parseEnergyProject, type EnergyProject } from "./energyDocument";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
@@ -91,6 +92,7 @@ export function parseProject(input: unknown): ProjectDocument {
   };
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
   if (p.heatingLayout) p.heatingLayout = parseHeatingProject(p.heatingLayout);
+  if (p.heatingLayout || p.rooms.some(room => room.obstacles.some(isHeatingElement))) Object.assign(p, migrateHeatingElements(p.rooms, p.heatingLayout));
   if (p.energyLayout) p.energyLayout = parseEnergyProject(p.energyLayout);
   unique((p.quotes ?? []).map(quote => quote.quoteId));
   if (p.quotes?.some(quote => quote.projectId !== p.projectId)) throw new Error("A quotation belongs to a different project.");
@@ -99,6 +101,7 @@ export function parseProject(input: unknown): ProjectDocument {
     unique(room.obstacles.map(o => o.id)); unique(room.openings.map(o => o.id));
     for (const opening of room.openings) z.object({ id, kind: z.enum(["DOOR", "WINDOW", "GENERIC"]), parent_wall_id: id, offset_mm: number.nonnegative(), width: measurement, height: measurement, sill_height_mm: number.nonnegative() }).parse(opening);
     for (const obstacle of room.obstacles) {
+      if (obstacle.heating_spec) heatingElementSpecSchema.parse(obstacle.heating_spec);
       if (obstacle.color_hex !== undefined) colour.parse(obstacle.color_hex);
       if (obstacle.component_colors !== undefined) z.record(z.string(), colour).parse(obstacle.component_colors);
     }

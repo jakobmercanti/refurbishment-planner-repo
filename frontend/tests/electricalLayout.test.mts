@@ -92,6 +92,7 @@ test("electrical panel exposes mode, routing and display controls with inherited
   };
   const markup = renderToStaticMarkup(createElement(ElectricalLayoutPanel, {
     mode: true, onModeChange: () => {}, connecting: false, onConnect: () => {}, onAdd: () => {},
+    onCheckout: () => {}, onFinishConnection: () => {},
     forceOrthogonalRouting: true, onForceOrthogonalRoutingChange: () => {},
     currentCount: 2, defaults: DEFAULT_ELECTRICAL_CONNECTION, onDefaultsChange: () => {},
     display: { symbols: true, connections: true, circuitLabels: false }, onDisplayChange: () => {},
@@ -105,11 +106,11 @@ test("electrical panel exposes mode, routing and display controls with inherited
   assert.match(markup, /Orthogonal/);
   assert.match(markup, /Force horizontal \/ vertical circuit routes/);
   assert.match(markup, /Circuit labels/);
-  assert.match(markup, /A first circuit is created and selected automatically/);
+  assert.doesNotMatch(markup, /<summary>Electrical layout help/);
+  assert.match(markup, /Check layout/);
+  assert.match(markup, />Ok<\/button>/);
   assert.match(markup, /Double-click/);
-  assert.match(markup, /connect several pairs/);
-  assert.match(markup, /Right-click a connection line to add a corner/);
-  assert.match(markup, /not physical cable routes or cable lengths/);
+  assert.match(markup, /Right-click a route leg to add a corner/);
   assert.match(markup, /Circuits \(1\)/);
   assert.equal([...markup.matchAll(/<summary>Connections \(2\)<\/summary>/g)].length, 1);
   assert.doesNotMatch(markup, /Unassigned connections/);

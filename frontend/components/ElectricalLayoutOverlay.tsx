@@ -30,6 +30,9 @@ interface Props {
   onConnectionContextMenu: (event: ReactMouseEvent<SVGPolylineElement>, connection: ElectricalConnection) => void;
   onWaypointPointerDown: (event: ReactPointerEvent<SVGCircleElement>, connection: ElectricalConnection, index: number) => void;
   onWaypointContextMenu: (event: ReactMouseEvent<SVGCircleElement>, connection: ElectricalConnection, index: number) => void;
+  onLabelPointerDown: (event: ReactPointerEvent<SVGTextElement>, connection: ElectricalConnection) => void;
+  testing?: boolean;
+  lightStates?: Record<string, boolean>;
 }
 
 export function ElectricalLayoutOverlay(props: Props) {
@@ -51,7 +54,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       const selected = props.selectedConnectionId === connection.id;
       const path = polylinePoints(points);
       const label = props.showLabels ? connection.label || circuit?.name : undefined;
-      const labelPoint = props.toScreen(points[Math.floor(points.length / 2)]);
+      const labelPoint = props.toScreen(connection.labelPosition ?? points[Math.floor(points.length / 2)]);
       return <g key={connection.id} className={selected ? "electrical-connection selected" : "electrical-connection"}>
         {selected && <polyline points={path} fill="none" stroke="#f59e0b" strokeWidth={electricalStrokeWidth(connection.width) + 4} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
         <polyline data-electrical-interactive="true" points={path} fill="none" stroke="transparent" strokeWidth="16" vectorEffect="non-scaling-stroke" pointerEvents="stroke" onPointerDown={(event) => props.onConnectionPointerDown(event, connection)} onContextMenu={(event) => props.onConnectionContextMenu(event, connection)} />
@@ -60,7 +63,7 @@ export function ElectricalLayoutOverlay(props: Props) {
           const point = props.toScreen(waypoint);
           return <circle key={index} data-electrical-interactive="true" className="electrical-route-waypoint" cx={point.x} cy={point.y} r="7" onPointerDown={(event) => props.onWaypointPointerDown(event, connection, index)} onContextMenu={(event) => props.onWaypointContextMenu(event, connection, index)} />;
         })}
-        {label && <text className="electrical-circuit-label" x={labelPoint.x} y={labelPoint.y - 8} textAnchor="middle">{label}</text>}
+        {label && <text data-electrical-interactive="true" className="electrical-circuit-label electrical-draggable-label" x={labelPoint.x} y={labelPoint.y - (connection.labelPosition ? 0 : 8)} textAnchor="middle" onPointerDown={event => props.onLabelPointerDown(event, connection)}><title>Drag to move this connection’s circuit label</title>{label}</text>}
       </g>;
     })}
     {props.connecting && props.sourceId && props.cursor && fixtures.get(props.sourceId) && props.showConnections && <polyline className="electrical-connection-preview" points={polylinePoints(electricalConnectionPoints({ ...props.defaults, id: "preview", fromId: props.sourceId, toId: "preview", circuitId: props.activeCircuitId, waypoints: [], label: undefined }, fixtures.get(props.sourceId)!.center, props.cursor, props.forceOrthogonalRouting))} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}
@@ -82,6 +85,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       const classes = ["floorplan-fixture", "electrical-fixture", props.active ? "is-active" : "", readableSymbol ? "is-readable" : "", connected ? "is-connected" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
       return <g key={fixture.id} data-electrical-interactive="true" className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
         <title>{fixture.name}</title>
+        {props.testing && Object.hasOwn(props.lightStates ?? {}, fixture.id) && <g className="electrical-test-state" pointerEvents="none"><circle cx={centre.x} cy={centre.y} r={Math.max(symbolWidth, symbolDepth) / 2 + 12} fill={props.lightStates?.[fixture.id] ? "#facc15" : "none"} fillOpacity="0.35" stroke={props.lightStates?.[fixture.id] ? "#a16207" : "#64748b"} strokeWidth="2" /><text className="electrical-circuit-label" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.lightStates?.[fixture.id] ? "On" : "Off"}</text></g>}
         {readableSymbol && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>
           <rect className="electrical-fixture-hit-area" x={-hitWidth / 2} y={-hitDepth / 2} width={hitWidth} height={hitDepth} rx={Math.min(10, hitDepth / 3)} />
           {props.active && <rect className="electrical-fixture-backplate" x={-symbolWidth / 2 - 3} y={-symbolDepth / 2 - 3} width={symbolWidth + 6} height={symbolDepth + 6} rx={Math.min(8, symbolDepth / 3)} />}

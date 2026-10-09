@@ -1,0 +1,19 @@
+.window-header-actions { display: flex; gap: 3px; align-items: center; }
+.account-dialog .local-assets-header > .window-header-actions { grid-column: 2; grid-row: 1; }
+.window-help-button { flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control, 6px); background: var(--panel); color: var(--deep); font: 700 16px/1 var(--font-sans); cursor: pointer; touch-action: manipulation; }
+.window-help-button:hover, .window-help-button:focus-visible { background: var(--surface-muted); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.floating-toolbar-titlebar:has(.window-header-actions), .popup-titlebar:has(.window-header-actions) { grid-template-columns: 20px 18px minmax(0, 1fr) auto; }
+.compact-workspace .floating-toolbar-titlebar:has(.window-header-actions) { grid-template-columns: 18px minmax(0, 1fr) auto; }
+.compact-workspace .window-help-button { width: 36px; height: 36px; }
+.window-help-host { position: fixed; inset: 0; z-index: 10000; pointer-events: none; }
+.window-help-host > .floating-toolbar { pointer-events: auto; }
+.window-help-content { padding: 10px 14px; color: var(--ink); line-height: 1.55; }
+.window-help-content h3 { margin: 12px 0 5px; font-size: 15px; }
+.window-help-content p { margin: 0 0 12px; }
+.window-help-content li { overflow-wrap: anywhere; }
+.electrical-mode-row { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.electrical-mode-row .electrical-mode-toggle { flex: 1; border: 0; padding: 0; background: transparent; }
+.electrical-mode-row > button { flex: 0 0 auto; }
+.electrical-draggable-label { pointer-events: auto !important; cursor: grab; touch-action: none; user-select: none; }
+.electrical-draggable-label:active { cursor: grabbing; }
+@media (max-width: 500px) { .electrical-mode-row { flex-wrap: wrap; } }

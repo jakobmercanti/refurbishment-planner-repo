@@ -1,9 +1,10 @@
 "use client";
 
 import type { ElectricalCircuit, ElectricalConnection, ElectricalConnectionDefaults, ElectricalConnectionType, ElectricalLineStyle, ElectricalLineWidth, ElectricalRouting } from "@/lib/electricalLayout";
+import { switchGangCount } from "@/lib/electricalSimulation";
 
 export interface ElectricalDisplayOptions { symbols: boolean; connections: boolean; circuitLabels: boolean }
-export interface ElectricalObjectOption { id: string; label: string }
+export interface ElectricalObjectOption { id: string; label: string; representation_key?: string | null }
 
 const styles: [ElectricalLineStyle, string][] = [["SOLID", "Solid"], ["DASHED", "Dashed"], ["DOTTED", "Dotted"], ["DASH_DOT", "Dash-dot"]];
 const widths: [ElectricalLineWidth, string][] = [["THIN", "Thin"], ["MEDIUM", "Medium"], ["THICK", "Thick"]];
@@ -13,6 +14,7 @@ type Props = {
   mode: boolean; onModeChange: (value: boolean) => void; connecting: boolean; repeatConnecting?: boolean; onConnect: (mode: "single" | "repeat") => void; onAdd: () => void;
   forceOrthogonalRouting: boolean; onForceOrthogonalRoutingChange: (value: boolean) => void;
   onSaveLayout?: () => void; onLoadLayout?: () => void; onExport?: () => void; onSchedule?: () => void;
+  onCheckout: () => void; onFinishConnection: () => void;
   status?: string | null; currentCount: number; defaults: ElectricalConnectionDefaults;
   onDefaultsChange: (value: ElectricalConnectionDefaults) => void; display: ElectricalDisplayOptions;
   onDisplayChange: (value: ElectricalDisplayOptions) => void; objects: ElectricalObjectOption[];
@@ -62,15 +64,22 @@ export function ElectricalLayoutPanel(p: Props) {
           <label className="field"><span>Routing</span><select value={selected.routing} disabled={p.forceOrthogonalRouting} onChange={(e) => updateSelected({ routing: e.target.value as ElectricalRouting })}>{routings.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="field"><span>Circuit</span><select value={selected.circuitId ?? circuitId} onChange={(e) => updateSelected({ circuitId: e.target.value, colorOverride: false })}>{p.circuits.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         </div>
+        {(["from", "to"] as const).map((endpoint) => {
+          const object = p.objects.find(item => item.id === (endpoint === "from" ? selected.fromId : selected.toId));
+          const gangs = switchGangCount(object?.representation_key);
+          const field = endpoint === "from" ? "fromSwitchGang" : "toSwitchGang";
+          return gangs > 1 ? <label className="field" key={endpoint}><span>{endpoint === "from" ? "From" : "To"} switch gang (lighting test)</span><select value={selected[field] ?? 1} onChange={event => updateSelected({ [field]: Number(event.target.value) })}>{Array.from({ length: gangs }, (_, index) => <option key={index} value={index + 1}>Gang {index + 1}</option>)}</select></label> : null;
+        })}
         {selected.circuitId && <button type="button" className="review-style-button" onClick={() => updateSelected({ colorOverride: false })}>Use circuit colour</button>}
         <label className="field"><span>Optional label</span><input value={selected.label ?? ""} maxLength={100} onChange={(e) => updateSelected({ label: e.target.value || undefined })} /></label>
         <p className="electrical-layout-hint">Right-click a route leg to add a corner, or right-click a corner to remove it. Drag a corner to reshape the route.</p>
         <button type="button" className="danger-button" onClick={() => p.onDeleteConnection(selected.id)}>Delete connection</button>
+        <button type="button" className="review-style-button primary" onClick={p.onFinishConnection}>Ok</button>
       </div>}
     </details>;
   };
   return <div className="electrical-layout-panel evidence-panel">
-    <label className="electrical-mode-toggle"><input type="checkbox" checked={p.mode} onChange={(event) => p.onModeChange(event.target.checked)} /><span><strong>Electrical layout mode</strong></span></label>
+    <div className="electrical-mode-row"><label className="electrical-mode-toggle"><input type="checkbox" checked={p.mode} onChange={(event) => p.onModeChange(event.target.checked)} /><span><strong>Electrical layout mode</strong></span></label>{p.mode && <button type="button" className="review-style-button" onClick={p.onCheckout}>Check layout</button>}</div>
     <div className="electrical-layout-actions" aria-label="Electrical layout actions">
       <button type="button" className="review-style-button" onClick={p.onSaveLayout} disabled={!p.onSaveLayout}>Save layout</button>
       <button type="button" className="review-style-button" onClick={p.onLoadLayout} disabled={!p.onLoadLayout}>Load layout</button>
@@ -100,7 +109,7 @@ export function ElectricalLayoutPanel(p: Props) {
         {p.circuits.length > 1 && <button type="button" className="electrical-connection-action delete electrical-circuit-delete" aria-label={`Delete circuit ${item.name}`} title={`Delete ${item.name}`} onClick={() => p.onDeleteCircuit(item.id)}>Delete</button>}
       </li>)}</ul> : <p className="electrical-layout-empty">No circuits yet.</p>}
       {circuit && <div className="electrical-circuit-edit">
-        <label key={circuit.id} className="field"><span>Name</span><input defaultValue={circuit.name} maxLength={100} onBlur={(e) => { const value = e.target.value.trim(); if (value && value !== circuit.name) p.onUpdateCircuit(circuit.id, { name: value }); else if (!value) e.currentTarget.value = circuit.name; }} /></label>
+        <label key={circuit.id + circuit.name} className="field"><span>Name</span><input defaultValue={circuit.name} maxLength={100} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); event.currentTarget.blur(); } }} onBlur={(e) => { const value = e.target.value.trim(); if (value && value !== circuit.name) p.onUpdateCircuit(circuit.id, { name: value }); else if (!value) e.currentTarget.value = circuit.name; }} /></label>
         <label className="field"><span>Colour</span><input aria-label="Circuit colour" type="color" value={circuit.color} onChange={(e) => p.onUpdateCircuit(circuit.id, { color: e.target.value })} /></label>
         <div className="electrical-circuit-edit-actions">
           <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>
@@ -109,14 +118,5 @@ export function ElectricalLayoutPanel(p: Props) {
       {!circuit && <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>}
       {circuit && connectionGroup(circuit.id)}
     </details>
-    <details className="electrical-layout-help"><summary>Electrical layout help</summary><div className="electrical-layout-help-content">
-      <p><strong>Place fittings.</strong> Click <em>Add electrical fitting…</em>, choose a catalogue item, then click on the plan to place it. The add window keeps your last item selected so you can place several of the same fitting.</p>
-      <p><strong>Circuits and connections.</strong> A first circuit is created and selected automatically. Every new connection is added to the currently selected circuit. Click <em>New circuit</em> to add more circuits, then select a circuit row to choose where future connections go.</p>
-      <p><strong>Connect two fittings.</strong> Click <em>Connect</em> once, select a source fitting, then its destination. The command exits after one connection. Double-click <em>Connect</em> to connect several pairs; after each connection, select any new source and destination. Press Esc or click the active Cancel button to stop.</p>
-      <p><strong>Edit or delete connections.</strong> Open a circuit’s <em>Connections</em> list. Select a row or click <em>Edit</em> to change its relationship, colour, style, width, route, circuit or label. Click <em>Delete</em> to remove just that connection, not its fittings.</p>
-      <p><strong>Shape a route.</strong> Right-click a connection line to add a corner on that leg. Drag a corner to reshape the line; right-click a corner to remove it. <em>Force horizontal / vertical circuit routes</em> keeps legs axis-aligned and is on by default. Turn it off to allow diagonal legs.</p>
-      <p><strong>Manage circuits and files.</strong> The last remaining circuit cannot be deleted. Deleting a circuit moves its connections to another circuit. <em>Save layout</em> downloads an electrical-only file. <em>Load layout</em> lets you merge or replace electrical data without replacing the floorplan. Normal project saving also stores the electrical layout.</p>
-      <p className="electrical-layout-help-note"><strong>Important:</strong> connection lines show schematic relationships, not physical cable routes or cable lengths. Room geometry remains unchanged.</p>
-    </div></details>
   </div>;
 }

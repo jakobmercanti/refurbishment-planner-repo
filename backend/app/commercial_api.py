@@ -229,6 +229,8 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
             collection = heating.get(field)
             if not isinstance(collection, list) or len(collection) > maximum:
                 raise HTTPException(status_code=422, detail="Invalid heating layout collection.")
+        if "pipes" in heating and (not isinstance(heating["pipes"], list) or len(heating["pipes"]) > 5000):
+            raise HTTPException(status_code=422, detail="Invalid heating pipes.")
         for circuit in heating["ufhCircuits"]:
             if not isinstance(circuit, dict):
                 raise HTTPException(status_code=422, detail="Invalid heating circuit.")

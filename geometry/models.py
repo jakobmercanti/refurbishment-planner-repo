@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from geometry.constants import MAX_REASONABLE_LENGTH_MM
+from geometry.heating import HeatingElementSpec
 
 
 def utc_now() -> datetime:
@@ -200,6 +201,7 @@ class GenericOpening(BaseModel):
 
 
 class ObstacleDefinition(BaseModel):
+    heating_spec: HeatingElementSpec | None = None
     id: str
     name: str
     kind: ObstacleKind = ObstacleKind.BOX

@@ -18,6 +18,11 @@ export interface ElectricalConnection {
   /** False means the assigned circuit supplies the displayed colour. */
   colorOverride?: boolean;
   label?: string;
+  /** User-positioned label anchor in authoritative floorplan millimetres. */
+  labelPosition?: Point2D;
+  /** Logical switch gang for lighting checkout, not a wiring terminal designation. */
+  fromSwitchGang?: number;
+  toSwitchGang?: number;
   circuitId: string;
 }
 
@@ -271,6 +276,9 @@ export function createElectricalConnection(
     waypoints: (input.waypoints ?? []).filter(safePoint).map((point) => ({ ...point })).slice(0, 500),
     ...(typeof input.colorOverride === "boolean" ? { colorOverride: input.colorOverride } : {}),
     ...(typeof input.label === "string" && input.label.trim() ? { label: input.label.trim().slice(0, 100) } : {}),
+    ...(safePoint(input.labelPosition) ? { labelPosition: { ...input.labelPosition } } : {}),
+    ...(Number.isInteger(input.fromSwitchGang) && input.fromSwitchGang! >= 1 && input.fromSwitchGang! <= 4 ? { fromSwitchGang: input.fromSwitchGang } : {}),
+    ...(Number.isInteger(input.toSwitchGang) && input.toSwitchGang! >= 1 && input.toSwitchGang! <= 4 ? { toSwitchGang: input.toSwitchGang } : {}),
     circuitId: input.circuitId,
   };
 }

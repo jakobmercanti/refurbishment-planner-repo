@@ -2,7 +2,8 @@ import type { Room } from "./types";
 import type { HeatingProject, HeatingRadiator, UFHZone, UFHCircuit } from "./heatingDocument";
 import { calculateRoomHeatLoss, calculateRadiatorOutput, calculateElectricEmitterSize, calculateUFHOutput, calculateUFHFlowRate, calculateCircuitLength, calculatePressureDrop, thermalRoom, radiatorPlacementWarnings, snapRadiatorToWall, geometryFingerprint } from "./heatingCalculations";
 import { activeUFHAreaM2, generateUFHLoops, validateCircuitGeometry } from "./heatingGeometry";
-import { REFERENCE_RADIATORS, referenceRadiatorForRoom } from "./heatingCatalogue";
+import { REFERENCE_RADIATORS, referenceRadiatorForRoom, type ReferenceRadiator } from "./heatingCatalogue";
+import { withHeatingElements } from "./heatingElements";
 
 export function newHeatingRadiator(room: Room, technology: HeatingRadiator["emitterTechnology"] = "Hydronic"): HeatingRadiator {
   return snapRadiatorToWall({ radiatorId: crypto.randomUUID(), roomId: room.id, manufacturer: "", model: "User reference radiator", category: "Type 22", emitterTechnology: technology, widthMm: 1000, heightMm: 600, depthMm: 100, positionMm: room.vertices[0], rotationDeg: 0, ratedOutputW: null, ratedDeltaTK: 50, exponent: 1.3, electricalInputW: 0, fanMode: "Normal", manufacturerPerformanceData: [], locked: false }, room, room.vertices[0]);
@@ -11,6 +12,7 @@ export function newUFHZone(room: Room, manifoldId: string | null): UFHZone {
   return { zoneId: crypto.randomUUID(), roomId: room.id, name: room.name, pipeType: "User-specified UFH pipe", diameterMm: 16, internalDiameterMm: null, spacingMm: 200, boundaryOffsetMm: 100, minBendRadiusMm: 80, maxCircuitLengthM: 100, pattern: "Spiral", orientation: "Auto", floorConstruction: "User-specified build-up", floorCovering: "Tile / stone", floorThermalResistance: 0.01, maxSurfaceTemperatureC: 29, manifoldId, performanceDataset: null, geometryFingerprint: "" };
 }
 export function heatingResults(rooms: readonly Room[], heating: HeatingProject) {
+  if (!heating.radiators.length) heating = withHeatingElements(heating, rooms);
   const { flowTemperatureC: flow, returnTemperatureC: returning } = heating.heatingSystem;
   const rows = rooms.map(room => {
     const demand = calculateRoomHeatLoss(room, rooms, heating), settings = thermalRoom(room, heating), warnings: string[] = [];
@@ -53,7 +55,7 @@ export function regenerateHeatingRoom(room: Room, heating: HeatingProject) {
   }
   return { heating: next, changes };
 }
-export function autoDesignHeating(rooms: readonly Room[], heating: HeatingProject, referenceOutputPerMetreW: number | null, scopeRoomIds?: string[]) {
+export function autoDesignHeating(rooms: readonly Room[], heating: HeatingProject, referenceOutputPerMetreW: number | null, scopeRoomIds?: string[], catalogueRadiators: ReferenceRadiator[] = REFERENCE_RADIATORS) {
   let next = structuredClone(heating); const changes: string[] = [];
   for (const room of rooms) {
     if (scopeRoomIds && !scopeRoomIds.includes(room.id)) continue;
@@ -72,7 +74,7 @@ export function autoDesignHeating(rooms: readonly Room[], heating: HeatingProjec
       changes.push(`${room.name}: electric capacity sized to ${remaining.toFixed(0)} W demand.`);
     } else if (settings.selectedEmitterType === "Hybrid Radiator" || !referenceOutputPerMetreW) {
       const technology = settings.selectedEmitterType === "Hybrid Radiator" ? "Hybrid" : "Hydronic";
-      const candidates = REFERENCE_RADIATORS.filter(p => p.emitterTechnology === technology).flatMap(product => room.vertices.map((a,i) => {
+      const candidates = catalogueRadiators.filter(p => p.emitterTechnology === technology).flatMap(product => room.vertices.map((a,i) => {
         const b = room.vertices[(i+1)%room.vertices.length], radiator = referenceRadiatorForRoom(product,room);
         return snapRadiatorToWall(radiator,room,{x:(a.x+b.x)/2,y:(a.y+b.y)/2});
       })).filter(r => !radiatorPlacementWarnings(r,room).length).map(r => ({radiator:r,output:calculateRadiatorOutput(r,next.heatingSystem.flowTemperatureC,next.heatingSystem.returnTemperatureC,settings.designIndoorTemperatureC).outputW})).filter((c): c is {radiator:HeatingRadiator;output:number} => c.output !== null);

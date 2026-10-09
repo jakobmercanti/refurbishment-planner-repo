@@ -1,16 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Room } from "@/lib/types";
+import type { Room, CatalogueItem } from "@/lib/types";
 import { CONSTRUCTION_PRESETS, HEATING_DISCLAIMER, heatingMethodSchema, parseHeatingProject, type HeatingProject, type HeatingRadiator, type RoomThermalData, type UFHZone } from "@/lib/heatingDocument";
 import { calculateCircuitLength, geometryFingerprint, thermalRoom } from "@/lib/heatingCalculations";
 import { heatingResults, newHeatingRadiator, newUFHZone, splitHeatingCircuit } from "@/lib/heatingDesign";
 import { splitPathByLength } from "@/lib/heatingGeometry";
-import { REFERENCE_RADIATORS, REFERENCE_UFH_DATASETS, referenceRadiatorForRoom } from "@/lib/heatingCatalogue";
+import { REFERENCE_UFH_DATASETS, type ReferenceRadiator } from "@/lib/heatingCatalogue";
+import { heatingElementSpecSchema } from "@/lib/heatingDocument";
 import styles from "./HeatingLayoutPanel.module.css";
 
-export type HeatingSelection = { kind: "radiator" | "manifold" | "circuit" | "exclusion"; id: string } | null;
-export type HeatingTool = "MANIFOLD" | "EXCLUSION" | null;
-interface Props { rooms: Room[]; data: HeatingProject; onChange: (data: HeatingProject) => void; selection: HeatingSelection; onSelect: (selection: HeatingSelection) => void; onHighlightRoom: (roomId: string) => void; onTool: (tool: HeatingTool) => void; tool: HeatingTool; onFinishExclusion: () => void; exclusionPointCount: number; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string; }
+export type HeatingSelection = { kind: "radiator" | "manifold" | "circuit" | "exclusion" | "pipe"; id: string } | null;
+export type HeatingTool = "MANIFOLD" | "EXCLUSION" | "PIPE" | "CONNECT" | null;
+interface Props { apiUrl: string; onAdd: () => void; onFinishPipe: () => void; pipePointCount: number; rooms: Room[]; data: HeatingProject; onChange: (data: HeatingProject) => void; selection: HeatingSelection; onSelect: (selection: HeatingSelection) => void; onHighlightRoom: (roomId: string) => void; onTool: (tool: HeatingTool) => void; tool: HeatingTool; onFinishExclusion: () => void; exclusionPointCount: number; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string; }
 const watt = (value: number | null | undefined) => value === null || value === undefined ? "Not set" : `${Math.round(value).toLocaleString()} W`;
 const temperatures = [["Traditional boiler", 75, 65], ["Lower-temperature boiler", 55, 45], ["Heat pump", 45, 40], ["Heat pump 40/35", 40, 35], ["Low-temperature heat pump", 35, 30]] as const;
 function NumberField({ label, value, onChange, min, max, step = "any" }: { label: string; value: number | null; onChange: (n: number | null) => void; min?: number; max?: number; step?: string | number }) {
@@ -21,6 +22,8 @@ export function HeatingLayoutPanel(props: Props) {
   const { rooms, data, onChange, selection } = props;
   const [tab, setTab] = useState("Heat Loss"), [roomId, setRoomId] = useState(rooms[0]?.id ?? ""), [messages, setMessages] = useState<string[]>([]), [busy, setBusy] = useState(false), [reference, setReference] = useState<number | null>(null), [error, setError] = useState("");
   const importInput = useRef<HTMLInputElement>(null), performanceInput = useRef<HTMLInputElement>(null);
+  const [catalogueRadiators, setCatalogueRadiators] = useState<ReferenceRadiator[] | undefined>(undefined);
+  useEffect(() => { const controller = new AbortController(); const load = () => { void fetch(`${props.apiUrl}/catalog/items`, { signal: controller.signal }).then(response => { if (!response.ok) throw new Error("Catalogue offline"); return response.json() as Promise<CatalogueItem[]>; }).then(items => setCatalogueRadiators(items.filter(item => item.category_id === "heating" || item.category_id.startsWith("radiators-")).flatMap(item => { const spec = heatingElementSpecSchema.safeParse(item.heating_spec); return spec.success ? [{ ...spec.data, catalogueId: item.id, catalogueItemId: item.id, widthMm: item.width_mm, heightMm: item.height_mm, depthMm: item.depth_mm }] : []; }))).catch(() => undefined); }; load(); window.addEventListener("catalogue-changed", load); return () => { controller.abort(); window.removeEventListener("catalogue-changed", load); }; }, [props.apiUrl]);
   const worker = useRef<Worker | null>(null), latestData = useRef(data);
   const [editPathKey, setEditPathKey] = useState<"pathMm" | "supplyPathMm" | "returnPathMm">("pathMm"), [editPointIndex, setEditPointIndex] = useState(0);
   useEffect(() => { latestData.current = data; }, [data]);
@@ -44,7 +47,7 @@ export function HeatingLayoutPanel(props: Props) {
       const baseline = JSON.stringify(data);
       worker.current = new Worker(new URL("../lib/heatingWorker.ts", import.meta.url));
       const result = await new Promise<{ heating: HeatingProject; changes: string[] }>((resolve, reject) => {
-        const active = worker.current!;active.onmessage = event => { active.terminate();worker.current = null;if (event.data.error) reject(new Error(event.data.error));else resolve(event.data.result); };active.onerror = () => { active.terminate();worker.current = null;reject(new Error("Heating worker could not run. Existing layout was preserved.")); };active.postMessage({ rooms, heating: data, reference, roomId: all ? null : room!.id });
+        const active = worker.current!;active.onmessage = event => { active.terminate();worker.current = null;if (event.data.error) reject(new Error(event.data.error));else resolve(event.data.result); };active.onerror = () => { active.terminate();worker.current = null;reject(new Error("Heating worker could not run. Existing layout was preserved.")); };active.postMessage({ rooms, heating: data, reference, catalogueRadiators, roomId: all ? null : room!.id });
       });
       if (JSON.stringify(latestData.current) !== baseline) throw new Error("Inputs changed while generating. Existing edits retained; run generation again.");
       change(result.heating);setMessages(result.changes);
@@ -52,6 +55,8 @@ export function HeatingLayoutPanel(props: Props) {
   }
   async function exportPdf() { setBusy(true);try { const { buildHeatingPdf } = await import("@/lib/heatingExport");const bytes = await buildHeatingPdf(rooms, data, props.projectName);save(new Blob([bytes as BlobPart], { type: "application/pdf" }), "heating-plan.pdf"); } catch (e) { setError(e instanceof Error ? e.message : "Export failed."); } finally { setBusy(false); } }
   const selectedRadiator = data.radiators.find(r => r.radiatorId === selection?.id), selectedCircuit = data.ufhCircuits.find(c => c.circuitId === selection?.id), selectedManifold = data.manifolds.find(m => m.manifoldId === selection?.id), selectedExclusion = data.exclusions.find(e => e.exclusionId === selection?.id);
+  const selectedKind = selection?.kind, selectedRoomId = selectedRadiator?.roomId;
+  useEffect(() => { if (selectedKind === "radiator") queueMicrotask(() => { setTab("Radiators"); if (selectedRoomId) setRoomId(selectedRoomId); }); else if (selectedKind && ["circuit", "manifold", "exclusion"].includes(selectedKind)) queueMicrotask(() => setTab("UFH")); }, [selection?.id, selectedKind, selectedRoomId]);
   const selectedPath = selectedCircuit?.[editPathKey], safePointIndex = Math.max(0, Math.min(editPointIndex, (selectedPath?.length ?? 1) - 1)), selectedPoint = selectedPath?.[safePointIndex];
   function changeCircuitPoint(patch: { x?: number; y?: number }) {
     if (!selectedCircuit || selectedCircuit.locked) return;const next = structuredClone(data), c = next.ufhCircuits.find(c => c.circuitId === selectedCircuit.circuitId)!;
@@ -62,9 +67,11 @@ export function HeatingLayoutPanel(props: Props) {
     change(next);
   }
   return <section className={styles.panel} aria-label="Heating Layout controls">
-    <div className={styles.actions}><label><input type="checkbox" checked={data.enabled} onChange={e => change({ ...data, enabled: e.target.checked })} /> Heating layout mode</label><button onClick={props.onUndo} disabled={!props.canUndo}>Undo heating</button><button onClick={props.onRedo} disabled={!props.canRedo}>Redo heating</button></div>
+    <div className={styles.actions}><label><input type="checkbox" checked={data.enabled} onChange={e => change({ ...data, enabled: e.target.checked })} /> Heating layout mode</label><button onClick={props.onAdd}>Add heating element…</button><button onClick={props.onUndo} disabled={!props.canUndo}>Undo heating</button><button onClick={props.onRedo} disabled={!props.canRedo}>Redo heating</button></div>
     <nav aria-label="Heating sections" className={styles.tabs}>{["Heat Loss", "Radiators", "UFH", "System", "Results"].map(name => <button key={name} aria-pressed={tab === name} onClick={() => setTab(name)}>{name}</button>)}</nav>
+    {data.enabled && <details open><summary>Heating pipes & connections</summary><div className={styles.actions}><button aria-pressed={props.tool === "CONNECT"} onClick={() => props.onTool(props.tool === "CONNECT" ? null : "CONNECT")}>Connect heating elements</button><button aria-pressed={props.tool === "PIPE"} onClick={() => props.onTool(props.tool === "PIPE" ? null : "PIPE")}>Draw heating pipe</button>{props.tool === "PIPE" && <button disabled={props.pipePointCount < 2} onClick={props.onFinishPipe}>Finish pipe</button>}{props.tool && <button onClick={() => props.onTool(null)}>Cancel tool</button>}</div><p>Connect: click two radiators/manifolds for separate supply and return routes. Draw pipe: click corners on the plan, then Finish pipe. Select a pipe to drag its points; double-click a segment to add a point. These are schematic routes, not hydraulic verification.</p>{data.pipes.map(pipe => <div key={pipe.pipeId}><button onClick={() => props.onSelect({ kind: "pipe", id: pipe.pipeId })}>{pipe.name} · {pipe.kind}</button>{selection?.id === pipe.pipeId && <><label>Pipe name<input value={pipe.name} onChange={e => change({ ...data, pipes: data.pipes.map(p => p.pipeId === pipe.pipeId ? { ...p, name: e.target.value } : p) })} /></label><label>Pipe type<select value={pipe.kind} onChange={e => change({ ...data, pipes: data.pipes.map(p => p.pipeId === pipe.pipeId ? { ...p, kind: e.target.value as "Supply" | "Return" } : p) })}><option>Supply</option><option>Return</option></select></label><NumberField label="Pipe diameter mm" value={pipe.diameterMm} min={1} max={100} onChange={n => n !== null && change({ ...data, pipes: data.pipes.map(p => p.pipeId === pipe.pipeId ? { ...p, diameterMm: n } : p) })} /><label><input type="checkbox" checked={pipe.locked} onChange={e => change({ ...data, pipes: data.pipes.map(p => p.pipeId === pipe.pipeId ? { ...p, locked: e.target.checked } : p) })} />Lock pipe</label><button onClick={() => change({ ...data, pipes: data.pipes.filter(p => p.pipeId !== pipe.pipeId) })}>Delete pipe</button><button onClick={() => props.onSelect(null)}>Ok</button></>}</div>)}</details>}
     <div className={styles.actions}><button onClick={() => { props.onHighlightRoom(room?.id ?? "");setMessages(["Heat loss recalculated from current floorplan; results update live as inputs change."]); }}>Calculate heat loss</button><button disabled={busy || !rooms.length} onClick={() => void runDesign(true)}>{busy ? "Designing…" : "Auto Design Heating"}</button></div>
+    {catalogueRadiators === undefined && <p>Catalogue not connected yet: auto sizing uses the shared built-in reference dataset. Custom catalogue updates require the catalogue service.</p>}
     {!rooms.length && <p role="status">Draw a closed room in the floorplan first. You do not need to enter its dimensions again.</p>}
     <label>Room<select value={room?.id ?? ""} onChange={e => { setRoomId(e.target.value);props.onHighlightRoom(e.target.value); }}>{rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
     {error && <p role="alert" className={styles.warning}>{error}</p>}
@@ -98,8 +105,8 @@ export function HeatingLayoutPanel(props: Props) {
     {tab === "Radiators" && room && <>
       <p>Required {watt(row?.demand.designW)} at {settings?.designIndoorTemperatureC}°C. Hydronic generic outputs are estimates; hybrid output requires supplied operating points.</p>
       <NumberField label="Generic ΔT50 reference output W per metre (600 mm height)" value={reference} min={1} onChange={setReference} />
-      <label>Add a published reference product<select value="" onChange={e => { const product = REFERENCE_RADIATORS.find(r => r.catalogueId === e.target.value);if (!product) return;const radiator = referenceRadiatorForRoom(product,room);change({...data,radiators:[...data.radiators,radiator]});props.onSelect({kind:"radiator",id:radiator.radiatorId}); }}><option value="">Choose product…</option>{REFERENCE_RADIATORS.map(p => <option key={p.catalogueId} value={p.catalogueId}>{p.manufacturer} {p.model}</option>)}</select></label><p>Small reference library, not a complete product catalogue. Jaga points cover 20°C room temperature only. Purmo correction outside published points is estimated using its published exponent. Confirm current product availability before specifying.</p>
-      <div className={styles.actions}>{(["Hydronic", "Electric", "Hybrid"] as const).map(t => <button key={t} onClick={() => { const radiator = newHeatingRadiator(room, t);change({ ...data, radiators: [...data.radiators, radiator] });props.onSelect({ kind: "radiator", id: radiator.radiatorId }); }}>Add {t.toLowerCase()} radiator</button>)}</div>
+      <p>Add radiators from Heating elements. Dimensions, appearance and thermal specifications belong to the same placed item; edit its technical data below.</p>
+
       {row?.emitters.map(({ radiator: r, outputW, note, warnings }) => <button key={r.radiatorId} className={styles.listItem} onClick={() => props.onSelect({ kind: "radiator", id: r.radiatorId })}>{r.model} · {r.widthMm} × {r.heightMm} mm · {watt(outputW)}<small>{note}{warnings.length ? ` ⚠ ${warnings.join(" ")}` : ""}</small></button>)}
       {selectedRadiator && <details open><summary>Edit radiator (drag on plan to wall-snap)</summary><div className={styles.grid}>
         {selectedRadiator.performanceReference && <a href={selectedRadiator.performanceReference} target="_blank" rel="noreferrer">Manufacturer source for this selection</a>}

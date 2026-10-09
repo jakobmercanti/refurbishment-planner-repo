@@ -1,5 +1,6 @@
 "use client";
 import { DOOR_MODELS } from "@/lib/doorModels";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 
 import { useEffect, useRef, useState } from "react";
 import type { CatalogueCategory, CatalogueItem } from "@/lib/types";
@@ -123,7 +124,7 @@ export function CatalogueManager({ apiUrl, open, opener, layoutAnalysisToolbarVi
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="catalogue-manager-modal" role="dialog" aria-modal="true" aria-labelledby="catalogue-manager-title" onKeyDown={trapFocus}>
-      <header><div><span className="eyebrow">Catalogue administration</span><h2 id="catalogue-manager-title">Object catalogue manager</h2></div><button ref={closeRef} className="modal-close" aria-label="Close catalogue manager" onClick={onClose}>×</button></header>
+      <header><div><span className="eyebrow">Catalogue administration</span><h2 id="catalogue-manager-title">Object catalogue manager</h2></div><div className="window-header-actions"><WindowHelpButton title="Object catalogue manager" /><button ref={closeRef} className="modal-close" aria-label="Close catalogue manager" onClick={onClose}>×</button></div></header>
       <div className="catalogue-manager-tabs" role="tablist" aria-label="Catalogue administration sections">
         <button type="button" role="tab" id="catalogue-manager-import-tab" aria-controls="catalogue-manager-import-panel" aria-selected={activeTab === "IMPORT"} className={activeTab === "IMPORT" ? "active" : ""} onClick={() => setActiveTab("IMPORT")}>Import from website</button>
         <button type="button" role="tab" id="catalogue-manager-toolbars-tab" aria-controls="catalogue-manager-toolbars-panel" aria-selected={activeTab === "TOOLBARS"} className={activeTab === "TOOLBARS" ? "active" : ""} onClick={() => setActiveTab("TOOLBARS")}>Toolbars activation</button>

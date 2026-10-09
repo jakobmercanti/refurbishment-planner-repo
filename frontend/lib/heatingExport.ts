@@ -3,15 +3,19 @@ import type { Room, Point2D } from "./types";
 import type { HeatingProject } from "./heatingDocument";
 import { HEATING_DISCLAIMER } from "./heatingDocument";
 import { heatingResults } from "./heatingDesign";
+import { heatingPipeLengthM } from "./heatingPipes";
+import { withHeatingElements } from "./heatingElements";
 export function heatingScheduleCsv(rooms: Room[], heating: HeatingProject) {
   const results = heatingResults(rooms, heating), rows: (string | number)[][] = [["Room", "Area m2", "Target C", "Design demand W", "Heating method", "Emitter W", "UFH W", "Circuit", "Pipe m", "Output flow L/min", "Demand-based flow L/min", "Status"]];
   for (const r of results.rooms) {
     rows.push([r.room.name, r.demand.areaM2.toFixed(1), r.demand.targetC, Math.round(r.demand.designW), r.settings.selectedEmitterType, r.emitters.some(e => e.outputW === null) ? "Not set" : Math.round(r.radiatorW), r.zones.some(z => !z.performance) ? "Not set" : Math.round(r.ufhW), "", "", "", "", r.status]);
     for (const z of r.zones) for (const c of z.circuits) rows.push([r.room.name, "", "", "", "UFH circuit", "", "", c.circuit.name, c.lengthM.toFixed(1), c.flowLmin?.toFixed(1) ?? "Not set", c.designFlowLmin?.toFixed(1) ?? "Not set", c.warnings.join("; ")]);
   }
+  for (const p of heating.pipes) rows.push(["Heating connection", "", "", "", p.kind, "", "", p.name, heatingPipeLengthM(p.pathMm).toFixed(1), "", "", "Schematic route only"]);
   return rows.map(row => row.map(v => { const s = String(v), safe = /^[=+@\-\t\r]/.test(s) ? `'${s}` : s;return `"${safe.replaceAll('"', '""')}"`; }).join(",")).join("\r\n");
 }
 export async function buildHeatingPdf(rooms: Room[], heating: HeatingProject, projectName: string): Promise<Uint8Array> {
+  if (!heating.radiators.length) heating = withHeatingElements(heating, rooms);
   const pdf = await PDFDocument.create(), font = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold), results = heatingResults(rooms, heating);
   const ascii = (value: string) => value.normalize("NFKD").replace(/²/g, "2").replace(/[^\x20-\x7e\n]/g, "?");
   let page!: PDFPage;let y = 0;
@@ -23,7 +27,7 @@ export async function buildHeatingPdf(rooms: Room[], heating: HeatingProject, pr
   };
   pageStart("Heating plan - preliminary design");
   text(`System ${heating.heatingSystem.flowTemperatureC}/${heating.heatingSystem.returnTemperatureC} C | External ${heating.buildingSettings.externalDesignTemperatureC} C | Design heat loss ${Math.round(results.heatLossW)} W`);
-  const points = [...rooms.flatMap(r => r.vertices), ...heating.manifolds.map(m => m.positionMm), ...heating.exclusions.flatMap(e => e.polygonMm), ...heating.radiators.flatMap(r => { const angle = r.rotationDeg * Math.PI / 180, x = Math.cos(angle) * r.widthMm / 2, y = Math.sin(angle) * r.widthMm / 2;return [{ x: r.positionMm.x - x, y: r.positionMm.y - y }, { x: r.positionMm.x + x, y: r.positionMm.y + y }]; }), ...heating.ufhCircuits.flatMap(c => [...c.pathMm, ...c.supplyPathMm, ...c.returnPathMm])];
+  const points = [...rooms.flatMap(r => r.vertices), ...heating.pipes.flatMap(p => p.pathMm), ...heating.manifolds.map(m => m.positionMm), ...heating.exclusions.flatMap(e => e.polygonMm), ...heating.radiators.flatMap(r => { const angle = r.rotationDeg * Math.PI / 180, x = Math.cos(angle) * r.widthMm / 2, y = Math.sin(angle) * r.widthMm / 2;return [{ x: r.positionMm.x - x, y: r.positionMm.y - y }, { x: r.positionMm.x + x, y: r.positionMm.y + y }]; }), ...heating.ufhCircuits.flatMap(c => [...c.pathMm, ...c.supplyPathMm, ...c.returnPathMm])];
   if (points.length) {
     const bounds = points.reduce((b, p) => ({ minX: Math.min(b.minX, p.x), maxX: Math.max(b.maxX, p.x), minY: Math.min(b.minY, p.y), maxY: Math.max(b.maxY, p.y) }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
     const { minX, maxX, minY, maxY } = bounds, scale = Math.min(515 / Math.max(1, maxX - minX), 520 / Math.max(1, maxY - minY));
@@ -31,6 +35,7 @@ export async function buildHeatingPdf(rooms: Room[], heating: HeatingProject, pr
     const roomLabels: { x: number; y: number; label: string }[] = [];
     const line = (points: Point2D[], colour: ReturnType<typeof rgb>, width: number, closed = false) => { const path = closed ? [...points, points[0]] : points;for (let i = 1; i < path.length; i++) page.drawLine({ start: map(path[i - 1]), end: map(path[i]), color: colour, thickness: width }); };
     for (const r of rooms) { line(r.vertices, rgb(.25, .29, .32), 1, true);const mid = map({ x: r.vertices.reduce((s, p) => s + p.x, 0) / r.vertices.length, y: r.vertices.reduce((s, p) => s + p.y, 0) / r.vertices.length }), demand = results.rooms.find(row => row.room.id === r.id)!.demand;roomLabels.push({ ...mid, label: `${ascii(r.name).slice(0, 35)}: ${Math.round(demand.designW)} W` }); }
+    for (const p of heating.pipes) line(p.pathMm, p.kind === "Supply" ? rgb(.83, .32, .16) : rgb(.12, .4, .65), 1.2);
     for (const c of heating.ufhCircuits) { line(c.pathMm, rgb(.75, .31, .09), .6);line(c.supplyPathMm, rgb(.83, .32, .16), .7);line(c.returnPathMm, rgb(.12, .4, .65), .7);const p = map(c.pathMm[0]);page.drawText(ascii(c.name).slice(0, 40), { ...p, size: 7, font }); }
     for (const ex of heating.exclusions) line(ex.polygonMm, rgb(.6, .47, .23), .8, true);
     for (const r of heating.radiators) { const p = map(r.positionMm), angle = r.rotationDeg * Math.PI / 180, v = { x: Math.cos(angle) * r.widthMm / 2, y: Math.sin(angle) * r.widthMm / 2 };line([{ x: r.positionMm.x - v.x, y: r.positionMm.y - v.y }, { x: r.positionMm.x + v.x, y: r.positionMm.y + v.y }], rgb(.55, .14, .11), 4);page.drawText(ascii(r.model).slice(0, 35), { x: p.x, y: p.y + 6, size: 7, font }); }
@@ -44,6 +49,7 @@ export async function buildHeatingPdf(rooms: Room[], heating: HeatingProject, pr
   text(`Project: ${projectName}`);
   text(`Design loss ${Math.round(results.heatLossW)} W; known radiator output ${Math.round(results.radiatorW)} W; known UFH output ${Math.round(results.ufhW)} W; electric heating + known fans ${Math.round(results.electricW)} W.`);
   text(`Radiators ${heating.radiators.length}; manifolds ${heating.manifolds.length}; ports ${heating.manifolds.reduce((s, m) => s + m.ports, 0)}; circuits ${heating.ufhCircuits.length}; actual pipe ${results.pipeM.toFixed(1)} m; separately stated wastage ${heating.buildingSettings.wastagePercent}% (${(results.pipeM * heating.buildingSettings.wastagePercent / 100).toFixed(1)} m).`);
+  for (const p of heating.pipes) text(`${p.name}: ${p.kind}; ${p.diameterMm} mm; schematic route ${heatingPipeLengthM(p.pathMm).toFixed(1)} m (not verified installed pipe length).`);
   for (const row of results.rooms) {
     text(`${row.room.name}: ${row.demand.areaM2.toFixed(1)} m2; ${row.demand.targetC} C; design demand ${Math.round(row.demand.designW)} W; ${row.settings.selectedEmitterType}; ${row.status}`, true);
     for (const emitter of row.emitters) text(`${emitter.radiator.model}: ${emitter.radiator.widthMm} x ${emitter.radiator.heightMm} mm; output ${emitter.outputW === null ? "Not set" : `${Math.round(emitter.outputW)} W`}. ${emitter.note}`);

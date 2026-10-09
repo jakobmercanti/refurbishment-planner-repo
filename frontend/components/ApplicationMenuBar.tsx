@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
 import { ProjectDownloadDialog } from "@/components/ProjectDownloadDialog";
 import { useHeatingLayout } from "@/components/HeatingLayoutContext";
@@ -133,6 +134,6 @@ export function ApplicationMenuBar({ onPrepareProject, onSaveProject, onOpenProj
   {preparedFile && <ProjectDownloadDialog file={preparedFile} onClose={() => setPreparedFile(null)} />}
   {preparing && <div className="project-file-progress" role="status">Preparing your project file…</div>}
   {error && <div className="project-error" role="alert">{error}<button onClick={() => setError(null)} aria-label="Dismiss file error">×</button></div>}
-  {saveAsOpen && <div className="modal-backdrop save-as-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSaveAsOpen(false); }}><form className="save-as-dialog" role="dialog" aria-modal="true" aria-labelledby="save-as-title" onSubmit={(event) => { event.preventDefault(); void saveProject(saveName); }}><header><div><span className="eyebrow">Save project file</span><h2 id="save-as-title">Save project as</h2></div><button type="button" className="modal-close" onClick={() => setSaveAsOpen(false)}>×</button></header><label><span>File name</span><div><input autoFocus value={saveName} onChange={(event) => setSaveName(event.target.value.replace(/\.json$/i, ""))} aria-label="Project file name" /><strong>.floorplan3d</strong></div><small>Includes every room and referenced local model.</small>{error && <p role="alert">{error}</p>}</label><footer><button type="button" onClick={() => setSaveAsOpen(false)}>Cancel</button><button className="primary" type="submit" disabled={preparing}>{preparing ? "Preparing…" : "Save file"}</button></footer></form></div>}
+  {saveAsOpen && <div className="modal-backdrop save-as-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSaveAsOpen(false); }}><form className="save-as-dialog" role="dialog" aria-modal="true" aria-labelledby="save-as-title" onSubmit={(event) => { event.preventDefault(); void saveProject(saveName); }}><header><div><span className="eyebrow">Save project file</span><h2 id="save-as-title">Save project as</h2></div><div className="window-header-actions"><WindowHelpButton title="Save project as" /><button type="button" className="modal-close" onClick={() => setSaveAsOpen(false)}>×</button></div></header><label><span>File name</span><div><input autoFocus value={saveName} onChange={(event) => setSaveName(event.target.value.replace(/\.json$/i, ""))} aria-label="Project file name" /><strong>.floorplan3d</strong></div><small>Includes every room and referenced local model.</small>{error && <p role="alert">{error}</p>}</label><footer><button type="button" onClick={() => setSaveAsOpen(false)}>Cancel</button><button className="primary" type="submit" disabled={preparing}>{preparing ? "Preparing…" : "Save file"}</button></footer></form></div>}
   </>;
 }

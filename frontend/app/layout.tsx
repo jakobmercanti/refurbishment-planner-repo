@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import Script from "next/script";
+import { WindowHelpHost } from "@/components/WindowHelpHost";
 import { APP_APPEARANCE_STORAGE_KEY } from "@/lib/appPreferences";
 import "./globals.css";
 import "./ui-theme.css";
@@ -9,6 +10,7 @@ import "./privacy.css";
 import "./commercial.css";
 import "./density.css";
 import "./appearance.css";
+import "./window-help.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.freefloorplan3d.com"),
@@ -41,6 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" data-theme="light" data-theme-mode="system" data-density="comfortable" suppressHydrationWarning>
       <body>
+        <WindowHelpHost />
         <Script id="appearance-preferences-bootstrap" strategy="beforeInteractive">{appearanceBootstrap}</Script>
         {children}<noscript><div style={{ padding: 24 }}><h1>Free floorplan creator in 2D and 3D</h1><p>Enable JavaScript to draw your floorplan, explore in 3D and download it for free. No registration or payment required.</p><Link href="/">About FreeFloorplan3D</Link> · <Link href="/guides/">Read the planning guides</Link></div></noscript>
         <Script src="/google-consent.js?v=ads-consent-20260926" strategy="beforeInteractive" />

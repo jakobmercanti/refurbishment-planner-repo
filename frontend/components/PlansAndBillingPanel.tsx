@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { commercialRequest } from "@/lib/commercialApi";
 import {
   buildPlanComparison,
@@ -89,7 +90,7 @@ function PlanHelpDialog({ content, packs, onClose }: { content: HelpContent; pac
     <section className="plan-help-dialog" role="dialog" aria-modal="true" aria-labelledby="plan-help-title">
       <header>
         <div><span className="commercial-eyebrow">PLAN GUIDE</span><h2 id="plan-help-title">{content.title}</h2></div>
-        <button ref={closeButton} type="button" className="modal-close" aria-label="Close information" onClick={onClose}>×</button>
+        <div className="window-header-actions"><WindowHelpButton title={content.title} /><button ref={closeButton} type="button" className="modal-close" aria-label="Close information" onClick={onClose}>×</button></div>
       </header>
       <p>{content.body}</p>
       {packs.length > 0 && <section className="plan-help-pack-list" aria-label="Render pack prices">

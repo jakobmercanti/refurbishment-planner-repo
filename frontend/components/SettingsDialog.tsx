@@ -1,6 +1,7 @@
 "use client";
 
 import { CURRENCY_OPTIONS, type AppPreferences, type CurrencyCode } from "@/lib/appPreferences";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 
 export { DEFAULT_APP_PREFERENCES } from "@/lib/appPreferences";
 export type { AppPreferences } from "@/lib/appPreferences";
@@ -19,7 +20,7 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
       <section className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <header>
           <div><span className="eyebrow">Application settings</span><h2 id="settings-title">Preferences</h2></div>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close settings">×</button>
+          <div className="window-header-actions"><WindowHelpButton title="Preferences" /><button type="button" className="modal-close" onClick={onClose} aria-label="Close settings">×</button></div>
         </header>
         <section className="settings-appearance" aria-labelledby="settings-appearance-title">
           <h3 id="settings-appearance-title">Appearance</h3>

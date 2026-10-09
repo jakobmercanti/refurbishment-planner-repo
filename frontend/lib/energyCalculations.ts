@@ -7,7 +7,8 @@ import type { ConstructionAssembly, ConstructionLayer, EnergyCategory, EnergyPro
 export function calculateLayerResistance(layer: ConstructionLayer, materials: readonly ThermalMaterial[]): number | null {
   if (layer.resistanceOverride !== null) return layer.resistanceOverride;
   const material = materials.find(m => m.materialId === layer.materialId);
-  return material?.lambda && layer.thicknessMm >= 0 ? layer.thicknessMm / 1000 / material.lambda : null;
+  const lambda = layer.lambdaOverride ?? material?.lambda;
+  return lambda && layer.thicknessMm >= 0 ? layer.thicknessMm / 1000 / lambda : null;
 }
 export function calculateAssemblyUValue(assembly: ConstructionAssembly, materials: readonly ThermalMaterial[]) {
   const layers = assembly.layers.map(layer => ({ layer, resistance: calculateLayerResistance(layer, materials) }));

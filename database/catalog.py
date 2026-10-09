@@ -16,6 +16,7 @@ from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, 
 from database.catalogue_assets import migrate_legacy_pictures
 from database.colour_parts import colour_parts_for, MANIFEST as COLOUR_PART_MANIFEST
 from database.electrical_defaults import seed_electrical_defaults
+from database.heating_defaults import seed_heating_defaults
 from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults, DOOR_FAMILIES, STAIRCASE_FAMILIES
 
 
@@ -217,6 +218,8 @@ def initialise_catalogue() -> None:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN subcategory VARCHAR(120) NOT NULL DEFAULT 'General'")
         if "representation_key" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN representation_key VARCHAR(80) NOT NULL DEFAULT ''")
+        if "heating_spec" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN heating_spec JSON")
         if "representation_version" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN representation_version INTEGER NOT NULL DEFAULT 1")
         if "plan_symbol_url" not in existing_columns:
@@ -252,6 +255,7 @@ def initialise_catalogue() -> None:
         _archive_obsolete_default_items(session)
         seed_fixture_defaults(session)
         seed_electrical_defaults(session)
+        seed_heating_defaults(session)
         session.flush()
         obsolete_stair_category = session.get(FurnitureCategoryRecord, "staircases-main")
         if obsolete_stair_category and not session.scalar(select(FurnitureItemRecord.id).where(FurnitureItemRecord.category_id == "staircases-main").limit(1)):

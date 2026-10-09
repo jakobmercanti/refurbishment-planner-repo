@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { exported } from "@/lib/analytics";
 
 export function ProjectDownloadDialog({ file, onClose }: { file: File; onClose: () => void }) {
@@ -38,7 +39,7 @@ export function ProjectDownloadDialog({ file, onClose }: { file: File; onClose: 
       if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }}>
-      <header><h2 id="project-download-title">Your project is ready</h2><button type="button" className="modal-close" aria-label="Close project download" onClick={onClose}>×</button></header>
+      <header><h2 id="project-download-title">Your project is ready</h2><div className="window-header-actions"><WindowHelpButton title="Project download" /><button type="button" className="modal-close" aria-label="Close project download" onClick={onClose}>×</button></div></header>
       <p className="project-download-name">{file.name}</p>
       <p>Includes every room and the 3D models used in your plan. Keep this file as a backup or open it on another device.</p>
       <div className="project-download-actions">

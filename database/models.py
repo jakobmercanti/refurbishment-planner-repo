@@ -120,6 +120,7 @@ class FurnitureItemRecord(Base):
     front_clearance_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
     subcategory: Mapped[str] = mapped_column(String(120), default="General")
     representation_key: Mapped[str] = mapped_column(String(80), default="")
+    heating_spec: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     representation_version: Mapped[int] = mapped_column(Integer, default=1)
     plan_symbol_url: Mapped[str] = mapped_column(String(255), default="")
     plan_symbol_data_url: Mapped[str | None] = mapped_column(Text, nullable=True)
