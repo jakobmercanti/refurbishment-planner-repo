@@ -36,6 +36,10 @@ import { commercialRequest } from "@/lib/commercialApi";
 import { includesPlannerBuild, type PlanKey } from "@/lib/commercialCatalogue";
 import { DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, normalizeElectricalLayout } from "@/lib/electricalLayout";
 import type { ElectricalLayoutImportPlan } from "@/lib/electricalLayoutPackage";
+import { HeatingLayoutProvider } from "@/components/HeatingLayoutContext";
+import { newHeatingProject } from "@/lib/heatingDocument";
+import { EnergyLayoutProvider } from "@/components/EnergyLayoutContext";
+import { newEnergyProject } from "@/lib/energyDocument";
 
 // Keep browser requests on the frontend origin. Next.js proxies these calls to
 // the private local engineering backend, so phones on the LAN never try to use
@@ -534,7 +538,7 @@ export default function Home() {
   }
 
   return (
-    <main className={`planner-workspace ${compactWorkspace ? "compact-workspace" : ""}`}>
+    <EnergyLayoutProvider data={local.project.energyLayout ?? newEnergyProject()} onChange={local.setEnergyLayout} onOpen={() => { setPlacement(null);setMode("EDITOR");setWorkspaceMode("FLOORPLAN"); }}><HeatingLayoutProvider data={local.project.heatingLayout ?? newHeatingProject()} rooms={local.project.rooms} onChange={local.setHeatingLayout} onOpen={() => { setPlacement(null);setMode("EDITOR");setWorkspaceMode("FLOORPLAN"); }}><main className={`planner-workspace ${compactWorkspace ? "compact-workspace" : ""}`}>
       <UiTheme settings={uiSettings} />
       <header className="topbar">
         <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} workspaceMode={workspaceMode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onDisplayUnitsChange={(units) => setPreferences((current) => ({ ...current, units }))} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenElectricalLayout={openElectricalLayout} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
@@ -639,6 +643,6 @@ export default function Home() {
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
       {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} humanMockupToolbarVisible={toolbarAvailability["viewer-person"]} onHumanMockupToolbarVisibleChange={setHumanMockupToolbarVisible} uiSettings={uiSettings} onUiSettingsChange={setUiSettings} tierPreview={tierPreview} onTierPreviewChange={setTierPreview} onClose={() => setCatalogueManagerOpen(false)} />}
       <SettingsDialog open={settingsOpen} preferences={appPreferences} onChange={handlePreferencesChange} onClose={() => setSettingsOpen(false)} />
-    </main>
+    </main></HeatingLayoutProvider></EnergyLayoutProvider>
   );
 }

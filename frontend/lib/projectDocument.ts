@@ -5,6 +5,8 @@ import { normalizeRenderCameraState, type RenderCameraState } from "./renderCame
 import { DEFAULT_ELECTRICAL_LAYOUT, electricalObstacleIds, normalizeElectricalLayout, type ElectricalLayoutData } from "./electricalLayout";
 import { DEFAULT_PLANNER_BUILD, normalizePlannerBuild, type PlannerBuildData } from "./plannerBuild";
 import { quoteSchema, type QuoteDocument } from "./quoteDocument";
+import { heatingSchema, parseHeatingProject, type HeatingProject } from "./heatingDocument";
+import { energySchema, parseEnergyProject, type EnergyProject } from "./energyDocument";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -46,6 +48,8 @@ const documentSchema = z.object({
   // non-authoritative view setting cannot prevent the project from opening.
   renderCamera: z.unknown().optional(),
   electricalLayout: z.unknown().optional(),
+  heatingLayout: heatingSchema.optional(),
+  energyLayout: energySchema.optional(),
   plannerBuild: z.unknown().optional(),
   quotes: z.array(quoteSchema).max(100).optional().default([]),
 }).strict();
@@ -54,6 +58,8 @@ export interface ProjectDocument {
   rooms: Room[]; floorplan: PersistedFloorplan | null; assets: AssetDefinition[]; assetInstances: AssetInstance[];
   renderCamera?: RenderCameraState;
   electricalLayout?: ElectricalLayoutData;
+  heatingLayout?: HeatingProject;
+  energyLayout?: EnergyProject;
   plannerBuild: PlannerBuildData;
   quotes?: QuoteDocument[];
 }
@@ -84,6 +90,8 @@ export function parseProject(input: unknown): ProjectDocument {
     plannerBuild: normalizePlannerBuild(rawPlannerBuild),
   };
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
+  if (p.heatingLayout) p.heatingLayout = parseHeatingProject(p.heatingLayout);
+  if (p.energyLayout) p.energyLayout = parseEnergyProject(p.energyLayout);
   unique((p.quotes ?? []).map(quote => quote.quoteId));
   if (p.quotes?.some(quote => quote.projectId !== p.projectId)) throw new Error("A quotation belongs to a different project.");
   unique(p.plannerBuild.activities.map(activity => activity.activityId));

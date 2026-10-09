@@ -156,6 +156,58 @@ def test_project_validator_preserves_versioned_local_planning_and_quote_document
         _validate_project(document, project_id)
 
 
+def test_project_validator_preserves_versioned_energy_document() -> None:
+    project_id = uuid4()
+    document = _project_document(str(project_id))
+    document["energyLayout"] = {
+        "version": 1, "materials": [], "assemblies": [], "existingAssignments": [],
+        "scenarios": [], "thermalBridges": [],
+    }
+    assert _validate_project(document, project_id) == (1, "Bathroom")
+    document["energyLayout"]["version"] = 2
+    with pytest.raises(HTTPException):
+        _validate_project(document, project_id)
+
+
+@pytest.mark.parametrize("invalid", [None, {}, ["bad"], [{"layers": None}]])
+def test_project_validator_rejects_invalid_energy_assemblies(invalid: object) -> None:
+    project_id = uuid4()
+    document = _project_document(str(project_id))
+    document["energyLayout"] = {
+        "version": 1, "materials": [], "assemblies": invalid, "existingAssignments": [],
+        "scenarios": [], "thermalBridges": [],
+    }
+    with pytest.raises(HTTPException):
+        _validate_project(document, project_id)
+
+
+def test_project_validator_preserves_versioned_heating_document() -> None:
+    project_id = uuid4()
+    document = _project_document(str(project_id))
+    document["heatingLayout"] = {
+        "version": 1, "rooms": [], "radiators": [], "manifolds": [],
+        "ufhZones": [], "ufhCircuits": [], "exclusions": [],
+    }
+    assert _validate_project(document, project_id) == (1, "Bathroom")
+    document["heatingLayout"]["version"] = 2
+    with pytest.raises(HTTPException):
+        _validate_project(document, project_id)
+
+
+@pytest.mark.parametrize("path", [None, [], [{"x": 1, "y": 2}]])
+def test_project_validator_rejects_incomplete_heating_pipe_geometry(path: object) -> None:
+    project_id = uuid4()
+    document = _project_document(str(project_id))
+    document["heatingLayout"] = {
+        "version": 1, "rooms": [], "radiators": [], "manifolds": [],
+        "ufhZones": [], "exclusions": [],
+        "ufhCircuits": [{"pathMm": path, "supplyPathMm": path, "returnPathMm": path}],
+    }
+    with pytest.raises(HTTPException) as error:
+        _validate_project(document, project_id)
+    assert error.value.status_code == 422
+
+
 @pytest.mark.parametrize("quotes", [None, {}, ["bad"], [{"version": True}], [{"version": 2}]])
 def test_project_validator_rejects_invalid_quote_documents(quotes: object) -> None:
     project_id = uuid4()

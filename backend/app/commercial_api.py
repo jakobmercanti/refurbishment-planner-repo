@@ -200,7 +200,9 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
     }
     if (
         not required.issubset(document)
-        or bool(set(document) - required - {"plannerBuild", "electricalLayout", "renderCamera", "quotes"})
+        or bool(set(document) - required - {
+            "plannerBuild", "electricalLayout", "renderCamera", "quotes", "heatingLayout", "energyLayout"
+        })
         or type(document.get("schemaVersion")) is not int
         or document.get("schemaVersion") != 1
         or document.get("units") != "mm"
@@ -215,9 +217,42 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
         if not isinstance(value, list) or len(value) > maximum:
             raise HTTPException(status_code=422, detail="The project contains too many items or an invalid collection.")
 
-    for field in ("plannerBuild", "electricalLayout", "renderCamera"):
+    for field in ("plannerBuild", "electricalLayout", "renderCamera", "heatingLayout", "energyLayout"):
         if field in document and not isinstance(document[field], dict):
             raise HTTPException(status_code=422, detail="Invalid optional project document.")
+    heating = document.get("heatingLayout")
+    if heating is not None:
+        if type(heating.get("version")) is not int or heating["version"] != 1:
+            raise HTTPException(status_code=422, detail="Unsupported heating layout version.")
+        for field, maximum in (("rooms", 1000), ("radiators", 2000), ("manifolds", 100),
+                               ("ufhZones", 1000), ("ufhCircuits", 2000), ("exclusions", 1000)):
+            collection = heating.get(field)
+            if not isinstance(collection, list) or len(collection) > maximum:
+                raise HTTPException(status_code=422, detail="Invalid heating layout collection.")
+        for circuit in heating["ufhCircuits"]:
+            if not isinstance(circuit, dict):
+                raise HTTPException(status_code=422, detail="Invalid heating circuit.")
+            for field in ("pathMm", "supplyPathMm", "returnPathMm"):
+                points = circuit.get(field)
+                if not isinstance(points, list) or not 2 <= len(points) <= 12000:
+                    raise HTTPException(status_code=422, detail="Invalid heating pipe geometry.")
+    energy = document.get("energyLayout")
+    if energy is not None:
+        if type(energy.get("version")) is not int or energy["version"] != 1:
+            raise HTTPException(status_code=422, detail="Unsupported energy layout version.")
+        for field, maximum in (("materials", 300), ("assemblies", 1000), ("existingAssignments", 10000),
+                               ("scenarios", 100), ("thermalBridges", 1000)):
+            collection = energy.get(field)
+            if not isinstance(collection, list) or len(collection) > maximum:
+                raise HTTPException(status_code=422, detail="Invalid energy layout collection.")
+        for assembly in energy["assemblies"]:
+            if (not isinstance(assembly, dict) or not isinstance(assembly.get("layers"), list)
+                    or len(assembly["layers"]) > 100):
+                raise HTTPException(status_code=422, detail="Invalid construction layers.")
+        for scenario in energy["scenarios"]:
+            if (not isinstance(scenario, dict) or not isinstance(scenario.get("assignments"), list)
+                    or len(scenario["assignments"]) > 10000):
+                raise HTTPException(status_code=422, detail="Invalid retrofit scenario.")
     quotes = document.get("quotes", [])
     if not isinstance(quotes, list) or len(quotes) > 100:
         raise HTTPException(status_code=422, detail="Invalid quotation collection.")

@@ -10,6 +10,8 @@ import type { ElectricalLayoutData } from "./electricalLayout";
 import type { PlannerBuildData } from "./plannerBuild";
 import type { Room } from "./types";
 import type { QuoteDocument } from "./quoteDocument";
+import type { HeatingProject } from "./heatingDocument";
+import type { EnergyProject } from "./energyDocument";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
@@ -72,5 +74,7 @@ export function useLocalProject() {
   const setElectricalProjectData = useCallback((rooms: Room[], electricalLayout: ElectricalLayoutData, assetInstances: AssetInstance[], assets?: AssetDefinition[]) => update({ rooms, electricalLayout, assetInstances, ...(assets ? { assets } : {}) }), [update]);
   const setPlannerBuild = useCallback((plannerBuild: PlannerBuildData) => update({ plannerBuild }), [update]);
   const setQuotes = useCallback((quotes: QuoteDocument[]) => update({ quotes }), [update]);
-  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes };
+  const setHeatingLayout = useCallback((heatingLayout: HeatingProject) => update({ heatingLayout }), [update]);
+  const setEnergyLayout = useCallback((energyLayout: EnergyProject) => update({ energyLayout }), [update]);
+  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, setHeatingLayout, setEnergyLayout };
 }
