@@ -140,13 +140,14 @@ export function lookupHybridRadiatorOutput(points: readonly HybridPerformancePoi
   return output && electrical ? { outputW: output.value, electricalW: electrical.value, interpolated: output.interpolated } : null;
 }
 export function calculateRadiatorOutput(radiator: HeatingRadiator, flowC: number, returnC: number, roomC: number): { outputW: number | null; electricalW: number; note: string } {
+  if (radiator.category === "Boiler") return { outputW: 0, electricalW: 0, note: `Heat generator: ${radiator.ratedOutputW ?? "Not set"} W central-heating capacity; not room heat output.` };
   if (radiator.emitterTechnology === "Electric") return { outputW: radiator.ratedOutputW, electricalW: radiator.ratedOutputW ?? 0, note: "Resistive input ≈ delivered heat; no water-temperature correction." };
-  if (radiator.emitterTechnology === "Hybrid" || radiator.manufacturerPerformanceData.length) {
+  if (!radiator.estimatedOutput && (radiator.emitterTechnology === "Hybrid" || radiator.manufacturerPerformanceData.length)) {
     const result = lookupHybridRadiatorOutput(radiator.manufacturerPerformanceData, flowC, returnC, roomC, radiator.fanMode);
     if (result || radiator.emitterTechnology === "Hybrid") return { outputW: result?.outputW ?? null, electricalW: result?.electricalW ?? 0, note: result ? result.interpolated ? "Interpolated supplied performance grid." : "Supplied performance point." : "Performance not set at these conditions; no extrapolation." };
   }
   const delta = Math.max(0, (flowC + returnC) / 2 - roomC);
-  return { outputW: radiator.ratedOutputW === null ? null : radiator.ratedOutputW * (delta / radiator.ratedDeltaTK) ** radiator.exponent, electricalW: 0, note: "Estimated power-law correction from reference output and exponent." };
+  return { outputW: radiator.ratedOutputW === null ? null : radiator.ratedOutputW * (delta / radiator.ratedDeltaTK) ** radiator.exponent, electricalW: 0, note: radiator.estimatedOutput ? "Estimated size-scaled panel surrogate, not this product’s tested rating. Confirm before sizing/installation." : "Estimated power-law correction from reference output and exponent." };
 }
 export function calculateElectricEmitterSize(demandW: number, sizes = [500, 750, 1000, 1250, 1500, 2000, 2500]): number[] {
   if (!(demandW > 0)) return [];
@@ -187,7 +188,7 @@ export function radiatorPlacementWarnings(r: HeatingRadiator, room: Room): strin
   }
   const angle = r.rotationDeg * Math.PI / 180, corners = [[-r.widthMm / 2, -r.depthMm / 2], [r.widthMm / 2, -r.depthMm / 2], [r.widthMm / 2, r.depthMm / 2], [-r.widthMm / 2, r.depthMm / 2]].map(([x, y]) => ({ x: r.positionMm.x + x * Math.cos(angle) - y * Math.sin(angle), y: r.positionMm.y + x * Math.sin(angle) + y * Math.cos(angle) }));
   if (!corners.every(p => containsPoint(p, room.vertices))) warnings.push("Radiator footprint extends outside room boundary.");
-  if (room.obstacles.some(o => { const footprint = obstacleFootprint(o); return corners.some(p => containsPoint(p, footprint)) || footprint.some(p => containsPoint(p, corners)); })) warnings.push("Radiator overlaps a placed fitting/furniture footprint.");
+  if (room.obstacles.some(o => { if (o.id === r.radiatorId) return false; const footprint = obstacleFootprint(o); return corners.some(p => containsPoint(p, footprint)) || footprint.some(p => containsPoint(p, corners)); })) warnings.push("Radiator overlaps a placed fitting/furniture footprint.");
   return warnings;
 }
 export function snapRadiatorToWall(r: HeatingRadiator, room: Room, point: Point2D): HeatingRadiator {

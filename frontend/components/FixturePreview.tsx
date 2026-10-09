@@ -2,7 +2,7 @@
 import { MetalReflections } from "@/components/MetalReflections";
 import { useThree } from "@react-three/fiber";
 import { Bounds, Center, OrbitControls, useBounds } from "@react-three/drei";
-import { useEffect, useState, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useState, type WheelEvent as ReactWheelEvent, type ReactNode } from "react";
 import { ParametricFixture } from "@/components/ParametricFixture";
 import { StableCanvas } from "@/components/StableCanvas";
 import type { Obstacle } from "@/lib/types";
@@ -31,7 +31,7 @@ function positiveDimension(value: number, fallback: number) {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
 }
 
-export function FixturePreview({ obstacle, compact = false, appearanceControls = false, still = false }: { obstacle: Obstacle; compact?: boolean; appearanceControls?: boolean; still?: boolean }) {
+export function FixturePreview({ obstacle, compact = false, appearanceControls = false, still = false, children }: { obstacle: Obstacle; compact?: boolean; appearanceControls?: boolean; still?: boolean; children?: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [fitRequest, setFitRequest] = useState(0);
@@ -56,7 +56,7 @@ export function FixturePreview({ obstacle, compact = false, appearanceControls =
       <ambientLight intensity={1.8} /><directionalLight position={[3, 5, 4]} intensity={3} />
       <Bounds fit clip observe margin={1.22} maxDuration={0.35}>
         <PreviewCameraFrame frameKey={frameKey} fitRequest={fitRequest} zoom={zoom} />
-        <Center cacheKey={frameKey}><group rotation={[showUnderside ? Math.PI : 0, Number(obstacle.rotation_deg) * Math.PI / 180, 0]}><ParametricFixture obstacle={obstacle} width={width / largest} depth={depth / largest} height={height / largest} /></group></Center>
+        <Center cacheKey={frameKey}><group rotation={[showUnderside ? Math.PI : 0, Number(obstacle.rotation_deg) * Math.PI / 180, 0]}>{children ?? <ParametricFixture obstacle={obstacle} width={width / largest} depth={depth / largest} height={height / largest} />}</group></Center>
       </Bounds>
       <OrbitControls makeDefault enabled={!still} enablePan={false} enableZoom={false} />
     </StableCanvas>

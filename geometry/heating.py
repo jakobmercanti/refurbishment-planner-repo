@@ -12,7 +12,8 @@ class HeatingPerformancePoint(BaseModel):
     soundDb: float | None = Field(default=None, ge=0, le=150)
 
 class HeatingElementSpec(BaseModel):
-    category: Literal["Type 10", "Type 11", "Type 21", "Type 22", "Type 33", "Towel", "Custom"] = "Custom"
+    category: Literal["Type 10", "Type 11", "Type 21", "Type 22", "Type 33", "Towel", "Custom", "Boiler"] = "Custom"
+    estimatedOutput: bool = False
     manufacturer: str = Field(default="", max_length=1000)
     model: str = Field(default="", max_length=1000)
     emitterTechnology: Literal["Hydronic", "Electric", "Hybrid"] = "Hydronic"

@@ -334,6 +334,12 @@ export function electricalConnectionPoints(connection: ElectricalConnection, fro
   }
   if (!forceOrthogonalRouting || route.length < 2) return route;
 
+  return orthogonalisePath(route);
+}
+
+/** Shared schematic-routing policy for electrical and heating connections. */
+export function orthogonalisePath(route: Point2D[]): Point2D[] {
+  if (route.length < 2) return route;
   const orthogonal: Point2D[] = [route[0]];
   const append = (point: Point2D) => {
     const previous = orthogonal.at(-1)!;

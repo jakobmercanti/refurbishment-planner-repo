@@ -481,7 +481,7 @@ export default function Home() {
       verified: false,
       fixture_kind: item.fixture_kind,
       model_id: item.id,
-      heating_spec: item.heating_spec ?? (item.category_id === "heating" || item.category_id.startsWith("radiators-") ? emptyHeatingSpec(item.name) : undefined),
+      heating_spec: item.heating_spec ?? (item.category_id.startsWith("heating") || item.category_id.startsWith("radiators-") ? emptyHeatingSpec(item.name) : undefined),
       plan_symbol_data_url: item.plan_symbol_data_url,
       representation_key: item.representation_key,
       plan_symbol_url: item.plan_symbol_url,

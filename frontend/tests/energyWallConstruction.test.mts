@@ -9,6 +9,12 @@ import type { Room } from '../lib/types.ts';
 const m=(value:number)=>({value,uncertainty_mm:0,verified:true,source_type:'USER_MEASURED'});
 const room:Room={id:'r',name:'Room',version:1,vertices:[{x:0,y:0},{x:5000,y:0},{x:5000,y:4000},{x:0,y:4000}],wall_height:m(2500),wall_thickness:m(150),openings:[],obstacles:[]};
 function setup(){const e=newEnergyProject(),h=newHeatingProject(),el=energyElements([room],h,e)[0],a=newAssembly({name:'Custom',category:'wall',materials:[['brick-english-red',100],['pir-tw55',50]]});return {e,h,el,a};}
+test('wall label anchors survive save/load without changing thermal calculations',()=>{
+ const {e,h,el}=setup();const before=calculateRoomHeatLoss(room,[room],withEnergyFabric(h,e,[room]));
+ e.labelPositions={[el.elementId]:{x:1234.5,y:-321}};const restored=parseEnergyProject(JSON.parse(JSON.stringify(e)));
+ assert.deepEqual(restored.labelPositions,e.labelPositions);assert.deepEqual(calculateRoomHeatLoss(room,[room],withEnergyFabric(h,restored,[room])),before);
+ assert.throws(()=>parseEnergyProject({...e,labelPositions:{wall:{x:Infinity,y:0}}}));
+});
 test('layer-local conductivity and colours persist without changing material library',()=>{const {e,a}=setup();a.layers[0].lambdaOverride=.25;a.layers[0].colorHex='#abc123';e.assemblies=[a];assert.equal(calculateLayerResistance(a.layers[0],e.materials),.4);assert.equal(parseEnergyProject(e).assemblies[0].layers[0].colorHex,'#abc123');assert.equal(e.materials.find(m=>m.materialId==='brick-english-red')!.lambda,.45);});
 test('overall thickness resizing preserves proportions and clears obsolete whole-U override',()=>{const {a}=setup();a.directUValue=.9;const n=resizeAssembly(a,300);assert.equal(assemblyThickness(n),300);assert.equal(n.layers[0].thicknessMm,200);assert.equal(n.layers[1].thicknessMm,100);assert.equal(n.directUValue,null);assert.equal(assemblyThickness(a),150);});
 test('main-floorplan thickness edit resizes active wall construction, not other walls',()=>{const {e,h,el,a}=setup();const next=setWallAssembly(e,el,a),others=energyElements([room],h,next),changed={...room,wall_thickness_overrides_mm:{'wall-001':300}};const synced=syncWallAssemblyThickness(next,others,[changed]);const assigned=scenarioAssignments(synced)[0];assert.equal(assemblyThickness(synced.assemblies.find(a=>a.assemblyId===assigned.assemblyId)!),300);assert.ok(calculateRoomHeatLoss(changed,[changed],withEnergyFabric(h,synced,[changed])).designW<calculateRoomHeatLoss(room,[room],withEnergyFabric(h,next,[room])).designW);assert.equal(scenarioAssignments(synced).length,1);});

@@ -34,7 +34,7 @@ export function heatingResults(rooms: readonly Room[], heating: HeatingProject) 
     if (flow <= returning) warnings.push("Flow temperature must exceed return temperature for hydronic flow sizing.");
     if (zones.length > 1) warnings.push("Multiple zones share this room: verify non-overlapping active coverage; capacities are not summed as certified coverage.");
     const radiatorW = emitters.reduce((s, e) => s + (e.outputW ?? 0), 0), ufhW = zones.reduce((s, z) => s + (z.outputW ?? 0), 0), capacityW = radiatorW + ufhW;
-    const unknown = emitters.some(e => e.outputW === null || e.radiator.emitterTechnology !== "Electric" && flow <= returning) || zones.some(z => !z.performance || z.performance.surfaceTemperatureC === null || z.performance.overLimit || flow <= returning || z.zone.geometryFingerprint !== geometryFingerprint(room, heating.exclusions.filter(e => e.roomId === room.id)) || z.circuits.some(c => c.warnings.some(w => /crosses room boundary|exceeds preferred maximum/i.test(w)))) || zones.length > 1;
+    const unknown = emitters.some(e => e.radiator.category !== "Boiler" && (e.radiator.estimatedOutput || e.outputW === null || e.radiator.emitterTechnology !== "Electric" && flow <= returning)) || zones.some(z => !z.performance || z.performance.surfaceTemperatureC === null || z.performance.overLimit || flow <= returning || z.zone.geometryFingerprint !== geometryFingerprint(room, heating.exclusions.filter(e => e.roomId === room.id)) || z.circuits.some(c => c.warnings.some(w => /crosses room boundary|exceeds preferred maximum/i.test(w)))) || zones.length > 1;
     const status = unknown || demand.warnings.some(w => w.startsWith("Energy ")) ? "Not verified" : capacityW >= demand.designW ? "Sufficient" : capacityW >= demand.designW * 0.9 ? "Marginal" : "Insufficient";
     if (settings.selectedEmitterType !== "None" && capacityW < demand.designW) warnings.push("Installed emitters do not meet the selected design requirement.");
     return { room, settings, demand, emitters, zones, radiatorW, ufhW, capacityW, coveragePercent: demand.designW ? capacityW / demand.designW * 100 : 0, status, warnings: [...warnings, ...demand.warnings.filter(w => w.startsWith("Energy ")), ...emitters.flatMap(e => e.warnings), ...zones.flatMap(z => [...z.warnings, ...z.circuits.flatMap(c => c.warnings)])] };
@@ -64,7 +64,7 @@ export function autoDesignHeating(rooms: readonly Room[], heating: HeatingProjec
       if (!next.ufhZones.some(z => z.roomId === room.id)) next.ufhZones.push(newUFHZone(room, next.manifolds[0]?.manifoldId ?? null));
       const generated = regenerateHeatingRoom(room, next);next = generated.heating;changes.push(...generated.changes);
     }
-    const installed = next.radiators.filter(r => r.roomId === room.id);
+    const installed = next.radiators.filter(r => r.roomId === room.id && r.category !== "Boiler");
     if (installed.length) { changes.push(`${room.name}: existing radiator selections retained; review capacity or remove before auto sizing.`); continue; }
     if (settings.selectedEmitterType === "None" || settings.selectedEmitterType === "Underfloor Heating") continue;
     const ufhOutput = heatingResults([room], next).rooms[0].ufhW, remaining = settings.selectedEmitterType === "Radiator + UFH" ? Math.max(0, demand - ufhOutput) : demand;

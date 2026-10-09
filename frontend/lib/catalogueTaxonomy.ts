@@ -14,7 +14,7 @@ export const MACRO_CATEGORY_LABELS: Record<MacroCategoryId, string> = {
 
 export function macroCategoryForCategoryId(categoryId: string): MacroCategoryId {
   if (categoryId === "electric") return "electrical";
-  if (categoryId === "heating") return "radiators";
+  if (categoryId === "heating" || categoryId === "heating-boilers") return "radiators";
   if (["showers", "basins", "toilets", "baths", "storage"].includes(categoryId)) return "bathroom";
   if (categoryId.startsWith("kitchen-")) return "kitchen";
   if (categoryId.startsWith("living-")) return "living";

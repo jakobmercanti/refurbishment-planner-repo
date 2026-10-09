@@ -1,0 +1,7 @@
+{
+  "referenceOutputW": 1709,
+  "referenceWidthMm": 1000,
+  "referenceHeightMm": 600,
+  "reference": "https://www.purmo.com/docs/Purmo-Catalogue-GB2024.pdf",
+  "description": "Estimated size-scaled Type 22 panel surrogate at delta T50. Not a tested rating for vertical, towel or custom products; confirm actual product output before design/installation. No fan boost assumed."
+}

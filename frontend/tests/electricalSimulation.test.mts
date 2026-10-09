@@ -24,7 +24,7 @@ test("single switch turns connected lamps on/off without mutating project data",
 test("two-way control: either switch always flips the same lamps", () => {
   const data = layout(connection("s1", "l1"), connection("l1", "s2"), connection("l1", "l2"));
   const a = switchTestKey(id, "s1"), b = switchTestKey(id, "s2");
-  for (const [positions, on] of [[{}, false], [{ [a]: true }, true], [{ [a]: true, [b]: true }, false], [{ [b]: true }, true]] as const) {
+  for (const [positions, on] of [[{}, false], [{ [a]: false, [b]: false }, true], [{ [a]: true, [b]: true }, true], [{ [a]: false, [b]: true }, false], [{ [a]: true, [b]: false }, false]] as const) {
     const result = simulateLighting(data, fixtures, positions);
     assert.equal(result.lights.l1, on); assert.equal(result.lights.l2, on);
     assert.equal(result.groups[0].switchKeys.length, 2);

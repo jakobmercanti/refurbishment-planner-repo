@@ -988,7 +988,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     if (heatingPipeSource === id) return;
     const endpoint = (key: string) => heating.data.radiators.find(r => r.radiatorId === key)?.positionMm ?? heating.data.manifolds.find(m => m.manifoldId === key)?.positionMm;
     const from = endpoint(heatingPipeSource), to = endpoint(id); if (!from || !to) return;
-    const pipes = (["Supply", "Return"] as const).filter(kind => !heating.data.pipes.some(p => p.kind === kind && ((p.fromId === heatingPipeSource && p.toId === id) || (p.fromId === id && p.toId === heatingPipeSource)))).map(kind => ({ pipeId: crypto.randomUUID(), name: `${kind} connection`, fromId: heatingPipeSource, toId: id, kind, diameterMm: 15, pathMm: kind === "Supply" ? [from, { x: to.x, y: from.y }, to] : [from, { x: from.x, y: to.y }, to], locked: false }));
+    const pipes = (["Supply", "Return"] as const).filter(kind => !heating.data.pipes.some(p => p.kind === kind && ((p.fromId === heatingPipeSource && p.toId === id) || (p.fromId === id && p.toId === heatingPipeSource)))).map(kind => ({ pipeId: crypto.randomUUID(), name: `${kind} connection`, fromId: heatingPipeSource, toId: id, kind, diameterMm: 15, pathMm: heating.data.forceOrthogonalRouting !== true ? [from, to] : kind === "Supply" ? [from, { x: to.x, y: from.y }, to] : [from, { x: from.x, y: to.y }, to], locked: false }));
     applyHeatingLayout({ ...heating.data, pipes: [...heating.data.pipes, ...pipes] }); setHeatingPipeSource(null); setHeatingTool(null);
   }
   const [highlightedHeatingRoomId, setHighlightedHeatingRoomId] = useState<string | null>(null);
@@ -1009,7 +1009,10 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const point = floorPlanFromClient(event.clientX, event.clientY, event.currentTarget, activeViewport);
     if (heatingTool === "MANIFOLD") { const manifoldId = crypto.randomUUID();applyHeatingLayout({ ...heating.data, manifolds: [...heating.data.manifolds, { manifoldId, name: `Manifold ${heating.data.manifolds.length + 1}`, positionMm: point, rotationDeg: 0, ports: 8 }] });setHeatingSelection({ kind: "manifold", id: manifoldId });setHeatingTool(null); }
     else if (heatingTool === "EXCLUSION") setHeatingExclusionDraft(p => [...p, point]);
-    else if (heatingTool === "PIPE") setHeatingPipeDraft(p => [...p, point]);
+    else if (heatingTool === "PIPE") setHeatingPipeDraft(p => {
+      const previous = p.at(-1);
+      return previous && heating.data.forceOrthogonalRouting === true && previous.x !== point.x && previous.y !== point.y ? [...p, { x: point.x, y: previous.y }, point] : [...p, point];
+    });
     else setHeatingSelection(null);
   }
   const cancelHeatingTool = useEffectEvent(() => { setHeatingTool(null);setHeatingExclusionDraft([]);setHeatingPipeDraft([]);setHeatingPipeSource(null); });
@@ -1245,7 +1248,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const electricalFixtures = visibleFixtures.map(previewedFixture).filter(isElectricalObstacle);
   const electricalObjects = electricalFixtures.map((fixture) => ({ id: fixture.id, label: fixture.name, representation_key: fixture.representation_key }));
   const lightingTest = useMemo(() => simulateLighting(electricalLayout, electricalFixtures, lightingSwitchPositions), [electricalLayout, electricalFixtures, lightingSwitchPositions]);
-  function toggleLightingSwitch(key: string) { setLightingSwitchPositions(current => ({ ...current, [key]: !current[key] })); }
+  function toggleLightingSwitch(key: string) { setLightingSwitchPositions(current => ({ ...current, [key]: !(current[key] ?? lightingTest.contacts[key] ?? false) })); }
   function testFixtureSwitch(fixture: Obstacle) {
     if (!switchGangCount(fixture.representation_key)) return;
     const keys = lightingTest.groups.flatMap(group => group.switchKeys).filter(key => {
@@ -1565,6 +1568,19 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const deleteSelectedElectricalConnectionEvent = useEffectEvent(() => {
     if (selectedElectricalConnectionId) deleteElectricalConnection(selectedElectricalConnectionId);
   });
+  const deleteSelectedHeatingEvent = useEffectEvent(() => {
+    if (!heating.data.enabled || !heatingSelection) return false;
+    const { id, kind } = heatingSelection;
+    applyHeatingLayout({ ...heating.data,
+      radiators: heating.data.radiators.filter(r => kind !== "radiator" || r.radiatorId !== id),
+      manifolds: heating.data.manifolds.filter(m => kind !== "manifold" || m.manifoldId !== id),
+      pipes: heating.data.pipes.filter(p => !(kind === "pipe" && p.pipeId === id) && p.fromId !== id && p.toId !== id),
+      ufhCircuits: heating.data.ufhCircuits.filter(c => !(kind === "circuit" && c.circuitId === id) && c.manifoldId !== id),
+      ufhZones: heating.data.ufhZones.map(z => z.manifoldId === id ? { ...z, manifoldId: null } : z),
+      exclusions: heating.data.exclusions.filter(e => kind !== "exclusion" || e.exclusionId !== id),
+    });
+    setHeatingSelection(null);return true;
+  });
   const requestSelectedFixtureDeletion = useEffectEvent(() => {
     if (fixtureDeleteConfirmation || !selectedFixtureId) return;
     const fixture = fixtures.find((item) => item.id === selectedFixtureId);
@@ -1591,6 +1607,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         return;
       }
       if (!event.repeat && (event.key === "Delete" || event.key === "Backspace") && !(event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]"))) {
+        if (deleteSelectedHeatingEvent()) { event.preventDefault();return; }
         if (electricalMode && !electricalConnecting && selectedElectricalConnectionId) {
           event.preventDefault();
           deleteSelectedElectricalConnectionEvent();
@@ -5093,10 +5110,10 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
               })()}
             </g>}
             </g>
-            <ElectricalLayoutOverlay testing={lightingTestOpen} lightStates={lightingTest.lights} fixtures={electricalFixtures} connections={electricalMode ? electricalLayout.connections : []} circuits={electricalLayout.circuits} toScreen={toScreen} showSymbols={!electricalMode || electricalDisplay.symbols} showConnections={electricalMode && electricalDisplay.connections} showLabels={electricalMode && electricalDisplay.circuitLabels} active={electricalMode} selectedFixtureId={selectedFixtureId} sourceId={electricalSourceId} selectedConnectionId={selectedElectricalConnectionId} activeCircuitId={selectedElectricalCircuitId ?? DEFAULT_ELECTRICAL_CIRCUIT.id} connecting={electricalMode && electricalConnecting} forceOrthogonalRouting={electricalLayout.forceOrthogonalRouting} cursor={electricalPointer} defaults={electricalDefaults} onFixturePointerDown={(event, fixture) => { if (lightingTestOpen) { event.preventDefault(); event.stopPropagation(); testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { event.preventDefault(); event.stopPropagation(); chooseElectricalEndpoint(fixture.id); return; } beginFixtureDrag(event, fixture); }} onFixtureActivate={(fixture) => { if (lightingTestOpen) { testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { chooseElectricalEndpoint(fixture.id); return; } const owner = projectRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)); selectFixtureForEdit(fixture, owner); if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id); }} onFixtureContextMenu={openFixtureContextMenu} onConnectionPointerDown={beginElectricalConnectionDrag} onConnectionContextMenu={openElectricalConnectionContextMenu} onWaypointPointerDown={beginElectricalWaypointDrag} onWaypointContextMenu={openElectricalWaypointContextMenu} onLabelPointerDown={beginElectricalLabelDrag} />
+            <ElectricalLayoutOverlay testing={lightingTestOpen} lightStates={lightingTest.lights} switchLabels={lightingTest.switchLabels} fixtures={electricalFixtures} connections={electricalMode ? electricalLayout.connections : []} circuits={electricalLayout.circuits} toScreen={toScreen} showSymbols={!electricalMode || electricalDisplay.symbols} showConnections={electricalMode && electricalDisplay.connections} showLabels={electricalMode && electricalDisplay.circuitLabels} active={electricalMode} selectedFixtureId={selectedFixtureId} sourceId={electricalSourceId} selectedConnectionId={selectedElectricalConnectionId} activeCircuitId={selectedElectricalCircuitId ?? DEFAULT_ELECTRICAL_CIRCUIT.id} connecting={electricalMode && electricalConnecting} forceOrthogonalRouting={electricalLayout.forceOrthogonalRouting} cursor={electricalPointer} defaults={electricalDefaults} onFixturePointerDown={(event, fixture) => { if (lightingTestOpen) { event.preventDefault(); event.stopPropagation(); testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { event.preventDefault(); event.stopPropagation(); chooseElectricalEndpoint(fixture.id); return; } beginFixtureDrag(event, fixture); }} onFixtureActivate={(fixture) => { if (lightingTestOpen) { testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { chooseElectricalEndpoint(fixture.id); return; } const owner = projectRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)); selectFixtureForEdit(fixture, owner); if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id); }} onFixtureContextMenu={openFixtureContextMenu} onConnectionPointerDown={beginElectricalConnectionDrag} onConnectionContextMenu={openElectricalConnectionContextMenu} onWaypointPointerDown={beginElectricalWaypointDrag} onWaypointContextMenu={openElectricalWaypointContextMenu} onLabelPointerDown={beginElectricalLabelDrag} />
             {placement && placementPoint && <PlacementPreview2D request={placement} point={placementPoint} candidate={placementCandidate} toScreen={toScreen} units={displayUnits} electricalMode={electricalMode} />}
             {heating.data.enabled && <HeatingLayoutOverlay connecting={heatingTool === "CONNECT"} onConnect={connectHeatingEndpoint} pipeDraft={heatingPipeDraft} data={heating.data} rooms={planRooms} selection={heatingSelection} onSelect={setHeatingSelection} onChange={applyHeatingLayout} toScreen={toScreen} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} highlightedRoomId={highlightedHeatingRoomId} draft={heatingExclusionDraft} />}
-            {energy.data.enabled && <EnergyLayoutOverlay data={energy.data} heating={heating.data} rooms={planRooms} selectedIds={energySelection} onSelect={selectEnergyWall} toScreen={toScreen} />}
+            {energy.data.enabled && <EnergyLayoutOverlay data={energy.data} heating={heating.data} rooms={planRooms} selectedIds={energySelection} onSelect={selectEnergyWall} toScreen={toScreen} onChange={applyEnergyLayout} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} />}
           </FloorPlanCanvas>
           {sourceUrl && !importing && calibrating && <div className="drawing-calibration-panel" role="dialog" aria-modal="false" aria-labelledby="drawing-calibration-title" onKeyDown={(event) => {
             event.stopPropagation(); if (event.key === "Escape") { setCalibrating(false); setCalibrationPoints([]); }

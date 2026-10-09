@@ -126,7 +126,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     return () => window.cancelAnimationFrame(frame);
   }, [editingId, elementEditRequest, room.id]);
   const fixtureItems = items.filter((item): item is RoomCatalogueItem =>
-    (heating ? item.category_id.startsWith("radiators-") || item.category_id === "heating" : categoryFilter ? item.category_id === categoryFilter : item.category_id !== "electric" && !item.category_id.startsWith("radiators-") && item.category_id !== "heating") && isRoomFixture(item));
+    (heating ? item.category_id.startsWith("radiators-") || (item.category_id === "heating" || item.category_id === "heating-boilers") : categoryFilter ? item.category_id === categoryFilter : item.category_id !== "electric" && !item.category_id.startsWith("radiators-") && item.category_id !== "heating" && item.category_id !== "heating-boilers") && isRoomFixture(item));
   const categories: Array<[string, string]> = electrical
     ? [...new Set([...ELECTRICAL_SUBCATEGORIES, ...fixtureItems.map(item => item.subcategory)])].filter(name => fixtureItems.some(item => item.subcategory === name)).map(name => [name, name])
     : [...new Map(fixtureItems.map(item => [item.category_id, item.category_name])).entries()];

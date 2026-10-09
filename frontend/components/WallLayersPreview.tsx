@@ -1,13 +1,26 @@
 "use client";
-import { useRef, useState, type CSSProperties } from "react";
 import type { ConstructionAssembly, ThermalMaterial } from "@/lib/energyDocument";
 import { assemblyThickness, LAYER_COLOURS } from "@/lib/energyWallConstruction";
-import styles from "./WallLayersPreview.module.css";
+import { FixturePreview } from "./FixturePreview";
+import type { Obstacle } from "@/lib/types";
+
+/** Same orbit interaction and compact/expanded shell as Add to plan. */
 export function WallLayersPreview({ assembly, materials }: { assembly: ConstructionAssembly; materials: ThermalMaterial[] }) {
-  const [expanded, setExpanded] = useState(false), [minimised, setMinimised] = useState(false), [rotation, setRotation] = useState({ x: -18, y: -35 });
-  const drag = useRef<{ x: number; y: number; rx: number; ry: number } | null>(null);
-  const total = assemblyThickness(assembly), depth = Math.min(180, Math.max(25, total * .4));
-  return <section className={styles.preview} aria-label="Wall composition preview"><div className={styles.header}><strong>Wall composition · {Number(total.toFixed(2))} mm</strong><div><button aria-expanded={!minimised} onClick={() => setMinimised(!minimised)}>{minimised ? "Restore preview" : "Minimise preview"}</button><button aria-pressed={expanded} onClick={() => { setExpanded(!expanded);setMinimised(false); }}>{expanded ? "Reduce preview" : "Expand preview"}</button></div></div>
-    {!minimised && <><div className={styles.viewport} role="img" aria-label="Rotatable wall layer stack. Drag to rotate or use the rotation sliders." style={{ height: expanded ? 420 : 230 }} onPointerDown={e => { drag.current = { x: e.clientX, y: e.clientY, rx: rotation.x, ry: rotation.y };e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={e => { if (drag.current) setRotation({ x: Math.max(-80, Math.min(80, drag.current.rx - (e.clientY - drag.current.y) * .5)), y: drag.current.ry + (e.clientX - drag.current.x) * .5 }); }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}><div className={styles.stack} style={{ transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)` }}>{assembly.layers.map((l, i) => { const d = total ? depth * l.thicknessMm / total : 0, z = -depth / 2 + (total ? depth * assembly.layers.slice(0, i).reduce((sum, v) => sum + v.thicknessMm, 0) / total : 0) + d / 2;return <div key={l.layerId} className={styles.block} style={{ "--layer-colour": l.colorHex ?? LAYER_COLOURS[i % LAYER_COLOURS.length], "--layer-depth": `${d}px`, transform: `translateZ(${z}px)` } as CSSProperties}><div className={styles.front} style={{ transform: `translateZ(${d / 2}px)` }} /><div className={styles.back} style={{ transform: `translateZ(${-d / 2}px) rotateY(180deg)` }} /><div className={styles.side} /><div className={styles.left} /><div className={styles.top} /><div className={styles.bottom} /></div>; })}</div></div><small>Outside → inside. Proportional layer depths; illustrative wall sample, not a fit calculation.</small><div className={styles.sliders}><label>Rotate horizontally<input type="range" min={-180} max={180} value={((rotation.y + 180) % 360 + 360) % 360 - 180} onChange={e => setRotation({ ...rotation, y: Number(e.target.value) })} /></label><label>Tilt preview<input type="range" min={-80} max={80} value={rotation.x} onChange={e => setRotation({ ...rotation, x: Number(e.target.value) })} /></label><button onClick={() => setRotation({ x: -18, y: -35 })}>Reset rotation</button></div><ol className={styles.legend}>{assembly.layers.map((l, i) => <li key={l.layerId}><span style={{ background: l.colorHex ?? LAYER_COLOURS[i % LAYER_COLOURS.length] }} />{materials.find(m => m.materialId === l.materialId)?.name} · {Number(l.thicknessMm.toFixed(2))} mm</li>)}</ol></>}
+  const total = assemblyThickness(assembly), largest = Math.max(1000, total);
+  const measured = (value: number) => ({ value, uncertainty_mm: 0, verified: false });
+  const obstacle = { id: assembly.assemblyId, name: "Wall composition", kind: "BOX", fixture_kind: "FURNITURE", base_z_mm: 0, verified: false, center: { x: 0, y: 0 }, rotation_deg: 0, dimensions: { width: measured(1000), height: measured(1000), depth: measured(Math.max(1, total)) } } as Obstacle;
+  return <section aria-label="Wall composition preview">
+    <strong>Wall composition · {Number(total.toFixed(2))} mm</strong>
+    <FixturePreview obstacle={obstacle} compact>
+      {assembly.layers.map((layer, index) => {
+        const preceding = assembly.layers.slice(0, index).reduce((sum, l) => sum + l.thicknessMm, 0);
+        return <mesh key={layer.layerId} position={[0, 0, (preceding + layer.thicknessMm / 2 - total / 2) / largest]}>
+          <boxGeometry args={[1000 / largest, 1000 / largest, Math.max(.01, layer.thicknessMm) / largest]} />
+          <meshStandardMaterial color={layer.colorHex ?? LAYER_COLOURS[index % LAYER_COLOURS.length]} roughness={.75} />
+        </mesh>;
+      })}
+    </FixturePreview>
+    <small>Outside → inside. Drag to rotate. Illustrative wall sample, not a fit calculation.</small>
+    <ol>{assembly.layers.map((layer, index) => <li key={layer.layerId}><span style={{ display: "inline-block", width: 10, height: 10, marginRight: 6, background: layer.colorHex ?? LAYER_COLOURS[index % LAYER_COLOURS.length] }} />{materials.find(m => m.materialId === layer.materialId)?.name ?? "Wall — layers not defined"} · {Number(layer.thicknessMm.toFixed(2))} mm</li>)}</ol>
   </section>;
 }

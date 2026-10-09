@@ -33,6 +33,7 @@ interface Props {
   onLabelPointerDown: (event: ReactPointerEvent<SVGTextElement>, connection: ElectricalConnection) => void;
   testing?: boolean;
   lightStates?: Record<string, boolean>;
+  switchLabels?: Record<string, string>;
 }
 
 export function ElectricalLayoutOverlay(props: Props) {
@@ -86,6 +87,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       return <g key={fixture.id} data-electrical-interactive="true" className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
         <title>{fixture.name}</title>
         {props.testing && Object.hasOwn(props.lightStates ?? {}, fixture.id) && <g className="electrical-test-state" pointerEvents="none"><circle cx={centre.x} cy={centre.y} r={Math.max(symbolWidth, symbolDepth) / 2 + 12} fill={props.lightStates?.[fixture.id] ? "#facc15" : "none"} fillOpacity="0.35" stroke={props.lightStates?.[fixture.id] ? "#a16207" : "#64748b"} strokeWidth="2" /><text className="electrical-circuit-label" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.lightStates?.[fixture.id] ? "On" : "Off"}</text></g>}
+        {props.testing && props.switchLabels?.[fixture.id] && <text className="electrical-circuit-label" pointerEvents="none" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.switchLabels[fixture.id]}</text>}
         {readableSymbol && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>
           <rect className="electrical-fixture-hit-area" x={-hitWidth / 2} y={-hitDepth / 2} width={hitWidth} height={hitDepth} rx={Math.min(10, hitDepth / 3)} />
           {props.active && <rect className="electrical-fixture-backplate" x={-symbolWidth / 2 - 3} y={-symbolDepth / 2 - 3} width={symbolWidth + 6} height={symbolDepth + 6} rx={Math.min(8, symbolDepth / 3)} />}
