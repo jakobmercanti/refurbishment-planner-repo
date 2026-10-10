@@ -2,7 +2,7 @@ import type { Room } from "./types";
 import type { ConstructionAssembly, EnergyProject } from "./energyDocument";
 import { assignEnergyElements, calculateAssemblyUValue, scenarioAssignments, type EnergyElement } from "./energyCalculations";
 
-export const LAYER_COLOURS = ["#b96950", "#ecd59c", "#e9c844", "#a5b2bb", "#ece9e0", "#78a5b4"];
+export { LAYER_COLOURS } from "./energyLayerColours";
 export const assemblyThickness = (a: ConstructionAssembly) => a.layers.reduce((s, l) => s + l.thicknessMm, 0);
 export function wallThicknessForElement(e: Pick<EnergyElement, "roomId" | "elementId">, rooms: readonly Room[]) {
   const room = rooms.find(r => r.id === e.roomId), index = Number(e.elementId.split("|wall:")[1]?.split(":")[0]);

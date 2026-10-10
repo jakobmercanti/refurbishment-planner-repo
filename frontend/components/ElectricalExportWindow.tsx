@@ -16,12 +16,13 @@ export type ElectricalExportOptions = {
   pictures: boolean;
 };
 
-type Props = { onExport: (options: ElectricalExportOptions) => void | Promise<void>; status?: string | null; busy?: boolean };
+type Props = { onPreview: (options: ElectricalExportOptions) => void | Promise<void>; onExport: (options: ElectricalExportOptions) => void | Promise<void>; status?: string | null; busy?: boolean };
 
-export function ElectricalExportWindow({ onExport, status, busy = false }: Props) {
+export function ElectricalExportWindow({ onExport, onPreview, status, busy = false }: Props) {
   const [options, setOptions] = useState<ElectricalExportOptions>({ format: "PDF", paperSize: "A3", orientation: "LANDSCAPE", plan: true, bom: true, connectionSummary: true, connections: true, segments: false, circuits: true, notes: false, pictures: false });
   const set = <K extends keyof ElectricalExportOptions>(key: K, value: ElectricalExportOptions[K]) => setOptions((current) => ({ ...current, [key]: value }));
   const drawingOnly = options.format !== "PDF";
+  const validSelection = drawingOnly ? options.plan : options.plan || options.bom || options.connectionSummary || options.connections || options.circuits || options.notes || options.pictures;
   return <section className="electrical-export-window-content">
     <p>Build a clean electrical drawing and optional documentation pages. Editor selections and temporary controls are excluded.</p>
     <div className="electrical-export-options-grid">
@@ -43,6 +44,7 @@ export function ElectricalExportWindow({ onExport, status, busy = false }: Props
     <p className="electrical-schedule-disclaimer">Drawing-line length is schematic only. It is not a physical cable length or cable quantity.</p>
     <p className="electrical-export-summary">Selected: {[options.plan && "Electrical plan", options.bom && !drawingOnly && "BOM", options.connectionSummary && !drawingOnly && "Connection summary", options.connections && !drawingOnly && "Connection schedule", options.circuits && !drawingOnly && "Circuit schedule", options.notes && !drawingOnly && "Notes", options.pictures && !drawingOnly && "Pictures"].filter(Boolean).join(" · ") || "No content selected"}</p>
     {status && <p className="electrical-layout-status" role="status">{status}</p>}
-    <button type="button" className="primary-small electrical-export-submit" disabled={busy || !Object.values(options).some((value) => value === true)} onClick={() => void onExport(options)}>{busy ? "Preparing export…" : options.format === "PDF" ? "Open print / Save as PDF" : `Download ${options.format}`}</button>
+    <button type="button" className="electrical-export-submit" disabled={busy || !validSelection} onClick={() => void onPreview(options)}>Preview in separate window</button>
+    <button type="button" className="primary-small electrical-export-submit" disabled={busy || !validSelection} onClick={() => void onExport(options)}>{busy ? "Preparing export…" : options.format === "PDF" ? "Open print / Save as PDF" : `Download ${options.format}`}</button>
   </section>;
 }

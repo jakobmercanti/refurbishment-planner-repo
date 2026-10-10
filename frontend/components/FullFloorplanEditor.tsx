@@ -42,6 +42,7 @@ import { simulateLighting, switchGangCount, lightingSwitchGangs } from "@/lib/el
 import { crossingBridgePath, electricalCrossings, type ElectricalCrossing } from "@/lib/electricalCrossings";
 import { ElectricalScheduleWindow } from "@/components/ElectricalScheduleWindow";
 import { ElectricalExportWindow, type ElectricalExportOptions } from "@/components/ElectricalExportWindow";
+import { showElectricalDocumentPreview } from "@/lib/electricalDocumentPreview";
 import { ElectricalLayoutOverlay } from "@/components/ElectricalLayoutOverlay";
 import { useHeatingLayout } from "@/components/HeatingLayoutContext";
 import { HeatingLayoutPanel, type HeatingSelection, type HeatingTool } from "@/components/HeatingLayoutPanel";
@@ -4620,11 +4621,11 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     } finally { setExporting(false); }
   }
 
-  async function exportElectrical(options: ElectricalExportOptions) {
+  async function exportElectrical(options: ElectricalExportOptions, preview = false) {
     setElectricalExportBusy(true); setElectricalExportStatus(null);
     let printWindow: Window | null = null;
     try {
-      if (options.format === "PDF") {
+      if (options.format === "PDF" || preview) {
         printWindow = window.open("", "_blank");
         if (!printWindow) throw new Error("Allow pop-ups for this site to prepare the printable electrical PDF.");
       }
@@ -4632,6 +4633,10 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       const rawMarkup = options.plan ? exportSvgMarkup("CURRENT", includeAttribution, false, true) : null;
       const svgMarkup = rawMarkup ? await inlineExportImages(rawMarkup) : null;
       if (options.format === "SVG") {
+        if (preview) {
+          showElectricalDocumentPreview(printWindow!, `<!doctype html><html><head><title>Electrical drawing preview</title></head><body><main class="drawing-preview">${svgMarkup}</main></body></html>`, { blob: new Blob([svgMarkup!], { type: "image/svg+xml;charset=utf-8" }), name: `${safeElectricalFileName(projectName)}-electrical-layout.svg`, onDownload: () => setElectricalExportStatus("SVG drawing downloaded from preview.") });
+          setElectricalExportStatus("Preview opened in a separate window. No file exported."); return;
+        }
         downloadElectricalFile(new Blob([svgMarkup!], { type: "image/svg+xml;charset=utf-8" }), `${safeElectricalFileName(projectName)}-electrical-layout.svg`);
         setElectricalExportStatus("SVG drawing downloaded."); setElectricalExportOpen(false); return;
       }
@@ -4641,6 +4646,10 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         const context = canvas.getContext("2d"); if (!context) throw new Error("The browser could not create an export canvas.");
         context.fillStyle = "#fff"; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height); if (includeAttribution) drawFloorplanAttribution(context, canvas.width, canvas.height);
         const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("The PNG export could not be created.")), "image/png"));
+        if (preview) {
+          showElectricalDocumentPreview(printWindow!, `<!doctype html><html><head><title>Electrical drawing preview</title></head><body><main class="drawing-preview"><img alt="Electrical drawing" src="${canvas.toDataURL("image/png")}"></main></body></html>`, { blob, name: `${safeElectricalFileName(projectName)}-electrical-layout.png`, onDownload: () => { exported("png"); setElectricalExportStatus("PNG drawing downloaded from preview."); } });
+          setElectricalExportStatus("Preview opened in a separate window. No file exported."); return;
+        }
         downloadElectricalFile(blob, `${safeElectricalFileName(projectName)}-electrical-layout.png`); exported("png"); setElectricalExportStatus("PNG drawing downloaded."); setElectricalExportOpen(false); return;
       }
 
@@ -4689,6 +4698,11 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeElectricalHtml(title)}</title><style>
         @page{size:${pageSize};margin:12mm;@bottom-right{content:"Page " counter(page) " of " counter(pages);font:8pt Arial,sans-serif;color:#526b80}}*{box-sizing:border-box}body{font:10pt/1.4 Arial,sans-serif;color:#102344;margin:0}.print-sheet{page-break-after:always;break-after:page}.print-sheet:last-child{page-break-after:auto;break-after:auto}.document-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;border-bottom:2px solid #173c63;padding-bottom:8px;margin-bottom:12px}.document-header small{font-size:8pt;text-transform:uppercase;letter-spacing:.1em;color:#526b80}.document-header h1{font-size:18pt;margin:4px 0}.document-meta{display:grid;gap:3px;text-align:right;font-size:8pt;color:#526b80}h2{font-size:15pt;margin:12px 0 8px}h3{font-size:11pt;margin:14px 0 6px}table{border-collapse:collapse;width:100%;font-size:8pt}thead{display:table-header-group}th,td{border:1px solid #ccd7df;padding:5px 6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}th{background:#edf4f9;font-weight:700}tr{break-inside:avoid}td small{display:block;color:#65788a;margin-top:2px}.plan-sheet{display:flex;flex-direction:column}.plan-svg{height:calc(100vh - 70mm);min-height:100mm;display:flex;align-items:center;justify-content:center}.plan-svg svg{width:100%;height:100%;max-height:100%;object-fit:contain}.document-footnote{font-size:8pt;color:#5f7080;margin-top:9px}.summary-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.summary-cards div{border:1px solid #ccd7df;border-radius:8px;padding:12px;display:grid;gap:5px}.summary-cards small{color:#5f7080}.summary-cards strong{font-size:15pt}.warning{background:#fff4df;border:1px solid #e7c986;color:#67450e;padding:8px 10px;border-radius:6px}.notes{font-size:11pt;line-height:1.6}.picture-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.picture-grid figure{margin:0;border:1px solid #ccd7df;padding:8px;break-inside:avoid}.picture-grid img{max-width:100%;max-height:125mm;object-fit:contain}.picture-grid figcaption{margin-top:5px;font-size:8pt}.swatch{display:inline-block;width:18px;height:10px;border:1px solid #617080}
         </style></head><body>${sheets.join("")}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));</script></body></html>`;
+      if (preview) {
+        const previewHtml = html.replace("<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));</script>", "");
+        showElectricalDocumentPreview(printWindow!, previewHtml.replace("</style>", `@media screen{.print-sheet{width:${options.orientation === "LANDSCAPE" ? options.paperSize === "A3" ? 420 : 297 : options.paperSize === "A3" ? 297 : 210}mm;min-height:${options.orientation === "LANDSCAPE" ? options.paperSize === "A3" ? 297 : 210 : options.paperSize === "A3" ? 420 : 297}mm;max-width:100%;}.plan-svg{height:150mm}}</style>`));
+        setElectricalExportStatus("Document preview opened in a separate window. Print or save only when ready."); return;
+      }
       printWindow!.document.open(); printWindow!.document.write(html); printWindow!.document.close();
       exported("pdf"); setElectricalExportStatus("Print window opened. Choose “Save as PDF” in your browser’s print dialog."); setElectricalExportOpen(false);
     } catch (error) {
@@ -5247,7 +5261,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       <ElectricalScheduleWindow rooms={electricalDocumentRooms} assets={electricalAssets} instances={electricalAssetInstances} layout={electricalLayout} projectName={projectName} defaultCurrency={defaultCurrency} onLayoutChange={applyElectricalLayout} />
     </FloatingToolbar>}
     {electricalExportOpen && <FloatingToolbar title="Export electrical layout" className="electrical-export-window" defaultPosition={{ x: 690, y: 120 }} initialSize={{ width: 430 }} maxHeight={760} layoutResetKey={toolbarLayoutResetKey} onClose={() => setElectricalExportOpen(false)}>
-      <ElectricalExportWindow onExport={exportElectrical} busy={electricalExportBusy} status={electricalExportStatus} />
+      <ElectricalExportWindow onExport={exportElectrical} onPreview={options => exportElectrical(options, true)} busy={electricalExportBusy} status={electricalExportStatus} />
     </FloatingToolbar>}
     {pendingElectricalImport && <div className="electrical-import-backdrop"><section className="electrical-import-dialog" role="dialog" aria-modal="true" aria-labelledby="electrical-import-title"><header><small>PORTABLE ELECTRICAL LAYOUT</small><h2 id="electrical-import-title">Import electrical layout</h2><WindowHelpButton title="Import electrical layout" /></header><div className="electrical-import-content"><p>File: <strong>{pendingElectricalImport.fileName}</strong></p><div className="electrical-import-counts"><span>Fittings <strong>{pendingElectricalImport.data.items.length + pendingElectricalImport.data.assetInstances.length}</strong></span><span>Connections <strong>{pendingElectricalImport.data.electricalLayout.connections.length}</strong></span><span>Circuits <strong>{pendingElectricalImport.data.electricalLayout.circuits.length}</strong></span></div><p>Import into the current floorplan. Walls, rooms, doors, windows, furniture and PlannerBuild data will not be replaced.</p><p className="electrical-import-warning"><strong>Replace</strong> removes {electricalDocumentRooms.reduce((sum, room) => sum + room.obstacles.filter(isElectricalObstacle).length, 0) + electricalAssetInstances.filter((instance) => electricalAssets.some((asset) => asset.assetId === instance.assetId && ["electric", "electrical"].includes((asset.categoryId ?? "").toLowerCase()))).length} current electrical fittings, {electricalLayout.connections.length} connections and {electricalLayout.circuits.length} circuits. <strong>Merge</strong> keeps current electrical data and imports additional items.</p>{electricalImportError && <p className="inline-error" role="alert">{electricalImportError}</p>}</div><footer><button type="button" className="review-style-button" onClick={() => { setPendingElectricalImport(null); setElectricalImportError(null); }}>Cancel</button><button type="button" className="review-style-button" onClick={() => void applyElectricalImport("MERGE")}>Merge</button><button type="button" className="danger-button" onClick={() => void applyElectricalImport("REPLACE")}>Replace current electrical layout</button></footer></section></div>}
   </section>;

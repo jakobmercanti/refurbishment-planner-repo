@@ -139,11 +139,21 @@ export function lookupHybridRadiatorOutput(points: readonly HybridPerformancePoi
   const output = interpolatePerformance(rows, ["flowC", "returnC", "roomC"], query, "outputW"), electrical = interpolatePerformance(rows, ["flowC", "returnC", "roomC"], query, "electricalW");
   return output && electrical ? { outputW: output.value, electricalW: electrical.value, interpolated: output.interpolated } : null;
 }
-export function calculateRadiatorOutput(radiator: HeatingRadiator, flowC: number, returnC: number, roomC: number): { outputW: number | null; electricalW: number; note: string } {
+export function calculateRadiatorOutput(radiator: HeatingRadiator, flowC: number, returnC: number, roomC: number, estimateRoomTemperature = false): { outputW: number | null; electricalW: number; note: string; estimated?: boolean } {
   if (radiator.category === "Boiler") return { outputW: 0, electricalW: 0, note: `Heat generator: ${radiator.ratedOutputW ?? "Not set"} W central-heating capacity; not room heat output.` };
   if (radiator.emitterTechnology === "Electric") return { outputW: radiator.ratedOutputW, electricalW: radiator.ratedOutputW ?? 0, note: "Resistive input ≈ delivered heat; no water-temperature correction." };
   if (!radiator.estimatedOutput && (radiator.emitterTechnology === "Hybrid" || radiator.manufacturerPerformanceData.length)) {
     const result = lookupHybridRadiatorOutput(radiator.manufacturerPerformanceData, flowC, returnC, roomC, radiator.fanMode);
+    if (!result && estimateRoomTemperature && flowC > returnC) {
+      // Only correct room temperature, at the same supplied water pair and fan mode.
+      // Keep the measured table immutable; this is not a manufacturer interpolation.
+      const reference = radiator.manufacturerPerformanceData.filter(p => p.fanMode === radiator.fanMode && p.flowC === flowC && p.returnC === returnC && returnC > p.roomC && Math.abs(p.roomC - roomC) <= 10).sort((a, b) => Math.abs(a.roomC - roomC) - Math.abs(b.roomC - roomC))[0];
+      if (reference) {
+        const mean = (flowC + returnC) / 2, delta = Math.max(0, mean - roomC);
+        return { outputW: reference.outputW * (delta / (mean - reference.roomC)) ** radiator.exponent, electricalW: reference.electricalW, estimated: true,
+          note: `Estimated room-temperature correction from ${reference.flowC}/${reference.returnC}/${reference.roomC}°C supplied rating, exponent n=${radiator.exponent}. Not a tested output at ${roomC}°C; confirm manufacturer performance. Original rating retained.` };
+      }
+    }
     if (result || radiator.emitterTechnology === "Hybrid") return { outputW: result?.outputW ?? null, electricalW: result?.electricalW ?? 0, note: result ? result.interpolated ? "Interpolated supplied performance grid." : "Supplied performance point." : "Performance not set at these conditions; no extrapolation." };
   }
   const delta = Math.max(0, (flowC + returnC) / 2 - roomC);

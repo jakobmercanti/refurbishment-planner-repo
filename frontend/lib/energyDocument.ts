@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { withLayerColours } from "./energyLayerColours";
+import { CONSTRUCTION_MATERIAL_DEFAULTS, upgradeLegacyMaterial } from "./thermalMaterialDefaults";
 
 const finite = z.number().finite(), text = z.string().max(2000), id = z.string().min(1).max(180);
 export const elementCategorySchema = z.enum(["wall", "floor", "roof", "window", "door"]);
 export type EnergyCategory = z.infer<typeof elementCategorySchema>;
-const materialSchema = z.object({ materialId: id, name: text, category: text, lambda: finite.positive().max(20).nullable(), density: finite.positive().nullable(), vapourResistance: finite.nonnegative().nullable(), reference: text, editable: z.boolean() });
+const materialSchema = z.object({ materialId: id, name: text, category: text, lambda: finite.positive().max(20).nullable(), density: finite.positive().nullable(), vapourResistance: finite.nonnegative().nullable(), reference: text, editable: z.boolean(), resistance: finite.nonnegative().max(100).nullable().optional(), resistanceMinThicknessMm: finite.nonnegative().max(3000).optional(), resistanceReferenceThicknessMm: finite.positive().max(3000).nullable().optional() });
 export type ThermalMaterial = z.infer<typeof materialSchema>;
 const layerSchema = z.object({ layerId: id, materialId: id, thicknessMm: finite.min(0).max(3000), resistanceOverride: finite.nonnegative().max(100).nullable(), lambdaOverride: finite.positive().max(20).nullable().optional(), colorHex: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), position: z.enum(["Inside", "Outside", "Within"]), upgrade: z.boolean() });
 export type ConstructionLayer = z.infer<typeof layerSchema>;
@@ -19,9 +21,9 @@ export type EnergyProject = z.infer<typeof energySchema>;
 /** Product-specific reference samples, not universal values for material families. */
 export const REFERENCE_MATERIALS: ThermalMaterial[] = [
   { materialId: "pir-tw55", name: "PIR — Kingspan TW55 reference", category: "Insulation", lambda: .022, density: null, vapourResistance: null, reference: "https://www.kingspan.com/content/dam/kingspan/kil/products/general-gb-and-ireland/kingspan-product-selector-brochure-en-ie.pdf", editable: true },
-  { materialId: "wool-roll", name: "Mineral wool — ROCKWOOL Roll reference", category: "Insulation", lambda: .044, density: null, vapourResistance: null, reference: "https://www.rockwool.com/syssiteassets/rw-uk/downloads/datasheets/roll-twinroll-rollbatt.pdf", editable: true },
+  { materialId: "wool-roll", name: "Mineral wool — ROCKWOOL Roll reference", category: "Insulation", lambda: .044, density: null, vapourResistance: null, reference: "https://www.rockwool.com/siteassets/rw-uk/downloads/datasheets/roll-twinroll-rollbatt.pdf", editable: true },
   { materialId: "brick-english-red", name: "Brick — Wienerberger English Red reference", category: "Masonry", lambda: .45, density: null, vapourResistance: null, reference: "https://www.wienerberger.co.uk/product-range/bricks/english-red.html", editable: true },
-  ...["Concrete block", "Dense concrete", "PUR", "EPS", "XPS", "Phenolic foam", "Timber", "Plasterboard", "Plaster", "Air cavity", "Screed", "Plywood", "OSB", "Roof tile"].map((name, index) => ({ materialId: `custom-${index}`, name: `${name} — specify product value`, category: ["PUR", "EPS", "XPS", "Phenolic foam"].includes(name) ? "Insulation" : "Construction", lambda: null, density: null, vapourResistance: null, reference: "Not supplied: enter a declared/design value for the actual product and conditions.", editable: true })),
+  ...CONSTRUCTION_MATERIAL_DEFAULTS,
 ];
 export const CONSTRUCTION_TEMPLATES: { name: string; category: EnergyCategory; materials: [string, number][] }[] = [
   { name: "Solid brick — illustrative layers", category: "wall", materials: [["brick-english-red", 215], ["custom-8", 13]] },
@@ -34,7 +36,7 @@ export const CONSTRUCTION_TEMPLATES: { name: string; category: EnergyCategory; m
   { name: "Suspended timber / exposed floor — confirm layers", category: "floor", materials: [["custom-6", 20], ["wool-roll", 100]] },
 ];
 export function newAssembly(template = CONSTRUCTION_TEMPLATES[0]): ConstructionAssembly {
-  return { assemblyId: crypto.randomUUID(), name: template.name, category: template.category, rsi: template.category === "roof" ? .10 : template.category === "floor" ? .17 : .13, rse: .04, directUValue: null, layers: template.materials.map(([materialId, thicknessMm]) => ({ layerId: crypto.randomUUID(), materialId, thicknessMm, resistanceOverride: null, position: "Within", upgrade: false })), notes: "Illustrative starting assembly; confirm every value. Surface R defaults are explicit planning inputs. One-dimensional model excludes repeating bridges, moisture and fixings." };
+  return withLayerColours({ assemblyId: crypto.randomUUID(), name: template.name, category: template.category, rsi: template.category === "roof" ? .10 : template.category === "floor" ? .17 : .13, rse: .04, directUValue: null, layers: template.materials.map(([materialId, thicknessMm]) => ({ layerId: crypto.randomUUID(), materialId, thicknessMm, resistanceOverride: null, position: "Within", upgrade: false })), notes: "Illustrative starting assembly; confirm every value. Surface R defaults are explicit planning inputs. One-dimensional model excludes repeating bridges, moisture and fixings." });
 }
 export function newEnergyProject(): EnergyProject { return { version: 1, enabled: false, materials: structuredClone(REFERENCE_MATERIALS), assemblies: [], existingAssignments: [], scenarios: [], activeScenarioId: null, targets: { wall: .30, roof: .18, floor: .25, window: 1.4, door: 1.6 }, energySettings: { heatingDegreeDays: null, baseTemperatureC: 15.5, climateReference: "", scheduleFactor: 1, seasonalEfficiency: null, efficiencyBasis: "", wastePercent: 0 }, thermalBridges: [], display: { walls: true, floors: false, roofs: false, openings: true, labels: true, heatLoss: true, improvements: false } }; }
 export function parseEnergyProject(value: unknown): EnergyProject {
@@ -43,6 +45,6 @@ export function parseEnergyProject(value: unknown): EnergyProject {
   if (p.activeScenarioId && !p.scenarios.some(s => s.scenarioId === p.activeScenarioId)) throw new Error("Missing active retrofit scenario.");
   for (const a of p.assemblies) { unique(a.layers.map(l => l.layerId));if (a.layers.some(l => !p.materials.some(m => m.materialId === l.materialId))) throw new Error("Missing assembly material."); }
   for (const assignments of [p.existingAssignments, ...p.scenarios.map(s => s.assignments)]) { unique(assignments.map(a => a.elementId));if (assignments.some(a => a.assemblyId && !p.assemblies.some(v => v.assemblyId === a.assemblyId))) throw new Error("Missing assigned construction."); }
-  return p;
+  return { ...p, materials: p.materials.map(upgradeLegacyMaterial), assemblies: p.assemblies.map(withLayerColours) };
 }
 export const ENERGY_DISCLAIMER = "Preliminary retrofit planning estimate, not an official EPC. This does not replace an accredited energy assessor using approved software/methodology, or a qualified professional's thermal, moisture, fire and installation design. Simplified ground, roof and one-dimensional layers omit junctions and repeating thermal bridges unless separately entered.";

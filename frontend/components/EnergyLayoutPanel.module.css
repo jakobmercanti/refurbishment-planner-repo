@@ -8,6 +8,8 @@
 .panel :global(.wall-layers-preview-inline .fixture-preview) { height: 180px !important; margin: 0; }
 .panel :global(.wall-layers-preview-inline .fixture-preview.expanded) { height: 300px !important; }
 .panel :global(.wall-layers-preview-inline ol) { padding-left: 20px; margin-bottom: 0; }
+.popup :global(.appearance-object-heading) { margin-top:0; padding-top:0; }
+.popup :global(.appearance-object-heading h2) { margin-top:0; font-size:22px; }
 .editorMetrics { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 10px; }
 .popup :global(.popup-content) { overflow: hidden; }
 .popup :global(.appearance-popup-grid) { height: min(650px, calc(100dvh - 165px)); max-height: min(650px, calc(100dvh - 165px)); grid-template-rows: minmax(0, 1fr); }

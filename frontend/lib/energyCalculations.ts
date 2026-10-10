@@ -1,4 +1,5 @@
 import type { Room, Point2D } from "./types";
+import { withLayerColours } from "./energyLayerColours";
 import { calculateRoomHeatLoss, wallAdjacencies, type ThermalSurface } from "./heatingCalculations";
 import type { HeatingProject } from "./heatingDocument";
 import { thermalElementId, type BuildingThermalOverrides } from "./buildingThermalModel";
@@ -7,6 +8,7 @@ import type { ConstructionAssembly, ConstructionLayer, EnergyCategory, EnergyPro
 export function calculateLayerResistance(layer: ConstructionLayer, materials: readonly ThermalMaterial[]): number | null {
   if (layer.resistanceOverride !== null) return layer.resistanceOverride;
   const material = materials.find(m => m.materialId === layer.materialId);
+  if (layer.lambdaOverride == null && material?.resistance != null) return layer.thicknessMm >= (material.resistanceMinThicknessMm ?? 0) && (material.resistanceReferenceThicknessMm == null || Math.abs(layer.thicknessMm - material.resistanceReferenceThicknessMm) < .001) ? material.resistance : null;
   const lambda = layer.lambdaOverride ?? material?.lambda;
   return lambda && layer.thicknessMm >= 0 ? layer.thicknessMm / 1000 / lambda : null;
 }
@@ -109,7 +111,7 @@ export function addInsulation(data: EnergyProject, elements: EnergyElement[], ma
     base.assemblyId = crypto.randomUUID();base.name = `${element.label} + ${thicknessMm} mm ${material.name}`;
     const layer: ConstructionLayer = { layerId: crypto.randomUUID(), materialId, thicknessMm, resistanceOverride: null, position, upgrade: true };
     base.layers = position === "Outside" ? [layer, ...base.layers] : [...base.layers, layer];
-    next = assignEnergyElements({ ...next, assemblies: [...next.assemblies, base] }, [{ ...assigned, elementId: element.elementId, assemblyId: base.assemblyId, uValue: null, geometrySignature: element.geometrySignature }]);
+    next = assignEnergyElements({ ...next, assemblies: [...next.assemblies, withLayerColours(base)] }, [{ ...assigned, elementId: element.elementId, assemblyId: base.assemblyId, uValue: null, geometrySignature: element.geometrySignature }]);
   }
   return next;
 }

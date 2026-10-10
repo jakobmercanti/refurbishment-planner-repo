@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Popup } from "./Popup";
+import { withLayerColours } from "@/lib/energyLayerColours";
 import { WallLayersPreview } from "./WallLayersPreview";
 import { NumberField } from "./EnergyNumberField";
 import { CONSTRUCTION_TEMPLATES, newAssembly, type ConstructionAssembly, type ConstructionLayer, type EnergyProject } from "@/lib/energyDocument";
@@ -17,7 +18,7 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
   source: EnergyProject; initialAssembly: ConstructionAssembly; element: EnergyElement; rooms: Room[]; heating: HeatingProject;
   stale: boolean; onCancel: () => void; onCommit: (data: EnergyProject) => void;
 }) {
-  const [data, setData] = useState(source), [assembly, setAssembly] = useState(initialAssembly);
+  const [data, setData] = useState(source), [assembly, setAssembly] = useState(() => withLayerColours(initialAssembly));
   const [error, setError] = useState(""), [template, setTemplate] = useState(0);
   const [materialId, setMaterialId] = useState("pir-tw55"), [insulationLambda, setInsulationLambda] = useState<number | null>(null);
   const [targetMode, setTargetMode] = useState("U-value"), [powerTarget, setPowerTarget] = useState(100);
@@ -43,18 +44,17 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
         <div className={ui.editorMetrics}><strong>{Number(assemblyThickness(assembly).toFixed(2))} mm total</strong><span>U {construction.uValue?.toFixed(3) ?? "Not set"} W/m²K</span><small>Wall heat loss: {construction.uValue === null ? "Not set" : `${Math.round(construction.uValue * thermal.areaM2 * thermal.deltaTK)} W`} · ΔT {thermal.deltaTK.toFixed(1)} K</small></div>
         {stale && <p role="alert" className={styles.warning}>The wall or project changed while editing. Cancel and reopen to use the latest model.</p>}
         {error && <p role="alert" className={styles.warning}>{error}</p>}
-        <NumberField autoFocus label="Overall wall thickness mm" value={assemblyThickness(assembly)} min={1} max={2000} onChange={v => { if (v) edit(resizeAssembly(assembly, v)); }} />
         <details><summary>Starting composition</summary><label>Construction preset<select value={template} onChange={e => setTemplate(Number(e.target.value))}>{CONSTRUCTION_TEMPLATES.filter(t => t.category === "wall").map((t, i) => <option key={t.name} value={i}>{t.name}</option>)}</select></label>
           <div className={styles.actions}><button onClick={() => edit(resizeAssembly(newAssembly(CONSTRUCTION_TEMPLATES.filter(t => t.category === "wall")[template]), assemblyThickness(assembly)))}>Use preset layers</button><button onClick={() => edit(newAssembly({ name: first.label, category: "wall", materials: [["custom-0", assemblyThickness(assembly)]] }))}>Start custom wall</button></div>
           <small>Replaces only the layers in this draft. Presets are starting assumptions; confirm every material value.</small>
         </details>
         <><small>Outside → inside. Open a layer to edit its material and thickness.</small>
           {assembly.layers.map((l, i) => { const m = data.materials.find(m => m.materialId === l.materialId);return <details key={l.layerId} className={ui.layer} open={i === 0}><summary><span className={ui.swatch} style={{ background: l.colorHex ?? LAYER_COLOURS[i % LAYER_COLOURS.length] }} />Layer {i + 1} · {m?.name ?? "Custom material"} · {Number(l.thicknessMm.toFixed(2))} mm</summary>
-            <label>Layer {i + 1} material<select value={l.materialId} onChange={e => layerEdit(l.layerId, { materialId: e.target.value, lambdaOverride: null, resistanceOverride: null })}>{data.materials.filter(m => m.category !== "Equivalent resistance").map(m => <option key={m.materialId} value={m.materialId}>{m.name}</option>)}</select></label>
+            <label>Layer {i + 1} material<select autoFocus={i === 0} value={l.materialId} onChange={e => layerEdit(l.layerId, { materialId: e.target.value, lambdaOverride: null, resistanceOverride: null })}>{data.materials.filter(m => m.category !== "Equivalent resistance").map(m => <option key={m.materialId} value={m.materialId}>{m.name}</option>)}</select></label>
             <div className={styles.grid}><NumberField label={`Layer ${i + 1} thickness mm`} value={l.thicknessMm} min={.1} max={2000} onChange={v => { if (v) layerEdit(l.layerId, { thicknessMm: v }); }} /><label>Layer {i + 1} colour<input type="color" style={{ height: 40, padding: 4 }} value={l.colorHex ?? LAYER_COLOURS[i % LAYER_COLOURS.length]} onChange={e => layerEdit(l.layerId, { colorHex: e.target.value })} /></label></div>
             <label>Layer {i + 1} installation position<select value={l.position} onChange={e => layerEdit(l.layerId, { position: e.target.value as ConstructionLayer["position"] })}>{["Outside", "Within", "Inside"].map(v => <option key={v}>{v}</option>)}</select></label>
-            <details><summary>Thermal parameters & source</summary><div className={styles.grid}><NumberField label={`Layer ${i + 1} conductivity λ W/mK`} value={l.lambdaOverride ?? m?.lambda ?? null} min={.001} max={20} onChange={v => layerEdit(l.layerId, { lambdaOverride: v, resistanceOverride: null })} /><NumberField label={`Layer ${i + 1} entered resistance R (cavity / tested layer)`} value={l.resistanceOverride} max={100} onChange={v => layerEdit(l.layerId, { resistanceOverride: v })} /></div>
-            <small>R {construction?.layers[i]?.resistance?.toFixed(3) ?? "Not set"} m²K/W · {m?.reference}</small></details>
+            <details><summary>Thermal parameters & source</summary><div className={styles.grid}><NumberField label={`Layer ${i + 1} conductivity λ W/mK`} value={l.lambdaOverride ?? m?.lambda ?? null} min={.001} max={20} onChange={v => layerEdit(l.layerId, { lambdaOverride: v, resistanceOverride: null })} /><NumberField label={`Layer ${i + 1} entered resistance R (cavity / tested layer)`} value={l.resistanceOverride ?? (l.lambdaOverride == null ? m?.resistance : null) ?? null} max={100} onChange={v => layerEdit(l.layerId, { resistanceOverride: v })} /></div>
+            <small>R {construction?.layers[i]?.resistance?.toFixed(3) ?? "Not set"} m²K/W · {m?.reference}</small><small>Defaults come from Library → Materials. Layer edits override this wall only.</small></details>
             <div className={styles.actions}><button disabled={!i} onClick={() => { const layers = [...assembly.layers];[layers[i - 1], layers[i]] = [layers[i], layers[i - 1]];edit({ ...assembly, layers }); }}>Move layer {i + 1} up</button><button disabled={i === assembly.layers.length - 1} onClick={() => { const layers = [...assembly.layers];[layers[i], layers[i + 1]] = [layers[i + 1], layers[i]];edit({ ...assembly, layers }); }}>Move layer {i + 1} down</button><button disabled={assembly.layers.length === 1} onClick={() => edit({ ...assembly, layers: assembly.layers.filter(v => v.layerId !== l.layerId) })}>Remove layer {i + 1}</button></div>
           </details>; })}
           <button disabled={assembly.layers.length >= 100} onClick={() => edit({ ...assembly, layers: [...assembly.layers, { layerId: crypto.randomUUID(), materialId, thicknessMm: 25, resistanceOverride: null, position: "Inside", upgrade: true, colorHex: LAYER_COLOURS[assembly.layers.length % LAYER_COLOURS.length] }] })}>Add layer</button>

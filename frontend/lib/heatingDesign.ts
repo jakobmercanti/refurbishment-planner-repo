@@ -16,7 +16,7 @@ export function heatingResults(rooms: readonly Room[], heating: HeatingProject) 
   const { flowTemperatureC: flow, returnTemperatureC: returning } = heating.heatingSystem;
   const rows = rooms.map(room => {
     const demand = calculateRoomHeatLoss(room, rooms, heating), settings = thermalRoom(room, heating), warnings: string[] = [];
-    const emitters = heating.radiators.filter(r => r.roomId === room.id).map(r => ({ radiator: r, ...calculateRadiatorOutput(r, flow, returning, demand.targetC), warnings: radiatorPlacementWarnings(r, room) }));
+    const emitters = heating.radiators.filter(r => r.roomId === room.id).map(r => ({ radiator: r, ...calculateRadiatorOutput(r, flow, returning, demand.targetC, heating.estimateRoomTemperatureOutput ?? true), warnings: radiatorPlacementWarnings(r, room) }));
     const zones = heating.ufhZones.filter(z => z.roomId === room.id).map(zone => {
       const exclusions = heating.exclusions.filter(e => e.roomId === room.id), activeAreaM2 = activeUFHAreaM2(room.vertices, exclusions.map(e => e.polygonMm));
       const circuits = heating.ufhCircuits.filter(c => c.zoneId === zone.zoneId), areaFromRuns = circuits.reduce((a, c) => a + calculateCircuitLength({ ...c, supplyPathMm: [], returnPathMm: [] }) * c.spacingMm / 1000, 0), coveredAreaM2 = Math.min(activeAreaM2, areaFromRuns);
@@ -34,7 +34,7 @@ export function heatingResults(rooms: readonly Room[], heating: HeatingProject) 
     if (flow <= returning) warnings.push("Flow temperature must exceed return temperature for hydronic flow sizing.");
     if (zones.length > 1) warnings.push("Multiple zones share this room: verify non-overlapping active coverage; capacities are not summed as certified coverage.");
     const radiatorW = emitters.reduce((s, e) => s + (e.outputW ?? 0), 0), ufhW = zones.reduce((s, z) => s + (z.outputW ?? 0), 0), capacityW = radiatorW + ufhW;
-    const capacityEstimated = emitters.some(e => e.radiator.category !== "Boiler" && e.radiator.estimatedOutput);
+    const capacityEstimated = emitters.some(e => e.radiator.category !== "Boiler" && (e.radiator.estimatedOutput || e.estimated));
     const capacityNeedsReview = emitters.some(e => e.radiator.category !== "Boiler" && (e.outputW === null || e.radiator.emitterTechnology !== "Electric" && flow <= returning)) || zones.some(z => !z.performance || z.performance.surfaceTemperatureC === null || z.performance.overLimit || flow <= returning || z.zone.geometryFingerprint !== geometryFingerprint(room, heating.exclusions.filter(e => e.roomId === room.id)) || z.circuits.some(c => c.warnings.some(w => /crosses room boundary|exceeds preferred maximum/i.test(w)))) || zones.length > 1;
     const unknown = capacityEstimated || capacityNeedsReview;
     const status = unknown || demand.warnings.some(w => w.startsWith("Energy ")) ? "Not verified" : capacityW >= demand.designW ? "Sufficient" : capacityW >= demand.designW * 0.9 ? "Marginal" : "Insufficient";
