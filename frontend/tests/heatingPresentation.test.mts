@@ -60,6 +60,12 @@ test("central room symbol contains a green fill, demand, capacity and textual su
   assert.match(html, /data-balance="sufficient"/); assert.match(html, /heating-room-status-fill[^>]*fill="#15803d"/);
   assert.match(html, /Heat loss:/); assert.match(html, /Heat available:/); assert.match(html, /Surplus \+/);
 });
+test("a rotated heating element keeps its output label upright", () => {
+  const heating = makeHeating(); heating.enabled = true; heating.radiators[0].rotationDeg = 180;
+  const html = renderToStaticMarkup(createElement(HeatingLayoutOverlay, { data: heating, rooms: [room], selection: null, onSelect() {}, onChange() {}, toScreen: p => ({ x: p.x / 10, y: p.y / 10 }), fromClient: (x, y) => ({ x, y }), highlightedRoomId: null, draft: [] }));
+  assert.match(html, /rotate\(180\)" class="heating-emitter-symbol"/);
+  assert.match(html, /rotate\(-180\)/);
+});
 test("redesigned panel has structured room balance, expandable technical fields, no mode checkbox", () => {
   const data = makeHeating(); data.enabled = true;
   const html = renderToStaticMarkup(createElement(HeatingLayoutPanel, { apiUrl: "/api", rooms: [room], data, selection: { kind: "radiator", id: data.radiators[0].radiatorId }, onChange() {}, onSelect() {}, onAdd() {}, onHighlightRoom() {}, onTool() {}, tool: null, onFinishPipe() {}, pipePointCount: 0, onFinishExclusion() {}, exclusionPointCount: 0, onUndo() {}, onRedo() {}, canUndo: false, canRedo: false, projectName: "Test" }));
@@ -68,6 +74,8 @@ test("redesigned panel has structured room balance, expandable technical fields,
   assert.match(html, /Room setup/); assert.match(html, /Heating elements/);
   assert.match(html, /Identity, dimensions &amp; position/); assert.match(html, /Output &amp; performance/);
   assert.match(html, /Heating pipes &amp; connections/); assert.match(html, /Assumptions &amp; professional review/);
+  assert.doesNotMatch(html, /Auto Design Heating|Advanced automatic sizing reference|\+ Add heating element/);
+  assert.equal((html.match(/role="tab"/g) ?? []).length, 5);
 });
 test("persisted enabled state cannot activate heating mode without its window", () => {
   function Probe() { const heating = useHeatingLayout();return createElement("span", { "data-mode": heating.data.enabled, "data-window": heating.windowOpen }); }

@@ -31,7 +31,7 @@ test("main energy preview precedes expandable thickness guidance without inline 
 test("undefined walls show a visible preview without claiming a calculated U-value", () => {
   const html = panel();
   assert.match(html, /Wall composition preview/); assert.match(html, /U Not set/);
-  assert.match(html, /No layers defined yet/); assert.match(html, /Heating Layout assumption/);
+  assert.doesNotMatch(html, /No layers defined yet/); assert.match(html, /Heating Layout assumption/);
 });
 test("dedicated preview uses the exact fittings viewer zoom/Fit shell, not compact expansion", () => {
   const html = renderToStaticMarkup(createElement(WallLayersPreview, { assembly, materials: energy.materials, appearanceControls: true }));

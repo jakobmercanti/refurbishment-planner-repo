@@ -11,9 +11,9 @@ export interface ToolbarDock {
   slot: number;
   slots: number;
   fill?: boolean;
-  top?: CSSProperties["top"];
-  width?: CSSProperties["width"];
-  height?: CSSProperties["height"];
+  top?: string | number;
+  width?: string | number;
+  height?: string | number;
 }
 
 export function filledToolbarDock(side: ToolbarDock["side"], visibleIds: string[], activeId: string): ToolbarDock {
@@ -25,7 +25,7 @@ export function filledToolbarDock(side: ToolbarDock["side"], visibleIds: string[
   };
 }
 
-export function positionedToolbarDock(side: ToolbarDock["side"], top: CSSProperties["top"], height: CSSProperties["height"], width?: CSSProperties["width"]): ToolbarDock {
+export function positionedToolbarDock(side: ToolbarDock["side"], top: string | number | undefined, height: string | number | undefined, width?: string | number): ToolbarDock {
   return { side, slot: 0, slots: 1, top, height, width };
 }
 

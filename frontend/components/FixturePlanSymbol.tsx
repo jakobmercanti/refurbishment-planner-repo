@@ -17,11 +17,11 @@ export function fixtureRepresentation(obstacle: Pick<Obstacle, "representation_k
 }
 
 /** The local symbol faces down the sheet (negative world Y), as the 3D model does. */
-export function FixturePlanSymbol({ obstacle, x, y, width: footprintWidth, depth: footprintDepth, selected = false, electricalMode = false }: { obstacle: Obstacle; x: number; y: number; width: number; depth: number; selected?: boolean; electricalMode?: boolean }) {
+export function FixturePlanSymbol({ obstacle, x, y, width: footprintWidth, depth: footprintDepth, selected = false, electricalMode = false, symbolSize }: { obstacle: Obstacle; x: number; y: number; width: number; depth: number; selected?: boolean; electricalMode?: boolean; symbolSize?: { width: number; depth: number } }) {
   const key = fixtureRepresentation(obstacle);
   const heatingElement = Boolean(obstacle.heating_spec);
   const deviceSymbol = electricalDevicePlanSymbol(key, electricalMode);
-  const { width, depth } = electricalDevicePlanSize(key, footprintWidth, footprintDepth, electricalMode);
+  const { width, depth } = symbolSize ?? electricalDevicePlanSize(key, footprintWidth, footprintDepth, electricalMode);
   const url = deviceSymbol?.dataUrl ?? assetUrl(obstacle.plan_symbol_data_url || obstacle.plan_symbol_url || `/fixture-symbols/${key}.svg`);
   const componentColoursSignature = JSON.stringify(obstacle.component_colors ?? {});
   const partColours = useMemo(() => resolvedPartColours({

@@ -14,8 +14,9 @@ import styles from "./HeatingLayoutPanel.module.css";
 import ui from "./EnergyLayoutPanel.module.css";
 
 /** Edits are local until Done: Cancel never changes geometry, heating or undo history. */
-export function WallLayersEditor({ source, initialAssembly, element: first, rooms, heating, stale, onCancel, onCommit }: {
+export function WallLayersEditor({ source, initialAssembly, element: first, rooms, heating, scenarioName, stale, onCancel, onCommit }: {
   source: EnergyProject; initialAssembly: ConstructionAssembly; element: EnergyElement; rooms: Room[]; heating: HeatingProject;
+  scenarioName: string;
   stale: boolean; onCancel: () => void; onCommit: (data: EnergyProject) => void;
 }) {
   const [data, setData] = useState(source), [assembly, setAssembly] = useState(() => withLayerColours(initialAssembly));
@@ -40,7 +41,7 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
     confirmDisabled={stale || !!error} onCancel={onCancel} onConfirm={() => { if (!stale && !error) onCommit(setWallAssembly(data, first, assembly)); }}>
     <div className="appearance-popup-grid">
       <div className={"appearance-popup-form " + styles.panel}>
-        <div className="appearance-object-heading"><h2>{first.label}</h2></div>
+        <div className="appearance-object-heading"><h2>{first.label}</h2><small>Editing construction in: {scenarioName}</small></div>
         <div className={ui.editorMetrics}><strong>{Number(assemblyThickness(assembly).toFixed(2))} mm total</strong><span>U {construction.uValue?.toFixed(3) ?? "Not set"} W/m²K</span><small>Wall heat loss: {construction.uValue === null ? "Not set" : `${Math.round(construction.uValue * thermal.areaM2 * thermal.deltaTK)} W`} · ΔT {thermal.deltaTK.toFixed(1)} K</small></div>
         {stale && <p role="alert" className={styles.warning}>The wall or project changed while editing. Cancel and reopen to use the latest model.</p>}
         {error && <p role="alert" className={styles.warning}>{error}</p>}
@@ -66,7 +67,7 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
           <p>{suggested === null ? "Complete the wall layers and insulation λ. A power target needs positive area and temperature difference." : suggested === 0 ? "This wall already meets your target." : `Minimum additional insulation: ${suggested} mm (λ ${chosenLambda}); target U ${targetU?.toFixed(3)} W/m²K.`}</p>
           <button disabled={!suggested || assembly.layers.length >= 100 || assemblyThickness(assembly) + suggested > 2000} onClick={() => { if (suggested) edit({ ...assembly, layers: [...assembly.layers, { layerId: crypto.randomUUID(), materialId, thicknessMm: suggested, lambdaOverride: chosenLambda, resistanceOverride: null, position: "Inside", upgrade: true, colorHex: "#e9c844" }] }); }}>Apply suggested insulation</button><small>Mathematical minimum for this serial-layer model, rounded up to 1 mm. Choose an available product thickness and confirm moisture, fire and installation suitability.</small></details>
         </>
-        <details><summary>How thickness and heating stay connected</summary><p>Done saves the layers and their combined thickness to this floorplan wall and updates Heating Layout. Cancel discards the draft. Editing overall thickness scales layers proportionally; cavity/tested R stays fixed. Room boundaries do not move.</p><p>Missing λ or R leaves the calculated U-value Not set. Heating fallback assumptions remain clearly labelled. Targets are project choices, not regulatory approval.</p></details>
+        <details><summary>How thickness and heating stay connected</summary><p>Done saves the layers to {scenarioName} and updates Heating Layout for the active scenario. Cancel discards the draft. Editing overall thickness scales layers proportionally; cavity/tested R stays fixed. {source.activeScenarioId ? "Retrofit thickness does not alter the base floorplan wall geometry." : "Existing Building thickness is linked to the floorplan wall. Room boundaries do not move."}</p><p>Missing λ or R leaves the calculated U-value Not set. Heating fallback assumptions remain clearly labelled. Targets are project choices, not regulatory approval.</p></details>
       </div>
       <div className={"appearance-popup-preview " + ui.editorPreview}>
         <div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div>

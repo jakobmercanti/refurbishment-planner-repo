@@ -96,11 +96,12 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       }
       setEditingId(item.id);
       setElementsListExpanded(true);
+      if (heating) setPositionExpanded(true);
       setWallLockPreference(item.wall_lock ?? false);
       setDraft(null);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [elementEditRequest, items, room.id, room.obstacles, electrical]);
+  }, [elementEditRequest, items, room.id, room.obstacles, electrical, heating]);
   useEffect(() => {
     if (!selectorOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -195,7 +196,12 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setObjectId(item.id);
     setBaseHeightExpanded(false);
     const next = fromCatalogue(item);
-    if (existing) change({ ...next, id: existing.id, center: existing.center, rotation_deg: existing.rotation_deg, wall_lock: existing.wall_lock });
+    if (existing) {
+      const replacement = constrainObstacleToRoom({ ...next, id: existing.id, center: existing.center, rotation_deg: existing.rotation_deg, wall_lock: existing.wall_lock }, room, existing.center, roomWalls);
+      if (!replacement) { setMountingError("This heater does not fit at the current position."); return; }
+      // A catalogue type change adopts that product's own thermal specification.
+      setMountingError("");onChange(room.obstacles.map(obstacle => obstacle.id === existing.id ? replacement : obstacle));
+    }
     else setDraft(next);
   }
   const activeCategoryDisplay = activeCategory ? (activeCategory === "storage" ? "Fittings" : macroCategories.find(([id]) => id === activeCategory)?.[1] ?? "") : "";
@@ -210,7 +216,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setObjectId(null);
     setHoveredObjectId(null);
     setDraft(null);
-    setEditingId(null);
+    if (!heating) setEditingId(null);
     setBaseHeightExpanded(false);
     setSelectorExpanded(true);
     setSelectorOpen("subcategory");
@@ -225,7 +231,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     setObjectId(electrical ? "" : null);
    setHoveredObjectId(null);
    setDraft(null);
-   setEditingId(null);
+   if (!heating) setEditingId(null);
     setBaseHeightExpanded(false);
     setSelectorExpanded(true);
     setSelectorOpen("object");

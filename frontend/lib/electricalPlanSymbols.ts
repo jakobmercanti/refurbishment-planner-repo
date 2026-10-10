@@ -28,9 +28,9 @@ const standardSocketPins = (x: number) =>
 // Use structured catalogue keys, including for saved projects with older symbols.
 const DEVICE_SYMBOLS = new Map<string, PlanPresentation>([
   ["electrical-switch-single", { electricalLayout: deviceFace(rocker(32, 36)), standardPlan: svgSymbol(rockerInset(40, 20), 100, 52) }],
-  ["electrical-switch-double", { electricalLayout: deviceFace(rocker(19, 27) + rocker(54, 27)), standardPlan: svgSymbol(rockerInset(27, 16) + rockerInset(57, 16), 100, 52) }],
-  ["electrical-switch-triple", { electricalLayout: deviceFace([16, 41, 66].map(x => rocker(x, 18)).join("")), standardPlan: svgSymbol([20, 44, 68].map(x => rockerInset(x, 12)).join(""), 100, 52) }],
-  ["electrical-switch-quadruple", { electricalLayout: deviceFace([20, 52, 84, 116].map(x => rocker(x, 24)).join(""), 160), standardPlan: svgSymbol([23, 51, 79, 107].map(x => rockerInset(x, 12)).join(""), 140, 52) }],
+  ["electrical-switch-double", { electricalLayout: deviceFace(rocker(29, 27) + rocker(72, 27), 128), standardPlan: svgSymbol(rockerInset(27, 16) + rockerInset(57, 16), 100, 52) }],
+  ["electrical-switch-triple", { electricalLayout: deviceFace([25, 66, 107].map(x => rocker(x, 24)).join(""), 156), standardPlan: svgSymbol([20, 44, 68].map(x => rockerInset(x, 12)).join(""), 100, 52) }],
+  ["electrical-switch-quadruple", { electricalLayout: deviceFace([24, 67, 110, 153].map(x => rocker(x, 24)).join(""), 184), standardPlan: svgSymbol([23, 51, 79, 107].map(x => rockerInset(x, 12)).join(""), 140, 52) }],
   ["electrical-switch-dimmer", { electricalLayout: deviceFace('<circle cx="50" cy="50" r="25"/><path d="M50 30v12"/>'), standardPlan: svgSymbol('<circle cx="50" cy="26" r="9" fill="#fff"/><path d="M50 20v6"/>', 100, 52) }],
   ["electrical-switch-dimmer-double", { electricalLayout: deviceFace([46, 114].map(x => '<circle cx="' + x + '" cy="50" r="22"/><path d="M' + x + ' 32v10"/>').join(""), 160), standardPlan: svgSymbol([40, 100].map(x => '<circle cx="' + x + '" cy="26" r="9" fill="#fff"/><path d="M' + x + ' 20v6"/>').join(""), 140, 52) }],
   ["electrical-switch-pull", { electricalLayout: deviceFace('<circle cx="50" cy="37" r="20"/><path d="M50 57v20"/><circle cx="50" cy="82" r="5" fill="#071b38"/>'), standardPlan: svgSymbol('<circle cx="50" cy="17" r="6" fill="#fff"/><path d="M50 23v15"/><circle cx="50" cy="40" r="2" fill="#071b38"/>', 100, 52) }],
@@ -57,6 +57,9 @@ export function electricalDevicePlanSize(key: string | null | undefined, width: 
   const symbol = electricalDevicePlanSymbol(key, electricalLayout);
   if (!symbol) return { width, depth };
   const minimumHeight = electricalLayout ? 32 : 13;
-  const height = Math.max(minimumHeight, Math.abs(width) / symbol.aspectRatio, Math.abs(depth));
+  // Multi-gang plates grow horizontally only; catalogue footprint dimensions remain authoritative.
+  const rockerPlate = electricalLayout && /^electrical-switch-(single|double|triple|quadruple)$/.test(key ?? "");
+  const nominalWidth = key === "electrical-switch-quadruple" ? 146 : 86;
+  const height = rockerPlate ? Math.max(minimumHeight, Math.abs(width) * 86 / nominalWidth, Math.abs(depth)) : Math.max(minimumHeight, Math.abs(width) / symbol.aspectRatio, Math.abs(depth));
   return { width: height * symbol.aspectRatio, depth: height };
 }
