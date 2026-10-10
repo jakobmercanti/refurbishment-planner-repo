@@ -10,6 +10,7 @@ export interface ElectricalCrossing {
   canJoin: boolean;
   direction: Point2D;
   otherDirection: Point2D;
+  segmentIndices: [number, number];
 }
 const cross = (a: Point2D, b: Point2D) => a.x * b.y - a.y * b.x;
 const sub = (a: Point2D, b: Point2D) => ({ x: a.x - b.x, y: a.y - b.y });
@@ -17,16 +18,25 @@ const near = (a: Point2D, b: Point2D) => Math.hypot(a.x - b.x, a.y - b.y) < 0.01
 const unit = (p: Point2D) => { const length = Math.hypot(p.x, p.y); return { x: p.x / length, y: p.y / length }; };
 
 /** Geometry detects crossings only. Circuit membership never implies an electrical junction. */
-export function electricalCrossings(layout: ElectricalLayoutData, fixtures: readonly Obstacle[]): ElectricalCrossing[] {
+export function electricalCrossings(layout: ElectricalLayoutData, fixtures: readonly Obstacle[], resolveEndpoint?: (connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => Point2D): ElectricalCrossing[] {
   const devices = new Map(fixtures.map(item => [item.id, item]));
+  const terminal = (connection: ElectricalConnection, side: "from" | "to") => {
+    const fixture = devices.get(side === "from" ? connection.fromId : connection.toId)!;
+    return resolveEndpoint?.(connection, side, fixture) ?? fixture.center;
+  };
   const routes = layout.connections.flatMap(connection => {
     const from = devices.get(connection.fromId), to = devices.get(connection.toId);
-    return from && to ? [{ connection, points: electricalConnectionPoints(connection, from.center, to.center, layout.forceOrthogonalRouting) }] : [];
+    return from && to ? [{ connection, points: electricalConnectionPoints(connection, terminal(connection, "from"), terminal(connection, "to"), layout.forceOrthogonalRouting) }] : [];
   });
   const crossings = new Map<string, ElectricalCrossing>();
+  // A readable terminal moves with zoom; joining still belongs to the stored world route.
+  const modelRoutes = resolveEndpoint ? electricalCrossings(layout, fixtures) : [];
+  const modelCrossings = new Map(modelRoutes.map(c => [JSON.stringify([...c.connectionIds, ...c.segmentIndices]), c]));
+  const modelPairs = new Map<string, ElectricalCrossing[]>();
+  modelRoutes.forEach(c => { const pair = JSON.stringify(c.connectionIds);modelPairs.set(pair, [...(modelPairs.get(pair) ?? []), c]); });
   const endpoint = (connection: ElectricalConnection, point: Point2D) => {
-    if (near(devices.get(connection.fromId)!.center, point)) return [connection.fromId, connection.fromSwitchGang ?? 1].join(":");
-    if (near(devices.get(connection.toId)!.center, point)) return [connection.toId, connection.toSwitchGang ?? 1].join(":");
+    if (near(terminal(connection, "from"), point)) return [connection.fromId, connection.fromSwitchGang ?? 1].join(":");
+    if (near(terminal(connection, "to"), point)) return [connection.toId, connection.toSwitchGang ?? 1].join(":");
     return null;
   };
   for (let a = 0; a < routes.length; a++) for (let b = a + 1; b < routes.length; b++) {
@@ -44,9 +54,13 @@ export function electricalCrossings(layout: ElectricalLayoutData, fixtures: read
       const sharedEndpoint = Boolean(fromEndpoint && fromEndpoint === toEndpoint && first.connection.circuitId === second.connection.circuitId);
       // Independent terminals can share one symbol centre. That is not a wire crossing.
       if (fromEndpoint && toEndpoint && !sharedEndpoint) continue;
-      const canJoin = first.connection.circuitId === second.connection.circuitId && !fromEndpoint && !toEndpoint;
-      const connected = sharedEndpoint || (canJoin && (layout.junctions ?? []).some(junction => ids.every(id => junction.connectionIds.includes(id)) && near(junction.position, position)));
-      crossings.set(key, { key, position, connectionIds: ids, connected, sharedEndpoint, canJoin, direction: unit(r), otherDirection: unit(s) });
+      const segmentIndices: [number, number] = [i - 1, j - 1];
+      const candidates = modelPairs.get(JSON.stringify(ids));
+      // Orthogonal routing can gain a bend when readable ports replace aligned centres.
+      const model = resolveEndpoint ? modelCrossings.get(JSON.stringify([...ids, ...segmentIndices])) ?? (candidates?.length === 1 ? candidates[0] : null) : null;
+      const canJoin = first.connection.circuitId === second.connection.circuitId && !fromEndpoint && !toEndpoint && (!resolveEndpoint || Boolean(model?.canJoin));
+      const connected = sharedEndpoint || (canJoin && (resolveEndpoint ? Boolean(model?.connected) : (layout.junctions ?? []).some(junction => ids.every(id => junction.connectionIds.includes(id)) && near(junction.position, position))));
+      crossings.set(key, { key, position, connectionIds: ids, connected, sharedEndpoint, canJoin, direction: unit(r), otherDirection: unit(s), segmentIndices });
     }
   }
   return [...crossings.values()];

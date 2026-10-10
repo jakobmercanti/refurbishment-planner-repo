@@ -17,7 +17,7 @@ export function ElectricalLightingTest({ layout, fixtures, result, positions, on
       const linkedSwitches = switches.filter(item => layout.connections.some(link => link.circuitId === circuit.id && [link.fromId, link.toId].includes(item.id)));
       const lightIds = [...new Set(groups.flatMap(group => group.lightIds))];
       return <details key={circuit.id} className="electrical-layout-section electrical-test-circuit" open={groups.length > 0}>
-        <summary><span>{circuit.name}</span><small>{lightIds.filter(id => result.lights[id]).length}/{lightIds.length} lights on</small></summary>
+        <summary><span className="electrical-test-circuit-title"><span className="electrical-test-disclosure" aria-hidden="true">▶</span>{circuit.name}</span><small>{lightIds.filter(id => result.lights[id]).length}/{lightIds.length} lights on</small></summary>
         <div className="electrical-test-controls">{linkedSwitches.map(item => <section key={item.id} className="electrical-test-fitting"><strong>{item.name}</strong><div className="electrical-test-gangs">{Array.from({ length: switchGangCount(item.representation_key) }, (_, index) => {
           const gang = index + 1, key = switchTestKey(circuit.id, item.id, gang), linked = groups.filter(group => group.switchKeys.includes(key));
           const on = linked.some(group => group.on), position = Boolean(positions[key] ?? result.contacts[key]);

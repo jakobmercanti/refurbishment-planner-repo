@@ -9,6 +9,9 @@ import { REFERENCE_UFH_DATASETS, type ReferenceRadiator } from "@/lib/heatingCat
 import { heatingElementSpecSchema } from "@/lib/heatingDocument";
 import { heatingRoomBalance } from "@/lib/heatingPresentation";
 import { refreshHeatingPipeEndpoints } from "@/lib/heatingPipes";
+import { createPortal } from "react-dom";
+import { Popup } from "./Popup";
+import { resetRoomHeating } from "@/lib/heatingRoomReset";
 import styles from "./HeatingLayoutPanel.module.css";
 
 export type HeatingSelection = { kind: "radiator" | "manifold" | "circuit" | "exclusion" | "pipe"; id: string } | null;
@@ -23,6 +26,7 @@ function NumberField({ label, value, onChange, min, max, step = "any" }: { label
 export function HeatingLayoutPanel(props: Props) {
   const { rooms, data, onChange, selection } = props;
   const [tab, setTab] = useState(selection?.kind === "radiator" ? "Radiators" : selection && ["circuit", "manifold", "exclusion"].includes(selection.kind) ? "UFH" : "Heat Loss"), [roomId, setRoomId] = useState(rooms[0]?.id ?? ""), [messages, setMessages] = useState<string[]>([]), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [resetRoomId, setResetRoomId] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null), performanceInput = useRef<HTMLInputElement>(null);
   const [catalogueRadiators, setCatalogueRadiators] = useState<ReferenceRadiator[] | undefined>(undefined);
   useEffect(() => { const controller = new AbortController(); const load = () => { void fetch(`${props.apiUrl}/catalog/items`, { signal: controller.signal }).then(response => { if (!response.ok) throw new Error("Catalogue offline"); return response.json() as Promise<CatalogueItem[]>; }).then(items => setCatalogueRadiators(items.filter(item => item.category_id === "heating" || item.category_id.startsWith("radiators-")).flatMap(item => { const spec = heatingElementSpecSchema.safeParse(item.heating_spec); return spec.success ? [{ ...spec.data, catalogueId: item.id, catalogueItemId: item.id, widthMm: item.width_mm, heightMm: item.height_mm, depthMm: item.depth_mm }] : []; }))).catch(() => undefined); }; load(); window.addEventListener("catalogue-changed", load); return () => { controller.abort(); window.removeEventListener("catalogue-changed", load); }; }, [props.apiUrl]);
@@ -71,8 +75,10 @@ export function HeatingLayoutPanel(props: Props) {
     change(next);
   }
   return <section className={styles.panel} aria-label="Heating Layout controls">
+    {resetRoomId && typeof document !== "undefined" && createPortal(<div onKeyDown={event => { event.stopPropagation();if (event.key === "Escape") { event.preventDefault();setResetRoomId(null); } }}><Popup open title="Reset room heating?" message={`Remove all heaters, underfloor zones, circuits, exclusions and room-only pipework from ${rooms.find(r => r.id === resetRoomId)?.name ?? "this room"}? Thermal settings and other rooms are kept; shared manifolds remain. You can Undo this reset.`} confirmLabel="Reset heating" onCancel={() => setResetRoomId(null)} onConfirm={() => { const target = rooms.find(r => r.id === resetRoomId);if (target) { change(resetRoomHeating(data, target));props.onSelect(null);props.onTool(null); }setResetRoomId(null); }} /></div>, document.body)}
     <div className={styles.toolbar}>
       <div className={styles.actions}><button className={styles.primary} onClick={props.onAdd}>Add heating element…</button></div>
+      <button disabled={!room || busy} onClick={() => setResetRoomId(room.id)}>Reset</button>
       <div className={styles.actions}><button onClick={props.onUndo} disabled={!props.canUndo} aria-label="Undo heating">↶ Undo</button><button onClick={props.onRedo} disabled={!props.canRedo} aria-label="Redo heating">↷ Redo</button></div>
     </div>
     <p className={styles.guide}>Choose a room → check its heat demand → add heating → review the balance.</p>

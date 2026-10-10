@@ -177,6 +177,13 @@ export function calculateUFHOutput(zone: UFHZone, flowC: number, returnC: number
   const surface = interpolatePerformance(dataset.points.filter(p => p.surfaceTemperatureC !== null), keys, query, "surfaceTemperatureC");
   return { outputWm2: output.value, surfaceTemperatureC: surface?.value ?? null, interpolated: output.interpolated, overLimit: surface !== null && surface.value > zone.maxSurfaceTemperatureC || dataset.maxOutputWm2 !== undefined && output.value > dataset.maxOutputWm2 };
 }
+export function ufhPerformanceIssue(zone: UFHZone, flowC: number, returnC: number, roomC: number): string {
+  const dataset = zone.performanceDataset;
+  if (!dataset) return "UFH performance table missing: choose a matching published system table or import tested data under Underfloor.";
+  if (dataset.pipeDiameterMm !== zone.diameterMm) return `UFH pipe diameter ${zone.diameterMm} mm does not match the table's ${dataset.pipeDiameterMm} mm.`;
+  if (dataset.floorConstruction !== zone.floorConstruction) return "UFH floor build-up does not match the selected performance table.";
+  return `UFH table has no complete rating grid for ${zone.spacingMm} mm spacing, R ${zone.floorThermalResistance} m²K/W and flow/return/room ${flowC}/${returnC}/${roomC}°C. Defined inputs alone do not supply a tested output; no extrapolation is applied.`;
+}
 /** Water approximation: cp 4180 J/kgK, density 998 kg/m³. Not glycol. */
 export function calculateUFHFlowRate(outputW: number, flowC: number, returnC: number): number | null { return flowC > returnC ? outputW / (4180 * (flowC - returnC)) * 60 * 1000 / 998 : null; }
 export function calculatePressureDrop(lengthM: number, flowLmin: number, internalDiameterMm: number | null, meanWaterC: number): number | null {

@@ -41,6 +41,7 @@ import { ElectricalLayoutPanel, type ElectricalDisplayOptions } from "@/componen
 import { ElectricalLightingTest } from "@/components/ElectricalLightingTest";
 import { simulateLighting, switchGangCount, lightingSwitchGangs } from "@/lib/electricalSimulation";
 import { crossingBridgePath, electricalCrossings, type ElectricalCrossing } from "@/lib/electricalCrossings";
+import { electricalPlanEndpoint } from "@/lib/electricalPlanPorts";
 import { ElectricalScheduleWindow } from "@/components/ElectricalScheduleWindow";
 import { ElectricalExportWindow, type ElectricalExportOptions } from "@/components/ElectricalExportWindow";
 import { showElectricalDocumentPreview } from "@/lib/electricalDocumentPreview";
@@ -286,6 +287,11 @@ const FLOORPLAN_EXPORT_PADDING_RATIO = 0.04;
 const FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX = 48;
 
 const FLOORPLAN_EXPORT_BASE_CSS = `
+.electrical-gang-badge{fill:#fff;stroke:#94a3b8;stroke-width:1;stroke-dasharray:none}
+.electrical-gang-number{fill:#071b38;stroke:none;font:700 10px Arial,sans-serif}
+.electrical-gang-leader{fill:none;stroke:#64748b;stroke-width:1}
+.electrical-terminal-port{fill:#071b38;stroke:#fff;stroke-width:1}
+.electrical-fitting-reference{fill:#071b38;font:700 10px Arial,sans-serif;paint-order:stroke;stroke:#fff;stroke-width:3}
 .floor-canvas{display:block;width:100%;height:100%;min-height:0!important;background:#fff}
 .canvas-background{fill:#fff}.plan-grid line{stroke:#d9dfda;stroke-width:1}.room-polygon{fill:#fff;stroke:none}
  .wall-body{stroke:#183d34;stroke-width:var(--wall-stroke-width,10px);stroke-linecap:square}.wall-line{stroke:#fff;stroke-width:var(--wall-inner-stroke-width,4px);stroke-linecap:square}.wall-interaction-line{display:none}.wall-thickness-label{fill:#183d34;font:700 9px ui-monospace,monospace;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:4px}
@@ -1268,7 +1274,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const electricalObjects = electricalFixtures.map((fixture) => ({ id: fixture.id, label: fixture.name, representation_key: fixture.representation_key }));
   const lightingTest = useMemo(() => simulateLighting(electricalLayout, electricalFixtures, lightingSwitchPositions), [electricalLayout, electricalFixtures, lightingSwitchPositions]);
   const switchGangs = lightingSwitchGangs(electricalFixtures, lightingTest);
-  const wireCrossings = electricalWindowOpen ? electricalCrossings(electricalLayout, electricalFixtures) : [];
   function toggleWireJunction(crossing: ElectricalCrossing) {
     if (!crossing.canJoin) return;
     const retained = (electricalLayout.junctions ?? []).filter(junction => !(crossing.connectionIds.every(id => junction.connectionIds.includes(id)) && Math.hypot(junction.position.x - crossing.position.x, junction.position.y - crossing.position.y) < 0.01));
@@ -1521,6 +1526,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const zoomedViewport = scaleFloorPlanViewport(lockedViewport ?? viewport, zoom);
   const activeViewport = { ...zoomedViewport, offsetX: zoomedViewport.offsetX + pan.x, offsetY: zoomedViewport.offsetY + pan.y };
   const toScreen = (point: Point2D) => floorPlanToScreen(point, activeViewport);
+  const planTerminal = (connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => electricalPlanEndpoint(connection, side, fixture, toScreen, electricalMode && electricalDisplay.symbols);
+  const wireCrossings = electricalWindowOpen ? electricalCrossings(electricalLayout, electricalFixtures) : [];
   const actualGridSizeMm = Number.isFinite(snapSize) && snapSize > 0 ? snapSize : DEFAULT_SNAP_MM;
   const gridOrigin = toScreen({ x: 0, y: 0 });
   const gridSpacing = actualGridSizeMm * activeViewport.scale;
@@ -1918,7 +1925,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const to = electricalFixtureById.get(connection.toId)?.center;
     const svg = event.currentTarget.ownerSVGElement;
     if (!from || !to || !svg) return;
-    const points = electricalConnectionPoints(connection, from, to, electricalLayout.forceOrthogonalRouting);
+    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting);
     const pointer = floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport);
     let segmentIndex = 0; let closest = Number.POSITIVE_INFINITY;
     for (let index = 0; index < points.length - 1; index++) {
@@ -1938,7 +1945,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const svg = event.currentTarget.ownerSVGElement;
     const from = electricalFixtureById.get(connection.fromId)?.center, to = electricalFixtureById.get(connection.toId)?.center;
     if (!svg || !from || !to) return;
-    const points = electricalConnectionPoints(connection, from, to, electricalLayout.forceOrthogonalRouting);
+    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting);
     const screen = toScreen(points[Math.floor(points.length / 2)]);
     const bounds = svg.getBoundingClientRect(), view = svg.viewBox.baseVal;
     const initial = floorPlanFromClient(bounds.left + (screen.x - view.x) * bounds.width / view.width, bounds.top + (screen.y - 8 - view.y) * bounds.height / view.height, svg, activeViewport);
@@ -1954,7 +1961,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const svg = event.currentTarget.ownerSVGElement;
     if (!electricalMode || !from || !to || !svg) return;
     const pointer = canvasPointFromClient(event.clientX, event.clientY, svg, false);
-    const points = electricalConnectionPoints(connection, from, to, electricalLayout.forceOrthogonalRouting);
+    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting);
     let segmentIndex = 0; let closest = Number.POSITIVE_INFINITY; let point = pointer;
     for (let index = 0; index < points.length - 1; index++) {
       const a = points[index]; const b = points[index + 1];
@@ -1978,7 +1985,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const from = electricalFixtureById.get(connection.fromId)?.center;
     const to = electricalFixtureById.get(connection.toId)?.center;
     if (!from || !to) return;
-    const points = electricalConnectionPoints(connection, from, to, electricalLayout.forceOrthogonalRouting);
+    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting);
     const waypoints = points.slice(1, -1);
     const existingCorner = waypoints.findIndex((waypoint) => Math.hypot(waypoint.x - menu.point.x, waypoint.y - menu.point.y) < 1e-6);
     if (existingCorner < 0) waypoints.splice(Math.min(menu.segmentIndex, waypoints.length), 0, menu.point);
@@ -4405,13 +4412,21 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
 
     const electricalFixtureMap = new Map(electricalFixtures.map((fixture) => [fixture.id, fixture]));
     const electricalRoutes = includeElectrical ? electricalLayout.connections.flatMap((connection) => {
-      const from = electricalFixtureMap.get(connection.fromId)?.center; const to = electricalFixtureMap.get(connection.toId)?.center;
+      const source = electricalFixtureMap.get(connection.fromId), destination = electricalFixtureMap.get(connection.toId);
+      const from = source ? planTerminal(connection, "from", source) : null, to = destination ? planTerminal(connection, "to", destination) : null;
       return from && to ? [{ connection, points: electricalConnectionPoints(connection, from, to, electricalLayout.forceOrthogonalRouting) }] : [];
     }) : [];
     const electricalOverlay = clone.querySelector<SVGGElement>(".electrical-overlay");
     if (includeElectrical && electricalOverlay) {
       electricalOverlay.querySelectorAll(".electrical-connection").forEach((element) => element.remove());
-      electricalOverlay.querySelectorAll(".electrical-wire-bridge,.electrical-junction,[data-electrical-gang],.electrical-fitting-reference").forEach(element => element.remove());
+      electricalOverlay.querySelectorAll(".electrical-wire-bridge,.electrical-junction,.electrical-gang-hit").forEach(element => element.remove());
+      // Keep static gang identifiers/ports, never temporary test colours or controls.
+      electricalOverlay.querySelectorAll("[data-electrical-gang]").forEach(element => {
+        const gang = element.getAttribute("data-electrical-gang");
+        ["data-electrical-gang", "data-selected", "data-state", "role", "tabindex", "aria-label"].forEach(attribute => element.removeAttribute(attribute));
+        const title = element.querySelector("title");if (title) title.textContent = `Gang ${gang}`;
+        const text = element.querySelector<SVGTextElement>(".electrical-gang-number");if (text) text.setAttribute("fill", "#071b38");
+      });
       const circuitById = new Map(electricalLayout.circuits.map((circuit) => [circuit.id, circuit]));
       for (const route of electricalRoutes) {
         const group = document.createElementNS("http://www.w3.org/2000/svg", "g"); group.setAttribute("class", "electrical-connection");
@@ -4429,7 +4444,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         electricalOverlay.insertBefore(group, electricalOverlay.firstChild);
       }
       const colour = (connection: ElectricalConnection) => connection.colorOverride === false ? circuitById.get(connection.circuitId)?.color ?? connection.color : connection.color;
-      for (const crossing of electricalCrossings(electricalLayout, electricalFixtures)) {
+      for (const crossing of electricalCrossings(electricalLayout, electricalFixtures, planTerminal)) {
         const centre = toScreen(crossing.position);
         const screenDirection = (direction: Point2D) => { const next = toScreen({ x: crossing.position.x + direction.x, y: crossing.position.y + direction.y }); const length = Math.hypot(next.x - centre.x, next.y - centre.y); return { x: (next.x - centre.x) / length, y: (next.y - centre.y) / length }; };
         const [a, b] = crossing.connectionIds.map(id => electricalLayout.connections.find(connection => connection.id === id)!);
@@ -5046,7 +5061,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
               const outline = room.vertices.map(toScreen); const labelPosition = toScreen(roomLabelPosition(room)); const nameWidth = roomNameEditorWidth(room.name); const labelWidth = nameWidth + 12; const labelHeight = 30; const dragging = draggingRoomLabelId === room.id;
               return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } if (tool !== "DRAW") { event.stopPropagation(); clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className={`room-name-editor${dragging ? " dragging" : ""}`} x={labelPosition.x - labelWidth / 2} y={labelPosition.y - labelHeight / 2} width={labelWidth} height={labelHeight} onPointerDown={(event) => beginRoomLabelDrag(event, room)}><div className="room-name-drag-shell"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } event.stopPropagation(); if (tool !== "DRAW") { clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); }} /></div></foreignObject>}</g>;
             })}
-            {visibleFixtures.filter((fixture) => !isElectricalObstacle(fixture) && !(heating.data.enabled && isHeatingElement(fixture))).map((storedFixture) => {
+            {(energy.windowOpen ? [] : visibleFixtures).filter((fixture) => !isElectricalObstacle(fixture) && !(heating.data.enabled && isHeatingElement(fixture))).map((storedFixture) => {
               const fixture = previewedFixture(storedFixture);
               const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
               const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
@@ -5193,9 +5208,9 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
               })()}
             </g>}
             </g>
-            <ElectricalLayoutOverlay testing={lightingTestOpen} switchGangs={switchGangs} junctions={electricalLayout.junctions} onFixtureGangActivate={(fixture, gang) => { if (lightingTestOpen) testFixtureSwitch(fixture, gang); else if (electricalConnecting) chooseElectricalEndpoint(fixture.id, gang); }} lightStates={lightingTest.lights} switchLabels={lightingTest.switchLabels} fixtures={electricalFixtures} connections={electricalMode ? electricalLayout.connections : []} circuits={electricalLayout.circuits} toScreen={toScreen} showSymbols={!electricalMode || electricalDisplay.symbols} showConnections={electricalMode && electricalDisplay.connections} showLabels={electricalMode && electricalDisplay.circuitLabels} active={electricalMode} selectedFixtureId={selectedFixtureId} sourceId={electricalSourceId} sourceGang={electricalSourceGang} selectedConnectionId={selectedElectricalConnectionId} activeCircuitId={selectedElectricalCircuitId ?? DEFAULT_ELECTRICAL_CIRCUIT.id} connecting={electricalMode && electricalConnecting} forceOrthogonalRouting={electricalLayout.forceOrthogonalRouting} cursor={electricalPointer} defaults={electricalDefaults} onFixturePointerDown={(event, fixture) => { if (lightingTestOpen) { event.preventDefault(); event.stopPropagation(); testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { event.preventDefault(); event.stopPropagation(); chooseElectricalEndpoint(fixture.id); return; } beginFixtureDrag(event, fixture); }} onFixtureActivate={(fixture) => { if (lightingTestOpen) { testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { chooseElectricalEndpoint(fixture.id); return; } const owner = projectRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)); selectFixtureForEdit(fixture, owner); if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id); }} onFixtureContextMenu={openFixtureContextMenu} onConnectionPointerDown={beginElectricalConnectionDrag} onConnectionContextMenu={openElectricalConnectionContextMenu} onWaypointPointerDown={beginElectricalWaypointDrag} onWaypointContextMenu={openElectricalWaypointContextMenu} onLabelPointerDown={beginElectricalLabelDrag} />
-            {placement && placementPoint && <PlacementPreview2D request={placement} point={placementPoint} candidate={placementCandidate} toScreen={toScreen} units={displayUnits} electricalMode={electricalMode} />}
-            {heating.data.enabled && <HeatingLayoutOverlay connecting={heatingTool === "CONNECT"} onConnect={connectHeatingEndpoint} pipeDraft={heatingPipeDraft} data={heating.data} rooms={planRooms} selection={heatingSelection} onSelect={selectHeatingElement} onChange={applyHeatingLayout} toScreen={toScreen} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} highlightedRoomId={highlightedHeatingRoomId} draft={heatingExclusionDraft} />}
+            {!energy.windowOpen && <ElectricalLayoutOverlay testing={lightingTestOpen} switchGangs={switchGangs} junctions={electricalLayout.junctions} onFixtureGangActivate={(fixture, gang) => { if (lightingTestOpen) testFixtureSwitch(fixture, gang); else if (electricalConnecting) chooseElectricalEndpoint(fixture.id, gang); }} lightStates={lightingTest.lights} switchLabels={lightingTest.switchLabels} fixtures={electricalFixtures} connections={electricalMode ? electricalLayout.connections : []} circuits={electricalLayout.circuits} toScreen={toScreen} showSymbols={!electricalMode || electricalDisplay.symbols} showConnections={electricalMode && electricalDisplay.connections} showLabels={electricalMode && electricalDisplay.circuitLabels} active={electricalMode} selectedFixtureId={selectedFixtureId} sourceId={electricalSourceId} sourceGang={electricalSourceGang} selectedConnectionId={selectedElectricalConnectionId} activeCircuitId={selectedElectricalCircuitId ?? DEFAULT_ELECTRICAL_CIRCUIT.id} connecting={electricalMode && electricalConnecting} forceOrthogonalRouting={electricalLayout.forceOrthogonalRouting} cursor={electricalPointer} defaults={electricalDefaults} onFixturePointerDown={(event, fixture) => { if (lightingTestOpen) { event.preventDefault(); event.stopPropagation(); testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { event.preventDefault(); event.stopPropagation(); chooseElectricalEndpoint(fixture.id); return; } beginFixtureDrag(event, fixture); }} onFixtureActivate={(fixture) => { if (lightingTestOpen) { testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { chooseElectricalEndpoint(fixture.id); return; } const owner = projectRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)); selectFixtureForEdit(fixture, owner); if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id); }} onFixtureContextMenu={openFixtureContextMenu} onConnectionPointerDown={beginElectricalConnectionDrag} onConnectionContextMenu={openElectricalConnectionContextMenu} onWaypointPointerDown={beginElectricalWaypointDrag} onWaypointContextMenu={openElectricalWaypointContextMenu} onLabelPointerDown={beginElectricalLabelDrag} />}
+            {!energy.windowOpen && placement && placementPoint && <PlacementPreview2D request={placement} point={placementPoint} candidate={placementCandidate} toScreen={toScreen} units={displayUnits} electricalMode={electricalMode} />}
+            {!energy.windowOpen && heating.data.enabled && <HeatingLayoutOverlay connecting={heatingTool === "CONNECT"} onConnect={connectHeatingEndpoint} pipeDraft={heatingPipeDraft} data={heating.data} rooms={planRooms} selection={heatingSelection} onSelect={selectHeatingElement} onChange={applyHeatingLayout} toScreen={toScreen} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} highlightedRoomId={highlightedHeatingRoomId} draft={heatingExclusionDraft} />}
             {energy.data.enabled && <EnergyLayoutOverlay data={energy.data} heating={heating.data} rooms={planRooms} selectedIds={energySelection} onSelect={selectEnergyWall} toScreen={toScreen} onChange={applyEnergyLayout} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} />}
           </FloorPlanCanvas>
           {sourceUrl && !importing && calibrating && <div className="drawing-calibration-panel" role="dialog" aria-modal="false" aria-labelledby="drawing-calibration-title" onKeyDown={(event) => {
@@ -5290,7 +5305,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     </FloatingToolbar>}
     <Popup open={electricalSaveFile !== null} title="Save electrical layout as…" message="" confirmLabel="Save file" confirmDisabled={!electricalSaveFile?.name.trim()} onCancel={() => setElectricalSaveFile(null)} onConfirm={() => { if (electricalSaveFile) { downloadElectricalFile(electricalSaveFile.blob, `${safeElectricalFileName(electricalSaveFile.name)}.electricallayout`); setElectricalFileStatus("Electrical layout downloaded. Your browser controls its save location."); setElectricalSaveFile(null); } }}><label className="field">File name<input value={electricalSaveFile?.name ?? ""} onChange={event => setElectricalSaveFile(current => current ? { ...current, name: event.target.value } : null)} /></label><p>This browser does not support a native Save As picker. Choose a file name here; the file is saved using your browser’s download settings.</p></Popup>
     <input ref={electricalImportInput} type="file" accept=".electricallayout,application/zip" hidden onChange={(event) => { void inspectElectricalLayoutFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
-    {electricalMode && lightingTestOpen && <FloatingToolbar title="Lighting layout test" className="electrical-lighting-test-window" defaultPosition={{ x: 70, y: 110 }} initialSize={{ width: 860 }} maxHeight={720} bringToFront onClose={() => { setLightingTestOpen(false); setLightingSwitchPositions({}); }}><ElectricalLightingTest layout={electricalLayout} fixtures={electricalFixtures} result={lightingTest} positions={lightingSwitchPositions} onToggle={toggleLightingSwitch} onReset={() => setLightingSwitchPositions({})} /></FloatingToolbar>}
+    {electricalMode && lightingTestOpen && <FloatingToolbar title="Lighting layout test" className="electrical-lighting-test-window" defaultPosition={{ x: 70, y: 110 }} initialSize={{ width: 740 }} maxHeight={720} bringToFront onClose={() => { setLightingTestOpen(false); setLightingSwitchPositions({}); }}><ElectricalLightingTest layout={electricalLayout} fixtures={electricalFixtures} result={lightingTest} positions={lightingSwitchPositions} onToggle={toggleLightingSwitch} onReset={() => setLightingSwitchPositions({})} /></FloatingToolbar>}
     {electricalScheduleOpen && <FloatingToolbar title="Electrical BOM & schedule" className="electrical-schedule-window" defaultPosition={{ x: 680, y: 92 }} initialSize={{ width: 980 }} maxHeight={840} layoutResetKey={toolbarLayoutResetKey} onClose={() => setElectricalScheduleOpen(false)}>
       <ElectricalScheduleWindow rooms={electricalDocumentRooms} assets={electricalAssets} instances={electricalAssetInstances} layout={electricalLayout} projectName={projectName} defaultCurrency={defaultCurrency} onLayoutChange={applyElectricalLayout} />
     </FloatingToolbar>}

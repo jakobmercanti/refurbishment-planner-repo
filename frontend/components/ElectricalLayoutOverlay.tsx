@@ -2,6 +2,7 @@
 
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
+import { electricalPlanEndpoint, gangBadgePosition } from "@/lib/electricalPlanPorts";
 import { electricalDevicePlanSize, electricalDevicePlanSymbol, electricalRockerBounds } from "@/lib/electricalPlanSymbols";
 import { electricalConnectionPoints, electricalDashArray, electricalStrokeWidth, type ElectricalCircuit, type ElectricalConnection, type ElectricalConnectionDefaults } from "@/lib/electricalLayout";
 import type { Obstacle, Point2D } from "@/lib/types";
@@ -50,15 +51,17 @@ export function ElectricalLayoutOverlay(props: Props) {
   const references = electricalFittingReferences(props.fixtures);
   const namedFittings = props.fixtures.map(fixture => ({ id: fixture.id, label: fixture.name, representation_key: fixture.representation_key }));
   const connectedFixtureIds = new Set(props.connections.flatMap((connection) => [connection.fromId, connection.toId]));
-  const crossings = props.showConnections ? electricalCrossings({ forceOrthogonalRouting: props.forceOrthogonalRouting, connections: props.connections, circuits: props.circuits, documentation: DEFAULT_ELECTRICAL_DOCUMENTATION, junctions: props.junctions }, props.fixtures) : [];
+  const terminal = (connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => electricalPlanEndpoint(connection, side, fixture, props.toScreen, props.active && props.showSymbols);
+  const crossings = props.showConnections ? electricalCrossings({ forceOrthogonalRouting: props.forceOrthogonalRouting, connections: props.connections, circuits: props.circuits, documentation: DEFAULT_ELECTRICAL_DOCUMENTATION, junctions: props.junctions }, props.fixtures, terminal) : [];
   const polylinePoints = (points: Point2D[]) => points.map((point) => {
     const screen = props.toScreen(point);
     return screen.x + "," + screen.y;
   }).join(" ");
   return <g className="electrical-overlay" aria-label="Electrical layout overlay">
     {props.showConnections && props.connections.map((connection) => {
-      const from = fixtures.get(connection.fromId)?.center;
-      const to = fixtures.get(connection.toId)?.center;
+      const source = fixtures.get(connection.fromId), destination = fixtures.get(connection.toId);
+      const from = source ? terminal(connection, "from", source) : null;
+      const to = destination ? terminal(connection, "to", destination) : null;
       if (!from || !to) return null;
       const points = electricalConnectionPoints(connection, from, to, props.forceOrthogonalRouting);
       const circuit = connection.circuitId ? circuits.get(connection.circuitId) : undefined;
@@ -80,7 +83,7 @@ export function ElectricalLayoutOverlay(props: Props) {
         {label && <text data-electrical-interactive="true" className="electrical-circuit-label electrical-draggable-label" x={labelPoint.x} y={labelPoint.y - (connection.labelPosition ? 0 : 8)} textAnchor="middle" onPointerDown={event => props.onLabelPointerDown(event, connection)}><title>Drag to move this connection’s circuit label</title>{label}</text>}
       </g>;
     })}
-    {props.connecting && props.sourceId && props.cursor && fixtures.get(props.sourceId) && props.showConnections && <polyline className="electrical-connection-preview" points={polylinePoints(electricalConnectionPoints({ ...props.defaults, id: "preview", fromId: props.sourceId, toId: "preview", circuitId: props.activeCircuitId, waypoints: [], label: undefined }, fixtures.get(props.sourceId)!.center, props.cursor, props.forceOrthogonalRouting))} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}
+    {props.connecting && props.sourceId && props.cursor && fixtures.get(props.sourceId) && props.showConnections && <polyline className="electrical-connection-preview" points={polylinePoints(electricalConnectionPoints({ ...props.defaults, id: "preview", fromId: props.sourceId, toId: "preview", circuitId: props.activeCircuitId, waypoints: [], label: undefined }, terminal({ ...props.defaults, id: "preview", fromId: props.sourceId, toId: "preview", circuitId: props.activeCircuitId, fromSwitchGang: props.sourceGang, waypoints: [] }, "from", fixtures.get(props.sourceId)!), props.cursor, props.forceOrthogonalRouting))} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}
     {crossings.map(crossing => {
       const centre = props.toScreen(crossing.position);
       const screenDirection = (direction: Point2D) => { const next = props.toScreen({ x: crossing.position.x + direction.x, y: crossing.position.y + direction.y }); const length = Math.hypot(next.x - centre.x, next.y - centre.y); return { x: (next.x - centre.x) / length, y: (next.y - centre.y) / length }; };
@@ -101,16 +104,19 @@ export function ElectricalLayoutOverlay(props: Props) {
       const deviceSymbol = electricalDevicePlanSymbol(fixture.representation_key, props.active);
       const readableSymbol = props.active || Boolean(deviceSymbol);
       const deviceSize = electricalDevicePlanSize(fixture.representation_key, actualWidth, actualDepth, props.active);
-      const gangCount = switchGangCount(fixture.representation_key);
       const symbolWidth = Math.max(deviceSize.width, props.active ? 26 : 0);
       const symbolDepth = Math.max(deviceSize.depth, props.active ? 26 : 0);
       const hitWidth = readableSymbol ? Math.max(symbolWidth + (props.active ? 12 : 8), props.active ? 44 : 28) : actualWidth;
       const hitDepth = readableSymbol ? Math.max(symbolDepth + (props.active ? 12 : 8), props.active ? 44 : 24) : actualDepth;
+      const angle = -fixture.rotation_deg * Math.PI / 180, count = switchGangCount(fixture.representation_key);
+      const plateTop = -(Math.abs(Math.sin(angle)) * symbolWidth + Math.abs(Math.cos(angle)) * symbolDepth) / 2;
+      const badgesTop = count > 1 ? Math.min(...Array.from({ length: count }, (_, i) => { const p = gangBadgePosition(count, i, symbolDepth);return p.x * Math.sin(angle) + p.y * Math.cos(angle) - 11; })) : plateTop;
+      const referenceY = centre.y + Math.min(plateTop, badgesTop) - 13;
       const connected = connectedFixtureIds.has(fixture.id);
       const classes = ["floorplan-fixture", "electrical-fixture", props.active ? "is-active" : "", readableSymbol ? "is-readable" : "", connected ? "is-connected" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
       return <g key={fixture.id} data-electrical-interactive="true" className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
         <title>{fixture.name}</title>
-        {props.active && references[fixture.id] && <text className="electrical-circuit-label electrical-fitting-reference" pointerEvents="none" x={centre.x} y={centre.y - symbolDepth / 2 - 13} textAnchor="middle">{references[fixture.id]}</text>}
+        {props.active && references[fixture.id] && <text className="electrical-circuit-label electrical-fitting-reference" pointerEvents="none" x={centre.x} y={referenceY} textAnchor="middle">{references[fixture.id]}</text>}
         {props.testing && Object.hasOwn(props.lightStates ?? {}, fixture.id) && <g className="electrical-test-state" pointerEvents="none"><circle cx={centre.x} cy={centre.y} r={Math.max(symbolWidth, symbolDepth) / 2 + 12} fill={props.lightStates?.[fixture.id] ? "#facc15" : "none"} fillOpacity="0.35" stroke={props.lightStates?.[fixture.id] ? "#a16207" : "#64748b"} strokeWidth="2" /><text className="electrical-circuit-label" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.lightStates?.[fixture.id] ? "On" : "Off"}</text></g>}
         {props.testing && switchGangCount(fixture.representation_key) <= 1 && props.switchLabels?.[fixture.id] && <text className="electrical-circuit-label electrical-test-state" pointerEvents="none" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.switchLabels[fixture.id]}</text>}
         {readableSymbol && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>
@@ -119,22 +125,24 @@ export function ElectricalLayoutOverlay(props: Props) {
         </g>}
         {props.sourceId === fixture.id && <circle className="electrical-source-highlight" cx={centre.x} cy={centre.y} r={Math.max(18, Math.max(symbolWidth, symbolDepth) / 2 + 8)} />}
         <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={symbolWidth} depth={symbolDepth} symbolSize={{ width: symbolWidth, depth: symbolDepth }} selected={selected} electricalMode={props.active} />
-        {(props.testing || props.connecting) && switchGangCount(fixture.representation_key) >= 1 && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>{Array.from({ length: switchGangCount(fixture.representation_key) }, (_, index) => {
+        {props.active && switchGangCount(fixture.representation_key) >= 1 && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>{Array.from({ length: switchGangCount(fixture.representation_key) }, (_, index) => {
           const count = switchGangCount(fixture.representation_key), gang = index + 1, state = props.switchGangs?.[fixture.id]?.[index];
           const bounds = electricalRockerBounds(fixture.representation_key)?.[index];
           const x = bounds ? bounds.x * symbolWidth : -symbolWidth / 2 + index * symbolWidth / count;
           const rockerWidth = bounds ? bounds.width * symbolWidth : symbolWidth / count - 2;
+          const badge = gangBadgePosition(count, index, symbolDepth);
           const chosen = props.connecting && props.sourceId === fixture.id && props.sourceGang === gang;
-          const activate = () => props.onFixtureGangActivate?.(fixture, gang);
+          const activate = () => { if (props.testing || props.connecting) props.onFixtureGangActivate?.(fixture, gang);else props.onFixtureActivate(fixture); };
           return <g key={gang} data-electrical-gang={gang} data-selected={chosen} data-state={props.testing ? state?.keys.length ? state.on ? "on" : "off" : "unconnected" : "connect"} role="button" tabIndex={0} aria-label={`${fixture.name} · Gang ${gang}${props.testing ? ` · ${state?.label ?? "Not connected"}` : " · Connect this rocker"}`} onPointerDown={event => { event.preventDefault(); event.stopPropagation(); if (event.button === 0) activate(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); activate(); } }}>
             <title>{props.testing ? `Rocker ${gang}: ${state?.label ?? "Not connected"}. Operate only this rocker.` : `Connect ${references[fixture.id]} rocker ${gang}`}</title><rect className="electrical-gang-hit" x={x} y={bounds ? bounds.y * symbolDepth : -symbolDepth / 2} width={rockerWidth} height={bounds ? bounds.height * symbolDepth : symbolDepth} rx="4" fillOpacity="0.3" />
-            <g className="electrical-gang-caption" style={count === 1 ? { display: "none" } : undefined} transform={`translate(${x + rockerWidth / 2} ${symbolDepth / 2 + 14.5}) rotate(${fixture.rotation_deg})`}>
-              <rect className="electrical-gang-badge" x={-(symbolWidth / count - 2) / 2} y="-9.5" width={symbolWidth / count - 2} height="19" rx="4" />
+            {count > 1 && <path className="electrical-gang-leader" d={`M${x + rockerWidth / 2},${symbolDepth * .29} L${x + rockerWidth / 2},${symbolDepth / 2 + 5} L${badge.x},${badge.y - 11}`} fill="none" stroke="#64748b" strokeWidth="1" pointerEvents="none" />}
+            <circle className="electrical-terminal-port" cx={count > 1 ? badge.x : 0} cy={count > 1 ? badge.y + 16 : symbolDepth / 2 + 4} r="2.5" fill="#071b38" stroke="white" strokeWidth="1" pointerEvents="none" />
+            <g className="electrical-gang-caption" style={count === 1 ? { display: "none" } : undefined} transform={`translate(${badge.x} ${badge.y}) rotate(${fixture.rotation_deg})`}>
+              <rect className="electrical-gang-badge" x="-13" y="-11" width="26" height="22" rx="4" />
               <text className="electrical-gang-number" pointerEvents="none" x="0" y="3.5" textAnchor="middle" fill={props.testing && state?.keys.length || chosen ? "#fff" : "#071b38"}>G{gang}</text>
             </g>
           </g>;
         })}</g>}
-        {props.testing && gangCount > 1 && <text className="electrical-circuit-label electrical-test-state" pointerEvents="none" x={centre.x} y={centre.y + symbolDepth / 2 + 42} textAnchor="middle">{(props.switchGangs?.[fixture.id] ?? []).map(state => `G${state.gang} ${state.keys.length ? state.on ? "On" : "Off" : "—"}`).join(" · ")}</text>}
       </g>;
     })}
   </g>;

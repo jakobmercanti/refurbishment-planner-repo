@@ -4,6 +4,14 @@ import { assignEnergyElements, calculateAssemblyUValue, scenarioAssignments, typ
 
 export { LAYER_COLOURS } from "./energyLayerColours";
 export const assemblyThickness = (a: ConstructionAssembly) => a.layers.reduce((s, l) => s + l.thicknessMm, 0);
+/** Reorder by identity; material, colour and thermal overrides travel with their layer. */
+export function reorderConstructionLayer(a: ConstructionAssembly, layerId: string, targetId: string): ConstructionAssembly {
+  const from = a.layers.findIndex(l => l.layerId === layerId), to = a.layers.findIndex(l => l.layerId === targetId);
+  if (from < 0 || to < 0 || from === to) return a;
+  const layers = [...a.layers];
+  layers.splice(to, 0, layers.splice(from, 1)[0]);
+  return { ...a, layers, directUValue: null };
+}
 export function wallThicknessForElement(e: Pick<EnergyElement, "roomId" | "elementId">, rooms: readonly Room[]) {
   const room = rooms.find(r => r.id === e.roomId), index = Number(e.elementId.split("|wall:")[1]?.split(":")[0]);
   return room?.wall_thickness_overrides_mm?.[`wall-${String(index + 1).padStart(3, "0")}`] ?? room?.wall_thickness.value ?? 150;

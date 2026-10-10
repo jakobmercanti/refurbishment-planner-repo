@@ -2,6 +2,7 @@ import estimates from "./heatingEstimates.json";
 import { heatingElementSpecSchema } from "./heatingDocument";
 import type { Obstacle, Room } from "./types";
 import { newHeatingProject, type HeatingProject, type HeatingRadiator } from "./heatingDocument";
+import { projectOnSegment, snapRadiatorToWall } from "./heatingCalculations";
 
 export type HeatingElementSpec = Omit<HeatingRadiator, "radiatorId" | "roomId" | "widthMm" | "heightMm" | "depthMm" | "positionMm" | "rotationDeg" | "wallIndex" | "positionAlongWallMm" | "placementSnapshot">;
 export const isHeatingElement = (item: Pick<Obstacle, "representation_key" | "heating_spec">) => Boolean(item.heating_spec || item.representation_key?.startsWith("furniture-radiator-") || item.representation_key?.startsWith("radiator-"));
@@ -17,7 +18,20 @@ export function resolveHeatingSpec(value: unknown, widthMm: number, heightMm: nu
 }
 export function radiatorFromElement(item: Obstacle, room: Room): HeatingRadiator {
   const spec = resolveHeatingSpec(item.heating_spec ?? emptyHeatingSpec(item.name), item.dimensions.width.value, item.dimensions.height.value);
-  return { ...spec, placementSnapshot: Object.fromEntries(Object.entries(item).filter(([key]) => key !== "heating_spec")), radiatorId: item.id, roomId: room.id, widthMm: item.dimensions.width.value, depthMm: item.dimensions.depth.value, heightMm: item.dimensions.height.value, positionMm: item.center, rotationDeg: -item.rotation_deg };
+  const radiator = { ...spec, placementSnapshot: Object.fromEntries(Object.entries(item).filter(([key]) => key !== "heating_spec")), radiatorId: item.id, roomId: room.id, widthMm: item.dimensions.width.value, depthMm: item.dimensions.depth.value, heightMm: item.dimensions.height.value, positionMm: item.center, rotationDeg: -item.rotation_deg };
+  // Placement owns geometry; reconstruct snap metadata only when it still matches exactly.
+  const snapped = snapRadiatorToWall(radiator, room, item.center);
+  const angle = ((snapped.rotationDeg - radiator.rotationDeg) % 180 + 180) % 180;
+  if (Math.hypot(snapped.positionMm.x - item.center.x, snapped.positionMm.y - item.center.y) < 1 && Math.min(angle, 180 - angle) < .01)
+    return { ...radiator, wallIndex: snapped.wallIndex, positionAlongWallMm: snapped.positionAlongWallMm };
+  // Ordinary Add-element placement uses the measured wall face, not the heating editor's 40 mm setback.
+  const lockedEdge = item.wall_lock ? room.vertices.map((a, index) => {
+    const b = room.vertices[(index + 1) % room.vertices.length], projection = projectOnSegment(item.center, a, b);
+    const wall = room.wall_thickness_overrides_mm?.[`wall-${String(index + 1).padStart(3, "0")}`] ?? room.wall_thickness.value;
+    const rotation = ((Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI - radiator.rotationDeg) % 180 + 180) % 180;
+    return { index, along: projection.t * Math.hypot(b.x - a.x, b.y - a.y), matches: Math.abs(projection.distance - (radiator.depthMm / 2 + Math.max(0, wall) / 2 + 1)) < 1 && Math.min(rotation, 180 - rotation) < .01 };
+  }).find(edge => edge.matches) : null;
+  return lockedEdge ? { ...radiator, wallIndex: lockedEdge.index, positionAlongWallMm: lockedEdge.along } : radiator;
 }
 /** Runtime radiator view: dimensions and technical data belong to placed objects, not a second library. */
 export function withHeatingElements(data: HeatingProject, rooms: readonly Room[]): HeatingProject {

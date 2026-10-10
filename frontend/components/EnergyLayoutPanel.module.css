@@ -33,7 +33,15 @@
 .editorPreview :global(.wall-layers-preview-editor > details) { font-size: 11px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; max-height: 100px; overflow: auto; }
 .editorPreview :global(.fixture-preview) { min-height: 300px; }
 .popup .layer { padding: 10px; }
-.layer > summary { line-height: 1.4; overflow-wrap: anywhere; }
+.layer { border:1px solid var(--line); border-radius:10px; }
+.layer[data-drop-target=true] { outline:2px solid var(--deep); background:var(--surface-muted); }
+.layerRow { display:flex; align-items:center; gap:8px; }
+.layerRow > strong { flex:1; min-width:0; line-height:1.4; overflow-wrap:anywhere; }
+.layerActions { display:flex; gap:6px; flex-shrink:0; }
+.layerGrip { cursor:grab!important; padding:6px!important; flex-shrink:0; touch-action:none; }
+.layerGrip:active { cursor:grabbing!important; }
+.layerFields { display:grid; gap:8px; border-top:1px solid var(--line); margin-top:10px; padding-top:10px; }
+@media (max-width:450px) { .layerRow { flex-wrap:wrap; }.layerActions { margin-left:auto; } }
 .swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid #0002; border-radius: 3px; margin-right: 6px; }
 @media (max-width: 720px) {
   .popup :global(.popup-content) { overflow: auto; }
