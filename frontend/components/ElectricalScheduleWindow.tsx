@@ -234,7 +234,9 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
       <label>Room<select value={connectionRoomFilter} onChange={(event) => setConnectionRoomFilter(event.target.value)}><option value="">All rooms</option>{connectionRooms.map((roomName) => <option key={roomName}>{roomName}</option>)}</select></label>
       <label>Sort by<select value={connectionSort} onChange={(event) => setConnectionSort(event.target.value)}><option value="NUMBER">No.</option><option value="FROM">From</option><option value="TO">To</option><option value="CIRCUIT">Circuit</option><option value="TYPE">Type</option><option value="LENGTH">Drawing length</option></select></label>
     </div>}
-    {tab === "BOM" && <div className="electrical-schedule-tab-content">
+    {tab === "BOM" && <details className="electrical-project-documentation electrical-bom-section">
+      <summary>Bill of materials · {visibleBom.length + visibleManual.length} items</summary>
+      <div className="electrical-schedule-tab-content">
       <div className="electrical-schedule-toolbar"><p>Calculated quantities stay linked to placed fittings. Order quantities and commercial details are editable.</p><button type="button" className="review-style-button" onClick={exportBomCsv}>Export BOM CSV</button></div>
       <div className="electrical-schedule-table-scroll"><table className="electrical-schedule-table electrical-bom-table"><thead><tr><th>Item</th><th>Type</th><th>Calculated</th><th>Order qty</th><th>Rooms / circuits</th><th>Unit cost</th><th>Line total</th><th>Details</th></tr></thead><tbody>
         {visibleBom.map((row) => { const override = documentation.bomOverrides[row.bomKey] ?? {}; const cost = override.unitCost; const orderQuantity = override.orderQuantity ?? row.quantity; return <tr key={row.bomKey}>
@@ -255,7 +257,7 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
       <form className="electrical-manual-bom-add" onSubmit={(event) => { event.preventDefault(); const description = manualDescription.trim(); const quantity = Number(manualQuantity); if (!description || !Number.isFinite(quantity) || quantity < 0) return; changeDocumentation({ manualBomItems: [...documentation.manualBomItems, { bomRowId: makeId("bom-row"), description, quantity }] }); setManualDescription(""); setManualQuantity("1"); }}>
         <strong>+ Add manual BOM item</strong><input aria-label="Manual BOM description" value={manualDescription} onChange={(event) => setManualDescription(event.target.value)} placeholder="e.g. back boxes, cable clips, fixings" maxLength={500} required /><input aria-label="Manual BOM quantity" type="number" min="0" step="1" value={manualQuantity} onChange={(event) => setManualQuantity(event.target.value)} /><button type="submit" className="review-style-button">Add item</button>
       </form>
-    </div>}
+    </div></details>}
     {tab === "CIRCUITS" && <div className="electrical-schedule-tab-content">
       <div className="electrical-schedule-toolbar"><p>Each circuit contains its connections. Breaker ratings, cable sizes and loads are not inferred.</p><div><button type="button" className="review-style-button" onClick={() => exportConnectionsCsv()}>Export connections CSV</button><button type="button" className="review-style-button" onClick={() => exportConnectionsCsv(true)}>Export segment CSV</button><button type="button" className="review-style-button" onClick={exportCircuitsCsv}>Export circuits CSV</button></div></div>
       <div className="electrical-schedule-breakdown">{(["CONTROL", "POWER", "GENERIC"] as const).map((type) => <span key={type}>{type === "POWER" ? "Power" : type === "CONTROL" ? "Control" : "Generic"}: <strong>{connectionRows.filter((row) => row.connection.type === type).length}</strong></span>)}<span><strong>{connectionRows.length} connections</strong> · {formatDrawingLength(totalDrawingLength)} total drawing-line length</span></div>

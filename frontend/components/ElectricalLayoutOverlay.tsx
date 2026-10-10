@@ -8,6 +8,7 @@ import type { Obstacle, Point2D } from "@/lib/types";
 import { crossingBridgePath, electricalCrossings } from "@/lib/electricalCrossings";
 import { switchGangCount, type LightingSwitchGang } from "@/lib/electricalSimulation";
 import { DEFAULT_ELECTRICAL_DOCUMENTATION, type ElectricalLayoutData } from "@/lib/electricalLayout";
+import { electricalEndpointLabel, electricalFittingReferences } from "@/lib/electricalConnectionLabels";
 
 interface Props {
   fixtures: Obstacle[];
@@ -20,6 +21,7 @@ interface Props {
   active: boolean;
   selectedFixtureId: string | null;
   sourceId: string | null;
+  sourceGang?: number;
   selectedConnectionId: string | null;
   activeCircuitId: string;
   connecting: boolean;
@@ -45,6 +47,8 @@ interface Props {
 export function ElectricalLayoutOverlay(props: Props) {
   const fixtures = new Map(props.fixtures.map((fixture) => [fixture.id, fixture]));
   const circuits = new Map(props.circuits.map((circuit) => [circuit.id, circuit]));
+  const references = electricalFittingReferences(props.fixtures);
+  const namedFittings = props.fixtures.map(fixture => ({ id: fixture.id, label: fixture.name, representation_key: fixture.representation_key }));
   const connectedFixtureIds = new Set(props.connections.flatMap((connection) => [connection.fromId, connection.toId]));
   const crossings = props.showConnections ? electricalCrossings({ forceOrthogonalRouting: props.forceOrthogonalRouting, connections: props.connections, circuits: props.circuits, documentation: DEFAULT_ELECTRICAL_DOCUMENTATION, junctions: props.junctions }, props.fixtures) : [];
   const polylinePoints = (points: Point2D[]) => points.map((point) => {
@@ -59,15 +63,17 @@ export function ElectricalLayoutOverlay(props: Props) {
       const points = electricalConnectionPoints(connection, from, to, props.forceOrthogonalRouting);
       const circuit = connection.circuitId ? circuits.get(connection.circuitId) : undefined;
       const colour = connection.colorOverride === false && circuit ? circuit.color : connection.color;
-      const selected = props.selectedConnectionId === connection.id;
+      const sourceGangLink = props.connecting && props.sourceId && (connection.fromId === props.sourceId && (connection.fromSwitchGang ?? 1) === props.sourceGang || connection.toId === props.sourceId && (connection.toSwitchGang ?? 1) === props.sourceGang);
+      const selected = props.selectedConnectionId === connection.id || Boolean(sourceGangLink);
       const path = polylinePoints(points);
       const label = props.showLabels ? connection.label || circuit?.name : undefined;
       const labelPoint = props.toScreen(connection.labelPosition ?? points[Math.floor(points.length / 2)]);
-      return <g key={connection.id} className={selected ? "electrical-connection selected" : "electrical-connection"}>
+      return <g key={connection.id} data-connection-id={connection.id} className={selected ? "electrical-connection selected" : "electrical-connection"}>
+        <title>{electricalEndpointLabel(connection, "from", namedFittings, references)} → {electricalEndpointLabel(connection, "to", namedFittings, references)}</title>
         {selected && <polyline points={path} fill="none" stroke="#f59e0b" strokeWidth={electricalStrokeWidth(connection.width) + 4} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
         <polyline data-electrical-interactive="true" points={path} fill="none" stroke="transparent" strokeWidth="16" vectorEffect="non-scaling-stroke" pointerEvents="stroke" onPointerDown={(event) => props.onConnectionPointerDown(event, connection)} onContextMenu={(event) => props.onConnectionContextMenu(event, connection)} />
         <polyline points={path} fill="none" stroke={colour} strokeWidth={electricalStrokeWidth(connection.width)} strokeDasharray={electricalDashArray(connection.lineStyle)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" pointerEvents="none" />
-        {selected && connection.waypoints.map((waypoint, index) => {
+        {props.selectedConnectionId === connection.id && connection.waypoints.map((waypoint, index) => {
           const point = props.toScreen(waypoint);
           return <circle key={index} data-electrical-interactive="true" className="electrical-route-waypoint" cx={point.x} cy={point.y} r="7" onPointerDown={(event) => props.onWaypointPointerDown(event, connection, index)} onContextMenu={(event) => props.onWaypointContextMenu(event, connection, index)} />;
         })}
@@ -95,14 +101,17 @@ export function ElectricalLayoutOverlay(props: Props) {
       const deviceSymbol = electricalDevicePlanSymbol(fixture.representation_key, props.active);
       const readableSymbol = props.active || Boolean(deviceSymbol);
       const deviceSize = electricalDevicePlanSize(fixture.representation_key, actualWidth, actualDepth, props.active);
-      const symbolWidth = Math.max(deviceSize.width, props.active ? 26 : 0);
-      const symbolDepth = Math.max(deviceSize.depth, props.active ? 26 : 0);
+      const gangCount = switchGangCount(fixture.representation_key);
+      const faceScale = props.active && gangCount > 1 ? Math.max(1, gangCount * 24 / deviceSize.width) : 1;
+      const symbolWidth = Math.max(deviceSize.width * faceScale, props.active ? 26 : 0);
+      const symbolDepth = Math.max(deviceSize.depth * faceScale, props.active ? 26 : 0);
       const hitWidth = readableSymbol ? Math.max(symbolWidth + (props.active ? 12 : 8), props.active ? 44 : 28) : actualWidth;
       const hitDepth = readableSymbol ? Math.max(symbolDepth + (props.active ? 12 : 8), props.active ? 44 : 24) : actualDepth;
       const connected = connectedFixtureIds.has(fixture.id);
       const classes = ["floorplan-fixture", "electrical-fixture", props.active ? "is-active" : "", readableSymbol ? "is-readable" : "", connected ? "is-connected" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
       return <g key={fixture.id} data-electrical-interactive="true" className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
         <title>{fixture.name}</title>
+        {props.active && references[fixture.id] && <text className="electrical-circuit-label electrical-fitting-reference" pointerEvents="none" x={centre.x} y={centre.y - symbolDepth / 2 - 13} textAnchor="middle">{references[fixture.id]}</text>}
         {props.testing && Object.hasOwn(props.lightStates ?? {}, fixture.id) && <g className="electrical-test-state" pointerEvents="none"><circle cx={centre.x} cy={centre.y} r={Math.max(symbolWidth, symbolDepth) / 2 + 12} fill={props.lightStates?.[fixture.id] ? "#facc15" : "none"} fillOpacity="0.35" stroke={props.lightStates?.[fixture.id] ? "#a16207" : "#64748b"} strokeWidth="2" /><text className="electrical-circuit-label" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.lightStates?.[fixture.id] ? "On" : "Off"}</text></g>}
         {props.testing && switchGangCount(fixture.representation_key) <= 1 && props.switchLabels?.[fixture.id] && <text className="electrical-circuit-label electrical-test-state" pointerEvents="none" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.switchLabels[fixture.id]}</text>}
         {readableSymbol && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>
@@ -114,12 +123,15 @@ export function ElectricalLayoutOverlay(props: Props) {
         {(props.testing || props.connecting) && switchGangCount(fixture.representation_key) > 1 && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>{Array.from({ length: switchGangCount(fixture.representation_key) }, (_, index) => {
           const count = switchGangCount(fixture.representation_key), gang = index + 1, state = props.switchGangs?.[fixture.id]?.[index];
           const x = -symbolWidth / 2 + index * symbolWidth / count;
+          const chosen = props.connecting && props.sourceId === fixture.id && props.sourceGang === gang;
           const activate = () => props.onFixtureGangActivate?.(fixture, gang);
-          return <g key={gang} data-electrical-gang={gang} role="button" tabIndex={0} aria-label={`${fixture.name} · Gang ${gang}${props.testing ? ` · ${state?.label ?? "Not connected"}` : " · Connect this rocker"}`} onPointerDown={event => { event.preventDefault(); event.stopPropagation(); if (event.button === 0) activate(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); activate(); } }}>
-            <title>{props.testing ? `Operate only rocker ${gang}` : `Connect rocker ${gang}`}</title><rect x={x} y={-symbolDepth / 2} width={symbolWidth / count} height={symbolDepth} rx="4" fill={props.testing && state?.on ? "#22c55e" : "transparent"} fillOpacity="0.3" stroke="transparent" />
-            <text className="electrical-circuit-label" pointerEvents="none" x={x + symbolWidth / count / 2} y={symbolDepth / 2 + 20 + index * 16} textAnchor="middle">{`G${gang}${props.testing ? ` ${state?.label ?? "Not connected"}` : ""}`}</text>
+          return <g key={gang} data-electrical-gang={gang} data-selected={chosen} data-state={props.testing ? state?.keys.length ? state.on ? "on" : "off" : "unconnected" : "connect"} role="button" tabIndex={0} aria-label={`${fixture.name} · Gang ${gang}${props.testing ? ` · ${state?.label ?? "Not connected"}` : " · Connect this rocker"}`} onPointerDown={event => { event.preventDefault(); event.stopPropagation(); if (event.button === 0) activate(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); activate(); } }}>
+            <title>{props.testing ? `Rocker ${gang}: ${state?.label ?? "Not connected"}. Operate only this rocker.` : `Connect ${references[fixture.id]} rocker ${gang}`}</title><rect className="electrical-gang-hit" x={x + 1} y={-symbolDepth / 2} width={symbolWidth / count - 2} height={symbolDepth} rx="4" fillOpacity="0.3" />
+            <rect className="electrical-gang-badge" x={x + 1} y={symbolDepth / 2 + 5} width={symbolWidth / count - 2} height="19" rx="4" />
+            <text className="electrical-gang-number" pointerEvents="none" x={x + symbolWidth / count / 2} y={symbolDepth / 2 + 18} textAnchor="middle" fill={props.testing && state?.keys.length || chosen ? "#fff" : "#071b38"}>G{gang}</text>
           </g>;
         })}</g>}
+        {props.testing && gangCount > 1 && <text className="electrical-circuit-label electrical-test-state" pointerEvents="none" x={centre.x} y={centre.y + symbolDepth / 2 + 42} textAnchor="middle">{(props.switchGangs?.[fixture.id] ?? []).map(state => `G${state.gang} ${state.keys.length ? state.on ? "On" : "Off" : "—"}`).join(" · ")}</text>}
       </g>;
     })}
   </g>;

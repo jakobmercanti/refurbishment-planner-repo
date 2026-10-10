@@ -82,7 +82,7 @@ test("project decoding creates a starter circuit for legacy projects and removes
   assert.equal(normalizeElectricalLayout({ forceOrthogonalRouting: false }, new Set()).forceOrthogonalRouting, false);
 });
 
-test("electrical panel exposes mode, routing and display controls with inherited circuit colour", () => {
+test("electrical panel omits manual mode but preserves routing and display controls with inherited circuit colour", () => {
   const connection: ElectricalConnection = {
     id: "connection-1", fromId: "switch-1", toId: "light-1", type: "CONTROL",
     ...DEFAULT_ELECTRICAL_CONNECTION, circuitId: "lighting", colorOverride: false,
@@ -91,7 +91,7 @@ test("electrical panel exposes mode, routing and display controls with inherited
     ...connection, id: "connection-2", colorOverride: false,
   };
   const markup = renderToStaticMarkup(createElement(ElectricalLayoutPanel, {
-    mode: true, onModeChange: () => {}, connecting: false, onConnect: () => {}, onAdd: () => {},
+    mode: true, connecting: false, onConnect: () => {}, onAdd: () => {},
     onCheckout: () => {}, onFinishConnection: () => {},
     forceOrthogonalRouting: true, onForceOrthogonalRoutingChange: () => {},
     currentCount: 2, defaults: DEFAULT_ELECTRICAL_CONNECTION, onDefaultsChange: () => {},
@@ -102,7 +102,7 @@ test("electrical panel exposes mode, routing and display controls with inherited
     circuits: [{ id: "lighting", name: "Lighting", color: "#ffaa00" }], activeCircuitId: "lighting",
     onActiveCircuitChange: () => {}, onCreateCircuit: () => {}, onUpdateCircuit: () => {}, onDeleteCircuit: () => {},
   }));
-  assert.match(markup, /Electrical layout mode/);
+  assert.doesNotMatch(markup, /Electrical layout mode/);
   assert.match(markup, /Orthogonal/);
   assert.match(markup, /Force horizontal \/ vertical circuit routes/);
   assert.match(markup, /Circuit labels/);

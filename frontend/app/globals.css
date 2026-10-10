@@ -262,7 +262,7 @@ button { font: inherit; }
 .electrical-schedule-window { width: min(980px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .electrical-export-window { width: min(450px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .electrical-layout-panel { display: grid; gap: 9px; padding: 10px; }
-.floating-toolbar .electrical-layout-panel { padding: 4px 10px 10px; }
+.floating-toolbar .electrical-layout-panel { padding: 8px 10px 10px; }
 .electrical-layout-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .electrical-layout-actions button { min-width: 0; min-height: 31px; padding: 6px 8px; font-size: calc((10px) * var(--density-font-scale, 1)); }
 .electrical-mode-toggle { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: #f4f8fb; color: var(--ink); }
@@ -345,6 +345,30 @@ button { font: inherit; }
 .electrical-fixture.is-active:focus-visible .electrical-fixture-backplate { stroke: #075dad; stroke-width: 3; }
 .electrical-route-waypoint { fill: white; stroke: #1769aa; stroke-width: 2; vector-effect: non-scaling-stroke; cursor: move; pointer-events: all; }
 .electrical-fixture:focus-visible { outline: none; filter: drop-shadow(0 0 3px #1769aa); }
+.floorplan-fixture.electrical-fixture .electrical-gang-number { font: 700 10px var(--font-sans), sans-serif; fill: #071b38; stroke: none; }
+.floorplan-fixture.electrical-fixture .electrical-fitting-reference { font: 700 11px var(--font-sans), sans-serif; }
+.floorplan-fixture.electrical-fixture [data-electrical-gang] rect { stroke-dasharray: none; stroke-width: 1; cursor: pointer; }
+.floorplan-fixture.electrical-fixture .electrical-gang-hit { fill: transparent; stroke: none; }
+.floorplan-fixture.electrical-fixture .electrical-gang-badge { fill: #fff; stroke: #94a3b8; }
+.floorplan-fixture.electrical-fixture [data-state=on] .electrical-gang-hit { fill: #22c55e; }
+.floorplan-fixture.electrical-fixture [data-state=on] .electrical-gang-badge { fill: #15803d; }
+.floorplan-fixture.electrical-fixture [data-state=off] .electrical-gang-badge { fill: #475569; }
+.floorplan-fixture.electrical-fixture [data-selected=true] .electrical-gang-hit { fill: #dbeafe; stroke: #075dad; stroke-width: 2; }
+.floorplan-fixture.electrical-fixture [data-selected=true] .electrical-gang-badge { fill: #075dad; stroke: #075dad; }
+.floorplan-fixture.electrical-fixture :is([data-state=on],[data-state=off],[data-selected=true]) .electrical-gang-number { fill: #fff; }
+[data-electrical-gang] { cursor: pointer; }
+[data-electrical-gang]:focus-visible { outline: none; filter: drop-shadow(0 0 3px #1769aa); }
+.electrical-switch-map-item { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.electrical-switch-map-item h3 { margin: 0 0 8px; font-size: calc(11px * var(--density-font-scale,1)); }
+.electrical-gang-map-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,140px),1fr)); gap: 7px; }
+.electrical-gang-map-card { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 7px; display: grid; align-content: start; gap: 7px; background: var(--surface-raised); }
+.electrical-gang-map-card[data-selected=true] { border-color: #075dad; background: #eaf5ff; }
+.electrical-gang-map-card ul { padding: 0; margin: 0; list-style: none; display: grid; gap: 5px; }
+.electrical-gang-map-card button { width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.electrical-gang-map-card li button { display: grid; gap: 3px; padding: 6px; text-align: left; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 5px; color: var(--ink); cursor: pointer; }
+.electrical-gang-map-card button.selected, .electrical-gang-map-card button[aria-pressed=true] { border-color: #075dad; background: #dbeafe; color: #071b38; }
+.electrical-gang-map-card small { color: var(--muted); font-size: calc(9px * var(--density-font-scale,1)); }
+.electrical-bom-section > .electrical-schedule-tab-content { padding: 0 10px 10px; }
 .electrical-connection-label, .electrical-circuit-label { fill: var(--ink); paint-order: stroke; stroke: white; stroke-width: 4px; stroke-linejoin: round; font: 700 calc(9px * var(--density-font-scale, 1)) var(--font-mono); pointer-events: none; }
 .electrical-source-highlight { fill: #1f80d6; fill-opacity: .12; stroke: #1f80d6; stroke-width: 2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: none; }
 .electrical-schedule-panel { display: grid; gap: 10px; min-width: 0; padding: 12px; }

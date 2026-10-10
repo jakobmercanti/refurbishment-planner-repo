@@ -2,6 +2,7 @@
 
 import type { ElectricalCircuit, ElectricalConnection, ElectricalConnectionDefaults, ElectricalConnectionType, ElectricalLineStyle, ElectricalLineWidth, ElectricalRouting } from "@/lib/electricalLayout";
 import { switchGangCount } from "@/lib/electricalSimulation";
+import { electricalEndpointLabel, electricalFittingReferences, electricalGangConnections } from "@/lib/electricalConnectionLabels";
 import type { ElectricalCrossing } from "@/lib/electricalCrossings";
 
 export interface ElectricalDisplayOptions { symbols: boolean; connections: boolean; circuitLabels: boolean }
@@ -12,7 +13,8 @@ const widths: [ElectricalLineWidth, string][] = [["THIN", "Thin"], ["MEDIUM", "M
 const routings: [ElectricalRouting, string][] = [["ORTHOGONAL", "Orthogonal"], ["STRAIGHT", "Straight"], ["MANUAL", "Manual"]];
 const types: [ElectricalConnectionType, string][] = [["GENERIC", "Generic"], ["CONTROL", "Control"], ["POWER", "Power / circuit"]];
 type Props = {
-  mode: boolean; onModeChange: (value: boolean) => void; connecting: boolean; repeatConnecting?: boolean; onConnect: (mode: "single" | "repeat") => void; onAdd: () => void;
+  mode: boolean; connecting: boolean; repeatConnecting?: boolean; onConnect: (mode: "single" | "repeat") => void; onAdd: () => void;
+  sourceId?: string | null; sourceGang?: number; onConnectGang?: (id: string, gang: number) => void;
   forceOrthogonalRouting: boolean; onForceOrthogonalRoutingChange: (value: boolean) => void;
   onSaveLayout?: () => void; onLoadLayout?: () => void; onExport?: () => void; onSchedule?: () => void;
   onCheckout: () => void; onFinishConnection: () => void;
@@ -29,7 +31,8 @@ type Props = {
 export function ElectricalLayoutPanel(p: Props) {
   const circuit = p.circuits.find((item) => item.id === p.activeCircuitId) ?? p.circuits[0] ?? null;
   const activeCircuitId = circuit?.id ?? null;
-  const name = (id: string) => p.objects.find((item) => item.id === id)?.label ?? "Missing fitting";
+  const references = electricalFittingReferences(p.objects);
+  const multiSwitches = p.objects.filter(item => switchGangCount(item.representation_key) > 1);
   const connectionGroup = (circuitId: string) => {
     const groupedConnections = p.connections.filter((item) => item.circuitId === circuitId);
     const selected = groupedConnections.find((item) => item.id === p.selectedConnectionId) ?? null;
@@ -48,8 +51,8 @@ export function ElectricalLayoutPanel(p: Props) {
     return <details className="electrical-layout-section electrical-circuit-connections" open key={circuitId}>
       <summary>{title}</summary>
       {groupedConnections.length ? <ul className="electrical-connection-list">{groupedConnections.map((item) => {
-        const from = name(item.fromId);
-        const to = name(item.toId);
+        const from = electricalEndpointLabel(item, "from", p.objects, references);
+        const to = electricalEndpointLabel(item, "to", p.objects, references);
         return <li className="electrical-connection-row" key={item.id}>
           <button type="button" className={item.id === p.selectedConnectionId ? "selected" : ""} aria-pressed={item.id === p.selectedConnectionId} aria-label={`Select connection from ${from} to ${to}`} onClick={() => selectConnection(item.id)}><span>{from} → {to}</span><small>{types.find(([value]) => value === item.type)?.[1]}</small></button>
           <button type="button" className="electrical-connection-action" aria-label={`Edit connection from ${from} to ${to}`} title="Edit connection" onClick={() => selectConnection(item.id)}>Edit</button>
@@ -57,7 +60,7 @@ export function ElectricalLayoutPanel(p: Props) {
         </li>;
       })}</ul> : <p className="electrical-layout-empty">No connections in this circuit yet.</p>}
       {selected && <div className="electrical-connection-properties">
-        <p className="electrical-connection-endpoints">From <strong>{name(selected.fromId)}</strong> → To <strong>{name(selected.toId)}</strong></p>
+        <p className="electrical-connection-endpoints">From <strong>{electricalEndpointLabel(selected, "from", p.objects, references)}</strong> → To <strong>{electricalEndpointLabel(selected, "to", p.objects, references)}</strong></p>
         <div className="electrical-layout-grid">
           <label className="field"><span>Relationship</span><select value={selected.type} onChange={(e) => updateSelected({ type: e.target.value as ElectricalConnectionType })}>{types.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="field"><span>Colour</span><input aria-label="Connection colour" type="color" value={selectedColour ?? selected.color} onChange={(e) => updateSelected({ color: e.target.value, colorOverride: true })} /></label>
@@ -70,7 +73,7 @@ export function ElectricalLayoutPanel(p: Props) {
           const object = p.objects.find(item => item.id === (endpoint === "from" ? selected.fromId : selected.toId));
           const gangs = switchGangCount(object?.representation_key);
           const field = endpoint === "from" ? "fromSwitchGang" : "toSwitchGang";
-          return gangs > 1 ? <label className="field" key={endpoint}><span>{endpoint === "from" ? "From" : "To"} switch gang (lighting test)</span><select value={selected[field] ?? 1} onChange={event => updateSelected({ [field]: Number(event.target.value) })}>{Array.from({ length: gangs }, (_, index) => <option key={index} value={index + 1}>Gang {index + 1}</option>)}</select></label> : null;
+          return gangs > 1 ? <label className="field" key={endpoint}><span>{endpoint === "from" ? "From" : "To"} switch gang</span><select value={selected[field] ?? 1} onChange={event => updateSelected({ [field]: Number(event.target.value) })}>{Array.from({ length: gangs }, (_, index) => <option key={index} value={index + 1}>Gang {index + 1}</option>)}</select><small>Only this rocker belongs to the connection; the other gangs remain independent.</small></label> : null;
         })}
         {selected.circuitId && <button type="button" className="review-style-button" onClick={() => updateSelected({ colorOverride: false })}>Use circuit colour</button>}
         <label className="field"><span>Optional label</span><input value={selected.label ?? ""} maxLength={100} onChange={(e) => updateSelected({ label: e.target.value || undefined })} /></label>
@@ -82,7 +85,6 @@ export function ElectricalLayoutPanel(p: Props) {
     </details>;
   };
   return <div className="electrical-layout-panel evidence-panel">
-    <div className="electrical-mode-row"><label className="electrical-mode-toggle"><input type="checkbox" checked={p.mode} onChange={(event) => p.onModeChange(event.target.checked)} /><span><strong>Electrical layout mode</strong></span></label></div>
     <div className="electrical-layout-actions" aria-label="Electrical layout actions">
       <button type="button" className="review-style-button" onClick={p.onSaveLayout} disabled={!p.onSaveLayout}>Save layout</button>
       <button type="button" className="review-style-button" onClick={p.onLoadLayout} disabled={!p.onLoadLayout}>Load layout</button>
@@ -95,6 +97,21 @@ export function ElectricalLayoutPanel(p: Props) {
     <p className="electrical-layout-count" role="status">{p.currentCount} electrical fittings in this project</p>
     {p.status && <p className="electrical-layout-status" role="status">{p.status}</p>}
     {p.connecting && <p className="electrical-connect-hint" role="status">{p.repeatConnecting ? "Select a source and destination. After each connection, choose any new pair. Esc cancels." : "Select a source and destination. The command ends after one connection. Esc cancels."}</p>}
+    {multiSwitches.length > 0 && <details className="electrical-layout-section electrical-switch-map" open>
+      <summary>Switch connections · {multiSwitches.length} multi-gang fittings</summary>
+      <p className="electrical-layout-hint">Choose a rocker below, then its destination on the plan. S = switch, L = light. Each gang is independent; select a linked fitting to highlight and edit its route.</p>
+      {multiSwitches.map(fitting => <section className="electrical-switch-map-item" key={fitting.id} aria-label={`${references[fitting.id]} · ${fitting.label} connections`}>
+        <h3>{references[fitting.id]} · {fitting.label}</h3>
+        <div className="electrical-gang-map-grid">{Array.from({ length: switchGangCount(fitting.representation_key) }, (_, index) => {
+          const gang = index + 1, links = electricalGangConnections(p.connections, fitting.id, gang);
+          const chosen = p.connecting && p.sourceId === fitting.id && p.sourceGang === gang;
+          return <div className="electrical-gang-map-card" key={gang} data-selected={chosen}>
+            <button type="button" className="review-style-button" aria-label={`Connect ${references[fitting.id]} Gang ${gang}`} aria-pressed={chosen} disabled={!p.mode || !p.onConnectGang || p.objects.length < 2} onClick={() => p.onConnectGang?.(fitting.id, gang)}>{chosen ? `G${gang} · Choose destination` : `Connect G${gang}`}</button>
+            {links.length ? <ul>{links.map(({ connection, otherEndpoint }) => <li key={connection.id}><button type="button" className={connection.id === p.selectedConnectionId ? "selected" : ""} aria-pressed={connection.id === p.selectedConnectionId} onClick={() => { p.onActiveCircuitChange(connection.circuitId); p.onSelectConnection(connection.id); }}><span>→ {electricalEndpointLabel(connection, otherEndpoint, p.objects, references)}</span><small>{p.circuits.find(c => c.id === connection.circuitId)?.name} · {types.find(([type]) => type === connection.type)?.[1]}</small></button></li>)}</ul> : <small>No direct links</small>}
+          </div>;
+        })}</div>
+      </section>)}
+    </details>}
     <details className="electrical-layout-section" open><summary>New connection defaults</summary><div className="electrical-layout-grid">
       <label className="field"><span>Colour</span><input aria-label="Default connection colour" type="color" value={p.defaults.color} onChange={(e) => p.onDefaultsChange({ ...p.defaults, color: e.target.value })} /></label>
       <label className="field"><span>Style</span><select value={p.defaults.lineStyle} onChange={(e) => p.onDefaultsChange({ ...p.defaults, lineStyle: e.target.value as ElectricalLineStyle })}>{styles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
