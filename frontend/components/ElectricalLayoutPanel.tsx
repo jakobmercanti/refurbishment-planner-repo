@@ -48,7 +48,7 @@ export function ElectricalLayoutPanel(p: Props) {
       p.onActiveCircuitChange(circuitId);
       p.onSelectConnection(id);
     };
-    return <details className="electrical-layout-section electrical-circuit-connections" open key={circuitId}>
+    return <details className="electrical-layout-section electrical-circuit-connections" open={Boolean(selected)} key={circuitId}>
       <summary>{title}</summary>
       {groupedConnections.length ? <ul className="electrical-connection-list">{groupedConnections.map((item) => {
         const from = electricalEndpointLabel(item, "from", p.objects, references);
@@ -97,7 +97,7 @@ export function ElectricalLayoutPanel(p: Props) {
     <p className="electrical-layout-count" role="status">{p.currentCount} electrical fittings in this project</p>
     {p.status && <p className="electrical-layout-status" role="status">{p.status}</p>}
     {p.connecting && <p className="electrical-connect-hint" role="status">{p.repeatConnecting ? "Select a source and destination. After each connection, choose any new pair. Esc cancels." : "Select a source and destination. The command ends after one connection. Esc cancels."}</p>}
-    {multiSwitches.length > 0 && <details className="electrical-layout-section electrical-switch-map" open>
+    {multiSwitches.length > 0 && <details className="electrical-layout-section electrical-switch-map">
       <summary>Switch connections · {multiSwitches.length} multi-gang fittings</summary>
       <p className="electrical-layout-hint">Choose a rocker below, then its destination on the plan. S = switch, L = light. Each gang is independent; select a linked fitting to highlight and edit its route.</p>
       {multiSwitches.map(fitting => <section className="electrical-switch-map-item" key={fitting.id} aria-label={`${references[fitting.id]} · ${fitting.label} connections`}>
@@ -112,19 +112,19 @@ export function ElectricalLayoutPanel(p: Props) {
         })}</div>
       </section>)}
     </details>}
-    <details className="electrical-layout-section" open><summary>New connection defaults</summary><div className="electrical-layout-grid">
+    <details className="electrical-layout-section"><summary>New connection defaults</summary><div className="electrical-layout-grid">
       <label className="field"><span>Colour</span><input aria-label="Default connection colour" type="color" value={p.defaults.color} onChange={(e) => p.onDefaultsChange({ ...p.defaults, color: e.target.value })} /></label>
       <label className="field"><span>Style</span><select value={p.defaults.lineStyle} onChange={(e) => p.onDefaultsChange({ ...p.defaults, lineStyle: e.target.value as ElectricalLineStyle })}>{styles.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="field"><span>Width</span><select value={p.defaults.width} onChange={(e) => p.onDefaultsChange({ ...p.defaults, width: e.target.value as ElectricalLineWidth })}>{widths.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="field"><span>Routing</span><select value={p.defaults.routing} disabled={p.forceOrthogonalRouting} onChange={(e) => p.onDefaultsChange({ ...p.defaults, routing: e.target.value as ElectricalRouting })}>{routings.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="field"><span>Relationship</span><select value={p.defaults.type} onChange={(e) => p.onDefaultsChange({ ...p.defaults, type: e.target.value as ElectricalConnectionType })}>{types.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     </div><label className="electrical-orthogonal-toggle"><input type="checkbox" checked={p.forceOrthogonalRouting} onChange={(e) => p.onForceOrthogonalRoutingChange(e.target.checked)} /><span>Force horizontal / vertical circuit routes</span></label></details>
-    <details className="electrical-layout-section" open><summary>Display</summary><div className="electrical-layout-display">
+    <details className="electrical-layout-section"><summary>Display</summary><div className="electrical-layout-display">
       <label><input type="checkbox" checked={p.display.symbols} onChange={(e) => p.onDisplayChange({ ...p.display, symbols: e.target.checked })} /> Electrical symbols</label>
       <label><input type="checkbox" checked={p.display.connections} onChange={(e) => p.onDisplayChange({ ...p.display, connections: e.target.checked })} /> Connections</label>
       <label><input type="checkbox" checked={p.display.circuitLabels} onChange={(e) => p.onDisplayChange({ ...p.display, circuitLabels: e.target.checked })} /> Circuit labels</label>
     </div></details>
-    <details className="electrical-layout-section" open><summary>Circuits ({p.circuits.length})</summary>
+    <details className="electrical-layout-section" open={Boolean(p.selectedConnectionId)}><summary>Circuits ({p.circuits.length})</summary>
       {p.circuits.length ? <ul className="electrical-connection-list electrical-circuit-list">{p.circuits.map((item) => <li className="electrical-circuit-row" key={item.id}>
         <button type="button" className={`electrical-circuit-select ${item.id === activeCircuitId ? "selected" : ""}`} aria-pressed={item.id === activeCircuitId} onClick={() => p.onActiveCircuitChange(item.id)}><span className="electrical-circuit-name"><i style={{ backgroundColor: item.color }} aria-hidden="true" />{item.name}</span><small>{item.id === activeCircuitId ? "Selected for new connections" : "Select for new connections"}</small></button>
         {p.circuits.length > 1 && <button type="button" className="electrical-connection-action delete electrical-circuit-delete" aria-label={`Delete circuit ${item.name}`} title={`Delete ${item.name}`} onClick={() => p.onDeleteCircuit(item.id)}>Delete</button>}

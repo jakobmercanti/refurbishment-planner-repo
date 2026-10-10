@@ -29,6 +29,17 @@ test("estimated output can show an explicitly estimated green balance, never a v
   assert.match(balance.indicator, /^Estimated surplus/); assert.match(balance.capacityText, /^~/);
   assert.equal(row.status, "Not verified"); assert.equal(heatingResults([room], heating).sufficient, 0);
 });
+
+test("incomplete fabric data does not hide a surplus from known room emitters", () => {
+  const heating = makeHeating();
+  heating.thermalOverrides = { "room|wall:0": { warning: "Energy construction inputs incomplete; fallback retained." } };
+  const row = result(heating), balance = heatingRoomBalance(row);
+  assert.equal(row.status, "Not verified");
+  assert.equal(balance.tone, "sufficient");
+  assert.equal(balance.estimated, true);
+  assert.match(balance.indicator, /Estimated surplus/);
+  assert.ok(row.warnings.some(w => w.startsWith("Energy ")));
+});
 test("missing or unsuitable UFH output never produces a green pass even with a large radiator", () => {
   const missing = heatingRoomBalance(result(makeHeating(null)));
   assert.equal(missing.tone, "review"); assert.match(missing.headline, /checking/);

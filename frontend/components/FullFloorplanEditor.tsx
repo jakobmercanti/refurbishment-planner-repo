@@ -1,5 +1,6 @@
 "use client";
 import { exported } from "@/lib/analytics";
+import { chooseLayoutSave, chooseLayoutOpen } from "@/lib/electricalFilePicker";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { RoomOpeningEditor } from "@/components/RoomOpeningEditor";
 import { createPortal } from "react-dom";
@@ -1112,6 +1113,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const [electricalExportBusy, setElectricalExportBusy] = useState(false);
   const [electricalExportStatus, setElectricalExportStatus] = useState<string | null>(null);
   const [electricalFileStatus, setElectricalFileStatus] = useState<string | null>(null);
+  const [electricalSaveFile, setElectricalSaveFile] = useState<{ blob: Blob; name: string } | null>(null);
   const [electricalImportError, setElectricalImportError] = useState<string | null>(null);
   const [pendingElectricalImport, setPendingElectricalImport] = useState<{ data: ElectricalLayoutPackage; attachmentBlobs: Map<string, Blob>; assetBlobs: Map<string, Blob>; fileName: string } | null>(null);
   const electricalImportInput = useRef<HTMLInputElement>(null);
@@ -1617,6 +1619,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   useEffect(() => {
     const finishActiveTool = (event: KeyboardEvent) => {
       if (!editorRoot.current || editorRoot.current.closest("[hidden]")) return;
+      if (energy.windowOpen && !event.ctrlKey && !event.metaKey) return;
       if (calibrating) {
         if (event.key === "Escape") { event.preventDefault(); cancelActiveEditorInteractionEvent(); }
         return;
@@ -1670,7 +1673,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     };
     window.addEventListener("keydown", finishActiveTool);
     return () => window.removeEventListener("keydown", finishActiveTool);
-  }, [addRoomPanelOpen, annotationPanelOpen, annotationTextDialog, annotationTool, calibrating, electricalConnecting, electricalMode, lShapePickerOpen, markerDialog, outlineMenuOpen, placement, selectedAnnotationId, selectedElectricalConnectionId, selectedFixtureId, tool]);
+  }, [addRoomPanelOpen, annotationPanelOpen, annotationTextDialog, annotationTool, calibrating, electricalConnecting, electricalMode, energy.windowOpen, lShapePickerOpen, markerDialog, outlineMenuOpen, placement, selectedAnnotationId, selectedElectricalConnectionId, selectedFixtureId, tool]);
 
   useEffect(() => {
     if (!contextMenu && !measurementContextMenu && !openingContextMenu && !openingMeasurementContextMenu && !fixtureContextMenu && !fixtureMeasurementContextMenu && !annotationContextMenu && !electricalWaypointContextMenu && !electricalConnectionContextMenu && !toolbarContextMenu) return;
@@ -1776,10 +1779,18 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   async function saveElectricalLayoutFile() {
     setElectricalFileStatus("Preparing portable layout…");
     try {
+      const handle = await chooseLayoutSave(`${safeElectricalFileName(projectName)}-electrical-layout.electricallayout`);
       const blob = await exportElectricalLayoutPackage(projectName, electricalDocumentRooms, electricalAssets, electricalAssetInstances, electricalLayout);
-      downloadElectricalFile(blob, `${safeElectricalFileName(projectName)}-electrical-layout.electricallayout`);
-      setElectricalFileStatus("Electrical layout downloaded.");
-    } catch (error) { setElectricalFileStatus(error instanceof Error ? error.message : "Electrical layout could not be saved."); }
+      if (handle) { const writable = await handle.createWritable(); await writable.write(blob); await writable.close(); }
+      else setElectricalSaveFile({ blob, name: `${safeElectricalFileName(projectName)}-electrical-layout` });
+      setElectricalFileStatus(handle ? "Electrical layout saved." : null);
+    } catch (error) { setElectricalFileStatus(error instanceof Error && error.name === "AbortError" ? null : error instanceof Error ? error.message : "Electrical layout could not be saved."); }
+  }
+  async function loadElectricalLayoutFile() {
+    const selection = chooseLayoutOpen();
+    if (!selection) { electricalImportInput.current?.click(); return; }
+    try { await inspectElectricalLayoutFile(await selection); }
+    catch (error) { if (!(error instanceof Error && error.name === "AbortError")) setElectricalImportError(error instanceof Error ? error.message : "Could not open file."); }
   }
   async function inspectElectricalLayoutFile(file?: File) {
     if (!file) return;
@@ -5010,7 +5021,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         <div className="resizable-floorplan-window">
          {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div>{sourceUrl && !importing && <div className="floorplan-background-actions drawing-navigation-row" role="group" aria-label="Drawing actions"><button type="button" className="fit-view-button floorplan-background-action" onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="fit-view-button floorplan-background-action" onClick={clearImportedDrawing}>Remove drawing</button></div>}<div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><ViewToggle label="Room names" active={showRoomNames} onToggle={() => setShowRoomNames((current) => !current)} /><ViewToggle label="Measurements" active={showMeasurements} onToggle={() => { const enabled = !showMeasurements; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><ViewToggle label="Wall thickness" active={showWallThickness} onToggle={() => setShowWallThickness((current) => !current)} /><ViewToggle label="Annotations" active={showAnnotations} onToggle={() => setShowAnnotations((current) => !current)} /><ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} /><ViewToggle label="Coordinates table" active={coordinatesToolbarOpen} onToggle={() => onToggleToolbar("floorplan-coordinates")} /></div></div></FloatingToolbar>}
 <div className="full-plan-canvas">{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}
-          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={"mode-" + tool.toLowerCase() + (electricalMode ? " electrical-layout-active" : "")} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onContextMenuCapture={event => { if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (event.target instanceof Element && event.target.closest("[data-energy-interactive]")) return; if (heating.data.enabled) { if (beginTouchNavigation(event)) return; heatingCanvasPointerDown(event); return; } if (electricalMode) { const electricalTarget = event.target instanceof Element && event.target.closest("[data-electrical-interactive]"); if (!electricalTarget) { if (beginTouchNavigation(event)) return; if (placement && isElectricalObstacle(placement.obstacle)) { beginPan(event); return; } if (event.button === 1) { beginPan(event); return; } event.preventDefault(); event.stopPropagation(); if (electricalConnecting && electricalSourceId) onElectricalLimitStatusChange?.("Connection selection cancelled. Select a source fitting to start again."); setElectricalSourceId(null); setElectricalPointer(null); setSelectedElectricalConnectionId(null); setSelectedFixtureId(null); onElementSelected?.(null); return; } if (beginTouchNavigation(event)) return; return; } if (beginTouchNavigation(event)) return; if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMoveCapture={(event) => { moveTouchNavigation(event); }} onPointerUpCapture={(event) => { endTouchNavigation(event); }} onPointerCancelCapture={(event) => { endTouchNavigation(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
+          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={"mode-" + tool.toLowerCase() + (electricalMode ? " electrical-layout-active" : "")} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onKeyDownCapture={event => { if (energy.windowOpen && !(event.target instanceof Element && event.target.closest("[data-energy-interactive]"))) { event.preventDefault(); event.stopPropagation(); } }} onContextMenuCapture={event => { if (energy.windowOpen) { event.preventDefault(); event.stopPropagation(); return; } if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (energy.windowOpen) { if (event.target instanceof Element && event.target.closest("[data-energy-interactive]")) return; if (beginTouchNavigation(event)) return; event.preventDefault(); event.stopPropagation(); if (event.button === 1) beginPan(event); return; } if (heating.data.enabled) { if (beginTouchNavigation(event)) return; heatingCanvasPointerDown(event); return; } if (electricalMode) { const electricalTarget = event.target instanceof Element && event.target.closest("[data-electrical-interactive]"); if (!electricalTarget) { if (beginTouchNavigation(event)) return; if (placement && isElectricalObstacle(placement.obstacle)) { beginPan(event); return; } if (event.button === 1) { beginPan(event); return; } event.preventDefault(); event.stopPropagation(); if (electricalConnecting && electricalSourceId) onElectricalLimitStatusChange?.("Connection selection cancelled. Select a source fitting to start again."); setElectricalSourceId(null); setElectricalPointer(null); setSelectedElectricalConnectionId(null); setSelectedFixtureId(null); onElementSelected?.(null); return; } if (beginTouchNavigation(event)) return; return; } if (beginTouchNavigation(event)) return; if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMoveCapture={(event) => { moveTouchNavigation(event); }} onPointerUpCapture={(event) => { endTouchNavigation(event); }} onPointerCancelCapture={(event) => { endTouchNavigation(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
             if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && (target.classList.contains("canvas-background") || target.classList.contains("plan-grid"))); if (background && tool === "SELECT") clearActiveDrawingSelection(); return; }
             const rawRequested = canvasPoint(event, false);
@@ -5226,7 +5237,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     {heating.windowOpen && <FloatingToolbar title="Heating Layout" className="electrical-layout-window heating-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 680 }} maxHeight={760} layoutResetKey={toolbarLayoutResetKey} onClose={() => { heating.close();setHeatingTool(null);setHeatingExclusionDraft([]);setHeatingPipeDraft([]);setHeatingPipeSource(null);setHeatingSelection(null);setHighlightedHeatingRoomId(null); }}>
       <HeatingLayoutPanel apiUrl={apiUrl} onFinishPipe={finishHeatingPipe} pipePointCount={heatingPipeDraft.length} onAdd={() => { selectAddToPlanMode("HEATING"); if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings"); }} rooms={planRooms} data={heating.data} onChange={applyHeatingLayout} selection={heatingSelection} onSelect={selectHeatingElement} onHighlightRoom={setHighlightedHeatingRoomId} onTool={tool => { setHeatingTool(tool);setHeatingExclusionDraft([]);setHeatingPipeDraft([]);setHeatingPipeSource(null); }} tool={heatingTool} onFinishExclusion={finishHeatingExclusion} exclusionPointCount={heatingExclusionDraft.length} onUndo={undoHeating} onRedo={redoHeating} canUndo={heatingUndo.current.length > 0} canRedo={heatingRedo.current.length > 0} projectName={projectName} />
     </FloatingToolbar>}
-    {electricalWindowOpen && <FloatingToolbar title="Full Electrical Layout module" className="electrical-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 680 }} maxHeight={760} layoutResetKey={toolbarLayoutResetKey} onClose={closeElectricalWindow}>
+    {electricalWindowOpen && <FloatingToolbar title="Full Electrical Layout module" className="electrical-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 740, height: 980 }} maxHeight={980} layoutResetKey={toolbarLayoutResetKey} onClose={closeElectricalWindow}>
       <ElectricalLayoutPanel
         mode={electricalMode}
         sourceId={electricalSourceId}
@@ -5248,7 +5259,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         }}
         onAdd={() => { setElectricalAddElementsOpen(true); selectAddToPlanMode("ELECTRICAL"); if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings"); }}
         onSaveLayout={() => void saveElectricalLayoutFile()}
-        onLoadLayout={() => electricalImportInput.current?.click()}
+        onLoadLayout={() => void loadElectricalLayoutFile()}
         onExport={() => { setElectricalExportStatus(null); setElectricalExportOpen(true); }}
         onSchedule={() => setElectricalScheduleOpen(true)}
         onCheckout={() => { setElectricalConnecting(false); setElectricalSourceId(null); setElectricalPointer(null); setSelectedElectricalConnectionId(null); setLightingSwitchPositions({}); setLightingTestOpen(true); }}
@@ -5277,6 +5288,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         onDeleteCircuit={deleteElectricalCircuit}
       />
     </FloatingToolbar>}
+    <Popup open={electricalSaveFile !== null} title="Save electrical layout as…" message="" confirmLabel="Save file" confirmDisabled={!electricalSaveFile?.name.trim()} onCancel={() => setElectricalSaveFile(null)} onConfirm={() => { if (electricalSaveFile) { downloadElectricalFile(electricalSaveFile.blob, `${safeElectricalFileName(electricalSaveFile.name)}.electricallayout`); setElectricalFileStatus("Electrical layout downloaded. Your browser controls its save location."); setElectricalSaveFile(null); } }}><label className="field">File name<input value={electricalSaveFile?.name ?? ""} onChange={event => setElectricalSaveFile(current => current ? { ...current, name: event.target.value } : null)} /></label><p>This browser does not support a native Save As picker. Choose a file name here; the file is saved using your browser’s download settings.</p></Popup>
     <input ref={electricalImportInput} type="file" accept=".electricallayout,application/zip" hidden onChange={(event) => { void inspectElectricalLayoutFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
     {electricalMode && lightingTestOpen && <FloatingToolbar title="Lighting layout test" className="electrical-lighting-test-window" defaultPosition={{ x: 70, y: 110 }} initialSize={{ width: 860 }} maxHeight={720} bringToFront onClose={() => { setLightingTestOpen(false); setLightingSwitchPositions({}); }}><ElectricalLightingTest layout={electricalLayout} fixtures={electricalFixtures} result={lightingTest} positions={lightingSwitchPositions} onToggle={toggleLightingSwitch} onReset={() => setLightingSwitchPositions({})} /></FloatingToolbar>}
     {electricalScheduleOpen && <FloatingToolbar title="Electrical BOM & schedule" className="electrical-schedule-window" defaultPosition={{ x: 680, y: 92 }} initialSize={{ width: 980 }} maxHeight={840} layoutResetKey={toolbarLayoutResetKey} onClose={() => setElectricalScheduleOpen(false)}>

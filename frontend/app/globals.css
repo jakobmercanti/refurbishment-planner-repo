@@ -272,6 +272,8 @@ button { font: inherit; }
 .electrical-mode-toggle small, .electrical-layout-count, .electrical-layout-hint { color: var(--muted); line-height: 1.4; }
 .electrical-layout-actions, .electrical-circuit-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; align-items: end; }
 .electrical-layout-actions button { min-width: 0; }
+.electrical-layout-panel .electrical-layout-actions { gap: 8px; }
+.electrical-layout-panel .electrical-layout-actions button { min-height: 40px; font-size: calc(12px * var(--density-font-scale, 1)); padding: 8px 10px; }
 .electrical-test-panel { gap: 8px; }
 .electrical-test-summary, .electrical-test-circuit > summary, .electrical-test-lights li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .electrical-test-summary .review-style-button { width: auto; padding: 6px 12px; }
@@ -489,7 +491,7 @@ button { font: inherit; }
 .electrical-import-dialog > footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; padding: 12px 20px 16px; border-top: 1px solid var(--line); }
 .electrical-import-dialog > footer button { min-height: 34px; padding: 6px 10px; font-size: calc((10px) * var(--density-font-scale, 1)); }
 @container electrical-layout-window (min-width: 600px) {
-  .electrical-layout-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .electrical-layout-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .electrical-layout-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .electrical-layout-display { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .electrical-circuit-edit { grid-template-columns: repeat(3, minmax(0, 1fr)); }

@@ -126,7 +126,7 @@ export function HeatingLayoutPanel(props: Props) {
       </details>}
     </>}
     {tab === "Radiators" && room && <>
-      <div className={styles.sectionHeading}><h3>Heating elements in {room.name}</h3><span className={styles.count}>{row?.emitters.length ?? 0} items</span></div>
+      <details className={styles.heatingElements}><summary>Heating elements in {room.name} · {row?.emitters.length ?? 0} items</summary>
       <p className={styles.hint}>Select an element to edit it. Drag it on the plan to reposition it.</p>
       {!row?.emitters.length && <div className={styles.empty}><strong>No heating elements yet</strong><p>Add a radiator, electric heater or hybrid emitter from the shared catalogue.</p><button onClick={props.onAdd}>Add heating element…</button></div>}
       <div className={styles.elementList}>{row?.emitters.map(({ radiator: r, outputW, note, warnings, estimated }) => <article key={r.radiatorId} className={styles.elementCard} data-selected={selection?.id === r.radiatorId}>
@@ -135,7 +135,7 @@ export function HeatingLayoutPanel(props: Props) {
           <span className={styles.elementOutput}>{r.category === "Boiler" ? `${((r.ratedOutputW ?? 0) / 1000).toFixed(0)} kW` : `${r.estimatedOutput || estimated ? "~" : ""}${watt(outputW)}`}<small>{r.category === "Boiler" ? "Central-heating rating" : r.estimatedOutput || estimated ? "Estimated room output" : outputW === null ? "Add performance data" : "Calculated room output"}</small></span>
         </button>
         <details className={styles.elementNotes}><summary>{warnings.length ? `Output details · ${warnings.length} placement warning(s)` : "Output details"}</summary><p>{note}</p>{warnings.length > 0 && <ul>{warnings.map(w => <li key={w}>{w}</li>)}</ul>}{r.category === "Boiler" && <small>Heat source for pipes; not counted as heat delivered to this room.</small>}</details>
-      </article>)}</div>
+      </article>)}</div></details>
       {selectedRadiator && <section className={styles.editor}><div className={styles.sectionHeading}><h3>Edit selected element</h3><button onClick={() => props.onSelect(null)}>Done editing</button></div><details open><summary>Identity, dimensions & position</summary><div className={styles.grid}>
         {selectedRadiator.performanceReference && <a href={selectedRadiator.performanceReference} target="_blank" rel="noreferrer">Performance / estimate reference</a>}
         <label>Manufacturer<input value={selectedRadiator.manufacturer} onChange={e => radiatorChange(selectedRadiator, { manufacturer: e.target.value })} /></label><label>Model<input value={selectedRadiator.model} onChange={e => radiatorChange(selectedRadiator, { model: e.target.value })} /></label>

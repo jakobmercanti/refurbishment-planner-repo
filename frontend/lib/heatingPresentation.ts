@@ -8,7 +8,7 @@ export const heatingWatts = (value: number) => `${Math.round(value).toLocaleStri
  */
 export function heatingRoomBalance(row: HeatingRoomResult) {
   const differenceW = row.capacityW - row.demand.designW;
-  const estimated = row.capacityEstimated;
+  const estimated = row.capacityEstimated || row.demand.warnings.some(w => w.startsWith("Energy "));
   const capacityText = `${estimated ? "~" : ""}${heatingWatts(row.capacityW)}`;
   if (!row.capacityComparisonValid) return { tone: "review", headline: "Output needs checking", detail: "Missing or unsuitable performance data", indicator: "! Check output data", capacityText: `${capacityText} known`, estimated, differenceW } as const;
   if (!row.emitters.some(e => e.radiator.category !== "Boiler") && !row.zones.length && row.demand.designW > 0) return { tone: "empty", headline: "Add heating to this room", detail: `${heatingWatts(row.demand.designW)} of heat required`, indicator: "No room heating added", capacityText, estimated, differenceW } as const;

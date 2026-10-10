@@ -14,7 +14,7 @@ export function EnergyLayoutOverlay({ rooms, heating, data, selectedIds, onSelec
     if (!drag.current) return;event.stopPropagation();const at = fromClient(event.clientX, event.clientY, event.currentTarget.ownerSVGElement!);
     setPreview({ id: drag.current.id, position: { x: drag.current.position.x + at.x - drag.current.start.x, y: drag.current.position.y + at.y - drag.current.start.y } });
   }} onPointerUp={event => { if (!drag.current) return;event.stopPropagation();if (preview) onChange({ ...data, labelPositions: { ...data.labelPositions, [preview.id]: preview.position } });drag.current = null;setPreview(null); }} onPointerCancel={() => { drag.current = null;setPreview(null); }}>
-    {elements.filter(e => e.category === "wall").map(e => {
+    {elements.filter(e => ["wall", "floor", "roof"].includes(e.category)).map(e => {
       const intensity = Math.min(1, e.uValue / 2), color = `hsl(${135 - intensity * 130} 60% 42%)`, selected = selectedIds.includes(e.elementId), room = rooms.find(r => r.id === e.roomId)!, before = existing.find(v => v.elementId === e.elementId);
       const assigned = scenarioAssignments(data).find(a => a.elementId === e.elementId), assembly = data.assemblies.find(a => a.assemblyId === assigned?.assemblyId);
       const defined = assigned?.uValue != null || (assembly && calculateAssemblyUValue(assembly, data.materials).uValue !== null);
@@ -30,7 +30,12 @@ export function EnergyLayoutOverlay({ rooms, heating, data, selectedIds, onSelec
         }} x={label.x} y={label.y} fontSize={10} textAnchor="middle" fill="var(--ink,#10243e)" paintOrder="stroke" stroke="var(--surface,#fff)" strokeWidth={3}>{valueLabel}{` · ${Math.round(e.heatLossW)} W`}{before ? ` · was ${before.uValue.toFixed(2)}` : ""}{e.warnings.length ? " ⚠" : ""}</text>}</g>;
       }
       const polygon = room.vertices.map(toScreen), center = polygon.reduce((p, v) => ({ x: p.x + v.x / polygon.length, y: p.y + v.y / polygon.length }), { x: 0, y: 0 });
-      return <g key={e.elementId} data-energy-interactive="true" role="button" tabIndex={0} aria-label={title} {...events} style={{ cursor: "pointer" }}><title>{title}</title><polygon points={polygon.map(p => `${p.x},${p.y}`).join(" ")} fill={color} fillOpacity={.08} stroke={selected ? "#1b81ef" : "none"} strokeWidth={3} /><text x={center.x} y={center.y + (e.category === "floor" ? 25 : 43)} fontSize={11} fill="var(--ink,#10243e)" textAnchor="middle">{e.category} U {e.uValue.toFixed(2)} · {Math.round(e.heatLossW)} W</text></g>;
+      const y = center.y + (e.category === "floor" ? 42 : -42);
+      return <g key={e.elementId} data-energy-interactive="true" data-energy-category={e.category} role="button" tabIndex={0} aria-label={title} {...events} style={{ cursor: "pointer" }}><title>{title}</title>
+        <rect x={center.x - 105} y={y - 23} width={210} height={46} rx={8} fill="var(--surface,#fff)" stroke={selected ? "#1b81ef" : color} strokeWidth={selected ? 3 : 1.5} />
+        <text x={center.x} y={y - 5} fontSize={12} fontWeight={700} fill="var(--ink,#10243e)" textAnchor="middle">{e.category === "floor" ? "Floor insulation" : "Roof insulation"}</text>
+        <text x={center.x} y={y + 12} fontSize={11} fill="var(--ink,#10243e)" textAnchor="middle">{valueLabel} · {Math.round(e.heatLossW)} W{e.warnings.length ? " ⚠" : ""}</text>
+      </g>;
     })}
   </g>;
 }
