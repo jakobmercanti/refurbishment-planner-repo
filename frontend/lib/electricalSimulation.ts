@@ -1,5 +1,6 @@
 import type { ElectricalLayoutData } from "./electricalLayout";
 import type { Obstacle } from "./types";
+import { electricalCrossings } from "./electricalCrossings";
 
 export function switchGangCount(key?: string | null): number {
   if (!key?.startsWith("electrical-switch-")) return 0;
@@ -30,6 +31,7 @@ export function simulateLighting(layout: ElectricalLayoutData, fixtures: readonl
   const controlled = new Set<string>();
   for (const circuit of layout.circuits) {
     const graph = new Map<string, Set<string>>(), nodes = new Map<string, { id: string; isSwitch: boolean }>();
+    const connectionNodes = new Map<string, string>();
     for (const connection of layout.connections) {
       if (connection.circuitId !== circuit.id || connection.type === "POWER") continue;
       const from = devices.get(connection.fromId), to = devices.get(connection.toId);
@@ -45,6 +47,11 @@ export function simulateLighting(layout: ElectricalLayoutData, fixtures: readonl
         return key;
       };
       const a = endpoint(from, connection.fromSwitchGang), b = endpoint(to, connection.toSwitchGang);
+      if (a && b) { graph.get(a)!.add(b); graph.get(b)!.add(a); connectionNodes.set(connection.id, a); }
+    }
+    if (layout.junctions?.length) for (const crossing of electricalCrossings(layout, fixtures)) {
+      if (!crossing.connected || crossing.sharedEndpoint) continue;
+      const a = connectionNodes.get(crossing.connectionIds[0]), b = connectionNodes.get(crossing.connectionIds[1]);
       if (a && b) { graph.get(a)!.add(b); graph.get(b)!.add(a); }
     }
     const visited = new Set<string>();
@@ -76,4 +83,19 @@ export function simulateLighting(layout: ElectricalLayoutData, fixtures: readonl
   for (const fixture of fixtures) if (switchGangCount(fixture.representation_key) && !switchLabels[fixture.id]) switchLabels[fixture.id] = "Not connected";
   if (!Object.keys(lights).length) warnings.push("Add a lighting fitting to test the layout.");
   return { groups, lights, contacts, switchLabels, warnings: [...new Set(warnings)] };
+}
+
+export interface LightingSwitchGang { gang: number; keys: string[]; on: boolean; label: string }
+/** Expose every physical rocker, including unconnected ones; never toggle a whole multi-gang fitting. */
+export function lightingSwitchGangs(fixtures: readonly Obstacle[], result: LightingTestResult): Record<string, LightingSwitchGang[]> {
+  return Object.fromEntries(fixtures.filter(item => switchGangCount(item.representation_key)).map(item => [item.id,
+    Array.from({ length: switchGangCount(item.representation_key) }, (_, index) => {
+      const gang = index + 1;
+      const keys = [...new Set(result.groups.flatMap(group => group.switchKeys).filter(key => {
+        const [, id, selectedGang] = JSON.parse(key) as [string, string, number]; return id === item.id && selectedGang === gang;
+      }))];
+      const on = result.groups.some(group => group.on && group.switchKeys.some(key => keys.includes(key)));
+      return { gang, keys, on, label: keys.length ? `${on ? "On" : "Off"} (${result.contacts[keys[0]] ? "B" : "A"})` : "Not connected" };
+    }),
+  ]));
 }

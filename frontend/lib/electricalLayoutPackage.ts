@@ -358,6 +358,16 @@ export function planElectricalLayoutImport(
     ? { forceOrthogonalRouting: archive.electricalLayout.forceOrthogonalRouting, connections, circuits, documentation: docs }
     : { forceOrthogonalRouting: currentLayout.forceOrthogonalRouting, connections: [...currentLayout.connections, ...connections], circuits: [...currentLayout.circuits, ...circuits], documentation: docs };
   const attachmentRemap = new Map(importedDocs.attachments.map((attachment, index) => [attachment.attachmentId, importedAttachments[index].attachmentId]));
+  const junctions = mode === "MERGE" ? structuredClone(currentLayout.junctions ?? []) : [];
+  const occupiedJunctionIds = new Set(junctions.map(junction => junction.id));
+  for (const junction of archive.electricalLayout.junctions ?? []) {
+    const connectionIds = junction.connectionIds.flatMap(oldId => remappedConnectionIds.has(oldId) ? [remappedConnectionIds.get(oldId)!] : []);
+    if (connectionIds.length < 2) continue;
+    const junctionId = occupiedJunctionIds.has(junction.id) ? id("electrical-junction") : junction.id;
+    occupiedJunctionIds.add(junctionId);
+    junctions.push({ ...junction, id: junctionId, position: { ...junction.position }, connectionIds });
+  }
+  if (junctions.length) layout.junctions = junctions;
   const plannedBlobs = new Map<string, Blob>();
   for (const [oldId, blob] of attachmentBlobs) plannedBlobs.set(attachmentRemap.get(oldId) ?? oldId, blob);
   return { rooms, electricalLayout: layout, assetInstances, assets, assetBlobs, attachmentBlobs: plannedBlobs, warnings, replacedCounts };

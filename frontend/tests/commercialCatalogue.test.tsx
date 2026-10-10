@@ -24,6 +24,9 @@ test("all account Plans entry points use the standalone page and retain a select
   assert.ok(embedded.includes('data-plans-redirect="true"'));
   const standalone = renderToStaticMarkup(createElement(AccountExperience));
   assert.match(standalone, /id="plans-section-tab" href="[^\"]*\/plans\/"/);
+  assert.doesNotMatch(standalone, /AI render/i);
+  assert.match(standalone, /Heating Layout/);
+  assert.match(standalone, /EPC retrofit planning/);
 });
 
 test("fallback offer contains the approved four plans and render pack prices", () => {
@@ -64,6 +67,10 @@ test("initial catalogue renders working native plan forms before hydration witho
   assert.equal(includesPlannerBuild("pro"), false);
   const freeCardFeatures = markup.match(/<article class="plan-card [^>]*>.*?<ul>(.*?)<\/ul>/s)?.[1] ?? "";
   assert.ok(freeCardFeatures.includes("Full Electrical Layout module"));
+  assert.ok(freeCardFeatures.includes("Heating Layout module"));
+  assert.ok(freeCardFeatures.includes("Energy &amp; Insulation / EPC retrofit planning"));
+  assert.match(markup, /not an official EPC/);
+  assert.doesNotMatch(markup, /AI render|Medium renders|High renders|render packs|rendering allowance/i);
   for (const plan of ["starter", "pro", "studio"]) {
     assert.match(markup, new RegExp(`<form action="[^"]*/checkout/" method="get"><input type="hidden" name="plan" value="${plan}"/>.*?<button[^>]+type="submit"`));
   }
@@ -90,7 +97,7 @@ test("live catalogue values override fallback without gating electrical module a
 });
 
 test("comparison table includes the Full Electrical Layout module on every plan and PlannerBuild on Studio+", () => {
-  const sections = buildPlanComparison(FALLBACK_PLANS, true);
+  const sections = buildPlanComparison(FALLBACK_PLANS);
   const row = (sectionName: string, label: string) => {
     const section = sections.find((item) => item.title === sectionName);
     assert.ok(section, `missing ${sectionName} comparison section`);
@@ -100,12 +107,11 @@ test("comparison table includes the Full Electrical Layout module on every plan 
   };
   assert.deepEqual(row("Cloud", "Private cloud storage"), { free: "—", starter: "10 GB", pro: "50 GB", studio: "100 GB" });
   assert.deepEqual(row("Cloud", "Cloud projects"), { free: "—", starter: "50", pro: "250", studio: "1,000" });
-  assert.deepEqual(row("AI rendering", "Medium renders / month"), { free: "—", starter: "10", pro: "30", studio: "60" });
-  assert.deepEqual(row("AI rendering", "High renders / month"), { free: "—", starter: "—", pro: "5", studio: "15" });
+  for (const label of ["Heating Layout module", "Energy & Insulation / EPC retrofit planning"]) {
+    assert.deepEqual(row("Other", label), { free: "Included", starter: "Included", pro: "Included", studio: "Included" });
+  }
+  assert.ok(!sections.some((section) => /render/i.test(section.title)));
   assert.deepEqual(row("Other", "Full Electrical Layout module"), { free: "Included", starter: "Included", pro: "Included", studio: "Included" });
   assert.deepEqual(row("Other", "Full PlannerBuild project-planning module"), { free: "Not included", starter: "Not included", pro: "Not included", studio: "Included" });
-  const packRow = buildPlanComparison(FALLBACK_PLANS, false).find((section) => section.title === "AI rendering")?.rows;
-  assert.deepEqual(packRow?.[packRow.length - 1]?.values, {
-    free: "—", starter: "—", pro: "—", studio: "—",
-  });
+
 });

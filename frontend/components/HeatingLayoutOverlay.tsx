@@ -3,6 +3,7 @@ import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type
 import type { Point2D, Room } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
 import { heatingResults } from "@/lib/heatingDesign";
+import { heatingRoomBalance, heatingWatts } from "@/lib/heatingPresentation";
 import { calculateCircuitLength, projectOnSegment, snapRadiatorToWall } from "@/lib/heatingCalculations";
 import type { HeatingSelection } from "./HeatingLayoutPanel";
 import { heatingPipeLengthM, refreshHeatingPipeEndpoints } from "@/lib/heatingPipes";
@@ -46,10 +47,20 @@ export function HeatingLayoutOverlay(props: Props) {
     <defs><pattern id="heating-exclusion-hatch" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0,8L8,0" stroke="#aa6b29" strokeWidth="1" /></pattern></defs>
     {results.rooms.map(row => {
       const pts = row.room.vertices.map(props.toScreen), label = { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+      const balance = heatingRoomBalance(row), green = balance.tone === "sufficient", red = balance.tone === "insufficient";
+      const colour = green ? "#15803d" : red ? "#b91c1c" : "#a16207", background = green ? "#f0fdf4" : red ? "#fff1f2" : "#fffbeb";
       return <g key={row.room.id} pointerEvents="none">
         {data.display.zones && row.zones.length > 0 && <polygon points={screenPath(row.room.vertices)} fill="#da813722" stroke="#da8137" strokeWidth="1" strokeDasharray="5 4" />}
         {props.highlightedRoomId === row.room.id && row.demand.surfaces.filter(s => s.edgeIndex !== undefined && s.lossW > 0).map(s => <line key={s.key} x1={props.toScreen(s.startMm!).x} y1={props.toScreen(s.startMm!).y} x2={props.toScreen(s.endMm!).x} y2={props.toScreen(s.endMm!).y} stroke="#dd791d" strokeWidth="5" opacity=".65" />)}
-        {(data.display.demand || data.display.temperature || data.display.density) && <g transform={`translate(${label.x},${label.y + 26})`}><rect x="-88" y="-10" width="176" height="47" rx="7" fill="#fff" fillOpacity=".92" stroke="#be7940" /><text textAnchor="middle" fill="#6a3616" fontSize="11"><tspan x="0" dy="3">{data.display.demand ? `Heat loss ${Math.round(row.demand.designW)} W` : ""}{data.display.warnings && row.warnings.length ? " ⚠" : ""}</tspan><tspan x="0" dy="15">{data.display.density ? `${Math.round(row.demand.densityWm2)} W/m²` : ""} {data.display.temperature ? `Target ${row.demand.targetC}°C` : ""}</tspan></text></g>}
+        {(data.display.demand || data.display.temperature || data.display.density) && <g className="heating-room-indicator" data-room-id={row.room.id} data-balance={balance.tone} transform={`translate(${label.x},${label.y + 37})`}>
+          <title>{`${row.room.name}: ${balance.headline}. ${balance.detail}. ${row.warnings.join(" ")}`}</title>
+          <rect x="-120" y="-16" width="240" height="94" rx="10" fill={background} fillOpacity=".97" stroke={colour} strokeWidth="1.5" />
+          {data.display.demand && <text x="0" y="0" textAnchor="middle" fill="#24334b" fontSize="11">Heat loss: {heatingWatts(row.demand.designW)}</text>}
+          <text x="0" y="17" textAnchor="middle" fill="#24334b" fontSize="11">Heat available: {balance.capacityText}</text>
+          <rect className="heating-room-status-fill" x="-112" y="24" width="224" height="25" rx="6" fill={colour} />
+          <text x="0" y="40" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="700">{green ? "✓ " : red ? "! " : ""}{balance.indicator}</text>
+          <text x="0" y="65" textAnchor="middle" fill="#475569" fontSize="10">{data.display.density ? `${Math.round(row.demand.densityWm2)} W/m² · ` : ""}{data.display.temperature ? `Target ${row.demand.targetC}°C` : ""}{data.display.warnings && row.warnings.length ? " · ⚠ Review" : ""}</text>
+        </g>}
       </g>;
     })}
     {data.display.exclusions && data.exclusions.map(ex => <g key={ex.exclusionId}><polygon points={screenPath(ex.polygonMm)} fill="url(#heating-exclusion-hatch)" fillOpacity=".5" stroke="#a15f22" strokeWidth="2" onPointerDown={e => begin(e, { kind: "exclusion", id: ex.exclusionId })} style={{ cursor: "move" }} />{props.selection?.id === ex.exclusionId && ex.polygonMm.map((p, i) => <circle key={i} cx={props.toScreen(p).x} cy={props.toScreen(p).y} r="5" fill="white" stroke="#a15f22" onPointerDown={e => begin(e, { kind: "exclusion", id: ex.exclusionId, index: i })} />)}</g>)}

@@ -119,8 +119,8 @@ test("electrical panel exposes mode, routing and display controls with inherited
   assert.match(markup, /aria-label="Delete connection from Wall switch to Ceiling light"/);
   assert.match(markup, /Selected for new connections/);
   const actionGrid = markup.match(/<div class="electrical-layout-actions" aria-label="Electrical layout actions">(.*?)<\/div>/)?.[1] ?? "";
-  assert.equal((actionGrid.match(/<button\b/g) ?? []).length, 6);
-  const buttonOrder = ["Save layout", "Load layout", "Export", "BOM / Schedule", "Connect", "Add electrical fitting…"];
+  assert.equal((actionGrid.match(/<button\b/g) ?? []).length, 7);
+  const buttonOrder = ["Save layout", "Load layout", "Export", "BOM / Schedule", "Connect", "Add electrical fitting…", "Check layout"];
   assert.ok(buttonOrder.every((label, index) => actionGrid.indexOf(label) >= 0 && (index === 0 || actionGrid.indexOf(buttonOrder[index - 1]) < actionGrid.indexOf(label))));
   assert.doesNotMatch(markup, /aria-label="Delete circuit Lighting"/);
   assert.doesNotMatch(markup, />No circuit<\/option>/);

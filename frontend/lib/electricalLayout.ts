@@ -94,6 +94,8 @@ export interface ElectricalLayoutDocumentation {
 }
 
 export interface ElectricalLayoutData {
+  /** Explicit joined wire crossings, in floorplan millimetres. Absent in older projects. */
+  junctions?: { id: string; position: Point2D; connectionIds: string[] }[];
   /** Render every connection leg with horizontal/vertical segments when enabled. */
   forceOrthogonalRouting: boolean;
   connections: ElectricalConnection[];
@@ -263,7 +265,7 @@ export function createElectricalConnection(
 ): ElectricalConnection | null {
   const type = input.type ?? defaults.type;
   if (!safeId(input.fromId) || !safeId(input.toId) || !safeId(input.circuitId) || input.fromId === input.toId || !connectionTypes.has(type)) return null;
-  if (existing.some((item) => item.fromId === input.fromId && item.toId === input.toId && item.type === type && item.circuitId === input.circuitId)) return null;
+  if (existing.some((item) => item.fromId === input.fromId && item.toId === input.toId && item.type === type && item.circuitId === input.circuitId && (item.fromSwitchGang ?? 1) === (input.fromSwitchGang ?? 1) && (item.toSwitchGang ?? 1) === (input.toSwitchGang ?? 1))) return null;
   return {
     id: input.id && safeId(input.id) ? input.id : fallbackId("electrical-connection"),
     fromId: input.fromId,
@@ -285,7 +287,7 @@ export function createElectricalConnection(
 
 export function normalizeElectricalLayout(value: unknown, validElectricalIds: ReadonlySet<string>): ElectricalLayoutData {
   if (!value || typeof value !== "object") return { ...DEFAULT_ELECTRICAL_LAYOUT, circuits: [{ ...DEFAULT_ELECTRICAL_CIRCUIT }] };
-  const raw = value as { forceOrthogonalRouting?: unknown; connections?: unknown; circuits?: unknown; documentation?: unknown };
+  const raw = value as { forceOrthogonalRouting?: unknown; connections?: unknown; circuits?: unknown; documentation?: unknown; junctions?: unknown };
   const circuits: ElectricalCircuit[] = [];
   const circuitIds = new Set<string>();
   if (Array.isArray(raw.circuits)) {
@@ -309,7 +311,7 @@ export function normalizeElectricalLayout(value: unknown, validElectricalIds: Re
       if (!safeId(item.id) || ids.has(item.id) || !safeId(item.fromId) || !safeId(item.toId) || item.fromId === item.toId) continue;
       if (!validElectricalIds.has(item.fromId) || !validElectricalIds.has(item.toId) || !connectionTypes.has(item.type as ElectricalConnectionType)) continue;
       const circuitId = item.circuitId && circuitIds.has(item.circuitId) ? item.circuitId : fallbackCircuitId;
-      const pair = `${item.fromId}\u0000${item.toId}\u0000${item.type}\u0000${circuitId}`;
+      const pair = `${item.fromId}\u0000${item.toId}\u0000${item.type}\u0000${circuitId}\u0000${item.fromSwitchGang ?? 1}\u0000${item.toSwitchGang ?? 1}`;
       if (pairs.has(pair)) continue;
       const connection = createElectricalConnection({ ...item, circuitId } as ElectricalConnection, connections);
       if (!connection) continue;
@@ -320,7 +322,17 @@ export function normalizeElectricalLayout(value: unknown, validElectricalIds: Re
       connections.push(connection);
     }
   }
-  return { forceOrthogonalRouting: raw.forceOrthogonalRouting !== false, connections, circuits, documentation: normalizeDocumentation(raw.documentation) };
+  const junctions: NonNullable<ElectricalLayoutData["junctions"]> = [];
+  if (Array.isArray(raw.junctions)) for (const value of raw.junctions.slice(0, 10000)) {
+    if (!value || typeof value !== "object") continue;
+    const item = value as { id?: unknown; position?: unknown; connectionIds?: unknown };
+    if (!safeId(item.id) || !safePoint(item.position) || !Array.isArray(item.connectionIds) || junctions.some(j => j.id === item.id)) continue;
+    const linkedIds = [...new Set(item.connectionIds.filter((id): id is string => typeof id === "string" && ids.has(id)))];
+    const linked = connections.filter(connection => linkedIds.includes(connection.id));
+    if (linked.length < 2 || !linked.every(connection => connection.circuitId === linked[0].circuitId)) continue;
+    junctions.push({ id: item.id, position: { ...item.position }, connectionIds: linkedIds });
+  }
+  return { forceOrthogonalRouting: raw.forceOrthogonalRouting !== false, connections, circuits, documentation: normalizeDocumentation(raw.documentation), ...(junctions.length ? { junctions } : {}) };
 }
 
 export function electricalConnectionPoints(connection: ElectricalConnection, from: Point2D, to: Point2D, forceOrthogonalRouting = false): Point2D[] {

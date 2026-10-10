@@ -248,6 +248,7 @@ export default function Home() {
   }
 
   function beginPlacement(request: PlacementRequest) {
+    setViewerElementEditRequest(null);
     setPlacement(request);
   }
 

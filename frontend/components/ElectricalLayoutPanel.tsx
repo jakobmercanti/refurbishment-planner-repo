@@ -2,6 +2,7 @@
 
 import type { ElectricalCircuit, ElectricalConnection, ElectricalConnectionDefaults, ElectricalConnectionType, ElectricalLineStyle, ElectricalLineWidth, ElectricalRouting } from "@/lib/electricalLayout";
 import { switchGangCount } from "@/lib/electricalSimulation";
+import type { ElectricalCrossing } from "@/lib/electricalCrossings";
 
 export interface ElectricalDisplayOptions { symbols: boolean; connections: boolean; circuitLabels: boolean }
 export interface ElectricalObjectOption { id: string; label: string; representation_key?: string | null }
@@ -15,6 +16,7 @@ type Props = {
   forceOrthogonalRouting: boolean; onForceOrthogonalRoutingChange: (value: boolean) => void;
   onSaveLayout?: () => void; onLoadLayout?: () => void; onExport?: () => void; onSchedule?: () => void;
   onCheckout: () => void; onFinishConnection: () => void;
+  crossings?: ElectricalCrossing[]; onToggleJunction?: (crossing: ElectricalCrossing) => void;
   status?: string | null; currentCount: number; defaults: ElectricalConnectionDefaults;
   onDefaultsChange: (value: ElectricalConnectionDefaults) => void; display: ElectricalDisplayOptions;
   onDisplayChange: (value: ElectricalDisplayOptions) => void; objects: ElectricalObjectOption[];
@@ -73,13 +75,14 @@ export function ElectricalLayoutPanel(p: Props) {
         {selected.circuitId && <button type="button" className="review-style-button" onClick={() => updateSelected({ colorOverride: false })}>Use circuit colour</button>}
         <label className="field"><span>Optional label</span><input value={selected.label ?? ""} maxLength={100} onChange={(e) => updateSelected({ label: e.target.value || undefined })} /></label>
         <p className="electrical-layout-hint">Right-click a route leg to add a corner, or right-click a corner to remove it. Drag a corner to reshape the route.</p>
+        {(p.crossings ?? []).some(crossing => crossing.connectionIds.includes(selected.id) && crossing.canJoin) && <details className="electrical-layout-section"><summary>Wire crossings</summary><p className="electrical-layout-hint">A bridge means not connected. Join explicitly to show a dot and share control. Moving wires away removes the active junction.</p>{(p.crossings ?? []).filter(crossing => crossing.connectionIds.includes(selected.id) && crossing.canJoin).map((crossing, index) => <button key={crossing.key} type="button" className="review-style-button" onClick={() => p.onToggleJunction?.(crossing)}>{crossing.connected ? "Separate" : "Join"} crossing {index + 1}</button>)}</details>}
         <button type="button" className="danger-button" onClick={() => p.onDeleteConnection(selected.id)}>Delete connection</button>
         <button type="button" className="review-style-button primary" onClick={p.onFinishConnection}>Ok</button>
       </div>}
     </details>;
   };
   return <div className="electrical-layout-panel evidence-panel">
-    <div className="electrical-mode-row"><label className="electrical-mode-toggle"><input type="checkbox" checked={p.mode} onChange={(event) => p.onModeChange(event.target.checked)} /><span><strong>Electrical layout mode</strong></span></label>{p.mode && <button type="button" className="review-style-button" onClick={p.onCheckout}>Check layout</button>}</div>
+    <div className="electrical-mode-row"><label className="electrical-mode-toggle"><input type="checkbox" checked={p.mode} onChange={(event) => p.onModeChange(event.target.checked)} /><span><strong>Electrical layout mode</strong></span></label></div>
     <div className="electrical-layout-actions" aria-label="Electrical layout actions">
       <button type="button" className="review-style-button" onClick={p.onSaveLayout} disabled={!p.onSaveLayout}>Save layout</button>
       <button type="button" className="review-style-button" onClick={p.onLoadLayout} disabled={!p.onLoadLayout}>Load layout</button>
@@ -87,6 +90,7 @@ export function ElectricalLayoutPanel(p: Props) {
       <button type="button" className="review-style-button" onClick={p.onSchedule} disabled={!p.onSchedule}>BOM / Schedule</button>
       <button type="button" className="review-style-button" aria-label={p.connecting ? (p.repeatConnecting ? "Cancel repeat connection command" : "Cancel connection command") : "Connect fittings. Double-click to connect multiple pairs."} title={p.connecting ? "Click to cancel the active connection command." : "Click to connect one pair; double-click to connect multiple pairs."} aria-pressed={p.connecting} disabled={!p.mode || p.objects.length < 2} onClick={(event) => { if (event.detail <= 1) p.onConnect("single"); }} onDoubleClick={() => p.onConnect("repeat")}>{p.connecting ? (p.repeatConnecting ? "Cancel repeat connect" : "Cancel connect") : "Connect"}</button>
       <button type="button" className="review-style-button" onClick={p.onAdd}>Add electrical fitting…</button>
+      {p.mode && <button type="button" className="review-style-button" onClick={p.onCheckout}>Check layout</button>}
     </div>
     <p className="electrical-layout-count" role="status">{p.currentCount} electrical fittings in this project</p>
     {p.status && <p className="electrical-layout-status" role="status">{p.status}</p>}

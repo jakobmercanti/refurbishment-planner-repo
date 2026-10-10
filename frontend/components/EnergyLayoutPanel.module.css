@@ -1,0 +1,30 @@
+.panel { gap: 8px; }
+.panel .buildingSummary { margin: 0; padding: 8px 10px; background: var(--surface-muted); border-radius: 8px; }
+.wallSummary { display: grid; gap: 5px; margin-bottom: 8px; }
+.wallMetrics { display: flex; flex-wrap: wrap; gap: 5px 14px; color: var(--muted); font-size: 11px; }
+.wallActions { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; margin: 10px 0; }
+.wallActions button { display: flex; gap: 24px; justify-content: space-between; align-items: center; }
+.panel :global(.wall-layers-preview-inline) { display: grid; gap: 8px; }
+.panel :global(.wall-layers-preview-inline .fixture-preview) { height: 180px !important; margin: 0; }
+.panel :global(.wall-layers-preview-inline .fixture-preview.expanded) { height: 300px !important; }
+.panel :global(.wall-layers-preview-inline ol) { padding-left: 20px; margin-bottom: 0; }
+.editorMetrics { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 10px; }
+.popup :global(.popup-content) { overflow: hidden; }
+.popup :global(.appearance-popup-grid) { height: min(650px, calc(100dvh - 165px)); max-height: min(650px, calc(100dvh - 165px)); grid-template-rows: minmax(0, 1fr); }
+.popup :global(.appearance-popup-form) { overflow-y: auto; padding-right: 10px; padding-bottom: 10px; align-content: start; }
+.editorPreview { align-self: stretch; }
+.editorPreview :global(.wall-layers-preview-editor) { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
+.editorPreview :global(.wall-layers-preview-editor > details) { font-size: 11px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; max-height: 100px; overflow: auto; }
+.editorPreview :global(.fixture-preview) { min-height: 300px; }
+.popup .layer { padding: 10px; }
+.layer > summary { line-height: 1.4; overflow-wrap: anywhere; }
+.swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid #0002; border-radius: 3px; margin-right: 6px; }
+@media (max-width: 720px) {
+  .popup :global(.popup-content) { overflow: auto; }
+  .popup :global(.appearance-popup-grid) { height: auto; max-height: none; grid-template-rows: auto; }
+  .popup :global(.appearance-popup-form) { overflow: visible; padding-right: 2px; }
+  .editorPreview :global(.fixture-preview) { min-height: 260px; }
+}
+@container electrical-layout-window (max-width: 420px) {
+  .wallActions { grid-template-columns: minmax(0, 1fr); gap: 5px; }
+}

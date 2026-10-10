@@ -11,9 +11,11 @@ const HeatingContext = createContext({ data: defaultHeating, windowOpen: false, 
 /** Module UI lifecycle only; authoritative heating inputs/geometry stay in ProjectDocument. */
 export function HeatingLayoutProvider({ data: stored, rooms, onChange, onOpen, children }: { data: HeatingProject; rooms: Room[]; onChange: (data: HeatingProject) => void; onOpen: () => void; children: ReactNode }) {
   const energy = useEnergyLayout();
-  const data = useMemo(() => withEnergyFabric(refreshHeatingPipeEndpoints(withHeatingElements(stored, rooms)), energy.data, rooms), [stored, energy.data, rooms]);
-  const change = (next: HeatingProject) => onChange(withoutDerivedFabric(refreshHeatingPipeEndpoints(next)));
   const [windowOpen, setWindowOpen] = useState(false);
-  return <HeatingContext.Provider value={{ data, windowOpen, change, open: () => { onOpen();setWindowOpen(true);change({ ...data, enabled: true }); }, close: () => { setWindowOpen(false);change({ ...data, enabled: false }); } }}>{children}</HeatingContext.Provider>;
+  const data = useMemo(() => ({ ...withEnergyFabric(refreshHeatingPipeEndpoints(withHeatingElements(stored, rooms)), energy.data, rooms), enabled: windowOpen }), [stored, energy.data, rooms, windowOpen]);
+  // Mode belongs to the window lifecycle, never to imported files or undo snapshots.
+  const persist = (next: HeatingProject, enabled: boolean) => onChange(withoutDerivedFabric(refreshHeatingPipeEndpoints({ ...next, enabled })));
+  const change = (next: HeatingProject) => persist(next, windowOpen);
+  return <HeatingContext.Provider value={{ data, windowOpen, change, open: () => { onOpen();setWindowOpen(true);persist(data, true); }, close: () => { setWindowOpen(false);persist(data, false); } }}>{children}</HeatingContext.Provider>;
 }
 export const useHeatingLayout = () => useContext(HeatingContext);

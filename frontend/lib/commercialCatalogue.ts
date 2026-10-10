@@ -60,7 +60,7 @@ export const FALLBACK_PLANS: CommercialPlan[] = [
     project_limit: 50,
     included_medium: 10,
     included_high: 0,
-    description: "For occasional cloud backup and rendering.",
+    description: "For occasional cloud backup and private project storage.",
   },
   {
     plan_key: "pro",
@@ -82,7 +82,7 @@ export const FALLBACK_PLANS: CommercialPlan[] = [
     project_limit: 1000,
     included_medium: 60,
     included_high: 15,
-    description: "For frequent rendering and large project libraries.",
+    description: "For large project libraries and full PlannerBuild project planning.",
   },
 ];
 
@@ -166,12 +166,12 @@ export function resolveCommercialCatalogue(value: unknown): CommercialCatalogue 
 export type PlanComparisonRow = {
   label: string;
   values: Record<PlanKey, string>;
-  help?: "saving" | "storage" | "assets" | "renders" | "electrical";
+  help?: "saving" | "storage" | "assets" | "electrical" | "heating" | "energy";
 };
 
 export type PlanComparisonSection = { title: string; rows: PlanComparisonRow[] };
 
-export function buildPlanComparison(plans: CommercialPlan[], renderPacksAvailable = true): PlanComparisonSection[] {
+export function buildPlanComparison(plans: CommercialPlan[]): PlanComparisonSection[] {
   const byKey = Object.fromEntries(plans.map((plan) => [plan.plan_key, plan])) as Record<PlanKey, CommercialPlan>;
   const value = (select: (plan: CommercialPlan) => string): Record<PlanKey, string> => ({
     free: select(byKey.free),
@@ -201,17 +201,11 @@ export function buildPlanComparison(plans: CommercialPlan[], renderPacksAvailabl
       ],
     },
     {
-      title: "AI rendering",
-      rows: [
-        { label: "Medium renders / month", values: value((plan) => count(plan.included_medium)) },
-        { label: "High renders / month", values: value((plan) => count(plan.included_high)) },
-        { label: "Additional render packs", values: value((plan) => plan.plan_key !== "free" && renderPacksAvailable ? "Available" : "—") },
-      ],
-    },
-    {
       title: "Other",
       rows: [
         { label: "Full Electrical Layout module", values: value(() => "Included"), help: "electrical" },
+        { label: "Heating Layout module", values: value(() => "Included"), help: "heating" },
+        { label: "Energy & Insulation / EPC retrofit planning", values: value(() => "Included"), help: "energy" },
         { label: "Full PlannerBuild project-planning module", values: value((plan) => includesPlannerBuild(plan.plan_key) ? "Included" : "Not included") },
       ],
     },

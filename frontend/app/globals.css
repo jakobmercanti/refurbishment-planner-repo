@@ -272,6 +272,19 @@ button { font: inherit; }
 .electrical-mode-toggle small, .electrical-layout-count, .electrical-layout-hint { color: var(--muted); line-height: 1.4; }
 .electrical-layout-actions, .electrical-circuit-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; align-items: end; }
 .electrical-layout-actions button { min-width: 0; }
+.electrical-test-panel { gap: 8px; }
+.electrical-test-summary, .electrical-test-circuit > summary, .electrical-test-lights li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.electrical-test-summary .review-style-button { width: auto; padding: 6px 12px; }
+.electrical-test-circuit > summary small { color: var(--muted); font-weight: 500; }
+.electrical-test-controls { display: grid; gap: 8px; margin-top: 10px; }
+.electrical-test-fitting > strong { font-size: .86rem; }
+.electrical-test-gangs { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; margin-top: 5px; }
+.electrical-test-gangs button { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 34px; padding: 7px 9px; font-size: .8rem; }
+.electrical-test-on { color: var(--success, #18753d); }
+.electrical-test-lights { list-style: none; padding: 0; margin: 8px 0 0; font-size: .83rem; }
+.electrical-test-lights li { padding: 5px 0; border-top: 1px solid var(--border); }
+.electrical-test-explanation { margin-top: 8px; font-size: .8rem; }
+.electrical-test-explanation svg { display: block; width: 100%; max-width: 300px; }
 .electrical-layout-actions button[aria-pressed="true"] { border-color: var(--deep); background: var(--deep); color: #fff; }
 .electrical-layout-count, .electrical-layout-status, .electrical-connect-hint, .electrical-layout-empty { margin: 0; font-size: calc((9px) * var(--density-font-scale, 1)); line-height: 1.45; }
 .electrical-layout-status { padding: 7px 8px; border-radius: 7px; background: #eef4f8; color: var(--muted); }

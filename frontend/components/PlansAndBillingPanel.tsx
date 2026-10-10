@@ -14,7 +14,7 @@ import {
 import { currentSession, isAuthConfigured, type AuthSession } from "@/lib/commercialAuth";
 
 type Summary = { plan: string; status: string; current_period_end?: string; cancel_at_period_end?: boolean };
-type HelpTopic = "saving" | "storage" | "assets" | "renders" | "electrical";
+type HelpTopic = "saving" | "storage" | "assets" | "electrical" | "heating" | "energy";
 type HelpContent = { title: string; body: string };
 
 const HELP_COPY: Record<HelpTopic, HelpContent> = {
@@ -24,11 +24,15 @@ const HELP_COPY: Record<HelpTopic, HelpContent> = {
   },
   storage: {
     title: "What uses cloud storage?",
-    body: "Cloud storage is used by projects, uploaded custom assets, generated asset files and saved AI renders stored in your online workspace. Local projects stored only on your device do not use your cloud allowance.",
+    body: "Cloud storage is used by projects, uploaded custom assets and generated asset files stored in your online workspace. Local projects stored only on your device do not use your cloud allowance.",
   },
-  renders: {
-    title: "What are AI renders?",
-    body: "AI renders turn a selected 3D camera view into a more photorealistic visualisation. Medium renders are designed for faster everyday previews. High renders use the higher-quality rendering option for presentation images. AI images are visual aids only and never change floorplan dimensions or fit calculations.",
+  heating: {
+    title: "Free Heating Layout module",
+    body: "Heating Layout uses your existing floorplan for preliminary room heat loss, radiator sizing, low-temperature comparisons and editable underfloor-heating layouts. It is free without an account. Review assumptions and have final system design checked by a qualified heating professional.",
+  },
+  energy: {
+    title: "Free Energy & Insulation / EPC retrofit planning",
+    body: "Explore wall construction layers, U-values, insulation thickness and their effect on heating demand using the same floorplan. The module is free without an account. Results and the fabric-target score support preliminary retrofit planning; they are not an official EPC, EPC band or SAP/RdSAP assessment.",
   },
   assets: {
     title: "What are cloud assets?",
@@ -48,7 +52,8 @@ function PlanHelpButton({ topic, onOpen }: { topic: HelpTopic; onOpen: (topic: H
     saving: "Saving and backup information",
     storage: "Cloud storage information",
     assets: "Cloud assets information",
-    renders: "AI render information",
+    heating: "Free Heating Layout module information",
+    energy: "Free Energy and Insulation module information",
     electrical: "Full Electrical Layout module information",
   };
   return <button
@@ -60,7 +65,7 @@ function PlanHelpButton({ topic, onOpen }: { topic: HelpTopic; onOpen: (topic: H
   >?</button>;
 }
 
-function PlanHelpDialog({ content, packs, onClose }: { content: HelpContent; packs: CommercialCatalogue["packs"]; onClose: () => void }) {
+function PlanHelpDialog({ content, onClose }: { content: HelpContent; onClose: () => void }) {
   const closeButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -93,34 +98,24 @@ function PlanHelpDialog({ content, packs, onClose }: { content: HelpContent; pac
         <div className="window-header-actions"><WindowHelpButton title={content.title} /><button ref={closeButton} type="button" className="modal-close" aria-label="Close information" onClick={onClose}>×</button></div>
       </header>
       <p>{content.body}</p>
-      {packs.length > 0 && <section className="plan-help-pack-list" aria-label="Render pack prices">
-        <h3>Current render packs</h3>
-        {(["medium", "high"] as const).map((quality) => {
-          const options = packs.filter((pack) => pack.quality_class === quality).sort((a, b) => a.quantity - b.quantity);
-          return options.length > 0 && <p key={quality}><strong>{quality === "medium" ? "Medium" : "High"}</strong>{options.map((pack) => <span key={pack.pack_key}>{pack.quantity} · {formatPounds(pack.price_pence)}</span>)}</p>;
-        })}
-      </section>}
     </section>
   </div>;
 }
 
 function planHighlights(plan: CommercialCatalogue["plans"][number]): string[] {
   if (plan.plan_key === "free") {
-    return ["Unlimited local floorplans", "Browser saving and portable files", "Full furniture & electrical catalogue", "Full Electrical Layout module"];
+    return ["Unlimited local floorplans", "Browser saving and portable files", "Full furniture & electrical catalogue", "Full Electrical Layout module", "Heating Layout module", "Energy & Insulation / EPC retrofit planning"];
   }
   const storage = `${Math.round(plan.storage_limit_bytes / 1024 ** 3)} GB private cloud`;
   const assets = `${plan.asset_limit.toLocaleString("en-GB")} private assets`;
   const projects = `${plan.project_limit.toLocaleString("en-GB")} cloud projects`;
-  const renders = [
-    plan.included_medium ? `${plan.included_medium} Medium renders / month` : "",
-    plan.included_high ? `${plan.included_high} High renders / month` : "",
-  ].filter(Boolean).join(" + ");
   return [
     storage,
     assets,
     projects,
-    renders,
     "Full Electrical Layout module",
+    "Heating Layout module",
+    "Energy & Insulation / EPC retrofit planning",
     ...(includesPlannerBuild(plan.plan_key) ? ["Full PlannerBuild project planning"] : []),
   ].filter(Boolean);
 }
@@ -217,11 +212,11 @@ export function PlansAndBillingPanel({
     : !loading && !catalogue.billingEnabled
       ? "Checkout is not configured in this environment. Plan information is still shown; no payment will be taken."
       : "";
-  const comparison = buildPlanComparison(catalogue.plans, catalogue.packs.length > 0);
+  const comparison = buildPlanComparison(catalogue.plans);
 
   return <div className="commercial-content account-plans-content">
     <section className="commercial-page-heading plan-page-heading">
-      <div><p className="commercial-eyebrow">PLANS &amp; BILLING</p><h1>Keep planning free. Add cloud when you need it.</h1><p>Every plan includes the full floorplan editor, furniture/electrical catalogue and unlimited Full Electrical Layout module. Paid plans add private cloud storage, project backup and AI rendering allowances. Studio and higher tiers also include the full PlannerBuild project-planning module.</p></div>
+      <div><p className="commercial-eyebrow">PLANS &amp; BILLING</p><h1>Keep planning free. Add cloud when you need it.</h1><p>Every plan includes the full floorplan editor, furniture/electrical catalogue and free Electrical Layout, Heating Layout and Energy &amp; Insulation modules. Explore heat loss, radiators, UFH, U-values and EPC retrofit improvements without an account. These are preliminary planning tools, not an official EPC. Paid plans add private cloud storage and project backup. Studio also includes full PlannerBuild project planning.</p></div>
     </section>
 
     {notice && <p className="commercial-status plan-action-error" role="status">{notice}</p>}
@@ -301,16 +296,9 @@ export function PlansAndBillingPanel({
       </div>
     </section>
 
-    {catalogue.packs.length > 0 && <section className="plan-render-pack-note" aria-label="Render packs">
-      <p>Need more renders? Additional render packs are available on paid plans. <PlanHelpButton topic="renders" onOpen={setHelpTopic} /></p>
-    </section>}
-
-    <p className="commercial-footnote plan-billing-footnote">Payments are securely processed by Stripe. Taxes and final payment totals are shown at checkout. <span>AI renders are visual aids and never affect floorplan dimensions or deterministic fit calculations.</span></p>
+    <p className="commercial-footnote plan-billing-footnote">Payments are securely processed by Stripe. Taxes and final payment totals are shown at checkout. <span>Heating and energy results are preliminary estimates, not certified system designs or an official EPC.</span></p>
     {helpTopic && <PlanHelpDialog
-      content={helpTopic === "renders" && catalogue.packs.length
-        ? { ...HELP_COPY.renders, body: `${HELP_COPY.renders.body} Additional render packs can be purchased separately.` }
-        : HELP_COPY[helpTopic]}
-      packs={helpTopic === "renders" ? catalogue.packs : []}
+      content={HELP_COPY[helpTopic]}
       onClose={closeHelp}
     />}
   </div>;
