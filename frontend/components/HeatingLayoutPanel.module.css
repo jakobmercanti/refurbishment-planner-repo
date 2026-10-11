@@ -19,6 +19,9 @@
 .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .actions,.tabs { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
 .temperaturePresets { margin-block:10px; row-gap:10px; }
+.systemPresets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-block:10px; }
+.panel.panel .systemPresets button { width:100%; min-width:0; height:72px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:8px; line-height:1.25; }
+.systemPresets small { flex-shrink:0; }
 .panel label.pipeRouting { margin-block:12px; }
 .tabs button[aria-pressed=true] { background:var(--deep,#287fb8); color:white; }
 .tabs button[aria-selected=true] { background:var(--deep,#287fb8); color:white; }
@@ -77,6 +80,7 @@
 .panel details.disclaimer { opacity:1; padding:9px 10px; }
 .disclaimer summary { color:var(--muted,#526b80); font-size:11px; }
 @container electrical-layout-window (max-width:420px) {
+  .systemPresets { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .roomPicker { grid-template-columns:1fr; }
   .panel button.systemChip { display:flex; align-items:center; justify-content:space-between; gap:8px; }

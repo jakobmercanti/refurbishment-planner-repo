@@ -138,7 +138,7 @@ export function ElectricalLayoutOverlay(props: Props) {
             {count > 1 && <path className="electrical-gang-leader" d={`M${x + rockerWidth / 2},${symbolDepth * .29} L${x + rockerWidth / 2},${symbolDepth / 2 + 5} L${badge.x},${badge.y - 9}`} fill="none" stroke="#64748b" strokeWidth="1" pointerEvents="none" />}
             <circle className="electrical-terminal-port" cx={count > 1 ? badge.x : 0} cy={count > 1 ? badge.y + 14 : symbolDepth / 2 + 4} r="2.5" fill="#071b38" stroke="white" strokeWidth="1" pointerEvents="none" />
             <g className="electrical-gang-caption" style={count === 1 ? { display: "none" } : undefined} transform={`translate(${badge.x} ${badge.y}) rotate(${fixture.rotation_deg})`}>
-              <rect fill="transparent" stroke="none" x="-12" y="-12" width="24" height="24" />
+              <rect className="electrical-gang-hit-area" style={{ fill: "transparent", stroke: "none", strokeDasharray: "none" }} x="-12" y="-12" width="24" height="24" />
               <rect className="electrical-gang-badge" x={-GANG_BADGE_WIDTH / 2} y={-GANG_BADGE_HEIGHT / 2} width={GANG_BADGE_WIDTH} height={GANG_BADGE_HEIGHT} rx="4" />
               <text className="electrical-gang-number" pointerEvents="none" x="0" y="3" textAnchor="middle" fill={props.testing && state?.keys.length || chosen ? "#fff" : "#071b38"}>G{gang}</text>
             </g>

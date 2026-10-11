@@ -1461,8 +1461,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       setWallFixturePreview((current) => current.length ? [] : current);
       return;
     }
-    const positioned = positionWallAttachedFixtures(fixtures, activeDrag.fixtureAttachments, walls);
-    setWallFixturePreview(positioned.filter((fixture, index) => fixture !== fixtures[index]));
+    const positioned = positionWallAttachedFixtures(visibleFixtures, activeDrag.fixtureAttachments, walls);
+    setWallFixturePreview(positioned.filter((fixture, index) => fixture !== visibleFixtures[index]));
   });
   useLayoutEffect(() => { syncWallFixturePreview(); }, [walls, fixtures]);
   useEffect(()=>{ onPlacementWallsChange?.(planPlacementWalls); },[onPlacementWallsChange,planPlacementWalls]);
@@ -1488,15 +1488,33 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
   function persistWallAttachedFixturePositions(attachments: WallFixtureAttachment[]) {
     if (!attachments.length) return;
-    const positioned = positionWallAttachedFixtures(fixtures, attachments, walls);
-    if (positioned.some((fixture, index) => fixture !== fixtures[index])) onFixturesChange(positioned, true);
+    persistFixturePositions(positionWallAttachedFixtures(visibleFixtures, attachments, walls));
+  }
+  function persistFixturePositions(positions: Array<Pick<Obstacle, "id" | "center" | "rotation_deg">>) {
+    const byId = new Map(positions.map(position => [position.id, position]));
+    const reposition = (obstacle: Obstacle) => {
+      const position = byId.get(obstacle.id);
+      return !position || (obstacle.center.x === position.center.x && obstacle.center.y === position.center.y && obstacle.rotation_deg === position.rotation_deg)
+        ? obstacle : { ...obstacle, center: { ...position.center }, rotation_deg: position.rotation_deg };
+    };
+    // A shared wall may host fittings in either room, independent of selection.
+    if (onPlanRoomsChange && projectRooms.length) {
+      const nextRooms = projectRooms.map(room => {
+        const obstacles = room.obstacles.map(reposition);
+        return obstacles.some((obstacle, index) => obstacle !== room.obstacles[index]) ? { ...room, obstacles, version: room.version + 1 } : room;
+      });
+      if (nextRooms.some((room, index) => room !== projectRooms[index])) onPlanRoomsChange(nextRooms);
+    } else {
+      const next = fixtures.map(reposition);
+      if (next.some((obstacle, index) => obstacle !== fixtures[index])) onFixturesChange(next, true);
+    }
   }
   function persistWallAttachedFixturesForEdit(previousWalls: Wall[], nextWalls: Wall[]) {
-    const positioned = followWallAttachedFixtures(fixtures, previousWalls, nextWalls, (wallId, segmentIndex) => {
+    const positioned = followWallAttachedFixtures(visibleFixtures, previousWalls, nextWalls, (wallId, segmentIndex) => {
       const hostWall = previousWalls.find((candidate) => candidate.id === wallId);
       return hostWall ? wallThicknessForSegment(hostWall, segmentIndex, wallThickness) : wallThickness;
     });
-    if (positioned.some((fixture, index) => fixture !== fixtures[index])) onFixturesChange(positioned, true);
+    persistFixturePositions(positioned);
   }
   const segmentOptions = useMemo(() => walls.flatMap((wall, wallIndex) => wall.points.slice(0, -1).map((_, segmentIndex) => ({ key: parentKey(wall.id, segmentIndex), label: `Wall ${wallIndex + 1}.${segmentIndex + 1}`, wall, segmentIndex }))), [walls]);
   const selectedWall = selectedSegment ? walls.find((wall) => wall.id === selectedSegment.wallId) ?? null : null;
@@ -1723,7 +1741,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     };
   }, [annotationContextMenu, contextMenu, electricalConnectionContextMenu, electricalWaypointContextMenu, fixtureContextMenu, fixtureMeasurementContextMenu, measurementContextMenu, openingContextMenu, openingMeasurementContextMenu, toolbarContextMenu]);
 
-  function snapshot(): Snapshot { return { energyData: structuredClone(energy.data), wallThickness, rooms: rooms.map((room) => ({ ...room, vertices: room.vertices.map((point) => ({ ...point })), labelPosition: room.labelPosition ? { ...room.labelPosition } : undefined })), selectedRoomId, walls: cloneWalls(walls), openings: cloneOpenings(openings), measurements: cloneMeasurements(measurements), annotations: cloneAnnotations(annotations), dimensionOffsets: { ...dimensionOffsets }, hiddenDimensions: [...hiddenDimensions], fixturePositions: fixturePositions(fixtures), fixtureSourceRoomId: selectedRoom?.id ?? activeSourceRoomId ?? null }; }
+  function snapshot(): Snapshot { return { energyData: structuredClone(energy.data), wallThickness, rooms: rooms.map((room) => ({ ...room, vertices: room.vertices.map((point) => ({ ...point })), labelPosition: room.labelPosition ? { ...room.labelPosition } : undefined })), selectedRoomId, walls: cloneWalls(walls), openings: cloneOpenings(openings), measurements: cloneMeasurements(measurements), annotations: cloneAnnotations(annotations), dimensionOffsets: { ...dimensionOffsets }, hiddenDimensions: [...hiddenDimensions], fixturePositions: fixturePositions(visibleFixtures), fixtureSourceRoomId: selectedRoom?.id ?? activeSourceRoomId ?? null }; }
   function record(before = snapshot()) { setHistory((current) => [...current.slice(-29), before]); setFuture([]); }
   function restore(value: Snapshot) {
     if (value.energyData) energy.change(value.energyData);
@@ -1750,6 +1768,10 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     setWallFixturePreview([]);
     onElementSelected?.(null);
 
+    if (value.fixturePositions && onPlanRoomsChange && projectRooms.length) {
+      persistFixturePositions(value.fixturePositions);
+      return;
+    }
     const sourceRoomId = value.fixtureSourceRoomId;
     if (sourceRoomId && value.fixturePositions) {
       const storedFixtureRoom = projectRooms.find((room) => room.source_floorplan_room_id === sourceRoomId);
@@ -3471,7 +3493,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     const raw = snapshot();
     const before = { ...raw, walls: assignStableCornerNumbers(raw.walls, wallVertexStarts) };
-    const fixtureAttachments = captureWallFixtureAttachments(fixtures, before.walls, (wallId, segmentIndex) => {
+    const fixtureAttachments = captureWallFixtureAttachments(visibleFixtures, before.walls, (wallId, segmentIndex) => {
       const hostWall = before.walls.find((candidate) => candidate.id === wallId);
       return hostWall ? wallThicknessForSegment(hostWall, segmentIndex, wallThickness) : wallThickness;
     });
@@ -3501,7 +3523,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const before = { ...separatedSnapshot, walls: separatedEnd.walls as Wall[], openings: separatedEndOpenings };
     const selectedWall = before.walls.find((candidate) => candidate.id === wall.id);
     if (!selectedWall) return;
-    const fixtureAttachments = captureWallFixtureAttachments(fixtures, before.walls, (wallId, segmentIndex) => {
+    const fixtureAttachments = captureWallFixtureAttachments(visibleFixtures, before.walls, (wallId, segmentIndex) => {
       const hostWall = before.walls.find((candidate) => candidate.id === wallId);
       return hostWall ? wallThicknessForSegment(hostWall, segmentIndex, wallThickness) : wallThickness;
     });
@@ -5064,28 +5086,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
               const outline = room.vertices.map(toScreen); const labelPosition = toScreen(roomLabelPosition(room)); const nameWidth = roomNameEditorWidth(room.name); const labelWidth = nameWidth + 12; const labelHeight = 30; const dragging = draggingRoomLabelId === room.id;
               return <g key={`room-highlight-${room.id}`} className={`full-room-highlight room-colour-${room.colourIndex ?? index % 6} ${selectedRoomId === room.id ? "selected" : ""}`} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } if (tool !== "DRAW") { event.stopPropagation(); clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }}><polygon points={outline.map((point) => `${point.x},${point.y}`).join(" ")} />{showRoomNames && <foreignObject className={`room-name-editor${dragging ? " dragging" : ""}`} x={labelPosition.x - labelWidth / 2} y={labelPosition.y - labelHeight / 2} width={labelWidth} height={labelHeight} onPointerDown={(event) => beginRoomLabelDrag(event, room)}><div className="room-name-drag-shell"><input aria-label={`Name ${room.name}`} value={room.name} onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } event.stopPropagation(); if (tool !== "DRAW") { clearActiveDrawingSelection(); setSelectedRoomId(room.id); } }} onChange={(event) => { const name = event.target.value; setRooms((current) => current.map((item) => item.id === room.id ? { ...item, name } : item)); }} /></div></foreignObject>}</g>;
             })}
-            {(energy.windowOpen ? [] : visibleFixtures).filter((fixture) => !isElectricalObstacle(fixture) && !(heating.data.enabled && isHeatingElement(fixture))).map((storedFixture) => {
-              const fixture = previewedFixture(storedFixture);
-              const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
-              const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
-              const centre = toScreen(fixture.center);
-              const selected = selectedFixtureId === fixture.id;
-              const fixtureRoom = selected ? planRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)) : null;
-              const wallSpan = selected && fixture.wall_lock === true ? nearestFixtureWallSpan(fixture, walls) : null;
-              const wall = wallSpan ? walls.find((candidate) => candidate.id === wallSpan.wallId) : undefined;
-              const wallDimensionOffset = wallSpan
-                ? dimensionOffsets[`${wallSpan.wallId}:${wallSpan.segmentIndex}`] ?? (wall ? wallDimensionOffsetFor(wall, wallSpan.segmentIndex) : undefined)
-                : undefined;
-              return (
-                <g key={`fixture-${fixture.id}`} className={`floorplan-fixture${selectedFixtureId === fixture.id ? " selected" : ""}`} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}>
-                  <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} selected={selectedFixtureId === fixture.id} />
-                  {showMeasurements && selected && <>
-                    <FloorPlanFixtureDimensions obstacle={fixture} measurementId={fixture.id} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`fixture:${fixture.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} />
-                    {wallSpan ? <><FloorPlanFixtureSpacingDimensions span={wallSpan} toScreen={toScreen} displayUnits={displayUnits} wallDimensionOffset={wallDimensionOffset} />{fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} axisFilter={["Y"]} />}</> : fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} />}
-                  </>}
-                </g>
-              );
-            })}
             <g pointerEvents="none">
               {["outline", "fill"].map((layer) => <g key={layer}>{wallVisualPaths.map((run) =>
                 <path key={run.key} className={layer === "outline" ? "wall-body" : "wall-line"} style={{ "--wall-stroke-width": `${run.width + 2}px`, "--wall-inner-stroke-width": `${run.width}px` } as CSSProperties} d={run.path} fill="none" strokeLinecap="square" strokeLinejoin="miter" pointerEvents="none" />
@@ -5120,6 +5120,28 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
                     </g>;
                   })}
                   {showMeasurements && dimensions}
+                </g>
+              );
+            })}
+            {(energy.windowOpen ? [] : visibleFixtures).filter((fixture) => !isElectricalObstacle(fixture) && !(heating.data.enabled && isHeatingElement(fixture))).map((storedFixture) => {
+              const fixture = previewedFixture(storedFixture);
+              const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
+              const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
+              const centre = toScreen(fixture.center);
+              const selected = selectedFixtureId === fixture.id;
+              const fixtureRoom = selected ? planRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)) : null;
+              const wallSpan = selected && fixture.wall_lock === true ? nearestFixtureWallSpan(fixture, walls) : null;
+              const wall = wallSpan ? walls.find((candidate) => candidate.id === wallSpan.wallId) : undefined;
+              const wallDimensionOffset = wallSpan
+                ? dimensionOffsets[`${wallSpan.wallId}:${wallSpan.segmentIndex}`] ?? (wall ? wallDimensionOffsetFor(wall, wallSpan.segmentIndex) : undefined)
+                : undefined;
+              return (
+                <g key={`fixture-${fixture.id}`} data-fixture-id={fixture.id} role={isHeatingElement(fixture) ? "button" : undefined} tabIndex={isHeatingElement(fixture) ? 0 : undefined} aria-label={isHeatingElement(fixture) ? `Heating element: ${fixture.name}` : undefined} onKeyDown={event => { if (isHeatingElement(fixture) && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.stopPropagation(); selectFixtureForEdit(fixture); } }} className={`floorplan-fixture${selectedFixtureId === fixture.id ? " selected" : ""}`} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}>
+                  <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} selected={selectedFixtureId === fixture.id} />
+                  {showMeasurements && selected && <>
+                    <FloorPlanFixtureDimensions obstacle={fixture} measurementId={fixture.id} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`fixture:${fixture.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} />
+                    {wallSpan ? <><FloorPlanFixtureSpacingDimensions span={wallSpan} toScreen={toScreen} displayUnits={displayUnits} wallDimensionOffset={wallDimensionOffset} />{fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} axisFilter={["Y"]} />}</> : fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} />}
+                  </>}
                 </g>
               );
             })}

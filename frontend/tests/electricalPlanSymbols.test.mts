@@ -46,4 +46,6 @@ test('gang badges counter-rotate while the rocker hit areas retain their interac
   assert.match(html, /rotate\(-180\)/);
   assert.equal((html.match(/rotate\(180\)/g) ?? []).length, 2);
   assert.equal((html.match(/data-electrical-gang=/g) ?? []).length, 2);
+  assert.equal((html.match(/class="electrical-gang-hit-area"/g) ?? []).length, 2);
+  assert.match(html, /class="electrical-gang-hit-area" style="fill:transparent;stroke:none;stroke-dasharray:none"/);
 });

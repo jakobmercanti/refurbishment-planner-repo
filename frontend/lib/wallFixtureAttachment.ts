@@ -1,4 +1,5 @@
 import { obstacleFootprint } from "./elementPlacement";
+import { isHeatingElement } from "./heatingElements";
 import type { Obstacle, Point2D } from "./types";
 
 export type WallFixtureAttachment = {
@@ -66,8 +67,11 @@ export function captureWallFixtureAttachments(
     if (alongMm < -tangentReach - ATTACHMENT_TOLERANCE_MM || alongMm > length + tangentReach + ATTACHMENT_TOLERANCE_MM) return [];
 
     const wallLock = fixture.wall_lock === true;
+    // Heating-editor emitters have a 40 mm setback even on zero/thin walls.
+    // Recognise that mounted position without attaching free-standing heaters.
+    const setbackMm = isHeatingElement(fixture) ? 40 : ATTACHMENT_TOLERANCE_MM;
     const touchesWall = Math.abs(relative.x * normal.x + relative.y * normal.y)
-      <= normalReach + Math.max(0, wallThicknessForSegment(nearestWallId, nearestSegmentIndex)) / 2 + ATTACHMENT_TOLERANCE_MM;
+      <= normalReach + Math.max(0, wallThicknessForSegment(nearestWallId, nearestSegmentIndex)) / 2 + setbackMm + 1e-6;
     const widthAxis = { x: Math.cos(fixture.rotation_deg * Math.PI / 180), y: Math.sin(fixture.rotation_deg * Math.PI / 180) };
     const depthAxis = { x: widthAxis.y, y: -widthAxis.x };
     const alignedWithWall = Math.max(
