@@ -1,4 +1,5 @@
 "use client";
+import { isInsulationSelectable } from "@/lib/energyCalculations";
 import { useMemo, useState } from "react";
 import type { Room } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
@@ -20,10 +21,10 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
   const [editor, setEditor] = useState<{ source: EnergyProject; assembly: ConstructionAssembly; element: EnergyElement; thickness: number } | null>(null);
   const result = useMemo(() => energyResults(rooms, heating, data), [rooms, heating, data]);
   const categories = { Walls: "wall", Floors: "floor", Roofs: "roof" } as const;
-  const selected = result.elements.find(e => selectedIds.includes(e.elementId) && ["wall", "floor", "roof"].includes(e.category));
+  const selected = result.elements.find(e => isInsulationSelectable(e, rooms) && selectedIds.includes(e.elementId) && ["wall", "floor", "roof"].includes(e.category));
   const category = selected?.category ?? (tab === "Results" ? "wall" : categories[tab]);
   const activeTab = tab === "Results" && resultsSelection === selectedIds[0] ? tab : category === "floor" ? "Floors" : category === "roof" ? "Roofs" : "Walls";
-  const walls = result.elements.filter(e => e.category === category), first = selected ?? walls[0], assignments = scenarioAssignments(data);
+  const walls = result.elements.filter(e => e.category === category && isInsulationSelectable(e)), first = selected ?? walls[0], assignments = scenarioAssignments(data);
   const elementName = category === "floor" ? "floor" : category === "roof" ? "roof" : "wall";
   const activeScenario = data.scenarios.find(s => s.scenarioId === data.activeScenarioId);
   const scenarioLabel = activeScenario?.name ?? "Existing Building";

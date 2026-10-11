@@ -26,7 +26,7 @@ export function electricalCrossings(layout: ElectricalLayoutData, fixtures: read
   };
   const routes = layout.connections.flatMap(connection => {
     const from = devices.get(connection.fromId), to = devices.get(connection.toId);
-    return from && to ? [{ connection, points: electricalConnectionPoints(connection, terminal(connection, "from"), terminal(connection, "to"), layout.forceOrthogonalRouting) }] : [];
+    return from && to ? [{ connection, points: electricalConnectionPoints(connection, terminal(connection, "from"), terminal(connection, "to"), layout.forceOrthogonalRouting, from, to) }] : [];
   });
   const crossings = new Map<string, ElectricalCrossing>();
   // A readable terminal moves with zoom; joining still belongs to the stored world route.

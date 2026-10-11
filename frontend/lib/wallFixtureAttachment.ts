@@ -98,6 +98,7 @@ export function positionWallAttachedFixtures(
   fixtures: Obstacle[],
   attachments: WallFixtureAttachment[],
   walls: AttachmentWall[],
+  wallThicknessForSegment?: WallThicknessForSegment,
 ): Obstacle[] {
   const attachmentByFixtureId = new Map(attachments.map((attachment) => [attachment.fixtureId, attachment]));
   return fixtures.map((fixture) => {
@@ -113,12 +114,24 @@ export function positionWallAttachedFixtures(
     if (length <= 1e-6) return fixture;
     const tangent = { x: dx / length, y: dy / length };
     const normal = { x: -tangent.y, y: tangent.x };
+    let alongMm = length * attachment.along, normalOffsetMm = attachment.normalOffsetMm;
+    if (isHeatingElement(fixture)) {
+      const endMargin = (point: Point2D) => Math.max(1, ...walls.flatMap(candidate => candidate.points.slice(0, -1).flatMap((a, i) => {
+        const b = candidate.points[i + 1];
+        if (candidate.id === wall.id && i === attachment.segmentIndex || Math.min(Math.hypot(a.x - point.x, a.y - point.y), Math.hypot(b.x - point.x, b.y - point.y)) > .01) return [];
+        return [Math.max(0, wallThicknessForSegment?.(candidate.id, i) ?? 0) / 2 + 1];
+      })));
+      const low = fixture.dimensions.width.value / 2 + endMargin(start), high = length - fixture.dimensions.width.value / 2 - endMargin(end);
+      if (low <= high) alongMm = Math.max(low, Math.min(high, alongMm));
+      if (wallThicknessForSegment) normalOffsetMm = (Math.sign(normalOffsetMm) || 1) * (fixture.dimensions.depth.value / 2 + Math.max(0, wallThicknessForSegment(wall.id, attachment.segmentIndex)) / 2 + 1);
+    }
     const center = {
-      x: start.x + tangent.x * length * attachment.along + normal.x * attachment.normalOffsetMm,
-      y: start.y + tangent.y * length * attachment.along + normal.y * attachment.normalOffsetMm,
+      x: start.x + tangent.x * alongMm + normal.x * normalOffsetMm,
+      y: start.y + tangent.y * alongMm + normal.y * normalOffsetMm,
     };
     const wallAngleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-    const rotation_deg = normalizeDegrees(wallAngleDeg + attachment.rotationOffsetDeg);
+    const rotated = normalizeDegrees(wallAngleDeg + attachment.rotationOffsetDeg);
+    const rotation_deg = Math.abs(normalizeDegrees(rotated - fixture.rotation_deg)) < 1e-4 ? fixture.rotation_deg : rotated;
     if (Math.abs(center.x - fixture.center.x) < 1e-4 && Math.abs(center.y - fixture.center.y) < 1e-4 && Math.abs(normalizeDegrees(rotation_deg - fixture.rotation_deg)) < 1e-4) return fixture;
     return { ...fixture, center, rotation_deg };
   });
@@ -132,5 +145,5 @@ export function followWallAttachedFixtures(
   wallThicknessForSegment: WallThicknessForSegment,
 ): Obstacle[] {
   const attachments = captureWallFixtureAttachments(fixtures, previousWalls, wallThicknessForSegment);
-  return positionWallAttachedFixtures(fixtures, attachments, nextWalls);
+  return positionWallAttachedFixtures(fixtures, attachments, nextWalls, wallThicknessForSegment);
 }

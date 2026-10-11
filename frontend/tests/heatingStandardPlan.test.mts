@@ -37,13 +37,13 @@ test("heating setback follows an inward wall resize even with zero wall thicknes
   assert.deepEqual(followWallAttachedFixtures([moved], [resized], [wall], () => 0)[0], heater);
 });
 
-test("both sides of a shared wall follow; free-standing heating stays put", () => {
-  const otherSide = {...heater, id: "other-room-heater", center: {x: 5090, y: 2200}};
-  const free = {...heater, id: "free-standing", center: {x:2500,y:2000}};
+test("both sides of a shared wall follow; ordinary free-standing furniture stays put", () => {
+  const otherSide = {...heater, id: "other-room-heater", center: {x: 5051, y: 2200}};
+  const free = {...heater, id: "free-standing", heating_spec: undefined, representation_key: "furniture-chair", wall_lock: false, center: {x:2500,y:2000}};
   const resized = {...wall, points: [{x:0,y:0},{x:4000,y:0},{x:4000,y:4000},{x:0,y:4000},{x:0,y:0}]};
   const moved = followWallAttachedFixtures([heater, otherSide, free], [wall], [resized], () => 0);
-  assert.equal(moved[0].center.x, 3910);
-  assert.equal(moved[1].center.x, 4090);
+  assert.equal(moved[0].center.x, heater.center.x - 1000);
+  assert.equal(moved[1].center.x, 4051);
   assert.equal(moved[2], free);
 });
 

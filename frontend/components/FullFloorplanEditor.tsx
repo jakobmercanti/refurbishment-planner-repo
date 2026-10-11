@@ -1,6 +1,5 @@
 "use client";
 import { exported } from "@/lib/analytics";
-import { chooseLayoutSave, chooseLayoutOpen } from "@/lib/electricalFilePicker";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { RoomOpeningEditor } from "@/components/RoomOpeningEditor";
 import { createPortal } from "react-dom";
@@ -8,11 +7,12 @@ import { doorModel } from "@/lib/doorModels";
 
 import { type CSSProperties, type ReactNode, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
+import { PlanHoverHelp } from "./PlanHoverHelp";
 import { OpeningPreview, openingPreviewObstacle } from "@/components/OpeningPreview";
 import { Popup } from "@/components/Popup";
 import { calibratedDrawingSize, orthogonalCalibrationPoint } from "@/lib/drawingCalibration";
 import { renderPdfDrawing } from "@/lib/pdfDrawing";
-import { FloorPlanFixtureDimensions, FloorPlanFixtureRoomSpacingDimensions, FloorPlanFixtureSpacingDimensions, nearestFixtureWallSpan, type FixtureDimensionSection } from "@/components/FloorPlanFixtureDimensions";
+import { FloorPlanFixtureDimensions, FloorPlanFixtureRoomSpacingDimensions, FloorPlanFixtureSpacingDimensions, nearestFixtureWallSpan, heatingWallClearanceSpan, type FixtureDimensionSection } from "@/components/FloorPlanFixtureDimensions";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
 import { constrainObstacleToRoom, containsPoint, resolveObstaclePlacement, resolvePlacement, type PlacementCandidate, type PlacementProps } from "@/lib/elementPlacement";
 import { PlacementPreview2D } from "@/components/PlacementPreview2D";
@@ -54,7 +54,7 @@ import { useEnergyLayout } from "@/components/EnergyLayoutContext";
 import { EnergyLayoutPanel } from "@/components/EnergyLayoutPanel";
 import { EnergyLayoutOverlay } from "@/components/EnergyLayoutOverlay";
 import type { EnergyProject } from "@/lib/energyDocument";
-import { withoutDerivedFabric, energyElements, scenarioAssignments } from "@/lib/energyCalculations";
+import { withoutDerivedFabric, energyElements, scenarioAssignments, isInsulationSelectable } from "@/lib/energyCalculations";
 import { assemblyThickness, syncWallAssemblyThickness } from "@/lib/energyWallConstruction";
 import { createElectricalConnection, DEFAULT_ELECTRICAL_CIRCUIT, DEFAULT_ELECTRICAL_CONNECTION, DEFAULT_ELECTRICAL_LAYOUT, electricalConnectionPoints, electricalDashArray, electricalObstacleIds, electricalStrokeWidth, isElectricalObstacle, normalizeElectricalLayout, type ElectricalCircuit, type ElectricalConnection, type ElectricalLayoutData } from "@/lib/electricalLayout";
 import { exportElectricalLayoutPackage, persistElectricalImportFiles, planElectricalLayoutImport, readElectricalLayoutPackage, type ElectricalLayoutImportPlan, type ElectricalLayoutPackage } from "@/lib/electricalLayoutPackage";
@@ -944,6 +944,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const energyUndo = useRef<Array<{ data: EnergyProject; walls: Wall[]; thickness: number }>>([]), energyRedo = useRef<Array<{ data: EnergyProject; walls: Wall[]; thickness: number }>>([]);
   const [energySelection, setEnergySelection] = useState<string[]>([]);
   function selectEnergyWall(ids: string[]) {
+    const allowed = new Set(energyElements(planRooms, heating.data, energy.data).filter(e => isInsulationSelectable(e, planRooms)).map(e => e.elementId));
+    ids = ids.filter(id => allowed.has(id));
     setEnergySelection(ids);
     const e = energyElements(planRooms, heating.data, energy.data).find(e => e.elementId === ids[0]);
     const segment = e && matchingEnergySegments(e)[0];
@@ -1122,10 +1124,14 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const [electricalExportBusy, setElectricalExportBusy] = useState(false);
   const [electricalExportStatus, setElectricalExportStatus] = useState<string | null>(null);
   const [electricalFileStatus, setElectricalFileStatus] = useState<string | null>(null);
-  const [electricalSaveFile, setElectricalSaveFile] = useState<{ blob: Blob; name: string } | null>(null);
+  const [electricalSaveOpen, setElectricalSaveOpen] = useState(false);
+  const [electricalLoadOpen, setElectricalLoadOpen] = useState(false);
+  const [electricalSaveName, setElectricalSaveName] = useState("");
+  const [electricalFileBusy, setElectricalFileBusy] = useState(false);
+  const electricalFileOperation = useRef(0), electricalFileBusyRef = useRef(false);
+  const electricalImportBaseline = useRef("");
   const [electricalImportError, setElectricalImportError] = useState<string | null>(null);
   const [pendingElectricalImport, setPendingElectricalImport] = useState<{ data: ElectricalLayoutPackage; attachmentBlobs: Map<string, Blob>; assetBlobs: Map<string, Blob>; fileName: string } | null>(null);
-  const electricalImportInput = useRef<HTMLInputElement>(null);
   const [electricalConnecting, setElectricalConnecting] = useState(false);
   const [electricalRepeatConnect, setElectricalRepeatConnect] = useState(false);
   const [electricalSourceId, setElectricalSourceId] = useState<string | null>(null);
@@ -1428,6 +1434,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     return [...byId.values()];
   }, [planRooms, projectRooms, viewerOpeningRoom]);
   const processedOpeningSyncRequest = useRef(0);
+  useEffect(() => { electricalImportBaseline.current = JSON.stringify([projectName, electricalDocumentRooms, electricalLayout, electricalAssets, electricalAssetInstances]); }, [projectName, electricalDocumentRooms, electricalLayout, electricalAssets, electricalAssetInstances]);
   useEffect(() => {
     const request = externalOpeningSyncRequest;
     const sourceId = request?.room.source_floorplan_room_id;
@@ -1461,7 +1468,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       setWallFixturePreview((current) => current.length ? [] : current);
       return;
     }
-    const positioned = positionWallAttachedFixtures(visibleFixtures, activeDrag.fixtureAttachments, walls);
+    const positioned = positionWallAttachedFixtures(visibleFixtures, activeDrag.fixtureAttachments, walls, (id, index) => { const host = walls.find(wall => wall.id === id); return host ? wallThicknessForSegment(host, index, wallThickness) : wallThickness; });
     setWallFixturePreview(positioned.filter((fixture, index) => fixture !== visibleFixtures[index]));
   });
   useLayoutEffect(() => { syncWallFixturePreview(); }, [walls, fixtures]);
@@ -1488,7 +1495,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
   function persistWallAttachedFixturePositions(attachments: WallFixtureAttachment[]) {
     if (!attachments.length) return;
-    persistFixturePositions(positionWallAttachedFixtures(visibleFixtures, attachments, walls));
+    persistFixturePositions(positionWallAttachedFixtures(visibleFixtures, attachments, walls, (id, index) => { const host = walls.find(wall => wall.id === id); return host ? wallThicknessForSegment(host, index, wallThickness) : wallThickness; }));
   }
   function persistFixturePositions(positions: Array<Pick<Obstacle, "id" | "center" | "rotation_deg">>) {
     const byId = new Map(positions.map(position => [position.id, position]));
@@ -1809,36 +1816,40 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     onElectricalLayoutChange?.(next);
   }
   async function saveElectricalLayoutFile() {
-    setElectricalFileStatus("Preparing portable layout…");
+    if (electricalFileBusyRef.current || !electricalSaveName.trim()) return;
+    electricalFileBusyRef.current = true; setElectricalFileBusy(true); setElectricalFileStatus("Preparing portable layout…");
     try {
-      const handle = await chooseLayoutSave(`${safeElectricalFileName(projectName)}-electrical-layout.electricallayout`);
       const blob = await exportElectricalLayoutPackage(projectName, electricalDocumentRooms, electricalAssets, electricalAssetInstances, electricalLayout);
-      if (handle) { const writable = await handle.createWritable(); await writable.write(blob); await writable.close(); }
-      else setElectricalSaveFile({ blob, name: `${safeElectricalFileName(projectName)}-electrical-layout` });
-      setElectricalFileStatus(handle ? "Electrical layout saved." : null);
-    } catch (error) { setElectricalFileStatus(error instanceof Error && error.name === "AbortError" ? null : error instanceof Error ? error.message : "Electrical layout could not be saved."); }
+      downloadElectricalFile(blob, `${safeElectricalFileName(electricalSaveName.replace(/\.electricallayout$/i, ""))}.electricallayout`);
+      setElectricalFileStatus("Electrical layout downloaded. Your browser controls its save location.");
+      setElectricalSaveOpen(false);
+    } catch (error) { setElectricalFileStatus(error instanceof Error ? error.message : "Electrical layout could not be saved."); }
+    finally { electricalFileBusyRef.current = false; setElectricalFileBusy(false); }
   }
-  async function loadElectricalLayoutFile() {
-    const selection = chooseLayoutOpen();
-    if (!selection) { electricalImportInput.current?.click(); return; }
-    try { await inspectElectricalLayoutFile(await selection); }
-    catch (error) { if (!(error instanceof Error && error.name === "AbortError")) setElectricalImportError(error instanceof Error ? error.message : "Could not open file."); }
+  function closeElectricalLoad() {
+    if (electricalFileBusyRef.current) return;
+    electricalFileOperation.current++; setElectricalLoadOpen(false); setPendingElectricalImport(null); setElectricalImportError(null);
   }
   async function inspectElectricalLayoutFile(file?: File) {
-    if (!file) return;
-    setElectricalImportError(null); setElectricalFileStatus(null);
+    if (!file || electricalFileBusyRef.current) return;
+    const token = ++electricalFileOperation.current;
+    setPendingElectricalImport(null); setElectricalImportError(null); setElectricalFileStatus("Reading electrical layout…");
     try {
       const imported = await readElectricalLayoutPackage(file);
-      setPendingElectricalImport({ ...imported, fileName: file.name });
-    } catch (error) { setElectricalImportError(error instanceof Error ? error.message : "Electrical layout could not be loaded."); }
+      if (token !== electricalFileOperation.current) return;
+      setPendingElectricalImport({ ...imported, fileName: file.name }); setElectricalFileStatus(null);
+    } catch (error) { if (token === electricalFileOperation.current) { setElectricalImportError(error instanceof Error ? error.message : "Electrical layout could not be loaded."); setElectricalFileStatus(null); } }
   }
   async function applyElectricalImport(mode: "REPLACE" | "MERGE") {
-    if (!pendingElectricalImport) return;
+    if (!pendingElectricalImport || electricalFileBusyRef.current) return;
+    const baseline = electricalImportBaseline.current;
+    electricalFileBusyRef.current = true; setElectricalFileBusy(true);
     setElectricalImportError(null); setElectricalFileStatus("Validating and applying electrical layout…");
     try {
       const plan = planElectricalLayoutImport(pendingElectricalImport.data, electricalDocumentRooms, electricalLayout, electricalAssets, electricalAssetInstances, mode, pendingElectricalImport.attachmentBlobs, pendingElectricalImport.assetBlobs);
       plan.electricalLayout = normalizeElectricalLayout(plan.electricalLayout, electricalObstacleIds(plan.rooms));
       await persistElectricalImportFiles(plan.assetBlobs, plan.assets, plan.attachmentBlobs, plan.electricalLayout);
+      if (baseline !== electricalImportBaseline.current) throw new Error("Project changed while importing. Review the file again before applying it.");
       recordElectricalUndo();
       if (onApplyElectricalImport) onApplyElectricalImport(plan);
       else {
@@ -1849,10 +1860,11 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       if (mode === "REPLACE" || !plan.electricalLayout.circuits.some((item) => item.id === selectedElectricalCircuitId)) {
         setActiveElectricalCircuitId(plan.electricalLayout.circuits[0]?.id ?? DEFAULT_ELECTRICAL_CIRCUIT.id);
       }
-      setPendingElectricalImport(null);
+      setPendingElectricalImport(null); setElectricalLoadOpen(false);
       setElectricalFileStatus(mode === "REPLACE" ? "Electrical layout replaced." : "Electrical layout merged.");
       if (plan.warnings.length) setElectricalImportError(plan.warnings.join(" "));
     } catch (error) { setElectricalImportError(error instanceof Error ? error.message : "The electrical layout could not be applied; the project was not changed."); setElectricalFileStatus(null); }
+    finally { electricalFileBusyRef.current = false; setElectricalFileBusy(false); }
   }
   function updateElectricalConnection(id: string, patch: Partial<ElectricalConnection>) {
     applyElectricalLayout({ ...electricalLayout, connections: electricalLayout.connections.map((item) => item.id === id ? { ...item, ...patch } : item) });
@@ -1950,7 +1962,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const to = electricalFixtureById.get(connection.toId)?.center;
     const svg = event.currentTarget.ownerSVGElement;
     if (!from || !to || !svg) return;
-    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting);
+    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting, electricalFixtureById.get(connection.fromId), electricalFixtureById.get(connection.toId));
     const pointer = floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport);
     let segmentIndex = 0; let closest = Number.POSITIVE_INFINITY;
     for (let index = 0; index < points.length - 1; index++) {
@@ -1970,7 +1982,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const svg = event.currentTarget.ownerSVGElement;
     const from = electricalFixtureById.get(connection.fromId)?.center, to = electricalFixtureById.get(connection.toId)?.center;
     if (!svg || !from || !to) return;
-    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting);
+    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting, electricalFixtureById.get(connection.fromId), electricalFixtureById.get(connection.toId));
     const screen = toScreen(points[Math.floor(points.length / 2)]);
     const bounds = svg.getBoundingClientRect(), view = svg.viewBox.baseVal;
     const initial = floorPlanFromClient(bounds.left + (screen.x - view.x) * bounds.width / view.width, bounds.top + (screen.y - 8 - view.y) * bounds.height / view.height, svg, activeViewport);
@@ -1986,7 +1998,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const svg = event.currentTarget.ownerSVGElement;
     if (!electricalMode || !from || !to || !svg) return;
     const pointer = canvasPointFromClient(event.clientX, event.clientY, svg, false);
-    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting);
+    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting, electricalFixtureById.get(connection.fromId), electricalFixtureById.get(connection.toId));
     let segmentIndex = 0; let closest = Number.POSITIVE_INFINITY; let point = pointer;
     for (let index = 0; index < points.length - 1; index++) {
       const a = points[index]; const b = points[index + 1];
@@ -2010,7 +2022,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const from = electricalFixtureById.get(connection.fromId)?.center;
     const to = electricalFixtureById.get(connection.toId)?.center;
     if (!from || !to) return;
-    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting);
+    const points = electricalConnectionPoints(connection, planTerminal(connection, "from", electricalFixtureById.get(connection.fromId)!), planTerminal(connection, "to", electricalFixtureById.get(connection.toId)!), electricalLayout.forceOrthogonalRouting, electricalFixtureById.get(connection.fromId), electricalFixtureById.get(connection.toId));
     const waypoints = points.slice(1, -1);
     const existingCorner = waypoints.findIndex((waypoint) => Math.hypot(waypoint.x - menu.point.x, waypoint.y - menu.point.y) < 1e-6);
     if (existingCorner < 0) waypoints.splice(Math.min(menu.segmentIndex, waypoints.length), 0, menu.point);
@@ -4439,7 +4451,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const electricalRoutes = includeElectrical ? electricalLayout.connections.flatMap((connection) => {
       const source = electricalFixtureMap.get(connection.fromId), destination = electricalFixtureMap.get(connection.toId);
       const from = source ? planTerminal(connection, "from", source) : null, to = destination ? planTerminal(connection, "to", destination) : null;
-      return from && to ? [{ connection, points: electricalConnectionPoints(connection, from, to, electricalLayout.forceOrthogonalRouting) }] : [];
+      return from && to ? [{ connection, points: electricalConnectionPoints(connection, from, to, electricalLayout.forceOrthogonalRouting, source, destination) }] : [];
     }) : [];
     const electricalOverlay = clone.querySelector<SVGGElement>(".electrical-overlay");
     if (includeElectrical && electricalOverlay) {
@@ -4931,6 +4943,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const annotationLayerDisabled = Boolean(annotationTool) || tool !== "SELECT";
   return <section ref={editorRoot} onClickCapture={clearRepeatCommandFromButton} className={`editor-page full-plan-page ${floorplanStyleClass(floorplanStyle)} ${electricalWindowOpen ? "electrical-layout-open" : ""} ${electricalAddElementsOpen ? "electrical-add-elements-open" : ""}`.trim()}>
     {liveStyleCss && <style data-floorplan-style={floorplanStyle} dangerouslySetInnerHTML={{ __html: liveStyleCss }} />}
+    <PlanHoverHelp />
     <Popup open={outlineMenuOpen} title="New outline" message="" confirmLabel="Ok" confirmDisabled={!pendingOutlineAction} onConfirm={confirmOutlineAction} onCancel={() => setOutlineMenuOpen(false)}>
       <div className="outline-menu-content">
         <p>Choose a starting point. Clicking Ok will overwrite the current floorplan.</p>
@@ -5130,16 +5143,16 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
               const centre = toScreen(fixture.center);
               const selected = selectedFixtureId === fixture.id;
               const fixtureRoom = selected ? planRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)) : null;
-              const wallSpan = selected && fixture.wall_lock === true ? nearestFixtureWallSpan(fixture, walls) : null;
+              const wallSpan = selected && fixture.wall_lock === true ? isHeatingElement(fixture) && fixtureRoom ? heatingWallClearanceSpan(fixture, fixtureRoom) : nearestFixtureWallSpan(fixture, walls) : null;
               const wall = wallSpan ? walls.find((candidate) => candidate.id === wallSpan.wallId) : undefined;
               const wallDimensionOffset = wallSpan
                 ? dimensionOffsets[`${wallSpan.wallId}:${wallSpan.segmentIndex}`] ?? (wall ? wallDimensionOffsetFor(wall, wallSpan.segmentIndex) : undefined)
                 : undefined;
               return (
-                <g key={`fixture-${fixture.id}`} data-fixture-id={fixture.id} role={isHeatingElement(fixture) ? "button" : undefined} tabIndex={isHeatingElement(fixture) ? 0 : undefined} aria-label={isHeatingElement(fixture) ? `Heating element: ${fixture.name}` : undefined} onKeyDown={event => { if (isHeatingElement(fixture) && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.stopPropagation(); selectFixtureForEdit(fixture); } }} className={`floorplan-fixture${selectedFixtureId === fixture.id ? " selected" : ""}`} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}>
+                <g key={`fixture-${fixture.id}`} data-fixture-id={fixture.id} data-plan-info={isHeatingElement(fixture) ? `${fixture.name}\nWall-mounted heater. Click to edit dimensions and output; drag along a wall to reposition. It follows wall edits.` : undefined} role={isHeatingElement(fixture) ? "button" : undefined} tabIndex={isHeatingElement(fixture) ? 0 : undefined} aria-label={isHeatingElement(fixture) ? `Heating element: ${fixture.name}` : undefined} onKeyDown={event => { if (isHeatingElement(fixture) && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.stopPropagation(); selectFixtureForEdit(fixture); } }} className={`floorplan-fixture${selectedFixtureId === fixture.id ? " selected" : ""}`} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}>
                   <FixturePlanSymbol obstacle={fixture} x={centre.x} y={centre.y} width={bottomRight.x - topLeft.x} depth={bottomRight.y - topLeft.y} selected={selectedFixtureId === fixture.id} />
                   {showMeasurements && selected && <>
-                    <FloorPlanFixtureDimensions obstacle={fixture} measurementId={fixture.id} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`fixture:${fixture.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} />
+                    {isHeatingElement(fixture) ? wallSpan && <FloorPlanFixtureSpacingDimensions insideRoom span={wallSpan} toScreen={toScreen} displayUnits={displayUnits} wallDimensionOffset={wallDimensionOffset} /> : <FloorPlanFixtureDimensions obstacle={fixture} measurementId={fixture.id} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`fixture:${fixture.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openFixtureMeasurementContextMenu(event, fixture, section) : undefined} />}
                     {!isHeatingElement(fixture) && (wallSpan ? <><FloorPlanFixtureSpacingDimensions span={wallSpan} toScreen={toScreen} displayUnits={displayUnits} wallDimensionOffset={wallDimensionOffset} />{fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} axisFilter={["Y"]} />}</> : fixtureRoom && <FloorPlanFixtureRoomSpacingDimensions obstacle={fixture} roomVertices={fixtureRoom.vertices} toScreen={toScreen} displayUnits={displayUnits} viewportScale={activeViewport.scale} />)}
                   </>}
                 </g>
@@ -5277,7 +5290,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     {heating.windowOpen && <FloatingToolbar title="Heating Layout" className="electrical-layout-window heating-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 680 }} maxHeight={760} layoutResetKey={toolbarLayoutResetKey} onClose={() => { heating.close();setHeatingTool(null);setHeatingExclusionDraft([]);setHeatingPipeDraft([]);setHeatingPipeSource(null);setHeatingSelection(null);setHighlightedHeatingRoomId(null); }}>
       <HeatingLayoutPanel energy={energy.data} onEnergyChange={applyEnergyLayout} apiUrl={apiUrl} onFinishPipe={finishHeatingPipe} pipePointCount={heatingPipeDraft.length} onAdd={() => { selectAddToPlanMode("HEATING"); if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings"); }} rooms={planRooms} data={heating.data} onChange={applyHeatingLayout} selection={heatingSelection} onSelect={selectHeatingElement} onHighlightRoom={setHighlightedHeatingRoomId} onTool={tool => { setHeatingTool(tool);setHeatingExclusionDraft([]);setHeatingPipeDraft([]);setHeatingPipeSource(null); }} tool={heatingTool} onFinishExclusion={finishHeatingExclusion} exclusionPointCount={heatingExclusionDraft.length} onUndo={undoHeating} onRedo={redoHeating} canUndo={heatingUndo.current.length > 0} canRedo={heatingRedo.current.length > 0} projectName={projectName} />
     </FloatingToolbar>}
-    {electricalWindowOpen && <FloatingToolbar title="Full Electrical Layout module" className="electrical-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 740, height: 980 }} maxHeight={980} layoutResetKey={toolbarLayoutResetKey} onClose={closeElectricalWindow}>
+    {electricalWindowOpen && <FloatingToolbar title="Full Electrical Layout module" className="electrical-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 600 }} maxHeight={780} layoutResetKey={toolbarLayoutResetKey} onClose={closeElectricalWindow}>
       <ElectricalLayoutPanel
         mode={electricalMode}
         sourceId={electricalSourceId}
@@ -5298,8 +5311,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
           setElectricalConnecting(true); setElectricalRepeatConnect(false); setElectricalSourceId(null); setElectricalPointer(null); onElectricalLimitStatusChange?.(null);
         }}
         onAdd={() => { setElectricalAddElementsOpen(true); selectAddToPlanMode("ELECTRICAL"); if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings"); }}
-        onSaveLayout={() => void saveElectricalLayoutFile()}
-        onLoadLayout={() => void loadElectricalLayoutFile()}
+        onSaveLayout={() => { setElectricalSaveName(`${safeElectricalFileName(projectName)}-electrical-layout`); setElectricalFileStatus(null); setElectricalSaveOpen(true); }}
+        onLoadLayout={() => { setElectricalImportError(null); setElectricalFileStatus(null); setElectricalLoadOpen(true); }}
         onExport={() => { setElectricalExportStatus(null); setElectricalExportOpen(true); }}
         onSchedule={() => setElectricalScheduleOpen(true)}
         onCheckout={() => { setElectricalConnecting(false); setElectricalSourceId(null); setElectricalPointer(null); setSelectedElectricalConnectionId(null); setLightingSwitchPositions({}); setLightingTestOpen(true); }}
@@ -5328,15 +5341,29 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
         onDeleteCircuit={deleteElectricalCircuit}
       />
     </FloatingToolbar>}
-    <Popup open={electricalSaveFile !== null} title="Save electrical layout as…" message="" confirmLabel="Save file" confirmDisabled={!electricalSaveFile?.name.trim()} onCancel={() => setElectricalSaveFile(null)} onConfirm={() => { if (electricalSaveFile) { downloadElectricalFile(electricalSaveFile.blob, `${safeElectricalFileName(electricalSaveFile.name)}.electricallayout`); setElectricalFileStatus("Electrical layout downloaded. Your browser controls its save location."); setElectricalSaveFile(null); } }}><label className="field">File name<input value={electricalSaveFile?.name ?? ""} onChange={event => setElectricalSaveFile(current => current ? { ...current, name: event.target.value } : null)} /></label><p>This browser does not support a native Save As picker. Choose a file name here; the file is saved using your browser’s download settings.</p></Popup>
-    <input ref={electricalImportInput} type="file" accept=".electricallayout,application/zip" hidden onChange={(event) => { void inspectElectricalLayoutFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
-    {electricalMode && lightingTestOpen && <FloatingToolbar title="Lighting layout test" className="electrical-lighting-test-window" defaultPosition={{ x: 70, y: 110 }} initialSize={{ width: 740 }} maxHeight={720} bringToFront onClose={() => { setLightingTestOpen(false); setLightingSwitchPositions({}); }}><ElectricalLightingTest layout={electricalLayout} fixtures={electricalFixtures} result={lightingTest} positions={lightingSwitchPositions} onToggle={toggleLightingSwitch} onReset={() => setLightingSwitchPositions({})} /></FloatingToolbar>}
+    {electricalSaveOpen && <FloatingToolbar title="Save electrical layout" className="electrical-save-window" defaultPosition={{ x: 110, y: 100 }} initialSize={{ width: 460 }} maxHeight={500} bringToFront onClose={() => { if (!electricalFileBusyRef.current) setElectricalSaveOpen(false); }}>
+      <div className="electrical-layout-panel"><p>Save an editable electrical-only backup, including fittings, circuits, connections and referenced local assets.</p>
+        <label className="field">File name<input value={electricalSaveName} disabled={electricalFileBusy} onChange={event => setElectricalSaveName(event.target.value)} /></label>
+        <small>The .electricallayout extension is added automatically. Your browser controls the download location.</small>
+        {electricalFileStatus && <p role="status">{electricalFileStatus}</p>}
+        <div className="electrical-layout-actions"><button disabled={electricalFileBusy} onClick={() => setElectricalSaveOpen(false)}>Cancel</button><button disabled={electricalFileBusy || !electricalSaveName.trim()} onClick={() => void saveElectricalLayoutFile()}>{electricalFileBusy ? "Preparing…" : "Save file"}</button></div>
+      </div></FloatingToolbar>}
+
+    {electricalMode && lightingTestOpen && <FloatingToolbar title="Lighting layout test" className="electrical-lighting-test-window" defaultPosition={{ x: 70, y: 110 }} initialSize={{ width: 540 }} maxHeight={720} bringToFront onClose={() => { setLightingTestOpen(false); setLightingSwitchPositions({}); }}><ElectricalLightingTest layout={electricalLayout} fixtures={electricalFixtures} result={lightingTest} positions={lightingSwitchPositions} onToggle={toggleLightingSwitch} onReset={() => setLightingSwitchPositions({})} /></FloatingToolbar>}
     {electricalScheduleOpen && <FloatingToolbar title="Electrical BOM & schedule" className="electrical-schedule-window" defaultPosition={{ x: 680, y: 92 }} initialSize={{ width: 980 }} maxHeight={840} layoutResetKey={toolbarLayoutResetKey} onClose={() => setElectricalScheduleOpen(false)}>
       <ElectricalScheduleWindow rooms={electricalDocumentRooms} assets={electricalAssets} instances={electricalAssetInstances} layout={electricalLayout} projectName={projectName} defaultCurrency={defaultCurrency} onLayoutChange={applyElectricalLayout} />
     </FloatingToolbar>}
     {electricalExportOpen && <FloatingToolbar title="Export electrical layout" className="electrical-export-window" defaultPosition={{ x: 690, y: 120 }} initialSize={{ width: 430 }} maxHeight={760} layoutResetKey={toolbarLayoutResetKey} onClose={() => setElectricalExportOpen(false)}>
       <ElectricalExportWindow onExport={exportElectrical} onPreview={options => exportElectrical(options, true)} busy={electricalExportBusy} status={electricalExportStatus} />
     </FloatingToolbar>}
-    {pendingElectricalImport && <div className="electrical-import-backdrop"><section className="electrical-import-dialog" role="dialog" aria-modal="true" aria-labelledby="electrical-import-title"><header><small>PORTABLE ELECTRICAL LAYOUT</small><h2 id="electrical-import-title">Import electrical layout</h2><WindowHelpButton title="Import electrical layout" /></header><div className="electrical-import-content"><p>File: <strong>{pendingElectricalImport.fileName}</strong></p><div className="electrical-import-counts"><span>Fittings <strong>{pendingElectricalImport.data.items.length + pendingElectricalImport.data.assetInstances.length}</strong></span><span>Connections <strong>{pendingElectricalImport.data.electricalLayout.connections.length}</strong></span><span>Circuits <strong>{pendingElectricalImport.data.electricalLayout.circuits.length}</strong></span></div><p>Import into the current floorplan. Walls, rooms, doors, windows, furniture and PlannerBuild data will not be replaced.</p><p className="electrical-import-warning"><strong>Replace</strong> removes {electricalDocumentRooms.reduce((sum, room) => sum + room.obstacles.filter(isElectricalObstacle).length, 0) + electricalAssetInstances.filter((instance) => electricalAssets.some((asset) => asset.assetId === instance.assetId && ["electric", "electrical"].includes((asset.categoryId ?? "").toLowerCase()))).length} current electrical fittings, {electricalLayout.connections.length} connections and {electricalLayout.circuits.length} circuits. <strong>Merge</strong> keeps current electrical data and imports additional items.</p>{electricalImportError && <p className="inline-error" role="alert">{electricalImportError}</p>}</div><footer><button type="button" className="review-style-button" onClick={() => { setPendingElectricalImport(null); setElectricalImportError(null); }}>Cancel</button><button type="button" className="review-style-button" onClick={() => void applyElectricalImport("MERGE")}>Merge</button><button type="button" className="danger-button" onClick={() => void applyElectricalImport("REPLACE")}>Replace current electrical layout</button></footer></section></div>}
+    {electricalLoadOpen && <FloatingToolbar title="Load electrical layout" className="electrical-load-window" defaultPosition={{ x: 125, y: 115 }} initialSize={{ width: 520 }} maxHeight={650} bringToFront onClose={closeElectricalLoad}>
+      <div className="electrical-layout-panel"><label className="field">Choose local layout file<input type="file" accept=".electricallayout,application/zip" disabled={electricalFileBusy} onChange={event => { void inspectElectricalLayoutFile(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>
+      <p>Walls, rooms, doors, windows, furniture and PlannerBuild data are preserved. Nothing changes until you choose Merge or Replace.</p>
+      {electricalImportError && <p role="alert">{electricalImportError}</p>}{electricalFileStatus && <p role="status">{electricalFileStatus}</p>}
+      {pendingElectricalImport && <><strong>{pendingElectricalImport.fileName}</strong><div className="electrical-import-counts"><span>Fittings: {pendingElectricalImport.data.items.length + pendingElectricalImport.data.assetInstances.length}</span><span>Connections: {pendingElectricalImport.data.electricalLayout.connections.length}</span><span>Circuits: {pendingElectricalImport.data.electricalLayout.circuits.length}</span></div>
+      <p><strong>Merge</strong> adds these fittings and connections to the current layout. <strong>Replace</strong> removes the current electrical fittings, connections and circuits before importing this file.</p>
+      <div className="electrical-layout-actions"><button disabled={electricalFileBusy} onClick={() => void applyElectricalImport("MERGE")}>Merge</button><button className="danger-button" disabled={electricalFileBusy} onClick={() => void applyElectricalImport("REPLACE")}>Replace current electrical layout</button></div></>}
+      <button disabled={electricalFileBusy} onClick={closeElectricalLoad}>Cancel</button></div>
+    </FloatingToolbar>}
   </section>;
 }

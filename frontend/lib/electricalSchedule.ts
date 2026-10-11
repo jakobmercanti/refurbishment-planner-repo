@@ -145,7 +145,7 @@ export function electricalConnectionRows(
   return layout.connections.map((connection, index) => {
     const from = fixtures.get(connection.fromId);
     const to = fixtures.get(connection.toId);
-    const endpoints = from && to ? electricalConnectionPoints(connection, from.obstacle.center, to.obstacle.center, layout.forceOrthogonalRouting) : null;
+    const endpoints = from && to ? electricalConnectionPoints(connection, from.obstacle.center, to.obstacle.center, layout.forceOrthogonalRouting, from.obstacle, to.obstacle) : null;
     const segments = endpoints ? endpoints.slice(0, -1).map((start, segmentIndex) => {
       const end = endpoints[segmentIndex + 1];
       const dx = end.x - start.x; const dy = end.y - start.y;

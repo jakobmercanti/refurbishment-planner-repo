@@ -79,6 +79,7 @@ export default function Home() {
       if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return;
       if (event.key.toLowerCase() === "r" && !placement.opening) {
         event.preventDefault();
+        if (isHeatingElement(placement.obstacle)) return; // Mounted heaters get their orientation from the host wall.
         setPlacement(current => current ? {...current, obstacle:{...current.obstacle, wall_lock:false, rotation_deg:(current.obstacle.rotation_deg+(event.shiftKey?-90:90)+360)%360}} : null);
       }
     };
@@ -640,7 +641,7 @@ export default function Home() {
         </section>
       ) : null}
       <section className="planner-build-screen" hidden={workspaceMode !== "PLANNERBUILD"} aria-hidden={workspaceMode !== "PLANNERBUILD"}>{local.project ? <PlannerBuildWorkspace project={local.project} view={plannerBuildView} displayUnits={preferences.units} defaultCurrency={defaultCurrency} onQuotesChange={local.setQuotes} onSaveQuotes={local.saveQuotes} onActivitiesChange={(activities) => local.setPlannerBuild({ ...(local.project?.plannerBuild ?? { activities: [] }), activities })} demoMode={plannerBuildDemoMode} onDemoLimitReached={openPlansDialog} /> : <p className="pb-loading-state" role="status">Loading project data…</p>}</section>
-        {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && " · R to rotate"}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
+        {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && (isHeatingElement(placement.obstacle) ? " · Snaps and aligns to a wall" : " · R to rotate")}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
       {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={local.addAsset} onChange={local.setInstances} onClose={() => setAssetsOpen(false)} />}
       {privacyOpen && <PlannerPrivacyDialog onClose={() => setPrivacyOpen(false)} />}
       {accountOpen && <AccountDialog onClose={closeAccountDialog} initialSection={accountInitialSection} />}

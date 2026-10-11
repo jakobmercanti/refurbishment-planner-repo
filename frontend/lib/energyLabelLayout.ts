@@ -42,16 +42,22 @@ export function layoutEnergyLabels(rooms: LabelRoom[], requests: EnergyLabelRequ
         }
       }
     } else {
+      const title = rooms.find(room => room.id === r.roomId)?.titleBox;
+      const center = title ?? { x: (minX + maxX) / 2, y: (minY + maxY) / 2, height: 24 };
+      candidates.push({ x: center.x, y: center.y + (r.category === 'roof' ? -1 : 1) * (center.height / 2 + r.height / 2 + 8) });
       const edgeY = r.category === 'roof' ? minY + r.height / 2 + 12 : maxY - r.height / 2 - 12;
       for (const x of [.5, .25, .75]) candidates.push({ x: minX + (maxX - minX) * x, y: edgeY });
       const ys = r.category === 'roof' ? [.25, .15, .35, .65, .75, .85] : [.75, .85, .65, .35, .25, .15];
       for (const y of ys) for (const x of [.5, .25, .75, .15, .85, .35, .65]) candidates.push({ x: minX + (maxX - minX) * x, y: minY + (maxY - minY) * y });
     }
+    for (const scale of r.category === "wall" ? [1] : [1, .8, .6, .4]) {
     for (let i = 0; i < candidates.length; i++) {
-      const box = { ...candidates[i], width: r.width, height: r.height };
+      const box = { ...candidates[i], width: r.width * scale, height: r.height * scale };
       if ((i === 0 && r.preferred || fits(box, polygon)) && !occupied.some(other => labelBoxesOverlap(box, other))) {
         result[r.id] = box; occupied.push(box); break;
       }
+    }
+    if (result[r.id]) break;
     }
   }
   return result;

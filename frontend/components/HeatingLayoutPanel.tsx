@@ -1,4 +1,7 @@
 "use client";
+import { snapRadiatorToWall } from "@/lib/heatingCalculations";
+import { constrainObstacleToRoom } from "@/lib/elementPlacement";
+import { elementFromRadiator } from "@/lib/heatingElements";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Room, CatalogueItem } from "@/lib/types";
 import { CONSTRUCTION_PRESETS, HEATING_DISCLAIMER, heatingMethodSchema, parseHeatingProject, type HeatingProject, type HeatingRadiator, type RoomThermalData, type UFHZone } from "@/lib/heatingDocument";
@@ -50,7 +53,11 @@ export function HeatingLayoutPanel(props: Props) {
       try { patch = { ...patch, ...enteredHeatingOutput(radiator, patch.ratedOutputW ?? null, { flowC: data.heatingSystem.flowTemperatureC, returnC: data.heatingSystem.returnTemperatureC, roomC: thermalRoom(rooms.find(r => r.id === radiator.roomId) ?? room!, data).designIndoorTemperatureC }) }; }
       catch (cause) { setError(cause instanceof Error ? cause.message : "Could not set output."); return; }
     } else if (["exponent","ratedDeltaTK","manufacturerPerformanceData"].some(k => k in patch)) patch = { ...patch, estimatedOutput: false, performanceReference: undefined, ...("manufacturerPerformanceData" in patch ? {} : { manufacturerPerformanceData: [] }) };
-    change({ ...data, radiators: data.radiators.map(r => r.radiatorId === radiator.radiatorId ? { ...r, ...patch } : r) });
+    const owner = rooms.find(room => room.id === radiator.roomId);
+    const updated = { ...radiator, ...patch };
+    if (owner && !constrainObstacleToRoom(elementFromRadiator(updated), owner)) { setError("This heater cannot fit against a wall with these dimensions. Existing placement preserved."); return; }
+    const mounted = owner ? snapRadiatorToWall(updated, owner, updated.positionMm) : updated;
+    change({ ...data, radiators: data.radiators.map(r => r.radiatorId === radiator.radiatorId ? mounted : r) });
   }
   function save(blob: Blob, name: string) { const url = URL.createObjectURL(blob), a = document.createElement("a");a.href = url;a.download = name;a.click();setTimeout(() => URL.revokeObjectURL(url), 60000); }
   async function runDesign() {
@@ -155,7 +162,7 @@ export function HeatingLayoutPanel(props: Props) {
         <label>Manufacturer<input value={selectedRadiator.manufacturer} onChange={e => radiatorChange(selectedRadiator, { manufacturer: e.target.value })} /></label><label>Model<input value={selectedRadiator.model} onChange={e => radiatorChange(selectedRadiator, { model: e.target.value })} /></label>
         <label>Radiator category<select value={selectedRadiator.category} onChange={e => radiatorChange(selectedRadiator, { category: e.target.value as HeatingRadiator["category"] })}>{["Type 10", "Type 11", "Type 21", "Type 22", "Type 33", "Towel", "Custom", "Boiler"].map(x => <option key={x}>{x}</option>)}</select></label>
         {(["widthMm", "heightMm", "depthMm"] as const).map(k => <NumberField key={k} label={{ widthMm: "Width mm", heightMm: "Height mm", depthMm: "Depth mm" }[k]} value={selectedRadiator[k]} min={1} onChange={n => n !== null && radiatorChange(selectedRadiator, { [k]: n })} />)}
-        <NumberField label="Radiator rotation °" value={selectedRadiator.rotationDeg} onChange={n => n !== null && radiatorChange(selectedRadiator, { rotationDeg: n, wallIndex: undefined })} />
+        <small>Wall-mounted · orientation follows the wall. Drag along a wall to reposition.</small>
       </div></details><details><summary>Output & performance · {selectedRadiator.manufacturerPerformanceData.length ? "Performance table" : watt(selectedRadiator.ratedOutputW)}</summary><div className={styles.grid}>
         <NumberField label={selectedRadiator.emitterTechnology === "Hybrid" ? `Output at ${data.heatingSystem.flowTemperatureC}/${data.heatingSystem.returnTemperatureC}/${selectedRadiatorTemperature}°C · ${selectedRadiator.fanMode} W` : "Rated output W"} value={selectedRadiator.emitterTechnology === "Hybrid" ? calculateRadiatorOutput(selectedRadiator, data.heatingSystem.flowTemperatureC, data.heatingSystem.returnTemperatureC, selectedRadiatorTemperature).outputW : selectedRadiator.ratedOutputW} min={0} max={100000} onChange={n => radiatorChange(selectedRadiator, { ratedOutputW: n })} />
         {selectedRadiator.emitterTechnology === "Hydronic" && <><NumberField label="Rated ΔT K" value={selectedRadiator.ratedDeltaTK} min={1} max={100} onChange={n => n !== null && radiatorChange(selectedRadiator, { ratedDeltaTK: n })} /><NumberField label="Radiator exponent n (estimate unless supplied)" value={selectedRadiator.exponent} min={0.1} max={3} onChange={n => n !== null && radiatorChange(selectedRadiator, { exponent: n })} /></>}

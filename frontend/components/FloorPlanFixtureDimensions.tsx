@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import type { Obstacle, Point2D } from "@/lib/types";
+import type { Obstacle, Point2D, Room } from "@/lib/types";
+import { requiresHeatingWall } from "@/lib/elementPlacement";
 import { formatLength, type DisplayUnits } from "@/lib/units";
 
 export type FixtureDimensionSection = 0 | 1;
@@ -111,6 +112,7 @@ export function nearestFixtureWallSpan(obstacle: Obstacle, walls: BoundaryWall[]
     const length = Math.hypot(dx, dy);
     if (!length) return [];
     const direction = { x: dx / length, y: dy / length };
+    if (requiresHeatingWall(obstacle) && Math.abs(direction.x * Math.cos(obstacle.rotation_deg * Math.PI / 180) + direction.y * Math.sin(obstacle.rotation_deg * Math.PI / 180)) < .999) return [];
     const centreAlong = (obstacle.center.x - wallStart.x) * direction.x + (obstacle.center.y - wallStart.y) * direction.y;
     const closestAlong = Math.max(0, Math.min(length, centreAlong));
     const closestPoint = { x: wallStart.x + direction.x * closestAlong, y: wallStart.y + direction.y * closestAlong };
@@ -133,6 +135,25 @@ export function nearestFixtureWallSpan(obstacle: Obstacle, walls: BoundaryWall[]
     }];
   }));
   return candidates.sort((first, second) => first.distance - second.distance)[0] ?? null;
+}
+
+/** Two clearances to the adjacent wall faces, not object dimensions or wall centre lines. */
+export function heatingWallClearanceSpan(obstacle: Obstacle, room: Room): FixtureWallSpan | null {
+  const span = nearestFixtureWallSpan(obstacle, [{ id: room.id, points: [...room.vertices, room.vertices[0]] }]);
+  if (!span) return null;
+  const count = room.vertices.length, index = span.segmentIndex;
+  const thickness = (i: number) => Math.max(0, room.wall_thickness_overrides_mm?.[`wall-${String(i + 1).padStart(3, "0")}`] ?? room.wall_thickness.value) / 2;
+  const dx = span.wallEnd.x - span.wallStart.x, dy = span.wallEnd.y - span.wallStart.y, length = Math.hypot(dx, dy);
+  const tangent = { x: dx / length, y: dy / length };
+  const trim = (i: number) => {
+    const a = room.vertices[i], b = room.vertices[(i + 1) % count], len = Math.hypot(b.x - a.x, b.y - a.y);
+    const sine = Math.abs(tangent.x * (b.y - a.y) - tangent.y * (b.x - a.x)) / len;
+    return sine > 1e-6 ? thickness(i) / sine : 0;
+  };
+  const start = trim((index + count - 1) % count), end = trim((index + 1) % count);
+  return { ...span, wallStart: { x: span.wallStart.x + tangent.x * start, y: span.wallStart.y + tangent.y * start },
+    wallEnd: { x: span.wallEnd.x - tangent.x * end, y: span.wallEnd.y - tangent.y * end },
+    startOffsetMm: Math.max(0, span.startOffsetMm - start), endOffsetMm: Math.max(0, span.endOffsetMm - end) };
 }
 
 type FixtureDimensionProps = {
@@ -200,7 +221,7 @@ type FixtureSpacingDimensionProps = {
 };
 
 /** Renders wall-relative spacing while leaving the element's local dimensions intact. */
-export function FloorPlanFixtureSpacingDimensions({ span, toScreen, displayUnits, lane = 0, wallDimensionOffset }: FixtureSpacingDimensionProps & { wallDimensionOffset?: number }) {
+export function FloorPlanFixtureSpacingDimensions({ span, toScreen, displayUnits, lane = 0, wallDimensionOffset, insideRoom = false }: FixtureSpacingDimensionProps & { wallDimensionOffset?: number; insideRoom?: boolean }) {
   const wallStart = toScreen(span.wallStart);
   const wallEnd = toScreen(span.wallEnd);
   const elementStart = toScreen(span.elementStart);
@@ -215,7 +236,7 @@ export function FloorPlanFixtureSpacingDimensions({ span, toScreen, displayUnits
   // Wall dimensions already occupy the first lane outside the wall. Keep
   // fixture-to-wall spacing on a separate outer lane so labels never sit on
   // top of the existing wall measurements.
-  const rowOffset = Math.max(64, (wallDimensionOffset ?? 0) + 28) + lane * 20;
+  const rowOffset = insideRoom ? -40 : Math.max(64, (wallDimensionOffset ?? 0) + 28) + lane * 20;
   const points = [wallStart, elementStart, elementEnd, wallEnd].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
   const values = [span.startOffsetMm, span.widthMm, span.endOffsetMm];
 

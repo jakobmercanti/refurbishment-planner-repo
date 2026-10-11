@@ -6,6 +6,6 @@ export function EnergyLayoutProvider({ data, onChange, onOpen, children }: { dat
   const [windowOpen, setWindowOpen] = useState(false);
   const presented = useMemo(() => ({ ...data, enabled: windowOpen }), [data, windowOpen]);
   // Window lifecycle owns the overlay, including when importing or undoing a saved state.
-  return <EnergyContext.Provider value={{ data: presented, windowOpen, change: next => onChange({ ...next, enabled: windowOpen }), open: () => { onOpen();setWindowOpen(true);onChange({ ...data, enabled: true }); }, close: () => { setWindowOpen(false);onChange({ ...data, enabled: false }); } }}>{children}</EnergyContext.Provider>;
+  return <EnergyContext.Provider value={{ data: presented, windowOpen, change: next => onChange({ ...next, enabled: windowOpen }), open: () => { onOpen();setWindowOpen(true);onChange({ ...data, enabled: true, display: { ...data.display, floors: true, roofs: true } }); }, close: () => { setWindowOpen(false);onChange({ ...data, enabled: false }); } }}>{children}</EnergyContext.Provider>;
 }
 export const useEnergyLayout = () => useContext(EnergyContext);

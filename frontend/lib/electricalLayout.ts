@@ -335,7 +335,7 @@ export function normalizeElectricalLayout(value: unknown, validElectricalIds: Re
   return { forceOrthogonalRouting: raw.forceOrthogonalRouting !== false, connections, circuits, documentation: normalizeDocumentation(raw.documentation), ...(junctions.length ? { junctions } : {}) };
 }
 
-export function electricalConnectionPoints(connection: ElectricalConnection, from: Point2D, to: Point2D, forceOrthogonalRouting = false): Point2D[] {
+export function electricalConnectionPoints(connection: ElectricalConnection, from: Point2D, to: Point2D, forceOrthogonalRouting = false, source?: Pick<Obstacle, "representation_key" | "rotation_deg">, destination?: Pick<Obstacle, "representation_key" | "rotation_deg">): Point2D[] {
   let route: Point2D[];
   if (connection.routing === "STRAIGHT") route = [from, to];
   else if (connection.waypoints.length) route = [from, ...connection.waypoints, to];
@@ -343,6 +343,27 @@ export function electricalConnectionPoints(connection: ElectricalConnection, fro
   else {
     const midX = (from.x + to.x) / 2;
     route = [from, { x: midX, y: from.y }, { x: midX, y: to.y }, to];
+  }
+  if (!connection.waypoints.length && (connection.routing === "ORTHOGONAL" || connection.routing === "STRAIGHT" && forceOrthogonalRouting)) {
+    const fromSwitch = source?.representation_key?.startsWith("electrical-switch-");
+    const toSwitch = destination?.representation_key?.startsWith("electrical-switch-");
+    const normalAxis = (fixture: NonNullable<typeof source>) => Math.abs(Math.cos(fixture.rotation_deg * Math.PI / 180)) >= Math.SQRT1_2 ? "y" : "x";
+    const departure = (start: Point2D, end: Point2D, fixture: NonNullable<typeof source>) => {
+      const axis = normalAxis(fixture);
+      if (Math.abs(end[axis] - start[axis]) > 1e-7) return [start, axis === "y" ? { x: start.x, y: end.y } : { x: end.x, y: start.y }, end];
+      // Equal coordinates still need a visible normal departure, not a zero-length bend.
+      const a = fixture.rotation_deg * Math.PI / 180, sign = Math.sign(axis === "y" ? -Math.cos(a) : Math.sin(a)) || 1;
+      const stub = start[axis] + sign * 150;
+      return [start, { ...start, [axis]: stub }, { ...end, [axis]: stub }, end];
+    };
+    if (fromSwitch && toSwitch && normalAxis(source!) === normalAxis(destination!)) {
+      const axis = normalAxis(source!), mid = Math.abs(from[axis] - to[axis]) < 1e-7 ? departure(from, to, source!)[1][axis] : (from[axis] + to[axis]) / 2;
+      route = [from, { ...from, [axis]: mid }, { ...to, [axis]: mid }, to];
+    } else if (fromSwitch) {
+      route = departure(from, to, source!);
+    } else if (toSwitch) {
+      route = departure(to, from, destination!).reverse();
+    }
   }
   if (!forceOrthogonalRouting || route.length < 2) return route;
 

@@ -172,7 +172,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       heating_spec: item.heating_spec ?? (heating ? emptyHeatingSpec(item.name) : undefined),
       center: { x: (Math.min(...room.vertices.map(p => p.x)) + Math.max(...room.vertices.map(p => p.x))) / 2, y: (Math.min(...room.vertices.map(p => p.y)) + Math.max(...room.vertices.map(p => p.y))) / 2 },
       dimensions: { width: measured(item.width_mm), depth: measured(item.depth_mm), height: measured(item.height_mm) },
-      base_z_mm: item.representation_key?.startsWith("furniture-kitchen-cabinet-") ? 1500 : 0, rotation_deg: 0, verified: false, source_type: "USER_MEASURED", wall_lock: wallLock,
+      base_z_mm: item.representation_key?.startsWith("furniture-kitchen-cabinet-") ? 1500 : 0, rotation_deg: 0, verified: false, source_type: "USER_MEASURED", wall_lock: heating || Boolean(item.heating_spec) || item.representation_key?.startsWith("furniture-radiator-") ? true : wallLock,
       color_hex: item.color_hex, stl_filename: item.stl_filename ?? undefined, stl_base64: item.stl_base64 ?? undefined,
       side_clearance_mm: item.side_clearance_mm ?? undefined, front_clearance_mm: item.front_clearance_mm ?? undefined,
       ...electricalPlacement(item.representation_key, item.height_mm, room.wall_height.value),
@@ -336,9 +336,9 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
           </div>}
           <div className="fixture-field-group"><span>Coordinates</span><div className="fixture-fields three-columns">
             {(["x", "y"] as const).map(axis => <label className="field" key={axis}><span>{axis.toUpperCase()} {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput valueMm={value.center[axis]} units={displayUnits} onMmChange={n => change({ ...value, center: { ...value.center, [axis]: n } })} /></label>)}
-            <label className="field"><span>Rotation °</span><EditableNumberInput value={value.rotation_deg} onValueChange={rotation_deg => change({ ...value, rotation_deg })} /></label>
+            {!isHeatingElement(value) && <label className="field"><span>Rotation °</span><EditableNumberInput value={value.rotation_deg} onValueChange={rotation_deg => change({ ...value, rotation_deg })} /></label>}
           </div></div>
-          <label className="fixture-lock-switch"><input type="checkbox" checked={value.wall_lock ?? DEFAULT_OBSTACLE_WALL_LOCK} onChange={event => { const wallLock = event.target.checked; setWallLockPreference(wallLock); change({ ...value, wall_lock: wallLock }); }} /><span>Keep next to wall</span></label>
+          {isHeatingElement(value) ? <p>Wall-mounted · position snaps to the nearest wall and orientation follows it.</p> : <label className="fixture-lock-switch"><input type="checkbox" checked={value.wall_lock ?? DEFAULT_OBSTACLE_WALL_LOCK} onChange={event => { const wallLock = event.target.checked; setWallLockPreference(wallLock); change({ ...value, wall_lock: wallLock }); }} /><span>Keep next to wall</span></label>}
         </div>}
       </section>
       {mountingError && <p role="alert">{mountingError}</p>}

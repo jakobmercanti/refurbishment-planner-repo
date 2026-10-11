@@ -1,6 +1,6 @@
-import type { Room, Point2D } from "./types";
+import type { Room, Point2D, Obstacle } from "./types";
 import { thermalElementId } from "./buildingThermalModel";
-import { containsPoint, obstacleFootprint } from "./elementPlacement";
+import { containsPoint, obstacleFootprint, constrainObstacleToRoom } from "./elementPlacement";
 import { type HeatingProject, type RoomThermalData, type HeatingRadiator, type HybridPerformancePoint, type UFHZone, type UFHCircuit, ROOM_TEMPERATURES } from "./heatingDocument";
 
 export const distanceMm = (a: Point2D, b: Point2D) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -209,10 +209,12 @@ export function radiatorPlacementWarnings(r: HeatingRadiator, room: Room): strin
   return warnings;
 }
 export function snapRadiatorToWall(r: HeatingRadiator, room: Room, point: Point2D): HeatingRadiator {
-  const edge = room.vertices.map((a, index) => { const b = room.vertices[(index + 1) % room.vertices.length]; return { a, b, index, ...projectOnSegment(point, a, b) }; }).sort((a, b) => a.distance - b.distance)[0];
-  if (!edge) return r;
-  const signed = room.vertices.reduce((s, a, i) => { const b = room.vertices[(i + 1) % room.vertices.length]; return s + a.x * b.y - b.x * a.y; }, 0), sign = signed >= 0 ? 1 : -1, length = distanceMm(edge.a, edge.b);
-  const along = Math.max(r.widthMm / 2 + 30, Math.min(length - r.widthMm / 2 - 30, edge.t * length)), offset = r.depthMm / 2 + 40;
-  return { ...r, wallIndex: edge.index, positionAlongWallMm: along, rotationDeg: Math.atan2(edge.b.y - edge.a.y, edge.b.x - edge.a.x) * 180 / Math.PI, positionMm: { x: edge.a.x + (edge.b.x - edge.a.x) / length * along - sign * (edge.b.y - edge.a.y) / length * offset, y: edge.a.y + (edge.b.y - edge.a.y) / length * along + sign * (edge.b.x - edge.a.x) / length * offset } };
+  const measure = (value: number) => ({ value, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const });
+  const obstacle: Obstacle = { id: r.radiatorId, name: r.model, kind: "BOX", center: r.positionMm, base_z_mm: 100, rotation_deg: -r.rotationDeg, wall_lock: true,
+    verified: false, source_type: "USER_MEASURED", dimensions: { width: measure(r.widthMm), depth: measure(r.depthMm), height: measure(r.heightMm) } };
+  const mounted = constrainObstacleToRoom(obstacle, room, point);
+  if (!mounted) return r; // Never manufacture a fitting placement when the measured footprint cannot fit.
+  const edge = room.vertices.map((a, index) => { const b = room.vertices[(index + 1) % room.vertices.length]; return { index, a, b, ...projectOnSegment(mounted.center, a, b) }; }).filter(edge => { const angle = Math.atan2(edge.b.y - edge.a.y, edge.b.x - edge.a.x) - mounted.rotation_deg * Math.PI / 180; return Math.abs(Math.sin(angle)) < 1e-6; }).sort((a, b) => a.distance - b.distance)[0];
+  return { ...r, wallIndex: edge.index, positionAlongWallMm: edge.t * distanceMm(edge.a, edge.b), positionMm: mounted.center, rotationDeg: -mounted.rotation_deg };
 }
 export function geometryFingerprint(room: Room, exclusions: readonly { polygonMm: Point2D[] }[]) { return JSON.stringify([room.vertices, exclusions.map(e => e.polygonMm)]).length + ":" + JSON.stringify([room.vertices, exclusions.map(e => e.polygonMm)]).split("").reduce((s, c) => Math.imul(s ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261); }

@@ -1,3 +1,4 @@
+import { constrainObstacleToRoom, requiresHeatingWall } from "./elementPlacement";
 import estimates from "./heatingEstimates.json";
 import { heatingElementSpecSchema } from "./heatingDocument";
 import type { Obstacle, Room } from "./types";
@@ -5,7 +6,7 @@ import { newHeatingProject, type HeatingProject, type HeatingRadiator } from "./
 import { projectOnSegment, snapRadiatorToWall } from "./heatingCalculations";
 
 export type HeatingElementSpec = Omit<HeatingRadiator, "radiatorId" | "roomId" | "widthMm" | "heightMm" | "depthMm" | "positionMm" | "rotationDeg" | "wallIndex" | "positionAlongWallMm" | "placementSnapshot">;
-export const isHeatingElement = (item: Pick<Obstacle, "representation_key" | "heating_spec">) => Boolean(item.heating_spec || item.representation_key?.startsWith("furniture-radiator-") || item.representation_key?.startsWith("radiator-"));
+export const isHeatingElement = requiresHeatingWall;
 export const emptyHeatingSpec = (model: string): HeatingElementSpec => ({ category: "Custom", manufacturer: "", model, emitterTechnology: "Hydronic", ratedOutputW: null, ratedDeltaTK: 50, exponent: 1.3, electricalInputW: 0, fanMode: "Normal", manufacturerPerformanceData: [], locked: false });
 /** A hybrid wattage is an operating point, not a universal water/fan rating. */
 export function enteredHeatingOutput(spec: HeatingElementSpec, outputW: number | null, conditions: { flowC: number; returnC: number; roomC: number }): Partial<HeatingElementSpec> {
@@ -49,11 +50,11 @@ export function withHeatingElements(data: HeatingProject, rooms: readonly Room[]
 export function elementFromRadiator(r: HeatingRadiator, previous?: Obstacle): Obstacle {
   previous = previous ?? r.placementSnapshot as unknown as Obstacle | undefined;
   const measure = (value: number, old?: Obstacle["dimensions"]["width"]) => old?.value === value ? old : ({ value, uncertainty_mm: old?.uncertainty_mm ?? 0, verified: false, source_type: "USER_MEASURED" });
-  return { ...previous, id: r.radiatorId, model_id: r.catalogueItemId ?? previous?.model_id, name: previous?.name ?? r.model, fixture_kind: "FURNITURE", kind: previous?.kind ?? "BOX", center: r.positionMm, rotation_deg: -r.rotationDeg, dimensions: { width: measure(r.widthMm, previous?.dimensions?.width), depth: measure(r.depthMm, previous?.dimensions?.depth), height: measure(r.heightMm, previous?.dimensions?.height) }, base_z_mm: previous?.base_z_mm ?? 100, verified: previous?.verified ?? false, source_type: previous?.source_type ?? "USER_MEASURED", representation_key: previous?.representation_key ?? "furniture-radiator-horizontal-2-1000", color_hex: previous?.color_hex ?? "#FFFFFF", heating_spec: resolveHeatingSpec(heatingSpec(r), r.widthMm, r.heightMm) };
+  return { ...previous, id: r.radiatorId, model_id: r.catalogueItemId ?? previous?.model_id, name: previous?.name ?? r.model, fixture_kind: "FURNITURE", wall_lock: true, kind: previous?.kind ?? "BOX", center: r.positionMm, rotation_deg: -r.rotationDeg, dimensions: { width: measure(r.widthMm, previous?.dimensions?.width), depth: measure(r.depthMm, previous?.dimensions?.depth), height: measure(r.heightMm, previous?.dimensions?.height) }, base_z_mm: previous?.base_z_mm ?? 100, verified: previous?.verified ?? false, source_type: previous?.source_type ?? "USER_MEASURED", representation_key: previous?.representation_key ?? "furniture-radiator-horizontal-2-1000", color_hex: previous?.color_hex ?? "#FFFFFF", heating_spec: resolveHeatingSpec(heatingSpec(r), r.widthMm, r.heightMm) };
 }
 /** Commit the derived editor view atomically. Stored radiators are empty: the placed object is authoritative. */
 export function commitHeatingElements(data: HeatingProject, rooms: readonly Room[]) {
-  const nextRooms = rooms.map(room => ({ ...room, obstacles: [...room.obstacles.filter(o => !isHeatingElement(o)), ...data.radiators.filter(r => r.roomId === room.id).map(r => elementFromRadiator(r, room.obstacles.find(o => o.id === r.radiatorId)))] }));
+  const nextRooms = rooms.map(room => ({ ...room, obstacles: [...room.obstacles.filter(o => !isHeatingElement(o)), ...data.radiators.filter(r => r.roomId === room.id).map(r => { const previous = room.obstacles.find(o => o.id === r.radiatorId), item = elementFromRadiator(r, previous); return constrainObstacleToRoom(item, room) ?? previous ?? item; })] }));
   // Preserve orphan legacy entities for explicit recovery, never discard them on a room deletion.
   return { rooms: nextRooms, heatingLayout: { ...data, radiators: data.radiators.filter(r => !rooms.some(room => room.id === r.roomId)) } };
 }

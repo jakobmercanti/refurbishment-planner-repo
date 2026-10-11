@@ -74,7 +74,7 @@ test("central room symbol contains a green fill, demand, capacity and textual su
 test("a rotated heating element keeps its output label upright", () => {
   const heating = makeHeating(); heating.enabled = true; heating.radiators[0].rotationDeg = 180;
   const html = renderToStaticMarkup(createElement(HeatingLayoutOverlay, { data: heating, rooms: [room], selection: null, onSelect() {}, onChange() {}, toScreen: p => ({ x: p.x / 10, y: p.y / 10 }), fromClient: (x, y) => ({ x, y }), highlightedRoomId: null, draft: [] }));
-  assert.match(html, /rotate\(180\)" class="heating-emitter-symbol"/);
+  assert.match(html, /rotate\(180\)"[^>]*class="heating-emitter-symbol"/);
   assert.match(html, /rotate\(-180\)/);
 });
 test("redesigned panel has structured room balance, expandable technical fields, no mode checkbox", () => {

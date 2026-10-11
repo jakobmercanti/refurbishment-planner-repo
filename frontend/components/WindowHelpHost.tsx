@@ -40,7 +40,6 @@ export function WindowHelpHost() {
   if (!request) return null;
   return createPortal(<div ref={container} className={`window-help-host ${compact ? "compact-workspace" : ""}`}><FloatingToolbar key={request.title} title={`Help — ${request.title}`} help={false} defaultPosition={{ x: 70, y: 80 }} initialSize={{ width: 540 }} maxHeight={650} bringToFront onClose={() => { activeRequest.current = null; setRequest(null); request.opener?.focus(); }}><article className="window-help-content" aria-label={`Help for ${request.title}`}>
     {windowHelpSteps(request.title).map(step => <section key={step.heading}><h3>{step.heading}</h3><p>{step.text}</p></section>)}
-    {request.controls.length > 0 && <details><summary>Controls in this window</summary><ul>{[...new Set(request.controls)].map(control => <li key={control}>{control}</li>)}</ul></details>}
     <p>Drag the header to move this help window; drag an edge to resize. Close it or press Escape to return to the original window.</p>
   </article></FloatingToolbar></div>, request.opener.closest("dialog") ?? document.body);
 }

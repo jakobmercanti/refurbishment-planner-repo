@@ -55,6 +55,17 @@ export function resolveThermalOverrides(data: EnergyProject, rooms: readonly Roo
 export function withEnergyFabric(heating: HeatingProject, energy: EnergyProject, rooms: readonly Room[], scenarioId: string | null = energy.activeScenarioId): HeatingProject { return { ...heating, thermalOverrides: resolveThermalOverrides(energy, rooms, scenarioId) }; }
 export function withoutDerivedFabric(heating: HeatingProject): HeatingProject { const { thermalOverrides, ...stored } = heating;void thermalOverrides;return stored; }
 export type EnergyElement = { elementId: string; roomId: string; roomName: string; label: string; category: EnergyCategory; areaM2: number; uValue: number; heatLossW: number; boundary: string; deltaTK: number; startMm?: Point2D; endMm?: Point2D; geometrySignature?: string; warnings: string[] };
+/** Presentation policy only: shared heated/adiabatic walls retain their thermal data. */
+export function isInsulationSelectable(e: EnergyElement, rooms?: readonly Room[]) {
+  if (e.category !== "wall") return true;
+  if (["Heated", "Adiabatic"].includes(e.boundary)) return false;
+  const room = rooms?.find(room => room.id === e.roomId), index = Number(e.elementId.split("|wall:")[1]?.split(":")[0]);
+  if (!room || !Number.isInteger(index) || !room.vertices[index] || !e.startMm || !e.endMm) return true;
+  const { a, b, length, intervals } = wallAdjacencies(room, index, rooms!);
+  const mid = { x: (e.startMm.x + e.endMm.x) / 2, y: (e.startMm.y + e.endMm.y) / 2 };
+  const along = length ? ((mid.x - a.x) * (b.x - a.x) + (mid.y - a.y) * (b.y - a.y)) / length : 0;
+  return !intervals.some(interval => along >= interval.start && along <= interval.end);
+}
 function categoryFor(surface: ThermalSurface, room: Room): EnergyCategory { if (surface.key === "floor" || surface.key === "roof") return surface.key;if (surface.key.startsWith("opening:")) return room.openings.find(o => o.id === surface.key.slice(8))?.kind === "WINDOW" ? "window" : "door";return "wall"; }
 export function energyElements(rooms: readonly Room[], heating: HeatingProject, energy: EnergyProject, scenarioId: string | null = energy.activeScenarioId): EnergyElement[] {
   const effective = withEnergyFabric(heating, energy, rooms, scenarioId), elements: EnergyElement[] = [];
