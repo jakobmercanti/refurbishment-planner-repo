@@ -54,6 +54,14 @@ export function duplicateQuote(quote: QuoteDocument, asRevision = false, existin
   return { ...structuredClone(quote), quoteId: quoteId(), quoteNumber: asRevision ? quote.quoteNumber : `${quote.quoteNumber} copy`, revision, status: "Draft", createdAt: now, updatedAt: now, sections: quote.sections.map(section => ({ ...structuredClone(section), sectionId: quoteId(), items: section.items.map(item => ({ ...structuredClone(item), quoteItemId: quoteId() })) })) };
 }
 const PROFILE_KEY = "freefloorplan3d:quote-business-profile:v1";
+/** Save as is a new document with new entity IDs, never a rename of the original. */
+export function saveQuoteAs(quote: QuoteDocument, name: string, existing: readonly QuoteDocument[]): QuoteDocument {
+  const quoteNumber = name.trim();
+  if (!quoteNumber || quoteNumber.length > 200) throw new Error("Enter a quote name / number of 1–200 characters.");
+  if (existing.length >= 100) throw new Error("This project already contains 100 quotes.");
+  if (existing.some(item => item.quoteNumber.trim().toLowerCase() === quoteNumber.toLowerCase())) throw new Error("A quote with this name / number already exists. Choose a different name.");
+  return quoteSchema.parse({...duplicateQuote(quote, false, existing), quoteNumber});
+}
 export function readQuoteBusinessProfile(storage: Pick<Storage, "getItem">): QuoteParty {
   try { return quotePartySchema.parse(JSON.parse(storage.getItem(PROFILE_KEY) ?? "null")); } catch { return emptyQuoteParty(); }
 }

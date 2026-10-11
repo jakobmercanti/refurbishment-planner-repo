@@ -35,7 +35,25 @@ details.card[open] > :not(summary) { margin-top: 14px; }
 .card { min-width: 0; display: grid; gap: 12px; margin: 0; padding: calc(18px * var(--density-font-scale, 1)); background: var(--panel); border: 1px solid var(--line); border-radius: 13px; }
 .card legend, .card summary { font-weight: 750; color: var(--deep); }
 .workspace label { display: grid; gap: 5px; }
-.workspace label:has(> input[type=checkbox]) { display: flex; align-items: flex-start; gap: 8px; }
+.workspace label:has(> input[type=checkbox]) { display: flex; align-items: center; gap: 10px; line-height: 1.5; min-height: 30px; width: auto; }
+.workspace input[type=checkbox] { margin: 0; width: 16px; height: 16px; flex: 0 0 16px; }
+.columns { align-items: start; }
+.helpSummary { display: flex; align-items: center; gap: 12px; list-style: none; min-height: 36px; }
+.helpSummary::-webkit-details-marker { display: none; }
+summary.helpSummary::before { content: '▸'; }
+details[open] > summary.helpSummary::before { content: '▾'; }
+.helpSummary > span { flex: 1; }
+.card > legend.helpSummary { width: 100%; }
+.workspace :global(.window-help-button) { flex: 0 0 34px; width: 34px; height: 34px; min-height: 34px; padding: 0; border-radius: 10px; font-size: 15px; }
+.itemsToolbar > :global(.window-help-button) { margin-left: auto; }
+.heading h1 { display: flex; align-items: center; gap: 12px; }
+.unitChoice label > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.unitChoice input { margin-top: 4px; }
+.provisional { line-height: 1.5; }
+.saveDialog { display: grid; gap: 14px; }
+.saveDialog label { display: grid; gap: 8px; font-weight: 650; }
+.saveDialog input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); color: var(--ink); font: inherit; }
+.saveDialog input:focus-visible { outline: 3px solid var(--accent, #287fb8); outline-offset: 2px; }
 .workspace input:not([type=checkbox]), .workspace select, .workspace textarea { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--surface-muted); font: inherit; }
 .workspace textarea { min-height: 62px; resize: vertical; }
 .workspace button { border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); color: var(--ink); padding: 9px 12px; font: inherit; font-weight: 650; cursor: pointer; }

@@ -11,11 +11,11 @@ export function quoteTextBlocks(quote: QuoteDocument): Array<[string, string]> {
   return [["Introduction", quote.introduction], ["Scope", options.scope ? quote.scope : ""], ["Exclusions", options.exclusions ? quote.exclusions : ""], ["Payment terms", options.paymentTerms ? quote.paymentTerms : ""], ["Additional notes", options.notes ? quote.notes : ""], ["Footer", quote.footer]];
 }
 /** PDF receives only the current QuoteDocument; never reads project quantities or account state. */
-export async function buildQuotePdf(quote: QuoteDocument, fontBytes?: [Uint8Array, Uint8Array]): Promise<Uint8Array> {
+export async function buildQuotePdf(quote: QuoteDocument, fontBytes?: [Uint8Array, Uint8Array], options?: { allowIncomplete?: boolean }): Promise<Uint8Array> {
   const totals = calculateQuote(quote);
-  if (!totals.complete) throw new Error(totals.errors.join("\n"));
+  if (!totals.complete && (!options?.allowIncomplete || totals.financialErrors.length)) throw new Error(totals.errors.join("\n"));
   const pdf = await PDFDocument.create(); pdf.registerFontkit(fontkit);
-  pdf.setTitle(`Quote ${quote.quoteNumber}`); pdf.setAuthor(quote.supplier.name);
+  pdf.setTitle(`${totals.complete ? "Quote" : "Draft quote"} ${quote.quoteNumber}`); pdf.setAuthor(quote.supplier.name);
   if (!fontBytes) {
     const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
     fontBytes = await Promise.all(["latin", "latin-ext"].map(async name => {
@@ -49,7 +49,7 @@ export async function buildQuotePdf(quote: QuoteDocument, fontBytes?: [Uint8Arra
   const newPage = () => {
     page = pdf.addPage([595.28, 841.89]); y = 785;
     page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 841.89, color: rgb(1, 1, 1) });
-    const heading = `QUOTE · ${quote.quoteNumber}${quote.revision ? ` · Revision ${quote.revision}` : ""}`;
+    const heading = `${totals.complete ? "QUOTE" : "DRAFT QUOTE — INCOMPLETE"} · ${quote.quoteNumber}${quote.revision ? ` · Revision ${quote.revision}` : ""}`;
     for (const line of wrap(heading, 515, 12)) { draw(line, 40, y, 12, accent); y -= 17; }
     y -= 8;
   };
@@ -68,6 +68,7 @@ export async function buildQuotePdf(quote: QuoteDocument, fontBytes?: [Uint8Arra
   };
   const paragraph = (text: string, size = 10) => { for (const line of wrap(text, 515, size)) { ensure(size + 5); draw(line, 40, y, size); y -= size + 5; } y -= 6; };
   newPage();
+  if (!totals.complete) paragraph(`Provisional: ${totals.unpricedCount ? `${totals.unpricedCount} item(s) need a quantity or unit price.` : "No quote items added."} Totals cover priced items only; missing amounts are Not set, not zero. Do not issue this as a final quotation.`);
   if (quote.supplier.logo) {
     const image = quote.supplier.logo.startsWith("data:image/png") ? await pdf.embedPng(quote.supplier.logo) : await pdf.embedJpg(quote.supplier.logo);
     const scale = Math.min(130 / image.width, 65 / image.height);
@@ -100,7 +101,7 @@ export async function buildQuotePdf(quote: QuoteDocument, fontBytes?: [Uint8Arra
         if (y - 16 < 55) { newPage(); tableHeader(); }
         draw(lines[index], xs[0], y, 9);
         if (index === 0) {
-          const values = [item.quantity ?? "Not set", item.unit, moneyInput(item.unitPriceMinor, quote.currency), showTax ? item.taxRate + "%" : "", moneyInput(Number(lineTotal.subtotal), quote.currency)];
+          const values = [item.quantity ?? "Not set", item.unit, item.unitPriceMinor === null ? "Not set" : moneyInput(item.unitPriceMinor, quote.currency), showTax ? item.taxRate + "%" : "", lineTotal.subtotal === null ? "Not set" : moneyInput(Number(lineTotal.subtotal), quote.currency)];
           values.forEach((value, column) => {
             // Shrink numeric cells only as required; never clip or round stored quotation values.
             const max = [40, 40, 65, 35, 60][column];
@@ -115,7 +116,10 @@ export async function buildQuotePdf(quote: QuoteDocument, fontBytes?: [Uint8Arra
   }
   ensure(105); y -= 10;
   for (const [label, amount] of [["Subtotal", totals.subtotal], ["Discount", totals.discount], [quote.taxApplicable ? "VAT / tax" : "VAT not applicable", totals.tax], ["TOTAL", totals.total]] as const) {
-    draw(label, 345, y, 11, accent); const value = quoteMoney(amount, quote.currency); draw(value, 555 - width(value, 11), y, 11); y -= 22;
+    const heading = !totals.complete ? label === "TOTAL" ? "PRICED TOTAL (DRAFT)" : label === "Subtotal" ? "Priced subtotal" : label : label;
+    const value = totals.pricedCount ? quoteMoney(amount, quote.currency) : "Not set", valueX = 555 - width(value, 11);
+    draw(heading, 250, y, Math.min(10, (valueX - 260) * 10 / width(heading, 10)), accent);
+    draw(value, valueX, y, 11); y -= 22;
   }
   y -= 15;
   if (showTax) for (const band of totals.taxBreakdown) paragraph(`VAT / tax ${band.rate}% on ${quoteMoney(band.net, quote.currency)}: ${quoteMoney(band.tax, quote.currency)}`, 9);

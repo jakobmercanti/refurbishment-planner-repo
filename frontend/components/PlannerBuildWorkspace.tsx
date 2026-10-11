@@ -24,7 +24,7 @@ import type { PlannerBuildView } from "@/lib/plannerBuildView";
 import dynamic from "next/dynamic";
 const QuoteGenerator = dynamic(() => import("@/components/QuoteGenerator").then(module => module.QuoteGenerator));
 import type { QuoteDocument } from "@/lib/quoteDocument";
-interface Props { project: ProjectDocument; view: PlannerBuildView; displayUnits: DisplayUnits; defaultCurrency?: CurrencyCode; onQuotesChange: (quotes: QuoteDocument[]) => void; onActivitiesChange: (activities: PlannerBuildActivity[]) => void; demoMode?: boolean; onDemoLimitReached?: () => void }
+interface Props { project: ProjectDocument; view: PlannerBuildView; displayUnits: DisplayUnits; defaultCurrency?: CurrencyCode; onQuotesChange: (quotes: QuoteDocument[]) => void; onSaveQuotes?: (quotes: QuoteDocument[]) => Promise<void>; onActivitiesChange: (activities: PlannerBuildActivity[]) => void; demoMode?: boolean; onDemoLimitReached?: () => void }
 type ActivityDraft = {
   activityId: string | null; name: string; startDate: string; endDate: string; colour: string; category: string;
   roomId: string; progress: number; notes: string; type: PlannerBuildActivityType; status: PlannerBuildActivity["status"];
@@ -72,7 +72,7 @@ function activityTypeMark(type: PlannerBuildActivityType, currency: string = "GB
   return type === "payment" ? currencySymbol(currency) : ({ milestone: "◆", delivery: "↓", inspection: "✓", decision: "?", waiting: "Ⅱ", appointment: "◷" } as Partial<Record<PlannerBuildActivityType, string>>)[type] ?? "•";
 }
 
-export function PlannerBuildWorkspace({ project, view, onQuotesChange, onActivitiesChange, defaultCurrency = "GBP", demoMode = false, onDemoLimitReached }: Props) {
+export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuotes, onActivitiesChange, defaultCurrency = "GBP", demoMode = false, onDemoLimitReached }: Props) {
   const activities = project.plannerBuild?.activities ?? EMPTY_ACTIVITIES;
   const rooms = project.rooms;
   const metrics = useMemo(() => calculatePlannerBuildMetrics(project), [project]);
@@ -487,7 +487,7 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onActivit
   return <div className="planner-build-content">
     {demoMode && view !== "QUOTE" && <div className="pb-free-demo-banner" role="status"><span>PlannerBuild demo · {activities.length}/{PLANNER_BUILD_DEMO_MAX_ACTIVITIES} activities saved. Studio includes the full module with unlimited activities.</span><button type="button" className="pb-secondary-button" onClick={onDemoLimitReached}>See plans</button></div>}
     <div hidden={view === "QUOTE"}>{rendered}</div>
-    <div hidden={view !== "QUOTE"}><QuoteGenerator key={project.projectId} project={project} defaultCurrency={defaultCurrency} onQuotesChange={onQuotesChange} /></div>
+    <div hidden={view !== "QUOTE"}><QuoteGenerator key={project.projectId} project={project} defaultCurrency={defaultCurrency} onQuotesChange={onQuotesChange} onSaveQuotes={onSaveQuotes} /></div>
     {view !== "QUOTE" && activityContextMenu && activities.some((item) => item.activityId === activityContextMenu.activityId) && <div className="floorplan-context-menu pb-activity-context-menu" role="group" aria-label="Activity actions" style={{ left: activityContextMenu.x, top: activityContextMenu.y }} onContextMenu={(event) => event.preventDefault()}>
       <strong>Activity</strong>
       <button type="button" onClick={() => duplicateActivity(activityContextMenu.activityId)}>Duplicate</button>

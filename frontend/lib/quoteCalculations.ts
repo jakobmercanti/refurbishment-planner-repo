@@ -54,6 +54,10 @@ export function calculateQuote(quote: QuoteDocument) {
     if (quote.discount.type === "percentage" && n > 100n * d) errors.push("Discount percentage cannot exceed 100%.");
     discount = discount > subtotal ? subtotal : discount;
   }
+  // Missing prices are distinct from invalid financial settings. Partial totals
+  // include only priced lines; they must always be labelled provisional.
+  const unpricedCount = entries.filter(entry => entry.subtotal === null).length;
+  const financialErrors = errors.filter(error => !error.endsWith("quantity or unit price is Not set.") && error !== "Add at least one quote item.");
   // Largest-remainder allocation makes discounted line amounts sum exactly to the quote discount.
   const allocations = entries.map(entry => subtotal > 0n ? discount * (entry.subtotal ?? 0n) / subtotal : 0n);
   let remaining = discount - allocations.reduce((sum, amount) => sum + amount, 0n);
@@ -68,9 +72,14 @@ export function calculateQuote(quote: QuoteDocument) {
   const tax = lines.reduce((sum, line) => sum + line.tax, 0n);
   const total = subtotal - discount + tax;
   if (subtotal > BigInt(Number.MAX_SAFE_INTEGER) || total > BigInt(Number.MAX_SAFE_INTEGER)) errors.push("Quote total exceeds the supported monetary range.");
-  const sections = quote.sections.map(section => ({ sectionId: section.sectionId, subtotal: lines.filter(line => line.sectionId === section.sectionId).reduce((sum, line) => sum + (line.subtotal ?? 0n), 0n) }));
+  const sections = quote.sections.map(section => {
+    const sectionLines = lines.filter(line => line.sectionId === section.sectionId);
+    const unpricedCount = sectionLines.filter(line => line.subtotal === null).length;
+    return { sectionId: section.sectionId, subtotal: sectionLines.reduce((sum, line) => sum + (line.subtotal ?? 0n), 0n), unpricedCount, pricedCount: sectionLines.length - unpricedCount };
+  });
   const taxBreakdown = [...new Set(lines.map(line => line.item.taxRate))].map(rate => ({ rate, net: lines.filter(line => line.item.taxRate === rate).reduce((sum, line) => sum + line.net, 0n), tax: lines.filter(line => line.item.taxRate === rate).reduce((sum, line) => sum + line.tax, 0n) }));
-  return { lines, sections, subtotal, discount, tax, total, taxBreakdown, errors, complete: errors.length === 0 };
+  if (subtotal > BigInt(Number.MAX_SAFE_INTEGER) || total > BigInt(Number.MAX_SAFE_INTEGER)) financialErrors.push("Quote total exceeds the supported monetary range.");
+  return { lines, sections, subtotal, discount, tax, total, taxBreakdown, errors, unpricedCount, pricedCount: entries.length - unpricedCount, financialErrors, complete: errors.length === 0 };
 }
 export function markupPrice(costMinor: number, percentage: string): number {
   const [n, d] = decimalRatio(percentage);

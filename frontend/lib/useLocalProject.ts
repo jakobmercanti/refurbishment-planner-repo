@@ -75,10 +75,27 @@ export function useLocalProject() {
   const setElectricalProjectData = useCallback((rooms: Room[], electricalLayout: ElectricalLayoutData, assetInstances: AssetInstance[], assets?: AssetDefinition[]) => update({ rooms, electricalLayout, assetInstances, ...(assets ? { assets } : {}) }), [update]);
   const setPlannerBuild = useCallback((plannerBuild: PlannerBuildData) => update({ plannerBuild }), [update]);
   const setQuotes = useCallback((quotes: QuoteDocument[]) => update({ quotes }), [update]);
+  const saveQuotes = useCallback(async (quotes: QuoteDocument[]) => {
+    if (!current.current) throw new Error("Your project is still opening.");
+    const base = current.current;
+    const snapshot = { ...base, quotes, updatedAt: new Date().toISOString() };
+    setStatus("Saving locally…");
+    try {
+      await projectRepository.saveProject(snapshot);
+      if (current.current === base) {
+        current.current = snapshot; setProject(snapshot);
+        lastSaved.current = JSON.stringify(snapshot); setStatus("Saved locally");
+      } else {
+        // Preserve edits made while saving; only append a newly saved copy.
+        const added = quotes.filter(quote => !base.quotes?.some(item => item.quoteId === quote.quoteId));
+        if (added.length) update({ quotes: [...(current.current?.quotes ?? []), ...added] });
+      }
+    } catch (cause) { setStatus("Local save failed. Download a backup."); throw cause; }
+  }, [update]);
   const setHeatingLayout = useCallback((heatingLayout: HeatingProject) => {
     const p = current.current; if (!p) return;
     const next = commitHeatingElements(heatingLayout, p.rooms); update(next); return next.rooms;
   }, [update]);
   const setEnergyLayout = useCallback((energyLayout: EnergyProject) => update({ energyLayout }), [update]);
-  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, setHeatingLayout, setEnergyLayout };
+  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout };
 }

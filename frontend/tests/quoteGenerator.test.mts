@@ -6,7 +6,7 @@ import { PDFDocument } from 'pdf-lib';
 import { newProject, parseProject } from '../lib/projectDocument.ts';
 import { LocalProjectRepository } from '../lib/projectRepository.ts';
 import { exportProject, importProject, inspectPackage } from '../lib/projectPackage.ts';
-import { newQuote, newQuoteItem, duplicateQuote, quoteSchema, readQuoteBusinessProfile, saveQuoteBusinessProfile } from '../lib/quoteDocument.ts';
+import { newQuote, newQuoteItem, duplicateQuote, saveQuoteAs, quoteSchema, readQuoteBusinessProfile, saveQuoteBusinessProfile } from '../lib/quoteDocument.ts';
 import { calculateQuote, moneyInput, parseMoney, quoteMoney, markupPrice, changeQuoteCurrency } from '../lib/quoteCalculations.ts';
 import { quoteCandidates, generateQuoteItems, quoteSourceChanges, refreshQuoteItem } from '../lib/quoteSources.ts';
 import { buildQuotePdf, quoteTextBlocks } from '../lib/quotePdf.ts';
@@ -125,6 +125,50 @@ test('business identity is reusable locally and separate from geometry', () => {
   const data=new Map<string,string>(), storage={getItem:(key:string)=>data.get(key)??null,setItem:(key:string,value:string)=>{data.set(key,value);}};
   saveQuoteBusinessProfile(q.supplier,storage); assert.deepEqual(readQuoteBusinessProfile(storage),q.supplier);
   storage.setItem([...data.keys()][0],'bad json'); assert.equal(readQuoteBusinessProfile(storage).name,'');
+});
+
+test('Save as creates an independent named quote that survives repository and portable saves', async () => {
+  const {p,q}=pricedQuote(), original=structuredClone(q);
+  const copy=saveQuoteAs(q,'  Kitchen alternative  ',[q]);
+  assert.equal(copy.quoteNumber,'Kitchen alternative'); assert.notEqual(copy.quoteId,q.quoteId);
+  assert.notEqual(copy.sections[0].sectionId,q.sections[0].sectionId);
+  assert.notEqual(copy.sections[0].items[0].quoteItemId,q.sections[0].items[0].quoteItemId);
+  copy.sections[0].items[0].unitPriceMinor=2000;
+  assert.deepEqual(q,original);
+  assert.throws(()=>saveQuoteAs(q,' ',[q]),/name/);
+  assert.throws(()=>saveQuoteAs(q,q.quoteNumber.toLowerCase(),[q]),/already exists/);
+  assert.throws(()=>saveQuoteAs(q,'x'.repeat(201),[q]),/200/);
+  assert.throws(()=>saveQuoteAs(q,'Other',Array(100).fill(q)),/100 quotes/);
+  p.quotes=[q,copy]; const repo=new LocalProjectRepository(); await repo.saveProject(p);
+  assert.deepEqual((await repo.getProject(p.projectId))!.quotes,p.quotes);
+  const blob=await exportProject(p);
+  assert.deepEqual(inspectPackage(new Uint8Array(await blob.arrayBuffer())).project.quotes,p.quotes);
+});
+
+test('missing prices retain exact provisional totals and draft PDFs, but invalid discounts block export', async () => {
+  const {q}=pricedQuote(); q.currency='NOK';
+  q.sections[0].items=[{...newQuoteItem(),description:'Pendant',quantity:'4',unitPriceMinor:50000,internalCostMinor:777},
+    ...Array.from({length:4},(_,i)=>({...newQuoteItem(),description:`Switch ${i}`,quantity:'1',unitPriceMinor:2500})),
+    {...newQuoteItem(),description:'Unpriced shower',quantity:'1'}];
+  q.discount={type:'percentage',value:'5'};
+  const totals=calculateQuote(q);
+  assert.equal(totals.complete,false); assert.equal(totals.pricedCount,5); assert.equal(totals.unpricedCount,1);
+  assert.equal(totals.subtotal,210000n); assert.equal(totals.total,199500n); assert.deepEqual(totals.financialErrors,[]);
+  const fonts=await Promise.all(['latin','latin-ext'].map(name=>readFile(new URL(`../public/quote-fonts/${name}.woff`,import.meta.url)))) as [Uint8Array,Uint8Array];
+  await assert.rejects(()=>buildQuotePdf(q,fonts),/Not set/);
+  const bytes=await buildQuotePdf(q,fonts,{allowIncomplete:true});
+  assert.equal((await PDFDocument.load(bytes)).getTitle(),`Draft quote ${q.quoteNumber}`);
+  const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const task=getDocument({data:new Uint8Array(bytes),useSystemFonts:true,disableFontFace:true}), document=await task.promise;
+  let content=''; for(let i=1;i<=document.numPages;i++) {const page=await document.getPage(i),text=await page.getTextContent();content+=text.items.map(item=>'str' in item?item.str:'').join(' ');}
+  await task.destroy();
+  assert.match(content,/DRAFT QUOTE/);assert.match(content,/PRICED TOTAL/);assert.match(content,/Not set/);
+  assert.ok(content.replace(/\s/g,'').includes(quoteMoney(totals.total,q.currency).replace(/\s/g,'')));assert.doesNotMatch(content,/777|Internal cost/);
+  q.discount.value='101'; await assert.rejects(()=>buildQuotePdf(q,fonts,{allowIncomplete:true}),/100%/);
+  q.discount.value=null; await assert.rejects(()=>buildQuotePdf(q,fonts,{allowIncomplete:true}),/Discount value/);
+  q.discount={type:'none',value:null};q.sections[0].items.at(-1)!.unitPriceMinor=10000;
+  assert.equal(calculateQuote(q).complete,true);
+  assert.equal((await PDFDocument.load(await buildQuotePdf(q,fonts,{allowIncomplete:true}))).getTitle(),`Quote ${q.quoteNumber}`);
 });
 test('PDF exports the current quote, wraps long edited content, paginates, and rejects missing prices', async () => {
   const {q}=pricedQuote(); q.customer.name='Edited customer'; q.supplier.name='Łódź contractor'; q.notes='Current notes'; q.paymentTerms='User payment terms';

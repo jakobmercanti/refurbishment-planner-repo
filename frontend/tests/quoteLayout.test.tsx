@@ -21,4 +21,14 @@ test("quote sections start collapsed, retain compact editable financial rows and
   assert.match(html, /aria-label="Unit price 1\.1"/);
   assert.doesNotMatch(html, /aria-label="Description 1\.1"/);
   assert.doesNotMatch(html, /<details[^>]+open=""/);
+  assert.match(html, /Help for Quote — Work section: Decoration/);
+  assert.match(html, /Totals and pricing review/);
+  assert.match(html, /Priced total \(provisional\)/);
+  assert.match(html, /£480\.00/);
+  assert.match(html, /unpriced item\(s\) excluded/);
+  assert.match(html, /<option value="units">units<\/option>/);
+  assert.match(html, /Custom entry…/);
+  assert.match(html, />Save<\/button>/);
+  assert.match(html, />Save as…<\/button>/);
+  assert.doesNotMatch(html, /<button[^>]*disabled[^>]*>Export PDF/);
 });
