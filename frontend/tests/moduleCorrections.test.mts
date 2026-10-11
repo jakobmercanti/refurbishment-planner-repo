@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ElectricalLightingTest } from '../components/ElectricalLightingTest';
 import { simulateLighting } from '../lib/electricalSimulation';
 import { DEFAULT_ELECTRICAL_LAYOUT, createElectricalConnection } from '../lib/electricalLayout';
-import { electricalPlanEndpoint, gangBadgePosition } from '../lib/electricalPlanPorts';
+import { electricalPlanEndpoint, gangBadgePosition, GANG_BADGE_WIDTH, GANG_BADGE_HEIGHT, GANG_BADGE_PITCH } from '../lib/electricalPlanPorts';
 import { electricalCrossings } from '../lib/electricalCrossings';
 import { newAssembly } from '../lib/energyDocument';
 import { reorderConstructionLayer } from '../lib/energyWallConstruction';
@@ -27,7 +27,7 @@ test('gang badges have no bounding-box overlap at any rotation or zoom',()=>{
   const rad=angle*Math.PI/180, points=Array.from({length:count},(_,i)=>gangBadgePosition(count,i,48));
   for(let i=0;i<points.length;i++) for(let j=i+1;j<points.length;j++) {
    const dx=(points[j].x-points[i].x)*Math.cos(rad),dy=(points[j].x-points[i].x)*Math.sin(rad);
-   assert.ok(Math.abs(dx)>=26 || Math.abs(dy)>=22,`${count} gangs at ${angle}° overlap`);
+   assert.ok(Math.abs(dx)>=GANG_BADGE_WIDTH || Math.abs(dy)>=GANG_BADGE_HEIGHT,`${count} gangs at ${angle}° overlap`);
   }
  }
 });
@@ -38,7 +38,7 @@ test('routes have distinct gang ports for forward, reverse, rotated and scaled s
   assert.equal(new Set(points.map(p=>JSON.stringify(p))).size,4);
   assert.equal(electricalPlanEndpoint(wire(1),'from',item,screen,false),item.center);
   assert.deepEqual(electricalPlanEndpoint({...wire(3),fromId:'light',toId:'switch',toSwitchGang:3},'to',item,screen,true),points[2]);
-  const p1=screen(points[0]),p2=screen(points[1]);assert.ok(Math.abs(Math.hypot(p2.x-p1.x,p2.y-p1.y)-36)<1e-8);
+  const p1=screen(points[0]),p2=screen(points[1]);assert.ok(Math.abs(Math.hypot(p2.x-p1.x,p2.y-p1.y)-GANG_BADGE_PITCH)<1e-8);
  }
  assert.equal(fixture.dimensions.width.value,146);
 });

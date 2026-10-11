@@ -1,5 +1,5 @@
 .window-header-actions { display: flex; gap: 3px; align-items: center; }
-.account-dialog .local-assets-header > .window-header-actions { grid-column: 2; grid-row: 1; }
+.account-dialog .local-assets-header > .window-header-actions { grid-column: -2 / -1; grid-row: 1; justify-self: end; }
 .window-help-button { flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control, 6px); background: var(--panel); color: var(--deep); font: 700 16px/1 var(--font-sans); cursor: pointer; touch-action: manipulation; }
 .window-help-button:hover, .window-help-button:focus-visible { background: var(--surface-muted); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .floating-toolbar-titlebar:has(.window-header-actions), .popup-titlebar:has(.window-header-actions) { grid-template-columns: 20px 18px minmax(0, 1fr) auto; }

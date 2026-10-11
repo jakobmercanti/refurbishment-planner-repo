@@ -22,6 +22,19 @@ export function scenarioAssignments(data: EnergyProject, scenarioId: string | nu
   return [...new Map([...data.existingAssignments, ...(data.scenarios.find(s => s.scenarioId === scenarioId)?.assignments ?? [])].map(a => [a.elementId, a])).values()];
 }
 export function wallGeometrySignature(room: Room, index: number) { return JSON.stringify([room.vertices[index], room.vertices[(index + 1) % room.vertices.length]]); }
+/** Compare coordinates, not JSON key order; allow only floating-point round-off. */
+export function sameWallGeometry(saved: string, current: string): boolean {
+  if (saved === current) return true;
+  try {
+    const a = JSON.parse(saved), b = JSON.parse(current);
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== 2 || b.length !== 2) return false;
+    return a.every((point, i) => ["x", "y"].every(axis => {
+      const x = point?.[axis], y = b[i]?.[axis];
+      return typeof x === "number" && typeof y === "number" && Number.isFinite(x) && Number.isFinite(y)
+        && Math.abs(x - y) <= 16 * Number.EPSILON * Math.max(1, Math.abs(x), Math.abs(y));
+    }));
+  } catch { return false; }
+}
 function segmentGeometrySignature(room: Room, index: number, segment: number, rooms: readonly Room[]) {
   if (!room.vertices[index]) return "Removed wall";
   const { a, b, length, intervals } = wallAdjacencies(room, index, rooms), breaks = [...new Set([0, length, ...intervals.flatMap(i => [i.start, i.end])])].sort((a, b) => a - b);
@@ -33,7 +46,7 @@ export function resolveThermalOverrides(data: EnergyProject, rooms: readonly Roo
   for (const assignment of scenarioAssignments(data, scenarioId)) {
     const [roomId, element] = assignment.elementId.split("|"), room = rooms.find(r => r.id === roomId);
     if (!room) continue;
-    if (element.startsWith("wall:") && assignment.geometrySignature) { const parts = element.split(":");const current = parts.length === 3 ? segmentGeometrySignature(room, Number(parts[1]), Number(parts[2]), rooms) : wallGeometrySignature(room, Number(parts[1]));if (assignment.geometrySignature !== current) { result[assignment.elementId] = { warning: "Energy construction assignment no longer matches this wall geometry; reassign it. Heating fallback retained." };continue; } }
+    if (element.startsWith("wall:") && assignment.geometrySignature) { const parts = element.split(":");const current = parts.length === 3 ? segmentGeometrySignature(room, Number(parts[1]), Number(parts[2]), rooms) : wallGeometrySignature(room, Number(parts[1]));if (!sameWallGeometry(assignment.geometrySignature, current)) { result[assignment.elementId] = { warning: "Energy construction assignment no longer matches this wall geometry; reassign it. Heating fallback retained." };continue; } }
     const assembly = data.assemblies.find(a => a.assemblyId === assignment.assemblyId), uValue = assignment.uValue ?? (assembly ? calculateAssemblyUValue(assembly, data.materials).uValue : null);
     result[assignment.elementId] = { ...(uValue !== null ? { uValue } : {}), ...(assignment.boundary ? { boundary: assignment.boundary } : {}), ...(assignment.adjacentTemperatureC !== undefined ? { adjacentTemperatureC: assignment.adjacentTemperatureC } : {}), ...(assembly && uValue === null ? { warning: `Energy assembly ${assembly.name}: missing thermal inputs; Heating fallback retained, result unverified.` } : {}) };
   }

@@ -355,7 +355,7 @@ button { font: inherit; }
 .electrical-fixture.is-active:focus-visible .electrical-fixture-backplate { stroke: #075dad; stroke-width: 3; }
 .electrical-route-waypoint { fill: white; stroke: #1769aa; stroke-width: 2; vector-effect: non-scaling-stroke; cursor: move; pointer-events: all; }
 .electrical-fixture:focus-visible { outline: none; filter: drop-shadow(0 0 3px #1769aa); }
-.floorplan-fixture.electrical-fixture .electrical-gang-number { font: 700 10px var(--font-sans), sans-serif; fill: #071b38; stroke: none; }
+.floorplan-fixture.electrical-fixture .electrical-gang-number { font: 700 9px var(--font-sans), sans-serif; fill: #071b38; stroke: none; }
 .floorplan-fixture.electrical-fixture .electrical-fitting-reference { font: 700 11px var(--font-sans), sans-serif; }
 .floorplan-fixture.electrical-fixture [data-electrical-gang] rect { stroke-dasharray: none; stroke-width: 1; cursor: pointer; }
 .floorplan-fixture.electrical-fixture .electrical-gang-hit { fill: transparent; stroke: none; }
@@ -442,6 +442,18 @@ button { font: inherit; }
 .electrical-bom-fields { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 7px; min-width: 260px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
 .electrical-bom-fields label, .electrical-connection-segments label { display: grid; gap: 4px; color: var(--muted); font-size: calc((9px) * var(--density-font-scale, 1)); }
 .electrical-bom-fields .wide { grid-column: 1 / -1; }
+.popup.electrical-bom-editor { width:min(680px,calc(100vw - 48px)); max-height:calc(100dvh - 48px); display:flex; flex-direction:column; }
+.electrical-bom-editor .popup-content { overflow-y:auto; min-height:0; display:grid; gap:12px; }
+.electrical-bom-editor .popup-titlebar,.electrical-bom-editor .popup-actions { flex-shrink:0; }
+.electrical-bom-editor h3 { margin:0; }
+.electrical-bom-editor .popup-content p { font-family:var(--font-sans),sans-serif; font-size:12px; }
+.electrical-bom-editor .electrical-bom-fields { min-width:0; gap:12px; padding:12px; }
+.electrical-bom-editor .electrical-bom-fields label { font-family:var(--font-sans),sans-serif; font-size:11px; }
+.electrical-bom-editor textarea { min-height:72px; height:88px; resize:vertical; }
+.electrical-bom-editor .electrical-entry-photos,.electrical-bom-editor .electrical-inline-check { grid-column:1 / -1; }
+.electrical-bom-editor :is(input:not([type=checkbox]),select,textarea) { width:100%; min-width:0; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:8px; }
+.electrical-bom-description { display:grid; gap:4px; }
+@media(max-width:480px) { .electrical-bom-editor .electrical-bom-fields { grid-template-columns:minmax(0,1fr); } }
 .electrical-inline-check { display: flex !important; align-items: center; gap: 6px !important; color: var(--ink) !important; }
 .electrical-inline-check input { min-width: 0; min-height: 0; accent-color: var(--deep); }
 .electrical-connection-segments { display: grid; gap: 6px; min-width: 230px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
@@ -899,11 +911,13 @@ button { font: inherit; }
 .pb-gantt-scroll { flex: 1 1 auto; min-width: 0; min-height: 210px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: white; scrollbar-gutter: stable; }
 .pb-gantt-grid { width: max(100%, calc(var(--pb-label-width) + var(--pb-timeline-width))); min-width: calc(var(--pb-label-width) + var(--pb-timeline-width)); }
 .pb-gantt-header, .pb-gantt-row { display: grid; grid-template-columns: var(--pb-label-width) var(--pb-timeline-width); width: max-content; min-width: 100%; }
-.pb-gantt-header { position: sticky; z-index: 6; top: 0; min-height: 42px; border-bottom: 1px solid var(--line); background: #f5f8f7; }
+.pb-gantt-header { position: sticky; z-index: 6; top: 0; min-height: 64px; border-bottom: 1px solid var(--line); background: #f5f8f7; }
 .pb-gantt-header-label { position: sticky; z-index: 3; left: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 5px 12px; border-right: 1px solid var(--line); background: #f5f8f7; color: var(--deep); font-size: calc((11px) * var(--density-font-scale, 1)); font-weight: 750; }
 .pb-gantt-header-label span { color: var(--muted); font-size: calc((9px) * var(--density-font-scale, 1)); font-weight: 550; }
 .pb-gantt-timeline-head { position: relative; min-height: 42px; overflow: hidden; background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(var(--pb-day-width, 18px) - 1px), rgba(218,226,222,.8) calc(var(--pb-day-width, 18px) - 1px), rgba(218,226,222,.8) var(--pb-day-width, 18px)); }
-.pb-gantt-timeline-head > span { position: absolute; top: 14px; color: var(--muted); font: 650 calc(9px * var(--density-font-scale, 1)) var(--font-mono); white-space: nowrap; }
+.pb-gantt-timeline-head > span { position: absolute; top: 38px; color: var(--muted); font: 650 calc(9px * var(--density-font-scale, 1)) var(--font-mono); white-space: nowrap; }
+.pb-gantt-week-row { position: absolute; inset: 0 0 auto; height: 24px; border-bottom: 1px solid var(--line); }
+.pb-gantt-week-row > span { position: absolute; height: 24px; padding: 3px 4px; border-right: 1px solid var(--line); overflow: hidden; white-space: nowrap; color: var(--deep); font: 700 10px/18px var(--font-mono); }
 .pb-today-head-marker { position: absolute; z-index: 2; top: 0; bottom: 0; width: 2px; background: #d87932; opacity: .8; }
 .pb-gantt-row { min-height: 52px; border-bottom: 1px solid #edf1ef; }
 .pb-gantt-body { position: relative; }

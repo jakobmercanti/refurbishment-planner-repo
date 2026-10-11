@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
+import { calendarWeeks, visibleCalendarDays } from "@/lib/ganttCalendar";
 import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import {
@@ -97,6 +98,19 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onActivit
   const dragRef = useRef<DragState | null>(null);
   const previewRef = useRef<ActivityRange | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [calendarAvailableWidth, setCalendarAvailableWidth] = useState(560);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const measure = () => {
+      const labelWidth = element.querySelector<HTMLElement>(".pb-gantt-header-label")?.offsetWidth ?? LABEL_WIDTH;
+      setCalendarAvailableWidth(Math.max(560, element.clientWidth - labelWidth));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(element); measure();
+    return () => observer.disconnect();
+  }, [view, activities.length, roomFilter, categoryFilter, tradeFilter, typeFilter, statusFilter]);
 
   useEffect(() => {
     if (!draft && !addStep) return;
@@ -299,9 +313,10 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onActivit
   const initialEnd = ends.at(-1) && projectEnd ? (projectEnd > ends.at(-1)! ? projectEnd : ends.at(-1)!) : projectEnd ?? ends.at(-1) ?? today;
   const timelineStart = activities.length ? addCalendarDays(initialStart, -7) : today;
   const timelineEnd = activities.length ? addCalendarDays(initialEnd, 7) : today;
-  const totalDays = activities.length ? Math.max(1, calendarDaysBetween(timelineStart, timelineEnd) + 1) : 1;
   const dayWidth = SCALE_DAY_WIDTH[scale];
-  const timelineWidth = Math.max(560, totalDays * dayWidth);
+  const totalDays = visibleCalendarDays(timelineStart, timelineEnd, calendarAvailableWidth, dayWidth);
+  const timelineWidth = totalDays * dayWidth;
+  const weeks = useMemo(() => calendarWeeks(timelineStart, totalDays), [timelineStart, totalDays]);
   const todayOffset = calendarDaysBetween(timelineStart, today);
   const todayVisible = activities.length > 0 && todayOffset >= 0 && todayOffset < totalDays;
   const timelineStyle = { "--pb-label-width": `${LABEL_WIDTH}px`, "--pb-timeline-width": `${timelineWidth}px`, "--pb-day-width": `${dayWidth}px` } as CSSProperties;
@@ -370,6 +385,7 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onActivit
         <div className="pb-gantt-grid" style={timelineStyle} role="table" aria-label="Project activity schedule">
           <div className="pb-gantt-header" role="row"><div className="pb-gantt-header-label" role="columnheader">Activity <span>Start · End</span></div>
             <div className="pb-gantt-timeline-head" role="columnheader" style={{ width: timelineWidth, backgroundSize: `${dayWidth}px 100%` }}>
+              <div className="pb-gantt-week-row" aria-label="ISO week numbers">{weeks.map(week => <span key={`${week.year}-${week.week}`} title={`ISO week ${week.week}, ${week.year}`} style={{ left: week.offset * dayWidth, width: week.days * dayWidth }}>W{week.week}</span>)}</div>
               {ticks.map((tick) => <span key={tick.offset} style={{ left: tick.offset * dayWidth }}>{tick.label}</span>)}
               {todayVisible && <i className="pb-today-head-marker" style={{ left: (todayOffset + 0.5) * dayWidth }} title="Today" />}
             </div>

@@ -1,0 +1,24 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QuoteGenerator } from "../components/QuoteGenerator";
+import { newProject } from "../lib/projectDocument";
+import { newQuote, newQuoteItem, newQuoteSection } from "../lib/quoteDocument";
+
+test("quote sections start collapsed, retain compact editable financial rows and independent subtotals", () => {
+  const project = newProject();
+  const quote = newQuote(project.projectId, project.name, "GBP");
+  quote.sections[0].title = "Decoration";
+  quote.sections[0].items = [{ ...newQuoteItem(), description: "Painted wall surface", quantity: "38.4", unit: "m²", unitPriceMinor: 1250 }];
+  const missing = newQuoteSection(); missing.items = [newQuoteItem()]; quote.sections.push(missing);
+  project.quotes = [quote];
+  const html = renderToStaticMarkup(createElement(QuoteGenerator, { project, defaultCurrency: "GBP", onQuotesChange: () => {} }));
+  assert.match(html, /<summary><strong>Decoration<\/strong>/);
+  assert.match(html, /Subtotal: £480\.00/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /aria-label="Quantity 1\.1"/);
+  assert.match(html, /aria-label="Unit price 1\.1"/);
+  assert.doesNotMatch(html, /aria-label="Description 1\.1"/);
+  assert.doesNotMatch(html, /<details[^>]+open=""/);
+});

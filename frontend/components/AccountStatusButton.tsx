@@ -6,7 +6,7 @@ import { commercialRequest } from "@/lib/commercialApi";
 
 const planNames: Record<string, string> = { free: "Free", starter: "Starter", pro: "Pro", studio: "Studio" };
 
-export function AccountStatusButton({ open, onOpen }: { open: boolean; onOpen: () => void }) {
+export function AccountStatusButton() {
   const [label, setLabel] = useState("Sign in");
 
   useEffect(() => {
@@ -41,5 +41,5 @@ export function AccountStatusButton({ open, onOpen }: { open: boolean; onOpen: (
     };
   }, []);
 
-  return <button type="button" className="app-nav-entry" aria-haspopup="dialog" aria-expanded={open} onClick={onOpen}>{label}</button>;
+  return <a className="app-nav-entry" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/account/`} target="_blank" rel="noopener noreferrer" title="Open account in a new tab">{label} ↗</a>;
 }

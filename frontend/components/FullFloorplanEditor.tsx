@@ -288,7 +288,7 @@ const FLOORPLAN_EXPORT_ATTRIBUTION_RESERVE_PX = 48;
 
 const FLOORPLAN_EXPORT_BASE_CSS = `
 .electrical-gang-badge{fill:#fff;stroke:#94a3b8;stroke-width:1;stroke-dasharray:none}
-.electrical-gang-number{fill:#071b38;stroke:none;font:700 10px Arial,sans-serif}
+.electrical-gang-number{fill:#071b38;stroke:none;font:700 9px Arial,sans-serif}
 .electrical-gang-leader{fill:none;stroke:#64748b;stroke-width:1}
 .electrical-terminal-port{fill:#071b38;stroke:#fff;stroke-width:1}
 .electrical-fitting-reference{fill:#071b38;font:700 10px Arial,sans-serif;paint-order:stroke;stroke:#fff;stroke-width:3}
@@ -977,10 +977,13 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       const matching = matchingEnergySegments(e);
       nextWalls = nextWalls.map(w => ({ ...w, thicknessOverridesMm: { ...w.thicknessOverridesMm, ...Object.fromEntries(matching.filter(s => s.wallId === w.id).map(s => [s.segmentIndex, assemblyThickness(a)])) } }));
     }
-    if (nextWalls !== walls) { setWallsRespectingMeasurements(nextWalls);setWallThicknessInput(null); }
+    // Insulation edits change thickness only. Re-running the length solver here
+    // can move measured endpoints and immediately invalidate the saved fabric
+    // signature. Retain the exact authoritative coordinates, including decimals.
+    if (nextWalls !== walls) { setWalls(nextWalls);setWallThicknessInput(null); }
     energy.change(syncEnergyToWalls(nextWalls, wallThickness, next));
   }
-  function restoreEnergy(value: ReturnType<typeof energySnapshot>) { setWallsRespectingMeasurements(value.walls);setWallThickness(value.thickness);energy.change(value.data);setWallThicknessInput(null); }
+  function restoreEnergy(value: ReturnType<typeof energySnapshot>) { setWalls(value.walls);setWallThickness(value.thickness);energy.change(value.data);setWallThicknessInput(null); }
   function undoEnergy() { const previous = energyUndo.current.pop();if (previous) { energyRedo.current.push(energySnapshot());restoreEnergy(previous); } }
   function redoEnergy() { const next = energyRedo.current.pop();if (next) { energyUndo.current.push(energySnapshot());restoreEnergy(next); } }
   const heatingUndo = useRef<HeatingProject[]>([]), heatingRedo = useRef<HeatingProject[]>([]);

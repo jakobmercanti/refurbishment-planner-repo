@@ -12,6 +12,16 @@ export function reorderConstructionLayer(a: ConstructionAssembly, layerId: strin
   layers.splice(to, 0, layers.splice(from, 1)[0]);
   return { ...a, layers, directUValue: null };
 }
+/** Drop at a boundary in the original list, including before first / after last. */
+export function insertConstructionLayer(a: ConstructionAssembly, layerId: string, boundary: number): ConstructionAssembly {
+  const from = a.layers.findIndex(l => l.layerId === layerId);
+  if (from < 0 || !Number.isInteger(boundary) || boundary < 0 || boundary > a.layers.length) return a;
+  const to = boundary - (from < boundary ? 1 : 0);
+  if (from === to) return a;
+  const layers = [...a.layers];
+  layers.splice(to, 0, layers.splice(from, 1)[0]);
+  return { ...a, layers, directUValue: null };
+}
 export function wallThicknessForElement(e: Pick<EnergyElement, "roomId" | "elementId">, rooms: readonly Room[]) {
   const room = rooms.find(r => r.id === e.roomId), index = Number(e.elementId.split("|wall:")[1]?.split(":")[0]);
   return room?.wall_thickness_overrides_mm?.[`wall-${String(index + 1).padStart(3, "0")}`] ?? room?.wall_thickness.value ?? 150;

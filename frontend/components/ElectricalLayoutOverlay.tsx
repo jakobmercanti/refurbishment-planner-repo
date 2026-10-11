@@ -2,7 +2,7 @@
 
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
-import { electricalPlanEndpoint, gangBadgePosition } from "@/lib/electricalPlanPorts";
+import { electricalPlanEndpoint, gangBadgePosition, GANG_BADGE_WIDTH, GANG_BADGE_HEIGHT } from "@/lib/electricalPlanPorts";
 import { electricalDevicePlanSize, electricalDevicePlanSymbol, electricalRockerBounds } from "@/lib/electricalPlanSymbols";
 import { electricalConnectionPoints, electricalDashArray, electricalStrokeWidth, type ElectricalCircuit, type ElectricalConnection, type ElectricalConnectionDefaults } from "@/lib/electricalLayout";
 import type { Obstacle, Point2D } from "@/lib/types";
@@ -110,7 +110,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       const hitDepth = readableSymbol ? Math.max(symbolDepth + (props.active ? 12 : 8), props.active ? 44 : 24) : actualDepth;
       const angle = -fixture.rotation_deg * Math.PI / 180, count = switchGangCount(fixture.representation_key);
       const plateTop = -(Math.abs(Math.sin(angle)) * symbolWidth + Math.abs(Math.cos(angle)) * symbolDepth) / 2;
-      const badgesTop = count > 1 ? Math.min(...Array.from({ length: count }, (_, i) => { const p = gangBadgePosition(count, i, symbolDepth);return p.x * Math.sin(angle) + p.y * Math.cos(angle) - 11; })) : plateTop;
+      const badgesTop = count > 1 ? Math.min(...Array.from({ length: count }, (_, i) => { const p = gangBadgePosition(count, i, symbolDepth);return p.x * Math.sin(angle) + p.y * Math.cos(angle) - 9; })) : plateTop;
       const referenceY = centre.y + Math.min(plateTop, badgesTop) - 13;
       const connected = connectedFixtureIds.has(fixture.id);
       const classes = ["floorplan-fixture", "electrical-fixture", props.active ? "is-active" : "", readableSymbol ? "is-readable" : "", connected ? "is-connected" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
@@ -135,11 +135,12 @@ export function ElectricalLayoutOverlay(props: Props) {
           const activate = () => { if (props.testing || props.connecting) props.onFixtureGangActivate?.(fixture, gang);else props.onFixtureActivate(fixture); };
           return <g key={gang} data-electrical-gang={gang} data-selected={chosen} data-state={props.testing ? state?.keys.length ? state.on ? "on" : "off" : "unconnected" : "connect"} role="button" tabIndex={0} aria-label={`${fixture.name} · Gang ${gang}${props.testing ? ` · ${state?.label ?? "Not connected"}` : " · Connect this rocker"}`} onPointerDown={event => { event.preventDefault(); event.stopPropagation(); if (event.button === 0) activate(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); activate(); } }}>
             <title>{props.testing ? `Rocker ${gang}: ${state?.label ?? "Not connected"}. Operate only this rocker.` : `Connect ${references[fixture.id]} rocker ${gang}`}</title><rect className="electrical-gang-hit" x={x} y={bounds ? bounds.y * symbolDepth : -symbolDepth / 2} width={rockerWidth} height={bounds ? bounds.height * symbolDepth : symbolDepth} rx="4" fillOpacity="0.3" />
-            {count > 1 && <path className="electrical-gang-leader" d={`M${x + rockerWidth / 2},${symbolDepth * .29} L${x + rockerWidth / 2},${symbolDepth / 2 + 5} L${badge.x},${badge.y - 11}`} fill="none" stroke="#64748b" strokeWidth="1" pointerEvents="none" />}
-            <circle className="electrical-terminal-port" cx={count > 1 ? badge.x : 0} cy={count > 1 ? badge.y + 16 : symbolDepth / 2 + 4} r="2.5" fill="#071b38" stroke="white" strokeWidth="1" pointerEvents="none" />
+            {count > 1 && <path className="electrical-gang-leader" d={`M${x + rockerWidth / 2},${symbolDepth * .29} L${x + rockerWidth / 2},${symbolDepth / 2 + 5} L${badge.x},${badge.y - 9}`} fill="none" stroke="#64748b" strokeWidth="1" pointerEvents="none" />}
+            <circle className="electrical-terminal-port" cx={count > 1 ? badge.x : 0} cy={count > 1 ? badge.y + 14 : symbolDepth / 2 + 4} r="2.5" fill="#071b38" stroke="white" strokeWidth="1" pointerEvents="none" />
             <g className="electrical-gang-caption" style={count === 1 ? { display: "none" } : undefined} transform={`translate(${badge.x} ${badge.y}) rotate(${fixture.rotation_deg})`}>
-              <rect className="electrical-gang-badge" x="-13" y="-11" width="26" height="22" rx="4" />
-              <text className="electrical-gang-number" pointerEvents="none" x="0" y="3.5" textAnchor="middle" fill={props.testing && state?.keys.length || chosen ? "#fff" : "#071b38"}>G{gang}</text>
+              <rect fill="transparent" stroke="none" x="-12" y="-12" width="24" height="24" />
+              <rect className="electrical-gang-badge" x={-GANG_BADGE_WIDTH / 2} y={-GANG_BADGE_HEIGHT / 2} width={GANG_BADGE_WIDTH} height={GANG_BADGE_HEIGHT} rx="4" />
+              <text className="electrical-gang-number" pointerEvents="none" x="0" y="3" textAnchor="middle" fill={props.testing && state?.keys.length || chosen ? "#fff" : "#071b38"}>G{gang}</text>
             </g>
           </g>;
         })}</g>}

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { Popup } from "./Popup";
 import { withLayerColours } from "@/lib/energyLayerColours";
@@ -9,7 +9,7 @@ import { CONSTRUCTION_TEMPLATES, newAssembly, type ConstructionAssembly, type Co
 import type { Room } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
 import { assignEnergyElements, energyElements, calculateAssemblyUValue, scenarioAssignments, type EnergyElement } from "@/lib/energyCalculations";
-import { assemblyThickness, reorderConstructionLayer, LAYER_COLOURS, minimumInsulationThickness, resizeAssembly, setWallAssembly } from "@/lib/energyWallConstruction";
+import { assemblyThickness, insertConstructionLayer, reorderConstructionLayer, LAYER_COLOURS, minimumInsulationThickness, resizeAssembly, setWallAssembly } from "@/lib/energyWallConstruction";
 import styles from "./HeatingLayoutPanel.module.css";
 import ui from "./EnergyLayoutPanel.module.css";
 
@@ -22,7 +22,7 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
   const [data, setData] = useState(source), [assembly, setAssembly] = useState(() => withLayerColours(initialAssembly));
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [draggingLayerId, setDraggingLayerId] = useState<string | null>(null);
-  const [dropLayerId, setDropLayerId] = useState<string | null>(null);
+  const [dropBoundary, setDropBoundary] = useState<number | null>(null);
   const [error, setError] = useState(""), [template, setTemplate] = useState(0);
   const [materialId, setMaterialId] = useState("pir-tw55"), [insulationLambda, setInsulationLambda] = useState<number | null>(null);
   const [targetMode, setTargetMode] = useState("U-value"), [powerTarget, setPowerTarget] = useState(100);
@@ -36,6 +36,17 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
     setError("");setAssembly({ ...next, directUValue: null });
   };
   const layerEdit = (id: string, patch: Partial<ConstructionLayer>) => edit({ ...assembly, layers: assembly.layers.map(l => l.layerId === id ? { ...l, ...patch } : l) });
+  const hoverBoundary = (event: DragEvent, boundary: number) => {
+    if (!draggingLayerId) return;
+    event.preventDefault();event.dataTransfer.dropEffect = "move";setDropBoundary(boundary);
+  };
+  const dropAt = (event: DragEvent, boundary: number) => {
+    event.preventDefault();
+    const id = event.dataTransfer.getData("text/plain");
+    if (id && id === draggingLayerId) edit(insertConstructionLayer(assembly, id, boundary));
+    setDraggingLayerId(null);setDropBoundary(null);
+  };
+  const insertionSlot = (boundary: number) => <div className={ui.layerInsertion} data-layer-insertion={boundary} data-active={dropBoundary === boundary} onDragOver={event => hoverBoundary(event, boundary)} onDrop={event => dropAt(event, boundary)} aria-hidden="true" />;
   const thermal = useMemo(() => energyElements(rooms, heating, data).find(e => e.elementId === first.elementId) ?? first, [rooms, heating, data, first]);
   const targetU = targetMode === "U-value" ? data.targets[category] : thermal.areaM2 * thermal.deltaTK > 0 ? powerTarget / (thermal.areaM2 * thermal.deltaTK) : null;
   const chosenLambda = insulationLambda ?? material?.lambda ?? null;
@@ -55,9 +66,10 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
           <small>Replaces only the layers in this draft. Presets are starting assumptions; confirm every material value.</small>
         </details>
         <><small>{category === "wall" ? "Outside → inside" : "Outside / ground → room"}. Drag the grip to reorder layers. Select Edit to change one layer; use Arrow Up/Down on its grip to reorder with a keyboard.</small>
-          {assembly.layers.map((l, i) => { const m = data.materials.find(m => m.materialId === l.materialId);return <section key={l.layerId} className={ui.layer} data-layer-id={l.layerId} data-drop-target={dropLayerId === l.layerId} onDragOver={event => { if (draggingLayerId && draggingLayerId !== l.layerId) { event.preventDefault();event.dataTransfer.dropEffect = "move";setDropLayerId(l.layerId); } }} onDrop={event => { event.preventDefault();const id = event.dataTransfer.getData("text/plain");if (id === draggingLayerId) edit(reorderConstructionLayer(assembly, id, l.layerId));setDraggingLayerId(null);setDropLayerId(null); }}>
+          <div className={ui.layerList} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropBoundary(null); }}>
+          {assembly.layers.map((l, i) => { const m = data.materials.find(m => m.materialId === l.materialId);return <Fragment key={l.layerId}>{insertionSlot(i)}<section className={ui.layer} data-layer-id={l.layerId} onDragOver={event => { const box = event.currentTarget.getBoundingClientRect();hoverBoundary(event, i + (event.clientY >= box.top + box.height / 2 ? 1 : 0)); }} onDrop={event => { const box = event.currentTarget.getBoundingClientRect();dropAt(event, i + (event.clientY >= box.top + box.height / 2 ? 1 : 0)); }}>
             <div className={ui.layerRow}>
-              <button type="button" className={ui.layerGrip} draggable aria-label={`Reorder layer ${i + 1}`} title="Drag to reorder; Arrow Up/Down also moves this layer" onDragStart={event => { event.dataTransfer.setData("text/plain", l.layerId);event.dataTransfer.effectAllowed = "move";setDraggingLayerId(l.layerId); }} onDragEnd={() => { setDraggingLayerId(null);setDropLayerId(null); }} onKeyDown={event => { const target = event.key === "ArrowUp" ? assembly.layers[i - 1] : event.key === "ArrowDown" ? assembly.layers[i + 1] : null;if (target) { event.preventDefault();edit(reorderConstructionLayer(assembly, l.layerId, target.layerId)); } }}>⠿</button>
+              <button type="button" className={ui.layerGrip} draggable aria-label={`Reorder layer ${i + 1}`} title="Drag to reorder; Arrow Up/Down also moves this layer" onDragStart={event => { event.dataTransfer.setData("text/plain", l.layerId);event.dataTransfer.effectAllowed = "move";setDraggingLayerId(l.layerId); }} onDragEnd={() => { setDraggingLayerId(null);setDropBoundary(null); }} onKeyDown={event => { const target = event.key === "ArrowUp" ? assembly.layers[i - 1] : event.key === "ArrowDown" ? assembly.layers[i + 1] : null;if (target) { event.preventDefault();edit(reorderConstructionLayer(assembly, l.layerId, target.layerId)); } }}>⠿</button>
               <strong><span className={ui.swatch} style={{ background: l.colorHex ?? LAYER_COLOURS[i % LAYER_COLOURS.length] }} />Layer {i + 1} · {m?.name ?? "Custom material"} · {Number(l.thicknessMm.toFixed(2))} mm</strong>
               <div className={ui.layerActions}><button type="button" aria-label={`Edit layer ${i + 1}`} aria-expanded={editingLayerId === l.layerId} aria-controls={`layer-fields-${l.layerId}`} onClick={() => setEditingLayerId(editingLayerId === l.layerId ? null : l.layerId)}>{editingLayerId === l.layerId ? "Close edit" : "Edit"}</button><button type="button" aria-label={`Delete layer ${i + 1}`} disabled={assembly.layers.length === 1} title={assembly.layers.length === 1 ? "Keep at least one construction layer" : undefined} onClick={() => { edit({ ...assembly, layers: assembly.layers.filter(v => v.layerId !== l.layerId) });if (editingLayerId === l.layerId) setEditingLayerId(null); }}>Delete</button></div>
             </div>
@@ -68,7 +80,7 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
             <details><summary>Thermal parameters & source</summary><div className={styles.grid}><NumberField label={`Layer ${i + 1} conductivity λ W/mK`} value={l.lambdaOverride ?? m?.lambda ?? null} min={.001} max={20} onChange={v => layerEdit(l.layerId, { lambdaOverride: v, resistanceOverride: null })} /><NumberField label={`Layer ${i + 1} entered resistance R (cavity / tested layer)`} value={l.resistanceOverride ?? (l.lambdaOverride == null ? m?.resistance : null) ?? null} max={100} onChange={v => layerEdit(l.layerId, { resistanceOverride: v })} /></div>
             <small>R {construction?.layers[i]?.resistance?.toFixed(3) ?? "Not set"} m²K/W · {m?.reference}</small><small>Defaults come from Library → Materials. Layer edits override this element only.</small></details>
             </div>}
-          </section>; })}
+          </section></Fragment>; })}{insertionSlot(assembly.layers.length)}</div>
           <button disabled={assembly.layers.length >= 100} onClick={() => edit({ ...assembly, layers: [...assembly.layers, { layerId: crypto.randomUUID(), materialId, thicknessMm: 25, resistanceOverride: null, position: "Inside", upgrade: true, colorHex: LAYER_COLOURS[assembly.layers.length % LAYER_COLOURS.length] }] })}>Add layer</button>
           <p><strong>Calculated U: {construction?.uValue?.toFixed(3) ?? "Not set — complete every λ or R"} W/m²K</strong></p>
           <details><summary>Calculation details & {category} properties</summary><div className={styles.grid}><NumberField label="Inside surface resistance Rsi" value={assembly.rsi} max={10} onChange={v => { if (v !== null) edit({ ...assembly, rsi: v }); }} /><NumberField label="Outside surface resistance Rse" value={assembly.rse} max={10} onChange={v => { if (v !== null) edit({ ...assembly, rse: v }); }} /></div><p>R = thickness / 1000 / λ (or entered R); U = 1 / (Rsi + ΣR + Rse). Total R {construction?.totalR?.toFixed(3) ?? "Not set"}.</p><p>{label} loss = U × {thermal.areaM2.toFixed(2)} m² × {thermal.deltaTK.toFixed(1)} K. One-dimensional model; thermal bridges and moisture need professional assessment.</p><label>{label} boundary<select value={assigned?.boundary ?? "Auto"} onChange={e => update(assignEnergyElements(data, [{ ...assigned, elementId: first.elementId, assemblyId: assembly.assemblyId, uValue: null, geometrySignature: first.geometrySignature, boundary: e.target.value as "Auto" | "External" | "Heated" | "Unheated" | "Adiabatic" | "Ground" }]))}>{(category === "floor" ? ["Auto", "Ground", "External", "Heated", "Unheated", "Adiabatic"] : ["Auto", "External", "Heated", "Unheated", "Adiabatic"]).map(v => <option key={v}>{v}</option>)}</select></label><NumberField label="Adjacent temperature °C" value={assigned?.adjacentTemperatureC ?? null} min={-50} max={40} onChange={v => update(assignEnergyElements(data, [{ ...assigned, elementId: first.elementId, assemblyId: assembly.assemblyId, uValue: null, adjacentTemperatureC: v ?? undefined }]))} /></details>

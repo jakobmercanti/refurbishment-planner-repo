@@ -34,7 +34,10 @@
 .editorPreview :global(.fixture-preview) { min-height: 300px; }
 .popup .layer { padding: 10px; }
 .layer { border:1px solid var(--line); border-radius:10px; }
-.layer[data-drop-target=true] { outline:2px solid var(--deep); background:var(--surface-muted); }
+.layerList { display:grid; }
+.layerInsertion { height:14px; position:relative; }
+.layerInsertion::after { content:""; position:absolute; inset:5px 0; border-radius:3px; background:transparent; pointer-events:none; }
+.layerInsertion[data-active=true]::after { background:var(--deep,#075dad); box-shadow:0 0 0 1px var(--deep,#075dad); }
 .layerRow { display:flex; align-items:center; gap:8px; }
 .layerRow > strong { flex:1; min-width:0; line-height:1.4; overflow-wrap:anywhere; }
 .layerActions { display:flex; gap:6px; flex-shrink:0; }

@@ -37,8 +37,7 @@ export async function uploadSignedFile(url: string, headers: Record<string, stri
 
 export async function createCheckout(productKey: string, keepPlannerOpen = false): Promise<void> {
   const checkoutWindow = keepPlannerOpen ? window.open("about:blank", "_blank") : null;
-  // Mobile/in-app browsers often block new windows. Continue in this tab instead
-  // of aborting checkout before the API request is even made.
+  if (keepPlannerOpen && !checkoutWindow) throw new Error("Your browser blocked the billing tab. Allow pop-ups and try again; your project is still open.");
   if (checkoutWindow) checkoutWindow.opener = null;
   try {
     const result = await commercialRequest<{ url: string }>("/billing/checkout", {
@@ -54,6 +53,7 @@ export async function createCheckout(productKey: string, keepPlannerOpen = false
 
 export async function openBillingPortal(keepPlannerOpen = false): Promise<void> {
   const portalWindow = keepPlannerOpen ? window.open("about:blank", "_blank") : null;
+  if (keepPlannerOpen && !portalWindow) throw new Error("Your browser blocked the billing tab. Allow pop-ups and try again; your project is still open.");
   if (portalWindow) portalWindow.opener = null;
   try {
     const result = await commercialRequest<{ url: string }>("/billing/portal", { method: "POST" });

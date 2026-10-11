@@ -67,7 +67,7 @@ test("connection schedule derives schematic lengths and individual segment orien
   assert.equal(unrestrictedRows[0].segments?.[0].orientation, "Diagonal");
 });
 
-test("electrical schedule keeps notes and photos in BOM entry details without separate tabs", () => {
+test("electrical schedule opens BOM notes and photos in a popup without separate tabs", () => {
   const switchItem = obstacle("switch-1", { x: 500, y: 500 }, "electrical-switch-single", "Single rocker switch");
   const bomKey = "catalogue:electrical-switch-single";
   const layout: ElectricalLayoutData = {
@@ -86,8 +86,8 @@ test("electrical schedule keeps notes and photos in BOM entry details without se
   assert.match(tabs, />Circuits<\/button>/);
   assert.doesNotMatch(tabs, />Connections<\/button>|Notes &amp; photos<\/button>/);
   assert.match(markup, /Edit · notes &amp; photos/);
-  assert.match(markup, /Switch reference/);
-  assert.match(markup, /White finish/);
+  assert.doesNotMatch(markup, /Switch reference|White finish/); // Draft fields load only when the popup opens.
+  assert.match(markup, /Edit · notes &amp; photos<\/button>/);
   assert.match(markup, /Project-wide notes, photos &amp; document details/);
 });
 
@@ -108,7 +108,7 @@ test("electrical BOM uses the settings currency unless a row has its own currenc
 
   assert.ok(markup.includes(new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(250)));
   assert.ok(markup.includes(new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" }).format(80)));
-  assert.match(markup, /value="USD"/);
+  assert.match(markup, /Unit cost for Single rocker switch \(USD\)/);
 });
 
 test("Replace changes only electrical data and frees wall-mounted items without a wall reference", () => {

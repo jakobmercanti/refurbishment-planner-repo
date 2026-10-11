@@ -18,6 +18,8 @@
 .panel p { margin:5px 0; line-height:1.5; }
 .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .actions,.tabs { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+.temperaturePresets { margin-block:10px; row-gap:10px; }
+.panel label.pipeRouting { margin-block:12px; }
 .tabs button[aria-pressed=true] { background:var(--deep,#287fb8); color:white; }
 .tabs button[aria-selected=true] { background:var(--deep,#287fb8); color:white; }
 .listItem { display:block; width:100%; text-align:left; margin-bottom:5px; }

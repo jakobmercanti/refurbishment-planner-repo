@@ -10,6 +10,47 @@ export interface AuthSession {
 const SESSION_KEY = "freefloorplan3d:commercial-session:v1";
 export const AUTH_SESSION_CHANGED = "freefloorplan3d:auth-session-changed";
 let refreshInFlight: Promise<AuthSession | null> | null = null;
+let sessionChannel: BroadcastChannel | null = null;
+let sessionRequest: Promise<void> | null = null;
+let pendingSessionRequestId: string | null = null;
+let sessionRevision = 0;
+let canRequestSessionFromTabs = true;
+
+// Share only between live same-origin tabs. Tokens remain in sessionStorage,
+// never in URLs, localStorage, or an opener on the external billing page.
+function connectSessionTabs() {
+  if (sessionChannel || typeof window === "undefined" || !window.BroadcastChannel) return;
+  sessionChannel = new window.BroadcastChannel("freefloorplan3d:account-tabs:v1");
+  sessionChannel.onmessage = event => {
+    if (event.data?.type === "request") {
+      const session = readStoredSession();
+      if (session) sessionChannel?.postMessage({ type: "response", requestId: event.data.requestId, session });
+    } else if (event.data?.type === "changed" || (event.data?.type === "response" && event.data.requestId === pendingSessionRequestId)) {
+      const session = event.data.session;
+      if (session === null && event.data.type === "changed") { pendingSessionRequestId = null; saveSession(null, false); }
+      else if (session && typeof session.access_token === "string" && typeof session.refresh_token === "string" &&
+        Number.isFinite(session.expires_at) && typeof session.user?.id === "string") saveSession(session, false);
+    }
+  };
+}
+
+async function requestSessionFromOpenTabs() {
+  connectSessionTabs();
+  if (!sessionChannel || !canRequestSessionFromTabs || readStoredSession()) return;
+  sessionRequest ??= new Promise<void>(resolve => {
+    const requestId = crypto.randomUUID();
+    pendingSessionRequestId = requestId;
+    const finish = () => { pendingSessionRequestId = null; sessionChannel?.removeEventListener("message", receive); resolve(); };
+    const receive = (event: MessageEvent) => {
+      if (event.data?.type === "response" && event.data.requestId === requestId) { clearTimeout(timer); finish(); }
+    };
+    // A background tab can have timers throttled to one second.
+    const timer = setTimeout(finish, 1500);
+    sessionChannel!.addEventListener("message", receive);
+    sessionChannel!.postMessage({ type: "request", requestId });
+  }).finally(() => { sessionRequest = null; });
+  await sessionRequest;
+}
 
 class AuthRequestError extends Error {
   constructor(message: string, readonly status: number) {
@@ -28,10 +69,15 @@ export function isAuthConfigured(): boolean {
   try { configuration(); return true; } catch { return false; }
 }
 
-function saveSession(session: AuthSession | null) {
+function saveSession(session: AuthSession | null, broadcast = true) {
   if (typeof window === "undefined") return;
+  sessionRevision++;
+  canRequestSessionFromTabs = session !== null;
+  if (!session) pendingSessionRequestId = null;
   if (session) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
   else sessionStorage.removeItem(SESSION_KEY);
+  connectSessionTabs();
+  if (broadcast) sessionChannel?.postMessage({ type: "changed", session });
   window.dispatchEvent(new Event(AUTH_SESSION_CHANGED));
 }
 
@@ -72,13 +118,20 @@ function normalizeSession(value: Record<string, unknown>): AuthSession | null {
 }
 
 export async function currentSession(): Promise<AuthSession | null> {
+  await requestSessionFromOpenTabs();
   const session = readStoredSession();
   if (!session) return null;
   if (session.expires_at > Math.floor(Date.now() / 1000) + 60) return session;
   if (!refreshInFlight) {
+    const revision = sessionRevision;
     refreshInFlight = authRequest<Record<string, unknown>>("token?grant_type=refresh_token", { refresh_token: session.refresh_token })
-      .then((result) => { const updated = normalizeSession(result); saveSession(updated); return updated; })
+      .then((result) => {
+        // Signing out in either tab must not be undone by an older network response.
+        if (revision !== sessionRevision) return readStoredSession();
+        const updated = normalizeSession(result); saveSession(updated); return updated;
+      })
       .catch((error) => {
+        if (revision !== sessionRevision) return readStoredSession();
         if (error instanceof AuthRequestError && [400, 401, 403].includes(error.status)) {
           saveSession(null);
           return null;

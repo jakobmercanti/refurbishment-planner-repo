@@ -73,7 +73,7 @@ test("dedicated checkout handles signed-out, each paid plan, existing subscripti
   }
 });
 
-test("checkout continues in the current tab when a pop-up is blocked", async () => {
+test("blocked billing popups leave the planner untouched and do not create checkout", async () => {
   const saved = Object.fromEntries(["window", "sessionStorage", "fetch"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   let destination = "";
   let requested = false;
@@ -88,9 +88,9 @@ test("checkout continues in the current tab when a pop-up is blocked", async () 
       requested = true;
       return Response.json({ url: "https://checkout.stripe.com/c/pay/test-session" });
     };
-    await createCheckout("starter", true);
-    assert.equal(requested, true);
-    assert.equal(destination, "https://checkout.stripe.com/c/pay/test-session");
+    await assert.rejects(createCheckout("starter", true), /browser blocked the billing tab/);
+    assert.equal(requested, false);
+    assert.equal(destination, "");
   } finally {
     for (const key of Object.keys(saved)) {
       const descriptor = saved[key];

@@ -554,7 +554,7 @@ export default function Home() {
               <button aria-pressed={mode === "ANALYSIS"} className={mode === "ANALYSIS" ? "active" : ""} onClick={enterViewer}>3D</button>
             </> : <select className="workspace-mode-select planner-build-view-select" aria-label="PlannerBuild view" value={plannerBuildView} onChange={event => setPlannerBuildView(event.target.value as "GANTT" | "DASHBOARD" | "QUOTE")}><option value="GANTT">Gantt</option><option value="DASHBOARD">Dashboard</option><option value="QUOTE">Quote Generator</option></select>}
           </div>
-          <AccountStatusButton open={accountOpen} onOpen={() => { setAccountInitialSection("account"); setAccountOpen(true); }} />
+          <AccountStatusButton />
         </nav>
       </header>
 

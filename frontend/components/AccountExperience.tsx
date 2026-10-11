@@ -1,8 +1,9 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { acceptAuthRedirect, currentSession, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
+import { AUTH_SESSION_CHANGED, acceptAuthRedirect, currentSession, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
 import { PlansRedirect } from "@/components/PlansRedirect";
+import { WindowHelpButton } from "@/components/WindowHelpButton";
 import type { PlanKey } from "@/lib/commercialCatalogue";
 
 type Mode = "signin" | "signup" | "reset";
@@ -23,6 +24,14 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
   const [section, setSection] = useState<AccountSection>("account");
   const [pendingPlanKey, setPendingPlanKey] = useState<PlanKey | null>(null);
   const authForm = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const refresh = () => { void currentSession().then(value => { if (mounted) setSession(value); }).catch(() => { if (mounted) setError("Account status could not be refreshed. Please retry."); }); };
+    window.addEventListener(AUTH_SESSION_CHANGED, refresh);
+    window.addEventListener("focus", refresh);
+    return () => { mounted = false; window.removeEventListener(AUTH_SESSION_CHANGED, refresh); window.removeEventListener("focus", refresh); };
+  }, []);
 
   const selectSection = useCallback((next: AccountSection) => {
     setSection(next);
@@ -93,7 +102,7 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
 
   const sectionTabs = <nav className="commercial-tabs account-section-tabs" role="tablist" aria-label="Account sections">
     <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>{session ? "Account" : "Sign in"}</button>
-    <a id="plans-section-tab" href={`${base}/plans/`}>Plans</a>
+    <a id="plans-section-tab" href={`${base}/plans/`} target="_blank" rel="noopener noreferrer">Plans ↗</a>
   </nav>;
 
   const accountContent = <section className="commercial-card account-card">
@@ -129,7 +138,7 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
         {mode === "reset" && !recovery && <button className="commercial-secondary account-recovery-button" type="button" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}>Back to sign in</button>}
       </>
     )}
-    <p className="commercial-footnote">Email verification is required before paid workspace features are available. Use the same browser tab after following an email link.</p>
+    <p className="commercial-footnote">Email verification is required before paid workspace features are available. Sign-in and sign-out are shared between open tabs on this site; your planner stays open.</p>
   </section>;
 
   const content = <>
@@ -145,7 +154,7 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
   </>;
 
   return embedded ? <div className="account-dialog-content">{content}</div> : <main className="commercial-page">
-    <header className="commercial-header"><a href={base + "/"} className="commercial-brand">FreeFloorplan3D</a><nav><a href={base + "/"}>Planner</a></nav></header>
+    <header className="commercial-header"><a href={base + "/"} className="commercial-brand">FreeFloorplan3D</a><nav><a href={base + "/"}>Planner</a><div className="window-header-actions"><WindowHelpButton title="Account & plans" /><button type="button" aria-label="Close account tab" onClick={() => window.close()}>×</button></div></nav></header>
     {content}
   </main>;
 }

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { Popup } from "./Popup";
 import { getElectricalImage, storeElectricalImage } from "@/lib/electricalAttachments";
 import { electricalBomRows, electricalConnectionRows, electricalPlacedItems, formatDrawingLength } from "@/lib/electricalSchedule";
-import type { ElectricalAttachmentRelation, ElectricalLayoutData, ElectricalManualBomItem } from "@/lib/electricalLayout";
+import type { ElectricalAttachmentRelation, ElectricalLayoutData, ElectricalLayoutDocumentation, ElectricalManualBomItem } from "@/lib/electricalLayout";
 import type { AssetDefinition, AssetInstance } from "@/lib/projectDocument";
 import type { Room } from "@/lib/types";
 import type { CurrencyCode } from "@/lib/appPreferences";
@@ -54,7 +56,14 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
   const [connectionTypeFilter, setConnectionTypeFilter] = useState("");
   const [connectionRoomFilter, setConnectionRoomFilter] = useState("");
   const [connectionSort, setConnectionSort] = useState("NUMBER");
-  const documentation = layout.documentation;
+  const [bomEditor, setBomEditor] = useState<{ kind: "CALCULATED" | "MANUAL"; id: string; token: string; source: ElectricalLayoutDocumentation; draft: ElectricalLayoutDocumentation } | null>(null);
+  const [picturePending, setPicturePending] = useState(false);
+  const documentation = bomEditor?.draft ?? layout.documentation;
+  const editorStale = !!bomEditor && bomEditor.source !== layout.documentation;
+  function openBomEditor(kind: "CALCULATED" | "MANUAL", id: string) {
+    setError(null);setMessage(null);
+    setBomEditor({ kind, id, token: makeId("draft"), source: layout.documentation, draft: structuredClone(layout.documentation) });
+  }
   const placed = useMemo(() => electricalPlacedItems(rooms, assets, instances), [rooms, assets, instances]);
   const bom = useMemo(() => electricalBomRows(rooms, layout, assets, instances), [rooms, layout, assets, instances]);
   const connectionRows = useMemo(() => electricalConnectionRows(layout, rooms), [layout, rooms]);
@@ -122,7 +131,8 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
   }, [documentation.attachments]);
 
   function changeDocumentation(patch: Partial<typeof documentation>) {
-    onLayoutChange({ ...layout, documentation: { ...documentation, ...patch } });
+    if (bomEditor) setBomEditor(current => current?.token === bomEditor.token ? { ...current, draft: { ...current.draft, ...patch } } : current);
+    else onLayoutChange({ ...layout, documentation: { ...documentation, ...patch } });
   }
   function updateBom(bomKey: string, patch: Record<string, unknown>) {
     changeDocumentation({ bomOverrides: { ...documentation.bomOverrides, [bomKey]: { ...documentation.bomOverrides[bomKey], ...patch } } });
@@ -155,11 +165,13 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
     setError(null); setMessage(null);
     if (documentation.attachments.length >= 30) { setError("A layout can include up to 30 reference pictures."); return; }
     const attachmentId = makeId("electrical-photo");
+    setPicturePending(true);
     try {
       const stored = await storeElectricalImage(attachmentId, file);
       changeDocumentation({ attachments: [...documentation.attachments, { attachmentId, fileName: stored.fileName, mediaType: stored.mediaType, sizeBytes: stored.sizeBytes, title: file.name.replace(/\.[^.]+$/, "").slice(0, 200), caption: "", notes: "", includeInExport: false, relation }] });
       setMessage("Reference picture added.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The picture could not be added."); }
+    finally { setPicturePending(false); }
   }
   function updateAttachment(id: string, patch: Partial<(typeof documentation.attachments)[number]>) {
     changeDocumentation({ attachments: documentation.attachments.map((item) => item.attachmentId === id ? { ...item, ...patch } : item) });
@@ -186,7 +198,7 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
     const attachments = documentation.attachments.filter((attachment) => relations.some((relation) => relationKey(relation) === relationKey(attachment.relation)));
     const relation = relations[0];
     return <section className="electrical-entry-photos">
-      <header><strong>Notes &amp; photos</strong><label className="review-style-button electrical-photo-upload">Add picture<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addPicture(file, relation); event.target.value = ""; }} /></label></header>
+      <header><strong>Notes &amp; photos</strong><label className="review-style-button electrical-photo-upload">Add picture<input type="file" disabled={picturePending} accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addPicture(file, relation); event.target.value = ""; }} /></label></header>
       <small>JPEG, PNG or WEBP · up to 5 MB each · stored privately in this browser/project.</small>
       {attachments.length ? attachments.map(renderAttachmentCard) : <p>No pictures attached to this entry.</p>}
     </section>;
@@ -245,13 +257,8 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
           <td>{row.roomNames.join(", ") || "—"}<small>{row.circuitNames.join(", ") || "No circuit assigned"}</small></td>
           <td><input aria-label={`Unit cost for ${row.name} (${override.currency ?? defaultCurrency})`} type="number" min="0" step="0.01" placeholder="—" defaultValue={cost ?? ""} onBlur={(event) => { const raw = event.target.value.trim(); const value = raw === "" ? undefined : Number(raw); if (value === undefined || (Number.isFinite(value) && value >= 0)) updateBom(row.bomKey, { unitCost: value }); }} /></td>
           <td>{cost === undefined ? "—" : formatMoney(orderQuantity * cost, override.currency ?? defaultCurrency)}</td>
-          <td><details className="electrical-bom-detail"><summary>Edit · notes &amp; photos</summary><div className="electrical-bom-fields">
-            {(["description", "manufacturer", "model", "partNumber", "supplier", "unit", "currency"] as const).map((key) => <label key={key}>{({ description: "Description", manufacturer: "Manufacturer", model: "Model", partNumber: "Part / catalogue no.", supplier: "Supplier", unit: "Unit", currency: "Currency" })[key]}<input defaultValue={override[key] ?? (key === "currency" ? defaultCurrency : "")} onBlur={(event) => updateBom(row.bomKey, { [key]: event.target.value || undefined })} /></label>)}
-            <label className="wide">User notes<textarea defaultValue={override.notes ?? ""} maxLength={2000} onBlur={(event) => updateBom(row.bomKey, { notes: event.target.value || undefined })} /></label>
-            {renderEntryPhotos([{ kind: "BOM", id: row.bomKey }, ...row.objectIds.map((id) => ({ kind: "ASSET" as const, id }))])}
-            <label className="electrical-inline-check"><input type="checkbox" checked={documentation.hiddenBomKeys.includes(row.bomKey)} onChange={(event) => changeDocumentation({ hiddenBomKeys: event.target.checked ? [...documentation.hiddenBomKeys, row.bomKey] : documentation.hiddenBomKeys.filter((key) => key !== row.bomKey) })} /> Hide this calculated row from exports</label>
-          </div></details></td></tr>; })}
-        {visibleManual.map((row) => <tr key={row.bomRowId} className="electrical-manual-row"><th scope="row"><input aria-label="Manual item description" defaultValue={row.description} onBlur={(event) => updateManual(row.bomRowId, { description: event.target.value })} /><small>Manual item</small></th><td>Manual</td><td>{row.quantity}</td><td><input aria-label={`Order quantity for ${row.description}`} type="number" min="0" step="1" defaultValue={row.orderQuantity ?? row.quantity} onBlur={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && value >= 0) updateManual(row.bomRowId, { orderQuantity: value }); }} /></td><td>—</td><td><input aria-label={`Unit cost for ${row.description} (${row.currency ?? defaultCurrency})`} type="number" min="0" step="0.01" placeholder="—" defaultValue={row.unitCost ?? ""} onBlur={(event) => { const raw = event.target.value.trim(); const value = raw ? Number(raw) : undefined; if (value === undefined || (Number.isFinite(value) && value >= 0)) updateManual(row.bomRowId, { unitCost: value }); }} /></td><td>{row.unitCost === undefined ? "—" : formatMoney((row.orderQuantity ?? row.quantity) * row.unitCost, row.currency ?? defaultCurrency)}</td><td><details className="electrical-bom-detail"><summary>Edit · notes &amp; photos</summary><div className="electrical-bom-fields">{(["manufacturer", "model", "partNumber", "supplier", "unit", "currency"] as const).map((key) => <label key={key}>{key}<input defaultValue={row[key] ?? (key === "currency" ? defaultCurrency : "")} onBlur={(event) => updateManual(row.bomRowId, { [key]: event.target.value || undefined })} /></label>)}<label className="wide">Notes<textarea defaultValue={row.notes ?? ""} onBlur={(event) => updateManual(row.bomRowId, { notes: event.target.value || undefined })} /></label>{renderEntryPhotos([{ kind: "BOM", id: row.bomRowId }])}<button type="button" className="danger-button" onClick={() => changeDocumentation({ manualBomItems: documentation.manualBomItems.filter((item) => item.bomRowId !== row.bomRowId) })}>Delete manual row</button></div></details></td></tr>)}
+          <td><button type="button" className="review-style-button" onClick={() => openBomEditor("CALCULATED", row.bomKey)}>Edit · notes &amp; photos</button></td></tr>; })}
+        {visibleManual.map((row) => <tr key={row.bomRowId} className="electrical-manual-row"><th scope="row"><input aria-label="Manual item description" defaultValue={row.description} onBlur={(event) => updateManual(row.bomRowId, { description: event.target.value })} /><small>Manual item</small></th><td>Manual</td><td>{row.quantity}</td><td><input aria-label={`Order quantity for ${row.description}`} type="number" min="0" step="1" defaultValue={row.orderQuantity ?? row.quantity} onBlur={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && value >= 0) updateManual(row.bomRowId, { orderQuantity: value }); }} /></td><td>—</td><td><input aria-label={`Unit cost for ${row.description} (${row.currency ?? defaultCurrency})`} type="number" min="0" step="0.01" placeholder="—" defaultValue={row.unitCost ?? ""} onBlur={(event) => { const raw = event.target.value.trim(); const value = raw ? Number(raw) : undefined; if (value === undefined || (Number.isFinite(value) && value >= 0)) updateManual(row.bomRowId, { unitCost: value }); }} /></td><td>{row.unitCost === undefined ? "—" : formatMoney((row.orderQuantity ?? row.quantity) * row.unitCost, row.currency ?? defaultCurrency)}</td><td><button type="button" className="review-style-button" onClick={() => openBomEditor("MANUAL", row.bomRowId)}>Edit · notes &amp; photos</button></td></tr>)}
         {!visibleBom.length && !visibleManual.length && <tr><td colSpan={8}>No matching BOM items.</td></tr>}
       </tbody></table></div>
       <form className="electrical-manual-bom-add" onSubmit={(event) => { event.preventDefault(); const description = manualDescription.trim(); const quantity = Number(manualQuantity); if (!description || !Number.isFinite(quantity) || quantity < 0) return; changeDocumentation({ manualBomItems: [...documentation.manualBomItems, { bomRowId: makeId("bom-row"), description, quantity }] }); setManualDescription(""); setManualQuantity("1"); }}>
@@ -284,6 +291,27 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
       </div>
       <p className="electrical-schedule-disclaimer">Schematic route length is calculated from the line drawn between item centres and its waypoints. It is not a physical cable route or cable allowance.</p>
     </div>}
+    {bomEditor && typeof document !== "undefined" && createPortal(<div onKeyDown={event => { event.stopPropagation();if (event.key === "Escape") { event.preventDefault();setBomEditor(null); } }}>
+      <Popup open title="Electrical BOM item details" message="" className="electrical-bom-editor" confirmLabel="Save details" confirmDisabled={editorStale || picturePending} autoFocusTarget="content" onCancel={() => setBomEditor(null)} onConfirm={() => { if (!editorStale && !picturePending) { onLayoutChange({ ...layout, documentation: bomEditor.draft });setBomEditor(null); } }}>
+        <p>Item details, notes and pictures are saved together. Cancel discards this draft.</p>
+        {editorStale && <p role="alert" className="inline-error">The electrical document changed while editing. Cancel and reopen this item.</p>}
+        {error && <p role="alert" className="inline-error">{error}</p>}
+        {picturePending && <p role="status">Adding picture…</p>}
+        {bomEditor.kind === "CALCULATED" ? (() => {
+          const row = bom.find(row => row.bomKey === bomEditor.id);if (!row) return <p>This item is no longer placed on the plan.</p>;
+          const override = documentation.bomOverrides[row.bomKey] ?? {};
+          return <><h3>{row.name}</h3><div className="electrical-bom-fields">
+            {(["description", "manufacturer", "model", "partNumber", "supplier", "unit", "currency"] as const).map((key) => <label key={key}>{({ description: "Description", manufacturer: "Manufacturer", model: "Model", partNumber: "Part / catalogue no.", supplier: "Supplier", unit: "Unit", currency: "Currency" })[key]}<input value={override[key] ?? (key === "currency" ? defaultCurrency : "")} onChange={(event) => updateBom(row.bomKey, { [key]: event.target.value || undefined })} /></label>)}
+            <label className="wide">User notes<textarea value={override.notes ?? ""} maxLength={2000} onChange={(event) => updateBom(row.bomKey, { notes: event.target.value || undefined })} /></label>
+            {renderEntryPhotos([{ kind: "BOM", id: row.bomKey }, ...row.objectIds.map((id) => ({ kind: "ASSET" as const, id }))])}
+            <label className="electrical-inline-check"><input type="checkbox" checked={documentation.hiddenBomKeys.includes(row.bomKey)} onChange={(event) => changeDocumentation({ hiddenBomKeys: event.target.checked ? [...documentation.hiddenBomKeys, row.bomKey] : documentation.hiddenBomKeys.filter((key) => key !== row.bomKey) })} /> Hide this calculated row from exports</label>
+          </div></>;
+        })() : (() => {
+          const row = documentation.manualBomItems.find(row => row.bomRowId === bomEditor.id);if (!row) return null;
+          return <><h3>Manual BOM item</h3><label className="electrical-bom-description">Description<input autoFocus value={row.description} onChange={event => updateManual(row.bomRowId, { description: event.target.value })} /></label><div className="electrical-bom-fields">{(["manufacturer", "model", "partNumber", "supplier", "unit", "currency"] as const).map((key) => <label key={key}>{({ manufacturer: "Manufacturer", model: "Model", partNumber: "Part / catalogue no.", supplier: "Supplier", unit: "Unit", currency: "Currency" })[key]}<input value={row[key] ?? (key === "currency" ? defaultCurrency : "")} onChange={(event) => updateManual(row.bomRowId, { [key]: event.target.value || undefined })} /></label>)}<label className="wide">Notes<textarea value={row.notes ?? ""} onChange={(event) => updateManual(row.bomRowId, { notes: event.target.value || undefined })} /></label>{renderEntryPhotos([{ kind: "BOM", id: row.bomRowId }])}<button type="button" className="danger-button" onClick={() => (() => { onLayoutChange({ ...layout, documentation: { ...layout.documentation, manualBomItems: layout.documentation.manualBomItems.filter(item => item.bomRowId !== row.bomRowId) } });setBomEditor(null); })()}>Delete manual row</button></div></>;
+        })()}
+      </Popup>
+    </div>, document.body)}
     <details className="electrical-project-documentation">
       <summary>Project-wide notes, photos &amp; document details</summary>
       <div className="electrical-project-documentation-content">

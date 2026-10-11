@@ -3,7 +3,8 @@ import { switchGangCount } from "./electricalSimulation";
 import type { ElectricalConnection } from "./electricalLayout";
 import type { Obstacle, Point2D } from "./types";
 
-export const gangBadgePosition = (count: number, index: number, depth: number) => ({ x: (index - (count - 1) / 2) * 36, y: depth / 2 + 17 });
+export const GANG_BADGE_WIDTH = 22, GANG_BADGE_HEIGHT = 18, GANG_BADGE_PITCH = 30;
+export const gangBadgePosition = (count: number, index: number, depth: number) => ({ x: (index - (count - 1) / 2) * GANG_BADGE_PITCH, y: depth / 2 + 15 });
 
 /** Display terminal only. Physical dimensions and stored connection endpoints remain unchanged. */
 export function electricalPlanEndpoint(connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle,
@@ -17,7 +18,7 @@ export function electricalPlanEndpoint(connection: ElectricalConnection, side: "
   const gang = (side === "from" ? connection.fromSwitchGang : connection.toSwitchGang) ?? 1;
   const index = Math.max(0, Math.min(count - 1, gang - 1));
   const badge = gangBadgePosition(count, index, Math.max(size.depth, 26));
-  const local = count > 1 ? { x: badge.x, y: badge.y + 16 } : { x: 0, y: Math.max(size.depth, 26) / 2 + 4 };
+  const local = count > 1 ? { x: badge.x, y: badge.y + 14 } : { x: 0, y: Math.max(size.depth, 26) / 2 + 4 };
   const angle = -fixture.rotation_deg * Math.PI / 180;
   const x = local.x * Math.cos(angle) - local.y * Math.sin(angle), y = local.x * Math.sin(angle) + local.y * Math.cos(angle);
   return { x: fixture.center.x + (d * x - b * y) / det, y: fixture.center.y + (a * y - c * x) / det };

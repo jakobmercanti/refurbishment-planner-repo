@@ -44,6 +44,27 @@ ${!catalogue.serviceAvailable || !catalogue.billingEnabled ? '<p class="lede">Ch
   var status=document.getElementById('account-status');
   try{
     var session=JSON.parse(sessionStorage.getItem('freefloorplan3d:commercial-session:v1')||'null');
+    // A noopener plans tab has its own sessionStorage. Share only with live
+    // same-origin account tabs; never persist credentials in localStorage.
+    if(window.BroadcastChannel){
+      var channel=new BroadcastChannel('freefloorplan3d:account-tabs:v1');
+      var requestId=crypto.randomUUID();
+      var accept=function(value){return value&&typeof value.access_token==='string'&&typeof value.refresh_token==='string'&&Number.isFinite(value.expires_at)&&typeof value.user?.id==='string';};
+      channel.onmessage=function(event){
+        var data=event.data;
+        if(data?.type==='request'&&accept(session))channel.postMessage({type:'response',requestId:data.requestId,session:session});
+        if(data?.type==='changed'||data?.type==='response'&&data.requestId===requestId){
+          if(accept(data.session)){session=data.session;sessionStorage.setItem('freefloorplan3d:commercial-session:v1',JSON.stringify(session));if(data.type==='changed')location.reload();}
+          else if(data.type==='changed'&&data.session===null){requestId=null;session=null;sessionStorage.removeItem('freefloorplan3d:commercial-session:v1');location.reload();}
+        }
+      };
+      if(!accept(session))await new Promise(function(resolve){
+        var timer=setTimeout(done,1500);
+        function receive(event){if(event.data?.type==='response'&&event.data.requestId===requestId){clearTimeout(timer);done();}}
+        function done(){channel.removeEventListener('message',receive);requestId=null;resolve();}
+        channel.addEventListener('message',receive);channel.postMessage({type:'request',requestId:requestId});
+      });
+    }
     if(!session||typeof session.access_token!=='string'||!session.user||typeof session.user.id!=='string'){
       // Keep native GET buttons, but send guests straight to the real sign-in form.
       document.querySelectorAll('.actions form input[name="plan"]').forEach(function(input){input.form.action='/planner/account/';});
@@ -67,7 +88,7 @@ ${!catalogue.serviceAvailable || !catalogue.billingEnabled ? '<p class="lede">Ch
     document.getElementById('subscription').hidden=!active;
     var ending=document.getElementById('cancellation-status');
     if(active&&summary.cancel_at_period_end){ending.hidden=false;var end=new Date(summary.current_period_end);ending.textContent='Cancellation confirmed. Your subscription will not renew. '+(Number.isFinite(end.getTime())?'Paid access ends on '+end.toLocaleDateString()+', then your account returns to Free.':'Your account returns to Free at the end of the paid period.');}
-    document.querySelectorAll('[data-plan]').forEach(function(card){var key=card.dataset.plan;var current=key===summary.plan&&(active||summary.status==='free');if(current)card.querySelector('[data-current-plan]').textContent='Current plan';if(key!=='free')card.querySelector('button').textContent=active&&current&&!summary.cancel_at_period_end?'Manage plan':'Change plan';});
+    document.querySelectorAll('[data-plan]').forEach(function(card){var key=card.dataset.plan;var current=key===summary.plan&&(active||summary.status==='free');if(current)card.querySelector('[data-current-plan]').textContent='Current plan';if(key!=='free')card.querySelector('button').textContent=active?(current&&!summary.cancel_at_period_end?'Manage plan':'Change plan'):(key===returned.get('plan')?'Continue with '+names[key]:'Choose '+names[key]);});
     var notice=document.getElementById('billing-notice');
     if(notice&&returned.get('checkout')==='success'&&active)notice.textContent='Success! Your '+(names[summary.plan]||'paid')+' subscription is active. Return to the planner to use your plan.';
     if(notice&&returned.get('billing')==='updated')notice.textContent=summary.plan==='free'?'Your subscription has ended. You are back on Free. Return to the planner whenever you are ready.':summary.cancel_at_period_end?'Cancellation confirmed. Your subscription will not renew; see your access end date below.':'Your subscription is up to date. Return to the planner whenever you are ready.';

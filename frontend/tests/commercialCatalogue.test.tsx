@@ -7,6 +7,7 @@ import { PlansAndBillingPanel } from "../components/PlansAndBillingPanel";
 import { PlansRedirect } from "../components/PlansRedirect";
 import { AccountDialog } from "../components/AccountDialog";
 import { AccountExperience } from "../components/AccountExperience";
+import { AccountStatusButton } from "../components/AccountStatusButton";
 import {
   FALLBACK_PLANS,
   FALLBACK_RENDER_PACKS,
@@ -16,11 +17,17 @@ import {
 } from "../lib/commercialCatalogue";
 
 test("all account Plans entry points use the standalone page and retain a selected tier", () => {
+  const entry = renderToStaticMarkup(createElement(AccountStatusButton));
+  assert.match(entry, /<a[^>]+href="[^\"]*\/account\/"[^>]+target="_blank"[^>]+rel="noopener noreferrer"/);
   const redirected = renderToStaticMarkup(createElement(PlansRedirect, { selectedPlanKey: "studio" }));
   assert.match(redirected, /<form[^>]+action="[^\"]*\/plans\/" method="get"/);
   assert.match(redirected, /name="plan" value="studio"/);
+  assert.match(redirected, /target="_blank"/);
+  assert.match(redirected, /rel="noopener noreferrer"/);
+  assert.doesNotMatch(redirected, /Opening plans and billing/);
   const embedded = renderToStaticMarkup(createElement(AccountDialog, { initialSection: "plans", onClose: () => undefined }));
   assert.match(embedded, /id="plans-section-tab" href="[^\"]*\/plans\/"/);
+  assert.match(embedded, /id="plans-section-tab"[^>]+target="_blank"/);
   assert.ok(embedded.includes('data-plans-redirect="true"'));
   const standalone = renderToStaticMarkup(createElement(AccountExperience));
   assert.match(standalone, /id="plans-section-tab" href="[^\"]*\/plans\/"/);
