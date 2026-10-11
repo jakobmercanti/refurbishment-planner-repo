@@ -37,6 +37,7 @@ test("undefined walls show a visible preview without claiming a calculated U-val
 
 test("floor and roof insulation use independently assigned construction and distinct plan controls", () => {
   let data = newEnergyProject();
+  data.display.floors = true; data.display.roofs = true;
   for (const category of ["floor", "roof"] as const) {
     const e = energyElements([room], heating, data).find(e => e.category === category)!;
     data = setWallAssembly(data, e, newAssembly({ name: category, category, materials: [["pir-tw55", category === "floor" ? 100 : 150]] }));

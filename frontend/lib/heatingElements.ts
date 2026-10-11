@@ -7,13 +7,21 @@ import { projectOnSegment, snapRadiatorToWall } from "./heatingCalculations";
 export type HeatingElementSpec = Omit<HeatingRadiator, "radiatorId" | "roomId" | "widthMm" | "heightMm" | "depthMm" | "positionMm" | "rotationDeg" | "wallIndex" | "positionAlongWallMm" | "placementSnapshot">;
 export const isHeatingElement = (item: Pick<Obstacle, "representation_key" | "heating_spec">) => Boolean(item.heating_spec || item.representation_key?.startsWith("furniture-radiator-") || item.representation_key?.startsWith("radiator-"));
 export const emptyHeatingSpec = (model: string): HeatingElementSpec => ({ category: "Custom", manufacturer: "", model, emitterTechnology: "Hydronic", ratedOutputW: null, ratedDeltaTK: 50, exponent: 1.3, electricalInputW: 0, fanMode: "Normal", manufacturerPerformanceData: [], locked: false });
+/** A hybrid wattage is an operating point, not a universal water/fan rating. */
+export function enteredHeatingOutput(spec: HeatingElementSpec, outputW: number | null, conditions: { flowC: number; returnC: number; roomC: number }): Partial<HeatingElementSpec> {
+  if (spec.emitterTechnology !== "Hybrid" || spec.category === "Boiler") return { ratedOutputW: outputW, estimatedOutput: false, performanceReference: undefined, manufacturerPerformanceData: [] };
+  const otherPoints = spec.manufacturerPerformanceData.filter(p => p.flowC !== conditions.flowC || p.returnC !== conditions.returnC || p.roomC !== conditions.roomC || p.fanMode !== spec.fanMode);
+  const points = outputW === null ? otherPoints : [...otherPoints, { ...conditions, outputW, electricalW: spec.electricalInputW, fanMode: spec.fanMode }];
+  if (points.length > 500) throw new Error("Performance table is full. Remove an unused operating point before adding another.");
+  return { ratedOutputW: outputW, estimatedOutput: false, performanceReference: undefined, manufacturerPerformanceData: points };
+}
 export function heatingSpec(r: HeatingRadiator): HeatingElementSpec {
   const { radiatorId: _id, roomId: _room, widthMm: _w, heightMm: _h, depthMm: _d, positionMm: _p, rotationDeg: _rotation, wallIndex: _wall, positionAlongWallMm: _along, placementSnapshot: _snapshot, ...spec } = r;
   void [_id, _room, _w, _h, _d, _p, _rotation, _wall, _along, _snapshot]; return spec;
 }
 export function resolveHeatingSpec(value: unknown, widthMm: number, heightMm: number): HeatingElementSpec {
   const spec = heatingElementSpecSchema.parse(value);
-  if (spec.category !== "Boiler" && spec.emitterTechnology !== "Electric" && !spec.manufacturerPerformanceData.length && (spec.ratedOutputW === null || spec.estimatedOutput)) return { ...spec, ratedOutputW: Math.max(1, Math.round(estimates.referenceOutputW * widthMm / estimates.referenceWidthMm * heightMm / estimates.referenceHeightMm)), estimatedOutput: true, ratedDeltaTK: 50, performanceReference: estimates.reference };
+  if (spec.category !== "Boiler" && spec.emitterTechnology === "Hydronic" && !spec.manufacturerPerformanceData.length && (spec.estimatedOutput || spec.ratedOutputW === null && spec.estimatedOutput !== false)) return { ...spec, ratedOutputW: Math.max(1, Math.round(estimates.referenceOutputW * widthMm / estimates.referenceWidthMm * heightMm / estimates.referenceHeightMm)), estimatedOutput: true, ratedDeltaTK: 50, performanceReference: estimates.reference };
   return spec;
 }
 export function radiatorFromElement(item: Obstacle, room: Room): HeatingRadiator {

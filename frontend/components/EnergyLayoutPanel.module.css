@@ -29,6 +29,9 @@
 .popup :global(.appearance-popup-grid) { height: min(650px, calc(100dvh - 165px)); max-height: min(650px, calc(100dvh - 165px)); grid-template-rows: minmax(0, 1fr); }
 .popup :global(.appearance-popup-form) { overflow-y: auto; padding-right: 10px; padding-bottom: 10px; align-content: start; }
 .editorPreview { align-self: stretch; }
+.startingComposition > label { margin-top:14px; }
+.startingComposition { margin-bottom:8px; }
+.startingComposition > :global(div) { margin-top:14px; margin-bottom:4px; gap:10px; }
 .editorPreview :global(.wall-layers-preview-editor) { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
 .editorPreview :global(.wall-layers-preview-editor > details) { font-size: 11px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; max-height: 100px; overflow: auto; }
 .editorPreview :global(.fixture-preview) { min-height: 300px; }

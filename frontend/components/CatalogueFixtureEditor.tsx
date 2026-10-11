@@ -10,6 +10,8 @@ import { isElectricalObstacle } from "@/lib/electricalLayout";
 import { isHeatingElement, emptyHeatingSpec } from "@/lib/heatingElements";
 import { radiatorFromElement, heatingSpec } from "@/lib/heatingElements";
 import { HeatingSpecsEditor } from "./HeatingSpecsEditor";
+import { useHeatingLayout } from "./HeatingLayoutContext";
+import { thermalRoom } from "@/lib/heatingCalculations";
 import { constrainObstacleToRoom, DEFAULT_OBSTACLE_WALL_LOCK, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
 import { formatLength, UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 import { MACRO_CATEGORY_ORDER, macroCategoryDisplay, macroCategoryForCategoryId, type MacroCategoryId } from "@/lib/catalogueTaxonomy";
@@ -52,6 +54,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   room: Room; displayUnits: DisplayUnits; onChange: (items: Obstacle[]) => void; apiUrl: string; refreshKey?: number; elementEditRequest?: ElementEditRequest | null;
 }) {
   const roomWalls = room.source_floorplan_room_id ? placementWalls : [];
+  const heatingLayout = useHeatingLayout();
   const electrical = categoryFilter === "electric";
   const heating = categoryFilter === "heating";
   const listedRoomObstacles = electrical ? room.obstacles.filter(isElectricalObstacle) : heating ? room.obstacles.filter(isHeatingElement) : room.obstacles.filter(item => !isHeatingElement(item));
@@ -182,7 +185,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const cabinet = value?.representation_key?.startsWith("furniture-kitchen-cabinet-");
   const baseUnits = room.obstacles.filter(item => item.id !== value?.id && item.representation_key?.startsWith("furniture-kitchen-") && !item.representation_key.includes("cabinet-"));
   function change(next: Obstacle) {
-    if (value?.heating_spec && JSON.stringify(value.dimensions) !== JSON.stringify(next.dimensions)) next = { ...next, heating_spec: { ...value.heating_spec, ratedOutputW: null, manufacturerPerformanceData: [], performanceReference: undefined } };
+    if (value?.heating_spec && (["width", "height", "depth"] as const).some(axis => value.dimensions[axis].value !== next.dimensions[axis].value)) next = { ...next, heating_spec: { ...value.heating_spec, ratedOutputW: null, manufacturerPerformanceData: [], performanceReference: undefined, estimatedOutput: value.heating_spec.estimatedOutput === true } };
     if (next.base_z_mm < 0 || ![next.base_z_mm, next.center.x, next.center.y, next.rotation_deg, ...Object.values(next.dimensions).map(d => d.value)].every(Number.isFinite)
       || Object.values(next.dimensions).some(d => d.value <= 0)) return;
     const positioned = existing ? constrainObstacleToRoom(next, room, next.center, roomWalls) : next;
@@ -315,7 +318,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       <section className="fixture-add-section" aria-label="Position">
         <button type="button" className="fixture-section-toggle" aria-expanded={positionExpanded} onClick={() => setPositionExpanded(current => !current)}><span><strong>Position</strong><small>{positionSummary}</small></span><span aria-hidden>{positionExpanded ? "−" : "›"}</span></button>
         {positionExpanded && <div className="fixture-section-content">
-          {isHeatingElement(value) && <HeatingSpecsEditor value={value.heating_spec ?? heatingSpec(radiatorFromElement(value, room))} onChange={heating_spec => change({ ...value, heating_spec })} />}
+      {isHeatingElement(value) && <HeatingSpecsEditor value={value.heating_spec ?? heatingSpec(radiatorFromElement(value, room))} operatingConditions={{ flowC: heatingLayout.data.heatingSystem.flowTemperatureC, returnC: heatingLayout.data.heatingSystem.returnTemperatureC, roomC: thermalRoom(room, heatingLayout.data).designIndoorTemperatureC }} onChange={heating_spec => change({ ...value, heating_spec })} />}
           {stairModel && <label className="field"><span>Floor-to-floor rise {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput units={displayUnits} minMm={1} valueMm={value.dimensions.height.value * Math.max(...stairModel.steps.map(step => step.top)) / stairModel.height} onMmChange={rise => change({ ...value, verified: false, dimensions: { ...value.dimensions, height: { ...value.dimensions.height, value: rise * stairModel.height / Math.max(...stairModel.steps.map(step => step.top)), verified: false, source_type: "USER_MEASURED" } } })} /><small>Stretches the flight and guarding together. Overall height below includes guarding.</small></label>}
           {baseHeightRelevant && <label className="field"><span>{cabinet ? "Mounting height above floor" : "Base height above floor"} {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput units={displayUnits} minMm={0} valueMm={value.base_z_mm} onMmChange={base_z_mm => change({ ...value, base_z_mm })} /></label>}
           {!baseHeightRelevant && <button type="button" className="element-inline-action" onClick={() => setBaseHeightExpanded(true)}>Set base height…</button>}
