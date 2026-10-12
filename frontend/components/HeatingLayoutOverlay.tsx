@@ -8,7 +8,7 @@ import { calculateCircuitLength, projectOnSegment, snapRadiatorToWall } from "@/
 import type { HeatingSelection } from "./HeatingLayoutPanel";
 import { heatingPipeLengthM, refreshHeatingPipeEndpoints } from "@/lib/heatingPipes";
 interface Props { connecting?: boolean; onConnect?: (id: string) => void; pipeDraft?: Point2D[]; data: HeatingProject; rooms: Room[]; selection: HeatingSelection; onSelect: (s: HeatingSelection) => void; onChange: (p: HeatingProject) => void; toScreen: (p: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D; highlightedRoomId: string | null; draft: Point2D[]; }
-type Drag = { before: HeatingProject; kind: "radiator" | "manifold" | "exclusion" | "circuit" | "pipe"; id: string; pathKey?: "pathMm" | "supplyPathMm" | "returnPathMm"; index?: number; segment?: boolean; start: Point2D; };
+type Drag = { before: HeatingProject; kind: "radiator" | "manifold" | "exclusion" | "circuit" | "pipe" | "roomIndicator"; id: string; pathKey?: "pathMm" | "supplyPathMm" | "returnPathMm"; index?: number; segment?: boolean; start: Point2D; };
 export function HeatingLayoutOverlay(props: Props) {
   const [preview, setPreview] = useState<HeatingProject | null>(null), [menu, setMenu] = useState<{ id: string; key: "pathMm" | "supplyPathMm" | "returnPathMm"; index: number; at: Point2D } | null>(null);
   const drag = useRef<Drag | null>(null), latest = useRef<HeatingProject | null>(null), data = preview ?? props.data;
@@ -19,13 +19,19 @@ export function HeatingLayoutOverlay(props: Props) {
     if (event.button !== 0) return; event.preventDefault(); event.stopPropagation();
     // preventDefault retains the previous form focus; explicitly return keyboard actions to the canvas.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    event.currentTarget.closest<SVGElement>('[role="button"]')?.focus(); if (props.connecting && (value.kind === "radiator" || value.kind === "manifold")) { props.onConnect?.(value.id); return; } props.onSelect({ kind: value.kind, id: value.id });setMenu(null);
+    event.currentTarget.closest<SVGElement>('[role="button"]')?.focus(); if (props.connecting && (value.kind === "radiator" || value.kind === "manifold")) { props.onConnect?.(value.id); return; } if (value.kind !== "roomIndicator") props.onSelect({ kind: value.kind, id: value.id });setMenu(null);
     const circuit = data.ufhCircuits.find(c => c.circuitId === value.id), radiator = data.radiators.find(r => r.radiatorId === value.id);
     if (circuit?.locked || radiator?.locked || data.pipes.find(p => p.pipeId === value.id)?.locked) return;
     drag.current = { ...value, before: structuredClone(props.data), start: pointFromEvent(event) };event.currentTarget.setPointerCapture(event.pointerId);
   }
   function move(event: ReactPointerEvent<SVGElement>) {
     const value = drag.current;if (!value) return;event.stopPropagation();const at = pointFromEvent(event), next = structuredClone(value.before), dx = at.x - value.start.x, dy = at.y - value.start.y;
+    if (value.kind === "roomIndicator") {
+      const room = props.rooms.find(r => r.id === value.id);
+      if (!room) return;
+      const original = value.before.roomIndicatorPositions?.[value.id] ?? { x: room.vertices.reduce((s, p) => s + p.x, 0) / room.vertices.length, y: room.vertices.reduce((s, p) => s + p.y, 0) / room.vertices.length };
+      next.roomIndicatorPositions = { ...next.roomIndicatorPositions, [value.id]: { x: original.x + dx, y: original.y + dy } };
+    }
     if (value.kind === "radiator") { const r = next.radiators.find(r => r.radiatorId === value.id)!, room = props.rooms.find(room => room.id === r.roomId);if (room) Object.assign(r, snapRadiatorToWall(r, room, at)); }
     if (value.kind === "pipe") { const p = next.pipes.find(p => p.pipeId === value.id)!; if (value.index !== undefined && !(value.index === 0 && p.fromId) && !(value.index === p.pathMm.length - 1 && p.toId)) p.pathMm[value.index] = at; }
     if (value.kind === "manifold") { const m = next.manifolds.find(m => m.manifoldId === value.id)!;m.positionMm = at;for (const c of next.ufhCircuits.filter(c => c.manifoldId === m.manifoldId)) { c.supplyPathMm[0] = at;c.returnPathMm[c.returnPathMm.length - 1] = at; } }
@@ -46,14 +52,19 @@ export function HeatingLayoutOverlay(props: Props) {
   return <g data-heating-interactive="true" aria-label="Heating layer" onPointerMove={move} onPointerUp={finish} onPointerCancel={event => { event.stopPropagation();drag.current = null;latest.current = null;setPreview(null); }}>
     <defs><pattern id="heating-exclusion-hatch" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0,8L8,0" stroke="#aa6b29" strokeWidth="1" /></pattern></defs>
     {results.rooms.map(row => {
-      const pts = row.room.vertices.map(props.toScreen), label = { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+      const pts = row.room.vertices.map(props.toScreen), savedPosition = data.roomIndicatorPositions?.[row.room.id], label = savedPosition ? props.toScreen(savedPosition) : { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
       const balance = heatingRoomBalance(row), green = balance.tone === "sufficient", red = balance.tone === "insufficient";
       const colour = green ? "#15803d" : red ? "#b91c1c" : "#a16207", background = green ? "#f0fdf4" : red ? "#fff1f2" : "#fffbeb";
       return <g key={row.room.id} pointerEvents="none">
         {data.display.zones && row.zones.length > 0 && <polygon points={screenPath(row.room.vertices)} fill="#da813722" stroke="#da8137" strokeWidth="1" strokeDasharray="5 4" />}
         {props.highlightedRoomId === row.room.id && row.demand.surfaces.filter(s => s.edgeIndex !== undefined && s.lossW > 0).map(s => <line key={s.key} x1={props.toScreen(s.startMm!).x} y1={props.toScreen(s.startMm!).y} x2={props.toScreen(s.endMm!).x} y2={props.toScreen(s.endMm!).y} stroke="#dd791d" strokeWidth="5" opacity=".65" />)}
-        {(data.display.demand || data.display.temperature || data.display.density) && <g className="heating-room-indicator" data-room-id={row.room.id} data-balance={balance.tone} transform={`translate(${label.x},${label.y + 37})`}>
-          <title>{`${row.room.name}: ${balance.headline}. ${balance.detail}. ${row.warnings.join(" ")}`}</title>
+        {(data.display.demand || data.display.temperature || data.display.density) && <g className="heating-room-indicator" data-room-id={row.room.id} data-balance={balance.tone} transform={`translate(${label.x},${label.y + 37}) scale(.82)`} pointerEvents="all" role="button" tabIndex={0} aria-label={`Move heating summary: ${row.room.name}`} style={{ cursor: "move" }} onPointerDown={event => begin(event, { kind: "roomIndicator", id: row.room.id })} onKeyDown={event => {
+          const directions: Record<string, Point2D> = { ArrowLeft: { x: -50, y: 0 }, ArrowRight: { x: 50, y: 0 }, ArrowUp: { x: 0, y: 50 }, ArrowDown: { x: 0, y: -50 } }, direction = directions[event.key];
+          if (!direction) return; event.preventDefault(); event.stopPropagation();
+          const original = data.roomIndicatorPositions?.[row.room.id] ?? { x: row.room.vertices.reduce((s, p) => s + p.x, 0) / row.room.vertices.length, y: row.room.vertices.reduce((s, p) => s + p.y, 0) / row.room.vertices.length };
+          props.onChange({ ...props.data, roomIndicatorPositions: { ...props.data.roomIndicatorPositions, [row.room.id]: { x: original.x + direction.x, y: original.y + direction.y } } });
+        }}>
+          <title>{`${row.room.name}: ${balance.headline}. ${balance.detail}. Drag this summary to move it; arrow keys also move it. ${row.warnings.join(" ")}`}</title>
           <rect x="-120" y="-16" width="240" height="94" rx="10" fill={background} fillOpacity=".97" stroke={colour} strokeWidth="1.5" />
           {data.display.demand && <text x="0" y="0" textAnchor="middle" fill="#24334b" fontSize="11">Heat loss: {heatingWatts(row.demand.designW)}</text>}
           <text x="0" y="17" textAnchor="middle" fill="#24334b" fontSize="11">Heat available: {balance.capacityText}</text>

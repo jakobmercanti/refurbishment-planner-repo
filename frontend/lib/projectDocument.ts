@@ -8,6 +8,8 @@ import { quoteSchema, type QuoteDocument } from "./quoteDocument";
 import { heatingSchema, heatingElementSpecSchema, parseHeatingProject, type HeatingProject } from "./heatingDocument";
 import { migrateHeatingElements, isHeatingElement } from "./heatingElements";
 import { energySchema, parseEnergyProject, type EnergyProject } from "./energyDocument";
+import { constrainObstacleToRoom, requiresElectricalWall } from "./elementPlacement";
+import { isLocalPlanSymbol } from "./localPlanSymbol";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -73,7 +75,7 @@ function inspectJson(value: unknown, depth = 0): void {
   for (const [key, item] of Object.entries(value)) {
     if (item === undefined || item === null) continue;
     if (["__proto__", "prototype", "constructor", "stl_base64", "stl_filename"].includes(key)) throw new Error("Unsupported project content.");
-    if (typeof item === "string" && /(?:url|uri|path)$/i.test(key) && !/^\/fixture-(symbols|previews)\/[\w-]+\.(svg|png|jpg|webp)$/.test(item)) throw new Error("External resources are not allowed in project files.");
+    if (typeof item === "string" && /(?:url|uri|path)$/i.test(key) && item !== "" && !/^\/(?:planner\/)?fixture-(symbols|previews)\/[\w-]+\.(svg|png|jpg|webp)$/.test(item) && !(key === "plan_symbol_data_url" && isLocalPlanSymbol(item))) throw new Error("External resources are not allowed in project files.");
     inspectJson(item, depth + 1);
   }
 }
@@ -94,6 +96,8 @@ export function parseProject(input: unknown): ProjectDocument {
   if (p.heatingLayout) p.heatingLayout = parseHeatingProject(p.heatingLayout);
   if (p.heatingLayout || p.rooms.some(room => room.obstacles.some(isHeatingElement))) Object.assign(p, migrateHeatingElements(p.rooms, p.heatingLayout));
   if (p.energyLayout) p.energyLayout = parseEnergyProject(p.energyLayout);
+  const placementWalls = p.floorplan?.walls.flatMap(w => w.points.slice(0, -1).map((start, i) => ({ start, end: w.points[i + 1], thickness: w.thicknessOverridesMm?.[i] ?? p.floorplan?.wallThickness ?? 100 }))) ?? [];
+  p.rooms = p.rooms.map(room => ({ ...room, obstacles: room.obstacles.map(item => requiresElectricalWall(item) ? constrainObstacleToRoom(item, room, item.center, placementWalls) ?? item : item) }));
   unique((p.quotes ?? []).map(quote => quote.quoteId));
   if (p.quotes?.some(quote => quote.projectId !== p.projectId)) throw new Error("A quotation belongs to a different project.");
   unique(p.plannerBuild.activities.map(activity => activity.activityId));

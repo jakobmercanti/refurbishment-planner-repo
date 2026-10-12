@@ -71,8 +71,9 @@ test("distinct switch-gang connections survive normalization without collapsing 
   assert.equal(normalizeElectricalLayout({ ...layout, connections: [first, second] }, new Set(["s1", "s2"])).connections.length, 2);
 });
 test("merge imports remap junction references without losing existing joins", () => {
-  const room = { id: "room", vertices: [{ x: -10, y: -10 }, { x: 110, y: -10 }, { x: 110, y: 110 }, { x: -10, y: 110 }], obstacles: fixtures } as Room;
-  const archive = { packageType: "freefloorplan3d-electrical-layout" as const, schemaVersion: 1 as const, projectName: "Test", exportedAt: "2026-10-10T00:00:00Z", items: fixtures.map(obstacle => ({ roomId: "room", obstacle })), assets: [], assetInstances: [], electricalLayout: joined };
+  const measuredFixtures = fixtures.map(f => ({ ...f, rotation_deg: 0, dimensions: { width: { value: 20 }, depth: { value: 4 }, height: { value: 20 } } } as Obstacle));
+  const room = { id: "room", wall_thickness: { value: 2 }, vertices: [{ x: -10, y: -10 }, { x: 110, y: -10 }, { x: 110, y: 110 }, { x: -10, y: 110 }], obstacles: measuredFixtures } as Room;
+  const archive = { packageType: "freefloorplan3d-electrical-layout" as const, schemaVersion: 1 as const, projectName: "Test", exportedAt: "2026-10-10T00:00:00Z", items: measuredFixtures.map(obstacle => ({ roomId: "room", obstacle })), assets: [], assetInstances: [], electricalLayout: joined };
   const imported = planElectricalLayoutImport(archive, [room], joined, [], [], "MERGE", new Map());
   assert.equal(imported.electricalLayout.junctions?.length, 2);
   const last = imported.electricalLayout.junctions!.at(-1)!;

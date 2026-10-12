@@ -1,4 +1,4 @@
-import { obstacleFootprint } from "./elementPlacement";
+import { obstacleFootprint, requiresWallMount } from "./elementPlacement";
 import { isHeatingElement } from "./heatingElements";
 import type { Obstacle, Point2D } from "./types";
 
@@ -115,7 +115,7 @@ export function positionWallAttachedFixtures(
     const tangent = { x: dx / length, y: dy / length };
     const normal = { x: -tangent.y, y: tangent.x };
     let alongMm = length * attachment.along, normalOffsetMm = attachment.normalOffsetMm;
-    if (isHeatingElement(fixture)) {
+    if (requiresWallMount(fixture)) {
       const endMargin = (point: Point2D) => Math.max(1, ...walls.flatMap(candidate => candidate.points.slice(0, -1).flatMap((a, i) => {
         const b = candidate.points[i + 1];
         if (candidate.id === wall.id && i === attachment.segmentIndex || Math.min(Math.hypot(a.x - point.x, a.y - point.y), Math.hypot(b.x - point.x, b.y - point.y)) > .01) return [];

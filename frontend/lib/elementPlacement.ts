@@ -25,6 +25,8 @@ const EPS = .01;
 /** Ordinary furniture/fittings should move freely unless the user opts into a wall lock. */
 export const DEFAULT_OBSTACLE_WALL_LOCK = false;
 export const requiresHeatingWall = (item: Pick<Obstacle, "representation_key" | "heating_spec">) => Boolean(item.heating_spec || item.representation_key?.startsWith("furniture-radiator-") || item.representation_key?.startsWith("radiator-"));
+export const requiresElectricalWall = (item: Pick<Obstacle, "representation_key">) => /^electrical-(socket|switch)-/.test(item.representation_key ?? "");
+export const requiresWallMount = (item: Pick<Obstacle, "representation_key" | "heating_spec">) => requiresHeatingWall(item) || requiresElectricalWall(item);
 const cross = (a: Point2D, b: Point2D, c: Point2D) => (b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
 const distance = (a: Point2D, b: Point2D) => Math.hypot(a.x-b.x,a.y-b.y);
 function projection(p: Point2D, a: Point2D, b: Point2D) {
@@ -68,7 +70,7 @@ export function obstacleFitsInRoom(obstacle: Obstacle, room: Room, walls: Placem
 }
 
 export function constrainObstacleToRoom(obstacle: Obstacle, room: Room, requested=obstacle.center, walls: PlacementWall[] = []): Obstacle | null {
-  if (requiresHeatingWall(obstacle)) obstacle = { ...obstacle, wall_lock: true };
+  if (requiresWallMount(obstacle)) obstacle = { ...obstacle, wall_lock: true };
   const raw={...obstacle,center:requested};
   if (!obstacle.wall_lock && obstacleFitsInRoom(raw,room,walls)) return raw;
   // Internal wall runs may not enclose a room. Treat both faces as barriers too.
@@ -118,7 +120,7 @@ export function resolvePlacement(request: PlacementRequest, point: Point2D, room
 
 /** One state update removes the previous owner and inserts exactly once into the destination. */
 export function transferObstacle(rooms: Room[], obstacle: Obstacle, roomId: string): Room[] {
-  if (requiresHeatingWall(obstacle)) {
+  if (requiresWallMount(obstacle)) {
     const room = rooms.find(r => r.id === roomId);
     const mounted = room && constrainObstacleToRoom(obstacle, room);
     if (!mounted) return rooms;

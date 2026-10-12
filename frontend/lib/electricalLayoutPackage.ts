@@ -5,6 +5,7 @@ import { getElectricalImage, validateElectricalImageBytes } from "./electricalAt
 import { DEFAULT_ELECTRICAL_CIRCUIT, isElectricalObstacle, type ElectricalLayoutData } from "./electricalLayout";
 import { newProject, parseProject, type AssetDefinition, type AssetInstance } from "./projectDocument";
 import type { Obstacle, Room } from "./types";
+import { constrainObstacleToRoom, requiresElectricalWall } from "./elementPlacement";
 
 const PACKAGE_TYPE = "freefloorplan3d-electrical-layout";
 const PACKAGE_VERSION = 1;
@@ -254,14 +255,18 @@ export function planElectricalLayoutImport(
     if (!targetRoom) { unresolvedItems += 1; continue; }
     let obstacleId = item.obstacle.id;
     if (retained.has(obstacleId)) obstacleId = id("electrical-fitting");
+    let obstacle = { ...item.obstacle, id: obstacleId, center: { ...item.obstacle.center }, dimensions: { ...item.obstacle.dimensions } };
+    if (requiresElectricalWall(obstacle) || obstacle.wall_lock) {
+      const mounted = constrainObstacleToRoom({ ...obstacle, wall_lock: true }, targetRoom);
+      if (!mounted) { unresolvedWallMounts += 1; continue; }
+      obstacle = mounted;
+    }
     retained.add(obstacleId);
     remappedItemIds.set(item.obstacle.id, obstacleId);
-    const obstacle = { ...item.obstacle, id: obstacleId, center: { ...item.obstacle.center }, dimensions: { ...item.obstacle.dimensions }, ...(item.obstacle.wall_lock ? { wall_lock: false } : {}) };
-    if (item.obstacle.wall_lock) unresolvedWallMounts += 1;
     targetRoom.obstacles.push(obstacle);
   }
   if (unresolvedItems) warnings.push(`${unresolvedItems} electrical fittings could not be matched to their original room and were not imported.`);
-  if (unresolvedWallMounts) warnings.push(`${unresolvedWallMounts} wall-mounted fitting${unresolvedWallMounts === 1 ? " was" : "s were"} imported at the saved position as free-positioned items because this layout file has no stable wall reference.`);
+  if (unresolvedWallMounts) warnings.push(`${unresolvedWallMounts} wall-mounted fittings could not fit against a wall and were not imported.`);
 
   const isElectricalInstance = (instance: AssetInstance) => ["electric", "electrical"].includes((currentAssets.find((asset) => asset.assetId === instance.assetId)?.categoryId ?? "").toLowerCase());
   const retainedInstances = currentAssetInstances.filter((instance) => mode === "MERGE" || !isElectricalInstance(instance));

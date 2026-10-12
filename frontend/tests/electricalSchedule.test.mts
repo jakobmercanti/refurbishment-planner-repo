@@ -17,6 +17,7 @@ const obstacle = (id: string, center: { x: number; y: number }, representationKe
 const room = (id: string, obstacles: Obstacle[] = []): Room => ({
   id, name: "Room 1", version: 1,
   vertices: [{ x: 0, y: 0 }, { x: 10000, y: 0 }, { x: 10000, y: 10000 }, { x: 0, y: 10000 }],
+  wall_thickness: { value: 100 },
   obstacles,
 } as unknown as Room);
 
@@ -111,7 +112,7 @@ test("electrical BOM uses the settings currency unless a row has its own currenc
   assert.match(markup, /Unit cost for Single rocker switch \(USD\)/);
 });
 
-test("Replace changes only electrical data and frees wall-mounted items without a wall reference", () => {
+test("Replace changes only electrical data and mounts switches against destination walls", () => {
   const furniture = obstacle("sofa-1", { x: 5000, y: 5000 }, "sofa");
   const oldElectrical = obstacle("old-switch", { x: 500, y: 500 }, "electrical-switch-single");
   const current = room("room-1", [furniture, oldElectrical]);
@@ -120,8 +121,8 @@ test("Replace changes only electrical data and frees wall-mounted items without 
   assert.deepEqual(plan.rooms[0].vertices, current.vertices);
   assert.equal(plan.rooms[0].obstacles.some((item) => item.id === "sofa-1"), true);
   assert.equal(plan.rooms[0].obstacles.some((item) => item.id === "old-switch"), false);
-  assert.equal(plan.rooms[0].obstacles.find((item) => item.id === "new-switch")?.wall_lock, false);
-  assert.match(plan.warnings.join(" "), /free-positioned/);
+  assert.equal(plan.rooms[0].obstacles.find((item) => item.id === "new-switch")?.wall_lock, true);
+  assert.equal(plan.warnings.length, 0);
   assert.equal(plan.electricalLayout.forceOrthogonalRouting, false);
 });
 

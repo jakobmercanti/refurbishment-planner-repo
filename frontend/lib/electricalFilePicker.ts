@@ -4,13 +4,14 @@ type PickerWindow = Window & {
   showSaveFilePicker?: (options: object) => Promise<LayoutSaveHandle>;
   showOpenFilePicker?: (options: object) => Promise<LayoutOpenHandle[]>;
 };
-const types = [{ description: "Electrical layout", accept: { "application/zip": [".electricallayout"] } }];
+// The native picker limits filter extensions to 16 characters; .electricallayout
+// is longer. Use All files, retaining the full suggested filename and ZIP validation.
 /** Request immediately in the click handler, before asynchronous ZIP preparation. */
 export function chooseLayoutSave(fileName: string) {
   const picker = (window as PickerWindow).showSaveFilePicker;
-  return picker ? picker.call(window, { suggestedName: fileName, types }) : null;
+  return picker ? picker.call(window, { suggestedName: fileName }) : null;
 }
 export function chooseLayoutOpen() {
   const picker = (window as PickerWindow).showOpenFilePicker;
-  return picker ? picker.call(window, { types, multiple: false }).then(async handles => handles[0]?.getFile()) : null;
+  return picker ? picker.call(window, { multiple: false }).then(async handles => handles[0]?.getFile()) : null;
 }

@@ -20,6 +20,7 @@ interface Props {
   showConnections: boolean;
   showLabels: boolean;
   active: boolean;
+  zoom?: number;
   selectedFixtureId: string | null;
   sourceId: string | null;
   sourceGang?: number;
@@ -46,12 +47,13 @@ interface Props {
 }
 
 export function ElectricalLayoutOverlay(props: Props) {
+  const symbolZoom = props.active ? props.zoom ?? 1 : 1;
   const fixtures = new Map(props.fixtures.map((fixture) => [fixture.id, fixture]));
   const circuits = new Map(props.circuits.map((circuit) => [circuit.id, circuit]));
   const references = electricalFittingReferences(props.fixtures);
   const namedFittings = props.fixtures.map(fixture => ({ id: fixture.id, label: fixture.name, representation_key: fixture.representation_key }));
   const connectedFixtureIds = new Set(props.connections.flatMap((connection) => [connection.fromId, connection.toId]));
-  const terminal = (connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => electricalPlanEndpoint(connection, side, fixture, props.toScreen, props.active && props.showSymbols);
+  const terminal = (connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => electricalPlanEndpoint(connection, side, fixture, props.toScreen, props.active && props.showSymbols, symbolZoom);
   const crossings = props.showConnections ? electricalCrossings({ forceOrthogonalRouting: props.forceOrthogonalRouting, connections: props.connections, circuits: props.circuits, documentation: DEFAULT_ELECTRICAL_DOCUMENTATION, junctions: props.junctions }, props.fixtures, terminal) : [];
   const polylinePoints = (points: Point2D[]) => points.map((point) => {
     const screen = props.toScreen(point);
@@ -103,7 +105,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       const actualDepth = Math.abs(bottomRight.y - topLeft.y);
       const deviceSymbol = electricalDevicePlanSymbol(fixture.representation_key, props.active);
       const readableSymbol = props.active || Boolean(deviceSymbol);
-      const deviceSize = electricalDevicePlanSize(fixture.representation_key, actualWidth, actualDepth, props.active);
+      const deviceSize = electricalDevicePlanSize(fixture.representation_key, actualWidth / symbolZoom, actualDepth / symbolZoom, props.active);
       const symbolWidth = Math.max(deviceSize.width, props.active ? 26 : 0);
       const symbolDepth = Math.max(deviceSize.depth, props.active ? 26 : 0);
       const hitWidth = readableSymbol ? Math.max(symbolWidth + (props.active ? 12 : 8), props.active ? 44 : 28) : actualWidth;
@@ -114,7 +116,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       const referenceY = centre.y + Math.min(plateTop, badgesTop) - 13;
       const connected = connectedFixtureIds.has(fixture.id);
       const classes = ["floorplan-fixture", "electrical-fixture", props.active ? "is-active" : "", readableSymbol ? "is-readable" : "", connected ? "is-connected" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
-      return <g key={fixture.id} data-electrical-interactive="true" data-plan-info={`${fixture.name}\n${count ? `${count}-gang switch: each rocker can control a separate light. Connect a gang to a light; use Check layout to test it.` : "Electrical fitting. Click to select; drag to move; right-click for editing options."}`} className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
+      return <g key={fixture.id} transform={`translate(${centre.x} ${centre.y}) scale(${symbolZoom}) translate(${-centre.x} ${-centre.y})`} data-electrical-interactive="true" data-plan-info={`${fixture.name}\n${count ? `${count}-gang switch: each rocker can control a separate light. Connect a gang to a light; use Check layout to test it.` : "Electrical fitting. Click to select; drag to move; right-click for editing options."}`} className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
         <title>{fixture.name}</title>
         {props.active && references[fixture.id] && <text className="electrical-circuit-label electrical-fitting-reference" pointerEvents="none" x={centre.x} y={referenceY} textAnchor="middle">{references[fixture.id]}</text>}
         {props.testing && Object.hasOwn(props.lightStates ?? {}, fixture.id) && <g className="electrical-test-state" pointerEvents="none"><circle cx={centre.x} cy={centre.y} r={Math.max(symbolWidth, symbolDepth) / 2 + 12} fill={props.lightStates?.[fixture.id] ? "#facc15" : "none"} fillOpacity="0.35" stroke={props.lightStates?.[fixture.id] ? "#a16207" : "#64748b"} strokeWidth="2" /><text className="electrical-circuit-label" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.lightStates?.[fixture.id] ? "On" : "Off"}</text></g>}
