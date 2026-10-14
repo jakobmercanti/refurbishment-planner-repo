@@ -55,5 +55,5 @@ test("compact heating summaries are draggable and presentation positions survive
   const data = { ...newHeatingProject(), roomIndicatorPositions: { room: { x: 1000, y: 1200 } } };
   assert.deepEqual(parseHeatingProject(data).roomIndicatorPositions, data.roomIndicatorPositions);
   const html = renderToStaticMarkup(createElement(HeatingLayoutOverlay, { data, rooms: [room], selection: null, onSelect() {}, onChange() {}, toScreen: p => p, fromClient: (x, y) => ({ x, y }), highlightedRoomId: null, draft: [] }));
-  assert.match(html, /translate\(1000,1237\) scale\(.82\)/); assert.match(html, /Move heating summary: Room/); assert.match(html, /pointer-events="all"/);
+  assert.match(html, /translate\(1000,1237\) scale\(0.76\)/); assert.match(html, /Move heating summary: Room/); assert.match(html, /pointer-events="all"/);
 });

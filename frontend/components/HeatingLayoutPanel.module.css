@@ -18,6 +18,9 @@
 .panel p { margin:5px 0; line-height:1.5; }
 .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .actions,.tabs { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+.actionGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-block:8px; }
+.panel.panel .actionGrid button { height:42px; min-width:0; padding:5px 8px; line-height:1.2; }
+@container electrical-layout-window (max-width:480px) { .actionGrid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .temperaturePresets { margin-block:10px; row-gap:10px; }
 .systemPresets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-block:10px; }
 .panel.panel .systemPresets button { width:100%; min-width:0; height:56px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:6px; line-height:1.2; }

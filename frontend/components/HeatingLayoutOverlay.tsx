@@ -7,7 +7,7 @@ import { heatingRoomBalance, heatingWatts } from "@/lib/heatingPresentation";
 import { calculateCircuitLength, projectOnSegment, snapRadiatorToWall } from "@/lib/heatingCalculations";
 import type { HeatingSelection } from "./HeatingLayoutPanel";
 import { heatingPipeLengthM, refreshHeatingPipeEndpoints } from "@/lib/heatingPipes";
-interface Props { connecting?: boolean; onConnect?: (id: string) => void; pipeDraft?: Point2D[]; data: HeatingProject; rooms: Room[]; selection: HeatingSelection; onSelect: (s: HeatingSelection) => void; onChange: (p: HeatingProject) => void; toScreen: (p: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D; highlightedRoomId: string | null; draft: Point2D[]; }
+interface Props { zoom?: number; connecting?: boolean; onConnect?: (id: string) => void; pipeDraft?: Point2D[]; data: HeatingProject; rooms: Room[]; selection: HeatingSelection; onSelect: (s: HeatingSelection) => void; onChange: (p: HeatingProject) => void; toScreen: (p: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D; highlightedRoomId: string | null; draft: Point2D[]; }
 type Drag = { before: HeatingProject; kind: "radiator" | "manifold" | "exclusion" | "circuit" | "pipe" | "roomIndicator"; id: string; pathKey?: "pathMm" | "supplyPathMm" | "returnPathMm"; index?: number; segment?: boolean; start: Point2D; };
 export function HeatingLayoutOverlay(props: Props) {
   const [preview, setPreview] = useState<HeatingProject | null>(null), [menu, setMenu] = useState<{ id: string; key: "pathMm" | "supplyPathMm" | "returnPathMm"; index: number; at: Point2D } | null>(null);
@@ -51,29 +51,10 @@ export function HeatingLayoutOverlay(props: Props) {
   }
   return <g data-heating-interactive="true" aria-label="Heating layer" onPointerMove={move} onPointerUp={finish} onPointerCancel={event => { event.stopPropagation();drag.current = null;latest.current = null;setPreview(null); }}>
     <defs><pattern id="heating-exclusion-hatch" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0,8L8,0" stroke="#aa6b29" strokeWidth="1" /></pattern></defs>
-    {results.rooms.map(row => {
-      const pts = row.room.vertices.map(props.toScreen), savedPosition = data.roomIndicatorPositions?.[row.room.id], label = savedPosition ? props.toScreen(savedPosition) : { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
-      const balance = heatingRoomBalance(row), green = balance.tone === "sufficient", red = balance.tone === "insufficient";
-      const colour = green ? "#15803d" : red ? "#b91c1c" : "#a16207", background = green ? "#f0fdf4" : red ? "#fff1f2" : "#fffbeb";
-      return <g key={row.room.id} pointerEvents="none">
+    {results.rooms.map(row => <g key={row.room.id} pointerEvents="none">
         {data.display.zones && row.zones.length > 0 && <polygon points={screenPath(row.room.vertices)} fill="#da813722" stroke="#da8137" strokeWidth="1" strokeDasharray="5 4" />}
         {props.highlightedRoomId === row.room.id && row.demand.surfaces.filter(s => s.edgeIndex !== undefined && s.lossW > 0).map(s => <line key={s.key} x1={props.toScreen(s.startMm!).x} y1={props.toScreen(s.startMm!).y} x2={props.toScreen(s.endMm!).x} y2={props.toScreen(s.endMm!).y} stroke="#dd791d" strokeWidth="5" opacity=".65" />)}
-        {(data.display.demand || data.display.temperature || data.display.density) && <g className="heating-room-indicator" data-room-id={row.room.id} data-balance={balance.tone} transform={`translate(${label.x},${label.y + 37}) scale(.82)`} pointerEvents="all" role="button" tabIndex={0} aria-label={`Move heating summary: ${row.room.name}`} style={{ cursor: "move" }} onPointerDown={event => begin(event, { kind: "roomIndicator", id: row.room.id })} onKeyDown={event => {
-          const directions: Record<string, Point2D> = { ArrowLeft: { x: -50, y: 0 }, ArrowRight: { x: 50, y: 0 }, ArrowUp: { x: 0, y: 50 }, ArrowDown: { x: 0, y: -50 } }, direction = directions[event.key];
-          if (!direction) return; event.preventDefault(); event.stopPropagation();
-          const original = data.roomIndicatorPositions?.[row.room.id] ?? { x: row.room.vertices.reduce((s, p) => s + p.x, 0) / row.room.vertices.length, y: row.room.vertices.reduce((s, p) => s + p.y, 0) / row.room.vertices.length };
-          props.onChange({ ...props.data, roomIndicatorPositions: { ...props.data.roomIndicatorPositions, [row.room.id]: { x: original.x + direction.x, y: original.y + direction.y } } });
-        }}>
-          <title>{`${row.room.name}: ${balance.headline}. ${balance.detail}. Drag this summary to move it; arrow keys also move it. ${row.warnings.join(" ")}`}</title>
-          <rect x="-120" y="-16" width="240" height="94" rx="10" fill={background} fillOpacity=".97" stroke={colour} strokeWidth="1.5" />
-          {data.display.demand && <text x="0" y="0" textAnchor="middle" fill="#24334b" fontSize="11">Heat loss: {heatingWatts(row.demand.designW)}</text>}
-          <text x="0" y="17" textAnchor="middle" fill="#24334b" fontSize="11">Heat available: {balance.capacityText}</text>
-          <rect className="heating-room-status-fill" x="-112" y="24" width="224" height="25" rx="6" fill={colour} />
-          <text x="0" y="40" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="700">{green ? "✓ " : red ? "! " : ""}{balance.indicator}</text>
-          <text x="0" y="65" textAnchor="middle" fill="#475569" fontSize="10">{data.display.density ? `${Math.round(row.demand.densityWm2)} W/m² · ` : ""}{data.display.temperature ? `Target ${row.demand.targetC}°C` : ""}{data.display.warnings && row.warnings.length ? " · ⚠ Review" : ""}</text>
-        </g>}
-      </g>;
-    })}
+    </g>)}
     {data.display.exclusions && data.exclusions.map(ex => <g key={ex.exclusionId} data-plan-info="Underfloor heating exclusion: no heated pipe should enter this area. Click to select; drag its corners to edit."><polygon points={screenPath(ex.polygonMm)} fill="url(#heating-exclusion-hatch)" fillOpacity=".5" stroke="#a15f22" strokeWidth="2" onPointerDown={e => begin(e, { kind: "exclusion", id: ex.exclusionId })} style={{ cursor: "move" }} />{props.selection?.id === ex.exclusionId && ex.polygonMm.map((p, i) => <circle key={i} cx={props.toScreen(p).x} cy={props.toScreen(p).y} r="5" fill="white" stroke="#a15f22" onPointerDown={e => begin(e, { kind: "exclusion", id: ex.exclusionId, index: i })} />)}</g>)}
     {data.ufhCircuits.map(c => <g key={c.circuitId} data-plan-info={`${c.name}\nUnderfloor heating loop · ${calculateCircuitLength(c).toFixed(1)} m. Click to select; drag control points or double-click to add a corner.`}>
       {(["pathMm", "supplyPathMm", "returnPathMm"] as const).map(key => {
@@ -95,6 +76,29 @@ export function HeatingLayoutOverlay(props: Props) {
     {data.display.manifolds && data.manifolds.map(m => { const p = props.toScreen(m.positionMm);return <g key={m.manifoldId} transform={`translate(${p.x},${p.y}) rotate(${m.rotationDeg})`} role="button" tabIndex={0} data-plan-info={`${m.name}\nHeating manifold with ${m.ports} ports. Connect underfloor circuits here. Click to edit or drag to move.`} aria-label={`Heating manifold: ${m.name}`} onKeyDown={event => { if (event.key === "Enter") { event.stopPropagation(); if (props.connecting) props.onConnect?.(m.manifoldId); else props.onSelect({ kind: "manifold", id: m.manifoldId }); } }} onPointerDown={e => begin(e, { kind: "manifold", id: m.manifoldId })} style={{ cursor: "move" }}><rect x="-17" y="-10" width="34" height="20" rx="3" fill="#fff" stroke="#a54b23" strokeWidth="2" /><path d="M-12,-4H12M-12,4H12" stroke="#277ab5" strokeWidth="3" />{data.display.labels && <text textAnchor="middle" y="-15" fill="#713413" fontSize="10">{m.name} ({m.ports})</text>}</g>; })}
     {(props.pipeDraft?.length ?? 0) > 0 && <polyline points={screenPath(props.pipeDraft!)} stroke="#c74b1d" strokeWidth="3" strokeDasharray="5 4" fill="none" pointerEvents="none" />}
     {props.draft.length > 0 && <polyline points={screenPath(props.draft)} stroke="#b45c24" strokeWidth="2" fill="none" pointerEvents="none" />}
+    {results.rooms.map(row => {
+      const pts = row.room.vertices.map(props.toScreen), savedPosition = data.roomIndicatorPositions?.[row.room.id], label = savedPosition ? props.toScreen(savedPosition) : { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+      const balance = heatingRoomBalance(row), green = balance.tone === "sufficient", red = balance.tone === "insufficient";
+      const colour = green ? "#15803d" : red ? "#b91c1c" : "#a16207", background = green ? "#f0fdf4" : red ? "#fff1f2" : "#fffbeb";
+      return <g key={row.room.id} pointerEvents="none">
+        {(data.display.demand || data.display.temperature || data.display.density) && <g className="heating-room-indicator" data-room-id={row.room.id} data-balance={balance.tone} transform={`translate(${label.x},${label.y + 37}) scale(${.76 * (props.zoom ?? 1)})`} pointerEvents="all" role="button" tabIndex={0} aria-label={`Move heating summary: ${row.room.name}`} style={{ cursor: "move" }} onPointerDown={event => begin(event, { kind: "roomIndicator", id: row.room.id })} onKeyDown={event => {
+          const directions: Record<string, Point2D> = { ArrowLeft: { x: -50, y: 0 }, ArrowRight: { x: 50, y: 0 }, ArrowUp: { x: 0, y: 50 }, ArrowDown: { x: 0, y: -50 } }, direction = directions[event.key];
+          if (!direction) return; event.preventDefault(); event.stopPropagation();
+          const original = data.roomIndicatorPositions?.[row.room.id] ?? { x: row.room.vertices.reduce((s, p) => s + p.x, 0) / row.room.vertices.length, y: row.room.vertices.reduce((s, p) => s + p.y, 0) / row.room.vertices.length };
+          props.onChange({ ...props.data, roomIndicatorPositions: { ...props.data.roomIndicatorPositions, [row.room.id]: { x: original.x + direction.x, y: original.y + direction.y } } });
+        }}>
+          <title>{`${row.room.name}: ${balance.headline}. ${balance.detail}. Drag this summary to move it; arrow keys also move it. ${row.warnings.join(" ")}`}</title>
+          <rect x="-120" y="-33" width="240" height="111" rx="10" fill={background} fillOpacity=".97" stroke={colour} strokeWidth="1.5" />
+          <text x="0" y="-18" textAnchor="middle" fill="#24334b" fontSize="11" fontWeight="700">{row.room.name}</text>
+          {data.display.demand && <text x="0" y="0" textAnchor="middle" fill="#24334b" fontSize="11">Heat loss: {heatingWatts(row.demand.designW)}</text>}
+          <text x="0" y="17" textAnchor="middle" fill="#24334b" fontSize="11">Heat available: {balance.capacityText}</text>
+          <rect className="heating-room-status-fill" x="-112" y="24" width="224" height="25" rx="6" fill={colour} />
+          <text x="0" y="40" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="700">{green ? "✓ " : red ? "! " : ""}{balance.indicator}</text>
+          <text x="0" y="65" textAnchor="middle" fill="#475569" fontSize="10">{data.display.density ? `${Math.round(row.demand.densityWm2)} W/m² · ` : ""}{data.display.temperature ? `Target ${row.demand.targetC}°C` : ""}{data.display.warnings && row.warnings.length ? " · ⚠ Review" : ""}</text>
+        </g>}
+      </g>;
+    })}
+
     {menu && <foreignObject x={menu.at.x} y={menu.at.y} width="180" height="70"><div style={{ background: "#fff", padding: 5, border: "1px solid #a54b23", color: "#222" }}><button onClick={() => { const next = structuredClone(props.data), c = next.ufhCircuits.find(c => c.circuitId === menu.id);if (c && !c.locked && menu.index > 0 && menu.index < c[menu.key].length - 1) { c[menu.key].splice(menu.index, 1);c.manuallyEdited = true;props.onChange(next); }setMenu(null); }}>Delete control point</button><button onClick={() => setMenu(null)}>Cancel</button></div></foreignObject>}
   </g>;
 }

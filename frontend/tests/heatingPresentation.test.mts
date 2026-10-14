@@ -83,7 +83,7 @@ test("redesigned panel has structured room balance, expandable technical fields,
   assert.doesNotMatch(html, /Heating layout mode/); assert.match(html, /Room heating balance/);
   assert.match(html, /Heat required/); assert.match(html, /Heat available/);
   assert.match(html, /Room setup/); assert.match(html, /Heating elements/);
-  assert.match(html, /Identity, dimensions &amp; position/); assert.match(html, /Output &amp; performance/);
+  assert.match(html, /independent Heating element editor/); assert.doesNotMatch(html, /Identity, dimensions &amp; position/);
   assert.match(html, /Heating pipes &amp; connections/); assert.match(html, /Assumptions &amp; professional review/);
   assert.doesNotMatch(html, /Auto Design Heating|Advanced automatic sizing reference|\+ Add heating element/);
   assert.equal((html.match(/role="tab"/g) ?? []).length, 5);

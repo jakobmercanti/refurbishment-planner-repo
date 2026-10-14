@@ -5,6 +5,7 @@ import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WIN
 import { WindowIcon } from "@/components/WindowIcon";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
+import { useServiceMenuHelp } from "@/lib/serviceMenuHelp";
 
 export interface ToolbarDock {
   side: "LEFT" | "RIGHT";
@@ -121,6 +122,7 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
 function FloatingToolbarWindow({ title, help = true, children, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);
+  useServiceMenuHelp(panelRef, title);
   const dragRef = useRef<{ pointerX: number; pointerY: number; left: number; top: number; parentWidth: number; parentHeight: number; width: number; height: number } | null>(null);
   const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number; minimumHeight: number } | null>(null);
   const mouseDragRef = useRef(false);
@@ -378,7 +380,7 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
       : "calc(100% - 16px)",
     zIndex: 20,
   } as CSSProperties;
-  return <section ref={panelRef} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onPointerDown={focusPanel}>
+  return <section ref={panelRef} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onPointerDown={event => { event.stopPropagation(); focusPanel(); }}>
     <header className="floating-toolbar-titlebar" aria-label={`Move ${title}`} title={`${heightMaximized ? "Double-click to restore" : "Double-click to maximise height"} · Drag to move ${title}`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onMouseDown={beginMouseDrag} onDoubleClick={toggleHeightMaximized}>
       <span className="floating-toolbar-drag" aria-hidden>⠿</span>
       <span className="floating-toolbar-icon"><WindowIcon title={title} /></span>

@@ -2,7 +2,7 @@ import type { Room } from "./types";
 import type { HeatingProject, HeatingRadiator, UFHZone, UFHCircuit } from "./heatingDocument";
 import { calculateRoomHeatLoss, calculateRadiatorOutput, calculateElectricEmitterSize, calculateUFHOutput, ufhPerformanceIssue, calculateUFHFlowRate, calculateCircuitLength, calculatePressureDrop, thermalRoom, radiatorPlacementWarnings, snapRadiatorToWall, geometryFingerprint } from "./heatingCalculations";
 import { activeUFHAreaM2, generateUFHLoops, validateCircuitGeometry } from "./heatingGeometry";
-import { REFERENCE_RADIATORS, referenceRadiatorForRoom, type ReferenceRadiator } from "./heatingCatalogue";
+import { REFERENCE_RADIATORS, REFERENCE_UFH_DATASETS, referenceUFHSettings, referenceRadiatorForRoom, type ReferenceRadiator } from "./heatingCatalogue";
 import { withHeatingElements } from "./heatingElements";
 
 export function newHeatingRadiator(room: Room, technology: HeatingRadiator["emitterTechnology"] = "Hydronic"): HeatingRadiator {
@@ -10,6 +10,29 @@ export function newHeatingRadiator(room: Room, technology: HeatingRadiator["emit
 }
 export function newUFHZone(room: Room, manifoldId: string | null): UFHZone {
   return { zoneId: crypto.randomUUID(), roomId: room.id, name: room.name, pipeType: "User-specified UFH pipe", diameterMm: 16, internalDiameterMm: null, spacingMm: 200, boundaryOffsetMm: 100, minBendRadiusMm: 80, maxCircuitLengthM: 100, pattern: "Spiral", orientation: "Auto", floorConstruction: "User-specified build-up", floorCovering: "Tile / stone", floorThermalResistance: 0.01, maxSurfaceTemperatureC: 29, manifoldId, performanceDataset: null, geometryFingerprint: "" };
+}
+/** Atomic first setup: create a room-local manifold and usable circuits, or change nothing. */
+export function createRoomUFH(room: Room, heating: HeatingProject, systemIndex = 3) {
+  let next = structuredClone(heating);
+  const current = next.ufhZones.find(z => z.roomId === room.id);
+  if (current && next.ufhCircuits.some(c => c.zoneId === current.zoneId)) return { heating: next, changes: ["This room already has UFH. Adjust settings then choose Regenerate room explicitly; existing routes retained."] };
+  const dataset = REFERENCE_UFH_DATASETS[systemIndex] ?? REFERENCE_UFH_DATASETS[3];
+  const defaults = referenceUFHSettings(dataset);
+  const zone = current ?? { ...newUFHZone(room, null), ...defaults, pattern: defaults.spacingMm < 2 * defaults.minBendRadiusMm ? "Spiral" as const : "Serpentine" as const };
+  let manifold = next.manifolds.find(m => m.manifoldId === zone.manifoldId);
+  if (!manifold) {
+    const b = room.vertices[1], a = room.vertices[0], length = Math.hypot(b.x-a.x,b.y-a.y);
+    const signedArea = room.vertices.reduce((sum,p,i)=>sum+p.x*room.vertices[(i+1)%room.vertices.length].y-room.vertices[(i+1)%room.vertices.length].x*p.y,0), side = signedArea >= 0 ? 1 : -1;
+    manifold = { manifoldId: crypto.randomUUID(), name: `${room.name} manifold`, positionMm: { x: (a.x+b.x)/2 - side*(b.y-a.y)/length*300, y: (a.y+b.y)/2 + side*(b.x-a.x)/length*300 }, rotationDeg: 0, ports: 12 };
+    next.manifolds.push(manifold); zone.manifoldId = manifold.manifoldId;
+  }
+  if (!current) next.ufhZones.push(zone);
+  next.rooms = [...next.rooms.filter(r=>r.roomId!==room.id), { ...thermalRoom(room,next), selectedEmitterType: "Underfloor Heating" }];
+  const generated = regenerateHeatingRoom(room,next); next = generated.heating;
+  if (!next.ufhCircuits.some(c=>c.zoneId===zone.zoneId)) throw new Error("No legal pipe route fits this room and its exclusions. Existing heating was preserved; review spacing and clearances.");
+  const usedPorts = next.ufhCircuits.filter(c=>c.manifoldId===manifold!.manifoldId).length;
+  const item = next.manifolds.find(m=>m.manifoldId===manifold!.manifoldId)!; item.ports = Math.min(50, Math.max(item.ports, usedPorts));
+  return { heating: next, changes: generated.changes };
 }
 export function heatingResults(rooms: readonly Room[], heating: HeatingProject) {
   if (!heating.radiators.length) heating = withHeatingElements(heating, rooms);
