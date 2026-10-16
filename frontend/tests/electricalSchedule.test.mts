@@ -7,6 +7,7 @@ import { DEFAULT_ELECTRICAL_CIRCUIT, DEFAULT_ELECTRICAL_DOCUMENTATION, DEFAULT_E
 import { planElectricalLayoutImport, type ElectricalLayoutPackage } from "../lib/electricalLayoutPackage.ts";
 import type { Obstacle, Room } from "../lib/types.ts";
 import { ElectricalScheduleWindow } from "../components/ElectricalScheduleWindow.tsx";
+import { routeElectricalConnections } from "../lib/electricalAutoRouting.ts";
 
 const obstacle = (id: string, center: { x: number; y: number }, representationKey: string, name = "Fitting", wallLock = false) => ({
   id, name, kind: "BOX", center,
@@ -57,12 +58,15 @@ test("connection schedule derives schematic lengths and individual segment orien
   };
   const rows = electricalConnectionRows(layout, [room("room-1", fittings)]);
   assert.deepEqual(rows.map((row) => row.number), ["C001", "C002"]);
-  assert.equal(rows[0].drawingLengthMm, 7000);
-  assert.equal(rows[0].segments?.length, 2);
-  assert.deepEqual(rows[0].segments?.map((segment) => segment.orientation), ["Horizontal", "Vertical"]);
-  assert.equal(rows[1].drawingLengthMm, 7000);
-  assert.deepEqual(rows[1].segments?.map((segment) => segment.orientation), ["Horizontal", "Vertical", "Horizontal"]);
-  assert.equal(rows[1].segments?.[1].lengthMm, 4000);
+  const routes = routeElectricalConnections(layout, fittings);
+  for (const row of rows) {
+    const path = routes.get(row.connection.id)!;
+    assert.equal(row.drawingLengthMm, path.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - path[i].x, p.y - path[i].y), 0));
+    assert.ok(row.drawingLengthMm! >= 7000);
+    assert.equal(row.segments?.[0].orientation, "Vertical");
+    assert.equal(row.segments?.at(-1)?.orientation, "Vertical");
+    assert.ok(row.segments?.every(segment => segment.orientation !== "Diagonal"));
+  }
   const unrestrictedRows = electricalConnectionRows({ ...layout, forceOrthogonalRouting: false }, [room("room-1", fittings)]);
   assert.equal(unrestrictedRows[0].drawingLengthMm, 5000);
   assert.equal(unrestrictedRows[0].segments?.[0].orientation, "Diagonal");

@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_FLOATING_WINDOW_WIDTH, resizeFloatingWindow } from "../lib/floatingWindowGeometry.ts";
+import { DEFAULT_FLOATING_WINDOW_WIDTH, resizeFloatingWindow, visibleFloatingWorkspace } from "../lib/floatingWindowGeometry.ts";
 
 const workspace = { width: 1200, height: 800 };
 const windowBox = { left: 100, top: 80, width: DEFAULT_FLOATING_WINDOW_WIDTH, height: 300 };
+
+test("floating workspace clips oversized hosts to the visible browser area after menubar/viewport changes", () => {
+  assert.deepEqual(visibleFloatingWorkspace({ left: 0, top: 68, width: 1400, height: 900 }, { left: 0, top: 0, width: 1400, height: 650 }), { left: 0, top: 0, right: 1400, bottom: 582 });
+  assert.deepEqual(visibleFloatingWorkspace({ left: -40, top: -100, width: 1000, height: 800 }, { left: 10, top: 20, width: 700, height: 500 }), { left: 50, top: 120, right: 750, bottom: 620 });
+});
 
 test("all floating windows start from the shared default width", () => {
   assert.equal(DEFAULT_FLOATING_WINDOW_WIDTH, 340);

@@ -9,7 +9,7 @@
 .window-help-host > .floating-toolbar { pointer-events: auto; }
 .window-help-content { padding: 10px 14px; color: var(--ink); line-height: 1.55; }
 .window-help-content h3 { margin: 12px 0 5px; font-size: 15px; }
-.window-help-content p { margin: 0 0 12px; }
+.window-help-content p { margin: 0 0 12px; overflow-wrap:anywhere; }
 .window-help-content li { overflow-wrap: anywhere; }
 .electrical-mode-row { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
 .electrical-mode-row .electrical-mode-toggle { flex: 1; border: 0; padding: 0; background: transparent; }

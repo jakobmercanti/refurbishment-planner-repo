@@ -4,7 +4,7 @@ import type { Room, Point2D } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
 import type { EnergyProject } from "@/lib/energyDocument";
 import { calculateAssemblyUValue, energyElements, scenarioAssignments, isInsulationSelectable } from "@/lib/energyCalculations";
-import { layoutEnergyLabels, screenLabelToWorld, type EnergyLabelRequest, type EnergyLabelBox } from "@/lib/energyLabelLayout";
+import { energyLabelPaintOrder, layoutEnergyLabels, screenLabelToWorld, type EnergyLabelRequest, type EnergyLabelBox } from "@/lib/energyLabelLayout";
 export function EnergyLayoutOverlay({ rooms, heating, data, selectedIds, onSelect, toScreen, fromClient, onChange, roomTitleBox }: { roomTitleBox?: (room: Room) => EnergyLabelBox | undefined; rooms: Room[]; heating: HeatingProject; data: EnergyProject; selectedIds: string[]; onSelect: (ids: string[]) => void; toScreen: (p: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D; onChange: (data: EnergyProject) => void }) {
   const drag = useRef<{ id: string; start: Point2D; position: Point2D; preview: Point2D } | null>(null);
   const [preview, setPreview] = useState<{ id: string; position: Point2D } | null>(null);
@@ -31,8 +31,11 @@ export function EnergyLayoutOverlay({ rooms, heating, data, selectedIds, onSelec
     const start = fromClient(event.clientX, event.clientY, event.currentTarget.ownerSVGElement!);
     const position = screenLabelToWorld(label, toScreen);
     drag.current = { id, start, position, preview: position };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    setPreview({ id, position });
+    // Capture on the stable overlay: foreground reordering must not end a drag.
+    event.currentTarget.closest<SVGGElement>("[data-energy-layer]")?.setPointerCapture(event.pointerId);
   }
+  const paintOrder = energyLabelPaintOrder([...labels.filter(({e}) => e.category === "wall").map(({e}) => e.elementId), ...surfaceCards.map(c => c.id)], data.labelPositions, preview?.id);
   return <g data-energy-layer="true" onPointerMove={event => {
     if (!drag.current) return; event.stopPropagation();
     const at = fromClient(event.clientX, event.clientY, event.currentTarget.ownerSVGElement!);
@@ -40,24 +43,31 @@ export function EnergyLayoutOverlay({ rooms, heating, data, selectedIds, onSelec
     drag.current.preview = position; setPreview({ id: drag.current.id, position });
   }} onPointerUp={event => {
     if (!drag.current) return; event.stopPropagation();
-    onChange({ ...data, labelPositions: { ...data.labelPositions, [drag.current.id]: drag.current.preview } });
+    const labelPositions = { ...data.labelPositions };
+    delete labelPositions[drag.current.id]; // reinserting also records foreground order
+    labelPositions[drag.current.id] = drag.current.preview;
+    onChange({ ...data, labelPositions });
     drag.current = null; setPreview(null);
   }} onPointerCancel={() => { drag.current = null; setPreview(null); }}>
-    {labels.filter(({e})=>e.category === "wall").map(({ e, text }) => {
+    {labels.filter(({e})=>e.category === "wall").map(({ e }) => {
       const intensity = Math.min(1, e.uValue / 2), color = `hsl(${135 - intensity * 130} 60% 42%)`, selected = selectedIds.includes(e.elementId);
-      const title = `${e.category === "floor" ? "Floor insulation; " : e.category === "roof" ? "Roof insulation; " : ""}${e.label}; ${e.boundary}; ${e.areaM2.toFixed(1)} m²; U ${e.uValue.toFixed(3)}; ΔT ${e.deltaTK.toFixed(1)} K; ${Math.round(e.heatLossW)} W${e.warnings.length ? "; incomplete inputs - fallback" : ""}`;
-      const label = positions[e.elementId];
+      const title = `${e.label}; ${e.boundary}; ${e.areaM2.toFixed(1)} m²; U ${e.uValue.toFixed(3)}; ΔT ${e.deltaTK.toFixed(1)} K; ${Math.round(e.heatLossW)} W${e.warnings.length ? "; " + e.warnings.join("; ") : ""}`;
       const events = { onPointerDown: (event: React.PointerEvent<SVGElement>) => { event.stopPropagation(); select(e.elementId, event.shiftKey); }, onKeyDown: (event: React.KeyboardEvent<SVGElement>) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(e.elementId, event.shiftKey); } } };
       if (e.startMm && e.endMm) {
         const a = toScreen(e.startMm), b = toScreen(e.endMm);
         return <g key={e.elementId} data-energy-interactive="true" data-plan-info={`${title}\nExternal heat-loss wall: click to select and define construction layers. Drag its label to reposition it.`} role="button" tabIndex={0} aria-label={title} {...events} style={{ cursor: "pointer" }}><title>{title}</title>
           <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={selected ? "#1b81ef" : color} strokeWidth={selected ? 7 : 4} strokeOpacity={.8} />
-          {label && <text data-energy-label={e.elementId} style={{ cursor: "move", touchAction: "none" }} onPointerDown={event => beginDrag(event, e.elementId, label)} x={label.x} y={label.y + 3} fontSize={8.5} textAnchor="middle" fill="var(--ink,#10243e)" paintOrder="stroke" stroke="var(--surface,#fff)" strokeWidth={2}>{text}</text>}
         </g>;
       }
       return null;
     })}
-    {surfaceCards.map(card => {
+    {paintOrder.map(id => {
+      const wall = labels.find(({e}) => e.elementId === id && e.category === "wall");
+      if (wall) {
+        const { e, text } = wall, label = positions[id];
+        return label ? <text key={id} data-energy-interactive="true" data-energy-label={id} data-plan-info={`${e.label}\n${text}. Drag to reposition this label freely.`} role="button" tabIndex={0} aria-label={`Move insulation label: ${e.label}`} style={{ cursor: "move", touchAction: "none" }} onPointerDown={event => beginDrag(event, id, label)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault();event.stopPropagation();select(id, event.shiftKey); } }} x={label.x} y={label.y + 3} fontSize={8.5} textAnchor="middle" fill="var(--ink,#10243e)" paintOrder="stroke" stroke="var(--surface,#fff)" strokeWidth={2}>{text}</text> : null;
+      }
+      const card = surfaceCards.find(c => c.id === id); if (!card) return null;
       const label = positions[card.id]; if (!label) return null;
       const ids = card.rows.map(({e})=>e.elementId), selected = ids.some(id=>selectedIds.includes(id));
       return <g key={card.id} data-energy-interactive="true" data-energy-label={card.id} data-energy-room-card={card.room.id} transform={`translate(${label.x},${label.y}) scale(${label.width/162})`} role="button" tabIndex={0} aria-label={`Move floor and roof insulation: ${card.room.name}`} onPointerDown={event=>beginDrag(event,card.id,label,ids)} onKeyDown={event=>{if(event.key === "Enter" || event.key === " "){event.preventDefault();event.stopPropagation();onSelect(ids);}}} style={{cursor:"move",touchAction:"none"}}>

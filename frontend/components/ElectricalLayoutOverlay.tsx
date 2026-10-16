@@ -2,9 +2,10 @@
 
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
-import { electricalPlanEndpoint, gangBadgePosition, GANG_BADGE_WIDTH, GANG_BADGE_HEIGHT } from "@/lib/electricalPlanPorts";
+import { electricalPlanEndpoint, electricalPlanRouteOptions, gangBadgePosition, GANG_BADGE_WIDTH, GANG_BADGE_HEIGHT } from "@/lib/electricalPlanPorts";
+import { routeElectricalConnections } from "@/lib/electricalAutoRouting";
 import { electricalDevicePlanSize, electricalDevicePlanSymbol, electricalRockerBounds } from "@/lib/electricalPlanSymbols";
-import { electricalConnectionPoints, electricalDashArray, electricalStrokeWidth, type ElectricalCircuit, type ElectricalConnection, type ElectricalConnectionDefaults } from "@/lib/electricalLayout";
+import { electricalDashArray, electricalStrokeWidth, type ElectricalCircuit, type ElectricalConnection, type ElectricalConnectionDefaults } from "@/lib/electricalLayout";
 import type { Obstacle, Point2D } from "@/lib/types";
 import { crossingBridgePath, electricalCrossings } from "@/lib/electricalCrossings";
 import { switchGangCount, type LightingSwitchGang } from "@/lib/electricalSimulation";
@@ -21,6 +22,7 @@ interface Props {
   showLabels: boolean;
   active: boolean;
   zoom?: number;
+  routes?: ReadonlyMap<string, Point2D[]>;
   selectedFixtureId: string | null;
   sourceId: string | null;
   sourceGang?: number;
@@ -54,7 +56,13 @@ export function ElectricalLayoutOverlay(props: Props) {
   const namedFittings = props.fixtures.map(fixture => ({ id: fixture.id, label: fixture.name, representation_key: fixture.representation_key }));
   const connectedFixtureIds = new Set(props.connections.flatMap((connection) => [connection.fromId, connection.toId]));
   const terminal = (connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => electricalPlanEndpoint(connection, side, fixture, props.toScreen, props.active && props.showSymbols, symbolZoom);
-  const crossings = props.showConnections ? electricalCrossings({ forceOrthogonalRouting: props.forceOrthogonalRouting, connections: props.connections, circuits: props.circuits, documentation: DEFAULT_ELECTRICAL_DOCUMENTATION, junctions: props.junctions }, props.fixtures, terminal) : [];
+  const layout = { forceOrthogonalRouting: props.forceOrthogonalRouting, connections: props.connections, circuits: props.circuits, documentation: DEFAULT_ELECTRICAL_DOCUMENTATION, junctions: props.junctions };
+  const routeOptions = electricalPlanRouteOptions(props.fixtures, props.toScreen, props.active && props.showSymbols, symbolZoom);
+  const routes = props.routes ?? (props.showConnections ? routeElectricalConnections(layout, props.fixtures, routeOptions) : new Map<string, Point2D[]>());
+  const crossings = props.showConnections ? electricalCrossings(layout, props.fixtures, terminal, routeOptions, routes) : [];
+  const previewConnection: ElectricalConnection = { ...props.defaults, id: "preview", fromId: props.sourceId ?? "", toId: "preview-target", circuitId: props.activeCircuitId, fromSwitchGang: props.sourceGang, waypoints: [] };
+  const previewFixture = props.cursor ? { id: "preview-target", center: props.cursor, rotation_deg: 0, dimensions: { width: { value: 0 }, depth: { value: 0 } } } as Obstacle : null;
+  const preview = props.connecting && props.sourceId && previewFixture && props.showConnections ? routeElectricalConnections({ ...layout, connections: [previewConnection] }, [...props.fixtures, previewFixture], { ...routeOptions, occupiedRoutes: [...routes.values()] }).get("preview") : null;
   const polylinePoints = (points: Point2D[]) => points.map((point) => {
     const screen = props.toScreen(point);
     return screen.x + "," + screen.y;
@@ -65,7 +73,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       const from = source ? terminal(connection, "from", source) : null;
       const to = destination ? terminal(connection, "to", destination) : null;
       if (!from || !to) return null;
-      const points = electricalConnectionPoints(connection, from, to, props.forceOrthogonalRouting, source, destination);
+      const points = routes.get(connection.id); if (!points) return null;
       const circuit = connection.circuitId ? circuits.get(connection.circuitId) : undefined;
       const colour = connection.colorOverride === false && circuit ? circuit.color : connection.color;
       const sourceGangLink = props.connecting && props.sourceId && (connection.fromId === props.sourceId && (connection.fromSwitchGang ?? 1) === props.sourceGang || connection.toId === props.sourceId && (connection.toSwitchGang ?? 1) === props.sourceGang);
@@ -85,7 +93,7 @@ export function ElectricalLayoutOverlay(props: Props) {
         {label && <text data-electrical-interactive="true" className="electrical-circuit-label electrical-draggable-label" x={labelPoint.x} y={labelPoint.y - (connection.labelPosition ? 0 : 8)} textAnchor="middle" onPointerDown={event => props.onLabelPointerDown(event, connection)}><title>Drag to move this connection’s circuit label</title>{label}</text>}
       </g>;
     })}
-    {props.connecting && props.sourceId && props.cursor && fixtures.get(props.sourceId) && props.showConnections && <polyline className="electrical-connection-preview" points={polylinePoints(electricalConnectionPoints({ ...props.defaults, id: "preview", fromId: props.sourceId, toId: "preview", circuitId: props.activeCircuitId, waypoints: [], label: undefined }, terminal({ ...props.defaults, id: "preview", fromId: props.sourceId, toId: "preview", circuitId: props.activeCircuitId, fromSwitchGang: props.sourceGang, waypoints: [] }, "from", fixtures.get(props.sourceId)!), props.cursor, props.forceOrthogonalRouting, fixtures.get(props.sourceId)!))} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}
+    {preview && <polyline className="electrical-connection-preview" points={polylinePoints(preview)} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}
     {crossings.map(crossing => {
       const centre = props.toScreen(crossing.position);
       const screenDirection = (direction: Point2D) => { const next = props.toScreen({ x: crossing.position.x + direction.x, y: crossing.position.y + direction.y }); const length = Math.hypot(next.x - centre.x, next.y - centre.y); return { x: (next.x - centre.x) / length, y: (next.y - centre.y) / length }; };

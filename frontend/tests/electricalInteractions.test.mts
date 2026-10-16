@@ -55,13 +55,13 @@ test("every rocker has its own control including unconnected gangs, and Gang 2 n
   assert.equal(unconnected[0].label, "Not connected");
   assert.equal(unconnected[0].keys.length, 0);
 });
-test("compact lighting test exposes separate gang buttons and collapsible circuits/instructions", () => {
+test("compact lighting test keeps controls and moves its instructions to question-mark help", () => {
   const result = simulateLighting(layout, fixtures, {});
   const html = renderToStaticMarkup(createElement(ElectricalLightingTest, { layout, fixtures, result, positions: {}, onToggle() {}, onReset() {} }));
   assert.match(html, /aria-label="Double switch · Gang 1" disabled=""|disabled="" aria-label="Double switch · Gang 1"/);
   assert.match(html, /aria-label="Double switch · Gang 2"/);
   assert.match(html, /electrical-test-circuit/);
-  assert.match(html, /<summary>How to test your layout<\/summary>/);
+  assert.doesNotMatch(html, /How to test your layout|Test positions are temporary|SPDT/);
   assert.match(html, /Not connected/);
 });
 test("distinct switch-gang connections survive normalization without collapsing into one link", () => {

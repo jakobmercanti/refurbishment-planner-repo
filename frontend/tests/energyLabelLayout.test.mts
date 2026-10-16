@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutEnergyLabels, labelBoxesOverlap, screenLabelToWorld, type EnergyLabelRequest } from '../lib/energyLabelLayout';
+import { energyLabelPaintOrder, layoutEnergyLabels, labelBoxesOverlap, screenLabelToWorld, type EnergyLabelRequest } from '../lib/energyLabelLayout';
 const rooms = [
   { id: 'a', polygon: [{ x: 0, y: 0 }, { x: 640, y: 0 }, { x: 640, y: 260 }, { x: 0, y: 260 }] },
   { id: 'b', polygon: [{ x: 408, y: 260 }, { x: 1008, y: 260 }, { x: 1008, y: 652 }, { x: 408, y: 652 }] },
@@ -33,4 +33,22 @@ test('short rooms fit floor/roof cards around the actual room title', () => {
   const layout = layoutEnergyLabels(short, cards); assert.equal(Object.keys(layout).length, 2);
   for (const box of Object.values(layout)) assert.equal(labelBoxesOverlap(box!, short[0].titleBox), false);
   assert.equal(labelBoxesOverlap(layout['a-floor']!, layout['a-roof']!), false);
+});
+
+test('manual anchors can overlap room titles, other cards and walls at their full size', () => {
+  const anchor = { x: 320, y: 130 };
+  const manual = requests.map(r => ({ ...r, preferred: anchor }));
+  const original = structuredClone(manual);
+  const layout = layoutEnergyLabels(rooms, manual);
+  for (const request of manual) assert.deepEqual(layout[request.id], { ...anchor, width: request.width, height: request.height });
+  assert.deepEqual(manual, original);
+  assert.deepEqual(layout, layoutEnergyLabels(rooms, [...manual].reverse()));
+});
+
+test('manual labels share a foreground layer with newest move and active drag on top', () => {
+  const ids = ['a-wall', 'a-card', 'b-wall', 'b-card'];
+  const positions = { 'a-card': { x: 1, y: 2 }, 'a-wall': { x: 1, y: 2 } };
+  assert.deepEqual(energyLabelPaintOrder(ids, positions), ['b-wall', 'b-card', 'a-card', 'a-wall']);
+  assert.deepEqual(energyLabelPaintOrder(ids, positions, 'a-card'), ['b-wall', 'b-card', 'a-wall', 'a-card']);
+  assert.deepEqual(ids, ['a-wall', 'a-card', 'b-wall', 'b-card']);
 });

@@ -11,7 +11,6 @@ export function ElectricalLightingTest({ layout, fixtures, result, positions, on
   const name = (id: string) => fixtures.find(item => item.id === id)?.name ?? "Missing fitting";
   return <div className="electrical-layout-panel electrical-test-panel" role="region" aria-label="Lighting layout test">
     <div className="electrical-test-summary"><strong role="status">{Object.values(result.lights).filter(Boolean).length} / {Object.keys(result.lights).length} lights on</strong><button type="button" className="review-style-button" onClick={onReset}>Reset test</button></div>
-    <p className="electrical-layout-hint">Click an individual rocker on the plan, or use its control below. Test positions are temporary.</p>
     {layout.circuits.map(circuit => {
       const groups = result.groups.filter(group => group.circuitId === circuit.id);
       const linkedSwitches = switches.filter(item => layout.connections.some(link => link.circuitId === circuit.id && [link.fromId, link.toId].includes(item.id)));
@@ -31,6 +30,5 @@ export function ElectricalLightingTest({ layout, fixtures, result, positions, on
       </details>;
     })}
     {result.warnings.length > 0 && <details className="electrical-layout-section"><summary>Review feedback ({result.warnings.length})</summary><ul>{result.warnings.map(message => <li key={message}>{message}</li>)}</ul></details>}
-    <details className="electrical-layout-section"><summary>How to test your layout</summary><p>Each rocker of a double, triple or quadruple switch is independent. Select the rocker when connecting on the plan, or assign the gang in the connection editor. An unconnected gang cannot turn on a light.</p><p>Two switches connected to the same light model two SPDT contacts: A/A and B/B are On; A/B and B/A are Off. Either switch changes the light. A double-gang fitting is not automatically a two-way pair.</p><p>Dimmer testing is on/off only. Generic and Control links carry logical control; Power links do not. A crossing bridge is not a connection; a junction dot represents an explicit join.</p><p><strong>Schematic simulation only.</strong> This does not verify wiring terminals, protective devices, cable sizes, supply continuity or electrical safety. Have the installation checked by a qualified electrician.</p></details>
   </div>;
 }

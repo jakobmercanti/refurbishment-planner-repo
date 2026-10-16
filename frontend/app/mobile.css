@@ -22,7 +22,7 @@
 .compact-workspace .software-view-setting > summary { min-height: 44px; padding: 12px 10px; font: 600 calc(13px * var(--density-font-scale, 1)) var(--font-sans); }
 .compact-workspace .software-dropdown kbd { display: none; }
 .compact-workspace .toolbar-menu-actions > button:first-child { display: none; }
-.compact-workspace .floating-toolbar { left: auto !important; right: 8px !important; top: 8px !important; bottom: auto !important; width: 280px !important; min-width: 0 !important; height: auto !important; min-height: 0 !important; max-height: calc(100% - 40px) !important; border-radius: 10px; }
+.compact-workspace .floating-toolbar { left: auto !important; right: 8px !important; top: var(--floating-visible-top,8px) !important; bottom: auto !important; width: 280px !important; min-width: 0 !important; height: auto !important; min-height: 0 !important; max-height: min(calc(100% - 40px),var(--floating-available-height,100dvh)) !important; border-radius: 10px; }
 .compact-workspace .floating-toolbar-titlebar { min-height: 36px; grid-template-columns: 18px minmax(0,1fr) 36px; padding: 0 4px 0 10px; cursor: default; touch-action: auto; }
 .compact-workspace .floating-toolbar-drag, .compact-workspace .floating-toolbar-resize { display: none; }
 .compact-workspace .floating-toolbar-close { width: 36px; height: 36px; }

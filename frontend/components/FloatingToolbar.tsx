@@ -1,7 +1,7 @@
 "use client";
 
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WINDOW_HEIGHT, resizeFloatingWindow, type FloatingWindowResizeEdge } from "@/lib/floatingWindowGeometry";
+import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WINDOW_HEIGHT, resizeFloatingWindow, visibleFloatingWorkspace, type FloatingWindowResizeEdge } from "@/lib/floatingWindowGeometry";
 import { WindowIcon } from "@/components/WindowIcon";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
@@ -77,6 +77,11 @@ function getToolbarWorkspace(panel: HTMLElement) {
   return panel.parentElement;
 }
 
+function getVisibleWorkspace(parent: HTMLElement) {
+  const viewport = window.visualViewport;
+  return visibleFloatingWorkspace(parent.getBoundingClientRect(), { left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0, width: viewport?.width ?? document.documentElement.clientWidth, height: viewport?.height ?? window.innerHeight });
+}
+
 function getContentMinimumHeight(panel: HTMLElement, maxHeight: number, compact = false) {
   const titlebar = panel.querySelector<HTMLElement>(".floating-toolbar-titlebar");
   const content = panel.querySelector<HTMLElement>(".floating-toolbar-content");
@@ -109,7 +114,8 @@ function getContentMinimumHeight(panel: HTMLElement, maxHeight: number, compact 
 
 function getContentHeightWithinWorkspace(panel: HTMLElement, parent: HTMLElement, compact = false) {
   const naturalHeight = getContentMinimumHeight(panel, Number.POSITIVE_INFINITY, compact);
-  const workspaceHeight = parent.getBoundingClientRect().height;
+  const visible = getVisibleWorkspace(parent);
+  const workspaceHeight = visible.bottom - visible.top;
   if (!workspaceHeight) return naturalHeight;
   const availableHeight = Math.max(MIN_FLOATING_WINDOW_HEIGHT, workspaceHeight - FLOATING_WINDOW_MARGIN * 2);
   return Math.min(naturalHeight, availableHeight);
@@ -130,6 +136,7 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
   const [position, setPosition] = useState(defaultPosition);
   const [size, setSize] = useState<{ width: number; height: number | null }>(() => ({ width: initialSize?.width ?? DEFAULT_FLOATING_WINDOW_WIDTH, height: initialSize?.height ?? null }));
   const [minimumHeight, setMinimumHeight] = useState(compact ? 0 : MIN_FLOATING_WINDOW_HEIGHT);
+  const [visibleWorkspace, setVisibleWorkspace] = useState<ReturnType<typeof visibleFloatingWorkspace> | null>(null);
   const [isDocked, setIsDocked] = useState(Boolean(dock));
   const [heightMaximized, setHeightMaximized] = useState(false);
   const heightMaximizeRestoreRef = useRef<{ position: { x: number; y: number }; size: { width: number; height: number | null }; isDocked: boolean } | null>(null);
@@ -189,10 +196,11 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
 
     function keepPanelInsideWorkspace() {
       const panelBounds = workspacePanel.getBoundingClientRect();
-      const parentBounds = workspace.getBoundingClientRect();
+      const visible = getVisibleWorkspace(workspace);
+      setVisibleWorkspace(current => current && Object.keys(visible).every(key => current[key as keyof typeof current] === visible[key as keyof typeof visible]) ? current : visible);
       setPosition((current) => {
-        const x = Math.max(8, Math.min(parentBounds.width - Math.min(panelBounds.width, parentBounds.width - 16) - 8, current.x));
-        const y = Math.max(8, Math.min(parentBounds.height - Math.min(panelBounds.height, parentBounds.height - 16) - 8, current.y));
+        const x = Math.max(visible.left + 8, Math.min(visible.right - Math.min(panelBounds.width, visible.right - visible.left - 16) - 8, current.x));
+        const y = Math.max(visible.top + 8, Math.min(visible.bottom - Math.min(panelBounds.height, visible.bottom - visible.top - 16) - 8, current.y));
         return x === current.x && y === current.y ? current : { x, y };
       });
     }
@@ -201,7 +209,17 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
     const resizeObserver = new ResizeObserver(keepPanelInsideWorkspace);
     resizeObserver.observe(workspace);
     resizeObserver.observe(workspacePanel);
-    return () => resizeObserver.disconnect();
+    window.addEventListener("resize", keepPanelInsideWorkspace);
+    window.addEventListener("scroll", keepPanelInsideWorkspace, true);
+    window.visualViewport?.addEventListener("resize", keepPanelInsideWorkspace);
+    window.visualViewport?.addEventListener("scroll", keepPanelInsideWorkspace);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", keepPanelInsideWorkspace);
+      window.removeEventListener("scroll", keepPanelInsideWorkspace, true);
+      window.visualViewport?.removeEventListener("resize", keepPanelInsideWorkspace);
+      window.visualViewport?.removeEventListener("scroll", keepPanelInsideWorkspace);
+    };
   }, []);
 
   useEffect(() => {
@@ -368,16 +386,22 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
   const docked = Boolean(dock && isDocked);
   const dockHeight = dock?.height ?? (dock?.fill ? slotHeight : undefined);
   const appliedMinimumHeight = docked && size.height === null ? undefined : minimumHeight;
+  const requestedTop = compactWorkspace ? (visibleWorkspace?.top ?? 0) + 8 : heightMaximized ? position.y : docked ? (dock?.top ?? dockTop) : position.y;
+  const visibleMinimumHeight = docked && size.height === null ? MIN_FLOATING_WINDOW_HEIGHT : minimumHeight;
+  const cssLength = (value: string | number | undefined) => typeof value === "number" ? `${value}px` : value ?? "8px";
+  const top = visibleWorkspace ? `clamp(${visibleWorkspace.top + 8}px, ${cssLength(requestedTop)}, ${Math.max(visibleWorkspace.top + 8, visibleWorkspace.bottom - Math.min(visibleMinimumHeight, visibleWorkspace.bottom - visibleWorkspace.top - 16) - 8)}px)` : requestedTop;
+  const availableHeight = visibleWorkspace ? `max(0px, calc(${visibleWorkspace.bottom - 8}px - (${cssLength(top)})))` : "calc(100% - 16px)";
+  const preferredMaximum = heightMaximized || size.height !== null ? "calc(100% - 16px)" : docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `${maxHeight}px`;
   const style = {
+    "--floating-available-height": availableHeight,
+    "--floating-visible-top": cssLength(top),
     left: docked ? (dock?.side === "LEFT" ? 8 : undefined) : position.x,
     right: docked && dock?.side === "RIGHT" ? 8 : undefined,
-    top: heightMaximized ? position.y : docked ? (dock?.top ?? dockTop) : position.y,
+    top,
     width: docked ? (dock?.width ?? size.width) : size.width,
     height: heightMaximized ? size.height ?? "auto" : size.height ?? dockHeight,
-    minHeight: heightMaximized ? undefined : appliedMinimumHeight,
-    maxHeight: heightMaximized ? "calc(100% - 16px)" : size.height === null
-      ? (docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `min(${maxHeight}px, calc(100% - 16px))`)
-      : "calc(100% - 16px)",
+    minHeight: heightMaximized || appliedMinimumHeight === undefined ? undefined : `min(${appliedMinimumHeight}px, ${availableHeight})`,
+    maxHeight: `min(${cssLength(preferredMaximum)}, ${availableHeight})`,
     zIndex: 20,
   } as CSSProperties;
   return <section ref={panelRef} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onPointerDown={event => { event.stopPropagation(); focusPanel(); }}>

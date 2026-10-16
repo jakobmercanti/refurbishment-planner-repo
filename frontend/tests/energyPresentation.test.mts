@@ -31,7 +31,8 @@ test("main energy preview precedes expandable thickness guidance without inline 
 });
 test("undefined walls show a visible preview without claiming a calculated U-value", () => {
   const html = panel();
-  assert.match(html, /Wall composition preview/); assert.match(html, /U Not set/);
+  assert.match(html, /Wall composition preview/); assert.match(html, /Estimated U 0.300/);
+  assert.doesNotMatch(html, /Calculated U|U 4.667/);
   assert.doesNotMatch(html, /No layers defined yet/); assert.match(html, /Heating Layout assumption/);
 });
 

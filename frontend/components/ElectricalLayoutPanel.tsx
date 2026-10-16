@@ -16,7 +16,7 @@ type Props = {
   mode: boolean; connecting: boolean; repeatConnecting?: boolean; onConnect: (mode: "single" | "repeat") => void; onAdd: () => void;
   sourceId?: string | null; sourceGang?: number; onConnectGang?: (id: string, gang: number) => void;
   forceOrthogonalRouting: boolean; onForceOrthogonalRoutingChange: (value: boolean) => void;
-  onSaveLayout?: () => void; onLoadLayout?: () => void; onExport?: () => void; onSchedule?: () => void;
+  onSaveLayout?: () => void; onLoadLayout?: () => void; onSchedule?: () => void; fileBusy?: boolean;
   onCheckout: () => void; onFinishConnection: () => void;
   crossings?: ElectricalCrossing[]; onToggleJunction?: (crossing: ElectricalCrossing) => void;
   status?: string | null; currentCount: number; defaults: ElectricalConnectionDefaults;
@@ -86,10 +86,9 @@ export function ElectricalLayoutPanel(p: Props) {
   };
   return <div className="electrical-layout-panel evidence-panel">
     <div className="electrical-layout-actions" aria-label="Electrical layout actions">
-      <button type="button" className="review-style-button" onClick={p.onSaveLayout} disabled={!p.onSaveLayout}>Save layout</button>
-      <button type="button" className="review-style-button" onClick={p.onLoadLayout} disabled={!p.onLoadLayout}>Load layout</button>
-      <button type="button" className="review-style-button" onClick={p.onExport} disabled={!p.onExport}>Export</button>
-      <button type="button" className="review-style-button" onClick={p.onSchedule} disabled={!p.onSchedule}>BOM / Schedule</button>
+      <button type="button" className="review-style-button" onClick={p.onSaveLayout} disabled={!p.onSaveLayout || p.fileBusy}>Save layout</button>
+      <button type="button" className="review-style-button" onClick={p.onLoadLayout} disabled={!p.onLoadLayout || p.fileBusy}>Load layout</button>
+      <button type="button" className="review-style-button" onClick={p.onSchedule} disabled={!p.onSchedule}>BOM / Export</button>
       <button type="button" className="review-style-button" aria-label={p.connecting ? (p.repeatConnecting ? "Cancel repeat connection command" : "Cancel connection command") : "Connect fittings. Double-click to connect multiple pairs."} title={p.connecting ? "Click to cancel the active connection command." : "Click to connect one pair; double-click to connect multiple pairs."} aria-pressed={p.connecting} disabled={!p.mode || p.objects.length < 2} onClick={(event) => { if (event.detail <= 1) p.onConnect("single"); }} onDoubleClick={() => p.onConnect("repeat")}>{p.connecting ? (p.repeatConnecting ? "Cancel repeat connect" : "Cancel connect") : "Connect"}</button>
       <button type="button" className="review-style-button" onClick={p.onAdd}>Add electrical fitting…</button>
       {p.mode && <button type="button" className="review-style-button" onClick={p.onCheckout}>Check layout</button>}

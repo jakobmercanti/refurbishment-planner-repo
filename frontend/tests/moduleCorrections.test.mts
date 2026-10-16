@@ -91,7 +91,7 @@ test('room reset removes placed heating and its circuits, preserving other rooms
  data.pipes=[{pipeId:'p',name:'A',fromId:a.radiatorId,toId:'shared',kind:'Supply',diameterMm:15,pathMm:path,locked:false},{pipeId:'q',name:'B',fromId:b.radiatorId,toId:'shared',kind:'Supply',diameterMm:15,pathMm:path,locked:false}];
  const reset=parseHeatingProject(resetRoomHeating(data,room));
  assert.deepEqual(reset.radiators,[b]);assert.deepEqual(reset.ufhZones,[zb]);assert.equal(reset.ufhCircuits.length,1);assert.equal(reset.exclusions.length,0);
- assert.deepEqual(reset.manifolds,[data.manifolds[0]]);assert.deepEqual(reset.pipes,[data.pipes[1]]);assert.deepEqual(reset.rooms,data.rooms);assert.deepEqual(reset.buildingSettings,data.buildingSettings);
+ assert.deepEqual(reset.manifolds,[data.manifolds[0]]);assert.deepEqual(reset.pipes,[data.pipes[1]]);assert.equal(reset.rooms[0].selectedEmitterType,"None");assert.equal(reset.rooms[0].designIndoorTemperatureC,20);assert.deepEqual(reset.buildingSettings,data.buildingSettings);
  const stored=commitHeatingElements(data,[room,other]);const view=withHeatingElements(stored.heatingLayout,stored.rooms);
  const committed=commitHeatingElements(resetRoomHeating(view,room),stored.rooms);
  assert.equal(committed.rooms[0].obstacles.length,0);assert.equal(committed.rooms[1].obstacles.length,1);

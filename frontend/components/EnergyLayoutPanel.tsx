@@ -3,9 +3,9 @@ import { isInsulationSelectable } from "@/lib/energyCalculations";
 import { useMemo, useState } from "react";
 import type { Room } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
-import { ENERGY_DISCLAIMER, newAssembly, type ConstructionAssembly, type EnergyProject } from "@/lib/energyDocument";
+import { ENERGY_DISCLAIMER, type ConstructionAssembly, type EnergyProject } from "@/lib/energyDocument";
 import { calculateAssemblyUValue, energyResults, scenarioAssignments, type EnergyElement } from "@/lib/energyCalculations";
-import { assemblyThickness, fabricTargetScore, resizeAssembly, setWallAssembly, wallThicknessForElement } from "@/lib/energyWallConstruction";
+import { assemblyThickness, createElementAssemblyDraft, fabricTargetScore, resizeAssembly, setWallAssembly, wallThicknessForElement } from "@/lib/energyWallConstruction";
 import { buildEnergyPdf } from "@/lib/energyExport";
 import { WallLayersPreview } from "./WallLayersPreview";
 import styles from "./HeatingLayoutPanel.module.css";
@@ -18,7 +18,7 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
   const [tab, setTab] = useState<"Walls" | "Floors" | "Roofs" | "Results">("Walls"), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [newScenarioName, setNewScenarioName] = useState(""), [scenarioNameDraft, setScenarioNameDraft] = useState<{ id: string; text: string } | null>(null);
   const [resultsSelection, setResultsSelection] = useState<string | undefined>();
-  const [editor, setEditor] = useState<{ source: EnergyProject; assembly: ConstructionAssembly; element: EnergyElement; thickness: number } | null>(null);
+  const [editor, setEditor] = useState<{ source: EnergyProject; draft: EnergyProject; assembly: ConstructionAssembly; element: EnergyElement; thickness: number } | null>(null);
   const result = useMemo(() => energyResults(rooms, heating, data), [rooms, heating, data]);
   const categories = { Walls: "wall", Floors: "floor", Roofs: "roof" } as const;
   const selected = result.elements.find(e => isInsulationSelectable(e, rooms) && selectedIds.includes(e.elementId) && ["wall", "floor", "roof"].includes(e.category));
@@ -34,10 +34,10 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
   const shownThickness = first ? assembly ? assemblyThickness(assembly) : first.category === "wall" ? wallThicknessForElement(first, rooms) : 200 : 0;
   const construction = assembly ? calculateAssemblyUValue(assembly, data.materials) : null, score = fabricTargetScore(result.elements, data);
   const update = (next: EnergyProject) => { setError("");onChange(next); };
-  const openLayerEditor = () => { if (first) setEditor({ source: data, element: first, thickness: shownThickness, assembly: structuredClone(assembly ?? newAssembly({ name: first.label, category: first.category, materials: [["custom-0", shownThickness]] })) }); };
+  const openLayerEditor = () => { if (first) { const draft = createElementAssemblyDraft(data, first, shownThickness); setEditor({ source: data, draft: draft.data, element: first, thickness: shownThickness, assembly: draft.assembly }); } };
   const saveScenario = () => { try { update(saveEnergyScenarioAs(data, newScenarioName || `Upgrade ${data.scenarios.length + 1}`));setNewScenarioName(""); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save scenario."); } };
   const renameScenario = () => { if (!activeScenario || editableScenarioName === activeScenario.name) return;try { update(renameEnergyScenario(data, activeScenario.scenarioId, editableScenarioName));setScenarioNameDraft(null); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not rename scenario.");setScenarioNameDraft(null); } };
-  const edit = (a: ConstructionAssembly) => { if (!first) return;const total = assemblyThickness(a);if (total < 1 || total > 2000) { setError("Overall wall thickness must be between 1 and 2000 mm.");return; }update(setWallAssembly(data, first, { ...a, directUValue: null })); };
+  const edit = (a: ConstructionAssembly, draft = data) => { if (!first) return;const total = assemblyThickness(a);if (total < 1 || total > 2000) { setError("Overall wall thickness must be between 1 and 2000 mm.");return; }update(setWallAssembly(draft, first, { ...a, directUValue: null })); };
   async function exportPdf() { setBusy(true);try { const bytes = await buildEnergyPdf(rooms, heating, data, projectName), url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: "application/pdf" })), a = document.createElement("a");a.href = url;a.download = "energy-insulation-report.pdf";a.click();setTimeout(() => URL.revokeObjectURL(url), 30000); } catch (e) { setError(e instanceof Error ? e.message : "Export failed."); } finally { setBusy(false); } }
   return <div className={styles.panel + " " + ui.panel} role="region" aria-label="Energy & Insulation controls">
     <div className={ui.summaryRow}><p className={ui.buildingSummary}><strong>Overall heating loss: {(result.designW / 1000).toFixed(2)} kW</strong> · H {Math.round(result.coefficient.total)} W/K</p><div className={styles.actions}><button onClick={onUndo} disabled={!canUndo}>Undo</button><button onClick={onRedo} disabled={!canRedo}>Redo</button></div></div>
@@ -54,11 +54,11 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
       <label>Select {elementName}<select aria-label={`Select ${elementName}`} value={first?.elementId ?? ""} onChange={e => onSelect(e.target.value ? [e.target.value] : [])}><option value="">Select {elementName} on the plan or here…</option>{walls.map(e => <option key={e.elementId} value={e.elementId}>{e.label} · {e.boundary}</option>)}</select></label>
       {!first && <p>Select a {elementName} on the plan to edit its construction. Dimensions come from the floorplan.</p>}
       {first && <div className={ui.constructionSection} key={first.elementId}>
-        <div className={ui.wallSummary}><strong>{first.label} · {scenarioLabel}</strong>{activeScenario && <small>{scenarioOverride ? "This element has a construction override in this scenario." : "Inherited from Existing Building. Editing creates an override here only."}</small>}<div className={ui.wallMetrics}><span>{Number(shownThickness.toFixed(2))} mm</span><span>{first.areaM2.toFixed(1)} m²</span><span>U {construction?.uValue != null ? construction.uValue.toFixed(3) : assigned?.uValue != null ? assigned.uValue.toFixed(3) : "Not set"} W/m²K</span><span>{Math.round(first.heatLossW)} W{construction?.uValue == null && assigned?.uValue == null ? " (estimated)" : ""}</span></div></div>
+        <div className={ui.wallSummary}><strong>{first.label} · {scenarioLabel}</strong>{activeScenario && <small>{scenarioOverride ? "This element has a construction override in this scenario." : "Inherited from Existing Building. Editing creates an override here only."}</small>}<div className={ui.wallMetrics}><span>{Number(shownThickness.toFixed(2))} mm</span><span>{first.areaM2.toFixed(1)} m²</span><span>{first.warnings.length || assigned?.uValue == null && (construction?.uValue == null || construction.estimated) ? "Estimated U" : "U"} {first.uValue.toFixed(3)} W/m²K</span><span>{Math.round(first.heatLossW)} W{construction?.uValue == null && assigned?.uValue == null ? " (estimated)" : ""}</span></div></div>
         <button className={`${styles.primary} ${ui.defineLayers}`} onClick={openLayerEditor}>Define {elementName} layers <span aria-hidden>›</span></button>
         <WallLayersPreview assembly={assembly ?? { assemblyId: first.elementId, name: first.label, category: first.category, rsi: first.category === "roof" ? .10 : first.category === "floor" ? .17 : .13, rse: .04, directUValue: null, notes: "", layers: [{ layerId: "undefined-wall", materialId: "undefined-wall", thicknessMm: shownThickness, resistanceOverride: null, position: "Within", upgrade: false, colorHex: "#c4b09b" }] }} materials={data.materials} />
         <details><summary>{elementName === "wall" ? "Wall thickness" : "Construction thickness"} & shared heating calculation</summary>
-          <NumberField label={`Overall ${elementName} thickness mm`} value={shownThickness} min={1} max={2000} onChange={v => { if (v && assembly) edit(resizeAssembly(assembly, v));else if (v) edit(newAssembly({ name: first.label, category: first.category, materials: [["custom-0", v]] })); }} />
+          <NumberField label={`Overall ${elementName} thickness mm`} value={shownThickness} min={1} max={2000} onChange={v => { if (v) { const draft = createElementAssemblyDraft(data, first, shownThickness); edit(resizeAssembly(draft.assembly, v), draft.data); } }} />
           <small>{activeScenario ? "This scenario's construction thickness changes without changing the base floorplan geometry." : category === "wall" ? "Overall thickness stays linked to the floorplan and scales existing layers proportionally. Room boundaries do not move." : "Construction thickness scales layers proportionally; room geometry does not change."} Use Define layers for individual thicknesses.</small>
           <p>{assembly ? construction?.method : `No composition defined. U ${first.uValue.toFixed(2)} is a Heating Layout assumption, not a layer calculation.`}</p>
           <p>{elementName} loss = U × {first.areaM2.toFixed(2)} m² × {first.deltaTK.toFixed(1)} K. Heating Layout uses the saved construction.</p>
@@ -78,6 +78,6 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
       <button disabled={busy} onClick={() => void exportPdf()}>{busy ? "Exporting…" : "Export Energy Report PDF"}</button>{!result.verified && <p className={styles.warning}>Some fabric inputs are incomplete. Heating fallback assumptions are included in overall loss, not claimed as calculated layer values.</p>}
     </>}
     <details className={ui.limitations}><summary>Planning assumptions & limitations</summary><p>{ENERGY_DISCLAIMER}</p></details>
-    {editor && <WallLayersEditor source={editor.source} initialAssembly={editor.assembly} element={editor.element} rooms={rooms} heating={heating} scenarioName={scenarioLabel} stale={editor.source !== data || editor.element.elementId !== first?.elementId || editor.element.geometrySignature !== first?.geometrySignature || editor.element.deltaTK !== first?.deltaTK || editor.element.areaM2 !== first?.areaM2 || editor.thickness !== shownThickness} onCancel={() => setEditor(null)} onCommit={next => { update(next);setEditor(null); }} />}
+    {editor && <WallLayersEditor source={editor.draft} initialAssembly={editor.assembly} element={editor.element} rooms={rooms} heating={heating} scenarioName={scenarioLabel} stale={editor.source !== data || editor.element.elementId !== first?.elementId || editor.element.geometrySignature !== first?.geometrySignature || editor.element.deltaTK !== first?.deltaTK || editor.element.areaM2 !== first?.areaM2 || editor.thickness !== shownThickness} onCancel={() => setEditor(null)} onCommit={next => { update(next);setEditor(null); }} />}
   </div>;
 }

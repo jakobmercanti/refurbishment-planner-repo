@@ -4,6 +4,7 @@ import { calculateRoomHeatLoss, wallAdjacencies, type ThermalSurface } from "./h
 import type { HeatingProject } from "./heatingDocument";
 import { thermalElementId, type BuildingThermalOverrides } from "./buildingThermalModel";
 import type { ConstructionAssembly, ConstructionLayer, EnergyCategory, EnergyProject, ElementAssignment, ThermalMaterial } from "./energyDocument";
+import { RETAINED_RESISTANCE_MATERIAL } from "./energyDocument";
 
 export function calculateLayerResistance(layer: ConstructionLayer, materials: readonly ThermalMaterial[]): number | null {
   if (layer.resistanceOverride !== null) return layer.resistanceOverride;
@@ -14,9 +15,9 @@ export function calculateLayerResistance(layer: ConstructionLayer, materials: re
 }
 export function calculateAssemblyUValue(assembly: ConstructionAssembly, materials: readonly ThermalMaterial[]) {
   const layers = assembly.layers.map(layer => ({ layer, resistance: calculateLayerResistance(layer, materials) }));
-  if (assembly.directUValue !== null) return { uValue: assembly.directUValue, totalR: 1 / assembly.directUValue, layers, method: "Entered whole-element U-value" };
+  if (assembly.directUValue !== null) return { uValue: assembly.directUValue, totalR: 1 / assembly.directUValue, layers, estimated: false, method: "Entered whole-element U-value" };
   const missing = !layers.length || layers.some(l => l.resistance === null), totalR = assembly.rsi + assembly.rse + layers.reduce((s, l) => s + (l.resistance ?? 0), 0);
-  return { uValue: missing || totalR <= 0 ? null : 1 / totalR, totalR: missing ? null : totalR, layers, method: "One-dimensional layers: U = 1 / (Rsi + sum R + Rse)" };
+  return { uValue: missing || totalR <= 0 ? null : 1 / totalR, totalR: missing ? null : totalR, layers, estimated: layers.some(l => l.layer.resistanceSource === "HEATING_ESTIMATE"), method: "One-dimensional layers: U = 1 / (Rsi + sum R + Rse)" };
 }
 export function scenarioAssignments(data: EnergyProject, scenarioId: string | null = data.activeScenarioId) {
   return [...new Map([...data.existingAssignments, ...(data.scenarios.find(s => s.scenarioId === scenarioId)?.assignments ?? [])].map(a => [a.elementId, a])).values()];
@@ -47,8 +48,8 @@ export function resolveThermalOverrides(data: EnergyProject, rooms: readonly Roo
     const [roomId, element] = assignment.elementId.split("|"), room = rooms.find(r => r.id === roomId);
     if (!room) continue;
     if (element.startsWith("wall:") && assignment.geometrySignature) { const parts = element.split(":");const current = parts.length === 3 ? segmentGeometrySignature(room, Number(parts[1]), Number(parts[2]), rooms) : wallGeometrySignature(room, Number(parts[1]));if (!sameWallGeometry(assignment.geometrySignature, current)) { result[assignment.elementId] = { warning: "Energy construction assignment no longer matches this wall geometry; reassign it. Heating fallback retained." };continue; } }
-    const assembly = data.assemblies.find(a => a.assemblyId === assignment.assemblyId), uValue = assignment.uValue ?? (assembly ? calculateAssemblyUValue(assembly, data.materials).uValue : null);
-    result[assignment.elementId] = { ...(uValue !== null ? { uValue } : {}), ...(assignment.boundary ? { boundary: assignment.boundary } : {}), ...(assignment.adjacentTemperatureC !== undefined ? { adjacentTemperatureC: assignment.adjacentTemperatureC } : {}), ...(assembly && uValue === null ? { warning: `Energy assembly ${assembly.name}: missing thermal inputs; Heating fallback retained, result unverified.` } : {}) };
+    const assembly = data.assemblies.find(a => a.assemblyId === assignment.assemblyId), calculated = assembly ? calculateAssemblyUValue(assembly, data.materials) : null, uValue = assignment.uValue ?? calculated?.uValue ?? null;
+    result[assignment.elementId] = { ...(uValue !== null ? { uValue } : {}), ...(assignment.boundary ? { boundary: assignment.boundary } : {}), ...(assignment.adjacentTemperatureC !== undefined ? { adjacentTemperatureC: assignment.adjacentTemperatureC } : {}), ...(assembly && uValue === null ? { warning: `Energy assembly ${assembly.name}: missing thermal inputs; Heating fallback retained, result unverified.` } : assignment.uValue == null && calculated?.estimated ? { warning: "Construction retains an estimated Heating U-value for the existing build-up; verify this baseline before final design." } : {}) };
   }
   return result;
 }
@@ -126,12 +127,14 @@ export function duplicateRetrofitScenario(data: EnergyProject, scenarioId: strin
 export function addInsulation(data: EnergyProject, elements: EnergyElement[], materialId: string, thicknessMm: number, position: ConstructionLayer["position"]): EnergyProject {
   const material = data.materials.find(m => m.materialId === materialId);if (!material?.lambda) throw new Error("Enter the insulation material's thermal conductivity first.");
   if (!data.activeScenarioId) throw new Error("Create/select a proposed scenario before adding insulation; existing construction is preserved.");
-  let next = data.materials.some(m => m.materialId === "existing-resistance") ? data : { ...data, materials: [...data.materials, { materialId: "existing-resistance", name: "Existing whole-element resistance (not a material layer)", category: "Equivalent resistance", lambda: null, density: null, vapourResistance: null, reference: "Captured existing whole-element U-value including surface resistances; verify the original Heating/fabric input.", editable: true }] };
+  let next = data.materials.some(m => m.materialId === "existing-resistance") ? data : { ...data, materials: [...data.materials, { ...RETAINED_RESISTANCE_MATERIAL }] };
   for (const element of elements) {
     const assigned = scenarioAssignments(next).find(a => a.elementId === element.elementId), original = next.assemblies.find(a => a.assemblyId === assigned?.assemblyId);
-    if (original && calculateAssemblyUValue(original, next.materials).uValue === null) throw new Error("Complete the existing assembly inputs before upgrading it.");
-    const base: ConstructionAssembly = original && original.directUValue === null ? structuredClone(original) : { assemblyId: "", name: element.label, category: element.category, rsi: 0, rse: 0, directUValue: null, notes: "Existing whole-element resistance retained, including its surface resistances; do not add them twice.", layers: [{ layerId: crypto.randomUUID(), materialId: "existing-resistance", thicknessMm: 0, resistanceOverride: element.uValue > 0 ? 1 / element.uValue : 0, position: "Within", upgrade: false }] };
-    if (!original && element.uValue <= 0) throw new Error("Cannot upgrade an adiabatic/zero-U surface without a defined construction.");
+    const stale = element.warnings.some(w => w.includes("no longer matches"));
+    if (original && assigned?.uValue == null && !stale && calculateAssemblyUValue(original, next.materials).uValue === null) throw new Error("Complete the existing assembly inputs before upgrading it.");
+    const keepLayers = original && assigned?.uValue == null && original.directUValue === null && !stale;
+    if (!keepLayers && element.uValue <= 0) throw new Error("Cannot upgrade an adiabatic/zero-U surface without a defined construction.");
+    const base: ConstructionAssembly = keepLayers ? structuredClone(original) : { assemblyId: "", name: element.label, category: element.category, rsi: 0, rse: 0, directUValue: null, notes: "Existing whole-element resistance retained, including its surface resistances; do not add them twice.", layers: [{ layerId: crypto.randomUUID(), materialId: "existing-resistance", thicknessMm: 0, resistanceOverride: 1 / element.uValue, resistanceSource: !stale && (assigned?.uValue != null || original?.directUValue != null) ? "ENTERED_U" : "HEATING_ESTIMATE", position: "Within", upgrade: false }] };
     base.assemblyId = crypto.randomUUID();base.name = `${element.label} + ${thicknessMm} mm ${material.name}`;
     const layer: ConstructionLayer = { layerId: crypto.randomUUID(), materialId, thicknessMm, resistanceOverride: null, position, upgrade: true };
     base.layers = position === "Outside" ? [layer, ...base.layers] : [...base.layers, layer];

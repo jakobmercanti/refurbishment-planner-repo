@@ -3,6 +3,13 @@ export const MIN_FLOATING_WINDOW_WIDTH = 220;
 export const MIN_FLOATING_WINDOW_HEIGHT = 96;
 export const FLOATING_WINDOW_MARGIN = 8;
 
+/** Offset-parent coordinates clipped to the actual browser/visual viewport. */
+export function visibleFloatingWorkspace(parent: { left: number; top: number; width: number; height: number }, viewport: { left: number; top: number; width: number; height: number }) {
+  const left = Math.max(0, viewport.left - parent.left);
+  const top = Math.max(0, viewport.top - parent.top);
+  return { left, top, right: Math.max(left, Math.min(parent.width, viewport.left + viewport.width - parent.left)), bottom: Math.max(top, Math.min(parent.height, viewport.top + viewport.height - parent.top)) };
+}
+
 export type FloatingWindowResizeEdge = "TOP" | "LEFT" | "RIGHT" | "BOTTOM";
 
 export interface FloatingWindowBox {

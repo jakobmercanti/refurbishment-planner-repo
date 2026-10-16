@@ -19,6 +19,7 @@ type Props = {
   projectName: string;
   defaultCurrency?: CurrencyCode;
   onLayoutChange: (next: ElectricalLayoutData) => void;
+  onExport?: () => void;
 };
 
 function csvCell(value: unknown): string {
@@ -41,7 +42,7 @@ function formatMoney(value: number, currency = "GBP") {
   catch { return `${currency} ${value.toFixed(2)}`; }
 }
 
-export function ElectricalScheduleWindow({ rooms, assets, instances, layout, projectName, defaultCurrency = "GBP", onLayoutChange }: Props) {
+export function ElectricalScheduleWindow({ rooms, assets, instances, layout, projectName, defaultCurrency = "GBP", onLayoutChange, onExport }: Props) {
   const [tab, setTab] = useState<Tab>("BOM");
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -221,6 +222,7 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
   }
 
   return <section className="electrical-schedule-panel" aria-label="Electrical BOM and schedule">
+    <div className="electrical-schedule-heading"><strong>BOM / Export</strong><button type="button" className="review-style-button" onClick={onExport} disabled={!onExport}>Export…</button></div>
     <div className="electrical-schedule-stats" aria-label="Electrical layout summary">
       <div><small>Electrical assets</small><strong>{placed.length}</strong></div>
       <div><small>Unique BOM items</small><strong>{bom.length + documentation.manualBomItems.length}</strong></div>

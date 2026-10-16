@@ -30,7 +30,13 @@ export function layoutEnergyLabels(rooms: LabelRoom[], requests: EnergyLabelRequ
   for (const r of [...requests].sort((a, b) => priority(a) - priority(b) || a.id.localeCompare(b.id))) {
     const polygon = rooms.find(room => room.id === r.roomId)?.polygon;
     if (!polygon?.length) continue;
-    const candidates: Point2D[] = r.preferred ? [r.preferred] : [];
+    if (r.preferred) {
+      // Collision avoidance is only an automatic-placement aid. A user's anchor
+      // wins, including over room titles, other labels and outside the room.
+      const box = { ...r.preferred, width: r.width, height: r.height };
+      result[r.id] = box; occupied.push(box); continue;
+    }
+    const candidates: Point2D[] = [];
     const minX = Math.min(...polygon.map(p => p.x)), maxX = Math.max(...polygon.map(p => p.x));
     const minY = Math.min(...polygon.map(p => p.y)), maxY = Math.max(...polygon.map(p => p.y));
     if (r.category === 'wall' && r.start && r.end) {
@@ -53,7 +59,7 @@ export function layoutEnergyLabels(rooms: LabelRoom[], requests: EnergyLabelRequ
     for (const scale of r.category === "wall" ? [1] : [1, .8, .6, .4]) {
     for (let i = 0; i < candidates.length; i++) {
       const box = { ...candidates[i], width: r.width * scale, height: r.height * scale };
-      if ((i === 0 && r.preferred || fits(box, polygon)) && !occupied.some(other => labelBoxesOverlap(box, other))) {
+      if (fits(box, polygon) && !occupied.some(other => labelBoxesOverlap(box, other))) {
         result[r.id] = box; occupied.push(box); break;
       }
     }
@@ -61,6 +67,13 @@ export function layoutEnergyLabels(rooms: LabelRoom[], requests: EnergyLabelRequ
     }
   }
   return result;
+}
+
+/** Automatic labels first, user-positioned labels above them, newest move on top. */
+export function energyLabelPaintOrder(ids: string[], positions: Record<string, Point2D> = {}, activeId?: string) {
+  const ranks = new Map(Object.keys(positions).map((id, i) => [id, i + 1]));
+  const rank = (id: string) => id === activeId ? Infinity : ranks.get(id) ?? 0;
+  return [...ids].sort((a, b) => rank(a) - rank(b));
 }
 
 /** Invert the renderer's affine transform, including flipped/rotated plan views. */

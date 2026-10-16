@@ -13,9 +13,10 @@
 .scenarioPanel > section { display:grid; gap:8px; padding-top:8px; }
 .scenarioPanel { display:grid; gap:8px; border:1px solid var(--line); border-radius:10px; padding:10px; background:var(--surface-muted); }
 .scenarioPanel > div:first-child { display:grid; gap:2px; }
-.scenarioActions { display:flex; gap:7px; align-items:end; flex-wrap:wrap; }
-.scenarioActions label { flex:1 1 180px; }
-.scenarioActions button { flex:0 0 auto; }
+.scenarioActions { display:grid; grid-template-columns:minmax(160px,1fr) auto; gap:8px; align-items:end; }
+.scenarioActions:has(>button+button) { grid-template-columns:minmax(160px,1fr) auto auto; }
+.panel.panel .scenarioActions button { min-width:112px; height:38px; padding:6px 12px; white-space:nowrap; }
+@container electrical-layout-window (max-width:520px) { .scenarioActions,.scenarioActions:has(>button+button) { grid-template-columns:repeat(2,minmax(0,1fr)); }.scenarioActions label { grid-column:1/-1; }.scenarioActions>button:only-of-type { grid-column:1/-1; } }
 .wallSummary { display: grid; gap: 5px; margin-bottom: 8px; }
 .wallMetrics { display: flex; flex-wrap: wrap; gap: 5px 14px; color: var(--muted); font-size: 11px; }
 .panel :global(.wall-layers-preview-inline) { display: grid; gap: 8px; }
@@ -25,9 +26,12 @@
 .popup :global(.appearance-object-heading) { margin-top:0; padding-top:0; }
 .popup :global(.appearance-object-heading h2) { margin-top:0; font-size:22px; }
 .editorMetrics { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 10px; }
-.popup :global(.popup-content) { overflow: hidden; }
-.popup :global(.appearance-popup-grid) { height: min(650px, calc(100dvh - 165px)); max-height: min(650px, calc(100dvh - 165px)); grid-template-rows: minmax(0, 1fr); }
-.popup :global(.appearance-popup-form) { overflow-y: auto; padding-right: 10px; padding-bottom: 10px; align-content: start; }
+.popup.popup { width:min(1240px,calc(100vw - 32px)); min-height:0; max-height:calc(100dvh - 48px); }
+.popup :global(.popup-content) { display:flex; flex:1 1 auto; min-height:0; overflow:hidden; padding:18px; }
+.popup :global(.appearance-popup-grid) { width:100%; height:auto; max-height:none; grid-template-columns:minmax(0,1.05fr) minmax(280px,.95fr); grid-template-rows:minmax(0,1fr); gap:18px; }
+.popup :global(.appearance-popup-form) { overflow:auto; min-width:0; padding-right:8px; padding-bottom:16px; align-content:start; overflow-wrap:anywhere; }
+.popup :global(.appearance-object-heading) { display:grid; grid-template-columns:minmax(0,1fr); gap:3px; }
+.popup :global(.appearance-object-heading h2) { font-size:20px; }
 .editorPreview { align-self: stretch; }
 .startingComposition > label { margin-top:14px; }
 .startingComposition { margin-bottom:8px; }
@@ -47,13 +51,21 @@
 .layerGrip { cursor:grab!important; padding:6px!important; flex-shrink:0; touch-action:none; }
 .layerGrip:active { cursor:grabbing!important; }
 .layerFields { display:grid; gap:8px; border-top:1px solid var(--line); margin-top:10px; padding-top:10px; }
+.layerFields > * { min-width:0; }
+.layerColour { grid-column:1/-1; }
+.popup .layerColour input[type=color] { width:144px; max-width:100%; height:38px; min-height:38px; padding:4px; cursor:pointer; }
+.popup .layerColour input[type=color]::-webkit-color-swatch-wrapper { padding:0; }
+.popup .layerColour input[type=color]::-webkit-color-swatch { border:1px solid #0002; border-radius:4px; }
+.layerThermal { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin-top:10px; }
+.layerHelpSummary { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.popup .layerHelpSummary :global(.window-help-button) { flex:0 0 30px; width:30px; height:26px; min-height:26px; border-radius:8px; }
 @media (max-width:450px) { .layerRow { flex-wrap:wrap; }.layerActions { margin-left:auto; } }
 .swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid #0002; border-radius: 3px; margin-right: 6px; }
-@media (max-width: 720px) {
+@media (max-width: 840px) {
   .popup :global(.popup-content) { overflow: auto; }
-  .popup :global(.appearance-popup-grid) { height: auto; max-height: none; grid-template-rows: auto; }
+  .popup :global(.appearance-popup-grid) { height:auto; max-height:none; grid-template-columns:minmax(0,1fr); grid-template-rows:auto; }
   .popup :global(.appearance-popup-form) { overflow: visible; padding-right: 2px; }
-  .editorPreview :global(.fixture-preview) { min-height: 260px; }
+  .editorPreview :global(.fixture-preview) { min-height:220px; }
 }
 @container electrical-layout-window (max-width: 420px) {
   .sectionNav .energyTabs { flex-basis:100%; width:100%; }

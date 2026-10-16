@@ -1,9 +1,27 @@
 import type { Room } from "./types";
 import type { ConstructionAssembly, EnergyProject } from "./energyDocument";
+import { RETAINED_RESISTANCE_MATERIAL } from "./energyDocument";
+import { withLayerColours } from "./energyLayerColours";
 import { assignEnergyElements, calculateAssemblyUValue, scenarioAssignments, type EnergyElement } from "./energyCalculations";
 
 export { LAYER_COLOURS } from "./energyLayerColours";
 export const assemblyThickness = (a: ConstructionAssembly) => a.layers.reduce((s, l) => s + l.thicknessMm, 0);
+
+/** Opening the editor must not replace an unknown build-up with invented concrete.
+ * Preserve the effective whole-element R; measured thickness is presentation only
+ * for this equivalent layer. Surface films are already included, exactly once. */
+export function createElementAssemblyDraft(data: EnergyProject, element: EnergyElement, thicknessMm: number) {
+  const assignment = scenarioAssignments(data).find(a => a.elementId === element.elementId);
+  const original = data.assemblies.find(a => a.assemblyId === assignment?.assemblyId);
+  const stale = element.warnings.some(w => w.includes("no longer matches"));
+  if (original && assignment?.uValue == null && original.directUValue === null && !stale) return { data, assembly: structuredClone(original) };
+  const next = data.materials.some(m => m.materialId === RETAINED_RESISTANCE_MATERIAL.materialId) ? data : { ...data, materials: [...data.materials, { ...RETAINED_RESISTANCE_MATERIAL }] };
+  const entered = !stale && (assignment?.uValue != null || original?.directUValue != null);
+  const assembly: ConstructionAssembly = withLayerColours({ assemblyId: crypto.randomUUID(), name: element.label, category: element.category, rsi: 0, rse: 0, directUValue: null,
+    notes: "Existing whole-element U-value retained as equivalent resistance, including surface films. Physical composition is unknown; do not add surface films twice. Choose a starting composition only to replace this baseline deliberately.",
+    layers: [{ layerId: crypto.randomUUID(), materialId: RETAINED_RESISTANCE_MATERIAL.materialId, thicknessMm, resistanceOverride: element.uValue > 0 ? 1 / element.uValue : null, resistanceSource: entered ? "ENTERED_U" : "HEATING_ESTIMATE", position: "Within", upgrade: false }] });
+  return { data: next, assembly };
+}
 /** Reorder by identity; material, colour and thermal overrides travel with their layer. */
 export function reorderConstructionLayer(a: ConstructionAssembly, layerId: string, targetId: string): ConstructionAssembly {
   const from = a.layers.findIndex(l => l.layerId === layerId), to = a.layers.findIndex(l => l.layerId === targetId);

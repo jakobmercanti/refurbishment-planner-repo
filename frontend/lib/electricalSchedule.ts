@@ -1,5 +1,6 @@
 import { ELECTRICAL_ASSETS } from "./electricalAssets";
-import { electricalConnectionPoints, isElectricalObstacle, type ElectricalConnection, type ElectricalLayoutData } from "./electricalLayout";
+import { isElectricalObstacle, type ElectricalConnection, type ElectricalLayoutData } from "./electricalLayout";
+import { routeElectricalConnections } from "./electricalAutoRouting";
 import type { AssetDefinition, AssetInstance } from "./projectDocument";
 import type { Point2D, Room } from "./types";
 
@@ -139,13 +140,14 @@ export function electricalConnectionRows(
   rooms: readonly Room[],
 ): ElectricalConnectionScheduleRow[] {
   const fixtures = new Map(rooms.flatMap((room) => room.obstacles.filter(isElectricalObstacle).map((obstacle) => [obstacle.id, { obstacle, room }] as const)));
+  const routes = routeElectricalConnections(layout, [...fixtures.values()].map(f => f.obstacle));
   const names = new Map<string, string>();
   for (const room of rooms) for (const obstacle of room.obstacles) if (isElectricalObstacle(obstacle)) names.set(obstacle.id, obstacle.name);
   const circuits = new Map(layout.circuits.map((circuit) => [circuit.id, circuit.name]));
   return layout.connections.map((connection, index) => {
     const from = fixtures.get(connection.fromId);
     const to = fixtures.get(connection.toId);
-    const endpoints = from && to ? electricalConnectionPoints(connection, from.obstacle.center, to.obstacle.center, layout.forceOrthogonalRouting, from.obstacle, to.obstacle) : null;
+    const endpoints = routes.get(connection.id) ?? null;
     const segments = endpoints ? endpoints.slice(0, -1).map((start, segmentIndex) => {
       const end = endpoints[segmentIndex + 1];
       const dx = end.x - start.x; const dy = end.y - start.y;
