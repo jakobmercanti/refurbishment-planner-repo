@@ -8,8 +8,10 @@
     "prebuild": "node scripts/copy-occt-assets.mjs",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint .",
-    "test:geometry": "tsx --require ./tests/css-register.cjs --test tests/*.test.mts",
+    "lint": "eslint . && node scripts/check-source-usage.mjs",
+    "check:source": "node scripts/check-source-usage.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test:geometry": "tsx --require ./tests/css-register.cjs --test tests/*.test.mts tests/*.test.tsx",
     "test:projects": "tsx --test tests/*.integration.mts",
     "sync:dulux-colours": "node scripts/sync-dulux-colours.mjs"
   },

@@ -41,14 +41,20 @@ def test_custom_asset_category_accepts_a_private_custom_subcategory() -> None:
     }
 
 
-@pytest.mark.parametrize(("plan", "status", "allowed"), [
-    ("free", "free", True),
-    ("starter", "active", True),
-    ("pro", "active", True),
-    ("studio", "trialing", True),
-])
+@pytest.mark.parametrize(
+    ("plan", "status", "allowed"),
+    [
+        ("free", "free", True),
+        ("starter", "active", True),
+        ("pro", "active", True),
+        ("studio", "trialing", True),
+    ],
+)
 def test_commercial_summary_exposes_free_electrical_layout_access(
-    monkeypatch: pytest.MonkeyPatch, plan: str, status: str, allowed: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    plan: str,
+    status: str,
+    allowed: bool,
 ) -> None:
     user = VerifiedUser(uuid4(), "owner@example.test", True)
 
@@ -127,9 +133,16 @@ def test_saving_asset_category_is_scoped_to_the_verified_user() -> None:
             calls.append({"path": path, **kwargs})
             return [{"asset_id": asset_id}]
 
-    _save_asset_classification(FakeDatabase(), user, asset_id, {
-        "category_id": "living-sofas", "category_name": "Sofas", "subcategory": "Two seater",
-    })
+    _save_asset_classification(
+        FakeDatabase(),
+        user,
+        asset_id,
+        {
+            "category_id": "living-sofas",
+            "category_name": "Sofas",
+            "subcategory": "Two seater",
+        },
+    )
 
     assert calls[0]["path"] == "asset_definitions"
     assert calls[0]["method"] == "PATCH"
@@ -148,8 +161,14 @@ def test_project_validator_accepts_canonical_document_and_trims_title() -> None:
 def test_project_validator_preserves_versioned_local_planning_and_quote_documents() -> None:
     project_id = uuid4()
     document = _project_document(str(project_id))
-    document.update({"plannerBuild": {"activities": []}, "electricalLayout": {"circuits": []}, "renderCamera": {},
-                     "quotes": [{"version": 1, "quoteId": str(uuid4()), "projectId": str(project_id), "sections": []}]})
+    document.update(
+        {
+            "plannerBuild": {"activities": []},
+            "electricalLayout": {"circuits": []},
+            "renderCamera": {},
+            "quotes": [{"version": 1, "quoteId": str(uuid4()), "projectId": str(project_id), "sections": []}],
+        }
+    )
     assert _validate_project(document, project_id) == (1, "Bathroom")
     document["quotes"][0]["projectId"] = str(uuid4())
     with pytest.raises(HTTPException):
@@ -160,8 +179,12 @@ def test_project_validator_preserves_versioned_energy_document() -> None:
     project_id = uuid4()
     document = _project_document(str(project_id))
     document["energyLayout"] = {
-        "version": 1, "materials": [], "assemblies": [], "existingAssignments": [],
-        "scenarios": [], "thermalBridges": [],
+        "version": 1,
+        "materials": [],
+        "assemblies": [],
+        "existingAssignments": [],
+        "scenarios": [],
+        "thermalBridges": [],
     }
     assert _validate_project(document, project_id) == (1, "Bathroom")
     document["energyLayout"]["version"] = 2
@@ -174,8 +197,12 @@ def test_project_validator_rejects_invalid_energy_assemblies(invalid: object) ->
     project_id = uuid4()
     document = _project_document(str(project_id))
     document["energyLayout"] = {
-        "version": 1, "materials": [], "assemblies": invalid, "existingAssignments": [],
-        "scenarios": [], "thermalBridges": [],
+        "version": 1,
+        "materials": [],
+        "assemblies": invalid,
+        "existingAssignments": [],
+        "scenarios": [],
+        "thermalBridges": [],
     }
     with pytest.raises(HTTPException):
         _validate_project(document, project_id)
@@ -185,8 +212,13 @@ def test_project_validator_preserves_versioned_heating_document() -> None:
     project_id = uuid4()
     document = _project_document(str(project_id))
     document["heatingLayout"] = {
-        "version": 1, "rooms": [], "radiators": [], "manifolds": [],
-        "ufhZones": [], "ufhCircuits": [], "exclusions": [],
+        "version": 1,
+        "rooms": [],
+        "radiators": [],
+        "manifolds": [],
+        "ufhZones": [],
+        "ufhCircuits": [],
+        "exclusions": [],
     }
     assert _validate_project(document, project_id) == (1, "Bathroom")
     document["heatingLayout"]["version"] = 2
@@ -199,8 +231,12 @@ def test_project_validator_rejects_incomplete_heating_pipe_geometry(path: object
     project_id = uuid4()
     document = _project_document(str(project_id))
     document["heatingLayout"] = {
-        "version": 1, "rooms": [], "radiators": [], "manifolds": [],
-        "ufhZones": [], "exclusions": [],
+        "version": 1,
+        "rooms": [],
+        "radiators": [],
+        "manifolds": [],
+        "ufhZones": [],
+        "exclusions": [],
         "ufhCircuits": [{"pathMm": path, "supplyPathMm": path, "returnPathMm": path}],
     }
     with pytest.raises(HTTPException) as error:
@@ -242,7 +278,8 @@ def test_stripe_signature_checks_digest_and_timestamp_tolerance() -> None:
 
 @pytest.mark.parametrize("item_periods", [True, False])
 def test_subscription_uses_current_price_and_supports_stripe_billing_period_versions(
-    monkeypatch: pytest.MonkeyPatch, item_periods: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    item_periods: bool,
 ) -> None:
     for plan in ("starter", "pro", "studio"):
         monkeypatch.setenv(f"STRIPE_PRICE_{plan.upper()}", f"price_{plan}")

@@ -10,6 +10,7 @@ import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any, Literal
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
@@ -177,8 +178,7 @@ def _ai_3d_available(user: VerifiedUser, db: SupabaseREST) -> tuple[dict[str, An
         raise HTTPException(status_code=503, detail="AI 3D generation availability could not be checked.")
     configured = os.getenv("AI_3D_GENERATION_ENABLED", "false").lower() == "true"
     storage_configured = all(
-        os.getenv(key, "").strip()
-        for key in ("R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+        os.getenv(key, "").strip() for key in ("R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
     )
     enabled = bool(quota.get("enabled")) and configured and storage_configured
     return quota, enabled
@@ -200,9 +200,19 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
     }
     if (
         not required.issubset(document)
-        or bool(set(document) - required - {
-            "plannerBuild", "electricalLayout", "renderCamera", "quotes", "heatingLayout", "energyLayout", "building"
-        })
+        or bool(
+            set(document)
+            - required
+            - {
+                "plannerBuild",
+                "electricalLayout",
+                "renderCamera",
+                "quotes",
+                "heatingLayout",
+                "energyLayout",
+                "building",
+            }
+        )
         or type(document.get("schemaVersion")) is not int
         or document.get("schemaVersion") != 1
         or document.get("units") != "mm"
@@ -224,8 +234,14 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
     if heating is not None:
         if type(heating.get("version")) is not int or heating["version"] != 1:
             raise HTTPException(status_code=422, detail="Unsupported heating layout version.")
-        for field, maximum in (("rooms", 1000), ("radiators", 2000), ("manifolds", 100),
-                               ("ufhZones", 1000), ("ufhCircuits", 2000), ("exclusions", 1000)):
+        for field, maximum in (
+            ("rooms", 1000),
+            ("radiators", 2000),
+            ("manifolds", 100),
+            ("ufhZones", 1000),
+            ("ufhCircuits", 2000),
+            ("exclusions", 1000),
+        ):
             collection = heating.get(field)
             if not isinstance(collection, list) or len(collection) > maximum:
                 raise HTTPException(status_code=422, detail="Invalid heating layout collection.")
@@ -242,18 +258,29 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
     if energy is not None:
         if type(energy.get("version")) is not int or energy["version"] != 1:
             raise HTTPException(status_code=422, detail="Unsupported energy layout version.")
-        for field, maximum in (("materials", 300), ("assemblies", 1000), ("existingAssignments", 10000),
-                               ("scenarios", 100), ("thermalBridges", 1000)):
+        for field, maximum in (
+            ("materials", 300),
+            ("assemblies", 1000),
+            ("existingAssignments", 10000),
+            ("scenarios", 100),
+            ("thermalBridges", 1000),
+        ):
             collection = energy.get(field)
             if not isinstance(collection, list) or len(collection) > maximum:
                 raise HTTPException(status_code=422, detail="Invalid energy layout collection.")
         for assembly in energy["assemblies"]:
-            if (not isinstance(assembly, dict) or not isinstance(assembly.get("layers"), list)
-                    or len(assembly["layers"]) > 100):
+            if (
+                not isinstance(assembly, dict)
+                or not isinstance(assembly.get("layers"), list)
+                or len(assembly["layers"]) > 100
+            ):
                 raise HTTPException(status_code=422, detail="Invalid construction layers.")
         for scenario in energy["scenarios"]:
-            if (not isinstance(scenario, dict) or not isinstance(scenario.get("assignments"), list)
-                    or len(scenario["assignments"]) > 10000):
+            if (
+                not isinstance(scenario, dict)
+                or not isinstance(scenario.get("assignments"), list)
+                or len(scenario["assignments"]) > 10000
+            ):
                 raise HTTPException(status_code=422, detail="Invalid retrofit scenario.")
     quotes = document.get("quotes", [])
     if not isinstance(quotes, list) or len(quotes) > 100:
@@ -262,19 +289,19 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
     for quote in quotes:
         if (
             not isinstance(quote, dict)
-            or type(quote.get("version")) is not int or quote.get("version") != 1
+            or type(quote.get("version")) is not int
+            or quote.get("version") != 1
             or quote.get("projectId") != str(project_id)
             or not isinstance(quote.get("quoteId"), str)
             or not re.fullmatch(r"[\w:-]{1,150}", quote["quoteId"])
             or quote["quoteId"] in quote_ids
-            or not isinstance(quote.get("sections"), list) or len(quote["sections"]) > 200
+            or not isinstance(quote.get("sections"), list)
+            or len(quote["sections"]) > 200
         ):
             raise HTTPException(status_code=422, detail="Invalid or unsupported quotation document.")
         quote_ids.add(quote["quoteId"])
         if any(
-            not isinstance(section, dict)
-            or not isinstance(section.get("items"), list)
-            or len(section["items"]) > 2000
+            not isinstance(section, dict) or not isinstance(section.get("items"), list) or len(section["items"]) > 2000
             for section in quote["sections"]
         ):
             raise HTTPException(status_code=422, detail="Invalid quotation sections.")
@@ -304,6 +331,7 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
     inspect(document)
     if "building" in document:
         from backend.app.building_document import validate_building
+
         validate_building(document["building"], document, lambda content: _validate_project(content, project_id))
     try:
         encoded = json.dumps(document, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
@@ -387,11 +415,13 @@ def _resolve_asset_classification(category_id: str, subcategory: str) -> dict[st
             }
         category_name = category.name
         exists = session.scalar(
-            select(FurnitureItemRecord.id).where(
+            select(FurnitureItemRecord.id)
+            .where(
                 FurnitureItemRecord.category_id == category_id,
                 FurnitureItemRecord.subcategory == subcategory,
                 FurnitureItemRecord.active.is_(True),
-            ).limit(1)
+            )
+            .limit(1)
         )
     if exists is None:
         raise HTTPException(status_code=422, detail="Choose a subcategory from the selected built-in category.")
@@ -801,7 +831,8 @@ def _asset_classifications_for_user(
             "category_name": str(row.get("category_name") or "Custom"),
             "subcategory": str(row.get("subcategory") or "General"),
         }
-        for row in rows if isinstance(row, dict) and row.get("asset_id")
+        for row in rows
+        if isinstance(row, dict) and row.get("asset_id")
     }
 
 
@@ -856,9 +887,7 @@ def reserve_ai_3d_reference(
 
 
 @router.post("/ai-3d/jobs")
-def create_ai_3d_job(
-    payload: Ai3DGenerationBody, authorization: str | None = Header(default=None)
-) -> dict[str, Any]:
+def create_ai_3d_job(payload: Ai3DGenerationBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     db, storage = supabase_rest(), r2_storage()
     user = _auth_user(authorization, db)
     classification = _resolve_asset_classification(payload.category_id, payload.subcategory)
@@ -894,11 +923,17 @@ def create_ai_3d_job(
     resolved: list[dict[str, Any]] = []
     for reference in payload.references:
         rows = _db_call(
-            lambda reference=reference: db.select(
+            partial(
+                db.select,
                 "upload_reservations",
-                {"select": "object_key,content_type,expected_byte_size,status,expires_at",
-                 "reservation_id": f"eq.{reference.reservation_id}", "user_id": f"eq.{user.id}",
-                 "purpose": "eq.ai-3d-reference", "status": "eq.reserved", "limit": "1"},
+                {
+                    "select": "object_key,content_type,expected_byte_size,status,expires_at",
+                    "reservation_id": f"eq.{reference.reservation_id}",
+                    "user_id": f"eq.{user.id}",
+                    "purpose": "eq.ai-3d-reference",
+                    "status": "eq.reserved",
+                    "limit": "1",
+                },
             )
         )
         if not isinstance(rows, list) or not rows:
@@ -1216,10 +1251,16 @@ def sync_billing(authorization: str | None = Header(default=None)) -> dict[str, 
     """
     db, stripe = supabase_rest(), stripe_gateway()
     user = _auth_user(authorization, db)
-    rows = _db_call(lambda: db.select("commercial_subscriptions", {
-        "select": "stripe_subscription_id,stripe_customer_id,updated_at",
-        "user_id": f"eq.{user.id}", "limit": "1",
-    }))
+    rows = _db_call(
+        lambda: db.select(
+            "commercial_subscriptions",
+            {
+                "select": "stripe_subscription_id,stripe_customer_id,updated_at",
+                "user_id": f"eq.{user.id}",
+                "limit": "1",
+            },
+        )
+    )
     row = rows[0] if isinstance(rows, list) and rows else {}
     subscription_id = row.get("stripe_subscription_id")
     if subscription_id:
@@ -1245,15 +1286,25 @@ def sync_billing(authorization: str | None = Header(default=None)) -> dict[str, 
             raise HTTPException(status_code=503, detail=str(error)) from None
         if not isinstance(row.get("updated_at"), str):
             raise HTTPException(status_code=503, detail="Subscription refresh could not be verified.")
-        _db_call(lambda: db.service_request("commercial_subscriptions", method="PATCH", query={
-            "user_id": f"eq.{user.id}", "stripe_subscription_id": f"eq.{subscription_id}",
-            "updated_at": f"eq.{row['updated_at']}",
-        }, body={
-            "plan_key": plan, "status": status,
-            "current_period_start": _stripe_epoch(start), "current_period_end": _stripe_epoch(end),
-            "cancel_at_period_end": bool(subscription.get("cancel_at_period_end", False)),
-            "updated_at": datetime.now(UTC).isoformat(),
-        }))
+        _db_call(
+            lambda: db.service_request(
+                "commercial_subscriptions",
+                method="PATCH",
+                query={
+                    "user_id": f"eq.{user.id}",
+                    "stripe_subscription_id": f"eq.{subscription_id}",
+                    "updated_at": f"eq.{row['updated_at']}",
+                },
+                body={
+                    "plan_key": plan,
+                    "status": status,
+                    "current_period_start": _stripe_epoch(start),
+                    "current_period_end": _stripe_epoch(end),
+                    "cancel_at_period_end": bool(subscription.get("cancel_at_period_end", False)),
+                    "updated_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        )
     return _account_summary(db, user)
 
 
@@ -1382,8 +1433,11 @@ async def stripe_webhook(
             # already reconciled on portal return. Stripe's current state wins.
             subscription = stripe.get_subscription(str(subscription_id))
             current_metadata = subscription.get("metadata", {})
-            if (subscription.get("id") != subscription_id or not isinstance(current_metadata, dict)
-                    or (user_id and current_metadata.get("user_id") != user_id)):
+            if (
+                subscription.get("id") != subscription_id
+                or not isinstance(current_metadata, dict)
+                or (user_id and current_metadata.get("user_id") != user_id)
+            ):
                 raise StripeUnavailable("Subscription ownership could not be verified.")
             user_id = current_metadata.get("user_id") or user_id
             plan_key, period_start, period_end = stripe.subscription_details(subscription)
@@ -1426,7 +1480,9 @@ async def stripe_webhook(
             try:
                 plan_key, period_start, period_end = stripe.subscription_details(subscription)
             except StripeUnavailable:
-                raise HTTPException(status_code=503, detail="Stripe subscription price could not be verified.") from None
+                raise HTTPException(
+                    status_code=503, detail="Stripe subscription price could not be verified."
+                ) from None
             status = subscription.get("status")
             cancel_at_period_end = bool(subscription.get("cancel_at_period_end", False))
             sub_customer = subscription.get("customer")

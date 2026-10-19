@@ -1,9 +1,8 @@
-// Render the client component with TSX; the geometry suite uses Node's TS-only loader.
+// Exercise live account entry points and the catalogue shared with the deployment worker.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PlansAndBillingPanel } from "../components/PlansAndBillingPanel";
 import { PlansRedirect } from "../components/PlansRedirect";
 import { AccountDialog } from "../components/AccountDialog";
 import { AccountExperience } from "../components/AccountExperience";
@@ -37,6 +36,8 @@ test("all account Plans entry points use the standalone page and retain a select
 });
 
 test("fallback offer contains the approved four plans and render pack prices", () => {
+  assert.equal(includesPlannerBuild("studio"), true);
+  for (const plan of ["free", "starter", "pro"] as const) assert.equal(includesPlannerBuild(plan), false);
   assert.deepEqual(FALLBACK_PLANS.map((plan) => [plan.plan_key, plan.monthly_price_pence]), [
     ["free", 0], ["starter", 990], ["pro", 1999], ["studio", 2999],
   ]);
@@ -50,39 +51,6 @@ test("fallback offer contains the approved four plans and render pack prices", (
     ["medium_1", 50], ["medium_10", 449], ["medium_50", 1999], ["medium_100", 3499],
     ["high_1", 99], ["high_10", 899], ["high_50", 3999], ["high_100", 6999],
   ]);
-});
-
-test("initial catalogue renders working native plan forms before hydration without starting billing", () => {
-  const catalogue = resolveCommercialCatalogue(null);
-  assert.equal(catalogue.serviceAvailable, false);
-  assert.equal(catalogue.billingEnabled, false);
-  assert.equal(catalogue.plans.length, 4);
-  assert.equal(catalogue.availablePlanKeys.size, 0);
-
-  const markup = renderToStaticMarkup(createElement(PlansAndBillingPanel, {}));
-  assert.equal((markup.match(/<article class="plan-card/g) ?? []).length, 4);
-  for (const label of ["Free", "Starter", "Pro", "Studio", "£9.90", "£19.99", "£29.99", "10 GB private cloud", "100 private assets", "Full furniture &amp; electrical catalogue", "Full Electrical Layout module", "Full PlannerBuild project planning"]) {
-    assert.ok(markup.includes(label), `expected initial Plans markup to include ${label}`);
-  }
-  assert.ok(markup.includes('<span class="plan-comparison-included" role="img" aria-label="Included">✓</span>'));
-  assert.ok(markup.includes("<td>—</td>"));
-  assert.ok(!markup.includes("<td>Included</td>"));
-  assert.ok(!markup.includes("<td>Not included</td>"));
-  assert.equal(includesPlannerBuild("studio"), true);
-  assert.equal(includesPlannerBuild("free"), false);
-  assert.equal(includesPlannerBuild("starter"), false);
-  assert.equal(includesPlannerBuild("pro"), false);
-  const freeCardFeatures = markup.match(/<article class="plan-card [^>]*>.*?<ul>(.*?)<\/ul>/s)?.[1] ?? "";
-  assert.ok(freeCardFeatures.includes("Full Electrical Layout module"));
-  assert.ok(freeCardFeatures.includes("Heating Layout module"));
-  assert.ok(freeCardFeatures.includes("Energy &amp; Insulation / EPC retrofit planning"));
-  assert.match(markup, /not an official EPC/);
-  assert.doesNotMatch(markup, /AI render|Medium renders|High renders|render packs|rendering allowance/i);
-  for (const plan of ["starter", "pro", "studio"]) {
-    assert.match(markup, new RegExp(`<form action="[^"]*/checkout/" method="get"><input type="hidden" name="plan" value="${plan}"/>.*?<button[^>]+type="submit"`));
-  }
-  assert.match(markup, /<form action="[^\"]*\/" method="get"><button[^>]+type="submit">Continue free<\/button><\/form>/);
-  assert.ok(!markup.includes("disabled=\"\""));
 });
 
 test("live catalogue values override fallback without gating electrical module access", () => {

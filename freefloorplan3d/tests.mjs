@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {pages,origin} from './site.mjs';
-import worker from './worker.generated.mjs';
+import './build.mjs';
+// Build before resolving this ignored artifact, including in a fresh checkout.
+const {default:worker}=await import('./worker.generated.mjs');
 const site=pages();
 test('all public pages have unique metadata, one heading and valid structured data',async()=>{
  const titles=new Set();

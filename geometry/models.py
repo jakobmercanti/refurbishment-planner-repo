@@ -230,7 +230,11 @@ class ObstacleDefinition(BaseModel):
     @classmethod
     def validate_component_materials(cls, value: dict[str, str]) -> dict[str, str]:
         import re
-        if len(value) > 32 or any(not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", key) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,59}", material) for key, material in value.items()):
+
+        if len(value) > 32 or any(
+            not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", key) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,59}", material)
+            for key, material in value.items()
+        ):
             raise ValueError("component materials must be named parts with material identifiers")
         return value
 
@@ -238,9 +242,14 @@ class ObstacleDefinition(BaseModel):
     @classmethod
     def validate_component_colors(cls, value: dict[str, str]) -> dict[str, str]:
         import re
-        if len(value) > 32 or any(not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", key) or not re.fullmatch(r"#[0-9A-Fa-f]{6}", colour) for key, colour in value.items()):
+
+        if len(value) > 32 or any(
+            not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", key) or not re.fullmatch(r"#[0-9A-Fa-f]{6}", colour)
+            for key, colour in value.items()
+        ):
             raise ValueError("component colours must be named parts with six-digit hex colours")
         return value
+
     wall_lock: bool = False
     stl_filename: str | None = None
     stl_base64: str | None = None

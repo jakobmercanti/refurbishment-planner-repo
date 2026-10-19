@@ -15,7 +15,7 @@ from tempfile import NamedTemporaryFile
 from threading import Lock
 from typing import Any
 
-DEFAULT_SOFTWARE_SETTINGS = {
+DEFAULT_SOFTWARE_SETTINGS: dict[str, Any] = {
     "schema_version": 1,
     "toolbars": {
         "layout_analysis": True,
@@ -36,32 +36,39 @@ def software_settings_path() -> Path:
     return path.resolve()
 
 
+def _merge_ui_defaults(default: dict[str, Any], saved: object) -> dict[str, Any]:
+    """Add new UI defaults without discarding administrator-owned profiles."""
+
+    result = deepcopy(default)
+    if not isinstance(saved, dict):
+        return result
+    for key, value in saved.items():
+        if key in default and isinstance(default[key], dict):
+            if isinstance(value, dict):
+                result[key] = _merge_ui_defaults(default[key], value)
+        elif isinstance(value, str):
+            result[key] = value
+    return result
+
+
 def _normalise(raw: object) -> dict[str, Any]:
     """Keep the on-disk format small, typed, and safe to load at startup."""
 
     # Preserve future administrator-owned sections so adding one setting never
     # erases another setting that a newer version of the manager understands.
-    settings = deepcopy(raw) if isinstance(raw, dict) else deepcopy(DEFAULT_SOFTWARE_SETTINGS)
+    settings: dict[str, Any] = deepcopy(raw) if isinstance(raw, dict) else deepcopy(DEFAULT_SOFTWARE_SETTINGS)
     settings["schema_version"] = 1
-    toolbars = deepcopy(settings.get("toolbars")) if isinstance(settings.get("toolbars"), dict) else {}
+    saved_toolbars = settings.get("toolbars")
+    toolbars = deepcopy(saved_toolbars) if isinstance(saved_toolbars, dict) else {}
     if not isinstance(toolbars.get("layout_analysis"), bool):
         toolbars["layout_analysis"] = DEFAULT_SOFTWARE_SETTINGS["toolbars"]["layout_analysis"]
     if not isinstance(toolbars.get("human_mockup"), bool):
         toolbars["human_mockup"] = DEFAULT_SOFTWARE_SETTINGS["toolbars"]["human_mockup"]
     settings["toolbars"] = toolbars
-    defaults = json.loads((Path(__file__).resolve().parents[1] / "data" / "ui_theme_defaults.json").read_text(encoding="utf-8"))
-    ui = settings.get("ui") if isinstance(settings.get("ui"), dict) else {}
-    # Merge additions while preserving administrator-edited theme profiles.
-    def merge(default: dict, saved: dict) -> dict:
-        result = deepcopy(default)
-        for key, value in saved.items():
-            if key in default and isinstance(default[key], dict):
-                if isinstance(value, dict):
-                    result[key] = merge(default[key], value)
-            elif isinstance(value, str):
-                result[key] = value
-        return result
-    settings["ui"] = merge(defaults, ui)
+    defaults = json.loads(
+        (Path(__file__).resolve().parents[1] / "data" / "ui_theme_defaults.json").read_text(encoding="utf-8")
+    )
+    settings["ui"] = _merge_ui_defaults(defaults, settings.get("ui"))
     if settings["ui"]["style"] not in ("DEFAULT", "MODERN"):
         settings["ui"]["style"] = "DEFAULT"
     return settings
@@ -70,13 +77,25 @@ def _normalise(raw: object) -> dict[str, Any]:
 def _write(path: Path, settings: dict[str, Any]) -> None:
     """Atomically replace the JSON file so a running app never reads a partial write."""
 
-    with NamedTemporaryFile(
-        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.stem}-", suffix=".tmp", delete=False
-    ) as temporary:
-        json.dump(settings, temporary, indent=2)
-        temporary.write("\n")
-        temporary_path = Path(temporary.name)
-    temporary_path.replace(path)
+    temporary_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent, prefix=f".{path.stem}-", suffix=".tmp", delete=False
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            json.dump(settings, temporary, indent=2)
+            temporary.write("\n")
+        temporary_path.replace(path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _read(path: Path) -> object:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
 
 
 def load_software_settings() -> dict[str, Any]:
@@ -84,10 +103,7 @@ def load_software_settings() -> dict[str, Any]:
 
     path = software_settings_path()
     with _settings_lock:
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
-        except (OSError, json.JSONDecodeError):
-            raw = None
+        raw = _read(path)
         settings = _normalise(raw)
         if raw != settings:
             _write(path, settings)
@@ -104,10 +120,7 @@ def update_software_settings(
 
     path = software_settings_path()
     with _settings_lock:
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
-        except (OSError, json.JSONDecodeError):
-            raw = None
+        raw = _read(path)
         settings = _normalise(raw)
         if ui_style is not None:
             settings["ui"]["style"] = ui_style

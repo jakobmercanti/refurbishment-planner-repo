@@ -1,22 +1,24 @@
 """Install versioned rendered previews without replacing supplier photographs."""
+
 import base64
 import hashlib
 import json
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from database.models import FurnitureItemRecord
-from database.fixture_defaults import FIXTURE_DEFAULTS
-from database.electrical_defaults import ELECTRICAL_ASSETS
 from database.catalogue_assets import decode_picture, stage_item_picture_replacement
+from database.electrical_defaults import ELECTRICAL_ASSETS
+from database.fixture_defaults import FIXTURE_DEFAULTS
+from database.models import FurnitureItemRecord
 
 REPRESENTATION_VERSION = 2
 KNOWN_KEYS = {f"{kind.lower()}-{variant[0]}" for kind, variants in FIXTURE_DEFAULTS.values() for variant in variants}
 KNOWN_KEYS.update(asset["key"] for asset in ELECTRICAL_ASSETS)
 
 
-def install_fixture_previews(session, *, representation_prefix: str | None = None):
+def install_fixture_previews(session: Session, *, representation_prefix: str | None = None) -> None:
     replacements = []
     try:
         for item in session.scalars(select(FurnitureItemRecord)).all():
@@ -33,10 +35,20 @@ def install_fixture_previews(session, *, representation_prefix: str | None = Non
                 if pictures and all(picture.get("generated_representation") for picture in pictures):
                     item.image_data_json = "[]"
                 continue
-            path = Path(__file__).resolve().parents[1] / "frontend/public/fixture-previews" / f"{item.representation_key}.png"
+            path = (
+                Path(__file__).resolve().parents[1]
+                / "frontend/public/fixture-previews"
+                / f"{item.representation_key}.png"
+            )
             if not path.is_file():
                 continue
-            version = 3 if item.representation_key.startswith("door-") or item.representation_key in {"window-casement", "window-single-pane", "window-double-pane", "window-triple-pane"} else REPRESENTATION_VERSION
+            version = (
+                3
+                if item.representation_key.startswith("door-")
+                or item.representation_key
+                in {"window-casement", "window-single-pane", "window-double-pane", "window-triple-pane"}
+                else REPRESENTATION_VERSION
+            )
             if item.representation_key.startswith(("furniture-bath-", "furniture-kitchen-cabinet-")):
                 version = 4
             if item.representation_key.startswith("electrical-"):
@@ -49,8 +61,12 @@ def install_fixture_previews(session, *, representation_prefix: str | None = Non
             digest = hashlib.sha256(data).hexdigest()
             if previous and previous[0].get("sha256") == digest:
                 continue
-            validated, mime, extension = decode_picture("data:image/png;base64," + base64.b64encode(data).decode("ascii"))
-            replacement = stage_item_picture_replacement(item.id, [(validated, mime, extension, f"{item.name} — rendered model preview")])
+            validated, mime, extension = decode_picture(
+                "data:image/png;base64," + base64.b64encode(data).decode("ascii")
+            )
+            replacement = stage_item_picture_replacement(
+                item.id, [(validated, mime, extension, f"{item.name} — rendered model preview")]
+            )
             replacements.append(replacement)
             replacement.metadata[0].update(generated_representation=version, sha256=digest)
             item.image_data_json = json.dumps(replacement.metadata)

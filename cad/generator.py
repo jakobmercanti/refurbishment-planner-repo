@@ -70,25 +70,39 @@ def generate_cad(
     output.parent.mkdir(parents=True, exist_ok=True)
     executable = find_freecad_cmd(freecad_cmd)
     worker = Path(__file__).with_name("freecad_worker.py").resolve()
-    with tempfile.TemporaryDirectory(prefix="renovation-fit-cad-") as temporary_directory:
+    # Generate beside the destination so replacing it is atomic, including on
+    # Windows and when the requested output is on a different drive from TEMP.
+    with tempfile.TemporaryDirectory(prefix=".renovation-fit-cad-", dir=output.parent) as temporary_directory:
         snapshot_path = Path(temporary_directory) / "engineering_snapshot.json"
+        candidate = Path(temporary_directory) / "document.FCStd"
         snapshot_path.write_text(json.dumps(_snapshot(room, product, placement, result), indent=2), encoding="utf-8")
         environment = os.environ.copy()
         environment["RENOVATION_FIT_SNAPSHOT"] = str(snapshot_path)
-        environment["RENOVATION_FIT_OUTPUT"] = str(output)
+        environment["RENOVATION_FIT_OUTPUT"] = str(candidate)
         worker_source = str(worker)
         worker_command = f"exec(compile(open({worker_source!r}, encoding='utf-8').read(), {worker_source!r}, 'exec'))"
-        process = subprocess.run(
-            [str(executable), "-c", worker_command],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-            env=environment,
-        )
-    if process.returncode != 0 or not output.is_file():
-        detail = (process.stderr or process.stdout or "unknown FreeCAD error").strip()
-        raise FreeCADGenerationError(f"FreeCAD generation failed: {detail}")
+        try:
+            process = subprocess.run(
+                [str(executable), "-c", worker_command],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+                env=environment,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise FreeCADGenerationError("FreeCAD generation timed out; the previous output was kept.") from error
+        except OSError as error:
+            raise FreeCADGenerationError("FreeCAD could not be started; the previous output was kept.") from error
+        if process.returncode != 0 or not candidate.is_file() or candidate.stat().st_size == 0:
+            detail = (process.stderr or process.stdout or "no new document was generated").strip()
+            raise FreeCADGenerationError(f"FreeCAD generation failed: {detail}")
+        try:
+            candidate.replace(output)
+        except OSError as error:
+            raise FreeCADGenerationError(
+                "The new CAD document could not be saved; the previous output was kept."
+            ) from error
     return output
 
 

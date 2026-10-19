@@ -181,9 +181,13 @@ def main() -> None:
         points = [
             vector(start),
             vector(end),
-            App.Vector(float(end["x"]) + exterior_x * segment_thickness, float(end["y"]) + exterior_y * segment_thickness, 0),
             App.Vector(
-                float(start["x"]) + exterior_x * segment_thickness, float(start["y"]) + exterior_y * segment_thickness, 0
+                float(end["x"]) + exterior_x * segment_thickness, float(end["y"]) + exterior_y * segment_thickness, 0
+            ),
+            App.Vector(
+                float(start["x"]) + exterior_x * segment_thickness,
+                float(start["y"]) + exterior_y * segment_thickness,
+                0,
             ),
         ]
         shape = face_from_points(points).extrude(App.Vector(0, 0, wall_height))

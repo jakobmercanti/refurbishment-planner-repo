@@ -65,7 +65,7 @@ class Tripo3DGenerationProvider:
         transport: Callable[[Request, int], bytes] | None = None,
     ) -> None:
         self.api_key = (api_key if api_key is not None else os.getenv("TRIPO_API_KEY", "")).strip()
-        self.model = (model or os.getenv("TRIPO_GENERATION_MODEL", "v3.1-20260211")).strip()
+        self.model = (model or os.getenv("TRIPO_GENERATION_MODEL") or "v3.1-20260211").strip()
         self.opener = opener or build_opener(ProxyHandler({}), _ProviderRedirectHandler())
         self.transport = transport
 
@@ -75,13 +75,17 @@ class Tripo3DGenerationProvider:
 
     @staticmethod
     def validate_model_url(model_url: str) -> str:
-        parsed = urlparse(model_url)
+        try:
+            parsed = urlparse(model_url)
+            port = parsed.port
+        except ValueError:
+            raise TripoProviderError("Tripo returned an unsupported model download location.") from None
         if (
             parsed.scheme != "https"
             or parsed.hostname != "cdn.tripo3d.ai"
             or parsed.username
             or parsed.password
-            or parsed.port not in (None, 443)
+            or port not in (None, 443)
             or not parsed.path.startswith("/")
         ):
             raise TripoProviderError("Tripo returned an unsupported model download location.")
@@ -100,11 +104,7 @@ class Tripo3DGenerationProvider:
                     actual = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}.get(source.format or "")
                     if actual != image.content_type:
                         raise TripoProviderError("The reference image type does not match its file content.")
-                    if (
-                        source.width < 1
-                        or source.height < 1
-                        or source.width * source.height > MAX_REFERENCE_PIXELS
-                    ):
+                    if source.width < 1 or source.height < 1 or source.width * source.height > MAX_REFERENCE_PIXELS:
                         raise TripoProviderError("Reference images must be under 16 megapixels.")
                     source.load()
                     if "A" in source.getbands():
@@ -126,14 +126,17 @@ class Tripo3DGenerationProvider:
         return data, "image/jpeg"
 
     def _read(self, request: Request, *, max_bytes: int = 2_000_000, timeout: int = 45) -> bytes:
-        if self.transport:
-            return self.transport(request, max_bytes)
         try:
-            with self.opener.open(request, timeout=timeout) as response:
-                payload = response.read(max_bytes + 1)
-                if len(payload) > max_bytes:
-                    raise TripoProviderError("Tripo returned a response that exceeded the allowed size.")
-                return payload
+            if self.transport:
+                payload = self.transport(request, max_bytes)
+            else:
+                with self.opener.open(request, timeout=timeout) as response:
+                    payload = response.read(max_bytes + 1)
+            if not isinstance(payload, bytes):
+                raise TripoProviderError("Tripo returned an invalid binary response.")
+            if len(payload) > max_bytes:
+                raise TripoProviderError("Tripo returned a response that exceeded the allowed size.")
+            return payload
         except HTTPError as error:
             if error.code == 402:
                 message = "Tripo reports that the API account has insufficient credits."
@@ -178,10 +181,7 @@ class Tripo3DGenerationProvider:
         boundary = "----FreeFloorplan3D" + secrets.token_hex(18)
         body = b"".join(
             (
-                (
-                    f"--{boundary}\r\nContent-Disposition: form-data; "
-                    'name="file"; filename="reference.jpg"\r\n'
-                ).encode(),
+                (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="reference.jpg"\r\n').encode(),
                 f"Content-Type: {content_type}\r\n\r\n".encode(),
                 data,
                 f"\r\n--{boundary}--\r\n".encode(),

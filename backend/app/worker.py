@@ -19,6 +19,17 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("freefloorplan3d.commercial_worker")
 
 
+def _key_in_namespace(key: object, prefix: str) -> bool:
+    """Validate before storage reads or deletes, including failure cleanup."""
+    return (
+        isinstance(key, str)
+        and key.startswith(prefix)
+        and len(key) > len(prefix)
+        and ".." not in key.split("/")
+        and "\\" not in key
+    )
+
+
 def _complete_asset(
     db: SupabaseREST,
     user_id: str,
@@ -132,7 +143,7 @@ def _delete_ai_3d_references(storage: Any, user_id: str, references: Any) -> Non
     prefix = f"temporary/ai-3d-references/{user_id}/"
     for reference in references:
         key = reference.get("object_key") if isinstance(reference, dict) else None
-        if isinstance(key, str) and key.startswith(prefix) and ".." not in key.split("/"):
+        if _key_in_namespace(key, prefix):
             try:
                 storage.delete(key)
             except R2Unavailable:
@@ -187,11 +198,7 @@ def _process_ai_3d_asset(job: dict[str, Any], db: SupabaseREST) -> None:
                 if not isinstance(reference, dict):
                     raise ValueError("The saved reference-photo record is invalid.")
                 object_key = reference.get("object_key")
-                if (
-                    not isinstance(object_key, str)
-                    or not object_key.startswith(reference_prefix)
-                    or ".." in object_key.split("/")
-                ):
+                if not isinstance(object_key, str) or not _key_in_namespace(object_key, reference_prefix):
                     raise ValueError("The reference photo is outside its private owner namespace.")
                 image, metadata = storage.get(object_key, max_bytes=10 * 1024 * 1024)
                 if metadata.content_type != reference.get("content_type") or len(image) > int(
@@ -315,7 +322,7 @@ def _process_asset(job: dict[str, Any], db: SupabaseREST) -> None:
             prefer="return=minimal",
         )
         original_key = str(asset["original_object_key"])
-        if not original_key.startswith(f"users/{user_id}/assets/{asset_id}/"):
+        if not _key_in_namespace(original_key, f"users/{user_id}/assets/{asset_id}/"):
             raise ModelProcessingError("The source object is outside the asset owner namespace.")
         source, _metadata = storage.get(original_key, max_bytes=100 * 1024 * 1024)
         derived, thumbnail, info = process_model(source, str(asset["original_format"]), asset.get("source_unit"))
@@ -360,8 +367,10 @@ def _process_render(job: dict[str, Any], db: SupabaseREST) -> None:
     if not isinstance(render, dict):
         raise ValueError("The queued render record is missing.")
     user_id, render_id = str(job["user_id"]), str(render["render_id"])
+    if str(render.get("user_id")) != user_id:
+        raise ValueError("The render owner does not match the queued owner.")
     output_key = str(render["output_object_key"])
-    if not output_key.startswith(f"users/{user_id}/renders/{render_id}/"):
+    if not _key_in_namespace(output_key, f"users/{user_id}/renders/{render_id}/"):
         raise ValueError("The output object is outside the render owner namespace.")
     storage = r2_storage()
     reference_key: str | None = None
@@ -373,9 +382,11 @@ def _process_render(job: dict[str, Any], db: SupabaseREST) -> None:
             body={"status": "processing"},
             prefer="return=minimal",
         )
-        reference_key = str(render["reference_object_key"])
-        if not reference_key.startswith("temporary/render-references/") or ".." in reference_key.split("/"):
+        candidate_reference = str(render["reference_object_key"])
+        if not _key_in_namespace(candidate_reference, "temporary/render-references/"):
             raise ValueError("The reference object is outside the render owner namespace.")
+        # Only validated references may be deleted by the finally block.
+        reference_key = candidate_reference
         reference, metadata = storage.get(reference_key, max_bytes=10 * 1024 * 1024)
         output, usage = render_reference(
             reference, metadata.content_type, str(render["quality_class"]), str(render.get("prompt", ""))
@@ -417,9 +428,9 @@ def process_next_job(db: SupabaseREST | None = None) -> bool:
             _process_ai_3d_asset(job, db)
         else:
             logger.error("Claimed an unsupported commercial job type")
-    except Exception:
+    except Exception as error:
         # Keep request/provider payloads out of logs; never include bearer URLs or keys.
-        logger.exception("Commercial job failed before its result was recorded")
+        logger.error("Commercial job failed before its result was recorded (%s)", type(error).__name__)
     return True
 
 
@@ -441,11 +452,7 @@ def cleanup_deleted_objects(db: SupabaseREST) -> None:
         user_id, asset_id = str(asset.get("user_id", "")), str(asset.get("asset_id", ""))
         prefix = f"users/{user_id}/assets/{asset_id}/"
         keys = [asset.get(field) for field in ("original_object_key", "derived_object_key", "thumbnail_object_key")]
-        if (
-            not user_id
-            or not asset_id
-            or any(key is not None and (not isinstance(key, str) or not key.startswith(prefix)) for key in keys)
-        ):
+        if not user_id or not asset_id or any(key is not None and not _key_in_namespace(key, prefix) for key in keys):
             logger.error("A deleted asset has an invalid object namespace; cleanup was skipped")
             continue
         try:
@@ -480,7 +487,7 @@ def cleanup_deleted_objects(db: SupabaseREST) -> None:
             not user_id
             or not render_id
             or not isinstance(key, str)
-            or not key.startswith(f"users/{user_id}/renders/{render_id}/")
+            or not _key_in_namespace(key, f"users/{user_id}/renders/{render_id}/")
         ):
             logger.error("A failed render has an invalid object namespace; cleanup was skipped")
             continue

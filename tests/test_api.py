@@ -3,15 +3,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from io import BytesIO
 import shutil
+from io import BytesIO
 from uuid import uuid4
-
-import backend.app.main as api_main
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
+import backend.app.main as api_main
 from backend.app.main import app
 from database.catalog import CATEGORIES, SessionLocal, _backfill_new_clearance_columns, initialise_catalogue
 from database.catalogue_assets import asset_root
@@ -51,7 +50,10 @@ def test_software_settings_are_readable_and_persist_toolbar_visibility(tmp_path,
     assert updated.status_code == 200
     assert updated.json()["toolbars"]["layout_analysis"] is False
     assert updated.json()["toolbars"]["human_mockup"] is True
-    assert json.loads(settings_file.read_text(encoding="utf-8"))["toolbars"] == {"layout_analysis": False, "human_mockup": True}
+    assert json.loads(settings_file.read_text(encoding="utf-8"))["toolbars"] == {
+        "layout_analysis": False,
+        "human_mockup": True,
+    }
 
     partial = client.put("/settings", json={"toolbars": {"layout_analysis": True}})
     assert partial.status_code == 200
@@ -282,13 +284,30 @@ def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
     assert categories.status_code == 200
     actual_categories = {category["id"] for category in categories.json()}
     assert actual_categories == {category[0] for category in CATEGORIES} | {"heating", "heating-boilers"}
-    assert actual_categories.issuperset({
-        "showers", "basins", "toilets", "storage", "doors", "windows",
-        "living-sofas", "living-armchairs", "living-tables",
-        "bedroom-beds", "bedroom-chairs", "bedroom-tables",
-        "bedroom-wardrobes", "kitchen-sinks", "kitchen-fridges", "kitchen-islands",
-        "kitchen-storage", "kitchen-hobs", "kitchen-ovens", "kitchen-washing",
-    })
+    assert actual_categories.issuperset(
+        {
+            "showers",
+            "basins",
+            "toilets",
+            "storage",
+            "doors",
+            "windows",
+            "living-sofas",
+            "living-armchairs",
+            "living-tables",
+            "bedroom-beds",
+            "bedroom-chairs",
+            "bedroom-tables",
+            "bedroom-wardrobes",
+            "kitchen-sinks",
+            "kitchen-fridges",
+            "kitchen-islands",
+            "kitchen-storage",
+            "kitchen-hobs",
+            "kitchen-ovens",
+            "kitchen-washing",
+        }
+    )
     category_defaults = {category["id"]: category for category in categories.json()}
     assert category_defaults["toilets"]["default_side_clearance_mm"] == 200
     assert category_defaults["toilets"]["default_front_clearance_mm"] == 400
@@ -297,11 +316,15 @@ def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
 
     door_defaults = client.get("/catalog/items?category_id=doors")
     assert door_defaults.status_code == 200
-    assert {item["subcategory"] for item in door_defaults.json()} == {variant[1] for variant in FIXTURE_DEFAULTS["doors"][1]}
+    assert {item["subcategory"] for item in door_defaults.json()} == {
+        variant[1] for variant in FIXTURE_DEFAULTS["doors"][1]
+    }
     assert all(item["fixture_kind"] == "DOOR" for item in door_defaults.json())
     window_defaults = client.get("/catalog/items?category_id=windows")
     assert window_defaults.status_code == 200
-    assert {item["subcategory"] for item in window_defaults.json()} == {variant[1] for variant in FIXTURE_DEFAULTS["windows"][1]}
+    assert {item["subcategory"] for item in window_defaults.json()} == {
+        variant[1] for variant in FIXTURE_DEFAULTS["windows"][1]
+    }
     assert all(item["fixture_kind"] == "WINDOW" for item in window_defaults.json())
 
     paint_collections = client.get("/catalog/materials?kind=PAINT")
@@ -373,7 +396,9 @@ def test_layout_check_resolves_category_clearance_when_item_has_no_override() ->
     room = fixture.room.model_copy(update={"openings": [], "obstacles": [obstacle], "person_mockup": None})
     response = client.post("/layout-checks", json=room.model_dump(mode="json"))
     assert response.status_code == 201
-    clearance_check = next(check for check in response.json()["checks"] if check["check_id"] == f"category-clearance:{obstacle.id}")
+    clearance_check = next(
+        check for check in response.json()["checks"] if check["check_id"] == f"category-clearance:{obstacle.id}"
+    )
     assert "200 mm side and 400 mm front" in clearance_check["explanation"]
 
 
@@ -399,7 +424,10 @@ def test_layout_check_detects_an_item_inside_a_directional_clearance_zone() -> N
     room = fixture.room.model_copy(update={"openings": [], "obstacles": [first, second], "person_mockup": None})
     response = client.post("/layout-checks", json=room.model_dump(mode="json"))
     assert response.status_code == 201
-    assert any(check["check_id"] == "category-clearance:clearance-owner:item:clearance-intruder" for check in response.json()["checks"])
+    assert any(
+        check["check_id"] == "category-clearance:clearance-owner:item:clearance-intruder"
+        for check in response.json()["checks"]
+    )
 
 
 def test_catalogue_highlights_and_preserves_builtin_defaults() -> None:
@@ -416,16 +444,26 @@ def test_catalogue_highlights_and_preserves_builtin_defaults() -> None:
 def test_catalogue_category_defaults_can_be_updated_without_changing_item_overrides() -> None:
     original = next(category for category in client.get("/catalog/categories").json() if category["id"] == "storage")
     try:
-        updated = client.patch("/catalog/categories/storage", json={"default_side_clearance_mm": 125, "default_front_clearance_mm": 275})
+        updated = client.patch(
+            "/catalog/categories/storage", json={"default_side_clearance_mm": 125, "default_front_clearance_mm": 275}
+        )
         assert updated.status_code == 200
         assert updated.json()["default_side_clearance_mm"] == 125
         assert updated.json()["default_front_clearance_mm"] == 275
         initialise_catalogue()
-        persisted = next(category for category in client.get("/catalog/categories").json() if category["id"] == "storage")
+        persisted = next(
+            category for category in client.get("/catalog/categories").json() if category["id"] == "storage"
+        )
         assert persisted["default_side_clearance_mm"] == 125
         assert persisted["default_front_clearance_mm"] == 275
     finally:
-        client.patch("/catalog/categories/storage", json={"default_side_clearance_mm": original["default_side_clearance_mm"], "default_front_clearance_mm": original["default_front_clearance_mm"]})
+        client.patch(
+            "/catalog/categories/storage",
+            json={
+                "default_side_clearance_mm": original["default_side_clearance_mm"],
+                "default_front_clearance_mm": original["default_front_clearance_mm"],
+            },
+        )
 
 
 def test_clearance_migration_backfills_only_the_column_that_was_added() -> None:
@@ -452,10 +490,18 @@ def test_catalogue_items_normalise_hex_and_persist_subcategory_shape_and_three_s
     suffix = uuid4().hex[:8]
     picture = picture_data_url()
     payload = {
-        "category_id": "storage", "fixture_kind": "FURNITURE", "name": "Round storage",
-        "supplier": f"Shape Supplier {suffix}", "sku": f"ROUND-{suffix}", "width_mm": 500,
-        "depth_mm": 500, "height_mm": 600, "color_hex": "#aabbcc", "subcategory": "Stools",
-        "plan_shape": "ELLIPSE", "images": [{"data_url": picture, "alt": f"Picture {index}"} for index in range(3)],
+        "category_id": "storage",
+        "fixture_kind": "FURNITURE",
+        "name": "Round storage",
+        "supplier": f"Shape Supplier {suffix}",
+        "sku": f"ROUND-{suffix}",
+        "width_mm": 500,
+        "depth_mm": 500,
+        "height_mm": 600,
+        "color_hex": "#aabbcc",
+        "subcategory": "Stools",
+        "plan_shape": "ELLIPSE",
+        "images": [{"data_url": picture, "alt": f"Picture {index}"} for index in range(3)],
     }
     created = client.post("/catalog/items", json=payload)
     assert created.status_code == 201
@@ -465,8 +511,13 @@ def test_catalogue_items_normalise_hex_and_persist_subcategory_shape_and_three_s
         assert created.json()["subcategory"] == "Stools"
         assert created.json()["plan_shape"] == "ELLIPSE"
         assert len(created.json()["images"]) == 3
-        assert all(not image.get("data_url") and image["url"].startswith(f"/catalog/items/{item_id}/images/") for image in created.json()["images"])
-        listing = next(item for item in client.get("/catalog/items?category_id=storage").json() if item["id"] == item_id)
+        assert all(
+            not image.get("data_url") and image["url"].startswith(f"/catalog/items/{item_id}/images/")
+            for image in created.json()["images"]
+        )
+        listing = next(
+            item for item in client.get("/catalog/items?category_id=storage").json() if item["id"] == item_id
+        )
         assert "base64" not in str(listing["images"])
         picture_response = client.get(listing["images"][0]["url"])
         assert picture_response.status_code == 200
@@ -476,15 +527,45 @@ def test_catalogue_items_normalise_hex_and_persist_subcategory_shape_and_three_s
         assert reduced.status_code == 200
         assert len(reduced.json()["images"]) == 1
         assert len(list((asset_root() / item_id).iterdir())) == 1
-        too_many = client.post("/catalog/items", json={**payload, "sku": f"TOO-MANY-{suffix}", "images": payload["images"] * 2})
+        too_many = client.post(
+            "/catalog/items", json={**payload, "sku": f"TOO-MANY-{suffix}", "images": payload["images"] * 2}
+        )
         assert too_many.status_code == 422
-        wrong_signature = client.post("/catalog/items", json={**payload, "sku": f"BAD-IMAGE-{suffix}", "images": [{"data_url": "data:image/png;base64," + base64.b64encode(b"not-png").decode(), "alt": "Invalid"}]})
+        wrong_signature = client.post(
+            "/catalog/items",
+            json={
+                **payload,
+                "sku": f"BAD-IMAGE-{suffix}",
+                "images": [
+                    {"data_url": "data:image/png;base64," + base64.b64encode(b"not-png").decode(), "alt": "Invalid"}
+                ],
+            },
+        )
         assert wrong_signature.status_code == 422
         assert "do not match" in wrong_signature.json()["detail"]
-        corrupt = client.post("/catalog/items", json={**payload, "sku": f"CORRUPT-{suffix}", "images": [{"data_url": "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\ntruncated").decode(), "alt": "Corrupt"}]})
+        corrupt = client.post(
+            "/catalog/items",
+            json={
+                **payload,
+                "sku": f"CORRUPT-{suffix}",
+                "images": [
+                    {
+                        "data_url": "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\ntruncated").decode(),
+                        "alt": "Corrupt",
+                    }
+                ],
+            },
+        )
         assert corrupt.status_code == 422
         assert "corrupt or incomplete" in corrupt.json()["detail"]
-        too_wide = client.post("/catalog/items", json={**payload, "sku": f"WIDE-{suffix}", "images": [{"data_url": picture_data_url(size=(4097, 1)), "alt": "Too wide"}]})
+        too_wide = client.post(
+            "/catalog/items",
+            json={
+                **payload,
+                "sku": f"WIDE-{suffix}",
+                "images": [{"data_url": picture_data_url(size=(4097, 1)), "alt": "Too wide"}],
+            },
+        )
         assert too_wide.status_code == 422
         assert "dimensions" in too_wide.json()["detail"]
     finally:
@@ -501,10 +582,18 @@ def test_picture_replacement_restores_old_asset_when_database_commit_fails(monke
     suffix = uuid4().hex[:8]
     original_picture = picture_data_url()
     payload = {
-        "category_id": "storage", "fixture_kind": "FURNITURE", "name": "Rollback storage",
-        "supplier": f"Rollback Supplier {suffix}", "sku": f"ROLLBACK-{suffix}", "width_mm": 500,
-        "depth_mm": 400, "height_mm": 600, "color_hex": "#112233", "subcategory": "General",
-        "plan_shape": "RECTANGLE", "images": [{"data_url": original_picture, "alt": "Original"}],
+        "category_id": "storage",
+        "fixture_kind": "FURNITURE",
+        "name": "Rollback storage",
+        "supplier": f"Rollback Supplier {suffix}",
+        "sku": f"ROLLBACK-{suffix}",
+        "width_mm": 500,
+        "depth_mm": 400,
+        "height_mm": 600,
+        "color_hex": "#112233",
+        "subcategory": "General",
+        "plan_shape": "RECTANGLE",
+        "images": [{"data_url": original_picture, "alt": "Original"}],
     }
     created = client.post("/catalog/items", json=payload)
     assert created.status_code == 201
@@ -518,7 +607,10 @@ def test_picture_replacement_restores_old_asset_when_database_commit_fails(monke
     try:
         with monkeypatch.context() as patch:
             patch.setattr(api_main.Session, "commit", fail_commit)
-            failed = client.put(f"/catalog/items/{item_id}", json={**payload, "images": [{"data_url": picture_data_url("JPEG"), "alt": "Replacement"}]})
+            failed = client.put(
+                f"/catalog/items/{item_id}",
+                json={**payload, "images": [{"data_url": picture_data_url("JPEG"), "alt": "Replacement"}]},
+            )
             assert failed.status_code == 500
         assert api_main.Session.commit is real_commit
         assert client.get(created.json()["images"][0]["url"]).content == original_bytes
@@ -534,10 +626,18 @@ def test_picture_replacement_restores_old_asset_when_database_commit_fails(monke
 def test_archive_remains_successful_and_asset_inaccessible_when_cleanup_fails(monkeypatch) -> None:
     suffix = uuid4().hex[:8]
     payload = {
-        "category_id": "storage", "fixture_kind": "FURNITURE", "name": "Archive storage",
-        "supplier": f"Archive Supplier {suffix}", "sku": f"ARCHIVE-{suffix}", "width_mm": 500,
-        "depth_mm": 400, "height_mm": 600, "color_hex": "#112233", "subcategory": "General",
-        "plan_shape": "RECTANGLE", "images": [{"data_url": picture_data_url(), "alt": "Archive"}],
+        "category_id": "storage",
+        "fixture_kind": "FURNITURE",
+        "name": "Archive storage",
+        "supplier": f"Archive Supplier {suffix}",
+        "sku": f"ARCHIVE-{suffix}",
+        "width_mm": 500,
+        "depth_mm": 400,
+        "height_mm": 600,
+        "color_hex": "#112233",
+        "subcategory": "General",
+        "plan_shape": "RECTANGLE",
+        "images": [{"data_url": picture_data_url(), "alt": "Archive"}],
     }
     created = client.post("/catalog/items", json=payload)
     assert created.status_code == 201
@@ -561,12 +661,24 @@ def test_archive_remains_successful_and_asset_inaccessible_when_cleanup_fails(mo
 
 
 def test_website_import_rejects_private_hosts_before_fetching() -> None:
-    response = client.post("/catalog/import-website", json={
-        "source_url": "http://127.0.0.1/products", "page": "", "category_id": "storage",
-        "subcategory": "Imported", "fixture_kind": "FURNITURE", "supplier": "Unsafe supplier",
-        "fallback_name": "Fallback", "fallback_sku": "UNSAFE", "width_mm": 500, "depth_mm": 400,
-        "height_mm": 600, "color_hex": "#112233", "plan_shape": "RECTANGLE",
-    })
+    response = client.post(
+        "/catalog/import-website",
+        json={
+            "source_url": "http://127.0.0.1/products",
+            "page": "",
+            "category_id": "storage",
+            "subcategory": "Imported",
+            "fixture_kind": "FURNITURE",
+            "supplier": "Unsafe supplier",
+            "fallback_name": "Fallback",
+            "fallback_sku": "UNSAFE",
+            "width_mm": 500,
+            "depth_mm": 400,
+            "height_mm": 600,
+            "color_hex": "#112233",
+            "plan_shape": "RECTANGLE",
+        },
+    )
     assert response.status_code == 422
     assert "private" in response.json()["detail"]
 
@@ -583,10 +695,12 @@ def test_catalogue_source_rejects_malformed_port() -> None:
 def test_streaming_request_body_limit_rejects_chunked_body_without_trusting_content_length() -> None:
     called = False
     sent: list[dict[str, object]] = []
-    incoming = iter([
-        {"type": "http.request", "body": b"123456", "more_body": True},
-        {"type": "http.request", "body": b"789012", "more_body": False},
-    ])
+    incoming = iter(
+        [
+            {"type": "http.request", "body": b"123456", "more_body": True},
+            {"type": "http.request", "body": b"789012", "more_body": False},
+        ]
+    )
 
     async def downstream(_scope, _receive, _send) -> None:
         nonlocal called
@@ -599,7 +713,9 @@ def test_streaming_request_body_limit_rejects_chunked_body_without_trusting_cont
         sent.append(message)
 
     scope = {
-        "type": "http", "method": "POST", "path": "/catalog/items",
+        "type": "http",
+        "method": "POST",
+        "path": "/catalog/items",
         "headers": [(b"content-length", b"1")],
     }
     asyncio.run(api_main.RequestBodyLimitMiddleware(downstream, default_limit=10)(scope, receive, send))
@@ -612,16 +728,33 @@ def test_catalogue_fetch_connects_to_the_validated_ip(monkeypatch) -> None:
 
     class FakeResponse:
         status = 200
-        def getheader(self, _name: str): return None
-        def read(self, _limit: int): return b"catalogue"
-        def close(self): pass
+
+        def getheader(self, _name: str):
+            return None
+
+        def read(self, _limit: int):
+            return b"catalogue"
+
+        def close(self):
+            pass
 
     class FakeConnection:
-        def __init__(self, host: str, port: int, timeout: int): calls.append((host, port, timeout))
-        def request(self, method: str, path: str, headers: dict[str, str]): calls.append((method, path, headers))
-        def getresponse(self): return FakeResponse()
+        def __init__(self, host: str, port: int, timeout: int):
+            calls.append((host, port, timeout))
 
-    monkeypatch.setattr(api_main.socket, "getaddrinfo", lambda *_args, **_kwargs: [(api_main.socket.AF_INET, api_main.socket.SOCK_STREAM, 6, "", ("93.184.216.34", 80))])
+        def request(self, method: str, path: str, headers: dict[str, str]):
+            calls.append((method, path, headers))
+
+        def getresponse(self):
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        api_main.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (api_main.socket.AF_INET, api_main.socket.SOCK_STREAM, 6, "", ("93.184.216.34", 80))
+        ],
+    )
     monkeypatch.setattr(api_main.http.client, "HTTPConnection", FakeConnection)
     assert api_main.fetch_catalogue_page("http://supplier.example/products") == "catalogue"
     assert calls[0] == ("93.184.216.34", 80, 6)
@@ -631,13 +764,22 @@ def test_catalogue_fetch_connects_to_the_validated_ip(monkeypatch) -> None:
 def test_catalogue_fetch_revalidates_and_rejects_private_redirect(monkeypatch) -> None:
     class RedirectResponse:
         status = 302
-        def getheader(self, _name: str): return "http://127.0.0.1/internal"
-        def close(self): pass
+
+        def getheader(self, _name: str):
+            return "http://127.0.0.1/internal"
+
+        def close(self):
+            pass
 
     class FakeConnection:
-        def __init__(self, _host: str, port: int, timeout: int): pass
-        def request(self, _method: str, _path: str, headers: dict[str, str]): pass
-        def getresponse(self): return RedirectResponse()
+        def __init__(self, _host: str, port: int, timeout: int):
+            pass
+
+        def request(self, _method: str, _path: str, headers: dict[str, str]):
+            pass
+
+        def getresponse(self):
+            return RedirectResponse()
 
     def resolve(host: str, port: int, **_kwargs):
         address = "127.0.0.1" if host == "127.0.0.1" else "93.184.216.34"
@@ -654,19 +796,31 @@ def test_catalogue_fetch_revalidates_and_rejects_private_redirect(monkeypatch) -
 
 def test_website_import_skips_malformed_and_duplicate_products_in_one_transaction(monkeypatch) -> None:
     suffix = uuid4().hex[:8]
-    document = f'''<script type="application/ld+json">{{"@graph":[
+    document = f"""<script type="application/ld+json">{{"@graph":[
       {{"@type":"Product","name":"Missing SKU"}},
       {{"@type":"Product","name":"Valid imported item","sku":"VALID-{suffix}"}},
       {{"@type":"Product","name":"Duplicate built in","sku":"RF-FU-600"}}
-    ]}}</script>'''
+    ]}}</script>"""
     monkeypatch.setattr(api_main, "safe_catalogue_url", lambda _payload: "https://supplier.example/products")
     monkeypatch.setattr(api_main, "fetch_catalogue_page", lambda _url: document)
-    response = client.post("/catalog/import-website", json={
-        "source_url": "https://supplier.example", "page": "products", "category_id": "storage",
-        "subcategory": "Imported", "fixture_kind": "FURNITURE", "supplier": "Renovation Fit",
-        "fallback_name": "Fallback", "fallback_sku": f"FALLBACK-{suffix}", "width_mm": 500,
-        "depth_mm": 400, "height_mm": 600, "color_hex": "#112233", "plan_shape": "RECTANGLE",
-    })
+    response = client.post(
+        "/catalog/import-website",
+        json={
+            "source_url": "https://supplier.example",
+            "page": "products",
+            "category_id": "storage",
+            "subcategory": "Imported",
+            "fixture_kind": "FURNITURE",
+            "supplier": "Renovation Fit",
+            "fallback_name": "Fallback",
+            "fallback_sku": f"FALLBACK-{suffix}",
+            "width_mm": 500,
+            "depth_mm": 400,
+            "height_mm": 600,
+            "color_hex": "#112233",
+            "plan_shape": "RECTANGLE",
+        },
+    )
     assert response.status_code == 200
     assert [item["sku"] for item in response.json()["imported"]] == [f"VALID-{suffix}"]
     assert any("missing valid" in reason for reason in response.json()["skipped"])

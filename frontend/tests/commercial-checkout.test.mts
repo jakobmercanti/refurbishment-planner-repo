@@ -3,13 +3,13 @@ import test from "node:test";
 import { createCheckout } from "../lib/commercialApi.ts";
 import { paidPlan, prepareBillingNavigation, stripeDestination } from "../lib/billingNavigation.ts";
 import { readFileSync } from "node:fs";
+import { plansPage } from "../../deployment/plans-page.mjs";
 
-test("plan choices submit native browser GET forms without client click handling", () => {
-  const source = readFileSync(new URL("../components/PlansAndBillingPanel.tsx", import.meta.url), "utf8");
-  assert.ok(source.includes('/checkout/`} method="get"'));
-  assert.ok(source.includes('type="hidden" name="plan" value={plan.plan_key}'));
-  assert.ok(!source.includes("createCheckout"));
-  assert.ok(!source.includes("canUsePaidActions"));
+test("the deployed plans page uses native browser GET forms without client checkout handling", () => {
+  const html = plansPage(null);
+  assert.equal((html.match(/<form action="\/planner\/checkout\/" method="get">/g) ?? []).length, 3);
+  for (const plan of ["starter", "pro", "studio"]) assert.ok(html.includes(`type="hidden" name="plan" value="${plan}"`));
+  assert.match(html, /<form action="\/planner\/" method="get">/);
 });
 
 test("signed-out checkout goes directly to the real sign-in form, not another sign-in prompt", () => {

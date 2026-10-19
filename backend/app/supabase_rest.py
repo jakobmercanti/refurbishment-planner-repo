@@ -37,8 +37,7 @@ class SupabaseREST:
         self.url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
         self.publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
         self.service_key = (
-            os.getenv("SUPABASE_SECRET_KEY", "").strip()
-            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+            os.getenv("SUPABASE_SECRET_KEY", "").strip() or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         )
         self.opener = build_opener(ProxyHandler({}))
 
@@ -72,7 +71,7 @@ class SupabaseREST:
                     code = provider_message[:80]
                 elif isinstance(provider_code, str) and provider_code.isalnum():
                     code = provider_code[:20]
-            except (json.JSONDecodeError, AttributeError):
+            except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
                 pass
             raise SupabaseUnavailable(message, status_code=error.code, code=code) from None
         except (URLError, TimeoutError, OSError) as error:
@@ -140,7 +139,7 @@ class SupabaseREST:
             return None
         try:
             return json.loads(payload)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             raise SupabaseUnavailable("Supabase returned an invalid response.") from None
 
     def rpc(self, function: str, parameters: dict[str, Any], *, max_bytes: int = 2_000_000) -> Any:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import json
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request
 
 import pytest
 from PIL import Image
@@ -82,6 +84,9 @@ def test_invalid_photo_sets_are_rejected_before_provider_upload(images: list[Ima
         "https://cdn.tripo3d.ai.attacker.invalid/model.glb",
         "https://user@cdn.tripo3d.ai/model.glb",
         "https://cdn.tripo3d.ai:444/model.glb",
+        "https://cdn.tripo3d.ai:invalid/model.glb",
+        "https://cdn.tripo3d.ai:99999/model.glb",
+        "https://[invalid/model.glb",
         "file:///etc/passwd",
     ],
 )
@@ -108,3 +113,37 @@ def test_image_normalization_checks_mime_and_reencodes_to_jpeg() -> None:
     assert normalized[:2] == b"\xff\xd8"
     with pytest.raises(TripoProviderError, match="does not match"):
         Tripo3DGenerationProvider._normalize_image(ImageReference("front", "image/jpeg", image_data.getvalue()))
+
+
+def test_transport_cannot_bypass_response_size_limit() -> None:
+    provider = Tripo3DGenerationProvider(transport=lambda request, limit: b"x" * (limit + 1))
+    with pytest.raises(TripoProviderError, match="exceeded"):
+        provider._read(Request("https://example.invalid/"), max_bytes=8)
+
+
+@pytest.mark.parametrize("status, retryable", [(402, False), (429, True), (500, True), (403, False)])
+def test_provider_http_errors_are_safe_and_classified(status: int, retryable: bool) -> None:
+    def transport(request: Request, limit: int) -> bytes:
+        raise HTTPError("https://example.invalid/?secret=must-not-leak", status, "private details", {}, None)
+
+    provider = Tripo3DGenerationProvider(transport=transport)
+    with pytest.raises(TripoProviderError) as caught:
+        provider._read(Request("https://example.invalid/"))
+    assert caught.value.retryable is retryable
+    assert "must-not-leak" not in str(caught.value)
+    assert "private details" not in str(caught.value)
+
+
+def test_provider_network_failure_is_retryable() -> None:
+    def transport(request: Request, limit: int) -> bytes:
+        raise URLError("private connection details")
+
+    with pytest.raises(TripoProviderError) as caught:
+        Tripo3DGenerationProvider(transport=transport)._read(Request("https://example.invalid/"))
+    assert caught.value.retryable
+    assert "private connection details" not in str(caught.value)
+
+
+def test_empty_model_configuration_keeps_supported_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRIPO_GENERATION_MODEL", "")
+    assert Tripo3DGenerationProvider().model == "v3.1-20260211"

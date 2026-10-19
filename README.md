@@ -110,5 +110,9 @@ Current milestone boundaries and known limitations are recorded in `docs/LIMITAT
 The Full Electrical Layout module lets you save the electrical overlay independently as a versioned `.electricallayout` ZIP package.
 Version 1 contains `electrical-layout.json` plus only the referenced electrical custom models and
 electrical reference pictures; it does not contain or replace room geometry or the rest of the
-project. Loading supports replace and merge modes, while normal project saves continue to include
-the electrical layout and its schedule documentation.
+project. The Load window validates the package before replacing the current electrical layout,
+and Cancel keeps it unchanged. The package library also supports merge operations for integrations;
+the current Load window is replace-only. Normal project saves include the electrical layout and its
+schedule documentation.
+
+Developer checks and compatibility boundaries are documented in [Code maintenance](docs/CODE_MAINTENANCE.md).

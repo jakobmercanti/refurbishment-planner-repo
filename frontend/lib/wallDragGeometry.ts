@@ -200,7 +200,7 @@ function remapSegmentIndexAfterSplit(segmentIndex: number, sourceSegmentIndex: n
 function subsegmentForAlong(boundaries: number[], along: number, preferredIndex?: number): number {
   const boundaryIndex = boundaries.findIndex((boundary, index) => index > 0 && index < boundaries.length - 1 && Math.abs(boundary - along) <= 1e-6);
   if (boundaryIndex >= 0 && preferredIndex !== undefined && (preferredIndex === boundaryIndex - 1 || preferredIndex === boundaryIndex)) return preferredIndex;
-  return Math.max(0, Math.min(boundaries.length - 2, boundaries.findIndex((boundary, index) => index < boundaries.length - 1 && along <= boundaries[index + 1] + 1e-6)));
+  return Math.max(0, Math.min(boundaries.length - 2, boundaries.findIndex((_, index) => index < boundaries.length - 1 && along <= boundaries[index + 1] + 1e-6)));
 }
 
 /**

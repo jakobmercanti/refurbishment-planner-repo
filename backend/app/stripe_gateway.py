@@ -154,7 +154,11 @@ class StripeGateway:
         plan = next((key for key in PLAN_KEYS if self.price_id(key) == price_id), None)
         if plan is None:
             raise StripeUnavailable("Subscription price is outside the configured catalogue.")
-        return plan, item.get("current_period_start", subscription.get("current_period_start")), item.get("current_period_end", subscription.get("current_period_end"))
+        return (
+            plan,
+            item.get("current_period_start", subscription.get("current_period_start")),
+            item.get("current_period_end", subscription.get("current_period_end")),
+        )
 
 
 def stripe_gateway() -> StripeGateway:
