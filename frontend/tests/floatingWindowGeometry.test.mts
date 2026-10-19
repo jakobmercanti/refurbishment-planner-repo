@@ -1,9 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_FLOATING_WINDOW_WIDTH, resizeFloatingWindow, visibleFloatingWorkspace } from "../lib/floatingWindowGeometry.ts";
+import { DEFAULT_FLOATING_WINDOW_WIDTH, floatingDockLayout, resizeFloatingWindow, visibleFloatingWorkspace } from "../lib/floatingWindowGeometry.ts";
 
 const workspace = { width: 1200, height: 800 };
 const windowBox = { left: 100, top: 80, width: DEFAULT_FLOATING_WINDOW_WIDTH, height: 300 };
+
+test("every dock slot shares the area below the pinned selector, rather than moving only the first window", () => {
+  const first = floatingDockLayout(0, 3);
+  const second = floatingDockLayout(1, 3);
+  const last = floatingDockLayout(2, 3);
+  assert.match(first.top, /var\(--floating-toolbar-top-inset, 0px\) \* 1\)/);
+  assert.match(second.top, /var\(--floating-toolbar-top-inset, 0px\) \* 0\.666/);
+  assert.match(last.top, /var\(--floating-toolbar-top-inset, 0px\) \* 0\.333/);
+  assert.equal(first.height, second.height);
+  assert.equal(second.height, last.height);
+  assert.match(first.height, /var\(--floating-toolbar-top-inset, 0px\) \/ 3/);
+  assert.deepEqual(floatingDockLayout(-2, 0), floatingDockLayout(0, 1));
+  assert.deepEqual(floatingDockLayout(9, 3), last);
+  assert.notEqual(floatingDockLayout(0, 3, true).height, first.height);
+});
 
 test("floating workspace clips oversized hosts to the visible browser area after menubar/viewport changes", () => {
   assert.deepEqual(visibleFloatingWorkspace({ left: 0, top: 68, width: 1400, height: 900 }, { left: 0, top: 0, width: 1400, height: 650 }), { left: 0, top: 0, right: 1400, bottom: 582 });

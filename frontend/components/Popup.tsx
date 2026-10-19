@@ -17,7 +17,7 @@ interface PopupProps {
   onCancel: () => void;
 }
 
-export function Popup({ open, title, message, children, className = "", confirmLabel = "Ok", confirmDisabled = false, autoFocusTarget = "cancel", onConfirm, onCancel }: PopupProps) {
+export function Popup({ open, title, message, children, className = "", confirmLabel = "OK", confirmDisabled = false, autoFocusTarget = "cancel", onConfirm, onCancel }: PopupProps) {
   if (!open) return null;
   return <div className="popup-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
     <section className={`popup ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby="popup-title" onMouseDown={(event) => event.stopPropagation()} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();event.stopPropagation();onCancel();}}}>

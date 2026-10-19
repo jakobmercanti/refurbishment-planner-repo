@@ -58,7 +58,6 @@
 .popup .layerColour input[type=color]::-webkit-color-swatch { border:1px solid #0002; border-radius:4px; }
 .layerThermal { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin-top:10px; }
 .layerHelpSummary { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.popup .layerHelpSummary :global(.window-help-button) { flex:0 0 30px; width:30px; height:26px; min-height:26px; border-radius:8px; }
 @media (max-width:450px) { .layerRow { flex-wrap:wrap; }.layerActions { margin-left:auto; } }
 .swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid #0002; border-radius: 3px; margin-right: 6px; }
 @media (max-width: 840px) {

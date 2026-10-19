@@ -22,11 +22,11 @@ test("preferences expose every supported display unit and explain millimetre aut
     onClose: () => {},
   }));
 
-  for (const label of ["Millimetres", "Centimetres", "Inches", "Feet", "Meters"]) {
+  for (const label of ["Millimetres", "Centimetres", "Inches", "Feet", "Metres"]) {
     assert.match(markup, new RegExp(label));
   }
   assert.match(markup, /aria-label="Display units"/);
-  assert.match(markup, /Calculations remain millimetre-authoritative/);
+  assert.match(markup, /Dimensions are still stored and calculated in millimetres/);
   assert.match(markup, /Centimetres<\/button>/);
   assert.match(markup, /Comfortable makes text larger and easier to read/);
   assert.match(markup, /<h3 id="settings-appearance-title">Appearance<\/h3>/);

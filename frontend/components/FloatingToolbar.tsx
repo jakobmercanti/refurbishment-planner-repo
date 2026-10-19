@@ -1,7 +1,7 @@
 "use client";
 
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WINDOW_HEIGHT, resizeFloatingWindow, visibleFloatingWorkspace, type FloatingWindowResizeEdge } from "@/lib/floatingWindowGeometry";
+import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WINDOW_HEIGHT, floatingDockLayout, resizeFloatingWindow, visibleFloatingWorkspace, type FloatingWindowResizeEdge } from "@/lib/floatingWindowGeometry";
 import { WindowIcon } from "@/components/WindowIcon";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
@@ -396,16 +396,15 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
 
   const dockSlots = Math.max(1, dock?.slots ?? 1);
   const dockSlot = Math.max(0, Math.min(dockSlots - 1, dock?.slot ?? 0));
-  const slotHeight = dock ? `calc(${100 / dockSlots}% - ${((dock.fill ? 16 : 8 * (dockSlots + 1)) / dockSlots)}px)` : undefined;
-  const dockTop = dock
-    ? `calc(${(dockSlot * 100) / dockSlots}% + ${(dock.fill ? 8 - (16 * dockSlot) / dockSlots : 8 * (1 - dockSlot / dockSlots))}px)`
-    : undefined;
+  const dockLayout = dock ? floatingDockLayout(dockSlot, dockSlots, dock.fill) : undefined;
+  const slotHeight = dockLayout?.height;
+  const dockTop = dockLayout?.top;
   const docked = Boolean(dock && isDocked);
   const dockHeight = dock?.height ?? (dock?.fill ? slotHeight : undefined);
   const appliedMinimumHeight = docked && size.height === null ? undefined : minimumHeight;
   const cssLength = (value: string | number | undefined) => typeof value === "number" ? `${value}px` : value ?? "8px";
   const insetTop = (value: string | number | undefined) => `calc(${cssLength(value)} + var(--floating-toolbar-top-inset, 0px))`;
-  const requestedTop = compactWorkspace ? insetTop((visibleWorkspace?.top ?? 0)+8) : heightMaximized ? position.y : docked ? dockSlot===0?insetTop(dock?.top??dockTop):(dock?.top??dockTop) : position.y;
+  const requestedTop = compactWorkspace ? insetTop((visibleWorkspace?.top ?? 0)+8) : heightMaximized ? position.y : docked ? dock?.top!==undefined?insetTop(dock.top):dockTop : position.y;
   const visibleMinimumHeight = docked && size.height === null ? MIN_FLOATING_WINDOW_HEIGHT : minimumHeight;
   // A pinned workspace control must remain clear of free windows too, including
   // after viewport resizing or dragging. The final top feeds availableHeight.

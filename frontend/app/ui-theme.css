@@ -37,7 +37,7 @@ body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize, .finish
     color: var(--control-hover-text) !important;
     border-color: var(--control-hover-border) !important;
   }
-  &:is(.active, .selected, .primary, .primary-small, .fixture-save, .person-update, .validate-button, .save-button, .settings-done, .catalogue-insert, .catalogue-toolbar > button, .full-floorplan-rooms button, [aria-selected="true"], [aria-pressed="true"]) {
+  &:is(.active, .selected, .primary, .primary-small, .pb-primary-button, .fixture-save, .person-update, .validate-button, .save-button, .settings-done, .catalogue-insert, .catalogue-toolbar > button, .full-floorplan-rooms button, [aria-selected="true"], [aria-pressed="true"]) {
     --control-bg: var(--ui-button-activeBackground);
     --control-text: var(--ui-button-activeText);
     --control-border: var(--ui-button-activeBackground);
@@ -45,7 +45,7 @@ body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize, .finish
     --control-hover-text: var(--ui-button-activeText);
     --control-hover-border: var(--control-hover-bg);
   }
-  &:is(.danger, .danger-button, .remove-finish, .catalogue-archive, .full-opening-list button) {
+  &:is(.danger, .danger-button, .pb-danger-button, .remove-finish, .catalogue-archive, .full-opening-list button) {
     --control-bg: var(--fail-soft);
     --control-text: var(--fail);
     --control-border: color-mix(in srgb, var(--fail) 25%, var(--panel));

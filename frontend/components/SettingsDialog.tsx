@@ -44,13 +44,13 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
         </section>
         <div className="settings-section">
           <strong>Display units</strong>
-          <p>Choose how dimensions are presented. Calculations remain millimetre-authoritative.</p>
+          <p>Choose how dimensions are shown. Dimensions are still stored and calculated in millimetres.</p>
           <div className="settings-choice unit-choice" role="group" aria-label="Display units">
             <button type="button" className={preferences.units === "MM" ? "active" : ""} aria-pressed={preferences.units === "MM"} onClick={() => onChange({ ...preferences, units: "MM" })}>Millimetres</button>
             <button type="button" className={preferences.units === "CM" ? "active" : ""} aria-pressed={preferences.units === "CM"} onClick={() => onChange({ ...preferences, units: "CM" })}>Centimetres</button>
             <button type="button" className={preferences.units === "INCHES" ? "active" : ""} aria-pressed={preferences.units === "INCHES"} onClick={() => onChange({ ...preferences, units: "INCHES" })}>Inches</button>
             <button type="button" className={preferences.units === "FEET" ? "active" : ""} aria-pressed={preferences.units === "FEET"} onClick={() => onChange({ ...preferences, units: "FEET" })}>Feet</button>
-            <button type="button" className={preferences.units === "METERS" ? "active" : ""} aria-pressed={preferences.units === "METERS"} onClick={() => onChange({ ...preferences, units: "METERS" })}>Meters</button>
+            <button type="button" className={preferences.units === "METERS" ? "active" : ""} aria-pressed={preferences.units === "METERS"} onClick={() => onChange({ ...preferences, units: "METERS" })}>Metres</button>
           </div>
         </div>
         <div className="settings-section">
@@ -62,7 +62,7 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
         </div>
         <label className="settings-check">
           <input type="checkbox" checked={preferences.confirmBeforeOpen} onChange={(event) => onChange({ ...preferences, confirmBeforeOpen: event.target.checked })} />
-          <span><strong>Confirm before opening another project</strong><small>Ask before replacing the current room with a selected file.</small></span>
+          <span><strong>Confirm before opening another project</strong><small>Ask before replacing the current project with a selected file.</small></span>
         </label>
         <button className="settings-done" type="button" onClick={onClose}>Done</button>
       </section>

@@ -139,7 +139,7 @@ html[data-theme="dark"] :is(
   box-shadow: 0 16px 40px rgb(0 0 0 / 42%);
 }
 
-html[data-theme="dark"] :is(.modal-backdrop, .popup-backdrop, .pb-dashboard-overlay, .plan-help-backdrop) {
+html[data-theme="dark"] :is(.modal-backdrop, .popup-backdrop, .pb-modal-backdrop, .pb-dashboard-overlay, .plan-help-backdrop) {
   background: var(--ui-window-backdrop);
 }
 
@@ -170,7 +170,8 @@ html[data-theme="dark"] :is(
   .local-asset-secondary, .custom-asset-secondary, .commercial-secondary,
   .account-dialog-tabs button, .commercial-tabs button, .catalogue-categories button,
   .catalogue-manager-tabs button, .catalogue-manager-actions button,
-  .marker-symbol-grid button, .marker-settings-row button
+  .marker-symbol-grid button, .marker-settings-row button,
+  .custom-asset-tabs button, .fixture-section-toggle, .fixture-colours-toggle
 ) {
   background-color: var(--surface-muted);
   color: var(--ink);
@@ -201,6 +202,10 @@ html[data-theme="dark"] :is(
   .software-dropdown button:disabled, button:disabled, input:disabled,
   select:disabled, textarea:disabled
 ) { color: #8797a9; }
+html[data-theme="dark"] body button:disabled:not(.finish-palette button, .tile-palette-presets button, .pb-colour-presets button, .catalogue-material-entry, .pb-gantt-bar) {
+  background-color:var(--surface-subtle);
+  border-color:var(--line);
+}
 
 html[data-theme="dark"] :is(
   .settings-done, .primary, .primary-small, .validate-button, .save-button,
@@ -212,6 +217,7 @@ html[data-theme="dark"] :is(
   .electrical-layout-actions button[aria-pressed="true"],
   .electrical-schedule-tabs button[aria-pressed="true"],
   .mode-switch button.active, .full-floorplan-actions button.active,
+  .stale-analysis button,
   .full-floorplan-actions button.primary, .full-floorplan-rooms button,
   .app-nav-modes button[aria-pressed="true"], .annotation-tool-grid button.active,
   .view-toggle.active, .viewer-toolbar button.active,
@@ -237,8 +243,8 @@ html[data-theme="dark"] :is(
 /* PlannerBuild surfaces adapt, while user-selected Gantt bar fills stay intact. */
 html[data-theme="dark"] :is(.planner-build-screen, .pb-gantt-scroll, .pb-dashboard-dialog-content) { background-color: var(--paper); }
 html[data-theme="dark"] .pb-dashboard-heading .pb-eyebrow,
-html[data-theme="dark"] .pb-dashboard-heading p { color: #26332d; }
-html[data-theme="dark"] .pb-dashboard-heading h1 { color: #183d34; }
+html[data-theme="dark"] .pb-dashboard-heading p { color: var(--muted); }
+html[data-theme="dark"] .pb-dashboard-heading h1 { color: var(--deep); }
 html[data-theme="dark"] :is(.pb-gantt-header, .pb-gantt-header-label, .pb-gantt-group-row) { background-color: var(--surface-muted); color: var(--ink); border-color: var(--line); }
 html[data-theme="dark"] :is(.pb-gantt-row, .pb-gantt-activity-cell, .pb-dashboard-columns > section, .pb-dashboard-overview, .pb-programme-health) { border-color: var(--line); }
 html[data-theme="dark"] .pb-gantt-lane { background-color: var(--paper); }

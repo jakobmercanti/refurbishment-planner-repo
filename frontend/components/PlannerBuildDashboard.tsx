@@ -5,6 +5,7 @@ import { calendarDaysBetween, formatDateKey, type calculatePlannerBuildMetrics, 
 import { calculatePlannerBuildDashboard, dashboardDueDate, plannedDeliveryDate } from "@/lib/plannerBuildDashboard";
 import { formatPlannerBuildArea } from "@/lib/plannerBuildPresentation";
 import type { CurrencyCode } from "@/lib/appPreferences";
+import { formatUiCount } from "@/lib/uiText";
 import styles from "./PlannerBuildDashboard.module.css";
 
 type Metrics = ReturnType<typeof calculatePlannerBuildMetrics>;
@@ -44,10 +45,10 @@ export function PlannerBuildDashboard({ activities, metrics, today, defaultCurre
 
   return <div className={styles.dashboard}>
     <div className={styles.kpis} aria-label="Project performance">
-      <article className={styles.kpi}><span>Predicted cost</span><strong>{totalText("estimated")}</strong><small>{estimateCount} of {activities.length} activities estimated</small>{action("Manage costs", "COSTS")}</article>
-      <article className={styles.kpi}><span>Actual cost recorded</span><strong>{totalText("actual")}</strong><small>{actualCount} of {activities.length} activities with actuals</small>{action("Update actuals", "COSTS")}</article>
-      <article className={`${styles.kpi} ${styles.progressKpi}`}><span>Overall work progress</span><strong>{data.recordedProgress === null ? "—" : `${data.recordedProgress}%`}</strong><small>{data.workCount ? `${data.workCount} work activities · weighted by duration` : "Add work activities to track progress"}</small>{action("Update progress", "ACTIVITIES")}</article>
-      <article className={styles.kpi}><span>Scheduled finish</span><strong>{date(finish)}</strong><small>{remainingDays === null ? "Add dates to your programme" : remainingDays < 0 ? `${Math.abs(remainingDays)} days since planned finish` : remainingDays === 0 ? "Scheduled to finish today" : `${remainingDays} calendar days to planned finish`}</small>{action("Review programme", "ACTIVITIES")}</article>
+      <article className={styles.kpi}><span>Predicted cost</span><strong>{totalText("estimated")}</strong><small>{estimateCount} of {formatUiCount(activities.length,"activity","activities")} estimated</small>{action("Manage costs", "COSTS")}</article>
+      <article className={styles.kpi}><span>Actual cost recorded</span><strong>{totalText("actual")}</strong><small>{actualCount} of {formatUiCount(activities.length,"activity","activities")} with recorded costs</small>{action("Update actuals", "COSTS")}</article>
+      <article className={`${styles.kpi} ${styles.progressKpi}`}><span>Overall work progress</span><strong>{data.recordedProgress === null ? "—" : `${data.recordedProgress}%`}</strong><small>{data.workCount ? `${formatUiCount(data.workCount,"work activity","work activities")} · weighted by duration` : "Add work activities to track progress"}</small>{action("Update progress", "ACTIVITIES")}</article>
+      <article className={styles.kpi}><span>Scheduled finish</span><strong>{date(finish)}</strong><small>{remainingDays === null ? "Add dates to your programme" : remainingDays < 0 ? `${formatUiCount(Math.abs(remainingDays),"day")} since planned finish` : remainingDays === 0 ? "Scheduled to finish today" : `${formatUiCount(remainingDays,"calendar day")} to planned finish`}</small>{action("Review programme", "ACTIVITIES")}</article>
     </div>
 
     <div className={styles.columns}>
@@ -58,7 +59,7 @@ export function PlannerBuildDashboard({ activities, metrics, today, defaultCurre
           const max = Math.max(row.estimated ?? 0, row.actual ?? 0, 1);
           const variance = row.pairedCount ? row.pairedActual - row.pairedEstimated : null;
           return <div className={styles.costGroup} key={row.currency}>
-            <div className={styles.costHeading}><strong>{row.currency}</strong><span>{row.estimatedCount} estimates · {row.actualCount} actuals</span></div>
+            <div className={styles.costHeading}><strong>{row.currency}</strong><span>{formatUiCount(row.estimatedCount,"estimate")} · {formatUiCount(row.actualCount,"recorded cost")}</span></div>
             {(["estimated", "actual"] as const).map((field) => <div className={styles.costLine} key={field}><span>{field === "estimated" ? "Predicted" : "Actual"}</span><div className={styles.barTrack} aria-hidden="true"><i className={field === "estimated" ? styles.predictedBar : styles.actualBar} style={{ width: `${(row[field] ?? 0) / max * 100}%` }} /></div><strong>{money(row[field], row.currency)}</strong></div>)}
             <p className={variance !== null && variance > 0 ? styles.problem : styles.caption}>{variance === null ? "Enter both costs on an activity to compare like-for-like." : `${money(Math.abs(variance), row.currency)} ${variance > 0 ? "above" : variance < 0 ? "below" : "difference from"} estimate on ${row.pairedCount} matched ${row.pairedCount === 1 ? "activity" : "activities"}.`}</p>
           </div>;
@@ -71,9 +72,9 @@ export function PlannerBuildDashboard({ activities, metrics, today, defaultCurre
         <header><div><span className="pb-eyebrow">Programme</span><h2>Progress & timing</h2></div>{action("Schedule checks", "ISSUES")}</header>
         <div className={styles.progressBody}>
           <div className={styles.ring} style={{ "--completion": `${data.recordedProgress ?? 0}%` } as CSSProperties} role="img" aria-label={`Recorded work progress: ${data.recordedProgress ?? "not set"}${data.recordedProgress === null ? "" : "%"}`}><div><strong>{data.recordedProgress === null ? "—" : `${data.recordedProgress}%`}</strong><span>recorded</span></div></div>
-          <div className={styles.progressDetail}><strong>{progressGap === null ? "No work progress yet" : `${Math.abs(progressGap)} percentage points ${progressGap < 0 ? "behind" : progressGap > 0 ? "ahead of" : "from"} plan`}</strong><p>Planned by start of today: {data.plannedProgress === null ? "—" : `${data.plannedProgress}%`}</p><div className={styles.barTrack} aria-hidden="true"><i className={styles.predictedBar} style={{ width: `${data.plannedProgress ?? 0}%` }} /></div><small>Work and waiting activities, weighted by scheduled days. Planned progress assumes even progress across each date range.</small></div>
+          <div className={styles.progressDetail}><strong>{progressGap === null ? "No work progress yet" : `${formatUiCount(Math.abs(progressGap),"percentage point")} ${progressGap < 0 ? "behind" : progressGap > 0 ? "ahead of" : "from"} plan`}</strong><p>Planned by start of today: {data.plannedProgress === null ? "—" : `${data.plannedProgress}%`}</p><div className={styles.barTrack} aria-hidden="true"><i className={styles.predictedBar} style={{ width: `${data.plannedProgress ?? 0}%` }} /></div><small>Work and waiting activities, weighted by scheduled days. Planned progress assumes even progress across each date range.</small></div>
         </div>
-        <dl className={styles.facts}><div><dt>Planned start</dt><dd>{date(metrics.summary.earliestStart)}</dd></div><div><dt>Planned finish</dt><dd>{date(finish)}</dd></div><div><dt>First actual work start</dt><dd>{date(data.actualStart)}</dd></div><div><dt>Actual work finish</dt><dd>{data.actualFinish ? date(data.actualFinish) : `${data.actualFinishesRecorded} / ${data.workCount} finish dates recorded`}</dd></div><div><dt>Programme length</dt><dd>{metrics.summary.scheduledDays === null ? "—" : `${metrics.summary.scheduledDays} days`}</dd></div><div><dt>Activities complete</dt><dd>{complete} / {activities.length}</dd></div></dl>
+        <dl className={styles.facts}><div><dt>Planned start</dt><dd>{date(metrics.summary.earliestStart)}</dd></div><div><dt>Planned finish</dt><dd>{date(finish)}</dd></div><div><dt>First actual work start</dt><dd>{date(data.actualStart)}</dd></div><div><dt>Actual work finish</dt><dd>{data.actualFinish ? date(data.actualFinish) : `${data.actualFinishesRecorded} / ${data.workCount} finish dates recorded`}</dd></div><div><dt>Programme length</dt><dd>{metrics.summary.scheduledDays === null ? "—" : formatUiCount(metrics.summary.scheduledDays,"day")}</dd></div><div><dt>Activities complete</dt><dd>{complete} / {activities.length}</dd></div></dl>
         <div className={styles.alertStrip}><span className={data.overdue.length ? styles.problem : styles.caption}>{data.overdue.length} overdue</span><span className={blocked.length ? styles.problem : styles.caption}>{blocked.length} blocked / delayed</span></div>
         <p className={styles.caption}>Record actual start and finish dates in each activity. The register compares each recorded finish with its planned date; overall work finish appears when all work has a finish date.</p>
       </section>

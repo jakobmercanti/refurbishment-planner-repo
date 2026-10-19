@@ -10,6 +10,17 @@ export function visibleFloatingWorkspace(parent: { left: number; top: number; wi
   return { left, top, right: Math.max(left, Math.min(parent.width, viewport.left + viewport.width - parent.left)), bottom: Math.max(top, Math.min(parent.height, viewport.top + viewport.height - parent.top)) };
 }
 
+/** Divide the usable workspace after reserving the pinned floor-selector strip. */
+export function floatingDockLayout(slot: number, slots: number, fill = false) {
+  const count = Math.max(1, slots);
+  const index = Math.max(0, Math.min(count - 1, slot));
+  const inset = "var(--floating-toolbar-top-inset, 0px)";
+  return {
+    top: `calc(${index * 100 / count}% + (${inset} * ${1 - index / count}) + ${fill ? 8 - 16 * index / count : 8 * (1 - index / count)}px)`,
+    height: `calc(${100 / count}% - (${inset} / ${count}) - ${(fill ? 16 : 8 * (count + 1)) / count}px)`,
+  };
+}
+
 export type FloatingWindowResizeEdge = "TOP" | "LEFT" | "RIGHT" | "BOTTOM";
 
 export interface FloatingWindowBox {

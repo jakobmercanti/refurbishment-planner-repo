@@ -22,7 +22,7 @@
 .building-level-item[data-drop=before] { box-shadow:inset 0 3px var(--accent); }
 .building-level-item[data-drop=after] { box-shadow:inset 0 -3px var(--accent); }
 .building-level-description { display:grid; min-width:0; gap:4px; text-align:left; overflow-wrap:anywhere; }
-.building-level-description small { color:var(--muted); }
+.building-level-description small { color:var(--ink); opacity:1; }
 .building-level-actions { display:flex; justify-content:flex-end; gap:6px; }
 .building-level-actions>button { min-height:32px; padding:4px 8px; }
 .building-level-icon { display:grid; place-items:center; color:var(--deep); }
@@ -32,7 +32,6 @@
 .building-window-host .building-section>.full-plan-overall-toggle { margin:0; gap:8px; padding:3px 9px; list-style:none; }
 .building-section>summary::-webkit-details-marker { display:none; }
 .building-section>summary>strong { flex:1; }
-.building-section>summary .window-help-button { width:26px; height:26px; min-height:26px; padding:0; }
 .building-section-toggle::before { content:"+"; }
 .building-section[open]>.full-plan-overall-toggle { border-radius:8px 8px 0 0; }
 .building-section[open] .building-section-toggle::before { content:"−"; }
