@@ -11,6 +11,7 @@ import "./commercial.css";
 import "./density.css";
 import "./appearance.css";
 import "./window-help.css";
+import "./building.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.freefloorplan3d.com"),

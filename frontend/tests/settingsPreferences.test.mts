@@ -10,6 +10,7 @@ test("comfortable density is the default preference", () => {
     density: "COMFORTABLE",
     confirmBeforeOpen: true,
     units: "MM",
+    currency: "GBP",
   });
 });
 

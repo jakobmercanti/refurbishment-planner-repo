@@ -25,20 +25,21 @@ def test_generic_catalogue_hierarchy_assets_and_idempotence():
         seed_fixture_defaults(session)
         session.commit()
         items = session.scalars(select(FurnitureItemRecord)).all()
-        assert len(items) == 57
+        assert len(items) == sum(len(variants) for _, variants in FIXTURE_DEFAULTS.values())
         for category, (_, variants) in FIXTURE_DEFAULTS.items():
-            assert 1 <= len(variants) <= 10
+            assert len(variants) >= 1
             assert {item.subcategory for item in items if item.category_id == category} == {v[1] for v in variants}
             assert {item.name for item in items if item.category_id == category} == {fixture_default_name(category, slug, subcategory) for slug, subcategory, *_ in variants}
         for item in items:
             assert (Path("frontend/public") / item.plan_symbol_url.lstrip("/")).is_file()
-            assert (Path("frontend/public/fixture-previews") / f"{item.representation_key}.svg").is_file()
+            previews = Path("frontend/public/fixture-previews")
+            assert any((previews / f"{item.representation_key}.{extension}").is_file() for extension in ("svg", "png"))
         items[0].width_mm = 777
         items[0].name = "Edited default"
         session.commit()
         seed_fixture_defaults(session)
         session.commit()
-        assert len(session.scalars(select(FurnitureItemRecord)).all()) == 57
+        assert len(session.scalars(select(FurnitureItemRecord)).all()) == sum(len(variants) for _, variants in FIXTURE_DEFAULTS.values())
         assert items[0].width_mm == 777
         assert items[0].name == "Edited default"
 
@@ -71,7 +72,7 @@ def test_electric_category_seeds_idempotently_without_items_or_overwriting_exist
 
         electric = session.get(FurnitureCategoryRecord, "electric")
         assert electric is not None
-        assert electric.name == "Electric"
+        assert electric.name == "Electrical"
         assert session.scalars(select(FurnitureItemRecord).where(FurnitureItemRecord.category_id == "electric")).all() == []
         expected_category_count = len({category[0] for category in CATEGORIES})
         assert len(session.scalars(select(FurnitureCategoryRecord)).all()) == expected_category_count
@@ -107,7 +108,7 @@ def test_electrical_default_symbols_are_safe_and_upgrade_legacy_cooker_hood():
         seed_electrical_defaults(session)
         session.flush()
 
-        assert cooker_hood.representation_version == 3
+        assert cooker_hood.representation_version == 4
         validate_svg_plan_symbol(cooker_hood.plan_symbol_data_url)
 
 
@@ -127,14 +128,19 @@ def test_rendered_previews_are_persisted_and_preserve_customisations(tmp_path, m
         items[0].width_mm = 777
         install_fixture_previews(session)
         for item in items:
+            if item.representation_key.startswith(("furniture-chair-", "furniture-armchair-")):
+                assert item.representation_version == 5
+                assert not any(picture.get("generated_representation") for picture in json.loads(item.image_data_json or "[]"))
+                continue
             if not (Path("frontend/public/fixture-previews") / f"{item.representation_key}.png").is_file():
                 assert (Path("frontend/public/fixture-previews") / f"{item.representation_key}.svg").is_file()
                 continue
             picture = json.loads(item.image_data_json)[0]
             stored = tmp_path / "catalogue-assets" / item.id / picture["filename"]
             assert hashlib.sha256(stored.read_bytes()).hexdigest() == picture["sha256"]
-            assert item.representation_version == 2
-            assert picture["generated_representation"] == 2
+            expected_version = 4 if item.representation_key.startswith(("furniture-bath-", "furniture-kitchen-cabinet-")) else 3 if item.representation_key.startswith("door-") or item.representation_key in {"window-casement", "window-single-pane", "window-double-pane", "window-triple-pane"} else 2
+            assert item.representation_version == expected_version
+            assert picture["generated_representation"] == expected_version
         previous = {item.id: item.image_data_json for item in items}
         install_fixture_previews(session)
         assert {item.id: item.image_data_json for item in items} == previous

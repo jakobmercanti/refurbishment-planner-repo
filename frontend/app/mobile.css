@@ -27,7 +27,7 @@
 .compact-workspace .floating-toolbar-drag, .compact-workspace .floating-toolbar-resize { display: none; }
 .compact-workspace .floating-toolbar-close { width: 36px; height: 36px; }
 .compact-workspace .floating-toolbar-content { margin: 0 3px 6px; overscroll-behavior: contain; }
-.compact-workspace .floating-toolbar .floating-toolbar-content :where(button, p, label, small) { font-size: calc((11px) * var(--density-font-scale, 1)); }
+.compact-workspace .floating-toolbar .floating-toolbar-content :where(button, p, label, small, summary.full-plan-overall-toggle) { font-size: calc((11px) * var(--density-font-scale, 1)); }
 .compact-workspace .floating-toolbar-content .tool-section { padding: 8px; }
 .compact-workspace .button-grid { gap: 6px; }
 .compact-workspace .button-grid button, .compact-workspace .review-style-button { min-height: 36px; padding: 6px 8px; }

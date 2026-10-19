@@ -10,6 +10,8 @@ import { migrateHeatingElements, isHeatingElement } from "./heatingElements";
 import { energySchema, parseEnergyProject, type EnergyProject } from "./energyDocument";
 import { constrainObstacleToRoom, requiresElectricalWall } from "./elementPlacement";
 import { isLocalPlanSymbol } from "./localPlanSymbol";
+import { buildingSchema, defaultBuilding, floorContent, projectFloors, validateFloorStack, type BuildingDocument } from "./buildingDocument";
+import { validateFloorOpening } from "./buildingGeometry";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -55,6 +57,7 @@ const documentSchema = z.object({
   energyLayout: energySchema.optional(),
   plannerBuild: z.unknown().optional(),
   quotes: z.array(quoteSchema).max(100).optional().default([]),
+  building: buildingSchema.optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
@@ -65,6 +68,7 @@ export interface ProjectDocument {
   energyLayout?: EnergyProject;
   plannerBuild: PlannerBuildData;
   quotes?: QuoteDocument[];
+  building?: BuildingDocument;
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -92,6 +96,8 @@ export function parseProject(input: unknown): ProjectDocument {
     electricalLayout: normalizeElectricalLayout(rawElectricalLayout, electricalObstacleIds(parsed.rooms)),
     plannerBuild: normalizePlannerBuild(rawPlannerBuild),
   };
+  if(p.heatingLayout===undefined)delete p.heatingLayout;
+  if(p.energyLayout===undefined)delete p.energyLayout;
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
   if (p.heatingLayout) p.heatingLayout = parseHeatingProject(p.heatingLayout);
   if (p.heatingLayout || p.rooms.some(room => room.obstacles.some(isHeatingElement))) Object.assign(p, migrateHeatingElements(p.rooms, p.heatingLayout));
@@ -132,12 +138,24 @@ export function parseProject(input: unknown): ProjectDocument {
     for (const opening of p.floorplan.openings) { const wall = p.floorplan.walls.find(w => w.id === opening.wallId); if (!wall || opening.segmentIndex >= wall.points.length - 1) throw new Error("Opening references a missing wall."); }
   }
   if (p.assetInstances.some(i => !p.assets.some(a => a.assetId === i.assetId && a.assetVersion === i.assetVersion))) throw new Error("A placed model is missing its asset definition.");
+  if (p.building) {
+    validateFloorStack(p.building);
+    p.building.floors = p.building.floors.map(f => {if(f.id===p.building!.activeFloorId){delete f.content;return f;}return { ...f, content: floorContent(parseProject({ ...p, ...floorContent(f.content!),electricalLayout:f.content?.electricalLayout,heatingLayout:f.content?.heatingLayout,energyLayout:f.content?.energyLayout, building: undefined })) };});
+    for (const f of projectFloors(p)) for (const opening of f.openings) validateFloorOpening(f.content, opening, f.openings);
+    const seen = new Set<string>();
+    for (const f of projectFloors(p)) {
+      const ids = new Set([...f.content.rooms.map(r=>r.id),...f.content.rooms.flatMap(r=>r.obstacles.map(o=>o.id)),...f.content.assetInstances.map(i=>i.instanceId)]);
+      if ([...ids].some(id=>seen.has(id))) throw new Error("Different floors cannot share room or placed-object IDs.");
+      ids.forEach(id=>seen.add(id));
+    }
+  } else p.building = defaultBuilding(p);
   return p;
 }
 // New versions must add explicit sequential migrations here, never shape guessing.
 export const migrateProject = parseProject;
 export function newProject(): ProjectDocument {
   const now = new Date().toISOString();
-  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT, plannerBuild: DEFAULT_PLANNER_BUILD, quotes: [] };
+  const p: ProjectDocument = { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT, plannerBuild: DEFAULT_PLANNER_BUILD, quotes: [] };
+  return { ...p, building: defaultBuilding(p) };
 }
 export const capabilities = Object.freeze({ canSaveCloudProjects: false, canUploadCloudAssets: false, canUseAiRendering: false, canExport4K: false, cloudStorageBytes: 0, aiRenderCreditsRemaining: 0 });

@@ -895,8 +895,8 @@ button { font: inherit; }
 .app-nav-modes button.active { background: white; color: var(--deep); box-shadow: 0 1px 5px rgba(23,33,29,.1); }
 .workspace-mode-control { display: flex; align-items: center; gap: 7px; }
 .workspace-mode-label { color: var(--muted); font: 650 calc(9px * var(--density-font-scale, 1))/1.2 var(--font-mono); white-space: nowrap; }
-.workspace-mode-select { height: 36px; min-width: 108px; padding: 0 28px 0 11px; border: 1px solid var(--line); border-radius: 10px; background: #f3f5f2; color: var(--deep); font: 650 calc(10px * var(--density-font-scale, 1))/1.2 var(--font-mono); cursor: pointer; }
-.workspace-mode-select:hover { background: white; }
+.workspace-mode-select { height: 36px; min-width: 108px; padding: 0 28px 0 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--deep); font: 650 calc(10px * var(--density-font-scale, 1))/1.2 var(--font-mono); cursor: pointer; }
+.workspace-mode-select:hover { background: var(--panel); }
 .workspace-mode-select:focus-visible, .planner-build-content :where(button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .software-menu button:disabled { cursor: not-allowed; opacity: .48; }
 .planner-build-screen { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; background: #f5f7f6; }
@@ -1575,7 +1575,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 /* Reserve separate border rails: resize controls must never cover native scrollbars. */
 .floating-toolbar-content { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0 5px 10px; padding-bottom:4px; overflow: auto; overscroll-behavior:contain; font: inherit; scrollbar-gutter: stable; }
 .floating-toolbar-content > * { min-width: 0; }
-.floating-toolbar .floating-toolbar-content :where(button, input, select, textarea) { max-width: 100%; font-family: var(--font-mono); font-size: calc((9px) * var(--density-font-scale, 1)); }
+.floating-toolbar .floating-toolbar-content :where(button, input, select, textarea, summary.full-plan-overall-toggle) { max-width: 100%; font-family: var(--font-mono); font-size: calc((9px) * var(--density-font-scale, 1)); }
 .floating-toolbar .floating-toolbar-content :where(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea) { min-width: 0; width: 100%; }
 .floating-toolbar .floating-toolbar-content :where(p, label, small) { font-size: calc((9px) * var(--density-font-scale, 1)); }
 .floating-toolbar .floating-toolbar-content :where(h1, h2, h3) { font-size: calc((11px) * var(--density-font-scale, 1)); }

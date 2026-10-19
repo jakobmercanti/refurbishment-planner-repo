@@ -19,8 +19,10 @@ test("live and exported styles share the same root class and CSS rules", () => {
   assert.equal(floorplanStyleCss("DEFAULT"), "");
 });
 
-test("element dimensions keep their dark-orange export colour in every named style", () => {
+test("selected dimensions stay dark orange while each named style preserves its ordinary palette", () => {
   for (const style of ["TRADITIONAL", "MODERN", "CREATIVE"] as const) {
-    assert.match(floorplanStyleCss(style), /fixture-dimension\{color:#b45309\}/);
+    const css=floorplanStyleCss(style);
+    assert.match(css, /floorplan-fixture\.selected \.fixture-dimension\{color:#9a4604\}/);
+    assert.match(css,style==="TRADITIONAL"?/floorplan-fixture \.fixture-dimension\{color:#151515\}/:/floorplan-fixture \.fixture-dimension\{color:#b45309\}/);
   }
 });

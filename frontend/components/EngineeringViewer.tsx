@@ -1,4 +1,10 @@
 "use client";
+import type { ProjectDocument } from "@/lib/projectDocument";
+import { minimumRoofHeight, activeFloor, buildingOf, projectFloors, type FloorOpening, type RoofConfiguration } from "@/lib/buildingDocument";
+import { exposedCover, structuralFloorFootprint, polygonOf, subtractVoids } from "@/lib/buildingGeometry";
+import { BuildingRoof, BuildingSlab, shapesFromPolygons, TerraceCover } from "./BuildingSurfaces";
+import { wallEnvelope, wallThicknessMm as wallThickness } from "@/lib/wallEnvelope";
+import type { BuildingView } from "./BuildingControls";
 import { MetalReflections } from "@/components/MetalReflections";
 
 import { LocalAssetScene } from "@/components/LocalAssetScene";
@@ -92,6 +98,7 @@ interface SaveFilePickerOptions {
 type SaveFilePicker = (options?: SaveFilePickerOptions) => Promise<SaveFileHandle>;
 
 interface ViewerProps extends PlacementProps {
+  buildingProject?:ProjectDocument; buildingView?:BuildingView; onBuildingViewChange?:(view:BuildingView)=>void; onExteriorView?:()=>void; roofPreview?:RoofConfiguration;
   assetInstances?: AssetInstance[];
   apiUrl: string;
   room: Room;
@@ -252,38 +259,6 @@ function wallSegmentKey(start: Point2D, end: Point2D): string {
   return [pointKey(start), pointKey(end)].sort().join("|");
 }
 
-function cross(a: Point2D, b: Point2D) {
-  return a.x * b.y - a.y * b.x;
-}
-
-function wallThickness(room: Room, index: number): number {
-  return room.wall_thickness_overrides_mm?.[wallId(index)] ?? room.wall_thickness.value;
-}
-
-function exteriorCorner(vertices: Point2D[], index: number, incomingThickness: number, outgoingThickness: number): Point2D {
-  const vertex = vertices[index];
-  const previous = vertices[(index - 1 + vertices.length) % vertices.length];
-  const next = vertices[(index + 1) % vertices.length];
-  const incoming = wallVector(previous, vertex);
-  const outgoing = wallVector(vertex, next);
-  const previousOffset = { x: vertex.x + incoming.dy * incomingThickness, y: vertex.y - incoming.dx * incomingThickness };
-  const nextOffset = { x: vertex.x + outgoing.dy * outgoingThickness, y: vertex.y - outgoing.dx * outgoingThickness };
-  const denominator = cross({ x: incoming.dx, y: incoming.dy }, { x: outgoing.dx, y: outgoing.dy });
-  if (Math.abs(denominator) < 1e-9) {
-    return { x: (previousOffset.x + nextOffset.x) / 2, y: (previousOffset.y + nextOffset.y) / 2 };
-  }
-  const between = { x: nextOffset.x - previousOffset.x, y: nextOffset.y - previousOffset.y };
-  const distance = cross(between, { x: outgoing.dx, y: outgoing.dy }) / denominator;
-  const corner = {
-    x: previousOffset.x + incoming.dx * distance,
-    y: previousOffset.y + incoming.dy * distance,
-  };
-  if (Math.hypot(corner.x - vertex.x, corner.y - vertex.y) > Math.max(incomingThickness, outgoingThickness) * 4) {
-    return { x: (previousOffset.x + nextOffset.x) / 2, y: (previousOffset.y + nextOffset.y) / 2 };
-  }
-  return corner;
-}
-
 function WallPiece({
   start,
   end,
@@ -427,13 +402,7 @@ function WallWithOpenings({
 }) {
   const vector = wallVector(start, end);
   const thickness = wallThickness(room, index);
-  const offsetPoint = (point: Point2D) => ({ x: point.x + vector.dy * thickness, y: point.y - vector.dx * thickness });
-  const outerStart = capStart
-    ? offsetPoint(start)
-    : exteriorCorner(room.vertices, index, wallThickness(room, (index - 1 + room.vertices.length) % room.vertices.length), thickness);
-  const outerEnd = capEnd
-    ? offsetPoint(end)
-    : exteriorCorner(room.vertices, (index + 1) % room.vertices.length, thickness, wallThickness(room, (index + 1) % room.vertices.length));
+  const [, , outerEnd, outerStart] = wallEnvelope({room,index,start,end,capStart,capEnd});
   const currentWallId = wallId(index);
   const colour = room.finishes?.wall_colors?.[currentWallId] ?? DEFAULT_WALL_COLOUR;
   const openings = room.openings
@@ -539,9 +508,29 @@ function WallWithOpenings({
   return <>{pieces}</>;
 }
 
-function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; onSelect?: () => void }) {
+type SceneFloor = ReturnType<typeof projectFloors>[number];
+function ExposedFloorCover({floor,above}:{floor:SceneFloor;above:SceneFloor}) {
+  const footprint=useMemo(()=>exposedCover(structuralFloorFootprint(floor.content),structuralFloorFootprint(above.content)),[floor.content,above.content]);
+  return <group position={[0,above.elevationMm*SCALE,0]}><TerraceCover footprint={footprint} thickness={above.slabThicknessMm}/></group>;
+}
+function PassiveBuildingFloor({floor,above,roof,showRoof,wallMode,toggles}:{floor:SceneFloor;above?:SceneFloor;roof?:RoofConfiguration;showRoof:boolean;wallMode:WallViewMode;toggles:Toggles}) {
+  const clear=above?above.elevationMm-above.slabThicknessMm-floor.elevationMm:roof?(roof.type==="STEPPED"?Math.min(roof.lowHeightMm,roof.highHeightMm):roof.lowHeightMm):floor.heightMm-floor.slabThicknessMm;
+  const rooms=useMemo(()=>floor.content.rooms.map(r=>({...r,wall_height:{...r.wall_height,value:clear}})),[floor.content.rooms,clear]);
+  const walls=useMemo(()=>{const solids=rooms.length===1?buildIsolatedRoomWalls(rooms[0]):buildRenderedWalls(rooms);return [...solids,...buildSharedWallFinishFaces(rooms,solids)];},[rooms]);
+  const footprint=useMemo(()=>structuralFloorFootprint(floor.content),[floor.content]);
+  return <><group name={floor.name} position={[0,floor.elevationMm*SCALE,0]}>
+    <BuildingSlab footprint={footprint} openings={floor.openings} thicknessMm={floor.slabThicknessMm}/>
+    {wallMode!=="INVISIBLE"&&walls.map((w,i)=><WallWithOpenings key={i} {...w} wallMode={wallMode} selected={false}/>)}
+    <SkirtingBoards walls={walls} wallMode={wallMode} defaultWallColour={DEFAULT_WALL_COLOUR}/>
+    {rooms.map(r=><group key={r.id}><Floor room={r} selected={false} openings={floor.openings} includeSlab={false}/>{r.openings.map(o=><OpeningFixture key={o.id} room={r} opening={o} selected={false}/>)}{toggles.elements&&r.obstacles.map(o=><FixtureMesh key={o.id} obstacle={o} selected={false}/>)}{toggles.person&&r.person_mockup?.enabled&&<PersonMesh person={r.person_mockup} showClearance={false} collision={false} selected={false}/>}</group>)}
+    <LocalAssetScene instances={floor.content.assetInstances}/>
+    {showRoof&&roof&&<BuildingRoof footprint={footprint} roof={roof} wallTop={clear}/>}
+  </group>{showRoof&&above&&<ExposedFloorCover floor={floor} above={above}/>}</>;
+}
+function Floor({ room, selected, onSelect, openings, slabThicknessMm = 10, includeSlab=true }: { room: Room; selected: boolean; onSelect?: () => void; openings?:FloorOpening[]; slabThicknessMm?:number; includeSlab?:boolean }) {
   const vertices = room.vertices;
   const shape = useMemo(() => {
+    if(openings?.length)return shapesFromPolygons(subtractVoids([polygonOf(vertices)],openings));
     const next = new THREE.Shape();
     vertices.forEach((vertex, index) => {
       const x = vertex.x * SCALE;
@@ -552,7 +541,7 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
     });
     next.closePath();
     return next;
-  }, [vertices]);
+  }, [vertices,openings]);
   const colour = room.finishes?.floor_color ?? "#ece9e1";
   const pattern = room.finishes?.floor_pattern ?? "NONE";
   const selectedTile = useMemo(() => TILE_COLLECTION.find((item) => item.id === room.finishes?.floor_tile_id), [room.finishes?.floor_tile_id]);
@@ -590,10 +579,7 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   }), [colour, renderedTile, selected]);
   return (
     <group>
-      <mesh position={[0, -0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <extrudeGeometry args={[shape, { depth: 0.01, bevelEnabled: false }]} />
-        <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
-      </mesh>
+      {includeSlab&&<BuildingSlab footprint={structuralFloorFootprint({rooms:[room],floorplan:null,assetInstances:[]})} openings={openings??[]} thicknessMm={slabThicknessMm}/>}
       <mesh geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={onSelect ? (event) => { event.stopPropagation(); onSelect(); } : undefined}>
         {swatch ? <ProceduralFloorMaterial url={swatch.url} selected={selected} roughness={design && !design.pattern.startsWith("wood-") ? ({ polished: .18, gloss: .12, satin: .4, honed: .6, matt: .8, textured: .95, rustic: .9, tumbled: .9 }[TILE_MATERIALS.find((tile) => tile.id === design.tile_material_id)?.finish ?? "matt"] ?? .78) : .78} /> : renderedTile ? (
           <shaderMaterial
@@ -1331,7 +1317,7 @@ const ReferenceCameraPreview = forwardRef<ReferenceCameraPreviewHandle, Referenc
 });
 
 
-function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewCandidate }: { request: PlacementRequest; rooms: Room[]; walls: PlacementWall[]; onCommit?: (candidate: PlacementCandidate)=>void; onCancel?: ()=>void; onPreviewCandidate?: (candidate: PlacementCandidate | null) => void }) {
+function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewCandidate, elevationMm=0 }: { request: PlacementRequest; rooms: Room[]; walls: PlacementWall[]; onCommit?: (candidate: PlacementCandidate)=>void; onCancel?: ()=>void; onPreviewCandidate?: (candidate: PlacementCandidate | null) => void; elevationMm?:number }) {
   const { events, camera }=useThree();
   const [point,setPoint]=useState<Point2D | null>(null);
   const client=useRef<{x:number;y:number}|null>(null);
@@ -1350,16 +1336,16 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewC
         const normal=new THREE.Vector3((b.y-a.y)/length,0,(b.x-a.x)/length);
         const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(normal,new THREE.Vector3(a.x*SCALE,0,-a.y*SCALE));
         const hit=raycaster.ray.intersectPlane(plane,new THREE.Vector3());
-        if (!hit || hit.y<0 || hit.y>room.wall_height.value*SCALE) return [];
+        if (!hit || hit.y<elevationMm*SCALE || hit.y>(elevationMm+room.wall_height.value)*SCALE) return [];
         const p={x:hit.x/SCALE,y:-hit.z/SCALE},t=((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/(length*length);
         return t>=0 && t<=1 ? [{point:p,distance:raycaster.ray.origin.distanceTo(hit)}] : [];
       }));
       const first=hits.sort((a,b)=>a.distance-b.distance)[0];
       if (first) return first.point;
     }
-    const hit=raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),0),new THREE.Vector3());
+    const hit=raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-elevationMm*SCALE),new THREE.Vector3());
     return hit ? {x:hit.x/SCALE,y:-hit.z/SCALE} : null;
-  },[camera,events,raycaster,request.opening,rooms]);
+  },[camera,events,raycaster,request.opening,rooms,elevationMm]);
   const candidate=useMemo(()=>{
     const next=point?resolvePlacement(request,point,rooms,walls):null;
     return next?.roomId && !rooms.some(room=>room.id===next.roomId) ? null : next;
@@ -1422,7 +1408,7 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewC
   </group>;
 }
 
-function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, onRenderCameraChange, renderCamera, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete, cameraRigVisible, selectedCameraRigHandle, onCameraRigHandleSelect, onOpenCameraProperties }: ViewerProps & {
+function Scene({ buildingProject, buildingView, roofPreview, assetInstances, placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, onRenderCameraChange, renderCamera, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete, cameraRigVisible, selectedCameraRigHandle, onCameraRigHandleSelect, onOpenCameraProperties }: ViewerProps & {
   lighting: LightingSettings;
   toggles: Toggles;
   preset: CameraView;
@@ -1473,22 +1459,33 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
     setPreviewPlacementId(placement?.id);
     setPreviewPlacementCandidate(null);
   }
-  const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const floors=useMemo(()=>buildingProject?projectFloors(buildingProject):[],[buildingProject]);
+  const currentFloor=buildingProject?activeFloor(buildingProject):undefined, elevationMm=currentFloor?.elevationMm??0;
+  const wholeView=Boolean(buildingView?.whole),floorId=currentFloor?.id;
+  const visibleFloors=useMemo(()=>wholeView?floors:floors.filter(f=>f.id===floorId),[floors,wholeView,floorId]);
+  const buildingRoof=roofPreview??(buildingProject?buildingOf(buildingProject).roof:undefined),topFloor=floors.at(-1);
+  const showRoof=Boolean(buildingView?.roof&&buildingRoof?.enabled!==false);
+  const above=floors[floors.findIndex(f=>f.id===currentFloor?.id)+1];
+  const clearHeight=above?above.elevationMm-above.slabThicknessMm-elevationMm:buildingRoof?minimumRoofHeight(buildingRoof):currentFloor?currentFloor.heightMm-currentFloor.slabThicknessMm:undefined;
+  const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevationMm*SCALE), [elevationMm]);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
-  const renderedRooms = useMemo(() => sceneRooms?.length ? sceneRooms : [room], [room, sceneRooms]);
+  const renderedRooms = useMemo(() => (wholeView?floors.find(f=>f.id===floorId)?.content.rooms??[]:sceneRooms?.length ? sceneRooms : room.vertices.length?[room]:[]).map(r=>clearHeight?{...r,wall_height:{...r.wall_height,value:clearHeight}}:r), [room, sceneRooms,clearHeight,wholeView,floors,floorId]);
+  const activeFootprint=useMemo(()=>structuralFloorFootprint({rooms:renderedRooms,floorplan:null,assetInstances:[]}),[renderedRooms]);
   const multiRoom = renderedRooms.length > 1;
   const sceneBounds = useMemo(() => {
-    const points = renderedRooms.flatMap((sceneRoom) => sceneRoom.vertices);
+    const points = (visibleFloors.length?visibleFloors.flatMap(f=>structuralFloorFootprint(f.content).flatMap(p=>p[0])):activeFootprint.flatMap(p=>p[0])).map(([x,y])=>({x,y}));
+    if(!points.length)return {minX:0,maxX:5000,minY:0,maxY:5000,wallHeight:2500,minZ:0};
     const minX = Math.min(...points.map((point) => point.x));
     const maxX = Math.max(...points.map((point) => point.x));
     const minY = Math.min(...points.map((point) => point.y));
     const maxY = Math.max(...points.map((point) => point.y));
-    const wallHeight = Math.max(...renderedRooms.map((sceneRoom) => sceneRoom.wall_height.value));
-    return { minX, maxX, minY, maxY, wallHeight };
-  }, [renderedRooms]);
+    const minZ=visibleFloors.length?Math.min(...visibleFloors.map(f=>f.elevationMm-f.slabThicknessMm)):elevationMm;
+    const maxZ=visibleFloors.length?Math.max(...visibleFloors.map(f=>{const above=floors[floors.findIndex(x=>x.id===f.id)+1],wallHeight=above?above.elevationMm-above.slabThicknessMm-f.elevationMm:buildingRoof?minimumRoofHeight(buildingRoof):f.heightMm-f.slabThicknessMm;return f.elevationMm+(f.id===topFloor?.id&&showRoof&&buildingRoof?Math.max(buildingRoof.lowHeightMm,buildingRoof.type==="FLAT"?0:buildingRoof.highHeightMm)+buildingRoof.thicknessMm:wallHeight);})):elevationMm+Math.max(2400,...renderedRooms.map(r=>r.wall_height.value));
+    return { minX, maxX, minY, maxY, wallHeight:maxZ-minZ,minZ };
+  }, [activeFootprint,renderedRooms,visibleFloors,floors,elevationMm,buildingRoof,showRoof,topFloor?.id]);
   const roomTarget = useMemo<VectorTuple>(() => {
-    return [(sceneBounds.minX + sceneBounds.maxX) * SCALE / 2, sceneBounds.wallHeight * SCALE / 2, -(sceneBounds.minY + sceneBounds.maxY) * SCALE / 2];
+    return [(sceneBounds.minX + sceneBounds.maxX) * SCALE / 2, (sceneBounds.minZ+sceneBounds.wallHeight/2) * SCALE, -(sceneBounds.minY + sceneBounds.maxY) * SCALE / 2];
   }, [sceneBounds]);
   const renderedWalls = useMemo<RenderedWall[]>(
     () => {
@@ -1515,8 +1512,9 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   const lightElevation = THREE.MathUtils.degToRad(lighting.elevation);
   const lightDistance = shadowExtent * 2;
   const lightPower = lighting.intensity / 100;
-  const orbitTarget: [number, number, number] = preset === "eye" && !multiRoom && room.person_mockup?.enabled
-    ? eyeTarget(room.person_mockup).toArray()
+  const cameraPerson=room.person_mockup?{...room.person_mockup,eye_height_mm:room.person_mockup.eye_height_mm+elevationMm}:null;
+  const orbitTarget: [number, number, number] = preset === "eye" && !multiRoom && cameraPerson?.enabled
+    ? eyeTarget(cameraPerson).toArray()
     : roomTarget;
 
   function floorPoint(event: ThreeEvent<PointerEvent>) {
@@ -1605,7 +1603,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
 
   return (
     <>
-      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} restoreView={restoreView} />
+      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : cameraPerson} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} restoreView={restoreView} />
       <CameraFit request={fitViewRequest} projection={projection} center={roomTarget} span={roomSpan} onFit={onFitComplete} />
       <MetalReflections intensity={.3 * lightPower} />
       <ambientLight intensity={0.3 * lightPower} />
@@ -1628,6 +1626,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
       />
       <directionalLight target={lightTarget} position={[roomTarget[0] - shadowExtent, roomTarget[1] + shadowExtent * 0.7, roomTarget[2] - shadowExtent]} color="#DFE9FF" intensity={0.35 * lightPower} />
       {cameraRigVisible && renderCamera && <RenderCameraRig cameraState={renderCamera} selectedHandle={selectedCameraRigHandle} onSelectHandle={onCameraRigHandleSelect} onCameraChange={onRenderCameraChange} onOpenProperties={onOpenCameraProperties} />}
+      <group position={[0,elevationMm*SCALE,0]} name="Selected building floor">
       {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd, paintOnly }) => {
         if (wallMode === "INVISIBLE") return null;
         const sceneInteractive = selectedCameraRigHandle === null && (multiRoom || wallRoom.id === room.id);
@@ -1661,7 +1660,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
         const scenePerson = sceneRoom.id === room.id ? displayedPerson : sceneRoom.person_mockup;
         return (
           <group key={`room-${sceneRoom.id}`}>
-            <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id }) : undefined} />
+            <Floor room={sceneRoom} openings={currentFloor?.openings} includeSlab={!currentFloor} selected={sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id }) : undefined} />
             {sceneRoom.openings.map((opening) => <OpeningFixture key={`fixture-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} selected={selection?.type === "OPENING" && selection.id === opening.id && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "OPENING", id: opening.id, roomId: sceneRoom.id }) : undefined} />)}
             {toggles.elements && sceneObstacles.map((obstacle) => (
               <FixtureMesh
@@ -1687,8 +1686,15 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
           </group>
         );
       })}
+      {currentFloor&&<BuildingSlab footprint={activeFootprint} openings={currentFloor.openings} thicknessMm={currentFloor.slabThicknessMm}/>}
+      <LocalAssetScene instances={assetInstances??[]}/>
+      {showRoof&&currentFloor?.id===topFloor?.id&&buildingRoof&&<BuildingRoof footprint={activeFootprint} roof={buildingRoof} wallTop={clearHeight??buildingRoof.lowHeightMm}/>}
       {showGrid && <group userData={{ editorOnly: true }}><Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} /></group>}
-      {placement && <group userData={{ editorOnly: true }}><PlacementCursor key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} onPreviewCandidate={setPreviewPlacementCandidate} /></group>}
+      {placement && <group userData={{ editorOnly: true }}><PlacementCursor elevationMm={elevationMm} key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} onPreviewCandidate={setPreviewPlacementCandidate} /></group>}
+      </group>
+      {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><PassiveBuildingFloor key={f.id} floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} wallMode={wallMode} toggles={toggles}/>)}
+      {showRoof&&currentFloor&&above&&<ExposedFloorCover floor={floors.find(f=>f.id===currentFloor.id)!} above={above}/>}
+      {wholeView&&<mesh rotation={[-Math.PI/2,0,0]} position={[roomTarget[0],sceneBounds.minZ*SCALE-.002,roomTarget[2]]} receiveShadow raycast={DISABLED_MESH_RAYCAST} userData={{buildingPresentation:true}}><planeGeometry args={[Math.max(20,roomSpan[0]*4),Math.max(20,roomSpan[2]*4)]}/><shadowMaterial transparent opacity={.18} depthWrite={false}/></mesh>}
       <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
       <CameraViewSync restoreView={restoreView} fallbackTarget={orbitTarget} stateRef={cameraStateRef} onRestored={onCameraViewRestored} />
     </>
@@ -2025,6 +2031,7 @@ export function EngineeringViewer(props: ViewerProps) {
           {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={activePreset === view ? "active" : ""} aria-pressed={activePreset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
         </div>
         <div className="toggle-row" role="group" aria-label="3D visibility">
+          {props.buildingView&&props.onBuildingViewChange&&<><ViewToggle label="All floors" active={props.buildingView.whole} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,whole:!props.buildingView!.whole});setFitViewRequest(v=>v+1);}}/><ViewToggle label="Roof" active={props.buildingView.roof&&(props.roofPreview??props.buildingProject?.building?.roof)?.enabled!==false} disabled={(props.roofPreview??props.buildingProject?.building?.roof)?.enabled===false} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,roof:!props.buildingView!.roof});setFitViewRequest(v=>v+1);}}/><button type="button" onClick={()=>{props.onExteriorView?.();setShowGrid(false);applyPreset("perspective");setFitViewRequest(v=>v+1);}}>Exterior view</button></>}
           <ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} />
           {(["elements", "openingImprints", "clearance"] as const).map((key) => (
             <ViewToggle key={key} label={key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearance envelope" : "Elements"} active={toggles[key]} onToggle={() => flip(key)} />
@@ -2178,7 +2185,6 @@ export function EngineeringViewer(props: ViewerProps) {
       {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
       <StableCanvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={() => { clearSelection(); setSelectedCameraRigHandle(null); }}>
         <Scene {...props} renderCamera={renderCamera ?? undefined} onRenderCameraChange={commitRenderCamera} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} cameraRigVisible={cameraWindowOpen && cameraRigVisible} selectedCameraRigHandle={selectedCameraRigHandle} onCameraRigHandleSelect={selectCameraRigHandle} onOpenCameraProperties={openCameraProperties} />
-        <LocalAssetScene instances={props.assetInstances ?? []} />
         {cameraWindowOpen && renderCamera && <ReferenceCameraPreview ref={cameraPreviewRef} cameraState={renderCamera} canvasRef={cameraPreviewCanvasRef} active={cameraWindowOpen} onError={setCameraPreviewError} />}
         <WheelZoom onManualViewChange={clearActivePreset} />
         <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} includeAttribution={includeCaptureAttribution} onError={handleCaptureError} />

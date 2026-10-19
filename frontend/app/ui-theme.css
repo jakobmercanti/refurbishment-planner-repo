@@ -7,6 +7,9 @@ body[data-ui-style="modern"] :is(.topbar, .floating-toolbar, [role="dialog"], .s
   background: var(--panel); color: var(--ink); border-color: var(--line); border-radius: var(--ui-window-radius); box-shadow: var(--ui-window-shadow);
 }
 body[data-ui-style="modern"] .topbar { border-radius: 0; box-shadow: 0 1px 8px rgb(13 35 65 / 6%); }
+/* Outrank the generic window selector: a header must not cast a dialog-sized
+   shadow over the floor selector directly below it. */
+body[data-ui-style="modern"] .planner-workspace > header.topbar { box-shadow: 0 1px 8px rgb(13 35 65 / 6%); }
 body[data-ui-style="modern"] :is(.floating-toolbar-titlebar, .popup-titlebar, [role="dialog"] > header) { background: var(--ui-window-headerBackground); color: var(--deep); border-color: var(--line); }
 body[data-ui-style="modern"] :is(.modal-backdrop, .popup-backdrop) { background: var(--ui-window-backdrop); }
 body[data-ui-style="modern"] .modal-backdrop:not(.catalogue-detail-backdrop) { z-index: 2100; }
@@ -101,7 +104,7 @@ body[data-ui-style="modern"] :is(.catalogue-results, .catalogue-sidebar, .app-na
 body[data-ui-style="modern"] .catalogue-branch { border-color: var(--line); }
 body[data-ui-style="modern"] .catalogue-categories small { background: rgb(96 112 135 / 12%); }
 body[data-ui-style="modern"] :is(.catalogue-object-body code, .catalogue-plan-link) { color: var(--muted); }
-body[data-ui-style="modern"] .floating-toolbar .floating-toolbar-content :where(button, input, select, textarea, p, label, small) { font-size: calc((11px) * var(--density-font-scale, 1)); }
+body[data-ui-style="modern"] .floating-toolbar .floating-toolbar-content :where(button, input, select, textarea, p, label, small, summary.full-plan-overall-toggle) { font-size: calc((11px) * var(--density-font-scale, 1)); }
 body[data-ui-style="modern"] :is(.software-dropdown button, .toolbar-context-submenu button, .floorplan-context-menu button, .settings-choice button, .settings-done, .popup-actions button, .catalogue-manager-tabs button, .catalogue-manager-actions button, .catalogue-card-actions button, .catalogue-form-actions button) {
   min-height: 32px;
   font-size: calc((11px) * var(--density-font-scale, 1));

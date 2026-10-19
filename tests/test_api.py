@@ -13,8 +13,9 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from backend.app.main import app
-from database.catalog import SessionLocal, _backfill_new_clearance_columns, initialise_catalogue
+from database.catalog import CATEGORIES, SessionLocal, _backfill_new_clearance_columns, initialise_catalogue
 from database.catalogue_assets import asset_root
+from database.fixture_defaults import FIXTURE_DEFAULTS
 from database.models import FurnitureCategoryRecord, FurnitureItemRecord
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.models import DoorType, OpeningKind, PersonMockup, Point2D
@@ -264,27 +265,30 @@ def test_double_door_requires_door_fields() -> None:
     assert response.status_code == 422
 
 
-def test_electric_catalogue_category_is_available_and_empty() -> None:
+def test_electrical_catalogue_category_contains_the_shipped_fittings() -> None:
     categories = client.get("/catalog/categories")
     assert categories.status_code == 200
     electric = next(category for category in categories.json() if category["id"] == "electric")
-    assert electric["name"] == "Electric"
+    assert electric["name"] == "Electrical"
 
     items = client.get("/catalog/items?category_id=electric")
     assert items.status_code == 200
-    assert items.json() == []
+    assert items.json()
+    assert all(item["category_id"] == "electric" for item in items.json())
 
 
 def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
     categories = client.get("/catalog/categories")
     assert categories.status_code == 200
-    assert {category["id"] for category in categories.json()} == {
+    actual_categories = {category["id"] for category in categories.json()}
+    assert actual_categories == {category[0] for category in CATEGORIES} | {"heating", "heating-boilers"}
+    assert actual_categories.issuperset({
         "showers", "basins", "toilets", "storage", "doors", "windows",
         "living-sofas", "living-armchairs", "living-tables",
         "bedroom-beds", "bedroom-chairs", "bedroom-tables",
         "bedroom-wardrobes", "kitchen-sinks", "kitchen-fridges", "kitchen-islands",
         "kitchen-storage", "kitchen-hobs", "kitchen-ovens", "kitchen-washing",
-    }
+    })
     category_defaults = {category["id"]: category for category in categories.json()}
     assert category_defaults["toilets"]["default_side_clearance_mm"] == 200
     assert category_defaults["toilets"]["default_front_clearance_mm"] == 400
@@ -293,11 +297,11 @@ def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
 
     door_defaults = client.get("/catalog/items?category_id=doors")
     assert door_defaults.status_code == 200
-    assert {item["subcategory"] for item in door_defaults.json()} == {"Single", "Double"}
+    assert {item["subcategory"] for item in door_defaults.json()} == {variant[1] for variant in FIXTURE_DEFAULTS["doors"][1]}
     assert all(item["fixture_kind"] == "DOOR" for item in door_defaults.json())
     window_defaults = client.get("/catalog/items?category_id=windows")
     assert window_defaults.status_code == 200
-    assert {item["subcategory"] for item in window_defaults.json()} == {"Single pane", "Double pane", "Triple pane"}
+    assert {item["subcategory"] for item in window_defaults.json()} == {variant[1] for variant in FIXTURE_DEFAULTS["windows"][1]}
     assert all(item["fixture_kind"] == "WINDOW" for item in window_defaults.json())
 
     paint_collections = client.get("/catalog/materials?kind=PAINT")
@@ -311,7 +315,8 @@ def test_catalogue_supports_categories_and_supplier_entry_lifecycle() -> None:
     assert sum(len(family["items"]) for family in paints["paints-dulux"]["families"]) > 0
     tiles = client.get("/catalog/materials?kind=TILE")
     assert tiles.status_code == 200
-    assert tiles.json() == []
+    assert {collection["id"] for collection in tiles.json()} == {"flooring-tile", "flooring-wood"}
+    assert all(len(collection["families"]) == 10 for collection in tiles.json())
 
     suffix = uuid4().hex[:8]
     payload = {

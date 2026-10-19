@@ -5,7 +5,7 @@ import { WINDOW_HELP_EVENT } from "../components/WindowHelpButton";
 export function useServiceMenuHelp(root: RefObject<HTMLElement | null>, windowTitle: string) {
   useEffect(() => {
     const panel = root.current;
-    if (!panel || /^Help\b/.test(windowTitle) || !/heat|electrical|insulation|energy|wall layers/i.test(windowTitle)) return;
+    if (!panel || /^Help\b/.test(windowTitle) || !/heat|electrical|insulation|energy|wall layers|floor properties|roof|building/i.test(windowTitle)) return;
     const buttons = new Set<HTMLButtonElement>();
     const decorate = () => {
       for (const target of panel.querySelectorAll<HTMLElement>("summary,label:has(select)")) {

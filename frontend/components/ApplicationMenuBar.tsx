@@ -7,11 +7,13 @@ import { ProjectDownloadDialog } from "@/components/ProjectDownloadDialog";
 import { useHeatingLayout } from "@/components/HeatingLayoutContext";
 import { useEnergyLayout } from "@/components/EnergyLayoutContext";
 import type { Room, WallViewMode } from "@/lib/types";
+import type { BuildingView } from "./BuildingControls";
 import type { DisplayUnits } from "@/lib/units";
 import { FLOORPLAN_STYLE_OPTIONS, type FloorplanStyle } from "@/lib/floorplanStyles";
 import type { ToolbarDefinition, ToolbarId, ToolbarVisibility } from "@/lib/toolbars";
 
 interface ApplicationMenuBarProps {
+  buildingView?:BuildingView; onBuildingViewChange?:(v:BuildingView)=>void; roofAvailable?:boolean;
   room: Room;
   onPrepareProject: (filename?: string) => Promise<File>;
   onSaveProject: (filename?: string) => Promise<void>;
@@ -46,7 +48,7 @@ interface ApplicationMenuBarProps {
 
 type MenuName = "FILE" | "TOOLS" | "LIBRARY" | "TOOLBAR" | "SETTINGS" | null;
 
-export function ApplicationMenuBar({ onPrepareProject, onSaveProject, onOpenProject, onOpenAssets, onOpenPrivacy, mode, workspaceMode = "FLOORPLAN", wallMode, floorplanStyle, displayUnits, onDisplayUnitsChange, onOpenRoom, onOpenCatalogue, onOpenElectricalLayout, onOpenCatalogueManager, catalogueManagerAvailable, onWallModeChange, onFloorplanStyleChange, onExportFloorplan, onSaveView, onAnnotate, onImportDrawing, onOpenSettings, toolbars, toolbarVisibility, toolbarAvailability, onToggleToolbar, onShowAllToolbars, onHideAllToolbars }: ApplicationMenuBarProps) {
+export function ApplicationMenuBar({ buildingView, onBuildingViewChange, roofAvailable=true, onPrepareProject, onSaveProject, onOpenProject, onOpenAssets, onOpenPrivacy, mode, workspaceMode = "FLOORPLAN", wallMode, floorplanStyle, displayUnits, onDisplayUnitsChange, onOpenRoom, onOpenCatalogue, onOpenElectricalLayout, onOpenCatalogueManager, catalogueManagerAvailable, onWallModeChange, onFloorplanStyleChange, onExportFloorplan, onSaveView, onAnnotate, onImportDrawing, onOpenSettings, toolbars, toolbarVisibility, toolbarAvailability, onToggleToolbar, onShowAllToolbars, onHideAllToolbars }: ApplicationMenuBarProps) {
   const compact = useCompactWorkspace();
   const heating = useHeatingLayout();
   const energy = useEnergyLayout();
@@ -125,6 +127,7 @@ export function ApplicationMenuBar({ onPrepareProject, onSaveProject, onOpenProj
           <button aria-pressed={wallMode === "CUTAWAY_2D"} onClick={() => setWallMode("CUTAWAY_2D")}><span>{wallMode === "CUTAWAY_2D" ? "✓ " : ""}2D cutaway walls</span></button>
           <button aria-pressed={wallMode === "CUTAWAY_3D"} onClick={() => setWallMode("CUTAWAY_3D")}><span>{wallMode === "CUTAWAY_3D" ? "✓ " : ""}3D cutaway walls</span></button>
           <button aria-pressed={wallMode === "INVISIBLE"} onClick={() => setWallMode("INVISIBLE")}><span>{wallMode === "INVISIBLE" ? "✓ " : ""}Invisible walls</span></button>
+          {buildingView&&onBuildingViewChange&&<><button aria-pressed={buildingView.whole} onClick={()=>{onBuildingViewChange({...buildingView,whole:!buildingView.whole});setMenu(null);}}><span>{buildingView.whole?"✓ ":""}Show all floors</span></button><button aria-pressed={buildingView.roof&&roofAvailable} disabled={!roofAvailable} onClick={()=>{onBuildingViewChange({...buildingView,roof:!buildingView.roof});setMenu(null);}}><span>{buildingView.roof&&roofAvailable?"✓ ":""}Show roof</span></button></>}
         </>}
       </div></details>}
     </div>}</div>

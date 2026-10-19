@@ -112,6 +112,10 @@ html[data-theme="dark"] :is(
   box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
 }
 
+html[data-theme="dark"] .planner-workspace > header.topbar { box-shadow: 0 1px 8px rgb(0 0 0 / 12%); }
+html[data-theme="dark"] .full-plan-overall-toggle { background: var(--ui-button-background); color: var(--ink); border-color: var(--line); }
+html[data-theme="dark"] .full-plan-overall-content { background: var(--paper); color: var(--ink); }
+
 html[data-theme="dark"] :is(
   .topbar, .catalogue-header, .catalogue-toolbar, .floating-toolbar-titlebar,
   .popup-titlebar, .settings-dialog > header, .save-as-dialog > header,

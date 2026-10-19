@@ -42,6 +42,8 @@ interface FloatingToolbarProps {
   dock?: ToolbarDock;
   layoutResetKey?: number;
   bringToFront?: boolean;
+  /** Increment to raise an already-open window without remounting its draft. */
+  focusRequest?: number;
   onClose: () => void;
 }
 
@@ -57,6 +59,11 @@ function reindexFloatingPanels() {
 function bringFloatingPanelToFront(panel: HTMLElement) {
   floatingPanelStack = floatingPanelStack.filter((current) => current !== panel && current.isConnected);
   floatingPanelStack.push(panel);
+  reindexFloatingPanels();
+}
+
+function registerBackgroundPanel(panel: HTMLElement) {
+  floatingPanelStack = [panel, ...floatingPanelStack.filter(current => current !== panel && current.isConnected)];
   reindexFloatingPanels();
 }
 
@@ -125,7 +132,7 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
   return <FloatingToolbarWindow key={props.layoutResetKey ?? 0} {...props} />;
 }
 
-function FloatingToolbarWindow({ title, help = true, children, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, onClose }: FloatingToolbarProps) {
+function FloatingToolbarWindow({ title, help = true, children, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, focusRequest, onClose }: FloatingToolbarProps) {
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);
   useServiceMenuHelp(panelRef, title);
@@ -133,6 +140,7 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
   const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number; minimumHeight: number } | null>(null);
   const mouseDragRef = useRef(false);
   const previousBringToFront = useRef(bringToFront);
+  const backgroundOnMount = useRef(Boolean(dock) && !bringToFront);
   const [position, setPosition] = useState(defaultPosition);
   const [size, setSize] = useState<{ width: number; height: number | null }>(() => ({ width: initialSize?.width ?? DEFAULT_FLOATING_WINDOW_WIDTH, height: initialSize?.height ?? null }));
   const [minimumHeight, setMinimumHeight] = useState(compact ? 0 : MIN_FLOATING_WINDOW_HEIGHT);
@@ -144,7 +152,10 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
   useLayoutEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
-    bringFloatingPanelToFront(panel);
+    // Restored docked tools must not cover an independent editor when a floor
+    // change remounts the canvas. A click can still raise any window normally.
+    if (backgroundOnMount.current) registerBackgroundPanel(panel);
+    else bringFloatingPanelToFront(panel);
     return () => removeFloatingPanel(panel);
   }, []);
 
@@ -157,6 +168,12 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
     if (panel) bringFloatingPanelToFront(panel);
     previousBringToFront.current = bringToFront;
   }, [bringToFront]);
+
+  useLayoutEffect(() => {
+    if (focusRequest === undefined) return;
+    const panel = panelRef.current;
+    if (panel) bringFloatingPanelToFront(panel);
+  }, [focusRequest]);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
@@ -386,10 +403,14 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
   const docked = Boolean(dock && isDocked);
   const dockHeight = dock?.height ?? (dock?.fill ? slotHeight : undefined);
   const appliedMinimumHeight = docked && size.height === null ? undefined : minimumHeight;
-  const requestedTop = compactWorkspace ? (visibleWorkspace?.top ?? 0) + 8 : heightMaximized ? position.y : docked ? (dock?.top ?? dockTop) : position.y;
-  const visibleMinimumHeight = docked && size.height === null ? MIN_FLOATING_WINDOW_HEIGHT : minimumHeight;
   const cssLength = (value: string | number | undefined) => typeof value === "number" ? `${value}px` : value ?? "8px";
-  const top = visibleWorkspace ? `clamp(${visibleWorkspace.top + 8}px, ${cssLength(requestedTop)}, ${Math.max(visibleWorkspace.top + 8, visibleWorkspace.bottom - Math.min(visibleMinimumHeight, visibleWorkspace.bottom - visibleWorkspace.top - 16) - 8)}px)` : requestedTop;
+  const insetTop = (value: string | number | undefined) => `calc(${cssLength(value)} + var(--floating-toolbar-top-inset, 0px))`;
+  const requestedTop = compactWorkspace ? insetTop((visibleWorkspace?.top ?? 0)+8) : heightMaximized ? position.y : docked ? dockSlot===0?insetTop(dock?.top??dockTop):(dock?.top??dockTop) : position.y;
+  const visibleMinimumHeight = docked && size.height === null ? MIN_FLOATING_WINDOW_HEIGHT : minimumHeight;
+  // A pinned workspace control must remain clear of free windows too, including
+  // after viewport resizing or dragging. The final top feeds availableHeight.
+  const minimumTop = insetTop((visibleWorkspace?.top ?? 0)+8);
+  const top = visibleWorkspace ? `clamp(${minimumTop}, ${cssLength(requestedTop)}, max(${minimumTop}, ${Math.max(visibleWorkspace.top + 8, visibleWorkspace.bottom - Math.min(visibleMinimumHeight, visibleWorkspace.bottom - visibleWorkspace.top - 16) - 8)}px))` : requestedTop;
   const availableHeight = visibleWorkspace ? `max(0px, calc(${visibleWorkspace.bottom - 8}px - (${cssLength(top)})))` : "calc(100% - 16px)";
   const preferredMaximum = heightMaximized || size.height !== null ? "calc(100% - 16px)" : docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `${maxHeight}px`;
   const style = {

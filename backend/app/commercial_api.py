@@ -201,7 +201,7 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
     if (
         not required.issubset(document)
         or bool(set(document) - required - {
-            "plannerBuild", "electricalLayout", "renderCamera", "quotes", "heatingLayout", "energyLayout"
+            "plannerBuild", "electricalLayout", "renderCamera", "quotes", "heatingLayout", "energyLayout", "building"
         })
         or type(document.get("schemaVersion")) is not int
         or document.get("schemaVersion") != 1
@@ -302,6 +302,9 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
             raise HTTPException(status_code=422, detail="Project text exceeds the supported limit.")
 
     inspect(document)
+    if "building" in document:
+        from backend.app.building_document import validate_building
+        validate_building(document["building"], document, lambda content: _validate_project(content, project_id))
     try:
         encoded = json.dumps(document, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
     except (TypeError, ValueError):
