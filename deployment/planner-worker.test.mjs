@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from './planner-worker.mjs';
+import { PLANS_PAGE_VERSION } from './plans-page.mjs';
 
 const origin = 'https://www.freefloorplan3d.com';
 test('normal Plans uses the proven plain navigation without app assets or framework scripts', async () => {
   const response = await worker.fetch(new Request(origin + '/planner/plans/?plan=studio'), { ASSETS: { fetch: async () => { throw new Error('Must bypass planner assets'); } } });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Cache-Control'), 'no-store, max-age=0');
-  assert.equal(response.headers.get('X-Plans-Page-Version'), 'plans-20261009-v2');
+  assert.equal(response.headers.get('X-Plans-Page-Version'), PLANS_PAGE_VERSION);
+  assert.match(PLANS_PAGE_VERSION, /^plans-\d{8}-v\d+$/);
   const html = await response.text();
   assert.ok(!html.includes('/_next/'));
   assert.ok(html.includes('Continue with Studio'));

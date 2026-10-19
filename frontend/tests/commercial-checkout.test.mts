@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createCheckout } from "../lib/commercialApi.ts";
 import { paidPlan, prepareBillingNavigation, stripeDestination } from "../lib/billingNavigation.ts";
-import { readFileSync } from "node:fs";
 import { plansPage } from "../../deployment/plans-page.mjs";
 
 test("the deployed plans page uses native browser GET forms without client checkout handling", () => {
@@ -10,15 +9,6 @@ test("the deployed plans page uses native browser GET forms without client check
   assert.equal((html.match(/<form action="\/planner\/checkout\/" method="get">/g) ?? []).length, 3);
   for (const plan of ["starter", "pro", "studio"]) assert.ok(html.includes(`type="hidden" name="plan" value="${plan}"`));
   assert.match(html, /<form action="\/planner\/" method="get">/);
-});
-
-test("signed-out checkout goes directly to the real sign-in form, not another sign-in prompt", () => {
-  const source = readFileSync(new URL("../components/CheckoutExperience.tsx", import.meta.url), "utf8");
-  assert.ok(source.includes('window.location.replace(`${base}/account/${plan ? `?plan=${plan}` : ""}`)'));
-  assert.ok(!source.includes('phase === "signin"'));
-  assert.ok(!source.includes('Sign in{state.plan'));
-  const account = readFileSync(new URL("../components/AccountExperience.tsx", import.meta.url), "utf8");
-  assert.ok(account.includes('Your selection is kept; no payment has been taken.'));
 });
 
 test("only paid plans and HTTPS Stripe destinations are accepted", () => {

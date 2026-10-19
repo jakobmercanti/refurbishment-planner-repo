@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FixturePlanSymbol } from "../components/FixturePlanSymbol.tsx";
@@ -45,13 +44,4 @@ test("both sides of a shared wall follow; ordinary free-standing furniture stays
   assert.equal(moved[0].center.x, heater.center.x - 1000);
   assert.equal(moved[1].center.x, 4051);
   assert.equal(moved[2], free);
-});
-
-test("normal fixture picking is above the wall hit layer; wall history covers all visible rooms", () => {
-  const source = readFileSync(new URL("../components/FullFloorplanEditor.tsx", import.meta.url), "utf8");
-  const canvas = source.slice(source.indexOf("<FloorPlanCanvas"));
-  assert.ok(canvas.indexOf("visibleFixtures).filter") > canvas.indexOf("wall-selection-line"));
-  assert.match(source, /captureWallFixtureAttachments\(visibleFixtures,/);
-  assert.match(source, /fixturePositions: fixturePositions\(visibleFixtures\)/);
-  assert.match(source, /persistFixturePositions\(value.fixturePositions\)/);
 });

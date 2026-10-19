@@ -796,11 +796,20 @@ def test_catalogue_fetch_revalidates_and_rejects_private_redirect(monkeypatch) -
 
 def test_website_import_skips_malformed_and_duplicate_products_in_one_transaction(monkeypatch) -> None:
     suffix = uuid4().hex[:8]
-    document = f"""<script type="application/ld+json">{{"@graph":[
-      {{"@type":"Product","name":"Missing SKU"}},
-      {{"@type":"Product","name":"Valid imported item","sku":"VALID-{suffix}"}},
-      {{"@type":"Product","name":"Duplicate built in","sku":"RF-FU-600"}}
-    ]}}</script>"""
+    duplicate = next(item for item in client.get("/catalog/items").json() if item["sku"])
+    document = (
+        '<script type="application/ld+json">'
+        + json.dumps(
+            {
+                "@graph": [
+                    {"@type": "Product", "name": "Missing SKU"},
+                    {"@type": "Product", "name": "Valid imported item", "sku": f"VALID-{suffix}"},
+                    {"@type": "Product", "name": "Duplicate built in", "sku": duplicate["sku"]},
+                ]
+            }
+        )
+        + "</script>"
+    )
     monkeypatch.setattr(api_main, "safe_catalogue_url", lambda _payload: "https://supplier.example/products")
     monkeypatch.setattr(api_main, "fetch_catalogue_page", lambda _url: document)
     response = client.post(
@@ -811,7 +820,7 @@ def test_website_import_skips_malformed_and_duplicate_products_in_one_transactio
             "category_id": "storage",
             "subcategory": "Imported",
             "fixture_kind": "FURNITURE",
-            "supplier": "Renovation Fit",
+            "supplier": duplicate["supplier"],
             "fallback_name": "Fallback",
             "fallback_sku": f"FALLBACK-{suffix}",
             "width_mm": 500,

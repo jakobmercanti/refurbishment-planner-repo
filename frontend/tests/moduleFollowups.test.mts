@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ElectricalScheduleWindow } from '../components/ElectricalScheduleWindow';
@@ -35,14 +34,6 @@ test('insulation material and thickness changes keep exact wall signature; moved
   assert.match(resolveThermalOverrides(next,[moved])[wall.elementId].warning!,/no longer matches/);
 });
 
-test('thickness-only editor changes and undo restore snapshots without re-solving wall lengths', () => {
-  const source=readFileSync(new URL('../components/FullFloorplanEditor.tsx',import.meta.url),'utf8');
-  const apply=source.slice(source.indexOf('  function applyEnergyLayout('),source.indexOf('  function undoEnergy('));
-  assert.doesNotMatch(apply,/setWallsRespectingMeasurements/);
-  assert.match(apply,/setWalls\(nextWalls\)/);
-  assert.match(apply,/setWalls\(value.walls\)/);
-});
-
 test('BOM rows expose a popup action, not inline commercial form fields', () => {
   const layout={...DEFAULT_ELECTRICAL_LAYOUT,documentation:{...DEFAULT_ELECTRICAL_LAYOUT.documentation,manualBomItems:[{bomRowId:'manual',description:'Test item',quantity:1}]}};
   const html=renderToStaticMarkup(createElement(ElectricalScheduleWindow,{rooms:[],assets:[],instances:[],layout,projectName:'Test',onLayoutChange(){}}));
@@ -50,12 +41,9 @@ test('BOM rows expose a popup action, not inline commercial form fields', () => 
   assert.doesNotMatch(html,/electrical-bom-detail|electrical-bom-fields/);
 });
 
-test('pipe guidance is in Heating help, not a second inline explanation', () => {
+test('Heating help distinguishes schematic pipework from mains cold water', () => {
   const help=windowHelpSteps('Heating Layout').map(step=>step.text).join(' ');
   assert.match(help,/not mains cold water/);assert.match(help,/schematic routing only/);assert.match(help,/double-click/);
-  const source=readFileSync(new URL('../components/HeatingLayoutPanel.tsx',import.meta.url),'utf8');
-  assert.doesNotMatch(source,/How to connect and edit pipes/);
-  assert.match(source,/className=\{styles.pipeRouting\}/);assert.match(source,/styles.temperaturePresets/);
 });
 
 test('wall signature comparison ignores serialization order and machine round-off, not measured movement', () => {

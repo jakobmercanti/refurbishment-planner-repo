@@ -10,17 +10,22 @@ from cad.generator import FreeCADGenerationError, find_freecad_cmd, generate_cad
 from geometry.fixtures import build_l_shaped_fixture
 
 
-def test_missing_freecad_fails_instead_of_creating_placeholder(tmp_path: Path) -> None:
+def test_missing_explicit_freecad_never_falls_back_to_another_binary(tmp_path: Path, monkeypatch) -> None:
+    available = tmp_path / "available-FreeCADCmd"
+    available.touch()
+    monkeypatch.setattr("cad.generator.shutil.which", lambda name: str(available))
     missing = tmp_path / "FreeCADCmd-does-not-exist"
     with pytest.raises(FreeCADGenerationError, match="was not found"):
         find_freecad_cmd(missing)
 
 
-def test_installed_freecad_is_discoverable() -> None:
-    expected = Path(r"C:\Program Files\FreeCAD 26.3\bin\freecadcmd.exe")
-    if not expected.is_file():
-        pytest.skip("FreeCAD 26.3 is not installed on this host")
-    assert find_freecad_cmd(expected) == expected.resolve()
+@pytest.mark.parametrize("source", ["explicit", "path", "environment"])
+def test_freecad_discovery_uses_configured_or_path_binary(tmp_path, monkeypatch, source) -> None:
+    executable = tmp_path / "FreeCADCmd"
+    executable.touch()
+    monkeypatch.setattr("cad.generator.os.environ", {"FREECAD_CMD": str(executable)} if source == "environment" else {})
+    monkeypatch.setattr("cad.generator.shutil.which", lambda name: str(executable) if source == "path" else None)
+    assert find_freecad_cmd(executable if source == "explicit" else None) == executable.resolve()
 
 
 def test_success_without_new_cad_output_cannot_return_a_stale_file(

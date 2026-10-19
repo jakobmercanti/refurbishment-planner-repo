@@ -17,3 +17,15 @@ test("recalibration works in scaled coordinates and rejects degenerate input", (
   for (const length of [0, -1, NaN, Infinity]) assert.equal(calibratedDrawingSize({ width: 100, height: 100 }, { x: 0, y: 0 }, { x: 10, y: 0 }, length), null);
   assert.equal(calibratedDrawingSize({ width: 100, height: 100 }, { x: 2, y: 2 }, { x: 2, y: 2 }, 100), null);
 });
+
+test("current manual drawing calibration is translation and rotation invariant in millimetres", () => {
+  const image = { width: 1000, height: 800 }, before = structuredClone(image);
+  for (const angle of [0, 30, 90, 135, 225]) for (const lengthMm of [100, 2500, 10000]) {
+    const radians = angle * Math.PI / 180, start = { x: -230, y: 817 };
+    const end = { x: start.x + 500 * Math.cos(radians), y: start.y + 500 * Math.sin(radians) };
+    const result = calibratedDrawingSize(image, start, end, lengthMm)!;
+    assert.ok(Math.abs(result.width - 2 * lengthMm) < 1e-8);
+    assert.ok(Math.abs(result.height - 1.6 * lengthMm) < 1e-8);
+  }
+  assert.deepEqual(image, before);
+});
