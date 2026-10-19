@@ -3,6 +3,11 @@ import type { heatingResults } from "./heatingDesign";
 export type HeatingRoomResult = ReturnType<typeof heatingResults>["rooms"][number];
 export const heatingWatts = (value: number) => `${Math.round(value).toLocaleString()} W`;
 
+/** Visible schematic bounds only, shared by emitters and their placement preview. */
+export function heatingPlanSize(width: number, depth: number, heatingLayout = false) {
+  return { width: Math.max(heatingLayout ? 64 : 24, width), depth: Math.max(heatingLayout ? 24 : 8, depth) };
+}
+
 /** Presentation of the existing deterministic results, not a second sizing engine.
  * A green estimated comparison is explicitly not the engine's verified-capacity pass.
  */

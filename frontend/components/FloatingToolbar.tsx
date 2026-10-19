@@ -217,7 +217,7 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
       setVisibleWorkspace(current => current && Object.keys(visible).every(key => current[key as keyof typeof current] === visible[key as keyof typeof visible]) ? current : visible);
       setPosition((current) => {
         const x = Math.max(visible.left + 8, Math.min(visible.right - Math.min(panelBounds.width, visible.right - visible.left - 16) - 8, current.x));
-        const y = Math.max(visible.top + 8, Math.min(visible.bottom - Math.min(panelBounds.height, visible.bottom - visible.top - 16) - 8, current.y));
+        const y = Math.max(visible.top + 8, Math.min(visible.bottom - MIN_FLOATING_WINDOW_HEIGHT - 8, current.y));
         return x === current.x && y === current.y ? current : { x, y };
       });
     }
@@ -244,7 +244,7 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
       const drag = dragRef.current;
       if (!mouseDragRef.current || !drag) return;
       const x = Math.max(8, Math.min(drag.parentWidth - Math.min(drag.width, drag.parentWidth - 16) - 8, drag.left + event.clientX - drag.pointerX));
-      const y = Math.max(8, Math.min(drag.parentHeight - Math.min(drag.height, drag.parentHeight - 16) - 8, drag.top + event.clientY - drag.pointerY));
+      const y = Math.max(8, Math.min(drag.parentHeight - MIN_FLOATING_WINDOW_HEIGHT - 8, drag.top + event.clientY - drag.pointerY));
       setPosition({ x, y });
     }
     function endMouseDrag() {
@@ -344,7 +344,7 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
     const drag = dragRef.current;
     if (!drag) return;
     const x = Math.max(8, Math.min(drag.parentWidth - Math.min(drag.width, drag.parentWidth - 16) - 8, drag.left + event.clientX - drag.pointerX));
-    const y = Math.max(8, Math.min(drag.parentHeight - Math.min(drag.height, drag.parentHeight - 16) - 8, drag.top + event.clientY - drag.pointerY));
+    const y = Math.max(8, Math.min(drag.parentHeight - MIN_FLOATING_WINDOW_HEIGHT - 8, drag.top + event.clientY - drag.pointerY));
     setPosition({ x, y });
   }
 
@@ -405,10 +405,12 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
   const cssLength = (value: string | number | undefined) => typeof value === "number" ? `${value}px` : value ?? "8px";
   const insetTop = (value: string | number | undefined) => `calc(${cssLength(value)} + var(--floating-toolbar-top-inset, 0px))`;
   const requestedTop = compactWorkspace ? insetTop((visibleWorkspace?.top ?? 0)+8) : heightMaximized ? position.y : docked ? dock?.top!==undefined?insetTop(dock.top):dockTop : position.y;
-  const visibleMinimumHeight = docked && size.height === null ? MIN_FLOATING_WINDOW_HEIGHT : minimumHeight;
-  // A pinned workspace control must remain clear of free windows too, including
-  // after viewport resizing or dragging. The final top feeds availableHeight.
-  const minimumTop = insetTop((visibleWorkspace?.top ?? 0)+8);
+  // Tall free windows must still move. Their scrollable body shrinks to the
+  // remaining viewport instead of pinning the titlebar to its original row.
+  const visibleMinimumHeight = MIN_FLOATING_WINDOW_HEIGHT;
+  // Reserve the selector strip for automatic layouts only. Once undocked, the
+  // user can move a window directly below the main menu, as the drag bounds allow.
+  const minimumTop = compactWorkspace || docked ? insetTop((visibleWorkspace?.top ?? 0)+8) : cssLength((visibleWorkspace?.top ?? 0)+8);
   const top = visibleWorkspace ? `clamp(${minimumTop}, ${cssLength(requestedTop)}, max(${minimumTop}, ${Math.max(visibleWorkspace.top + 8, visibleWorkspace.bottom - Math.min(visibleMinimumHeight, visibleWorkspace.bottom - visibleWorkspace.top - 16) - 8)}px))` : requestedTop;
   const availableHeight = visibleWorkspace ? `max(0px, calc(${visibleWorkspace.bottom - 8}px - (${cssLength(top)})))` : "calc(100% - 16px)";
   const preferredMaximum = heightMaximized || size.height !== null ? "calc(100% - 16px)" : docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `${maxHeight}px`;

@@ -12,6 +12,12 @@ test('roof construction help is not mistaken for architectural roof geometry',()
  for(const title of ['Define wall layers','Define floor layers','Define roof layers'])assert.match(text(title),/equivalent-resistance layer/);
  assert.match(text('Roof & ceiling'),/ridge/);
 });
+test('roof help matches the precise direction entry, expanded finishes and viewer-only exterior action',()=>{
+ const help=text('Roof & ceiling');
+ assert.match(help,/Custom angle/);assert.match(help,/0° to 360°/);assert.match(help,/never rounded/);
+ for(const material of ['asphalt shingles','timber shingles','bitumen membrane','corrugated metal'])assert.ok(help.includes(material),material);
+ assert.match(help,/Exterior view belongs to the main 3D viewer/);
+});
 test('quotation section help reaches its own guide rather than generic service help',()=>{
  assert.match(text('Quote — Items and private costs'),/never appears in the customer/);
  assert.match(text('Quote — Customer PDF content'),/Private costs/);

@@ -6,7 +6,7 @@ const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const mm = z.number().finite().min(-1e7).max(1e7);
 const point = z.object({ x: mm, y: mm });
 export const roofFinishSchema = z.object({
-  material: z.enum(["CLAY_TILES", "CONCRETE_TILES", "SLATE", "CEMENT", "METAL"]),
+  material: z.enum(["CLAY_TILES", "CONCRETE_TILES", "SLATE", "CEMENT", "METAL", "ASPHALT_SHINGLES", "TIMBER_SHINGLES", "BITUMEN", "CORRUGATED_METAL"]),
   colour: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   tileWidthMm: z.number().finite().min(100).max(2000),
   tileHeightMm: z.number().finite().min(100).max(4000),

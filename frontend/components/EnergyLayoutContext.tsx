@@ -2,10 +2,10 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { newEnergyProject, type EnergyProject } from "@/lib/energyDocument";
 const EnergyContext = createContext({ data: newEnergyProject(), windowOpen: false, open: () => {}, close: () => {}, change: (_data: EnergyProject) => { void _data; } });
-export function EnergyLayoutProvider({ data, onChange, onOpen, children, scopeKey="" }: { data: EnergyProject; onChange: (data: EnergyProject) => void; onOpen: () => void; children: ReactNode; scopeKey?:string }) {
+export function EnergyLayoutProvider({ data, onChange, onOpen, children, scopeKey="", visible=true }: { data: EnergyProject; onChange: (data: EnergyProject) => void; onOpen: () => void; children: ReactNode; scopeKey?:string; visible?:boolean }) {
   const [ui,setUi]=useState({scope:scopeKey,open:false});
   if(ui.scope!==scopeKey)setUi({scope:scopeKey,open:false});
-  const windowOpen=ui.scope===scopeKey&&ui.open;
+  const windowOpen=visible&&ui.scope===scopeKey&&ui.open;
   const setWindowOpen=(open:boolean)=>setUi({scope:scopeKey,open});
   const presented = useMemo(() => ({ ...data, enabled: windowOpen }), [data, windowOpen]);
   // Window lifecycle owns the overlay, including when importing or undoing a saved state.

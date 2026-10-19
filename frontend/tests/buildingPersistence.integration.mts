@@ -7,8 +7,16 @@ import { activeFloor,buildingOf,defaultBuilding,projectFloors,selectFloor,update
 import { LocalProjectRepository } from '../lib/projectRepository';
 import { exportProject,importProject,inspectPackage } from '../lib/projectPackage';
 import { assetRepository } from '../lib/assetRepository';
+import { ROOF_MATERIALS } from '../lib/roofAppearance';
 const m=(value:number)=>({value,uncertainty_mm:0,verified:true,source_type:'USER_MEASURED'});
 function fixture(){const p=newProject();p.rooms=[{id:'r',name:'Room',version:1,vertices:[{x:0,y:0},{x:8000,y:0},{x:8000,y:6000},{x:0,y:6000}],wall_height:m(2400),wall_thickness:m(100),obstacles:[],openings:[]}];p.building=defaultBuilding(p);return p;}
+test('every roof finish and a precise custom direction survive a portable multi-floor project',async()=>{
+ for(const material of ROOF_MATERIALS) {
+  const p=copyTopFloor(fixture());p.building!.roof={...p.building!.roof,type:'GABLE',orientationDeg:37.125,finish:{material:material.id,colour:'#a17349',tileWidthMm:425,tileHeightMm:615}};
+  const before=structuredClone(projectFloors(p)),blob=await exportProject(p),restored=await importProject(new File([blob],'roof-finish.floorplan3d'));
+  assert.deepEqual(restored.building!.roof,p.building!.roof);assert.deepEqual(projectFloors(restored),before);
+ }
+});
 test('three floors, polygonal slab openings and independent ceiling survive IndexedDB and portable package round trips',async()=>{
  let p=copyTopFloor(copyTopFloor(fixture()));const id=activeFloor(p).id,o:FloorOpening={id:'atrium',name:'Atrium',shape:'POLYGON',vertices:[{x:1000,y:1000},{x:4000,y:1000},{x:3500,y:3000},{x:1000,y:2500}]};
  p=updateFloor(p,id,{openings:[o]});p.building!.roof={...p.building!.roof,type:'GABLE',ceilingMode:'FLAT',ceilingHeightMm:2300,enabled:true,finish:{material:'CLAY_TILES',colour:'#a65338',tileWidthMm:300,tileHeightMm:400}};

@@ -13,7 +13,19 @@ minimum heights must not stretch question-mark buttons.
 
 Docked windows divide the usable area *below* the pinned floor selector. Reserve
 that strip for every slot, not just the first window; otherwise the first
-window can cover the next header. Free windows remain independently movable.
+window can cover the next header. Free windows remain independently movable,
+including directly below the main menu; do not apply the selector gutter to a
+window after the user has undocked it. Compact/touch layouts retain the gutter.
+
+Electrical, heating and insulation module windows belong to the 2D workspace.
+The 3D **Show** menu owns wall display, all-floor and roof visibility. Keep the
+exclusive wall modes in one submenu and visibility toggles independent. Menu
+disclosure labels must use the same type, padding and palette as adjacent items.
+
+Placement previews must share the placed symbol's schematic sizing and zoom,
+without applying device-face sizing twice. Preview outlines match visible faces,
+while stored footprint dimensions remain millimetres. Preview graphics must not
+intercept canvas clicks.
 
 ## Appearance and data
 

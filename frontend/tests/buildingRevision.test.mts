@@ -57,7 +57,7 @@ test('new outline from an upper floor keeps only the original ground level and r
 test('empty new outline also switches to the ground floor without retaining an upper footprint',()=>{
  const q=resetBuildingOutline(copyTopFloor(fixture()),null);assert.equal(buildingOf(q).floors.length,1);assert.equal(activeFloor(q).id,'floor-ground');assert.deepEqual(q.floorplan!.walls,[]);assert.deepEqual(q.floorplan!.rooms,[]);assert.deepEqual(q.rooms,[]);
 });
-test('legacy roof appearance is compatible; five finishes round-trip and never change geometry',()=>{
+test('legacy roof appearance is compatible; all nine finishes round-trip and never change geometry',()=>{
  const p=fixture(),r=buildingOf(p).roof,fp=structuralFloorFootprint(p),shape=buildRoofSurfaces(fp,r,2400);assert.equal(resolvedRoofFinish(r).material,'SLATE');
  for(const m of ROOF_MATERIALS){const roof={...r,enabled:true,finish:{material:m.id,colour:m.colour,tileWidthMm:300,tileHeightMm:400}};assert.deepEqual(buildRoofSurfaces(fp,roof,2400),shape);assert.deepEqual(roofSchema.parse(roof),roof);const q=parseProject({...p,building:{...buildingOf(p),roof}});assert.deepEqual(q.building!.roof,roof);}
  assert.deepEqual(buildRoofSurfaces(fp,{...r,enabled:false},2400),[]);
@@ -68,11 +68,34 @@ test('invalid roof materials, colours, scale and visibility flags are rejected',
  assert.equal(roofSchema.safeParse({...r,enabled:'true'}).success,false);
 });
 test('roof texture generation is deterministic, varied and opaque for each material',()=>{
- const patterns=ROOF_MATERIALS.map(m=>{const a=roofTexturePixels(m.id,64);assert.deepEqual(a,roofTexturePixels(m.id,64));assert.equal(a.length,64*64*4);assert.ok(new Set(a.filter((_,i)=>i%4!==3)).size>3);assert.ok(a.filter((_,i)=>i%4===3).every(v=>v===255));return Buffer.from(a).toString('base64');});assert.equal(new Set(patterns).size,5);
+ const patterns=ROOF_MATERIALS.map(m=>{const a=roofTexturePixels(m.id,64);assert.deepEqual(a,roofTexturePixels(m.id,64));assert.equal(a.length,64*64*4);assert.ok(new Set(a.filter((_,i)=>i%4!==3)).size>3);assert.ok(a.filter((_,i)=>i%4===3).every(v=>v===255));return Buffer.from(a).toString('base64');});assert.equal(new Set(patterns).size,9);
 });
 test('independent floor and roof editors expose existing styled controls, not copy-from-top actions',()=>{
  const p=fixture(),floor=renderToStaticMarkup(createElement(FloorProperties,{project:p,units:'MM',adding:true,onCommit(){},onCancel(){}}));assert.match(floor,/Floor name/);assert.match(floor,/Add floor/);assert.doesNotMatch(floor,/Duplicate floor|Copy floor below/);
- const roof=renderToStaticMarkup(createElement(RoofProperties,{roof:buildingOf(p).roof,units:'MM',footprint:structuralFloorFootprint(p),onPreview(){},onCommit(){},onCancel(){},onPreviewExterior(){}}));assert.match(roof,/Roof colour/);assert.match(roof,/Standing-seam metal/);assert.match(roof,/Preview exterior in 3D/);assert.doesNotMatch(roof,/<select(?![^>]*workspace-mode-select)/);
+ const roof=renderToStaticMarkup(createElement(RoofProperties,{roof:buildingOf(p).roof,units:'MM',footprint:structuralFloorFootprint(p),onPreview(){},onCommit(){},onCancel(){}}));assert.match(roof,/Roof colour/);assert.match(roof,/Standing-seam metal/);assert.doesNotMatch(roof,/Preview exterior in 3D/);assert.doesNotMatch(roof,/<select(?![^>]*workspace-mode-select)/);
+});
+test('roof editor preserves saved diagonal angles as Custom instead of selecting an unavailable preset',()=>{
+ const p=fixture();
+ for(const orientationDeg of [0,37.5,45,90,135,180,225,270,315,360]) {
+  const roof={...buildingOf(p).roof,type:'MONO' as const,orientationDeg};
+  const html=renderToStaticMarkup(createElement(RoofProperties,{roof,units:'MM',footprint:structuralFloorFootprint(p),onPreview(){},onCommit(){},onCancel(){}}));
+  const custom=![0,90,180,270].includes(orientationDeg);
+  assert.equal(/value="CUSTOM" selected=""/.test(html),custom);
+  assert.equal(/aria-label="Custom roof angle"/.test(html),custom);
+  assert.equal((html.match(/<option value="(?:0|90|180|270|CUSTOM)"/g)??[]).length,5);
+  assert.equal(roofSchema.parse(roof).orientationDeg,orientationDeg);
+ }
+ for(const orientationDeg of [-.01,360.01,Infinity,NaN])assert.equal(roofSchema.safeParse({...buildingOf(p).roof,orientationDeg}).success,false);
+});
+test('custom roof directions build finite surfaces for every profile without altering the footprint',()=>{
+ const p=fixture(),footprint=structuralFloorFootprint(p),before=structuredClone(footprint);
+ for(const type of ['FLAT','MONO','GABLE','STEPPED'] as const)for(const orientationDeg of [37.125,135,225,315,360]) {
+  const roof={...buildingOf(p).roof,type,orientationDeg};
+  const surfaces=buildRoofSurfaces(footprint,roof,2400);
+  assert.ok(surfaces.some(surface=>surface.kind==='ROOF'));
+  assert.ok(surfaces.every(surface=>surface.positionsMm.length>0&&surface.positionsMm.every(Number.isFinite)));
+ }
+ assert.deepEqual(footprint,before);
 });
 test('removing a roof also removes its ridge indicator from the 2D plan',()=>{
  const p=fixture(),roof={...buildingOf(p).roof,type:'GABLE' as const,highHeightMm:3400};

@@ -78,11 +78,26 @@ def test_cloud_validator_accepts_versioned_building_without_losing_other_floors(
     assert value == original
 
 
-@pytest.mark.parametrize("material", ["CLAY_TILES", "CONCRETE_TILES", "SLATE", "CEMENT", "METAL"])
+@pytest.mark.parametrize(
+    "material",
+    [
+        "CLAY_TILES",
+        "CONCRETE_TILES",
+        "SLATE",
+        "CEMENT",
+        "METAL",
+        "ASPHALT_SHINGLES",
+        "TIMBER_SHINGLES",
+        "BITUMEN",
+        "CORRUGATED_METAL",
+    ],
+)
 def test_roof_material_and_colour_are_preserved(material: str) -> None:
     value = project()
     value["building"]["roof"].update(
-        enabled=True, finish={"material": material, "colour": "#a65338", "tileWidthMm": 300, "tileHeightMm": 400}
+        enabled=True,
+        orientationDeg=37.125,
+        finish={"material": material, "colour": "#a65338", "tileWidthMm": 300, "tileHeightMm": 400},
     )
     original = deepcopy(value)
     _validate_project(value, __import__("uuid").UUID(value["projectId"]))

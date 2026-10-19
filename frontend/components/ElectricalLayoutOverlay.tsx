@@ -4,7 +4,7 @@ import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent }
 import { FixturePlanSymbol } from "@/components/FixturePlanSymbol";
 import { electricalPlanEndpoint, electricalPlanRouteOptions, gangBadgePosition, GANG_BADGE_WIDTH, GANG_BADGE_HEIGHT } from "@/lib/electricalPlanPorts";
 import { routeElectricalConnections } from "@/lib/electricalAutoRouting";
-import { electricalDevicePlanSize, electricalDevicePlanSymbol, electricalRockerBounds } from "@/lib/electricalPlanSymbols";
+import { electricalPlanPresentation, electricalDevicePlanSymbol, electricalRockerBounds } from "@/lib/electricalPlanSymbols";
 import { electricalDashArray, electricalStrokeWidth, type ElectricalCircuit, type ElectricalConnection, type ElectricalConnectionDefaults } from "@/lib/electricalLayout";
 import type { Obstacle, Point2D } from "@/lib/types";
 import { crossingBridgePath, electricalCrossings } from "@/lib/electricalCrossings";
@@ -113,9 +113,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       const actualDepth = Math.abs(bottomRight.y - topLeft.y);
       const deviceSymbol = electricalDevicePlanSymbol(fixture.representation_key, props.active);
       const readableSymbol = props.active || Boolean(deviceSymbol);
-      const deviceSize = electricalDevicePlanSize(fixture.representation_key, actualWidth / symbolZoom, actualDepth / symbolZoom, props.active);
-      const symbolWidth = Math.max(deviceSize.width, props.active ? 26 : 0);
-      const symbolDepth = Math.max(deviceSize.depth, props.active ? 26 : 0);
+      const { width: symbolWidth, depth: symbolDepth } = electricalPlanPresentation(fixture.representation_key, actualWidth, actualDepth, props.active, symbolZoom);
       const hitWidth = readableSymbol ? Math.max(symbolWidth + (props.active ? 12 : 8), props.active ? 44 : 28) : actualWidth;
       const hitDepth = readableSymbol ? Math.max(symbolDepth + (props.active ? 12 : 8), props.active ? 44 : 24) : actualDepth;
       const angle = -fixture.rotation_deg * Math.PI / 180, count = switchGangCount(fixture.representation_key);

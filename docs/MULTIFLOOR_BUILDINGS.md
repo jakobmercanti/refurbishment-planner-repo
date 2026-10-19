@@ -179,7 +179,7 @@ textures, appropriate roughness/bump and matching fascia. This is visual finish,
 not thermal performance or a product specification.
 
 **All floors** and **Roof** are non-destructive toggles in the 3D viewer and
-Settings → View. Revealing a roof from a lower selected floor also reveals the
+the 3D Show menu. Revealing a roof from a lower selected floor also reveals the
 whole stack. **Exterior view** selects solid walls, the whole building, roof,
 perspective and a fitted camera. Furniture, imported
 models and people receive the floor elevation once at their group boundary.
@@ -373,6 +373,55 @@ dragging, warning cancellation, self-crossing correction, roof Apply/Cancel and
 32 actual palette/theme/density/viewport combinations. The production build and
 existing building/service regression suites are rerun before branch publication.
 
+## Roof and building UI refinement
+
+- The New outline warning uses a compact destructive summary and a separate
+  Undo/backup note. Cancel remains the initial focus; the destructive action
+  still requires explicit confirmation and keeps its existing Undo behaviour.
+- Roof & ceiling opens at 1280 × 780 px where space allows. Tall floating
+  windows can move vertically without being pinned by their content height;
+  the body scrolls inside the remaining visible workspace. A desktop side gutter
+  preserves horizontal movement on smaller laptops; Apply/Cancel stay visible
+  beneath the independently scrolling controls. Small-screen roof
+  editing uses the available width rather than a narrow generic toolbar.
+- Roof settings retain the left-controls/right-preview arrangement. Help uses
+  the same right-aligned square controls throughout, including Roof appearance.
+  Low/eaves, high/ridge and thickness share three compact columns.
+- Roof material now also offers asphalt shingles, timber shingles, bitumen
+  membrane and corrugated metal. All nine finishes use deterministic textures
+  in both previews and the main viewer. Continuous finishes omit tile sizing;
+  shingles and panels use appropriately named size fields. Material changes
+  never alter measured geometry or thermal performance.
+- Direction offers four cardinal presets plus Custom angle (0–360°, including
+  decimals). Saved diagonal angles remain precise Custom values. Invalid or
+  empty angles cannot be applied; choosing a preset or cancelling recovers
+  without rounding or writing a draft.
+- Exterior view is available only in the main 3D viewer, not the roof editor.
+  Show → Wall display groups the five mutually exclusive wall display modes
+  into one radio-item submenu. Arrow keys/Home/End move focus; Escape closes the
+  submenu first. All floors and Roof remain independent toggles.
+- The floor selector follows the manager's highest-to-lowest order, including
+  after reordering. Whole building remains first in 3D; saved floor-array order,
+  IDs, user-entered names and elevation calculations are unchanged.
+
+`buildingPolish.browser.mts` checks these reported interactions against the
+production export, including 32 style/theme/density/viewport combinations.
+Domain, package and backend tests cover all nine finishes, custom-direction
+validation, geometry isolation and saved-project compatibility.
+
+Final validation for this refinement: 497 frontend unit tests, 11 package/project
+integration tests, 253 backend tests, 14 browser workflows, nine deployment
+tests and four historical-site tests pass (788 total). The responsive workflow
+checks 32 combinations of real Default/Modern palettes, Light/Dark, both
+densities, and desktop/laptop/narrow/short viewports. A broader audit passes
+56 window checks and 168 help open/Tab/Escape/focus-return interactions, with
+no detected contrast failures, horizontal overflow or browser exceptions.
+Screenshots were reviewed, including the compact warning, fixed editor footer,
+wall submenu and short-screen dark layout. Lint/source reachability, strict
+TypeScript, Ruff, mypy and the production build pass. One existing
+Starlette/httpx deprecation warning remains. This roof-only pass was initially
+kept local; it is included in the subsequent viewer-consistency publication below.
+
 Validation of this follow-up: all seven focused browser groups and all ten
 independent compatibility groups pass. The broader 40-case building UI checks,
 32-case roof UI checks and existing electrical/heating/insulation workflows pass.
@@ -380,3 +429,45 @@ Frontend lint, TypeScript, the static production build, 465 unit tests, ten
 persistence/package tests and 190 backend tests pass; the existing backend
 Starlette/httpx deprecation warning is unchanged. No deployment is part of this
 branch publication.
+
+## Viewer and placement consistency audit — 19 October 2026
+
+This publication combines the roof/building refinement above with the five
+subsequently reported viewer and service-window issues:
+
+- Tools exposes Electrical Layout, Heating Layout and Energy & Insulation only
+  in 2D. Detached heating settings and emitter editors also disappear in 3D
+  without writing a project edit; returning to 2D restores the module window.
+- The 3D Show menu contains Wall display, Show all floors and Show roof. The
+  wall submenu remains exclusive and keyboard-accessible. Its disclosure uses
+  the same font, size, padding, colours and radius as neighbouring menu items.
+  The 2D drawing styles remain in Settings → View.
+- Undocked windows can reach the space immediately below the main menu.
+  Automatic docking and compact/touch layouts still reserve the selector strip.
+- Placement previews share electrical and heating symbol sizing with placed
+  elements. Electrical zoom is applied once, not twice; outlines follow the
+  visible face. Furniture and opening footprints remain physically scaled.
+  Preview graphics cannot intercept placement clicks. Measured millimetre
+  dimensions, wall attachment, uncertainty and fit decisions are unchanged.
+- The three Heating room-settings launchers have short labels and equal-width
+  tracks: one wide row, or two rows when the window itself becomes narrower.
+  Full window titles, accessible names and contextual help are retained.
+
+Regression coverage includes 56 electrical face/zoom combinations, ordinary and
+thin heating previews, active heating-module bounds, actual 50%/100%/140%
+catalogue placement, detached-window visibility, free-window dragging, desktop
+window resizing, and 16 additional Show-menu style/theme/density/screen cases.
+The 32-case roof matrix and full building/service workflows are also rerun.
+
+Validation: 501 frontend unit tests, 11 project/package integrations, 253 backend
+tests, 19 browser workflows, nine deployment-worker tests and four historical-site
+tests (797 total). The independent wider audit checks 56 UI screens and 168 help
+open/Tab/Escape/focus-return interactions, with no detected contrast failures,
+horizontal overflow or browser exceptions. Independent electrical, heating,
+underfloor, file import/export, history and insulation compatibility checks pass.
+ESLint/source reachability (307 modules), strict TypeScript, Ruff, mypy and the
+static production build pass. The existing Starlette/httpx deprecation warning
+is unchanged. Screenshots of the new menu, wide/compact heating actions and real
+placement preview were reviewed. No live deployment is performed; publication
+is a new `UI_mods_2` commit on the existing `multifloors` branch. Unrelated marketing
+repository and generated-file changes are not included.

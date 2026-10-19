@@ -149,7 +149,7 @@ html[data-theme="dark"] :is(
 }
 html[data-theme="dark"] :is(
   .software-menu-item > button:hover, .software-menu-item > button.active,
-  .software-dropdown button:hover:not(:disabled), .software-unit-setting:hover,
+  .software-dropdown button:hover:not(:disabled), .software-wall-setting > summary:hover, .software-unit-setting:hover,
   .catalogue-categories button:hover, .catalogue-categories button.active,
   .floorplan-context-menu button:hover, .floorplan-context-menu button:focus-visible,
   .settings-choice button.active, .app-nav-modes button[aria-pressed="true"],
@@ -163,7 +163,7 @@ html[data-theme="dark"] :is(
   color: var(--ink);
   border-color: var(--accent);
 }
-html[data-theme="dark"] body button:is(.active, .selected, [aria-pressed="true"]):not(.pb-gantt-bar):not(.catalogue-material-entry):not(.finish-palette button):not(.tile-palette-presets button):not(.pb-colour-presets button) {
+html[data-theme="dark"] body button:is(.active, .selected, [aria-pressed="true"], [role="menuitemradio"][aria-checked="true"]):not(.pb-gantt-bar):not(.catalogue-material-entry):not(.finish-palette button):not(.tile-palette-presets button):not(.pb-colour-presets button) {
   background-color: var(--surface-selected);
   border-color: var(--accent);
   color: var(--ink);

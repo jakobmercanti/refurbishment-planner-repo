@@ -43,9 +43,17 @@ body[data-ui-style="modern"] .building-section>.full-plan-overall-toggle:hover {
 .building-level-heading { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
 .building-level-heading span { color:var(--muted); font-size:12px; }
 .building-roof-window .building-level-heading { margin-bottom:10px; }
-.building-roof-window .floating-toolbar-content { container-type:inline-size; container-name:roof-editor; }
-.building-roof-editor-grid { display:grid; grid-template-columns:minmax(300px,.9fr) minmax(0,1.1fr); gap:20px; align-items:start; }
-.building-roof-form { min-width:0; max-height:600px; overflow:auto; padding-right:4px; scrollbar-gutter:stable; }
+.floating-toolbar.building-roof-window { max-width:calc(100% - 64px); }
+.building-roof-window .floating-toolbar-content { container-type:inline-size; container-name:roof-editor; padding:10px 12px 4px; }
+.building-roof-editor-grid { display:grid; grid-template-columns:minmax(300px,1fr) minmax(0,1.15fr); gap:20px; align-items:start; }
+.building-roof-form { min-width:0; max-height:min(700px,max(150px,calc(var(--floating-available-height,800px) - 100px))); grid-template-rows:minmax(0,1fr) auto; }
+.building-roof-fields { min-height:0; overflow:auto; padding-right:4px; scrollbar-gutter:stable; }
+.building-roof-dimensions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.building-roof-dimensions>label { grid-template-rows:1fr auto; align-items:end; }
+.building-roof-dimensions[data-profile=FLAT] { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.building-roof-form label.building-roof-select { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px 8px; }
+.building-roof-select>select { grid-column:1/-1; }
+.building-roof-select>.window-help-button { justify-self:end; }
 .building-roof-preview { position:sticky; top:0; min-width:0; display:grid; gap:10px; padding:14px; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--surface-muted); color:var(--ink); font:500 calc(12px * var(--density-font-scale,1))/1.5 var(--font-sans),sans-serif; }
 .building-roof-preview .appearance-preview-heading { position:static; gap:12px; flex-wrap:wrap; }
 .building-roof-preview .appearance-preview-heading> :is(strong,span) { text-shadow:none; }
@@ -59,7 +67,7 @@ body[data-ui-style="modern"] .building-section>.full-plan-overall-toggle:hover {
 .building-opening-actions>button { width:100%; min-width:0; height:100%; }
 .building-square-option { display:flex; align-items:center; gap:7px; font:inherit; }
 .building-square-option input { width:auto; accent-color:var(--deep); }
-@container roof-editor (max-width:760px) { .building-roof-editor-grid { grid-template-columns:minmax(0,1fr); }.building-roof-form { max-height:none; overflow:visible; padding-right:0; scrollbar-gutter:auto; }.building-roof-preview { position:relative; padding:8px; gap:6px; }.building-roof-preview-canvas { min-height:140px; height:clamp(140px,calc(100dvh - 390px),330px); }.building-roof-preview small { font-size:10px; line-height:1.3; } }
+@container roof-editor (max-width:760px) { .building-roof-editor-grid { grid-template-columns:minmax(0,1fr); }.building-roof-form { max-height:none; grid-template-rows:auto auto; }.building-roof-fields { overflow:visible; padding-right:0; scrollbar-gutter:auto; }.building-roof-preview { position:relative; padding:8px; gap:6px; }.building-roof-preview-canvas { min-height:140px; height:clamp(140px,calc(100dvh - 390px),330px); }.building-roof-preview small { font-size:10px; line-height:1.3; } }
 @media(max-height:650px) { .building-roof-preview small { display:none; } }
 .building-options { display:grid; gap:12px; padding:12px 2px 2px; }
 .building-options>label:has(input[type=checkbox]) { display:flex; align-items:center; gap:8px; }
@@ -82,9 +90,17 @@ body[data-ui-style="modern"] .building-section>.full-plan-overall-toggle:hover {
 .building-opening-properties { display:grid; gap:10px; border-top:1px solid var(--line); padding-top:10px; }
 .building-clear-height { display:grid; align-content:start; gap:10px; }
 .building-editor-footer { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding-top:8px; }
-.building-roof-finish { display:grid; gap:10px; }
-.building-roof-finish legend { display:flex; align-items:center; gap:8px; }
+.building-roof-finish { display:grid; gap:10px; margin-block:6px; padding-block:10px; border-block:1px solid var(--line); }
+.building-roof-section-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.building-roof-section-heading>h3 { margin:0; font:700 1em var(--font-sans),sans-serif; }
+.building-roof-form .window-help-button { margin:0; background:var(--panel); color:var(--deep); }
 .building-roof-finish input[type=color] { height:38px; padding:4px; }
+.building-reset-message { display:flex; align-items:flex-start; gap:12px; }
+.building-reset-icon { flex:none; display:grid; place-items:center; width:34px; height:34px; border:1px solid var(--fail); border-radius:50%; background:var(--fail-soft); color:var(--fail); font:750 20px/1 var(--font-sans),sans-serif; }
+.building-reset-warning .popup-content p { font-family:var(--font-sans),sans-serif; }
+.building-reset-warning .popup-content .building-reset-summary { font-weight:650; line-height:1.5; }
+.building-reset-warning .popup-content .building-reset-note { margin-top:9px; color:var(--muted); font-size:.9em; }
+.building-reset-warning .popup-actions button.primary { --control-bg:var(--fail); --control-text:var(--paper); --control-border:var(--fail); --control-hover-bg:color-mix(in srgb,var(--fail) 85%,var(--ink)); --control-hover-text:var(--paper); --control-hover-border:var(--control-hover-bg); background:var(--fail); border-color:var(--fail); color:var(--paper); }
 @container building-manager (max-width:430px) { .building-level-actions { grid-column:2/-1; display:grid; grid-auto-flow:column; grid-auto-columns:1fr; }.building-level-item { grid-template-columns:28px minmax(0,1fr); }.building-roof-entry .building-level-actions { grid-template-columns:1fr 1fr; } }
 .building-vertices { display:grid; gap:10px; max-height:280px; overflow:auto; }
 .roof-plan-indicator { stroke:var(--accent); stroke-width:1.5; stroke-dasharray:7 4; opacity:.8; }

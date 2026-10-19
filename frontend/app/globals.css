@@ -163,6 +163,17 @@ button { font: inherit; }
 .software-view-setting > summary { padding: 9px; color: var(--ink); font: 600 calc(10px * var(--density-font-scale, 1)) var(--font-mono); cursor: pointer; }
 .software-view-setting > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .software-view-setting > div { padding-left: 10px; }
+.software-wall-setting { margin-bottom:4px; }
+.software-wall-setting>summary { display:flex; align-items:center; justify-content:space-between; gap:15px; padding:8px 9px; border:0; border-radius:5px; background:transparent; color:var(--ink); cursor:pointer; font:550 calc(9px * var(--density-font-scale,1)) var(--font-mono); list-style:none; }
+.software-wall-setting>summary::-webkit-details-marker { display:none; }
+.software-wall-setting>summary::after { content:"▸"; }
+.software-wall-setting[open]>summary::after { content:"▾"; }
+.software-wall-setting>summary:hover { background:var(--ui-button-hoverBackground,var(--surface-muted)); }
+.software-wall-setting>summary:focus-visible { outline:2px solid var(--focus-ring); outline-offset:1px; }
+.software-wall-setting>[role=menu] { padding:4px 0 4px 8px; }
+.software-dropdown .software-wall-setting [role=menuitemradio] { justify-content:flex-start; gap:7px; }
+.software-dropdown .software-wall-setting [aria-checked=true] { background:var(--ui-button-activeBackground,var(--deep)); color:var(--ui-button-activeText,#fff); }
+.software-wall-setting .menu-check { width:1em; flex:none; }
 .modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(18,29,25,.48); backdrop-filter: blur(4px); }
 .catalogue-backdrop { z-index: 2100; }
 .modal-close { width: 34px; height: 34px; flex: none; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--muted); font-size: calc((20px) * var(--density-font-scale, 1)); cursor: pointer; }
@@ -1763,7 +1774,7 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .placement-hint-touch { display: none; }
 .placement-label { display: block; padding: 6px 10px; border-radius: 7px; border: 1px solid #79b19c; background: #f3fff8ed; color: #185b41; font: 600 calc(12px * var(--density-font-scale, 1)) system-ui, sans-serif; box-shadow: 0 3px 12px #0002; }
 .placement-label.invalid { border-color: #d79b96; background: #fff5f3ed; color: #9b342d; }
-.placement-preview { pointer-events: none; }
+.placement-preview, .placement-preview * { pointer-events: none!important; }
 @media (max-width: 700px) { .placement-status { flex-wrap: wrap; gap: 6px 12px; width: max-content; } }
 
 /* Compact catalogue controls share one treatment across element types. */

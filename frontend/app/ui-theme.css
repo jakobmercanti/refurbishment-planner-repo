@@ -17,7 +17,8 @@ body[data-ui-style="modern"] .modal-backdrop:not(.catalogue-detail-backdrop) { z
    toolbar) otherwise override only half of a foreground/background pair.
    Limit importance to these theme-owned properties; dimensions and layout
    remain component-owned. Swatch backgrounds represent actual materials. */
-body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize, .finish-palette button, .tile-palette-presets button, .pb-colour-presets button, .catalogue-material-entry)) {
+body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize, .finish-palette button, .tile-palette-presets button, .pb-colour-presets button, .catalogue-material-entry)),
+body[data-ui-style="modern"] .software-wall-setting > summary {
   --control-bg: var(--ui-button-background);
   --control-text: var(--ui-button-text);
   --control-border: var(--line);
@@ -37,7 +38,7 @@ body[data-ui-style="modern"] button:where(:not(.floating-toolbar-resize, .finish
     color: var(--control-hover-text) !important;
     border-color: var(--control-hover-border) !important;
   }
-  &:is(.active, .selected, .primary, .primary-small, .pb-primary-button, .fixture-save, .person-update, .validate-button, .save-button, .settings-done, .catalogue-insert, .catalogue-toolbar > button, .full-floorplan-rooms button, [aria-selected="true"], [aria-pressed="true"]) {
+  &:is(.active, .selected, .primary, .primary-small, .pb-primary-button, .fixture-save, .person-update, .validate-button, .save-button, .settings-done, .catalogue-insert, .catalogue-toolbar > button, .full-floorplan-rooms button, [aria-selected="true"], [aria-pressed="true"], [role="menuitemradio"][aria-checked="true"]) {
     --control-bg: var(--ui-button-activeBackground);
     --control-text: var(--ui-button-activeText);
     --control-border: var(--ui-button-activeBackground);
@@ -105,7 +106,7 @@ body[data-ui-style="modern"] .catalogue-branch { border-color: var(--line); }
 body[data-ui-style="modern"] .catalogue-categories small { background: rgb(96 112 135 / 12%); }
 body[data-ui-style="modern"] :is(.catalogue-object-body code, .catalogue-plan-link) { color: var(--muted); }
 body[data-ui-style="modern"] .floating-toolbar .floating-toolbar-content :where(button, input, select, textarea, p, label, small, summary.full-plan-overall-toggle) { font-size: calc((11px) * var(--density-font-scale, 1)); }
-body[data-ui-style="modern"] :is(.software-dropdown button, .toolbar-context-submenu button, .floorplan-context-menu button, .settings-choice button, .settings-done, .popup-actions button, .catalogue-manager-tabs button, .catalogue-manager-actions button, .catalogue-card-actions button, .catalogue-form-actions button) {
+body[data-ui-style="modern"] :is(.software-dropdown button, .software-wall-setting > summary, .toolbar-context-submenu button, .floorplan-context-menu button, .settings-choice button, .settings-done, .popup-actions button, .catalogue-manager-tabs button, .catalogue-manager-actions button, .catalogue-card-actions button, .catalogue-form-actions button) {
   min-height: 32px;
   font-size: calc((11px) * var(--density-font-scale, 1));
   line-height: 1.4;

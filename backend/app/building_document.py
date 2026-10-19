@@ -217,7 +217,18 @@ def validate_building(
             not isinstance(finish, dict)
             or set(finish) != {"material", "colour", "tileWidthMm", "tileHeightMm"}
             or not isinstance(finish["material"], str)
-            or finish["material"] not in {"CLAY_TILES", "CONCRETE_TILES", "SLATE", "CEMENT", "METAL"}
+            or finish["material"]
+            not in {
+                "CLAY_TILES",
+                "CONCRETE_TILES",
+                "SLATE",
+                "CEMENT",
+                "METAL",
+                "ASPHALT_SHINGLES",
+                "TIMBER_SHINGLES",
+                "BITUMEN",
+                "CORRUGATED_METAL",
+            }
             or not isinstance(finish["colour"], str)
             or re.fullmatch(r"#[0-9a-fA-F]{6}", finish["colour"]) is None
             or not number(finish["tileWidthMm"], 100, 2000)

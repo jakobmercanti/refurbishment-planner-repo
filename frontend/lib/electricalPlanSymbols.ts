@@ -64,6 +64,14 @@ export function electricalDevicePlanSize(key: string | null | undefined, width: 
   return { width: height * symbol.aspectRatio, depth: height };
 }
 
+/** Shared by placed fittings and placement previews. Screen minima are applied at
+ * 100% zoom, then the complete schematic face scales with the plan. Never mm. */
+export function electricalPlanPresentation(key: string | null | undefined, screenWidth: number, screenDepth: number, electricalLayout: boolean, zoom = 1) {
+  const symbolZoom = electricalLayout ? zoom : 1;
+  const size = electricalDevicePlanSize(key, screenWidth / symbolZoom, screenDepth / symbolZoom, electricalLayout);
+  return { width: Math.max(size.width, electricalLayout ? 26 : 0), depth: Math.max(size.depth, electricalLayout ? 26 : 0), zoom: symbolZoom };
+}
+
 /** Normalised rocker rectangles shared by the symbol and its interactive state overlay. */
 export function electricalRockerBounds(key: string | null | undefined) {
   const face = key === "electrical-switch-single" ? { width: 88, xs: [26], rocker: 36 }

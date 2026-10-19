@@ -10,11 +10,12 @@ import { RadiatorEditorWindow } from "./RadiatorEditorWindow";
 const defaultHeating = newHeatingProject();
 const HeatingContext = createContext({ data: defaultHeating, windowOpen: false, editRadiator: (_id: string, _commit?: (data: HeatingProject) => void) => { void [_id, _commit]; }, open: () => {}, close: () => {}, change: (_data: HeatingProject) => { void _data; } });
 /** Module UI lifecycle only; authoritative heating inputs/geometry stay in ProjectDocument. */
-export function HeatingLayoutProvider({ data: stored, rooms, onChange, onOpen, children, scopeKey="" }: { data: HeatingProject; rooms: Room[]; onChange: (data: HeatingProject) => void; onOpen: () => void; children: ReactNode; scopeKey?:string }) {
+export function HeatingLayoutProvider({ data: stored, rooms, onChange, onOpen, children, scopeKey="", visible=true }: { data: HeatingProject; rooms: Room[]; onChange: (data: HeatingProject) => void; onOpen: () => void; children: ReactNode; scopeKey?:string; visible?:boolean }) {
   const energy = useEnergyLayout();
   const [ui,setUi]=useState<{scope:string;open:boolean;editingId:string|null;commit:((data:HeatingProject)=>void)|null}>({scope:scopeKey,open:false,editingId:null,commit:null});
   if(ui.scope!==scopeKey)setUi({scope:scopeKey,open:false,editingId:null,commit:null});
-  const windowOpen=ui.scope===scopeKey&&ui.open,editingRadiatorId=ui.scope===scopeKey?ui.editingId:null;
+  // Presentation only: a view switch must hide detached editors without saving a project edit.
+  const windowOpen=visible&&ui.scope===scopeKey&&ui.open,editingRadiatorId=visible&&ui.scope===scopeKey?ui.editingId:null;
   const setWindowOpen=(open:boolean)=>setUi(current=>({...current,scope:scopeKey,open}));
   const data = useMemo(() => ({ ...withEnergyFabric(refreshHeatingPipeEndpoints(withHeatingElements(stored, rooms)), energy.data, rooms), enabled: windowOpen }), [stored, energy.data, rooms, windowOpen]);
   // Mode belongs to the window lifecycle, never to imported files or undo snapshots.
