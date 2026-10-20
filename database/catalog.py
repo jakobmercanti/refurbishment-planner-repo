@@ -14,6 +14,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from database.catalogue_assets import migrate_legacy_pictures
+from database.cfd_proxies import seed_cfd_proxies
 from database.colour_parts import MANIFEST as COLOUR_PART_MANIFEST
 from database.colour_parts import colour_parts_for
 from database.electrical_defaults import seed_electrical_defaults
@@ -27,6 +28,7 @@ from database.models import (
     MaterialFamilyRecord,
     MaterialItemRecord,
 )
+from database.people_defaults import seed_people_defaults
 
 
 def database_path() -> Path:
@@ -53,6 +55,14 @@ def configure_sqlite(connection: object, _record: object) -> None:
 
 
 CATEGORIES = [
+    (
+        "people",
+        "People",
+        "Standing, seated and lying occupants for display and CFD obstruction geometry.",
+        65,
+        0.0,
+        0.0,
+    ),
     ("radiators-horizontal", "Horizontal", "Horizontal radiators in one and two rows.", 110, 0.0, 0.0),
     ("radiators-vertical", "Vertical", "Tall vertical radiators in one and two rows.", 111, 0.0, 0.0),
     ("radiators-bathroom", "Bathroom radiators", "Ladder towel radiators in one and two rows.", 112, 0.0, 0.0),
@@ -87,7 +97,16 @@ CATEGORIES = [
 ]
 
 CATEGORIES.extend(
-    (family, name, f"{name} with parametric leaves and matching plan symbols.", 51 + index, 0.0, 0.0)
+    (
+        family,
+        name,
+        "Doorless passages with rectangular, curved and chamfered profiles."
+        if family == "doors-openings"
+        else f"{name} with parametric leaves and matching plan symbols.",
+        51 + index,
+        0.0,
+        0.0,
+    )
     for index, (family, name) in enumerate(DOOR_FAMILIES.items())
     if family != "doors"
 )
@@ -318,6 +337,8 @@ def initialise_catalogue() -> None:
             )
         if "heating_spec" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN heating_spec JSON")
+        if "cfd_proxy" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN cfd_proxy JSON")
         if "representation_version" not in existing_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE furniture_items ADD COLUMN representation_version INTEGER NOT NULL DEFAULT 1"
@@ -368,7 +389,9 @@ def initialise_catalogue() -> None:
         seed_fixture_defaults(session)
         seed_electrical_defaults(session)
         seed_heating_defaults(session)
+        seed_people_defaults(session)
         session.flush()
+        seed_cfd_proxies(session)
         obsolete_stair_category = session.get(FurnitureCategoryRecord, "staircases-main")
         if obsolete_stair_category and not session.scalar(
             select(FurnitureItemRecord.id).where(FurnitureItemRecord.category_id == "staircases-main").limit(1)

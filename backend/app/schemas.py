@@ -11,6 +11,7 @@ from xml.etree import ElementTree
 
 from pydantic import BaseModel, Field, field_validator
 
+from geometry.cfd import CfdProxySpec
 from geometry.heating import HeatingElementSpec
 from geometry.models import FitResult, Placement, Point2D, ProductDefinition, RoomDefinition
 
@@ -271,6 +272,7 @@ class ColourPartResponse(BaseModel):
 
 
 class CatalogueItemResponse(CatalogueItemInput):
+    cfd_proxy: CfdProxySpec | None = None
     colour_parts: list[ColourPartResponse] = Field(default_factory=list)
     id: str
     category_name: str

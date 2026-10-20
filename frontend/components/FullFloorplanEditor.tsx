@@ -9,6 +9,7 @@ import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { RoomOpeningEditor } from "@/components/RoomOpeningEditor";
 import { createPortal } from "react-dom";
 import { doorModel } from "@/lib/doorModels";
+import { passageProfileForKey } from "@/lib/passageOpenings";
 
 import { type CSSProperties, type ReactNode, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
@@ -882,7 +883,7 @@ function roomOpenings(room: NamedOutline, openings: FullOpening[], walls: Wall[]
     const offset = startProjection.along * edgeLength - (edgeDx * segmentDx + edgeDy * segmentDy >= 0 ? 0 : opening.width);
     const catalogueItem = catalogue.find(item => item.id === opening.catalogueItemId);
     const metadata = { component_colors: opening.componentColors ?? {}, representation_key: opening.representationKey ?? catalogueItem?.representation_key, window_depth_mm: opening.windowDepthMm ?? catalogueItem?.depth_mm, ...(opening.catalogueItemId ? { catalogue_item_id: opening.catalogueItemId } : {}), ...(opening.colorHex ? { color_hex: opening.colorHex } : {}) };
-    return [{ id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(edge.index + 1).padStart(3, "0")}`, offset_mm: Math.max(0, offset), width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0, ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}), ...(Object.keys(metadata).length ? { metadata } : {}) }];
+    return [{ id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(edge.index + 1).padStart(3, "0")}`, offset_mm: Math.max(0, offset), width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0, ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}), ...(passageProfileForKey(metadata.representation_key) ? {passage_profile:passageProfileForKey(metadata.representation_key)} : {}), ...(Object.keys(metadata).length ? { metadata } : {}) }];
   });
 }
 
@@ -2561,6 +2562,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     return { x: (clientX - rect.left) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: (clientY - rect.top) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height };
   }
   function selectAddToPlanMode(mode: AddToPlanMode) {
+    onCancelPlacement?.();
     if (mode === "DOOR" || mode === "WINDOW") {
       selectOpeningKind(mode);
       return;
@@ -2953,7 +2955,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   function selectFixtureForEdit(fixture: Obstacle, owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id))) {
     const roomId = owner?.id ?? selectedRoomDraft()?.id;
     setTool("SELECT");
-    setElementTab(fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
+    setElementTab(fixture.representation_key?.startsWith("people-") ? "PEOPLE" : fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
     setSelectedAnnotationId(null);
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
@@ -3647,7 +3649,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     const fixture = owner?.obstacles.find(item => item.id === elementEditRequest.id) ?? fixtures.find(item => item.id === elementEditRequest.id);
     if (!fixture) return;
     if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
-    setElementTab(fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
+    setElementTab(fixture.representation_key?.startsWith("people-") ? "PEOPLE" : fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
     setSelectedSegment(null);
@@ -4146,7 +4148,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
           if (!placement.opening && isElectricalObstacle(candidate.obstacle)) recordElectricalUndo();
           onCommitPlacement?.(candidate);
           if (!placement.opening && candidate.roomId) {
-            setElementTab(candidate.obstacle.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(candidate.obstacle) ? "HEATING" : "FURNITURE");
+            setElementTab(candidate.obstacle.representation_key?.startsWith("people-") ? "PEOPLE" : candidate.obstacle.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(candidate.obstacle) ? "HEATING" : "FURNITURE");
             setSelectedFixtureId(candidate.obstacle.id);
             const target = planRooms.find(room => room.id === candidate.roomId);
             if (target?.source_floorplan_room_id) setSelectedRoomId(target.source_floorplan_room_id);
@@ -4290,7 +4292,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
           const room=current.viewerOpeningRoom;
           if (room.openings.some(item=>item.id===id)) return true;
           const opening: Opening={id,kind:settings.kind,parent_wall_id:target.wallId,offset_mm:target.offset,width:measured(settings.width),height:measured(settings.height),sill_height_mm:settings.sill,
-            hinge_side:settings.hingeSide,door_type:settings.doorType,opens_inward:settings.opensInward,swing_angle_deg:90,metadata:{catalogue_item_id:settings.catalogueItemId,representation_key:settings.representationKey,window_depth_mm:settings.windowDepthMm,color_hex:settings.colorHex,component_colors:settings.componentColors}};
+            passage_profile:passageProfileForKey(settings.representationKey),hinge_side:settings.hingeSide,door_type:settings.doorType,opens_inward:settings.opensInward,swing_angle_deg:90,metadata:{catalogue_item_id:settings.catalogueItemId,representation_key:settings.representationKey,window_depth_mm:settings.windowDepthMm,color_hex:settings.colorHex,component_colors:settings.componentColors}};
           onStandaloneRoomChange({...room,version:room.version+1,openings:[...room.openings,opening]});
           return true;
         }
@@ -4412,12 +4414,12 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   }
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const annotationPanelSelection: AnnotationPanelSelection = selectedAnnotation ? { type: selectedAnnotation.type, text: selectedAnnotation.text } : null;
-  const selectedAddToPlanMode: AddToPlanMode = heating.data.enabled ? "HEATING" : openingEditorTarget && (elementTab === "FURNITURE" || elementTab === "ELECTRICAL" || elementTab === "HEATING") ? openingKind : elementTab;
+  const selectedAddToPlanMode: AddToPlanMode = heating.data.enabled ? "HEATING" : openingEditorTarget && ["FURNITURE", "PEOPLE", "ELECTRICAL", "HEATING"].includes(elementTab) ? openingKind : elementTab;
   const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add to plan">
     {!electricalMode && !heating.data.enabled && <select className="add-to-plan-mode" aria-label="Add to plan" value={selectedAddToPlanMode} onChange={event => selectAddToPlanMode(event.target.value as AddToPlanMode)}>
-      {ADD_TO_PLAN_MODES.map(option => <option key={option.value} value={option.value} disabled={Boolean(openingEditorTarget && (option.value === "FURNITURE" || option.value === "ELECTRICAL" || option.value === "HEATING"))}>{option.label}</option>)}
+      {ADD_TO_PLAN_MODES.map(option => <option key={option.value} value={option.value} disabled={Boolean(openingEditorTarget && ["FURNITURE", "PEOPLE", "ELECTRICAL", "HEATING"].includes(option.value))}>{option.label}</option>)}
     </select>}
-    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add items.</p> : (selectedAddToPlanMode === "FURNITURE" || selectedAddToPlanMode === "ELECTRICAL" || selectedAddToPlanMode === "HEATING") && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedAddToPlanMode}-${selectedRoom!.id}`} categoryFilter={selectedAddToPlanMode === "ELECTRICAL" ? "electric" : selectedAddToPlanMode === "HEATING" ? "heating" : undefined} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={selectedAddToPlanMode === "HEATING" ? heatingElementEditRequest ?? elementEditRequest : elementEditRequest} onEditEnd={() => { if (selectedAddToPlanMode === "HEATING") setHeatingSelection(null);onElementSelected?.(null); }} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
+    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add items.</p> : ["FURNITURE", "PEOPLE", "ELECTRICAL", "HEATING"].includes(selectedAddToPlanMode) && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedAddToPlanMode}-${selectedRoom!.id}`} categoryFilter={selectedAddToPlanMode === "PEOPLE" ? "people" : selectedAddToPlanMode === "ELECTRICAL" ? "electric" : selectedAddToPlanMode === "HEATING" ? "heating" : undefined} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={selectedAddToPlanMode === "HEATING" ? heatingElementEditRequest ?? elementEditRequest : elementEditRequest} onEditEnd={() => { if (selectedAddToPlanMode === "HEATING") setHeatingSelection(null);onElementSelected?.(null); }} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
     <p className="tool-note">Choose a variant and click Add. Select a wall first to use its offset, or place the preview on a wall with the cursor.</p>
     <div className="fixture-cascading-menu opening-cascading-menu" ref={openingSelectorRef}>
       {!openingSelectorExpanded ? <div className="fixture-cascading-collapsed">
@@ -4454,13 +4456,13 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
       {openingPositionExpanded && <div className="fixture-section-content">
         <div className="coordinate-fields opening-fields"><label className="field"><span>Parent wall</span><select value={openingParent} onChange={(event) => setOpeningParent(event.target.value)}><option value="">Select a wall…</option>{segmentOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
         <label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label></div>
-        {openingKind === "DOOR" && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
+        {openingKind === "DOOR" && !passageProfileForKey(activeOpeningCatalogueItem?.representation_key) && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
       </div>}
     </section>
-    {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={saveOpening}>{selectedOpeningId ? `Update ${openingKind.toLowerCase()}` : `Add ${openingKind.toLowerCase()}`}</button></div>
+    {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={saveOpening}>{selectedOpeningId ? `Update ${passageProfileForKey(activeOpeningCatalogueItem?.representation_key) ? "opening" : openingKind.toLowerCase()}` : `Add ${passageProfileForKey(activeOpeningCatalogueItem?.representation_key) ? "opening" : openingKind.toLowerCase()}`}</button></div>
     {openings.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={openingListExpanded} onClick={() => setOpeningListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{openingListExpanded ? "−" : "›"}</span></button>
-      {openingListExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">{openings.map((opening, index) => { const item = catalogueItemForOpening(opening); return <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small title={item?.name}>{item?.name ?? `${opening.kind === "DOOR" ? "Door" : "Window"} ${String(index + 1).padStart(3, "0")}`} · {formatLength(opening.width, displayUnits)}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>; })}</div></div>}
+      {openingListExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">{openings.map((opening, index) => { const item = catalogueItemForOpening(opening), passage = passageProfileForKey(opening.representationKey ?? item?.representation_key); return <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{passage ? "Opening" : opening.kind}</span><small title={item?.name}>{item?.name ?? `${passage ? "Opening" : opening.kind === "DOOR" ? "Door" : "Window"} ${String(index + 1).padStart(3, "0")}`} · {formatLength(opening.width, displayUnits)}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${passage ? "opening" : opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>; })}</div></div>}
     </section>}
     </>}
   </section>;

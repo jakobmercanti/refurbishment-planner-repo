@@ -141,6 +141,32 @@ test('the canonical planner path serves assets, legacy paths redirect, and admin
     assert.equal((await worker.fetch(new Request(origin + '/planner/engineering-api' + path, { method: 'POST', body: '{}' }), env)).status, 403);
   }
 });
+test('catalogue CFD mesh and STL reads pass through without opening catalogue writes', async () => {
+  const previous = globalThis.fetch, forwarded = [];
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  try {
+    globalThis.fetch = async (url, options) => {
+      forwarded.push({ url: String(url), options });
+      return String(url).endsWith('.stl')
+        ? new Response('solid catalogue_cfd_mm', { headers: { 'Content-Type': 'model/stl', 'Content-Disposition': 'attachment; filename="catalogue-cfd-mm.stl"' } })
+        : Response.json({ units: 'mm', profile: 'table' });
+    };
+    const base = origin + '/planner/engineering-api/catalog/items/example/cfd';
+    const json = await worker.fetch(new Request(base), env);
+    assert.equal(json.status, 200);
+    assert.deepEqual(await json.json(), { units: 'mm', profile: 'table' });
+    const stl = await worker.fetch(new Request(base + '.stl'), env);
+    assert.equal(stl.status, 200);
+    assert.match(stl.headers.get('Content-Type'), /model\/stl/);
+    assert.match(stl.headers.get('Content-Disposition'), /attachment/);
+    assert.equal(forwarded[0].url, 'https://example.up.railway.app/catalog/items/example/cfd');
+    for (const method of ['POST', 'PUT', 'DELETE'])
+      assert.equal((await worker.fetch(new Request(base, { method }), env)).status, 403);
+    assert.equal((await worker.fetch(new Request(base + '/delete'), env)).status, 403);
+    assert.equal(forwarded.length, 2);
+  } finally { globalThis.fetch = previous; }
+});
+
 test('engineering proxy rejects foreign origins and strips credentials', async () => {
   const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
   const endpoint = origin + '/planner/engineering-api/rooms/validate';

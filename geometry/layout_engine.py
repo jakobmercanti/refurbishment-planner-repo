@@ -18,6 +18,7 @@ from geometry.models import (
     PersonPosture,
     RoomDefinition,
 )
+from geometry.people import intentional_support_contact
 from geometry.shapes import door_swing_envelope, obstacle_footprint, oriented_box, z_intervals_overlap
 from geometry.walls import room_polygon
 
@@ -151,6 +152,20 @@ def analyse_layout(room: RoomDefinition) -> LayoutResult:
         first_shape = obstacle_footprint(first)
         second_shape = obstacle_footprint(second)
         overlap = first_shape.intersection(second_shape).area
+        if overlap > GEOMETRY_EPSILON_MM**2 and (
+            intentional_support_contact(first, second) or intentional_support_contact(second, first)
+        ):
+            checks.append(
+                _check(
+                    f"person-support:{first.id}:{second.id}",
+                    CheckStatus.VERIFY,
+                    "Declared occupant/furniture support contact. Confirm the measured seat datum and body clearance; "
+                    "nominal posture geometry is not ergonomic certification.",
+                    [first.id, second.id],
+                    0,
+                )
+            )
+            continue
         if overlap > GEOMETRY_EPSILON_MM**2:
             collision_ids.update((first.id, second.id))
             checks.append(
@@ -181,7 +196,9 @@ def analyse_layout(room: RoomDefinition) -> LayoutResult:
                     )
                 )
 
-    for door in (opening for opening in room.openings if opening.kind is OpeningKind.DOOR):
+    for door in (
+        opening for opening in room.openings if opening.kind is OpeningKind.DOOR and opening.passage_profile is None
+    ):
         swing = door_swing_envelope(room, door)
         for item in room.obstacles:
             if not z_intervals_overlap(0, door.height.value, item.base_z_mm, item.dimensions.height.value):
@@ -306,7 +323,9 @@ def analyse_layout(room: RoomDefinition) -> LayoutResult:
                     )
                 )
 
-        for door in (opening for opening in room.openings if opening.kind is OpeningKind.DOOR):
+        for door in (
+            opening for opening in room.openings if opening.kind is OpeningKind.DOOR and opening.passage_profile is None
+        ):
             if door.height.value <= 0:
                 continue
             swing = door_swing_envelope(room, door)

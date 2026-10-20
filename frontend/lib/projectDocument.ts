@@ -12,6 +12,8 @@ import { constrainObstacleToRoom, requiresElectricalWall } from "./elementPlacem
 import { isLocalPlanSymbol } from "./localPlanSymbol";
 import { buildingSchema, defaultBuilding, floorContent, projectFloors, validateFloorStack, type BuildingDocument } from "./buildingDocument";
 import { validateFloorOpening } from "./buildingGeometry";
+import { PASSAGE_PROFILES, passageProfileForKey } from "./passageOpenings";
+import { personSpecSchema, supportsPerson, PERSON_MODELS } from "./people";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -109,8 +111,23 @@ export function parseProject(input: unknown): ProjectDocument {
   unique(p.plannerBuild.activities.map(activity => activity.activityId));
   for (const room of p.rooms) {
     unique(room.obstacles.map(o => o.id)); unique(room.openings.map(o => o.id));
-    for (const opening of room.openings) z.object({ id, kind: z.enum(["DOOR", "WINDOW", "GENERIC"]), parent_wall_id: id, offset_mm: number.nonnegative(), width: measurement, height: measurement, sill_height_mm: number.nonnegative() }).parse(opening);
+    for (const opening of room.openings) {
+      z.object({ id, kind: z.enum(["DOOR", "WINDOW", "GENERIC"]), parent_wall_id: id, offset_mm: number.nonnegative(), width: measurement, height: measurement, sill_height_mm: number.nonnegative(), passage_profile:z.enum(PASSAGE_PROFILES).nullish() }).parse(opening);
+      if(opening.passage_profile==null)delete opening.passage_profile;
+      const knownProfile=passageProfileForKey(typeof opening.metadata?.representation_key==="string"?opening.metadata.representation_key:undefined);
+      if((opening.passage_profile||knownProfile)&&opening.kind!=="DOOR")throw new Error("Doorless passage profiles require a doorway.");
+      if(knownProfile&&opening.passage_profile&&knownProfile!==opening.passage_profile)throw new Error("The passage profile does not match its catalogue model.");
+      if(knownProfile)opening.passage_profile=knownProfile;
+    }
     for (const obstacle of room.obstacles) {
+      if (obstacle.person_spec) {
+        personSpecSchema.parse(obstacle.person_spec);
+        if (!PERSON_MODELS.some(model => model.key === obstacle.representation_key && model.posture === obstacle.person_spec!.posture)) throw new Error("Person posture does not match its model.");
+        if (obstacle.person_spec.support) {
+          const host = room.obstacles.find(item => item.id === obstacle.person_spec!.support!.obstacle_id);
+          if (!host || host.id === obstacle.id || !supportsPerson(host, obstacle.person_spec.posture)) throw new Error("Person support must reference suitable furniture in the same room.");
+        }
+      }
       if (obstacle.heating_spec) heatingElementSpecSchema.parse(obstacle.heating_spec);
       if (obstacle.color_hex !== undefined) colour.parse(obstacle.color_hex);
       if (obstacle.component_colors !== undefined) z.record(z.string(), colour).parse(obstacle.component_colors);

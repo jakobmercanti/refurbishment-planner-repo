@@ -470,5 +470,143 @@
         "weight": 6
       }
     ]
+  },
+  "door-opening-single": {
+    "height": 30,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -25 H35 M0 25 H35 M965 -25 H1000 M965 25 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 8
+      },
+      {
+        "d": "M35 0 H965",
+        "dash": true,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
+  },
+  "door-opening-double": {
+    "height": 30,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -25 H35 M0 25 H35 M965 -25 H1000 M965 25 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 8
+      },
+      {
+        "d": "M35 0 H965",
+        "dash": true,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
+  },
+  "door-opening-arch": {
+    "height": 30,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -25 H35 M0 25 H35 M965 -25 H1000 M965 25 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 8
+      },
+      {
+        "d": "M35 0 H965",
+        "dash": true,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
+  },
+  "door-opening-wide": {
+    "height": 30,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -25 H35 M0 25 H35 M965 -25 H1000 M965 25 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 8
+      },
+      {
+        "d": "M35 0 H965",
+        "dash": true,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
+  },
+  "door-opening-shallow-arch": {
+    "height": 30,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -25 H35 M0 25 H35 M965 -25 H1000 M965 25 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 8
+      },
+      {
+        "d": "M35 0 H965",
+        "dash": true,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
+  },
+  "door-opening-chamfered": {
+    "height": 30,
+    "paths": [
+      {
+        "d": "M0 -25 V25 M1000 -25 V25",
+        "dash": false,
+        "fill": "none",
+        "weight": 16
+      },
+      {
+        "d": "M0 -25 H35 M0 25 H35 M965 -25 H1000 M965 25 H1000",
+        "dash": false,
+        "fill": "none",
+        "weight": 8
+      },
+      {
+        "d": "M35 0 H965",
+        "dash": true,
+        "fill": "none",
+        "weight": 3
+      }
+    ]
   }
 }

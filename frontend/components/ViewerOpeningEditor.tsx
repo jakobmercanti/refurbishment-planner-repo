@@ -5,6 +5,7 @@ import { ComponentColours } from "@/components/ComponentColours";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { OpeningPreview, openingPreviewObstacle } from "@/components/OpeningPreview";
 import { doorModel } from "@/lib/doorModels";
+import { passageProfileForKey } from "@/lib/passageOpenings";
 import { closestValidOpeningOffset, cornerOffsetsOnWallSegment } from "@/lib/openingPlacement";
 import { openingCatalogueCategoryLabel, openingCatalogueDefaultDimensions } from "@/lib/openingCatalogue";
 import type { PlacementCandidate, PlacementRequest, PlacementWall } from "@/lib/elementPlacement";
@@ -220,7 +221,7 @@ export function ViewerOpeningEditor({
             height: measurement(height),
             sill_height_mm: kind === "WINDOW" ? sill : 0,
             reveal_depth_mm: room.wall_thickness_overrides_mm?.[currentWallId] ?? room.wall_thickness.value,
-            ...(kind === "DOOR" ? { hinge_side: hingeSide, door_type: doorType, swing_angle_deg: 90, opens_inward: opensInward } : {}),
+            ...(kind === "DOOR" ? { passage_profile: passageProfileForKey(selected?.representation_key), hinge_side: hingeSide, door_type: doorType, swing_angle_deg: 90, opens_inward: opensInward } : {}),
             metadata: {
               catalogue_item_id: selected.id,
               representation_key: previewObstacle.representation_key,
@@ -307,14 +308,14 @@ export function ViewerOpeningEditor({
               <label className="field"><span>Parent wall</span><select value={wallChoice} onChange={event => setWallChoice(event.target.value)}><option value="AUTO">Choose in 3D view</option>{room.vertices.map((_, index) => { const id = `wall-${String(index + 1).padStart(3, "0")}`; return <option key={id} value={id}>Wall {index + 1}</option>; })}</select></label>
               {wallChoice !== "AUTO" && <label className="field"><span>Offset {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={0} valueMm={offset} units={displayUnits} onMmChange={setOffset} /></label>}
             </div>
-            {kind === "DOOR" && <div className="coordinate-fields opening-fields">
+            {kind === "DOOR" && !passageProfileForKey(selected?.representation_key) && <div className="coordinate-fields opening-fields">
               <label className="field"><span>Hinge side</span><select disabled={doorType === "DOUBLE"} value={hingeSide} onChange={event => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label>
               <label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={event => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label>
             </div>}
           </div>}
         </section>
         {error && <p className="inline-error" role="alert">{error}</p>}
-        <button type="button" className="primary-small" onClick={beginPlacement}>Add {kind === "DOOR" ? "door" : "window"}</button>
+        <button type="button" className="primary-small" onClick={beginPlacement}>Add {passageProfileForKey(selected?.representation_key) ? "opening" : kind === "DOOR" ? "door" : "window"}</button>
       </>}
     </>}
     {loading && <p>Loading object catalogue…</p>}

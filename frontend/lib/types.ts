@@ -20,6 +20,8 @@ export interface Dimensions3D {
   height: Measurement;
 }
 
+export type PassageProfile = "RECTANGULAR" | "ROUND_ARCH" | "SEGMENTAL_ARCH" | "CHAMFERED";
+
 export interface Opening {
   id: string;
   kind: "DOOR" | "WINDOW" | "GENERIC";
@@ -33,6 +35,7 @@ export interface Opening {
   door_type?: "SINGLE" | "DOUBLE";
   swing_angle_deg?: number;
   opens_inward?: boolean;
+  passage_profile?: PassageProfile;
   metadata?: Record<string, unknown>;
 }
 
@@ -46,6 +49,7 @@ export interface ColourPart {
 }
 
 export interface Obstacle {
+  person_spec?: import("./people").CataloguePerson | null;
   heating_spec?: import("./heatingElements").HeatingElementSpec;
   id: string;
   name: string;
@@ -85,6 +89,7 @@ export interface CatalogueCategory {
 }
 
 export interface CatalogueItem {
+  cfd_proxy?: { version: 1; profile: string } | null;
   heating_spec?: import("./heatingElements").HeatingElementSpec | null;
   colour_parts?: ColourPart[];
   id: string;
@@ -117,7 +122,7 @@ export interface CatalogueItem {
   updated_at: string;
 }
 
-export type CatalogueItemInput = Omit<CatalogueItem, "id" | "category_name" | "is_default" | "supplier_editable" | "active" | "created_at" | "updated_at" | "colour_parts">;
+export type CatalogueItemInput = Omit<CatalogueItem, "id" | "category_name" | "is_default" | "supplier_editable" | "active" | "created_at" | "updated_at" | "colour_parts" | "cfd_proxy">;
 
 export interface MaterialItem { id: string; name: string; code?: string | null; color_hex: string; metadata: Record<string, unknown>; }
 export interface MaterialFamily { id: string; name: string; items: MaterialItem[]; }

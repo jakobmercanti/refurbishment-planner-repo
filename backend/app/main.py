@@ -59,6 +59,8 @@ from database.catalogue_assets import (
     remove_item_pictures,
     stage_item_picture_replacement,
 )
+from database.cfd_proxies import cfd_proxy_for
+from database.fixture_defaults import FIXTURE_DEFAULTS
 from database.models import (
     FurnitureCategoryRecord,
     FurnitureItemRecord,
@@ -67,6 +69,7 @@ from database.models import (
     MaterialItemRecord,
 )
 from database.software_settings import load_software_settings, update_software_settings
+from geometry.cfd import CfdMesh, CfdProxySpec, build_cfd_mesh, cfd_stl
 from geometry.engine import check_fit
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.layout_engine import analyse_layout
@@ -163,6 +166,7 @@ rooms: dict[UUID, RoomDefinition] = {}
 fit_results: dict[UUID, FitResult] = {}
 
 CATEGORY_KINDS = {
+    **{category: kind for category, (kind, _models) in FIXTURE_DEFAULTS.items()},
     "electric": "FURNITURE",
     "showers": "SHOWER",
     "basins": "BASIN",
@@ -206,6 +210,7 @@ def catalogue_item_response(item: FurnitureItemRecord) -> CatalogueItemResponse:
         plan_shape=item.plan_shape,
         representation_key=item.representation_key,
         heating_spec=item.heating_spec,
+        cfd_proxy=item.cfd_proxy,
         representation_version=item.representation_version,
         plan_symbol_url=item.plan_symbol_url,
         plan_symbol_data_url=item.plan_symbol_data_url,
@@ -232,6 +237,7 @@ def catalogue_item_values(payload: CatalogueItemInput) -> dict[str, object]:
 
     return {
         **payload.model_dump(exclude={"images"}),
+        "cfd_proxy": cfd_proxy_for(payload.category_id, payload.fixture_kind, payload.representation_key),
         "colour_parts": colour_parts_for(
             payload.representation_key, payload.color_hex, imported_mesh=bool(payload.stl_base64)
         ),
@@ -735,6 +741,31 @@ def get_catalogue_item(item_id: str, session: CatalogueSession) -> CatalogueItem
     if item is None or not item.active:
         raise HTTPException(status_code=404, detail="catalogue item not found")
     return catalogue_item_response(item)
+
+
+@app.get("/catalog/items/{item_id}/cfd", response_model=CfdMesh)
+def get_catalogue_cfd_mesh(item_id: str, session: CatalogueSession) -> CfdMesh:
+    item = session.get(FurnitureItemRecord, item_id)
+    if item is None or not item.active:
+        raise HTTPException(status_code=404, detail="catalogue item not found")
+    eligible = cfd_proxy_for(item.category_id, item.fixture_kind, item.representation_key)
+    if eligible is None or item.cfd_proxy is None:
+        raise HTTPException(status_code=404, detail="This entry has no CFD obstruction representation")
+    try:
+        spec = CfdProxySpec.model_validate(item.cfd_proxy)
+        return build_cfd_mesh(spec.profile, item.width_mm, item.depth_mm, item.height_mm)
+    except (ValidationError, ValueError) as error:
+        raise HTTPException(status_code=422, detail="CFD profile or dimensions need review") from error
+
+
+@app.get("/catalog/items/{item_id}/cfd.stl")
+def download_catalogue_cfd_stl(item_id: str, session: CatalogueSession) -> Response:
+    mesh = get_catalogue_cfd_mesh(item_id, session)
+    return Response(
+        content=cfd_stl(mesh),
+        media_type="model/stl",
+        headers={"Content-Disposition": 'attachment; filename="catalogue-cfd-mm.stl"'},
+    )
 
 
 @app.post("/catalog/items", response_model=CatalogueItemResponse, status_code=201)

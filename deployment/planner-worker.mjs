@@ -147,7 +147,11 @@ export default {
           return respond(new Response('Unavailable', { status: 502, headers: { 'Cache-Control': 'no-store' } }));
         }
       }
-      const readable = request.method === 'GET' && (/^\/(health|demo|settings|products)(\/[^/]+)?$/.test(endpoint) || /^\/catalog\/(categories|items|materials)(\/[^/]+)?(\/images\/\d+)?$/.test(endpoint));
+      const readable = request.method === 'GET' && (
+        /^\/(health|demo|settings|products)(\/[^/]+)?$/.test(endpoint)
+        || /^\/catalog\/(categories|items|materials)(\/[^/]+)?(\/images\/\d+)?$/.test(endpoint)
+        || /^\/catalog\/items\/[^/]+\/cfd(?:\.stl)?$/.test(endpoint)
+      );
       const calculable = request.method === 'POST' && ['/rooms/validate', '/layout-checks', '/fit-checks', '/placements'].includes(endpoint);
       if (!readable && !calculable) return respond(Response.json({ detail: 'This operation is unavailable publicly.' }, { status: 403 }));
       if (calculable && request.headers.get('Origin') !== url.origin) return respond(new Response('Forbidden', { status: 403 }));

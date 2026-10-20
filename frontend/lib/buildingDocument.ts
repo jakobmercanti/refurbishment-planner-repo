@@ -84,7 +84,7 @@ function copyContent(content: FloorContent, includeAssets: boolean): FloorConten
   const collect = (v: unknown) => { if (!v || typeof v !== "object") return; for (const [k, x] of Object.entries(v)) { if (identity.has(k) && typeof x === "string") ids.set(x, crypto.randomUUID()); else collect(x); } };
   collect(copy);
   const remapString = (s: string) => ids.get(s) ?? [...ids].reduce((v, [old, next]) => v.startsWith(old + "|") || v.startsWith(old + ":") ? next + v.slice(old.length) : v, s);
-  const reference=(key:string)=>identity.has(key)||/Ids?$/.test(key)||key==="source_floorplan_room_id"||key==="hiddenDimensions";
+  const reference=(key:string)=>identity.has(key)||/Ids?$/.test(key)||key==="obstacle_id"||key==="source_floorplan_room_id"||key==="hiddenDimensions";
   const records=new Set(["dimensionOffsets","roomFinishes","labelPositions","roomIndicatorPositions"]);
   const remap = (v: unknown,key=""): unknown => typeof v === "string" ? reference(key)?remapString(v):v : Array.isArray(v) ? v.map(x=>remap(x,key)) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k,x]) => [records.has(key)?remapString(k):k, remap(x,k)])) : v;
   const next = remap(copy) as FloorContent;

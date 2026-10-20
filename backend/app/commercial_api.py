@@ -379,6 +379,8 @@ def _asset_record(user: VerifiedUser, asset_id: UUID, db: SupabaseREST) -> dict[
 
 
 def _macro_category_name(category_id: str) -> str:
+    if category_id == "people":
+        return "People"
     if category_id in {"showers", "basins", "toilets", "baths", "storage"}:
         return "Bathroom"
     if category_id.startswith("kitchen-"):

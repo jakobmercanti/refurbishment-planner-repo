@@ -3,6 +3,11 @@ import type { WindowHelpStep } from "./windowHelp";
 /** Specific window tasks take precedence over broad legacy word matching. */
 export function workspaceHelp(title:string):WindowHelpStep[]|null {
   const step=(heading:string,text:string)=>({heading,text});
+  if(/^People & furniture$/i.test(title))return [
+    step("Choose the person", "People is a top-level category in Add elements and the Object catalogue. Choose Standing, Seated or Lying down, a stature preset or custom standing height, and Casual, Smart or Mannequin display style. Posed envelope dimensions differ from standing stature. Appearance colours do not affect fit or CFD geometry."),
+    step("Use furniture", "For Seated or Lying down, select furniture in this room. Check the nominal contact height above the furniture base and choose Centre, Left or Right where available. Align to furniture sets the pose; Add person on furniture adds a new person directly, without another placement click. Beds must have enough usable length. People follow their support when it moves; dragging a person or deleting its support detaches it. Floor duplication remaps support links to the copied furniture."),
+    step("Check the result", "Generic occupant models are not ergonomic certification. Confirm the actual support height, position and room clearance. The CFD shape omits fine anatomy and clothing, and exports only the person—not its furniture. Assign heat, respiration and other boundary conditions separately in your solver."),
+  ];
   if(/^New outline$/i.test(title))return [
     step("Choose a starting shape","Choose Empty floorplan, Rectangle, L-shape or Notched rectangle. For a recessed shape, choose its orientation. OK opens a separate warning; it does not delete anything yet."),
     step("Confirm or keep your building","Only Delete contents & start removes the current floors, their placed contents and service layouts, and resets the roof. Cancel or Escape returns to the chooser without changing the project. Undo can restore the previous building. Use File → Save first if you need a permanent backup."),
@@ -27,6 +32,7 @@ export function workspaceHelp(title:string):WindowHelpStep[]|null {
   ];
   if(/^(Add to plan|Add elements)$/i.test(title))return [
     step("Choose the type of item","Choose a category, then a variant. Review dimensions and the preview before using Add and clicking the plan. Doors, windows and wall-mounted fittings need a suitable wall. Escape cancels placement."),
+    step("Connect rooms without a door","Choose Doors → Openings for Single, Double, Round arch, Wide rectangular, Shallow arch or Chamfered. Add opening cuts the wall without a leaf or swing. The preview shows a wall section. Width is the clear span; curved/chamfered height is measured to the crown, so side headroom is lower. Structural support and usable headroom need on-site verification."),
     step("Edit a placement","Select a placed item to edit its dimensions, position or appearance. The placed object is independent of its catalogue template. Flooring, paint and skirting options apply finishes to the selected room or surface instead of placing furniture."),
   ];
   if(/^Save project as$|^Project download$/i.test(title))return [
@@ -69,7 +75,12 @@ export function workspaceHelp(title:string):WindowHelpStep[]|null {
     step("Find and review an item","Filter or search the catalogue, choose an item and inspect its dimensions and available variants. Review the actual product specification before planning a purchase."),
     step("Place a copy","Use the placement control offered by the catalogue, then click the plan. The placed object belongs to the project; editing it does not change the library template. Escape cancels placement."),
   ];
-  if(/^(Catalogue entry details|Material entry details|Supplier catalogue entry|Object catalogue manager)$/i.test(title))return [
+  if(/^Catalogue entry details$/i.test(title))return [
+    step("Inspect the asset", "The left panel lists catalogue dimensions and references; the right panel shows the asset. Drag to orbit, scroll or use the zoom slider, and choose Fit to restore the framing. The preview does not verify measured fit."),
+    step("Review the CFD shape", "Suitable physical objects offer Asset and CFD shape views. The CFD shape is a closed, simplified obstruction scaled to the catalogue dimensions. The outline marks local origin and is not exported; check mounting height for raised fittings. Small details and cavities are omitted or sealed; check the assumptions and main airflow paths before using it."),
+    step("Export with the right units", "Download CFD STL exports millimetres. STL itself has no unit metadata: apply the correct scale in your mesher. This is geometry preparation, not a CFD result or a guarantee about cell count. Doors, windows, electrical devices and materials do not have furniture CFD proxies."),
+  ];
+  if(/^(Material entry details|Supplier catalogue entry|Object catalogue manager)$/i.test(title))return [
     step("Review the library record","Check the item's name, category, dimensions and any supplier or material reference. Catalogue values are reusable defaults, not a measured survey or a verified product rating. Confirm specifications against the actual product."),
     step("Know what you are editing","Library administration changes the template used for future placements, not an existing placed object's measured dimensions. A detail preview alone changes nothing. Use the shown save/confirmation action to apply an editable draft; Cancel leaves it unapplied."),
   ];

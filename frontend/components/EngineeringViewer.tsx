@@ -12,6 +12,8 @@ import RenderCameraRig, { type RenderCameraRigHandle } from "./RenderCameraRig";
 import type { AssetInstance } from "@/lib/projectDocument";
 import { exported } from "@/lib/analytics";
 import { doorRepresentation } from "@/lib/doorModels";
+import { passageProfileForOpening, passageTopPoints } from "@/lib/passageOpenings";
+import { PassageHitArea, PassageReveal, PassageSpandrel } from "./PassageOpening";
 import { componentColoursFromMetadata, resolvedPartColours } from "@/lib/assetColours";
 import { DoorFixture } from "@/components/DoorFixture";
 import { WindowFixture } from "@/components/ArchitecturalFixtures";
@@ -25,9 +27,9 @@ import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
 import { floorDesignColour, flooringSwatch, normalizeFloorDesign, TILE_MATERIALS } from "@/lib/flooring";
 import { Grid, Html, Line, OrbitControls, RoundedBox } from "@react-three/drei";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { StlFixture } from "./StlFixture";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { constrainPersonToRoom } from "@/lib/layoutInteraction";
 import { StableCanvas } from "@/components/StableCanvas";
@@ -275,6 +277,7 @@ function WallPiece({
   selected,
   paintOnly = false,
   onSelect,
+  children,
 }: {
   start: Point2D;
   end: Point2D;
@@ -291,10 +294,9 @@ function WallPiece({
   selected: boolean;
   paintOnly?: boolean;
   onSelect?: (additive: boolean) => void;
+  children?: React.ReactNode;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const solidMeshRef = useRef<THREE.Mesh>(null);
-  const paintMeshRef = useRef<THREE.Mesh>(null);
   const fullLength = Math.hypot(end.x - start.x, end.y - start.y);
   const vector = fullLength > 0 ? wallVector(start, end) : { dx: 1, dy: 0, length: 0, angle: 0 };
   useFrame(({ camera }) => {
@@ -313,10 +315,9 @@ function WallPiece({
     }
     groupRef.current.visible = isVisible;
     const raycast = isVisible ? THREE.Mesh.prototype.raycast : DISABLED_MESH_RAYCAST;
-    if (solidMeshRef.current) solidMeshRef.current.raycast = raycast;
-    if (paintMeshRef.current) paintMeshRef.current.raycast = raycast;
+    groupRef.current.traverse(object => { if (object instanceof THREE.Mesh) object.raycast = raycast; });
   });
-  if (length <= 0 || height <= 0) return null;
+  if (length <= 0 || (height <= 0 && !children)) return null;
   const exteriorX = vector.dy;
   const exteriorY = -vector.dx;
   const to = from + length;
@@ -341,8 +342,9 @@ function WallPiece({
   const paintOffset = 0.0015;
   return (
     <group ref={groupRef}>
+      {children}
+      {height > 0 && <>
       {!paintOnly && wallMode !== "CUTAWAY_2D" && <mesh
-        ref={solidMeshRef}
         castShadow={wallMode !== "TRANSPARENT"}
         receiveShadow
         position={[0, base * SCALE, 0]}
@@ -355,7 +357,6 @@ function WallPiece({
       {/* Paint is a thin overlay on the solid wall; shadow mapping it causes
           perspective self-shadow acne along the coplanar wall surfaces. */}
       <mesh
-        ref={paintMeshRef}
         position={[
           innerCentre.x * SCALE - vector.dy * paintOffset,
           (base + height / 2) * SCALE,
@@ -369,6 +370,7 @@ function WallPiece({
         <planeGeometry args={[length * SCALE, height * SCALE]} />
         <meshStandardMaterial color={colour} roughness={0.88} metalness={0} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} userData={{ editorSelectionHighlight: selected }} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>
+      </>}
     </group>
   );
 }
@@ -413,13 +415,18 @@ function WallWithOpenings({
       const clippedStart = Math.max(0, openingStart);
       const clippedEnd = Math.min(vector.length, openingEnd);
       if (clippedEnd - clippedStart <= 1e-6 || openingStart >= sourceLengthMm || openingEnd <= 0) return null;
-      return { ...opening, offset_mm: clippedStart, width: { ...opening.width, value: clippedEnd - clippedStart } };
+      return { ...opening, profileSourceOffsetMm:openingStart, profileSourceWidthMm:opening.width.value, offset_mm: clippedStart, width: { ...opening.width, value: clippedEnd - clippedStart } };
     })
-    .filter((opening): opening is Opening => Boolean(opening))
+    .filter(opening => opening !== null)
     .sort((a, b) => a.offset_mm - b.offset_mm);
   const pieces: React.ReactNode[] = [];
   let cursor = 0;
   openings.forEach((opening) => {
+    const passage=passageProfileForOpening(opening);
+    const shoulder=passage?<group position={[(start.x+vector.dx*opening.profileSourceOffsetMm)*SCALE,opening.sill_height_mm*SCALE,-(start.y+vector.dy*opening.profileSourceOffsetMm)*SCALE]} rotation={[0,vector.angle,0]}>
+      <PassageSpandrel profile={passage} widthMm={opening.profileSourceWidthMm} heightMm={opening.height.value} fromMm={opening.offset_mm-opening.profileSourceOffsetMm} toMm={opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm} depthMm={thickness} colour={colour} solidColour={DEFAULT_WALL_COLOUR} wallMode={wallMode} paintOnly={paintOnly} selected={selected} onSelect={onSelect}/>
+      {!paintOnly&&<group position={[opening.profileSourceWidthMm*SCALE/2,0,0]}><PassageReveal profile={passage} width={opening.profileSourceWidthMm*SCALE} height={opening.height.value*SCALE} depth={thickness*SCALE} from={(opening.offset_mm-opening.profileSourceOffsetMm)*SCALE} to={(opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm)*SCALE} colour={resolvedPartColours({representation_key:typeof opening.metadata?.representation_key==="string"?opening.metadata.representation_key:undefined,color_hex:typeof opening.metadata?.color_hex==="string"?opening.metadata.color_hex:colour,component_colors:componentColoursFromMetadata(opening.metadata)}).reveal??colour} transparent={wallMode==="TRANSPARENT"}/></group>}
+    </group>:null;
     pieces.push(
       <WallPiece
         key={`${opening.id}-before`}
@@ -481,7 +488,7 @@ function WallWithOpenings({
         selected={selected}
         paintOnly={paintOnly}
         onSelect={onSelect}
-      />,
+      >{shoulder}</WallPiece>,
     );
     cursor = opening.offset_mm + opening.width.value;
   });
@@ -600,44 +607,6 @@ function Floor({ room, selected, onSelect, openings, slabThicknessMm = 10, inclu
   );
 }
 
-function StlFixture({ obstacle, width, depth, height, colour, fallback }: { obstacle: Obstacle; width: number; depth: number; height: number; colour: string; fallback: ReactNode }) {
-  const geometry = useMemo(() => {
-    if (!obstacle.stl_base64) return null;
-    try {
-      const source = obstacle.stl_base64.trim();
-      const encoded = source.includes(",") ? source.slice(source.indexOf(",") + 1) : source;
-      const normalized = encoded.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
-      const padded = normalized.padEnd(normalized.length + (4 - normalized.length % 4) % 4, "=");
-      const binary = window.atob(padded);
-      const bytes = new Uint8Array(binary.length);
-      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-      const parsed = new STLLoader().parse(bytes.buffer);
-      parsed.computeVertexNormals();
-      parsed.computeBoundingBox();
-      let box = parsed.boundingBox;
-      if (!box) return null;
-      const originalSize = box.getSize(new THREE.Vector3());
-      if (originalSize.z > originalSize.y * 1.15 && height > Math.max(width, depth) * 1.1) {
-        parsed.rotateX(-Math.PI / 2);
-        parsed.computeBoundingBox();
-        box = parsed.boundingBox;
-        if (!box) return null;
-      }
-      const size = box.getSize(new THREE.Vector3());
-      if (![size.x, size.y, size.z].every((value) => Number.isFinite(value) && value > 1e-6)) return null;
-      const centre = box.getCenter(new THREE.Vector3());
-      parsed.translate(-centre.x, -box.min.y, -centre.z);
-      parsed.scale(width / size.x, height / size.y, depth / size.z);
-      parsed.computeBoundingSphere();
-      return parsed;
-    } catch {
-      return null;
-    }
-  }, [depth, height, obstacle.stl_base64, width]);
-  useEffect(() => () => geometry?.dispose(), [geometry]);
-  if (!geometry) return fallback;
-  return <mesh geometry={geometry} castShadow receiveShadow><meshStandardMaterial color={colour} roughness={0.56} metalness={0.04} /></mesh>;
-}
 
 function safeRenderDimension(value: number, fallback: number) {
   const numeric = Number(value);
@@ -645,6 +614,7 @@ function safeRenderDimension(value: number, fallback: number) {
 }
 
 function ProceduralFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
+  if (obstacle.representation_key?.startsWith("people-")) return <ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} />;
   const fixtureKind = fixtureKindForObstacle(obstacle);
   const customColour = obstacle.color_hex;
   if (obstacle.representation_key?.startsWith("electrical-") || ["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
@@ -746,6 +716,7 @@ function DoorSwingLeaf({
 }
 
 function DoorSwing({ room, door }: { room: Room; door: Opening }) {
+  if(passageProfileForOpening(door))return null;
   const wallIndex = Number(door.parent_wall_id.split("-")[1]) - 1;
   const start = room.vertices[wallIndex];
   const end = room.vertices[(wallIndex + 1) % room.vertices.length];
@@ -788,6 +759,7 @@ function OpeningFixture({ room, opening, selected, onSelect }: { room: Room; ope
     y: start.y + vector.dy * (opening.offset_mm + opening.width.value / 2),
   };
   const windowKey = typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : "window-single-pane";
+  const passage=passageProfileForOpening(opening);
   const windowDepth = typeof opening.metadata?.window_depth_mm === "number" && Number.isFinite(opening.metadata.window_depth_mm) && opening.metadata.window_depth_mm > 0 ? opening.metadata.window_depth_mm * SCALE : depth;
   const windowProjection = windowKey === "window-bay" || windowKey === "window-bow";
   const doorColour = typeof opening.metadata?.color_hex === "string" && /^#[\da-f]{6}$/i.test(opening.metadata.color_hex) ? opening.metadata.color_hex : "#5b4330";
@@ -795,9 +767,10 @@ function OpeningFixture({ room, opening, selected, onSelect }: { room: Room; ope
   // winding used by the 2D plan, local -Z points inward after the wall
   // rotation, so turn projected windows around to keep the bow outside.
   const openingRotation = windowProjection && signedPolygonArea(room.vertices) >= 0 ? vector.angle + Math.PI : vector.angle;
+  const selectionPoints:VectorTuple[]=passage?[[-width/2,sill,depth/2],...passageTopPoints(passage,width,height).map(p=>[p.x-width/2,sill+p.y,depth/2] as VectorTuple),[width/2,sill,depth/2]]:[[-width/2,sill,depth/2],[-width/2,sill+height,depth/2],[width/2,sill+height,depth/2],[width/2,sill,depth/2]];
   return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, openingRotation, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
-    {selected && <group userData={{ editorOnly: true }}><Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} /></group>}
-    {opening.kind === "DOOR" ? (
+    {selected && <group userData={{ editorOnly: true }}><Line points={selectionPoints} color="#1685dd" lineWidth={3} /></group>}
+    {passage ? <group position={[0,sill,wallThickness(room,wallIndex)*SCALE/2]}><PassageHitArea profile={passage} width={width} height={height}/></group> : opening.kind === "DOOR" ? (
       <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture colours={resolvedPartColours({ representation_key: doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type), color_hex: doorColour, component_colors: componentColoursFromMetadata(opening.metadata) })} representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
     ) : <group position={[0, sill, windowProjection ? -windowDepth * .44 : 0]}>
       <WindowFixture colours={resolvedPartColours({ representation_key: windowKey, color_hex: typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE", component_colors: componentColoursFromMetadata(opening.metadata) })} representation={windowKey} width={width} height={height} depth={windowDepth} colour={typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE"} />

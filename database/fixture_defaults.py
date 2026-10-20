@@ -336,9 +336,11 @@ def fixture_default_name(category: str, slug: str, subcategory: str) -> str:
     )
 
 
-def seed_fixture_defaults(session: Session) -> None:
+def seed_fixture_defaults(session: Session, *, category_ids: frozenset[str] | None = None) -> None:
     session.flush()
     for item in session.scalars(select(FurnitureItemRecord)).all():
+        if category_ids is not None and item.category_id not in category_ids:
+            continue
         if item.category_id == "staircases-main" and item.representation_key in STAIRCASE_DEFAULTS:
             item.category_id = f"staircases-{STAIRCASE_DEFAULTS[item.representation_key]['family']}"
         if item.representation_key and not item.plan_symbol_url and not item.plan_symbol_data_url:
@@ -350,6 +352,8 @@ def seed_fixture_defaults(session: Session) -> None:
             item.representation_key = key
             item.plan_symbol_url = f"/fixture-symbols/{key}.svg"
     for category, (kind, variants) in FIXTURE_DEFAULTS.items():
+        if category_ids is not None and category not in category_ids:
+            continue
         for slug, subcategory, width, depth, height in variants:
             key = f"{kind.lower()}-{slug}"
             default_key = f"generic-{key}"
@@ -403,6 +407,11 @@ def seed_fixture_defaults(session: Session) -> None:
                             " project; structural design and headroom need separate assessment."
                         )
                         if category.startswith("staircases-")
+                        else (
+                            "Doorless room-to-room opening. Dimensions describe the clear aperture; curved heights"
+                            " are measured to the crown. Confirm structural support and headroom on site."
+                        )
+                        if category == "doors-openings"
                         else (
                             "Generic parametric fixture with matching architectural plan symbol. Set"
                             " dimensions for your design; not a certified manufacturer drawing."

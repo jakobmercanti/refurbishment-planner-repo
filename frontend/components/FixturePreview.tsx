@@ -2,7 +2,7 @@
 import { MetalReflections } from "@/components/MetalReflections";
 import { useThree } from "@react-three/fiber";
 import { Bounds, Center, OrbitControls, useBounds } from "@react-three/drei";
-import { useEffect, useState, type WheelEvent as ReactWheelEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ParametricFixture } from "@/components/ParametricFixture";
 import { StableCanvas } from "@/components/StableCanvas";
 import type { Obstacle } from "@/lib/types";
@@ -32,6 +32,7 @@ function positiveDimension(value: number, fallback: number) {
 }
 
 export function FixturePreview({ obstacle, compact = false, appearanceControls = false, still = false, children }: { obstacle: Obstacle; compact?: boolean; appearanceControls?: boolean; still?: boolean; children?: ReactNode }) {
+  const previewElement = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [fitRequest, setFitRequest] = useState(0);
@@ -45,12 +46,19 @@ export function FixturePreview({ obstacle, compact = false, appearanceControls =
   const showUnderside = /^electrical-(ceiling-|sensor-(smoke|heat))/.test(obstacle.representation_key ?? "");
   const frameKey = `${obstacle.representation_key ?? "fixture"}|${width}|${depth}|${height}|${obstacle.rotation_deg}`;
   const updateZoom = (value: number) => setZoom(Math.max(PREVIEW_ZOOM_MIN, Math.min(PREVIEW_ZOOM_MAX, value)));
-  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
-    if (!appearanceControls) return;
-    event.preventDefault();
-    setZoom(current => Math.max(PREVIEW_ZOOM_MIN, Math.min(PREVIEW_ZOOM_MAX, current * (event.deltaY > 0 ? 0.9 : 1.1))));
-  };
-  return <div className={`fixture-preview ${compact ? "fixture-preview-compact" : ""} ${isExpanded ? "expanded" : ""}`} style={{ height: compact ? (isExpanded ? 230 : 106) : 180, background: "#eef1ed", borderRadius: 12 }} aria-label="Live element preview" role={compact ? "button" : undefined} tabIndex={compact ? 0 : undefined} aria-expanded={compact ? isExpanded : undefined} onClick={compact ? () => setExpanded(value => !value) : undefined} onKeyDown={compact ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setExpanded(value => !value); } } : undefined} onWheel={appearanceControls ? handleWheel : undefined}>
+  useEffect(() => {
+    const element = previewElement.current;
+    if (!appearanceControls || !element) return;
+    // React's delegated wheel listener is passive; a native cancellable listener
+    // prevents orbit/zoom gestures from also scrolling the containing dialog.
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      setZoom(current => Math.max(PREVIEW_ZOOM_MIN, Math.min(PREVIEW_ZOOM_MAX, current * (event.deltaY > 0 ? 0.9 : 1.1))));
+    };
+    element.addEventListener("wheel", handleWheel, { passive: false });
+    return () => element.removeEventListener("wheel", handleWheel);
+  }, [appearanceControls]);
+  return <div ref={previewElement} className={`fixture-preview ${compact ? "fixture-preview-compact" : ""} ${isExpanded ? "expanded" : ""}`} style={{ height: compact ? (isExpanded ? 230 : 106) : 180, background: "#eef1ed", borderRadius: 12 }} aria-label="Live element preview" role={compact ? "button" : undefined} tabIndex={compact ? 0 : undefined} aria-expanded={compact ? isExpanded : undefined} onClick={compact ? () => setExpanded(value => !value) : undefined} onKeyDown={compact ? event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setExpanded(value => !value); } } : undefined}>
     <StableCanvas frameloop={still ? "demand" : "always"} camera={{ position: [1.7, 1.6, 2.2], fov: 36 }}>
       <MetalReflections />
       <ambientLight intensity={1.8} /><directionalLight position={[3, 5, 4]} intensity={3} />

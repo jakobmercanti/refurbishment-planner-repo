@@ -13,6 +13,7 @@ from pathlib import Path
 from geometry.engine import check_fit
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.models import FitResult, Placement, ProductDefinition, RoomDefinition
+from geometry.opening_profiles import passage_polygon_mm
 
 
 class FreeCADGenerationError(RuntimeError):
@@ -47,8 +48,14 @@ def _snapshot(
     placement: Placement,
     result: FitResult,
 ) -> dict[str, object]:
+    room_data = room.model_dump(mode="json")
+    for opening in room_data["openings"]:
+        if opening.get("passage_profile"):
+            opening["profile_points_mm"] = passage_polygon_mm(
+                opening["passage_profile"], opening["width"]["value"], opening["height"]["value"]
+            )
     return {
-        "room": room.model_dump(mode="json"),
+        "room": room_data,
         "product": product.model_dump(mode="json"),
         "placement": placement.model_dump(mode="json"),
         "fit_result": result.model_dump(mode="json"),

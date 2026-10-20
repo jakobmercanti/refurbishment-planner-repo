@@ -15,6 +15,7 @@ export function heatingRoomBalance(row: HeatingRoomResult) {
   const differenceW = row.capacityW - row.demand.designW;
   const estimated = row.capacityEstimated || row.demand.warnings.some(w => w.startsWith("Energy "));
   const capacityText = `${estimated ? "~" : ""}${heatingWatts(row.capacityW)}`;
+  if(row.demand.warnings.some(w=>w.startsWith("Open passage ")))return {tone:"review",headline:"Heat loss needs checking",detail:"Open-passage air transfer needs a verified assessment",indicator:"! Check open passage",capacityText:`${capacityText} known`,estimated,differenceW} as const;
   if (!row.capacityComparisonValid) return { tone: "review", headline: "Output needs checking", detail: "Missing or unsuitable performance data", indicator: "! Check output data", capacityText: `${capacityText} known`, estimated, differenceW } as const;
   if (!row.emitters.some(e => e.radiator.category !== "Boiler") && !row.zones.length && row.demand.designW > 0) return { tone: "empty", headline: "Add heating to this room", detail: `${heatingWatts(row.demand.designW)} of heat required`, indicator: "No room heating added", capacityText, estimated, differenceW } as const;
   if (row.demand.designW === 0 && row.capacityW === 0) return { tone: "empty", headline: "No heat demand calculated", detail: "Check room temperatures and exposed surfaces", indicator: "Check heat-loss inputs", capacityText, estimated, differenceW } as const;

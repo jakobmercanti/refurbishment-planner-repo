@@ -272,7 +272,7 @@ def check_fit(
                 )
 
     for opening in room.openings:
-        if opening.kind is OpeningKind.DOOR:
+        if opening.kind is OpeningKind.DOOR and opening.passage_profile is None:
             swing = door_swing_envelope(room, opening)
             intersection = physical.intersection(swing)
             if intersection.area > GEOMETRY_EPSILON_MM**2:

@@ -1,5 +1,6 @@
 import type { AssetDefinition, AssetInstance } from "./projectDocument";
 import { containsPoint } from "./elementPlacement";
+import { openingClearAreaMm2, passageProfileForKey, passageProfileForOpening } from "./passageOpenings";
 import type { Opening, Point2D, Room } from "./types";
 
 export const PLANNER_BUILD_CATEGORIES = [
@@ -362,7 +363,7 @@ export interface PlannerBuildMetricsProject {
   floorplan: {
     walls: Array<{ id: string; points: Point2D[] }>;
     rooms: Array<{ id: string; name: string; vertices: Point2D[]; sourceWallId: string; sourceWallIds?: string[] }>;
-    openings: Array<{ id: string; kind: "DOOR" | "WINDOW"; width: number; height: number }>;
+    openings: Array<{ id: string; kind: "DOOR" | "WINDOW"; width: number; height: number; representationKey?:string }>;
     wallHeight?: number;
     roomFinishes?: Record<string, Room["finishes"]>;
   } | null;
@@ -449,7 +450,7 @@ function assetPlumbingType(categoryId: string | undefined, subcategory: string |
 
 function validOpeningArea(opening: Opening): number | null {
   const width = opening.width?.value, height = opening.height?.value;
-  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0 ? width * height : null;
+  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0 ? openingClearAreaMm2(opening) : null;
 }
 
 function pointRoom(point: Point2D, sources: PlannerBuildRoomSource[]): PlannerBuildRoomSource | undefined {
@@ -540,7 +541,7 @@ export function calculatePlannerBuildMetrics(project: PlannerBuildMetricsProject
       grossWallAreaMm2,
       openingAreaMm2,
       netWallAreaMm2,
-      doors: roomOpenings.filter((opening) => opening.kind === "DOOR").length,
+      doors: roomOpenings.filter((opening) => opening.kind === "DOOR" && !passageProfileForOpening(opening)).length,
       windows: roomOpenings.filter((opening) => opening.kind === "WINDOW").length,
       electrical: roomElectrical.length,
       plumbing: roomPlumbing.length,
@@ -583,10 +584,11 @@ export function calculatePlannerBuildMetrics(project: PlannerBuildMetricsProject
       width: { value: opening.width, uncertainty_mm: 0, verified: false, source_type: "PROJECT" },
       height: { value: opening.height, uncertainty_mm: 0, verified: false, source_type: "PROJECT" },
       sill_height_mm: 0,
+      passage_profile:passageProfileForKey(opening.representationKey),
     } satisfies Opening;
     uniqueOpenings.set(roomOpening.id, roomOpening);
   }
-  const doors = [...uniqueOpenings.values()].filter((opening) => opening.kind === "DOOR");
+  const doors = [...uniqueOpenings.values()].filter((opening) => opening.kind === "DOOR" && !passageProfileForOpening(opening));
   const windows = [...uniqueOpenings.values()].filter((opening) => opening.kind === "WINDOW");
   const sumOpeningArea = (items: Opening[]) => {
     const areas = items.map(validOpeningArea);

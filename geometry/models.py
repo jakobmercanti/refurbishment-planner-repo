@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from geometry.constants import MAX_REASONABLE_LENGTH_MM
 from geometry.heating import HeatingElementSpec
+from geometry.people import PERSON_MODELS, CataloguePerson, supports_posture
 
 
 def utc_now() -> datetime:
@@ -44,6 +45,13 @@ class OpeningKind(StrEnum):
     DOOR = "DOOR"
     WINDOW = "WINDOW"
     GENERIC = "GENERIC"
+
+
+class PassageProfile(StrEnum):
+    RECTANGULAR = "RECTANGULAR"
+    ROUND_ARCH = "ROUND_ARCH"
+    SEGMENTAL_ARCH = "SEGMENTAL_ARCH"
+    CHAMFERED = "CHAMFERED"
 
 
 class ObstacleKind(StrEnum):
@@ -179,6 +187,7 @@ class GenericOpening(BaseModel):
     door_type: DoorType | None = None
     swing_angle_deg: float | None = Field(default=None, gt=0.0, le=180.0)
     opens_inward: bool | None = None
+    passage_profile: PassageProfile | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("offset_mm", "sill_height_mm", "reveal_depth_mm")
@@ -188,8 +197,12 @@ class GenericOpening(BaseModel):
 
     @model_validator(mode="after")
     def validate_kind_fields(self) -> GenericOpening:
+        if self.passage_profile is not None and self.kind is not OpeningKind.DOOR:
+            raise ValueError("a doorless passage profile requires a doorway opening")
         if self.kind is OpeningKind.DOOR:
-            if self.hinge_side is None or self.swing_angle_deg is None or self.opens_inward is None:
+            if self.passage_profile is None and (
+                self.hinge_side is None or self.swing_angle_deg is None or self.opens_inward is None
+            ):
                 raise ValueError("doors require hinge_side, swing_angle_deg, and opens_inward")
             if self.door_type is None:
                 self.door_type = DoorType.SINGLE
@@ -201,6 +214,17 @@ class GenericOpening(BaseModel):
 
 
 class ObstacleDefinition(BaseModel):
+    person_spec: CataloguePerson | None = None
+
+    @model_validator(mode="after")
+    def validate_person_model(self) -> ObstacleDefinition:
+        if self.person_spec and not any(
+            model["key"] == self.representation_key and model["posture"] == self.person_spec.posture
+            for model in PERSON_MODELS
+        ):
+            raise ValueError("Person posture does not match its model")
+        return self
+
     heating_spec: HeatingElementSpec | None = None
     id: str
     name: str
@@ -321,6 +345,17 @@ class RoomDefinition(BaseModel):
                 raise ValueError(f"duplicate consecutive vertex creates zero-length wall {index + 1}")
         if self.wall_height.value <= 0 or self.wall_thickness.value <= 0:
             raise ValueError("wall height and thickness must be greater than zero")
+        for person in self.obstacles:
+            if person.person_spec and person.person_spec.support:
+                host = next(
+                    (item for item in self.obstacles if item.id == person.person_spec.support.obstacle_id), None
+                )
+                if (
+                    host is None
+                    or host.id == person.id
+                    or not supports_posture(host.representation_key, person.person_spec.posture)
+                ):
+                    raise ValueError("Person support must reference suitable furniture in the same room")
         valid_wall_ids = {f"wall-{index:03d}" for index in range(1, len(self.vertices) + 1)}
         for wall_id, thickness_mm in self.wall_thickness_overrides_mm.items():
             if wall_id not in valid_wall_ids:

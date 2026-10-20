@@ -21,7 +21,11 @@ for model in models:
 
     leaves, operation = model["leaves"], model["operation"]
     path("M0 -25 V25 M1000 -25 V25", weight=16)
-    if operation == "HINGED":
+    if operation == "OPENING":
+        path("M0 -25 H35 M0 25 H35 M965 -25 H1000 M965 25 H1000", weight=8)
+        path("M35 0 H965", dash=True, weight=3)
+        height = 30
+    elif operation == "HINGED":
         double = leaves > 1
         reach = 500 if double else 1000
         path(f"M0 0 V{reach} H18 V0 Z", fill="white")

@@ -7,6 +7,7 @@ import { RadiatorFixture } from "@/components/RadiatorFixture";
 import { StaircaseFixture, WindowFixture } from "@/components/ArchitecturalFixtures";
 import { RoundedBox } from "@react-three/drei";
 import { RoomFurniture } from "@/components/RoomFurniture";
+import { PersonFixture } from "@/components/PersonFixture";
 import { KitchenFurniture } from "@/components/KitchenFurniture";
 import { Vector2, Vector3, CatmullRomCurve3, DoubleSide, Shape, Path } from "three";
 import { fixtureRepresentation } from "@/components/FixturePlanSymbol";
@@ -46,6 +47,7 @@ function Block({ position, size, colour = "#f4f3ef" }: { position: [number, numb
 export function ParametricFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
   const key = fixtureRepresentation(obstacle);
   const colours = resolvedPartColours({ ...obstacle, representation_key: key });
+  if (key.startsWith("people-")) return <PersonFixture obstacle={obstacle} width={width} depth={depth} height={height} colours={colours} />;
   if (key.startsWith("electrical-")) return <ElectricalFixture colours={colours} representation={key} width={width} depth={depth} height={height} colour={colours.body ?? obstacle.color_hex ?? "#F4F3EE"} />;
   if (key.startsWith("furniture-bath-")) return <BathFixture representation={key} width={width} depth={depth} height={height} colour={colours.body} interiorColour={colours.interior} hardwareColour={colours.hardware} legsColour={colours.legs} />;
   if (key === "heating-boiler") return <group><RoundedBox args={[width, height, depth]} radius={Math.min(width, depth) * .07} smoothness={4}><meshStandardMaterial color={obstacle.color_hex ?? "#f4f4f0"} roughness={.45} /></RoundedBox><mesh position={[0, -height * .28, depth / 2 + .002]}><boxGeometry args={[width * .7, height * .16, .005]} /><meshStandardMaterial color="#283447" /></mesh></group>;

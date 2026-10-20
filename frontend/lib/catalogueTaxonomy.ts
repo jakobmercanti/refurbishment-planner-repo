@@ -1,8 +1,9 @@
-export const MACRO_CATEGORY_ORDER = ["bathroom", "kitchen", "living", "bedroom", "staircases", "radiators", "electrical", "other"] as const;
+export const MACRO_CATEGORY_ORDER = ["bathroom", "people", "kitchen", "living", "bedroom", "staircases", "radiators", "electrical", "other"] as const;
 export type MacroCategoryId = typeof MACRO_CATEGORY_ORDER[number];
 
 export const MACRO_CATEGORY_LABELS: Record<MacroCategoryId, string> = {
   bathroom: "Bathroom fixtures",
+  people: "People",
   kitchen: "Kitchen",
   living: "Living Room",
   bedroom: "Bedroom",
@@ -13,6 +14,7 @@ export const MACRO_CATEGORY_LABELS: Record<MacroCategoryId, string> = {
 };
 
 export function macroCategoryForCategoryId(categoryId: string): MacroCategoryId {
+  if (categoryId === "people") return "people";
   if (categoryId === "electric") return "electrical";
   if (categoryId === "heating" || categoryId === "heating-boilers") return "radiators";
   if (["showers", "basins", "toilets", "baths", "storage"].includes(categoryId)) return "bathroom";

@@ -52,6 +52,18 @@ def opening_cut_shape(
     sill = float(opening.get("sill_height_mm", 0.0))
     height = float(opening["height"]["value"])
     tolerance = 0.5
+    if opening.get("profile_points_mm"):
+        points = [
+            App.Vector(
+                float(start["x"]) + ux * (offset + x) - exterior_x * tolerance,
+                float(start["y"]) + uy * (offset + x) - exterior_y * tolerance,
+                sill + z,
+            )
+            for x, z in opening["profile_points_mm"]
+        ]
+        return face_from_points(points).extrude(
+            App.Vector(exterior_x * (thickness + 2 * tolerance), exterior_y * (thickness + 2 * tolerance), 0)
+        )
     p1 = App.Vector(
         float(start["x"]) + ux * (offset - tolerance) - exterior_x * tolerance,
         float(start["y"]) + uy * (offset - tolerance) - exterior_y * tolerance,
@@ -203,7 +215,7 @@ def main() -> None:
                     cut,
                 )
                 opening_object.Visibility = False
-                if opening["kind"] == "DOOR":
+                if opening["kind"] == "DOOR" and not opening.get("passage_profile"):
                     swing = door_swing_shape(start, end, opening)
                     swing_object = add_feature(
                         document,

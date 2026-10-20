@@ -8,8 +8,34 @@ import { LocalProjectRepository } from '../lib/projectRepository';
 import { exportProject,importProject,inspectPackage } from '../lib/projectPackage';
 import { assetRepository } from '../lib/assetRepository';
 import { ROOF_MATERIALS } from '../lib/roofAppearance';
+import { DOOR_MODELS } from '../lib/doorModels';
+import { passageProfileForKey } from '../lib/passageOpenings';
+import { placePersonOnSupport, withPersonSpec } from '../lib/people';
 const m=(value:number)=>({value,uncertainty_mm:0,verified:true,source_type:'USER_MEASURED'});
 function fixture(){const p=newProject();p.rooms=[{id:'r',name:'Room',version:1,vertices:[{x:0,y:0},{x:8000,y:0},{x:8000,y:6000},{x:0,y:6000}],wall_height:m(2400),wall_thickness:m(100),obstacles:[],openings:[]}];p.building=defaultBuilding(p);return p;}
+
+test('people poses, styles and copied furniture links survive IndexedDB and portable multi-floor round trips',async()=>{
+ let p=fixture();const bed={id:'people-bed',name:'Bed',kind:'BOX' as const,fixture_kind:'FURNITURE' as const,representation_key:'furniture-bed-king',center:{x:3000,y:3000},rotation_deg:37.125,base_z_mm:20,verified:false,dimensions:{width:m(1600),depth:m(2100),height:m(900)}};
+ const person=placePersonOnSupport(withPersonSpec({...bed,id:'occupant'}, {posture:'LYING',stature_mm:1800,seat_height_mm:441,style:'SMART'}),bed,594);
+ p.rooms[0].obstacles=[bed,person];p=copyTopFloor(p);p=parseProject(p);
+ const repo=new LocalProjectRepository();await repo.saveProject(p);assert.deepEqual(await repo.getProject(p.projectId),p);
+ const blob=await exportProject(p),restored=await importProject(new File([blob],'people.floorplan3d'));assert.deepEqual(restored,p);
+ for(const floor of projectFloors(restored)){const [support,occupant]=floor.content.rooms[0].obstacles;assert.equal(occupant.person_spec?.support?.obstacle_id,support.id);assert.equal(occupant.person_spec?.style,'SMART');assert.equal(occupant.base_z_mm,614);}
+});
+
+test('all six doorless opening templates survive multi-floor IndexedDB and portable project round trips',async()=>{
+ let p=fixture();const models=DOOR_MODELS.filter(model=>model.operation==='OPENING');
+ for(const [index,model] of models.entries()){
+  if(index)p=copyTopFloor(p);
+  p.rooms[0].openings=[{id:'passage-'+index,kind:'DOOR',parent_wall_id:'wall-001',offset_mm:500,width:m(model.width),height:m(model.height),sill_height_mm:0,passage_profile:passageProfileForKey(model.key),metadata:{representation_key:model.key,catalogue_item_id:'generic-'+model.key}}];
+  p=parseProject(p);
+ }
+ const repo=new LocalProjectRepository();await repo.saveProject(p);const saved=await repo.getProject(p.projectId);
+ assert.deepEqual(saved,p);
+ const blob=await exportProject(p),restored=await importProject(new File([blob],'passages.floorplan3d'));
+ assert.deepEqual(projectFloors(restored),projectFloors(p));
+ assert.deepEqual(projectFloors(restored).map(f=>f.content.rooms[0].openings[0].passage_profile),models.map(m=>m.profile));
+});
 test('every roof finish and a precise custom direction survive a portable multi-floor project',async()=>{
  for(const material of ROOF_MATERIALS) {
   const p=copyTopFloor(fixture());p.building!.roof={...p.building!.roof,type:'GABLE',orientationDeg:37.125,finish:{material:material.id,colour:'#a17349',tileWidthMm:425,tileHeightMm:615}};

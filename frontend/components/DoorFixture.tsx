@@ -5,6 +5,8 @@ import { OpeningFinishMaterial } from "@/components/OpeningFinishMaterial";
 import { useEffect, useMemo } from "react";
 import { CatmullRomCurve3, DataTexture, RGBAFormat, SRGBColorSpace, Path, Shape, Vector3 } from "three";
 import { doorModel } from "@/lib/doorModels";
+import { passageProfileForKey } from "@/lib/passageOpenings";
+import { PassageWallPreview } from "./PassageOpening";
 
 type Panel = { x: number; y: number; w: number; h: number; glass?: boolean };
 function rectangle(x: number, y: number, w: number, h: number) {
@@ -91,6 +93,8 @@ function DoorLeaf({ width: w, height: h, thickness: t, style, colour, handleSide
 /** Frame and leaf share dimensions but have independent finish regions. */
 export function DoorFixture({ representation, width, depth, height, colour = "#f4f3ee", frame = false, colours = {} }: { representation: string; width: number; depth: number; height: number; colour?: string; frame?: boolean; colours?: Record<string, string> }) {
   const model = doorModel(representation) ?? doorModel("door-single")!;
+  const passage = passageProfileForKey(representation);
+  if (passage) return <PassageWallPreview profile={passage} width={width} height={height} depth={depth} colour={colours.reveal ?? colour} />;
   const unit = height / 2040, jamb = frame ? Math.min(38 * unit, width * .08) : 0, gap = Math.min(3 * unit, width / (model.leaves + 1) * .03);
   const innerWidth = width - 2 * jamb, leafHeight = height - jamb - gap * 2;
   const thickness = Math.min(depth * .5, height * (model.style === "entrance" ? 54 : 40) / 2040);

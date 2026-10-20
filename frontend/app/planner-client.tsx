@@ -30,6 +30,7 @@ import { PlannerBuildWorkspace } from "@/components/PlannerBuildWorkspace";
 import { usePlannerBuildView } from "@/lib/plannerBuildView";
 import { constrainObstacleToRoom, requiresWallMount, DEFAULT_OBSTACLE_WALL_LOCK, obstacleFitsInRoom, transferObstacle, type PlacementCandidate, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
 import { normalizeRoomPerson } from "@/lib/person";
+import { defaultPersonSpec, syncSupportedPeople } from "@/lib/people";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { DEFAULT_APP_PREFERENCES, getCurrencyPreferenceSnapshot, getServerCurrencyPreferenceSnapshot, readAppearancePreferences, subscribeCurrencyPreference, watchThemePreference, writeAppearancePreferences, type AppPreferences } from "@/lib/appPreferences";
 import type { CatalogueItem, DemoResponse, LayoutResult, Measurement, Obstacle, PersonMockup, Room, RoomFinishes, WallViewMode } from "@/lib/types";
@@ -324,6 +325,7 @@ export default function Home() {
 
   function applyPlanRooms(rooms: Room[]) {
     if(!local.isScopeCurrent(scopeToken))return;
+      rooms = rooms.map(room => ({ ...room, obstacles: syncSupportedPeople(room.obstacles, roomOptions(demo).find(old => old.id === room.id)?.obstacles, room, placementWalls) }));
     setProjectRooms(rooms);
     saveElectricalLayout(local.project?.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT, rooms);
     setDemo((current) => {
@@ -351,6 +353,7 @@ export default function Home() {
 
   function applyPlanRoom(room: Room) {
     if(!local.isScopeCurrent(scopeToken))return;
+      room = { ...room, obstacles: syncSupportedPeople(room.obstacles, roomOptions(demo).find(old => old.id === room.id)?.obstacles, room, placementWalls) };
     const nextRooms = [...roomOptions(demo).filter(item => item.id !== room.id && item.source_floorplan_room_id !== room.source_floorplan_room_id), room];
     setProjectRooms(nextRooms);
     saveElectricalLayout(local.project?.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT, nextRooms);
@@ -370,7 +373,7 @@ export default function Home() {
       return next ? [next] : previous ? [previous] : [];
     });
     const beforeRooms = roomOptions(demo);
-    const updated = { ...target, obstacles: bounded, version: target.version + 1 };
+      const updated = { ...target, obstacles: syncSupportedPeople(bounded, target.obstacles, target, placementWalls), version: target.version + 1 };
     const nextRooms = beforeRooms.map((room) => room.id === target.id ? updated : room);
     saveElectricalLayout(local.project?.electricalLayout ?? DEFAULT_ELECTRICAL_LAYOUT, nextRooms);
     setDemo((current) => current ? { ...current, room: current.room.id === target.id ? updated : current.room } : current);
@@ -455,7 +458,7 @@ export default function Home() {
       return;
     }
     const selectedObstacle = (demo ? (projectRooms.length ? projectRooms : [demo.room]) : []).find(room => room.id === selection.roomId)?.obstacles.find(obstacle => obstacle.id === selection.id);
-    setViewerAddToPlanMode(selectedObstacle?.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : selectedObstacle && isHeatingElement(selectedObstacle) ? "HEATING" : "FURNITURE");
+    setViewerAddToPlanMode(selectedObstacle?.representation_key?.startsWith("people-") ? "PEOPLE" : selectedObstacle?.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : selectedObstacle && isHeatingElement(selectedObstacle) ? "HEATING" : "FURNITURE");
     setViewerOpeningEditRequest(null);
     setViewerElementEditRequest((current) => ({ ...selection, requestId: (current?.requestId ?? 0) + 1 }));
     setCompactViewerTool("viewer-analysis");
@@ -508,16 +511,17 @@ export default function Home() {
     const maxX = Math.max(...target.vertices.map((point) => point.x));
     const minY = Math.min(...target.vertices.map((point) => point.y));
     const maxY = Math.max(...target.vertices.map((point) => point.y));
-    const measured = (value: number): Measurement => ({ value, uncertainty_mm: 5, verified: false, source_type: "MANUFACTURER_DATASHEET" });
+    const measured = (value: number): Measurement => ({ value, uncertainty_mm: 5, verified: false, source_type: item.category_id === "people" ? "USER_MEASURED" : "MANUFACTURER_DATASHEET" });
     const unalignedObstacle: Obstacle = {
       id: `fixture-${crypto.randomUUID().slice(0, 8)}`,
+      person_spec: defaultPersonSpec(item.representation_key, item.height_mm),
       name: item.name,
       kind: item.plan_shape === "ELLIPSE" ? "CYLINDER" : "BOX",
       center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
       dimensions: { width: measured(item.width_mm), depth: measured(item.depth_mm), height: measured(item.height_mm) },
       base_z_mm: item.representation_key?.startsWith("furniture-kitchen-cabinet-") ? 1500 : 0,
       rotation_deg: 0,
-      source_type: "MANUFACTURER_DATASHEET",
+      source_type: item.category_id === "people" ? "USER_MEASURED" : "MANUFACTURER_DATASHEET",
       verified: false,
       fixture_kind: item.fixture_kind,
       model_id: item.id,
@@ -649,7 +653,7 @@ export default function Home() {
                 key={`viewer-${viewerAddToPlanMode}-${selectedViewerRoom.id}-${viewerElementEditRequest?.requestId ?? "new"}`}
                 apiUrl={API_URL}
                 refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)}
-                categoryFilter={viewerAddToPlanMode === "ELECTRICAL" ? "electric" : viewerAddToPlanMode === "HEATING" ? "heating" : undefined}
+                categoryFilter={viewerAddToPlanMode === "PEOPLE" ? "people" : viewerAddToPlanMode === "ELECTRICAL" ? "electric" : viewerAddToPlanMode === "HEATING" ? "heating" : undefined}
                 room={selectedViewerRoom}
                 displayUnits={preferences.units}
                 onChange={obstacles => applyObstacles(obstacles, selectedViewerRoom.id)}

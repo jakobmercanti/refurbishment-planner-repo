@@ -4,6 +4,7 @@ import { formatLength, type DisplayUnits } from "@/lib/units";
 import type { Point2D } from "@/lib/types";
 import { windowPlanVertices } from "@/lib/architecturalModels";
 import { doorRepresentation } from "@/lib/doorModels";
+import { passageProfileForKey } from "@/lib/passageOpenings";
 import doorPlanSymbols from "@/lib/doorPlanSymbols.json";
 
 export type FloorPlanOpeningGraphic = {
@@ -116,6 +117,12 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, roomCentre
     </g>;
   }
 
+  if (passageProfileForKey(opening.representationKey)) return <g style={style} className={`opening-symbol passage-opening-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
+    <title>{`Open passage ${formatLength(opening.width,displayUnits)} — no door leaf or swing`}</title>
+    <line className="opening-hit" x1={start.x} y1={start.y} x2={end.x} y2={end.y}/>
+    <line className="opening-gap" x1={start.x} y1={start.y} x2={end.x} y2={end.y}/>
+    {[start,end].map((p,i)=><line key={i} className="opening-jamb" x1={p.x-perpendicular.x*jambHalf} y1={p.y-perpendicular.y*jambHalf} x2={p.x+perpendicular.x*jambHalf} y2={p.y+perpendicular.y*jambHalf}/>)}
+  </g>;
   if (opening.representationKey?.startsWith("door-")) {
     const key = doorRepresentation(opening.representationKey, opening.doorType);
     const drawing = (doorPlanSymbols as Record<string, { height: number; paths: { d: string; fill: string; dash: boolean; weight: number }[] }>)[key];

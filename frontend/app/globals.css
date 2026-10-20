@@ -620,6 +620,43 @@ button { font: inherit; }
 .catalogue-detail-metadata { grid-template-columns: 1fr 1fr; }
 .catalogue-detail-pictures { display: flex; flex-wrap: wrap; gap: 8px; }
 .catalogue-detail-pictures img { width: 110px; height: 82px; object-fit: cover; border: 1px solid var(--line); border-radius: 6px; }
+.catalogue-object-backdrop { position: fixed; z-index: 2200; inset: 0; padding: 14px; backdrop-filter: blur(4px); }
+.catalogue-object-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(1440px, calc(100vw - 32px)); height: min(900px, calc(100dvh - 28px)); max-height: calc(100dvh - 28px); padding: 0; overflow: hidden; background: var(--panel); color: var(--ink); }
+.catalogue-object-dialog > .catalogue-form-heading { margin: 0; padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--surface-muted, var(--panel)); }
+.catalogue-object-dialog .catalogue-form-heading h3 { margin: 4px 0; overflow-wrap: anywhere; }
+.catalogue-object-dialog > .catalogue-form-actions { margin: 0; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--panel); }
+.catalogue-object-layout { display: grid; grid-template-columns: minmax(300px, .95fr) minmax(0, 1.05fr); gap: 20px; min-height: 0; padding: 20px; overflow: hidden; }
+.catalogue-object-properties { min-width: 0; overflow: auto; padding-right: 10px; scrollbar-gutter: stable; }
+.catalogue-detail-summary { padding: 12px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-muted, var(--panel)); }
+.catalogue-detail-summary strong { font-size: calc(11px * var(--density-font-scale, 1)); }
+.catalogue-detail-summary p { margin: 6px 0 0; color: var(--muted); font-size: calc(10px * var(--density-font-scale, 1)); line-height: 1.55; }
+.catalogue-object-dialog .catalogue-detail-grid > div { background: var(--surface-muted, var(--panel)); }
+.catalogue-detail-plan img { display: block; width: 100%; max-height: 210px; padding: 10px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.catalogue-asset-preview { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow: auto; }
+.catalogue-asset-preview > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.catalogue-asset-preview h4 { margin: 0; font-size: calc(12px * var(--density-font-scale, 1)); }
+.catalogue-asset-preview > header span { color: var(--muted); font-size: calc(9px * var(--density-font-scale, 1)); }
+.catalogue-preview-modes { display: flex; gap: 6px; }
+.catalogue-preview-modes button { flex: 1; min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-muted, var(--panel)); color: var(--ink); font: inherit; font-weight: 650; cursor: pointer; }
+.catalogue-preview-modes button[aria-pressed=true] { background: var(--deep); color: var(--ui-button-activeText, #fff); }
+.catalogue-asset-preview .fixture-preview, .catalogue-preview-status { position: relative; flex: 1 0 250px; height: auto !important; min-height: 250px; margin: 0; border: 1px solid var(--line); border-radius: 14px !important; background: linear-gradient(145deg, #eef3ef, #dfe8e4) !important; }
+.catalogue-preview-status { display: grid; place-items: center; padding: 20px; color: var(--muted); }
+html[data-theme="dark"] body .catalogue-asset-preview .fixture-preview-fit-button,
+.catalogue-asset-preview .fixture-preview-fit-button { min-width: 44px; min-height: 32px; border: 1px solid #91aaa4; border-radius: 8px; background: #f5f9f7; color: #173f4c; text-shadow: none; }
+.catalogue-preview-guidance, .catalogue-preview-disclaimer { margin: 0; color: var(--muted); font-size: calc(9px * var(--density-font-scale, 1)); line-height: 1.5; }
+.catalogue-cfd-info { flex: none; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-muted, var(--panel)); font-size: calc(9px * var(--density-font-scale, 1)); }
+.catalogue-cfd-info p { margin: 5px 0; color: var(--muted); }
+.catalogue-cfd-info a { display: inline-block; padding: 5px 0; color: var(--deep); font-weight: 650; }
+.catalogue-cfd-info summary { padding: 5px 0; cursor: pointer; }
+.catalogue-cfd-info ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.5; }
+@media (max-width: 900px) {
+  .catalogue-object-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); height: calc(100dvh - 16px); }
+  .catalogue-object-layout { grid-template-columns: minmax(0, 1fr); overflow: auto; padding: 12px; gap: 14px; }
+  .catalogue-object-properties { overflow: visible; padding: 0; scrollbar-gutter: auto; }
+  .catalogue-asset-preview { grid-row: 1; min-height: 430px; overflow: visible; }
+  .catalogue-asset-preview .fixture-preview, .catalogue-preview-status { flex-basis: 290px; }
+  .catalogue-object-dialog > .catalogue-form-heading, .catalogue-object-dialog > .catalogue-form-actions { padding: 12px; }
+}
 .category-settings-button { margin: 0 0 10px; padding: 7px 10px; border: 1px solid var(--deep); border-radius: 6px; background: white; color: var(--deep); font: 650 calc(8px * var(--density-font-scale, 1)) var(--font-mono); }
 .catalogue-picture-field > button { width: max-content; padding: 7px 10px; border: 1px solid var(--deep); border-radius: 6px; background: white; color: var(--deep); }
 .catalogue-picture-list { display: grid; gap: 7px; }
@@ -2459,3 +2496,11 @@ button:disabled {
   .pb-dashboard-section > summary small { font-size: calc((8px) * var(--density-font-scale, 1)); }
   .pb-programme-status-row { gap: 6px 10px; }
 }
+.people-placement-controls { display: grid; gap: 12px; padding: 12px; margin: 12px 0; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-muted); }
+.people-controls-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.people-support-controls { display: grid; gap: 12px; }
+.people-control-note { margin: 0; color: var(--muted); font-size: calc(11px * var(--density-font-scale, 1)); line-height: 1.5; }
+.people-placement-controls .fixture-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.people-placement-controls .field { min-width: 0; }
+.people-placement-controls input, .people-placement-controls select { width: 100%; min-width: 0; }
+@media (max-width: 480px) { .people-placement-controls .fixture-fields { grid-template-columns: 1fr; } }
