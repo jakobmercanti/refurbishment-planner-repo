@@ -24,7 +24,7 @@ import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDPatch, CFDRegion, CFDReport, Vec3 } from "@/lib/climoptix";
 import type { CFDScenario, CFDVent } from "@/lib/climoptixDocument";
 import { ParametricFixture } from "./ParametricFixture";
-import { samplingPlanes } from "@/lib/climoptixWorkflow";
+import { samplingPlanes, refinementColour } from "@/lib/climoptixWorkflow";
 import {
   previewScene as scene,
   patchPositions,
@@ -82,6 +82,8 @@ interface Props {
   onMoveVent: (id: string, u: number, v: number) => void;
   canMoveVents: boolean;
   showSamplingPlanes?: boolean;
+  showRefinements: boolean;
+  onShowRefinements: (show: boolean) => void;
 }
 function PatchMesh({
   patch,
@@ -254,13 +256,14 @@ export function ClimoptixViewer({
   onMoveVent,
   canMoveVents,
   showSamplingPlanes = false,
+  showRefinements,
+  onShowRefinements,
 }: Props) {
   const [floorId, setFloorId] = useState(""),
     [ceilings, setCeilings] = useState(false),
     [context, setContext] = useState(true),
     [detailed, setDetailed] = useState(false),
     [isolate, setIsolate] = useState(false),
-    [showRefinements, setShowRefinements] = useState(true),
     [fit, setFit] = useState(0);
   const [drag, setDrag] = useState<{ id: string; u: number; v: number } | null>(
     null,
@@ -326,6 +329,9 @@ export function ClimoptixViewer({
   const patches = report?.patches ?? [];
   const positions = useMemo(() => patchPositions(report), [report]);
   const refinements = refinementPreviews(scenario, report);
+  const refinementLegend = [
+    ...new Map(refinements.map((region) => [region.level, region.cellMm])),
+  ].sort(([a], [b]) => a - b);
   const selectedPatch = patches.find(
     (p) => p.id === selected || p.sourceId === selected,
   );
@@ -507,7 +513,7 @@ export function ClimoptixViewer({
               <input
                 type="checkbox"
                 checked={showRefinements}
-                onChange={(e) => setShowRefinements(e.target.checked)}
+                onChange={(e) => onShowRefinements(e.target.checked)}
               />
               Refinement intent
             </label>
@@ -1022,6 +1028,22 @@ export function ClimoptixViewer({
         )}
       </div>
       <footer>
+        {showRefinements && !isolated && refinements.length > 0 && (
+          <ul
+            className="cfx-refinement-legend"
+            aria-label="Refinement colour legend"
+          >
+            {refinementLegend.map(([level, cellMm]) => (
+              <li key={level}>
+                <i
+                  style={{ background: refinementColour(level) }}
+                  aria-hidden="true"
+                />
+                Level {level} · {cellMm.toLocaleString()} mm
+              </li>
+            ))}
+          </ul>
+        )}
         <span>
           <i style={{ background: COLORS.supply }} />
           Supply <i style={{ background: COLORS.extract }} />

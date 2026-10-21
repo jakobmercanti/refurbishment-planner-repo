@@ -1384,12 +1384,14 @@ export function MeshPanel({
   onChange,
   selected,
   onSelect,
+  onShowRefinements,
 }: {
   scenario: CFDScenario;
   report: CFDReport | null;
   onChange: (s: CFDScenario) => void;
   selected: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
+  onShowRefinements: () => void;
 }) {
   const regions = scenario.mesh.refinements,
     region =
@@ -1483,12 +1485,27 @@ export function MeshPanel({
         millimetres.
       </p>
       <button
+        disabled={!regions.length || !report?.surface.verticesMm.length}
+        onClick={onShowRefinements}
+      >
+        View refinements in 3D
+      </button>
+      {!report && (
+        <p className="cfx-caption">
+          Use Validate &amp; refresh once to preview refinement regions against
+          your building.
+        </p>
+      )}
+      <button
         disabled={regions.length >= 200}
         onClick={() => {
           const bounds = report?.domain.boundsMm;
+          const names = new Set(regions.map((region) => region.name));
+          let number = regions.length + 1;
+          while (names.has(`Refinement ${number}`)) number++;
           const next = {
             id: crypto.randomUUID(),
-            name: `Refinement ${regions.length + 1}`,
+            name: `Refinement ${number}`,
             shape: "box" as const,
             centerMm: bounds
               ? (bounds[0].map((v, i) => (v + bounds[1][i]) / 2) as [
@@ -1566,10 +1583,22 @@ export function MeshPanel({
                   disabled={regions.length >= 200}
                   aria-label={`Duplicate ${r.name}`}
                   onClick={() => {
+                    const names = new Set(regions.map((value) => value.name));
+                    let name: string,
+                      number = 1;
+                    do {
+                      const suffix = ` copy${number === 1 ? "" : ` ${number}`}`;
+                      // Keep an emoji/surrogate pair intact at the name limit.
+                      const stem = r.name
+                        .slice(0, 120 - suffix.length)
+                        .replace(/[\uD800-\uDBFF]$/, "");
+                      name = `${stem}${suffix}`;
+                      number++;
+                    } while (names.has(name));
                     const copy = {
                       ...structuredClone(r),
                       id: crypto.randomUUID(),
-                      name: `${r.name.slice(0, 114)} copy`,
+                      name,
                     };
                     onChange({
                       ...scenario,
@@ -1585,15 +1614,19 @@ export function MeshPanel({
                 </button>
                 <button
                   aria-label={`Delete ${r.name}`}
-                  onClick={() =>
+                  onClick={() => {
                     onChange({
                       ...scenario,
                       mesh: {
                         ...scenario.mesh,
                         refinements: regions.filter((v) => v.id !== r.id),
                       },
-                    })
-                  }
+                    });
+                    if (region?.id === r.id) {
+                      const next = regions[index + 1] ?? regions[index - 1];
+                      onSelect(next ? `refinement:${next.id}` : null);
+                    }
+                  }}
                 >
                   Delete
                 </button>
@@ -1602,6 +1635,12 @@ export function MeshPanel({
           );
         })}
       </ol>
+      {!regions.length && (
+        <p className="cfx-caption">
+          No local refinements yet. Add a cuboid, set its level, then inspect it
+          in 3D. Each list entry has Duplicate and Delete controls.
+        </p>
+      )}
       {!!regions.length && (
         <label>
           Region

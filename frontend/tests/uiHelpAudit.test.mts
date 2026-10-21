@@ -4,6 +4,12 @@ import { windowHelpSteps } from '../lib/windowHelp';
 import { QUOTE_TEXT_LABELS } from '../lib/quoteHelp';
 
 const text=(title:string)=>windowHelpSteps(title).map(s=>`${s.heading}: ${s.text}`).join(' ');
+test('CFD convergence help describes the actual monitor, local lifetime and unavailable live connection',()=>{
+ const help=text('CFD convergence');
+ assert.match(help,/Simulation → Run/);assert.match(help,/No OpenFOAM worker/);
+ assert.match(help,/latest three/);assert.match(help,/not saved in the project/);
+ assert.match(help,/unverified/);assert.match(help,/Clear log/);
+});
 test('New outline help explains the two-step destructive reset, not annotation tools',()=>{
  assert.match(text('New outline'),/Delete contents & start/);
  assert.doesNotMatch(text('New outline'),/Select a text, line, marker/);

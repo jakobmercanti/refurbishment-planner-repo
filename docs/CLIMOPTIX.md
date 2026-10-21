@@ -519,6 +519,48 @@ Verification:
 
 No solver, deployment or remote job is enabled by these changes.
 
+### Refinement list and independent convergence monitor — 21 October 2026
+
+Simulation → Mesh contains the refinement list. Each region has Edit, Duplicate
+and Delete; copies have independent IDs/dimensions and collision-free names,
+including names at the Unicode length limit. Deleting the edited entry selects
+its neighbour, and project Undo restores the deletion. Validate the domain once,
+then use **View refinements in 3D** to reveal the overlays without changing the
+recipe or the selected refinement. The viewer's **Refinement intent** checkbox
+hides/shows them. The list, actual wireframes and sorted legend use the same
+refinement-level colours and resolved nominal cell sizes. These are requested
+regions, not achieved mesh cells or solver metrics.
+
+The study toolbar's **Convergence** button opens a separate shared-style,
+draggable/resizable window from any preparation phase. Simulation → Run also
+offers **Open convergence window** and the same log inspector inline when the
+window is closed. Closing, changing phase or changing tabs no longer discards
+the history. The window follows the selected study, keeps separate session-only
+histories for the latest three imported studies, and uses the available screen
+height on mobile rather than the short generic tool drawer. Escape closes it
+and returns focus; the header help explains its controls and limitations.
+
+Imports retain the existing 8 MB / 20,000-record / 32-field bounds. Pending reads
+are guarded per study against newer imports, Clear, deletion and unmount.
+Numeric study IDs retain true import ordering. Raw logs remain downloadable
+unchanged, and single-record fields have a visible point marker. These external
+histories do not mutate project/scenario data and are not part of project saves.
+They are never presented as verified live results: OpenFOAM remains unconnected,
+Play stays disabled, and no job or artificial convergence stream is created.
+
+New browser regressions reproduce the lost-history and duplicate-name problems,
+sample actual 3D canvas pixels, check the colour legend and view-only behaviour,
+exercise study isolation and delayed-read cancellation, and check help, focus,
+dragging/resizing and mobile dark mode. Evidence uses `.local-logs/cfd-monitor-*`.
+The final production-browser run passed all **59 cases**, including the six new
+monitor/refinement scenarios, with no failures or skips. Fresh Default/Modern,
+light/dark, desktop/mobile monitor images and actual 3D refinement pixels were
+reviewed. Production build, full lint/source reachability (349 modules, no
+orphans), frontend types, formatting and whitespace checks passed. All **118 CFD
+backend regressions** passed; the existing TestClient deprecation warning remains.
+The final frontend rerun passed **546 unit and 19 project/persistence tests**.
+Together these checks cover **742 cases**, with zero failures or skips.
+
 ## Smallest next solver milestone
 
 Choose and license-review one OpenFOAM distribution/version, then implement one

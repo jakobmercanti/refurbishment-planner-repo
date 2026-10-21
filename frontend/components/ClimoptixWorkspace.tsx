@@ -32,6 +32,11 @@ import {
 } from "./ClimoptixPanels";
 import { ClimoptixSimulation, type SimulationTab } from "./ClimoptixSimulation";
 import { ClimoptixVTKViewer } from "./ClimoptixVTKViewer";
+import {
+  ClimoptixConvergence,
+  ClimoptixConvergenceWindow,
+  useConvergenceLogs,
+} from "./ClimoptixConvergence";
 
 const PHASES = [
   { id: "domain", label: "Domain", hint: "Connected air volume" },
@@ -182,6 +187,21 @@ export function ClimoptixWorkspace({
     [diagnosticFilter, setDiagnosticFilter] = useState("all");
   const [editorReset, setEditorReset] = useState(0);
   const [simulationTab, setSimulationTab] = useState<SimulationTab>("mesh");
+  const [showRefinements, setShowRefinements] = useState(true);
+  const [monitorOpen, setMonitorOpen] = useState(false);
+  const [monitorFocus, setMonitorFocus] = useState(0);
+  const monitorOpener = useRef<HTMLButtonElement | null>(null);
+  const { logs, importLog, clearLog } = useConvergenceLogs();
+  const openConvergence = () => {
+    if (document.activeElement instanceof HTMLButtonElement)
+      monitorOpener.current = document.activeElement;
+    setMonitorOpen(true);
+    setMonitorFocus((value) => value + 1);
+  };
+  const closeConvergence = () => {
+    setMonitorOpen(false);
+    if (monitorOpener.current?.isConnected) monitorOpener.current.focus();
+  };
   const [exporting, setExporting] = useState(false);
   const [vtkFile, setVTKFile] = useState<{
     studyId: string;
@@ -514,6 +534,13 @@ export function ClimoptixWorkspace({
         </label>
         <button onClick={add}>New study</button>
         <button
+          disabled={!scenario}
+          onClick={openConvergence}
+          aria-expanded={monitorOpen && !!scenario}
+        >
+          Convergence
+        </button>
+        <button
           disabled={!scenario || scenarios.length >= 100}
           onClick={() => {
             if (scenario) {
@@ -686,6 +713,28 @@ export function ClimoptixWorkspace({
                     });
                     onView("3D");
                   }}
+                  onShowRefinements={() => {
+                    setShowRefinements(true);
+                    setSelected((value) =>
+                      value?.startsWith("refinement:") ? value : null,
+                    );
+                    onView("3D");
+                  }}
+                  onConvergence={openConvergence}
+                  convergence={
+                    monitorOpen ? (
+                      <p className="cfx-caption">
+                        The convergence window is open. You can keep working
+                        while inspecting the log.
+                      </p>
+                    ) : (
+                      <ClimoptixConvergence
+                        state={logs.get(scenario.id)}
+                        onImport={(file) => void importLog(scenario.id, file)}
+                        onClear={() => clearLog(scenario.id)}
+                      />
+                    )
+                  }
                 />
               )}
               {phase === "review" && (
@@ -882,6 +931,8 @@ export function ClimoptixWorkspace({
                   showSamplingPlanes={
                     phase === "mesh" && simulationTab === "post"
                   }
+                  showRefinements={showRefinements}
+                  onShowRefinements={setShowRefinements}
                 />
               )
             )}
@@ -928,6 +979,7 @@ export function ClimoptixWorkspace({
           opener={deleting}
           onCancel={() => setDeleting(null)}
           onDelete={() => {
+            clearLog(scenario.id);
             onChange(
               scenarios.filter((s) => s.id !== scenario.id),
               true,
@@ -940,6 +992,16 @@ export function ClimoptixWorkspace({
               ),
             );
           }}
+        />
+      )}
+      {active && monitorOpen && scenario && (
+        <ClimoptixConvergenceWindow
+          studyName={scenario.name}
+          state={logs.get(scenario.id)}
+          focusRequest={monitorFocus}
+          onImport={(file) => void importLog(scenario.id, file)}
+          onClear={() => clearLog(scenario.id)}
+          onClose={closeConvergence}
         />
       )}
     </section>

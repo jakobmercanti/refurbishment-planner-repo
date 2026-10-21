@@ -1,126 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
-import { downloadCFD } from "@/lib/climoptix";
-import {
-  samplingPlanes,
-  parseResidualLog,
-  LEVEL_COLOURS,
-  type ResidualSample,
-} from "@/lib/climoptixWorkflow";
+import { samplingPlanes } from "@/lib/climoptixWorkflow";
 import { CFDNumber, Parameters, MeshPanel } from "./ClimoptixPanels";
 import { WindowHelpButton } from "./WindowHelpButton";
 
 export type SimulationTab = "mesh" | "run" | "post";
-
-function Convergence({ samples }: { samples: ResidualSample[] }) {
-  const { series, maxIteration } = useMemo(() => {
-    const grouped = new Map<string, ResidualSample[]>();
-    let maxIteration = 1;
-    for (const sample of samples) {
-      const values = grouped.get(sample.field) ?? [];
-      values.push(sample);
-      grouped.set(sample.field, values);
-      maxIteration = Math.max(maxIteration, sample.iteration);
-    }
-    return { series: [...grouped], maxIteration };
-  }, [samples]);
-  return (
-    <section
-      className="cfx-convergence"
-      aria-label="Imported convergence history"
-    >
-      <h3>Convergence · initial residuals</h3>
-      {!samples.length ? (
-        <p>
-          No computed results or residuals. Import a real OpenFOAM solver log to
-          inspect convergence.
-        </p>
-      ) : (
-        <>
-          <svg
-            viewBox="0 0 360 220"
-            role="img"
-            aria-label={`Residual graph for ${series.map(([field]) => field).join(", ")}`}
-          >
-            {[-12, -9, -6, -3, 0].map((tick) => {
-              const y = 185 - (tick + 12) * 13;
-              return (
-                <g key={tick}>
-                  <line
-                    x1="47"
-                    x2="345"
-                    y1={y}
-                    y2={y}
-                    stroke="currentColor"
-                    opacity=".15"
-                  />
-                  <text x="3" y={y + 4} fill="currentColor" fontSize="11">
-                    10^{tick}
-                  </text>
-                </g>
-              );
-            })}
-            {series.map(([field, data], i) => {
-              const stride = Math.max(1, Math.ceil(data.length / 1000));
-              const points = data
-                .filter((_, j) => j % stride === 0 || j === data.length - 1)
-                .map(
-                  (s) =>
-                    `${47 + (s.iteration / maxIteration) * 298},${185 - (Math.max(-12, Math.min(0, Math.log10(Math.max(1e-12, s.initial)))) + 12) * 13}`,
-                )
-                .join(" ");
-              return (
-                <polyline
-                  key={field}
-                  points={points}
-                  fill="none"
-                  stroke={LEVEL_COLOURS[i % LEVEL_COLOURS.length]}
-                  strokeWidth="2"
-                />
-              );
-            })}
-            <text x="47" y="210" fill="currentColor" fontSize="11">
-              0
-            </text>
-            <text
-              x="345"
-              y="210"
-              textAnchor="end"
-              fill="currentColor"
-              fontSize="11"
-            >
-              {maxIteration} iterations / time steps
-            </text>
-          </svg>
-          <ul className="cfx-residual-legend">
-            {series.map(([field, data], i) => {
-              const last = data[data.length - 1];
-              return (
-                <li key={field}>
-                  <i
-                    style={{
-                      background: LEVEL_COLOURS[i % LEVEL_COLOURS.length],
-                    }}
-                  />
-                  {field}: {last.initial.toExponential(2)}
-                </li>
-              );
-            })}
-          </ul>
-          <p className="cfx-caption">
-            Imported data, not a live run. Repeated pressure corrections are
-            retained. Chart display is clipped to 10⁻¹²–1 and decimated for
-            readability; the original log is unchanged. Residuals alone do not
-            establish convergence or conservation.
-          </p>
-        </>
-      )}
-    </section>
-  );
-}
 
 function RunPanel({
   scenario,
@@ -128,25 +15,17 @@ function RunPanel({
   onExport,
   exporting,
   exportDisabled,
+  convergence,
+  onConvergence,
 }: {
   scenario: CFDScenario;
   onChange: (s: CFDScenario) => void;
   onExport: () => void;
   exporting: boolean;
   exportDisabled: boolean;
+  convergence: ReactNode;
+  onConvergence: () => void;
 }) {
-  const [log, setLog] = useState<{
-    file: File;
-    samples: ResidualSample[];
-  } | null>(null);
-  const [error, setError] = useState("");
-  const logRead = useRef(0);
-  useEffect(
-    () => () => {
-      logRead.current++;
-    },
-    [],
-  );
   const physics = scenario.physics;
   return (
     <>
@@ -280,66 +159,8 @@ function RunPanel({
         control, refinement regions and named slices. The ZIP is a configuration
         handoff, not a runnable case. Validate this study before exporting.
       </p>
-      <label className="cfx-file">
-        Import solver log
-        <input
-          type="file"
-          accept=".log,.txt,text/plain"
-          aria-label="Import solver log"
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            e.target.value = "";
-            if (!file) return;
-            const request = ++logRead.current;
-            setError("");
-            try {
-              if (file.size > 8 * 1024 * 1024)
-                throw new Error("Solver logs must be at most 8 MB.");
-              const text = await file.text();
-              if (request !== logRead.current) return;
-              const result = parseResidualLog(text);
-              if (!result.samples.length)
-                throw new Error(
-                  "No OpenFOAM residual records were found in this file.",
-                );
-              setLog({ file, samples: result.samples });
-              setError(
-                result.truncated
-                  ? "Display limited to 20,000 records and 32 fields. Download keeps the complete imported log."
-                  : "",
-              );
-            } catch (e) {
-              if (request === logRead.current)
-                setError(
-                  e instanceof Error ? e.message : "Cannot read this log.",
-                );
-            }
-          }}
-        />
-      </label>
-      {error && (
-        <p role="alert" className="cfx-error">
-          {error}
-        </p>
-      )}
-      {log && (
-        <div className="cfx-actions">
-          <span>{log.file.name}</span>
-          <button onClick={() => downloadCFD(log.file, log.file.name)}>
-            Download original log
-          </button>
-          <button
-            onClick={() => {
-              logRead.current++;
-              setLog(null);
-              setError("");
-            }}
-          >
-            Clear log
-          </button>
-        </div>
-      )}
-      <Convergence samples={log?.samples ?? []} />
+      <button onClick={onConvergence}>Open convergence window</button>
+      {convergence}
     </>
   );
 }
@@ -506,17 +327,23 @@ export function ClimoptixSimulation({
   exporting,
   exportDisabled,
   onVTK,
+  convergence,
+  onConvergence,
+  onShowRefinements,
 }: {
   tab: SimulationTab;
   onTab: (t: SimulationTab) => void;
   scenario: CFDScenario;
   report: CFDReport | null;
   selected: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   onChange: (s: CFDScenario) => void;
   onExport: () => void;
   exporting: boolean;
   exportDisabled: boolean;
+  convergence: ReactNode;
+  onConvergence: () => void;
+  onShowRefinements: () => void;
   onVTK: (f: File) => void;
 }) {
   return (
@@ -595,6 +422,7 @@ export function ClimoptixSimulation({
           selected={selected}
           onSelect={onSelect}
           onChange={onChange}
+          onShowRefinements={onShowRefinements}
         />
       </section>
       <section
@@ -611,6 +439,8 @@ export function ClimoptixSimulation({
           onExport={onExport}
           exporting={exporting}
           exportDisabled={exportDisabled}
+          convergence={convergence}
+          onConvergence={onConvergence}
         />
       </section>
       <section

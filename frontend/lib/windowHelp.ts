@@ -4,6 +4,11 @@ import { workspaceHelp } from "./workspaceHelp";
 export interface WindowHelpStep { heading: string; text: string }
 /** Task help, not generic window chrome instructions. Matching is shared across dialogs. */
 export function windowHelpSteps(title: string): WindowHelpStep[] {
+  if (title === "CFD convergence") return [
+    { heading: "Monitor while you work", text: "Open Convergence from the Climoptix study toolbar, or Open convergence window in Simulation → Run. Drag its header to move it and its edges to resize it. The window stays available while you edit other preparation phases. Close or Escape hides the window without clearing its history." },
+    { heading: "Real logs, not simulated results", text: "No OpenFOAM worker is connected yet, so there is no live simulation stream. Import a real OpenFOAM text log (up to 8 MB) to plot initial residuals. The graph is logarithmic, clipped to 10⁻¹²–1 and decimated for readability. Repeated pressure corrections are retained. Residuals alone do not prove convergence or flow/energy conservation." },
+    { heading: "Study-specific and local", text: "The selected study controls which history is shown. The latest three imported study histories stay in this browser session while navigating; they are not saved in the project file. Clear log removes only that history and cancels any pending import for it. Download original log preserves the imported file unchanged. Imported data is external and unverified, not proof that this study ran." },
+  ];
   if(/balustrade/i.test(title))return [
     {heading:"Guard a slab opening",text:"In Floor properties → Slab openings, select an opening and enable Add balustrade. Choose Vertical metal, Horizontal rails, Glass panels, Timber spindles or Solid parapet; set guard height and colour, then Apply opening. Turning the checkbox off keeps the chosen settings but hides the guard. The full perimeter is guarded; check stair/access arrangements separately."},
     {heading:"Supported by the slab",text:"Posts sit on the slab side, 25 mm back from the void. The guard moves with the opening and must stay inside the slab, clear of walls, neighbouring openings and other guards. Narrow or sharp corners may need reshaping. Deleting the opening removes its guard; Undo and project Save preserve both."},
