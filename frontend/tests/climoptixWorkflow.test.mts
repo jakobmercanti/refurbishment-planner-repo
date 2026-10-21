@@ -12,8 +12,12 @@ import {
   parseResidualLog,
 } from "../lib/climoptixWorkflow";
 import { checkVTKText, renderableVTKValues } from "../lib/climoptixVTK";
-import { preparationInput, preparationRevision } from "../lib/climoptix";
-import { cfdProject } from "./climoptixFixtures";
+import {
+  preparationInput,
+  preparationRevision,
+  preparationSummary,
+} from "../lib/climoptix";
+import { cfdProject, realPreparation } from "./climoptixFixtures";
 
 test("legacy studies default to named slice settings and duplication is independent", async () => {
   const p = cfdProject(),
@@ -137,7 +141,7 @@ test("VTK preflight blocks external entities, unsupported grids and oversized al
   ])
     assert.throws(() => checkVTKText(bad, true));
   const legacy =
-    "# vtk DataFile Version 3.0\nSlice\nASCII\nDATASET POLYDATA\nPOINTS 4 float\n0 0 0\nPOLYGONS 1 5\n4 0 1 2 3";
+    "# vtk DataFile Version 3.0\nSlice\nASCII\nDATASET POLYDATA\nPOINTS 4 float\n0 0 0 1 0 0 1 1 0 0 1 0\nPOLYGONS 1 5\n4 0 1 2 3";
   assert.doesNotThrow(() => checkVTKText(legacy, false));
   assert.throws(() =>
     checkVTKText(legacy.replace("POINTS 4", "POINTS 999999999"), false),
@@ -161,4 +165,61 @@ test("WebGL numeric checks reject finite doubles that would turn into rendering 
   );
   for (const bad of [NaN, Infinity, -Infinity, 1e308, -1e100])
     assert.equal(renderableVTKValues([bad]), false);
+});
+
+test("preflight text reports effective mesh levels and named sampling planes, not obsolete cell targets", () => {
+  const p = cfdProject(),
+    s = p.cfdScenarios![0];
+  s.mesh.minCellMm = 1;
+  s.mesh.refinements = [
+    {
+      id: "numbered",
+      name: "Numbered",
+      shape: "box",
+      level: 4,
+      cellMm: 70,
+      objectId: null,
+      centerMm: [1000, 1000, 1000],
+      sizeMm: [1000, 1000, 1000],
+    },
+    {
+      id: "custom",
+      name: "Target",
+      shape: "box",
+      level: null,
+      cellMm: 70,
+      objectId: null,
+      centerMm: [1000, 1000, 1000],
+      sizeMm: [1000, 1000, 1000],
+    },
+  ];
+  const revision = "a".repeat(64);
+  const report = realPreparation({
+    project: p,
+    scenario: s,
+    clientRevision: revision,
+  });
+  const summary = preparationSummary(s, report, revision);
+  assert.match(summary, /Numbered · box · level 4 · nominal 12\.5 mm/);
+  assert.match(
+    summary,
+    /Target · box · level 2 · nominal 50 mm \(requested 70 mm\)/,
+  );
+  assert.match(summary, /SAMPLING PLANES/);
+  assert.match(summary, /slice_z_001/);
+  assert.match(summary, /Fields: U, p/);
+});
+
+test("legacy VTK preflight rejects integer wrapping, incomplete arrays and surplus values before decoding", () => {
+  const legacy =
+    "# vtk DataFile Version 3.0\nSlice\nASCII\nDATASET POLYDATA\nPOINTS 4 float\n0 0 0 1 0 0 1 1 0 0 1 0\nPOLYGONS 1 5\n4 0 1 2 3\nPOINT_DATA 4\nSCALARS label long 1\nLOOKUP_TABLE default\n1 2 3 4";
+  assert.doesNotThrow(() => checkVTKText(legacy, false));
+  for (const invalid of [
+    legacy.replace("\n1 2 3 4", "\n3000000000 2 3 4"),
+    legacy.replace("0 0 0 1 0 0 1 1 0 0 1 0", "0 0 0 1 0 0 1 1 0 0 1"),
+    legacy.replace("0 0 0 1 0 0 1 1 0 0 1 0", "0 0 0 1 0 0 1 1 0 0 1 0 99"),
+    legacy.replace("POLYGONS 1 5", "POLYGONS 2 5"),
+    legacy.replace("POINT_DATA 4", "POINT_DATA 3"),
+  ])
+    assert.throws(() => checkVTKText(invalid, false));
 });

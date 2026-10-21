@@ -370,7 +370,7 @@ def _prepare_vents(
     domain: Domain, scenario: Scenario, faces: list[Face], patches: dict[str, dict[str, Any]]
 ) -> list[dict[str, Any]]:
     result = []
-    occupied: dict[str, list[Polygon]] = {}
+    occupied: dict[str, list[tuple[Polygon, float]]] = {}
     hosts: dict[str, list[Face]] = {}
     for face in faces:
         if patches[face.patch]["hostable"] and face.polygon.area > 1e-6:
@@ -381,6 +381,9 @@ def _prepare_vents(
             patches[pid]["host"] = _host_manifest(host_faces[0])
         else:
             patches[pid]["hostable"] = False
+    # Shapely geometries are immutable. Retain the original eligible face while
+    # host.polygon is progressively perforated for the actual fluid boundary.
+    original_hosts = {pid: group[0].polygon for pid, group in hosts.items() if len(group) == 1}
     for vent in scenario.vents:
         candidates = hosts.get(vent.host.patchId, [])
         if len(candidates) != 1:
@@ -413,27 +416,28 @@ def _prepare_vents(
                 origin=(x, y),
             )
             actual = vent.widthMm * vent.heightMm * 1e-6
-        if not host.polygon.covers(hole.buffer(vent.edgeClearanceMm)):
+        if not original_hosts[vent.host.patchId].covers(hole.buffer(vent.edgeClearanceMm)):
             _issue(
                 domain.diagnostics,
                 "error",
                 "vents",
                 "vent-outside-host",
-                "Vent touches an edge, door/window cap, void, obstruction or another vent.",
+                "Vent touches a host edge, door/window cap, void or obstruction.",
                 "Move it inwards, reduce its dimensions or increase spacing.",
                 vent.id,
             )
             continue
+        spacing = max(vent.edgeClearanceMm, vent.optimization.minSpacingMm)
         if any(
-            hole.buffer(vent.optimization.minSpacingMm).intersects(other)
-            for other in occupied.get(vent.host.patchId, [])
+            hole.buffer(max(spacing, other_spacing)).intersects(other)
+            for other, other_spacing in occupied.get(vent.host.patchId, [])
         ):
             _issue(
                 domain.diagnostics,
                 "error",
                 "vents",
                 "vent-spacing",
-                "Vent spacing is smaller than its configured minimum.",
+                "Vent spacing is smaller than either device's required clearance.",
                 "Separate vents or explicitly reduce the minimum spacing.",
                 vent.id,
             )
@@ -450,7 +454,7 @@ def _prepare_vents(
                     "Correct the normalized host-local polygon or move the vent.",
                     vent.id,
                 )
-        occupied.setdefault(vent.host.patchId, []).append(hole)
+        occupied.setdefault(vent.host.patchId, []).append((hole, spacing))
         pid = f"vent:{vent.id}"
         faces.append(Face(pid, host.origin, host.u, host.v, host.normal, hole))
         host.polygon = host.polygon.difference(hole)
@@ -512,12 +516,15 @@ def _prepare_vents(
 def _resolve_boundaries(
     scenario: Scenario, domain: Domain, patches: dict[str, dict[str, Any]], objects: list[dict[str, Any]]
 ) -> None:
+    devices = {f"vent:{v.id}": v for v in scenario.vents}
+    assets = {a.objectId: a for a in scenario.assetOverrides}
+    powers = {o["id"]: o["heatW"] for o in objects}
     for pid, patch in patches.items():
         kind = patch["kind"]
         bc = scenario.boundaries.patches.get(pid) or scenario.boundaries.groups.get(kind)
         origin = "patch override" if pid in scenario.boundaries.patches else "group preset" if bc else "sample default"
         if kind in ("supply", "extract"):
-            vent = next(v for v in scenario.vents if f"vent:{v.id}" == pid)
+            vent = devices[pid]
             bc = Boundary.model_validate(
                 {
                     "flow": {"type": vent.control, "value": vent.valueSI},
@@ -540,7 +547,7 @@ def _resolve_boundaries(
             else:
                 bc = Boundary()
         if kind == "object":
-            asset = next((a for a in scenario.assetOverrides if a.objectId == patch["sourceId"]), None)
+            asset = assets.get(patch["sourceId"])
             if asset and asset.temperatureK is not None:
                 if pid in scenario.boundaries.patches and bc.thermal.type != "adiabatic":
                     _issue(
@@ -554,7 +561,7 @@ def _resolve_boundaries(
                     )
                 bc = bc.model_copy(update={"thermal": Thermal(type="temperature", value=asset.temperatureK)})
                 origin = "asset temperature"
-            heat = next((o["heatW"] for o in objects if o["id"] == patch["sourceId"]), 0)
+            heat = powers.get(patch["sourceId"], 0)
             if heat > 0:
                 if pid in scenario.boundaries.patches and bc.thermal.type != "adiabatic":
                     _issue(

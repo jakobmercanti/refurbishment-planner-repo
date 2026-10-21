@@ -14,6 +14,11 @@ import {
   type PatchKind,
 } from "./climoptixDocument";
 import type { ProjectDocument } from "./projectDocument";
+import {
+  refinementLevel,
+  refinementCell,
+  samplingPlanes,
+} from "./climoptixWorkflow";
 
 export type Vec3 = [number, number, number];
 export interface CFDHost {
@@ -150,21 +155,6 @@ export interface CFDReport {
   limitations: string[];
   caseGenerated: false;
   resultManifest: null;
-}
-// A future solver must provide a real, provenance-bound manifest. Empty arrays
-// are not synthetic solved fields and are never rendered as computed results.
-export interface CFDResultManifest {
-  version: 1;
-  sourceHash: string;
-  configurationHash: string;
-  jobId: string;
-  providerId: string;
-  fields: {
-    name: "velocity" | "pressure" | "temperature" | "co2" | "ageOfAir";
-    unit: string;
-    artifactId: string;
-  }[];
-  converged: boolean;
 }
 const finite = z.number().finite(),
   vec = z.tuple([finite, finite, finite]),
@@ -479,11 +469,13 @@ export async function openfoamSettings(
   project: ProjectDocument,
   scenario: CFDScenario,
   revision: string,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const response = await fetch(`${apiUrl}/climoptix/openfoam-settings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: preparationRequestBody(project, scenario, revision),
+    signal,
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null);
@@ -667,10 +659,17 @@ export function preparationSummary(
     `Layers enabled=${m.layers.enabled} · ${m.layers.count} layers · first ${m.layers.firstMm} mm`,
     ...m.refinements.map(
       (r) =>
-        `${r.name} · ${r.shape} · cell ${r.cellMm} mm · center ${r.centerMm.join(",")} mm · size ${r.sizeMm.join(",")} mm${r.objectId ? ` · object ${r.objectId}` : ""}`,
+        `${r.name} · ${r.shape} · level ${refinementLevel(m.baseCellMm, r)} · nominal ${refinementCell(m.baseCellMm, r)} mm${r.level === null ? ` (requested ${r.cellMm} mm)` : ""} · center ${r.centerMm.join(",")} mm · size ${r.sizeMm.join(",")} mm${r.objectId ? ` · object ${r.objectId}` : ""}`,
     ),
     report.meshRecipe.estimate.disclaimer,
     `Resources (metadata only): ${scenario.resources.cpu} CPU · ${scenario.resources.memoryGb} GB RAM · ${scenario.resources.wallTimeMinutes} min`,
+    "",
+    "SAMPLING PLANES — SAVED INTENT",
+    `Fields: ${scenario.postProcessing.fields.join(", ")} · every ${scenario.postProcessing.writeInterval} field write(s)`,
+    ...samplingPlanes(report.domain.boundsMm, scenario.postProcessing).map(
+      (plane) =>
+        `${plane.id} · point ${plane.pointMm.join(",")} mm · normal ${plane.normal.join(",")}`,
+    ),
     "",
     "PATCH CONDITIONS",
     ...report.patches.map(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { downloadCFD } from "@/lib/climoptix";
@@ -16,8 +16,17 @@ import { WindowHelpButton } from "./WindowHelpButton";
 export type SimulationTab = "mesh" | "run" | "post";
 
 function Convergence({ samples }: { samples: ResidualSample[] }) {
-  const fields = [...new Set(samples.map((s) => s.field))];
-  const maxIteration = Math.max(1, ...samples.map((s) => s.iteration));
+  const { series, maxIteration } = useMemo(() => {
+    const grouped = new Map<string, ResidualSample[]>();
+    let maxIteration = 1;
+    for (const sample of samples) {
+      const values = grouped.get(sample.field) ?? [];
+      values.push(sample);
+      grouped.set(sample.field, values);
+      maxIteration = Math.max(maxIteration, sample.iteration);
+    }
+    return { series: [...grouped], maxIteration };
+  }, [samples]);
   return (
     <section
       className="cfx-convergence"
@@ -34,7 +43,7 @@ function Convergence({ samples }: { samples: ResidualSample[] }) {
           <svg
             viewBox="0 0 360 220"
             role="img"
-            aria-label={`Residual graph for ${fields.join(", ")}`}
+            aria-label={`Residual graph for ${series.map(([field]) => field).join(", ")}`}
           >
             {[-12, -9, -6, -3, 0].map((tick) => {
               const y = 185 - (tick + 12) * 13;
@@ -54,8 +63,7 @@ function Convergence({ samples }: { samples: ResidualSample[] }) {
                 </g>
               );
             })}
-            {fields.map((field, i) => {
-              const data = samples.filter((s) => s.field === field);
+            {series.map(([field, data], i) => {
               const stride = Math.max(1, Math.ceil(data.length / 1000));
               const points = data
                 .filter((_, j) => j % stride === 0 || j === data.length - 1)
@@ -88,8 +96,8 @@ function Convergence({ samples }: { samples: ResidualSample[] }) {
             </text>
           </svg>
           <ul className="cfx-residual-legend">
-            {fields.map((field, i) => {
-              const last = samples.findLast((s) => s.field === field)!;
+            {series.map(([field, data], i) => {
+              const last = data[data.length - 1];
               return (
                 <li key={field}>
                   <i
@@ -226,6 +234,23 @@ function RunPanel({
           }
         />
       </details>
+      {physics.mode === "transient" && (
+        <details>
+          <summary>Advanced numerics &amp; convergence targets</summary>
+          <Parameters
+            value={physics.numerics}
+            onChange={(value) =>
+              onChange({
+                ...scenario,
+                physics: {
+                  ...physics,
+                  numerics: value as typeof physics.numerics,
+                },
+              })
+            }
+          />
+        </details>
+      )}
       <details>
         <summary>Resources & retention</summary>
         <Parameters
@@ -336,8 +361,8 @@ function PostPanel({
     <>
       <p className="cfx-intro">
         Define slices before running. Planes are normal to source X, Y or Z and
-        are evenly spaced inside the validated domain bounds. OpenFOAM exports
-        the selected fields on those named planes.
+        are evenly spaced inside the last checked domain bounds. The settings
+        export records these planes and fields for a future connected solver.
       </p>
       {(["x", "y", "z"] as const).map((axis) => (
         <div className="cfx-slice-row" key={axis}>
@@ -461,7 +486,8 @@ function PostPanel({
       <p className="cfx-caption">
         Supports bounded ASCII .vtp and legacy POLYDATA .vtk (25 MB). Choose a
         scalar or vector magnitude, orbit, zoom and Fit in the viewer. Download
-        preserves the original data for ParaView. VTU volume grids and
+        preserves the original data for ParaView. Legacy FIELD, colour/texture
+        sections and 64-bit IDs need an ASCII .vtp export. VTU volume grids and
         compressed/binary files require a worker-side surface/slice export.
       </p>
     </>

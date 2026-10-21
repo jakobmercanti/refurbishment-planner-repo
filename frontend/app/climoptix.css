@@ -45,7 +45,6 @@
   font-weight: 650;
 }
 .cfx-workspace button,
-.cfx-confirm button,
 .cfx-file {
   min-height: 40px;
   padding: 8px 12px;
@@ -239,7 +238,10 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  align-items: start;
+  align-items: end;
+}
+.cfx-grid > .cfx-check {
+  min-height: 40px;
 }
 .cfx-three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -535,7 +537,7 @@
 }
 .cfx-confirm {
   width: min(460px, 94vw);
-  padding: 24px;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--ui-window-radius);
   color: var(--ink);
@@ -545,14 +547,8 @@
 .cfx-confirm::backdrop {
   background: var(--ui-window-backdrop);
 }
-.cfx-confirm h2 {
-  margin-top: 0;
-  font-size: 21px;
-}
-.cfx-confirm p {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.65;
+.cfx-confirm .popup-titlebar {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
 }
 .cfx-list-row {
   display: grid;

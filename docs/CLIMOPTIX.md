@@ -220,7 +220,8 @@ pnpm dev
 Use the frontend address printed by Next.js. For the static public deployment,
 both the updated backend and worker allowlist must be deployed; the old remote
 backend does not gain preparation endpoints just by changing the local UI.
-Nothing in this task submits remote solver jobs or deploys/pushes the repository.
+Nothing in the preparation workflow submits remote solver jobs or deploys/pushes
+the repository.
 
 Generate five portable examples with:
 
@@ -442,7 +443,81 @@ Final verification on the production export:
 - Evidence is in `.local-logs/climoptix-audit-*`. Tests use the actual local
   preparation provider and Foamlib adapter, not fabricated solver results.
 
-Changes remain local; no solver, deployment, commit or push was performed.
+At this checkpoint, changes were local; no solver, deployment, commit or push
+had been performed.
+
+### Three-pass CFD refactoring audit — 21 October 2026
+
+The audit started from commit `a683ba2` on `cfd`, preserving the unrelated website
+checkout, generated Next.js declaration and temporary attachment.
+
+**Pass 1 — contracts, geometry and data flow.** Fresh failing regressions exposed
+order-dependent vent spacing and backend coercion of booleans/text in nested
+numeric arrays. Both devices' clearance requirements now apply symmetrically;
+host-edge checks use the original eligible surface, not progressively cut vent
+holes. Nested numeric contracts now agree with the frontend. The preflight text
+reports discrete refinement levels/nominal cells and named sampling planes,
+rather than an obsolete retained cell target.
+
+**Pass 2 — application state and user experience.** Delayed study imports recheck
+the current 100-study limit; obsolete reads cannot apply after replacement.
+OpenFOAM-settings requests are aborted on workbench disposal, preventing a late
+download from a replaced project. Boundary search now searches displayed room
+and surface names as well as identifiers, and reports empty results. The delete
+confirmation reuses shared window/header/control styles while keeping native
+modal focus trapping, a safe Cancel default, nested help, Escape and focus return.
+Deleting the last study focuses New study; Undo restores it.
+
+**Pass 3 — independent integration and visual review.** Every phase and simulation
+tab is traversed in both Default and Modern styles, light/dark, comfortable/compact
+density, and 1440×1000, 1024×768 and 390×844 viewports. This reproduced a shared
+Default-style Preferences overlay behind the top bar; the base modal layer now
+matches Modern, eliminating the redundant theme-specific layering override.
+Wrapped labels retain aligned input baselines, and form checkboxes have full-height
+click targets. All three CFD help entry points are exercised. The legacy VTK reader's 32-bit
+wrapping was independently reproduced with 3,000,000,000 becoming a negative
+result. A bounded numeric preflight now checks complete arrays, declared integer
+ranges, cell counts/connectivity and field associations before decoding. Tabs
+and empty cell blocks are normalised only in the display copy. Unsupported legacy
+FIELD, colour/texture sections or 64-bit IDs require an ASCII .vtp export; originals
+are not altered. The supported subset follows the
+[VTK legacy format](https://docs.vtk.org/en/v9.6.1/vtk_file_formats/vtk_legacy_file_format.html)
+and the actual pinned vtk.js reader, not an assumed reader API.
+
+Refactoring removes the unused frontend result-manifest declaration, the second
+time-mode control and duplicate time/numerics editors, the duplicate refinement
+Delete action, obsolete dialog styling and duplicate modal-layer rules. Run
+controls have one home in Simulation → Run, including transient expert numerics;
+Physics retains initial fields. Numeric validation is shared between XML/legacy
+imports. Source-input derivation and convergence grouping are memoised, and
+boundary/device/source lookups no longer rescan entire collections per patch.
+The provider's explicit future case/job/result contracts are retained because
+they are part of the requested adapter boundary, not obsolete runtime code.
+
+A three-run local microbenchmark resolving 2,000 object boundaries improved its
+median from **378.37 ms to 127.10 ms**, with identical boundary values and
+diagnostics. This measures lookup refactoring only, not meshing or solver speed.
+Evidence and before-fix reproductions are in `.local-logs/cfd-pass*`; final
+regression logs use `.local-logs/cfd-final-*`.
+
+Verification:
+
+- **586 Python + 545 frontend unit + 19 project/persistence + 53 browser + 13
+  worker/proxy tests passed: 1,216 cases, zero failures/skips.** The existing
+  TestClient deprecation warning remains.
+- All **21 CFD browser flows passed again** after the final form-alignment
+  adjustment, including exact input-baseline assertions when labels wrap.
+  Fresh Default/Modern desktop/mobile, light/dark and delete-dialog images were
+  inspected.
+- All five examples retained closed skins, positive volume and zero bad edges;
+  their three generated dictionaries each round-tripped through Foamlib.
+- Production build, ESLint/source reachability (347 modules, no orphans), frontend
+  TypeScript, Mypy (54 files), scoped Ruff, formatting and whitespace checks passed.
+  All 55 CFD stylesheet class names have matching component usage.
+- Optional coverage instrumentation conflicted with NumPy import; the standard
+  uninstrumented suite passed. No coverage percentage is claimed.
+
+No solver, deployment or remote job is enabled by these changes.
 
 ## Smallest next solver milestone
 

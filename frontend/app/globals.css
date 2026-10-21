@@ -174,8 +174,7 @@ button { font: inherit; }
 .software-dropdown .software-wall-setting [role=menuitemradio] { justify-content:flex-start; gap:7px; }
 .software-dropdown .software-wall-setting [aria-checked=true] { background:var(--ui-button-activeBackground,var(--deep)); color:var(--ui-button-activeText,#fff); }
 .software-wall-setting .menu-check { width:1em; flex:none; }
-.modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(18,29,25,.48); backdrop-filter: blur(4px); }
-.catalogue-backdrop { z-index: 2100; }
+.modal-backdrop { position: fixed; z-index: 2100; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(18,29,25,.48); backdrop-filter: blur(4px); }
 .modal-close { width: 34px; height: 34px; flex: none; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--muted); font-size: calc((20px) * var(--density-font-scale, 1)); cursor: pointer; }
 .popup-backdrop { position: fixed; z-index: 2200; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(18,29,25,.48); backdrop-filter: blur(4px); }
 .popup { width: min(420px, calc(100vw - 32px)); max-height:calc(100dvh - 48px); display:flex; flex-direction:column; overflow: hidden; border: 1px solid rgba(176,188,181,.96); border-radius: 10px; background: rgba(255,255,255,.98); box-shadow: 0 14px 34px rgba(20,39,31,.2); color: var(--ink); font: 500 calc(9px * var(--density-font-scale, 1))/1.4 var(--font-mono); }

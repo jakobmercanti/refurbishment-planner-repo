@@ -47,8 +47,9 @@ export function ClimoptixVTKViewer({
         throw new Error("VTK files must be at most 25 MB.");
       const text = await file.text(),
         xml = file.name.toLowerCase().endsWith(".vtp");
-      const prepared = xml ? prepareVTKXML(text) : { text, warnings: [] };
-      if (!xml) checkVTKText(text, false);
+      const prepared = xml
+        ? prepareVTKXML(text)
+        : { text: checkVTKText(text, false), warnings: [] };
       const [
         windowModule,
         mapperModule,
@@ -83,7 +84,7 @@ export function ClimoptixVTKViewer({
           (reader as vtkXMLReader).parseAsArrayBuffer(
             new TextEncoder().encode(prepared.text).buffer,
           );
-        else reader.parseAsText(text);
+        else reader.parseAsText(prepared.text);
         data = reader.getOutputData() as vtkPolyData;
         if (
           !data?.isA("vtkPolyData") ||

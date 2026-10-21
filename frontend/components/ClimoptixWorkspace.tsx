@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   cfdScenarioSchema,
   duplicateCFDScenario,
@@ -21,6 +21,7 @@ import {
 } from "@/lib/climoptix";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import { WindowHelpButton } from "./WindowHelpButton";
+import { WindowIcon } from "./WindowIcon";
 import { ClimoptixViewer } from "./ClimoptixViewer";
 import {
   BoundariesPanel,
@@ -62,20 +63,36 @@ const HELP = [
 ];
 function DeleteStudy({
   name,
+  opener,
   onCancel,
   onDelete,
 }: {
   name: string;
+  opener: HTMLButtonElement;
   onCancel: () => void;
   onDelete: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    ref.current?.showModal();
-  }, []);
+    const dialog = ref.current;
+    dialog?.showModal();
+    cancel.current?.focus();
+    return () => {
+      dialog?.close();
+      if (opener.isConnected) {
+        const target = opener.disabled
+          ? opener.parentElement?.querySelector<HTMLButtonElement>(
+              "button:not(:disabled)",
+            )
+          : opener;
+        target?.focus();
+      }
+    };
+  }, [opener]);
   return (
     <dialog
-      className="cfx-confirm"
+      className="popup cfx-confirm"
       ref={ref}
       aria-label="Delete CFD scenario"
       onCancel={(e) => {
@@ -83,17 +100,45 @@ function DeleteStudy({
         onCancel();
       }}
     >
-      <h2>Delete this study?</h2>
-      <p>
-        “{name}” and its CFD settings will be removed. The shared building and
-        assets are kept. Undo can restore the study.
-      </p>
-      <div className="cfx-actions">
-        <button onClick={onCancel}>Cancel</button>
+      <header className="popup-titlebar">
+        <span className="popup-icon">
+          <WindowIcon title="Delete study" />
+        </span>
+        <strong>Delete this study?</strong>
+        <div className="window-header-actions">
+          <WindowHelpButton
+            title="Delete CFD study"
+            steps={[
+              {
+                heading: "Keep the building",
+                text: "Delete removes only this study and its CFD settings. The shared building, assets and other studies are unchanged. Cancel or Escape keeps the study; Undo can restore a deleted study.",
+              },
+            ]}
+          />
+          <button
+            className="popup-close"
+            aria-label="Close dialog"
+            title="Close dialog"
+            onClick={onCancel}
+          >
+            ×
+          </button>
+        </div>
+      </header>
+      <div className="popup-content">
+        <p>
+          “{name}” and its CFD settings will be removed. The shared building and
+          assets are kept. Undo can restore the study.
+        </p>
+      </div>
+      <footer className="popup-actions">
+        <button ref={cancel} onClick={onCancel}>
+          Cancel
+        </button>
         <button className="cfx-danger" onClick={onDelete}>
           Delete study
         </button>
-      </div>
+      </footer>
     </dialog>
   );
 }
@@ -132,7 +177,7 @@ export function ClimoptixWorkspace({
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [error, setError] = useState(""),
-    [deleting, setDeleting] = useState(false);
+    [deleting, setDeleting] = useState<HTMLButtonElement | null>(null);
   const [picking, setPicking] = useState<"supply" | "extract" | null>(null),
     [diagnosticFilter, setDiagnosticFilter] = useState("all");
   const [editorReset, setEditorReset] = useState(0);
@@ -143,21 +188,30 @@ export function ClimoptixWorkspace({
     token: string;
     file: File;
   } | null>(null);
-  const scenarios = project.cfdScenarios ?? EMPTY_SCENARIOS,
-    visible = scenarios.filter((s) => showArchived || !s.archived);
-  const scenario = visible.find((s) => s.id === selectedId) ?? visible[0];
-  const input = scenario ? preparationInput(project, scenario) : "";
+  const { scenarios, visible, scenario, input } = useMemo(() => {
+    const scenarios = project.cfdScenarios ?? EMPTY_SCENARIOS;
+    const visible = scenarios.filter((s) => showArchived || !s.archived);
+    const scenario = visible.find((s) => s.id === selectedId) ?? visible[0];
+    return {
+      scenarios,
+      visible,
+      scenario,
+      input: scenario ? preparationInput(project, scenario) : "",
+    };
+  }, [project, selectedId, showArchived]);
   const revision = hash.input === input ? hash.revision : "";
   const activeReport = scenario ? (reports[scenario.id] ?? null) : null;
   const stale =
     !activeReport ||
     !revision ||
     activeReport.validation.clientRevision !== revision;
-  const current = useRef({ project, scenario, input, scenarios });
+  const current = useRef({ project, scenarios });
   useEffect(() => {
-    current.current = { project, scenario, input, scenarios };
-  }, [project, scenario, input, scenarios]);
+    current.current = { project, scenarios };
+  }, [project, scenarios]);
   const abort = useRef<AbortController | null>(null);
+  const exportAbort = useRef<AbortController | null>(null);
+  const importRead = useRef(0);
   useEffect(() => {
     let cancelled = false;
     if (input)
@@ -168,7 +222,14 @@ export function ClimoptixWorkspace({
       cancelled = true;
     };
   }, [input]);
-  useEffect(() => () => abort.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abort.current?.abort();
+      exportAbort.current?.abort();
+      importRead.current++;
+    },
+    [],
+  );
   const change = (s: CFDScenario, checkpoint = false) => {
     const result = cfdScenarioSchema.safeParse({
       ...s,
@@ -288,12 +349,21 @@ export function ClimoptixWorkspace({
   };
   const exportOpenFOAM = async () => {
     if (!scenario || stale || exporting) return;
+    const controller = new AbortController();
+    exportAbort.current = controller;
     const captured = input,
       studyId = scenario.id;
     setExporting(true);
     setError("");
     try {
-      const zip = await openfoamSettings(apiUrl, project, scenario, revision);
+      const zip = await openfoamSettings(
+        apiUrl,
+        project,
+        scenario,
+        revision,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
       const now = current.current,
         original = now.scenarios.find((s) => s.id === studyId);
       if (!original || preparationInput(now.project, original) !== captured) {
@@ -307,25 +377,30 @@ export function ClimoptixWorkspace({
         "Foamlib settings exported. This is a configuration handoff, not a runnable OpenFOAM case.",
       );
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "OpenFOAM settings export failed.",
-      );
+      if (!controller.signal.aborted)
+        setError(
+          e instanceof Error ? e.message : "OpenFOAM settings export failed.",
+        );
     } finally {
-      setExporting(false);
+      if (!controller.signal.aborted) setExporting(false);
     }
   };
   const importScenario = async (file: File) => {
+    const request = ++importRead.current;
+    setError("");
+    setMessage("Reading study…");
     try {
       if (file.size > 4 * 1024 * 1024)
         throw new Error("Scenario JSON exceeds 4 MB.");
       if (scenarios.length >= 100)
         throw new Error("The project already has 100 studies.");
-      const imported = scenarioImport(
-        JSON.parse(await file.text()),
-        project.projectId,
-      );
+      const text = await file.text();
+      if (request !== importRead.current) return;
       const now = current.current;
       if (now.project.projectId !== project.projectId) return;
+      if (now.scenarios.length >= 100)
+        throw new Error("The project already has 100 studies.");
+      const imported = scenarioImport(JSON.parse(text), now.project.projectId);
       onChange([...now.scenarios, imported], true);
       setSelectedId(imported.id);
       setError("");
@@ -333,7 +408,10 @@ export function ClimoptixWorkspace({
         "Study imported. Source references were retained; validate to check them against this building.",
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid study file.");
+      if (request === importRead.current) {
+        setError(e instanceof Error ? e.message : "Invalid study file.");
+        setMessage("");
+      }
     }
   };
   const hostPick = (patchId: string, u: number, v: number) => {
@@ -458,7 +536,7 @@ export function ClimoptixWorkspace({
         <button
           disabled={!scenario}
           className="cfx-danger"
-          onClick={() => setDeleting(true)}
+          onClick={(e) => setDeleting(e.currentTarget)}
         >
           Delete
         </button>
@@ -847,13 +925,14 @@ export function ClimoptixWorkspace({
       {deleting && scenario && (
         <DeleteStudy
           name={scenario.name}
-          onCancel={() => setDeleting(false)}
+          opener={deleting}
+          onCancel={() => setDeleting(null)}
           onDelete={() => {
             onChange(
               scenarios.filter((s) => s.id !== scenario.id),
               true,
             );
-            setDeleting(false);
+            setDeleting(null);
             setSelectedId("");
             setReports((previous) =>
               Object.fromEntries(

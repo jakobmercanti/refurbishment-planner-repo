@@ -1,6 +1,234 @@
 /** Bounded ASCII-only result imports. Never execute code or retrieve file/URL references. */
 export const VTK_MAX_BYTES = 25 * 1024 * 1024;
 export const VTK_MAX_POINTS = 250000;
+const INTEGER_LIMITS: Record<string, [number, number]> = {
+  Int8: [-128, 127],
+  UInt8: [0, 255],
+  Int16: [-32768, 32767],
+  UInt16: [0, 65535],
+  Int32: [-2147483648, 2147483647],
+  UInt32: [0, 4294967295],
+  Int64: [-Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+  UInt64: [0, Number.MAX_SAFE_INTEGER],
+};
+function numericValue(token: string, type: string): number {
+  const value = Number(token);
+  if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value)))
+    throw new Error("non-finite values or outside WebGL numeric range");
+  const range = Object.hasOwn(INTEGER_LIMITS, type)
+    ? INTEGER_LIMITS[type]
+    : undefined;
+  if (
+    range &&
+    (!Number.isSafeInteger(value) || value < range[0] || value > range[1])
+  )
+    throw new Error("integer value exceeds the declared or safe display range");
+  return value;
+}
+
+/** The legacy reader splits only on spaces and silently truncates/wraps data.
+ * Validate every declared numeric buffer first, normalise whitespace and omit
+ * empty cell blocks that would otherwise consume the following section header.
+ * Only this in-memory copy changes; original downloads stay byte-for-byte intact.
+ */
+function checkedLegacy(text: string): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/[ \t]+/g, " "));
+  const dataset = lines.indexOf("DATASET POLYDATA", 3);
+  if (
+    !lines[0].startsWith("# vtk DataFile Version") ||
+    lines[2] !== "ASCII" ||
+    dataset < 0 ||
+    lines.slice(3, dataset).some(Boolean)
+  )
+    throw new Error("Use an ASCII legacy VTK POLYDATA file, or ASCII .vtp.");
+  const output = [...lines.slice(0, 3), "DATASET POLYDATA"];
+  const integerTypes: Record<string, string> = {
+    bit: "UInt8",
+    char: "Int8",
+    unsigned_char: "UInt8",
+    short: "Int16",
+    unsigned_short: "UInt16",
+    int: "Int32",
+    unsigned_int: "UInt32",
+    long: "Int32",
+    unsigned_long: "UInt32",
+  };
+  const typeOf = (type: string) => {
+    if (type === "float") return "Float32";
+    if (type === "double") return "Float64";
+    if (Object.hasOwn(integerTypes, type)) return integerTypes[type];
+    throw new Error(
+      "Unsupported legacy numeric type. Export this result as ASCII .vtp.",
+    );
+  };
+  const bounded = (token: string | undefined, max: number) => {
+    const n = Number(token);
+    if (!Number.isSafeInteger(n) || n < 0 || n > max)
+      throw new Error("VTK geometry or field arrays exceed the display limit.");
+    return n;
+  };
+  let points = 0,
+    cells = 0,
+    storage = 0,
+    arrays = 0,
+    tuples = 0;
+  let association = "";
+  const sections = new Set<string>(),
+    names = new Set<string>();
+  let pending: {
+    remaining: number;
+    type: string;
+    bit: boolean;
+    lookup: boolean;
+    cells?: number;
+    read: number;
+    vertices: number;
+  } | null = null;
+  for (const line of lines.slice(dataset + 1)) {
+    if (!line) continue;
+    const parts = line.split(" "),
+      header = parts[0];
+    if (pending) {
+      if (pending.lookup) {
+        if (header !== "LOOKUP_TABLE" || parts.length !== 2)
+          throw new Error(
+            "Legacy SCALARS require LOOKUP_TABLE before their values.",
+          );
+        pending.lookup = false;
+      } else {
+        if (parts.length > pending.remaining)
+          throw new Error("VTK array value count exceeds its declaration.");
+        for (const token of parts) {
+          const value = numericValue(token, pending.type);
+          if (pending.bit && value > 1)
+            throw new Error("Invalid legacy bit value.");
+          if (pending.cells !== undefined) {
+            if (!pending.vertices) {
+              if (value < 1 || !Number.isSafeInteger(value))
+                throw new Error("Invalid VTK cell connectivity.");
+              pending.vertices = value;
+              pending.read++;
+            } else {
+              if (value < 0 || value >= points)
+                throw new Error("VTK cells reference a missing point.");
+              pending.vertices--;
+            }
+          }
+        }
+        pending.remaining -= parts.length;
+        if (!pending.remaining) {
+          if (
+            pending.vertices ||
+            (pending.cells !== undefined && pending.read !== pending.cells)
+          )
+            throw new Error(
+              "VTK cell value count does not match the declared cells.",
+            );
+          pending = null;
+        }
+      }
+    } else if (
+      header === "POINTS" ||
+      ["VERTICES", "LINES", "POLYGONS", "TRIANGLE_STRIPS"].includes(header)
+    ) {
+      if (association || sections.has(header))
+        throw new Error("Duplicate or misplaced VTK geometry section.");
+      sections.add(header);
+      const count = bounded(parts[1], VTK_MAX_POINTS);
+      if (header === "POINTS") {
+        if (!count || parts.length !== 3)
+          throw new Error("VTK needs a nonempty point dataset.");
+        points = count;
+        pending = {
+          remaining: count * 3,
+          type: typeOf(parts[2]),
+          bit: parts[2] === "bit",
+          lookup: false,
+          read: 0,
+          vertices: 0,
+        };
+      } else {
+        const size = bounded(parts[2], VTK_MAX_POINTS * 10);
+        storage += size;
+        cells += count;
+        if (
+          !points ||
+          parts.length !== 3 ||
+          cells > VTK_MAX_POINTS ||
+          storage > VTK_MAX_POINTS * 10 ||
+          (!count && size)
+        )
+          throw new Error("Invalid or oversized VTK cell storage.");
+        if (!count) continue;
+        if (!size) throw new Error("VTK cells need connectivity values.");
+        pending = {
+          remaining: size,
+          type: "UInt32",
+          bit: false,
+          lookup: false,
+          cells: count,
+          read: 0,
+          vertices: 0,
+        };
+      }
+    } else if (header === "POINT_DATA" || header === "CELL_DATA") {
+      if (sections.has(header) || parts.length !== 2)
+        throw new Error("Invalid VTK attribute section.");
+      sections.add(header);
+      association = header;
+      names.clear();
+      tuples = bounded(parts[1], VTK_MAX_POINTS);
+      if (tuples !== (header === "POINT_DATA" ? points : cells))
+        throw new Error("VTK field value count does not match geometry.");
+    } else if (["SCALARS", "VECTORS", "NORMALS", "TENSORS"].includes(header)) {
+      const components =
+        header === "SCALARS"
+          ? bounded(parts[3] ?? "1", 4)
+          : header === "TENSORS"
+            ? 9
+            : 3;
+      if (
+        !association ||
+        !tuples ||
+        !components ||
+        ++arrays > 64 ||
+        !parts[1] ||
+        names.has(parts[1]) ||
+        parts[1].length > 200 ||
+        Object.hasOwn(Object.prototype, parts[1]) ||
+        parts[1] === "prototype" ||
+        parts.length < 3 ||
+        parts.length > (header === "SCALARS" ? 4 : 3)
+      )
+        throw new Error("Unsupported or duplicate VTK field array.");
+      names.add(parts[1]);
+      pending = {
+        remaining: tuples * components,
+        type: typeOf(parts[2]),
+        bit: parts[2] === "bit",
+        lookup: header === "SCALARS",
+        read: 0,
+        vertices: 0,
+      };
+    } else {
+      throw new Error(
+        "Unsupported legacy section " +
+          header.slice(0, 60) +
+          ". Export this result as ASCII .vtp.",
+      );
+    }
+    output.push(line);
+  }
+  if (pending)
+    throw new Error(
+      "Incomplete VTK array: value count does not match its declaration.",
+    );
+  if (!points || !cells)
+    throw new Error("VTK needs a nonempty point/cell dataset.");
+  return output.join("\n");
+}
 /** WebGL uses float32 even when a VTK file stores float64. Do not render infinities. */
 export function renderableVTKValues(values: ArrayLike<number>): boolean {
   for (let i = 0; i < values.length; i++) {
@@ -58,16 +286,6 @@ export function prepareVTKXML(text: string): {
   for (const kind of ["Points", ...cellKinds])
     piece.setAttribute(`NumberOf${kind}`, String(count(kind)));
   const warnings: string[] = [];
-  const limits: Record<string, [number, number]> = {
-    Int8: [-128, 127],
-    UInt8: [0, 255],
-    Int16: [-32768, 32767],
-    UInt16: [0, 65535],
-    Int32: [-2147483648, 2147483647],
-    UInt32: [0, 4294967295],
-    Int64: [-Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
-    UInt64: [0, Number.MAX_SAFE_INTEGER],
-  };
   const array = (
     input: Element,
     expected: number,
@@ -79,7 +297,11 @@ export function prepareVTKXML(text: string): {
       input.children.length ||
       input.getAttribute("format") !== "ascii" ||
       Number(input.getAttribute("NumberOfComponents") ?? 1) !== components ||
-      !(Object.hasOwn(limits, type) || type === "Float32" || type === "Float64")
+      !(
+        Object.hasOwn(INTEGER_LIMITS, type) ||
+        type === "Float32" ||
+        type === "Float64"
+      )
     )
       throw new Error("unsupported numeric array format");
     const contents = input.textContent ?? "";
@@ -87,15 +309,7 @@ export function prepareVTKXML(text: string): {
     for (const token of contents.matchAll(/\S+/g)) {
       if (++read > expected)
         throw new Error("value count does not match the geometry");
-      const value = Number(token[0]);
-      if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value)))
-        throw new Error("non-finite values or outside WebGL numeric range");
-      const range = Object.hasOwn(limits, type) ? limits[type] : undefined;
-      if (
-        range &&
-        (!Number.isSafeInteger(value) || value < range[0] || value > range[1])
-      )
-        throw new Error("value exceeds its declared integer type");
+      const value = numericValue(token[0], type);
       onValue?.(value);
     }
     if (read !== expected)
@@ -188,7 +402,7 @@ export function prepareVTKXML(text: string): {
         names.add(name);
       } catch (e) {
         warnings.push(
-          `${name || "Unnamed field"} (${e instanceof Error ? e.message : "invalid array"})`,
+          `${name.slice(0, 200) || "Unnamed field"} (${e instanceof Error ? e.message : "invalid array"})`,
         );
       }
     }
@@ -209,7 +423,7 @@ export function prepareVTKXML(text: string): {
     warnings.push("FieldData metadata (not rendered)");
   return { text: new XMLSerializer().serializeToString(clean), warnings };
 }
-export function checkVTKText(text: string, xml: boolean): void {
+export function checkVTKText(text: string, xml: boolean): string {
   if (new TextEncoder().encode(text).byteLength > VTK_MAX_BYTES)
     throw new Error("VTK files must be at most 25 MB.");
   if (
@@ -257,76 +471,7 @@ export function checkVTKText(text: string, xml: boolean): void {
         throw new Error("Unsupported VTK array component count.");
     }
   } else {
-    if (
-      !/^# vtk DataFile Version/m.test(text) ||
-      !/^ASCII\s*$/m.test(text) ||
-      !/^DATASET POLYDATA\s*$/m.test(text)
-    )
-      throw new Error("Use an ASCII legacy VTK POLYDATA file, or ASCII .vtp.");
-    let arrays = 0;
-    for (const line of text.split(/\r?\n/)) {
-      const tokens = line.trim().split(/\s+/),
-        header = tokens[0];
-      if (
-        [
-          "POINTS",
-          "POINT_DATA",
-          "CELL_DATA",
-          "VERTICES",
-          "LINES",
-          "POLYGONS",
-          "TRIANGLE_STRIPS",
-        ].includes(header)
-      ) {
-        const count = Number(tokens[1]);
-        const cellHeader = [
-          "VERTICES",
-          "LINES",
-          "POLYGONS",
-          "TRIANGLE_STRIPS",
-        ].includes(header);
-        const storage = cellHeader ? Number(tokens[2]) : 0;
-        if (
-          !Number.isSafeInteger(count) ||
-          count < 0 ||
-          count > VTK_MAX_POINTS ||
-          !Number.isSafeInteger(storage) ||
-          storage < 0 ||
-          storage > VTK_MAX_POINTS * 10
-        )
-          throw new Error("VTK geometry exceeds the display limit.");
-      }
-      if (
-        [
-          "SCALARS",
-          "VECTORS",
-          "NORMALS",
-          "TENSORS",
-          "COLOR_SCALARS",
-          "TEXTURE_COORDINATES",
-        ].includes(header)
-      ) {
-        arrays++;
-        const components =
-          header === "SCALARS"
-            ? Number(tokens[3] ?? 1)
-            : header === "COLOR_SCALARS" || header === "TEXTURE_COORDINATES"
-              ? Number(tokens[2])
-              : 3;
-        if (
-          !Number.isSafeInteger(components) ||
-          components < 1 ||
-          components > 9 ||
-          arrays > 64
-        )
-          throw new Error("VTK field arrays exceed the display limit.");
-      }
-      // vtk.js' legacy reader does not implement FIELD attributes. Do not
-      // silently show their geometry as if the requested fields were loaded.
-      if (header === "FIELD")
-        throw new Error(
-          "Legacy FIELD attributes are unsupported. Export this result as ASCII .vtp.",
-        );
-    }
+    return checkedLegacy(text);
   }
+  return text;
 }

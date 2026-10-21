@@ -1093,11 +1093,13 @@ export function BoundariesPanel({
     (p) =>
       p.id === selected || (p.kind === "object" && p.sourceId === selected),
   );
+  const roomNames = new Map(report?.domain.regions.map((r) => [r.id, r.name]));
+  const query = search.trim().toLowerCase();
   const rows =
     report?.patches.filter((p) =>
-      `${p.kind} ${p.roomId} ${p.sourceId} ${p.id}`
+      `${p.kind} ${p.label ?? ""} ${roomNames.get(p.roomId) ?? ""} ${p.roomId} ${p.sourceId} ${p.id}`
         .toLowerCase()
-        .includes(search.toLowerCase()),
+        .includes(query),
     ) ?? [];
   const groupValue =
     scenario.boundaries.groups[group] ?? boundarySchema.parse({});
@@ -1145,6 +1147,7 @@ export function BoundariesPanel({
           type="search"
           aria-label="Find a CFD patch"
           value={search}
+          maxLength={500}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Room, surface or source ID"
         />
@@ -1164,13 +1167,17 @@ export function BoundariesPanel({
               {p.label ?? labelFor(p.kind)} · {p.sourceId}
             </strong>
             <small>
-              {report?.domain.regions.find((r) => r.id === p.roomId)?.name ??
-                p.roomId}{" "}
-              · {p.areaM2.toFixed(3)} m² · {p.boundaryOrigin}
+              {roomNames.get(p.roomId) ?? p.roomId} · {p.areaM2.toFixed(3)} m² ·{" "}
+              {p.boundaryOrigin}
             </small>
           </button>
         ))}
       </div>
+      {report && !rows.length && (
+        <p role="status" className="cfx-caption">
+          No matching patches. Try a room, surface name or source ID.
+        </p>
+      )}
       {patch && (
         <section className="cfx-card">
           <h3>
@@ -1254,7 +1261,8 @@ export function PhysicsPanel({
       <p className="cfx-intro">
         Sample indoor-air intentions—not certified simulation settings. Physics
         is stored in SI. Temperatures are kelvin; CO₂ concentration is ppm by
-        volume (1 ppm = 10⁻⁶ volume fraction).
+        volume (1 ppm = 10⁻⁶ volume fraction). Time stepping and numerical
+        controls are in Simulation → Run.
       </p>
       <label>
         Physics preset
@@ -1278,29 +1286,6 @@ export function PhysicsPanel({
         </select>
       </label>
       <div className="cfx-grid">
-        <label>
-          Time mode
-          <select
-            value={p.mode}
-            onChange={(e) => {
-              const mode = e.target.value as typeof p.mode;
-              onChange({
-                ...scenario,
-                physics: {
-                  ...p,
-                  mode,
-                  numerics: {
-                    ...p.numerics,
-                    coupling: mode === "transient" ? "PIMPLE" : "SIMPLE",
-                  },
-                },
-              });
-            }}
-          >
-            <option value="steady">Steady</option>
-            <option value="transient">Transient</option>
-          </select>
-        </label>
         <label>
           Turbulence
           <select
@@ -1345,7 +1330,7 @@ export function PhysicsPanel({
         }
       />
       <details>
-        <summary>Initial fields, time controls &amp; numerics</summary>
+        <summary>Initial fields</summary>
         <Parameters
           value={p}
           omit={[
@@ -1367,6 +1352,8 @@ export function PhysicsPanel({
             "humidityFraction",
             "gravityMS2",
             "outdoorCo2Ppm",
+            "time",
+            "numerics",
           ]}
           onChange={(v) => onChange({ ...scenario, physics: v as typeof p })}
         />
@@ -1799,20 +1786,6 @@ export function MeshPanel({
               )}
             </>
           )}
-          <button
-            className="cfx-danger"
-            onClick={() =>
-              onChange({
-                ...scenario,
-                mesh: {
-                  ...scenario.mesh,
-                  refinements: regions.filter((r) => r.id !== region.id),
-                },
-              })
-            }
-          >
-            Delete refinement region
-          </button>
         </section>
       )}
       <details>

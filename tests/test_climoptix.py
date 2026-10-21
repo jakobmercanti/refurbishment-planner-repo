@@ -878,3 +878,36 @@ def test_foamlib_manifest_preserves_custom_target_and_states_the_discrete_cell_s
         assert record["requestedCellMm"] == 70
         assert record["nominalCellMm"] == 50
         assert json.loads(archive.read("scenario.json"))["mesh"]["refinements"][0]["cellMm"] == 70
+
+
+@pytest.mark.parametrize("bad", [True, "0.5"])
+@pytest.mark.parametrize("field", ["sizeMm", "allowablePolygon"])
+def test_nested_numeric_values_are_not_coerced_from_text_or_booleans(field, bad):
+    data = scenario(project()).model_dump(mode="json")
+    if field == "sizeMm":
+        data["mesh"]["refinements"] = [{"id": "r", "name": "Region", "sizeMm": [bad, 1000, 1000]}]
+    else:
+        data["vents"] = [{"id": "v", "name": "Vent", "role": "supply", "host": {"patchId": "host"},
+                          "optimization": {"allowablePolygon": [[bad, 0], [1, 0], [0, 1]]}}]
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(data)
+
+
+@pytest.mark.parametrize("clearance", ["minSpacingMm", "edgeClearanceMm"])
+def test_both_vent_clearances_are_respected_independently_of_list_order(clearance):
+    p = project()
+    data = scenario(p).model_dump(mode="json")
+    data["vents"] = [
+        {"id": name, "name": name, "role": "supply", "widthMm": 300, "heightMm": 200,
+         "edgeClearanceMm": 0, "optimization": {"minSpacingMm": 0},
+         "host": {"patchId": "floor-ground:a:ceiling:0", "u": u, "v": 0.5}}
+        for name, u in [("one", 0.4), ("two", 0.55)]
+    ]
+    if clearance == "minSpacingMm":
+        data["vents"][0]["optimization"][clearance] = 500
+    else:
+        data["vents"][0][clearance] = 500
+    for vents in [data["vents"], list(reversed(data["vents"]))]:
+        report = prepare(p, Scenario.model_validate({**data, "vents": vents}))
+        assert "vent-spacing" in codes(report), "Clearance must not depend on which vent was processed last"
+        assert not report["surface"]["exportable"]
