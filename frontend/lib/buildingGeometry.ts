@@ -1,7 +1,8 @@
 import polygonClipping, { type MultiPolygon, type Polygon, type Pair } from "polygon-clipping";
 import { ShapeUtils, Vector2 } from "three";
 import type { Point2D } from "./types";
-import type { FloorContent, FloorOpening, RoofConfiguration } from "./buildingDocument";
+import { minimumRoofHeight, roofForRoom, type FloorContent, type FloorOpening, type RoofConfiguration, type RoofProfile } from "./buildingDocument";
+import { balustradeFootprint } from "./balustrades";
 import { buildIsolatedRoomWalls, buildRenderedWalls } from "./wallRendering";
 import { wallEnvelope } from "./wallEnvelope";
 
@@ -89,11 +90,54 @@ export function validateFloorOpening(c: FloorContent, opening: FloorOpening, oth
   }
   for(const other of others.filter(o=>o.id!==opening.id))if(planArea(polygonClipping.intersection(subject,polygonOf(other.vertices)))>.01)throw new Error("Openings cannot overlap. Resize or move the existing opening first.");
   const walls=c.floorplan?.walls.flatMap(w=>w.points.slice(0,-1).map((a,i)=>({a,b:w.points[i+1],t:w.thicknessOverridesMm?.[i]??c.floorplan?.wallThickness??100}))) ?? c.rooms.flatMap(r=>r.vertices.map((a,i)=>({a,b:r.vertices[(i+1)%r.vertices.length],t:r.wall_thickness.value})));
+  const guard=opening.balustrade?.enabled?balustradeFootprint(opening.vertices,opening.balustrade):[];
+  if(guard.length) {
+    const slab=subtractVoids(footprint,others.filter(o=>o.id!==opening.id).concat(opening));
+    if(planArea(polygonClipping.difference(guard,slab))>.01)throw new Error("The balustrade must sit completely on the slab, clear of every opening. Move or resize the opening, or turn the balustrade off.");
+    for(const other of others.filter(o=>o.id!==opening.id&&o.balustrade?.enabled))if(planArea(polygonClipping.intersection(guard,balustradeFootprint(other.vertices,other.balustrade!)))>.01)throw new Error("Balustrades around neighbouring openings cannot overlap.");
+  }
   for(const {a,b,t} of walls) {
     const length=Math.hypot(b.x-a.x,b.y-a.y); if(!length)continue;
     const dx=(b.x-a.x)/length*(t/2+10),dy=(b.y-a.y)/length*(t/2+10);
     const wall=polygonOf([{x:a.x-dy,y:a.y+dx},{x:b.x-dy,y:b.y+dx},{x:b.x+dy,y:b.y-dx},{x:a.x+dy,y:a.y-dx}]);
     if(planArea(polygonClipping.intersection(subject,wall))>.01)throw new Error("The opening crosses or touches a wall. Keep 10 mm clear of its face, or edit that wall first.");
+    if(guard.length&&planArea(polygonClipping.intersection(guard,wall))>.01)throw new Error("The balustrade touches a wall. Leave space for its posts and a 25 mm setback from the void.");
+  }
+}
+
+export type RoofZone={id:string;footprint:PlanPolygons;frameFootprint:PlanPolygons;roof:RoofProfile};
+/** Partition the physical top-floor envelope once: no overlapping roofs or unroofed wall strips. */
+export function buildingRoofZones(content:FloorContent,roof:RoofConfiguration):RoofZone[] {
+  const footprint=structuralFloorFootprint(content);
+  if(!footprint.length||roof.enabled===false)return [];
+  const zones:RoofZone[]=[];let remaining=footprint;
+  // Geometry, not random IDs or display names, determines shared-wall ownership.
+  // A duplicated floor must retain exactly the same roof junctions.
+  const ordered=[...content.rooms].sort((a,b)=>Math.min(...a.vertices.map(p=>p.x))-Math.min(...b.vertices.map(p=>p.x))||Math.min(...a.vertices.map(p=>p.y))-Math.min(...b.vertices.map(p=>p.y)));
+  if(roof.roomRoofsEnabled)for(const room of ordered) {
+    if(!roof.roomOverrides?.some(item=>item.roomId===room.id))continue;
+    const roomFootprint=structuralFloorFootprint({...content,rooms:[room]}),part=polygonClipping.intersection(remaining,roomFootprint);
+    if(!part.length)continue;
+    const profile=roofForRoom(roof,room.id);
+    // Disabled individual zones are not allowed: use the shared roof instead.
+    zones.push({id:room.id,footprint:part,frameFootprint:roomFootprint,roof:profile});
+    remaining=polygonClipping.difference(remaining,part);
+  }
+  if(remaining.length)zones.unshift({id:"shared",footprint:remaining,frameFootprint:footprint,roof});
+  return zones;
+}
+
+/** Conservative headroom check: guards must fit below their zone's lowest ceiling. */
+export function validateRoofGuardClearance(content:FloorContent,openings:FloorOpening[],roof:RoofConfiguration) {
+  if(roof.enabled===false||!openings.some(opening=>opening.balustrade?.enabled))return;
+  const zones=buildingRoofZones(content,roof);
+  for(const opening of openings){
+    if(!opening.balustrade?.enabled)continue;
+    const guard=balustradeFootprint(opening.vertices,opening.balustrade);
+    for(const zone of zones)if(planArea(polygonClipping.intersection(guard,zone.footprint))>.01){
+      const clear=zone.roof.ceilingMode==="FLAT"?zone.roof.ceilingHeightMm:minimumRoofHeight(zone.roof);
+      if(opening.balustrade.heightMm>clear)throw new Error(`Balustrade on ${opening.name} exceeds its roof zone's lowest clear ceiling height (${clear} mm).`);
+    }
   }
 }
 export function snapToFloorReference(p: Point2D, content: FloorContent | undefined, toleranceMm: number): Point2D {
@@ -139,9 +183,9 @@ function vertical(a:Pair,b:Pair,lowA:number,lowB:number,highA:number,highB:numbe
   return {kind,positionsMm:[...a,lowA,...b,lowB,...b,highB,...a,highA],indices:[0,1,2,0,2,3]};
 }
 /** Millimetre source geometry. No scene-coordinate conversion and no stored meshes. */
-export function buildRoofSurfaces(footprint:PlanPolygons,r:RoofConfiguration,wallTopMm:number):BuildingSurface[] {
+export function buildRoofSurfaces(footprint:PlanPolygons,r:RoofConfiguration,wallTopMm:number,frameFootprint:PlanPolygons=footprint):BuildingSurface[] {
   if(!footprint.length||r.enabled===false)return [];
-  const frame=roofFrame(footprint,r),height=(p:Point2D)=>roofHeightAt(p,r,frame),split=frame.min+(frame.max-frame.min)*(r.type==="STEPPED"?r.splitFraction:.5);
+  const frame=roofFrame(frameFootprint,r),height=(p:Point2D)=>roofHeightAt(p,r,frame),split=frame.min+(frame.max-frame.min)*(r.type==="STEPPED"?r.splitFraction:.5);
   const clip=(u0:number,u1:number)=>{const pad=Math.max(frame.max-frame.min,frame.vmax-frame.vmin,1000)+1000;return polygonClipping.intersection(footprint,polygonOf([[u0,frame.vmin-pad],[u1,frame.vmin-pad],[u1,frame.vmax+pad],[u0,frame.vmax+pad]].map(([u,v])=>({x:u*frame.ux-v*frame.uy,y:u*frame.uy+v*frame.ux}))));};
   const regions=(r.type==="GABLE"||r.type==="STEPPED")?[clip(frame.min-1,split),clip(split,frame.max+1)]:[footprint];
   const out:BuildingSurface[]=[];

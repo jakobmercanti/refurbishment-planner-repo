@@ -11,9 +11,10 @@ import { energySchema, parseEnergyProject, type EnergyProject } from "./energyDo
 import { constrainObstacleToRoom, requiresElectricalWall } from "./elementPlacement";
 import { isLocalPlanSymbol } from "./localPlanSymbol";
 import { buildingSchema, defaultBuilding, floorContent, projectFloors, validateFloorStack, type BuildingDocument } from "./buildingDocument";
-import { validateFloorOpening } from "./buildingGeometry";
+import { validateFloorOpening, validateRoofGuardClearance } from "./buildingGeometry";
 import { PASSAGE_PROFILES, passageProfileForKey } from "./passageOpenings";
 import { personSpecSchema, supportsPerson, PERSON_MODELS } from "./people";
+import { cfdScenariosSchema, type CFDScenario } from "./climoptixDocument";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -60,6 +61,7 @@ const documentSchema = z.object({
   plannerBuild: z.unknown().optional(),
   quotes: z.array(quoteSchema).max(100).optional().default([]),
   building: buildingSchema.optional(),
+  cfdScenarios: cfdScenariosSchema.optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
@@ -71,6 +73,7 @@ export interface ProjectDocument {
   plannerBuild: PlannerBuildData;
   quotes?: QuoteDocument[];
   building?: BuildingDocument;
+  cfdScenarios?: CFDScenario[];
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -101,6 +104,7 @@ export function parseProject(input: unknown): ProjectDocument {
   if(p.heatingLayout===undefined)delete p.heatingLayout;
   if(p.energyLayout===undefined)delete p.energyLayout;
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
+  if (p.cfdScenarios?.some(s => s.sourceBuildingId !== p.projectId)) throw new Error("A Climoptix scenario belongs to another project.");
   if (p.heatingLayout) p.heatingLayout = parseHeatingProject(p.heatingLayout);
   if (p.heatingLayout || p.rooms.some(room => room.obstacles.some(isHeatingElement))) Object.assign(p, migrateHeatingElements(p.rooms, p.heatingLayout));
   if (p.energyLayout) p.energyLayout = parseEnergyProject(p.energyLayout);
@@ -157,7 +161,7 @@ export function parseProject(input: unknown): ProjectDocument {
   if (p.assetInstances.some(i => !p.assets.some(a => a.assetId === i.assetId && a.assetVersion === i.assetVersion))) throw new Error("A placed model is missing its asset definition.");
   if (p.building) {
     validateFloorStack(p.building);
-    p.building.floors = p.building.floors.map(f => {if(f.id===p.building!.activeFloorId){delete f.content;return f;}return { ...f, content: floorContent(parseProject({ ...p, ...floorContent(f.content!),electricalLayout:f.content?.electricalLayout,heatingLayout:f.content?.heatingLayout,energyLayout:f.content?.energyLayout, building: undefined })) };});
+    p.building.floors = p.building.floors.map(f => {if(f.id===p.building!.activeFloorId){delete f.content;return f;}return { ...f, content: floorContent(parseProject({ ...p, ...floorContent(f.content!),electricalLayout:f.content?.electricalLayout,heatingLayout:f.content?.heatingLayout,energyLayout:f.content?.energyLayout, cfdScenarios:undefined, building: undefined })) };});
     for (const f of projectFloors(p)) for (const opening of f.openings) validateFloorOpening(f.content, opening, f.openings);
     const seen = new Set<string>();
     for (const f of projectFloors(p)) {
@@ -165,6 +169,9 @@ export function parseProject(input: unknown): ProjectDocument {
       if ([...ids].some(id=>seen.has(id))) throw new Error("Different floors cannot share room or placed-object IDs.");
       ids.forEach(id=>seen.add(id));
     }
+    const roomIds=new Set(projectFloors(p).flatMap(f=>f.content.rooms.map(room=>room.id)));
+    if(p.building.roof.roomOverrides?.some(item=>!roomIds.has(item.roomId)))throw new Error("Room roof references a missing room.");
+    const top=projectFloors(p).at(-1)!;validateRoofGuardClearance(top.content,top.openings,p.building.roof);
   } else p.building = defaultBuilding(p);
   return p;
 }

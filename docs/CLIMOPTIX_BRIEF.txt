@@ -1,0 +1,908 @@
+# CODEX IMPLEMENTATION BRIEF — CLIMOPTIX CFD MODE
+# Shared FreeFloorplan3D / PlannerBuild engineering platform
+# Date: 20 October 2026
+# Deliverable: Implement the CFD WORKSPACE, GEOMETRY/DOMAIN PREPROCESSING,
+#              VENT/BOUNDARY-CONDITION EDITORS, PHYSICS/MESH CONFIGURATION,
+#              VALIDATION, PERSISTENCE AND FUTURE OPENFOAM ADAPTER CONTRACT.
+# IMPORTANT: The actual OpenFOAM CFD solver, production finite-volume mesher,
+#            adjoint solver and remote execution will be integrated LATER.
+
+YOU ARE CODEX WORKING INSIDE THE EXISTING APPLICATION REPOSITORY.
+
+This is an implementation request, not a request to design an unrelated product, clone
+our editor, or create a disconnected demo. First inspect the existing repository; then
+make working, tested, incremental changes. The current project already supports room
+planning, 2D/3D visualisation, furniture/assets and some building-project features.
+Related development work includes multi-floor buildings, floor-slab openings and roof /
+interior ceiling profiles. Some of these may still be incomplete in the repository:
+DISCOVER THE REAL IMPLEMENTATION STATE BEFORE INTEGRATING WITH THEM.
+
+============================================================
+1. PRODUCT VISION, ARCHITECTURE AND HARD BOUNDARIES
+============================================================
+
+Create "Climoptix" as a dedicated CFD MODE / WORKSPACE inside the SAME shared
+application codebase used by FreeFloorplan3D and PlannerBuild. Do not duplicate or
+fork the floorplan editor, 3D scene model, asset library, storage or user system.
+
+The user should be able to:
+  1. Draw or load an existing room/building using the common planner.
+  2. Switch to "Climoptix / CFD" from a clear, discoverable entry point.
+  3. Select ONE physically connected air domain for a CFD case, even when it spans
+     more than one room or multiple floors through unobstructed openings.
+  4. Place supply inlets, extract outlets, and optionally equipment and other
+     relevant sources, using the existing 2D and 3D editing facilities.
+  5. Treat furniture and people as actual physics-aware objects with simplified CFD
+     geometry and configurable obstruction/thermal/contaminant properties.
+  6. Configure boundary conditions, working fluid, physics, initial conditions,
+     turbulence, time settings, solver controls, meshing and resource limits.
+  7. Inspect an accurate 3D PREVIEW of the selected fluid domain and its boundary
+     patches, validate it, and SAVE or EXPORT a reproducible CFD scenario.
+  8. Later (once integrated) mesh, run, monitor and visualise OpenFOAM CFD; later
+     still run our proprietary inlet/outlet position optimiser.
+
+These are THREE DIFFERENT PRODUCT ENTRY POINTS but ONE shared editor and geometry
+model. Brand/mode switching and feature flags must not create parallel application
+copies. Floor planning is still available in Climoptix; HVAC engineers also need
+plan views, furniture, 3D, measurements and exports. A future commercial packaging
+system may decide which modules are unlocked: DO NOT implement pricing/paywalls now.
+
+INITIAL ANALYSIS SCOPE:
+- One connected fluid volume per CFD case. This can be a single room, two rooms
+  joined by a PERMANENT unobstructed opening, or a double-height/stairwell-connected
+  space, including across floors if floor openings truly connect air volumes.
+- Do not require a whole-building CFD domain and do not make every adjacent room
+  automatically join the calculation.
+- Geometry first. OPENFOAM BACKEND LATER. Never display invented CFD results or
+  claim to have performed actual meshing/flow simulation without a solver.
+
+STRONG MODE SEPARATION:
+- The geometry, drawing tools, units, save/load and assets remain shared.
+- CFD-specific semantics, scenarios, vent definitions, boundary conditions, mesh
+  recipes and simulations live in a distinct Climoptix module; their visibility is
+  restricted to CFD mode unless the user opens a read-only engineering summary.
+- A project can store MULTIPLE named CFD scenarios targeting different connected
+  spaces without losing any building objects or duplicating the building geometry.
+
+============================================================
+2. FIRST INSPECT THE ACTUAL REPOSITORY
+============================================================
+
+Before writing code:
+- Locate current floor/room/wall/door/window geometry representation, levels,
+  floor openings, internal ceilings, roof settings, 2D tools, 3D viewer, selections,
+  undo/redo, persistence, export, API, authentication and asset handling.
+- Identify how an open passage/archway is currently represented versus a DOOR
+  object; do not silently infer portal types from a missing wall segment.
+- Document whether upper floors can have different footprints and whether a
+  floor opening really subtracts geometry from the slab/ceiling, rather than just
+  making a decorative transparent hole.
+- Identify world axes, elevations, angles, normal directions and units. All X/Y/Z
+  variables in this brief are illustrative; use the application's actual axes.
+- Find existing React/Vue/vanilla/etc. UI patterns instead of inventing another
+  framework. Use the existing design system and modal/drawer navigation conventions.
+- Identify migration paths for old project files and exactly where to add a
+  non-destructive cfdScenarios collection.
+- Check browser/backend division and how long tasks and download/export actions
+  are currently handled.
+- State a short implementation plan with affected components. Continue to code
+  without unnecessary questions. If an essential prerequisite is absent, implement
+  it in a small compatible way or clearly flag the blocked feature rather than
+  pretending it works.
+
+============================================================
+3. USER EXPERIENCE: NEW WINDOWS / PHASE-BASED CFD WORKSPACE
+============================================================
+
+Implement a clearly named "Climoptix CFD" workspace with a top stepper or left
+navigation. Treat each step as its own substantial view/window/panel with Back,
+Next, Save, Review, and persistent scenario context. These need NOT be separate
+browser pop-up windows; prefer dedicated in-app screens or dockable panels beside
+2D/3D geometry with proper navigation and sensible responsive layouts.
+
+Suggested phases / screens:
+
+  0. CFD SCENARIOS: New / duplicate / rename / select / archive / delete scenario.
+     Display selected building, floor(s), target domain, configuration validity,
+     and statuses: Draft, Ready for meshing, Solver not connected, etc.
+
+  1. DOMAIN SELECTION: Pick a seed room in 2D or 3D; automatically highlight the
+     connected air volume using the hard-stop rules in section 4. Show included
+     room/zone names, levels, bounding box, volume estimate, exclusions and
+     boundary surfaces. Offer a separate "inspect connectivity" view.
+
+  2. EQUIPMENT AND SOURCES: Place supply vents and extract outlets, choose
+     geometry and dimensions, align to wall/ceiling/floor, set discharge direction
+     and choose BC family. Add/inspect room occupants, furniture CFD proxies,
+     heat sources and contaminant sources. Reuse the shared asset-position tools.
+
+  3. BOUNDARY CONDITIONS: Inspect each tagged surface/patch. Configure walls,
+     floor, ceiling, doors, windows, outdoor/open boundaries, inlet/outlet vents,
+     equipment and optional symmetry or porous interfaces where supported.
+     Present both a clickable coloured 3D surface view and a searchable patch table.
+
+  4. PHYSICS AND ENVIRONMENT: Select physics model and editable fluid, thermal,
+     gravity, turbulence, initial-condition, contaminant and ventilation settings.
+     Provide sensible named presets, but allow advanced custom values.
+
+  5. MESH SETUP: Select mesh-quality/fidelity preset or Expert mode; set global
+     and per-region sizes/refinements, near-wall layers, meshing tolerances,
+     cell budgets and quality checks. Show a prospective surface/region preview.
+     Do NOT pretend to display actual OpenFOAM cells before that integration.
+
+  6. REVIEW, VALIDATE AND EXECUTE: Show complete, human-readable scenario
+     summary and preflight diagnostic report. Allow export of structured scenario
+     JSON plus geometry/patch manifest. Show future controls for Mesh, Run,
+     Cancel, Resume, Logs, and job status as UNAVAILABLE until provider connected.
+
+  7. RESULTS AND OPTIMISATION: Provide the full UI information architecture for
+     later velocity, temperature, pressure, CO2, age-of-air, air-change/comfort
+     results, plots and result comparisons. Show clearly "No CFD results yet".
+     Scaffold an optional "Vent position optimisation" tab and scenario schema,
+     but DO NOT implement an adjoint solver or fabricate sensitivity data.
+
+Design these as a coherent engineering workflow, not seven gigantic unrelated
+forms. Compact basic controls, expandable expert groups, context-sensitive help,
+unit-labelled fields, a 2D/3D preview available in most phases, and a clear
+completion/validation indicator per step. Avoid dumping hundreds of controls on
+new users. In each screen, highlight which object/region is being edited and
+preserve selection when moving between phases.
+
+UI must support typical laptop widths, smaller screens, keyboard navigation,
+accessible labels, useful undo/redo and helpful errors. Avoid accidental loss of
+uncommitted edits. Persist each finished phase and auto-save safely if consistent
+with the application's current behaviour.
+
+============================================================
+4. CRITICAL: SELECT A CFD DOMAIN BY CONTINUITY OF AIR VOLUME
+============================================================
+
+This is a NON-NEGOTIABLE rule of this product.
+
+User selects a SEED ROOM / seed connected zone. The software constructs the
+connected air domain by traversing only genuinely unobstructed, permanent air
+connections. It must ALWAYS STOP at a DOOR or WINDOW, whether the door/window is
+marked OPEN or CLOSED, partially open, sliding, internal, external, etc.
+
+Doors and windows are HARD DOMAIN SELECTION BOUNDARIES. Their user-selected
+open/closed state affects the corresponding BOUNDARY CONDITION if enabled, not
+whether the neighbouring room becomes part of the selected simulation.
+
+Pass-through examples:
+- Two rooms joined by a permanent archway or wall opening WITHOUT a door or
+  window object: same continuous air volume -> include both automatically.
+- A double-height atrium or stairwell connected through a true slab opening:
+  include the connected portion across floors, if properly bounded.
+- An internal open-plan area with no separating wall: remains one continuous
+  domain. Do not accidentally split it based only on visual room labels.
+
+Stop examples:
+- Two rooms linked by a DOOR object marked open -> STOP at the door plane.
+- The same door marked closed -> STOP at the door plane.
+- A WINDOW object marked open -> STOP at the window plane.
+- The same window marked closed -> STOP at the window plane.
+- A doorless doorway MUST have an explicit 'permanent opening / archway' semantic
+  type to be traversable. Do not change a door to an archway merely because its
+  door leaf is hidden.
+- A closed wall, floor slab or ceiling -> STOP unless an explicit void/portal
+  proves a continuous fluid connection.
+
+Implementation approach:
+A. Build an abstract TOPOLOGICAL CONNECTION GRAPH of air regions with semantic
+   portals and blockers derived from actual building geometry:
+     Room/air-region node -> adjacent region node + opening semantics.
+   Or construct a robust geometric flood-fill over connected cells/surfaces if the
+   existing engine already supports it. Do not use room-ID equality alone.
+B. Traverse via BFS/DFS only if the connection is geometrically valid and its
+   semantic type is 'open passage', 'archway', 'floor void' or a validated equivalent.
+C. Doors/windows are traversal blockers regardless of state; they must still
+   appear in the boundary patch list and the 3D cut-cap geometry.
+D. Where the domain terminates at an open door/window, create a VIRTUAL CFD
+   BOUNDARY SURFACE across its opening plane. The opening is not erroneously
+   treated as a solid wall: the user may assign pressure/velocity/exchange BCs.
+   It is just the boundary of THIS selected domain. A closed door/window may be
+   solid/no-slip with thermal transfer according to its selected BC.
+E. Show the selection visually and explicitly: coloured included rooms, non-
+   included rooms ghosted, arrows indicating passable permanent openings, red/
+   labelled 'domain stops here' markers at all doors and windows.
+F. Preserve stable room and patch IDs and source-object provenance, including
+   floor IDs. When the model changes, recompute connectivity and invalidate the
+   derived domain / mesh recipe if needed; do not silently use stale geometry.
+G. Only one connected domain per scenario. If user explicitly includes an
+   unconnected region, explain the connectivity rule and offer a separate scenario
+   rather than silently merging disconnected fluid volumes.
+H. Handle ambiguous regions, duplicate openings, invalid polygons, intersecting
+   floor voids, collapsed slabs, model gaps or room volume overlaps with a
+   specific validation error. Do not 'heal' a blocked door into an open passage.
+I. Distinguish a stair MODEL (furniture/obstacle) from a true floor OPENING; stairs
+   themselves do not imply a fluid passage unless slab geometry allows it.
+J. Consider variable footprint upper floors, stepped ceilings, roof-following
+   sloped ceilings and independent internal suspended ceilings. CFD uses the
+   INTERIOR air boundary, not the external roof silhouette.
+
+Provide a domain-inspection report listing:
+- Seed ID, participating room/zone IDs, involved floor IDs and opening IDs.
+- Continuous-volume topology, eligible portals and blocked doors/windows.
+- Air volume, domain bounds, open/closed boundary patches and surface areas
+  (where these can be computed accurately).
+- Boundary patch IDs, types, associated editable source objects and normals.
+- Missing/unresolvable geometry or reasons connectivity cannot be established.
+
+IMPORTANT EXAMPLE TESTS:
+1. Room A -> permanent archway -> Room B: selecting A includes A+B.
+2. Room A -> OPEN door -> Room B: selecting A includes ONLY A.
+3. Same door CLOSED: still ONLY A.
+4. Room A -> OPEN window -> outside or another region: STOP at window.
+5. Room A -> stairwell slab void -> upper connected volume: both levels included.
+6. Two disconnected upstairs regions: do not merge just because same building.
+7. A window cut-out in a wall does not become an unconstrained fluid connection.
+8. Deleting / moving a door or wall recomputes the correct selection and patches.
+
+============================================================
+5. FLUID-DOMAIN GEOMETRY AND CFD PREPROCESSOR
+============================================================
+
+The CFD model must be derived from the EXISTING SOURCE BUILDING MODEL, but stored
+as a versioned, reproducible SCENARIO SNAPSHOT (or references plus geometry hash).
+Never let CFD preprocessing change the original floorplan/PlannerBuild geometry.
+
+Required derived outputs:
+- Closed/fluid-bounded room volume for selected connected region, with valid
+  floor, internal ceiling, walls and any floor-opening side faces.
+- Fully specified planar caps where selected domain stops at doors/windows.
+- Named boundary patches (not a featureless unclassified STL), stable patch IDs,
+  origin object references, coherent normals and dimensions/areas.
+- Internal simplified obstruction geometry for furniture/people and equipment,
+  clipped to the domain and tagged for boundary conditions and local refinement.
+- Permanent passage openings must not be accidentally capped; resulting fluid
+  surface should not contain interior artificial walls.
+- Support non-rectangular L/T/U/recess footprints already available in planner.
+- Support multiple levels, variable upper-floor footprints, floor-slab voids,
+  flat/mono-pitch/gabled/stepped INTERIOR ceilings as implemented by the editor.
+- If the active model lacks a reliable 3D solid/B-rep builder, first create a
+  tested geometry-adapter abstraction and robust surface triangulation/export.
+  Reuse existing libraries; choose Boolean/triangulation tools deliberately.
+- Distinguish 'surface preview triangulation' from an actual CFD volume mesh.
+- Keep world-to-solver transform explicit; choose deterministic SI units and
+  normals, preserving the user's chosen display units in UI.
+- Never infer walls/ceilings from visible GPU meshes alone if better semantic
+  building geometry is available.
+
+Preflight geometry QA:
+- Missing faces, unbounded regions, degenerate zero-size walls/faces, nonmanifold
+  edges, self-intersections, inverted normals, gaps beyond configured tolerance,
+  overlaps, sliver surfaces, duplicate faces, invalid openings and isolated solids.
+- Invalid vent placement (e.g. outside wall area, over a door/window, bridging
+  incompatible patches, overlapping other vents or prohibited surfaces).
+- Occupant/furniture proxies intersecting boundaries in invalid ways; report
+  clear, actionable repairs.
+- CFD air volume must be finite, positive and (except intentional inlet/outlet
+  boundary patches) topologically enclosed for meshing.
+- Explicit tolerances and tested failure modes; fail visibly, never silently
+  create an open/leaky mesh.
+
+Geometry preview:
+- Selected volume translucent (differentiate wall, ceiling, floor, cap, vent).
+- Optional section/cutaway, hide outer building floors, and selected-patch isolate.
+- Named patches selectable in both a 3D viewer and a synchronized table.
+- Show approximate dimensions/areas and accurate source object identity.
+- If volumetric meshing is not integrated, say "CFD geometry preview", not
+  "CFD mesh generated".
+
+============================================================
+6. INLETS, OUTLETS AND HVAC EQUIPMENT
+============================================================
+
+Add inlet and outlet placement tools to the existing shared editor, exposed in
+Climoptix mode. Plan, elevation and 3D interactions should use existing object
+snapping, dragging, rotation, selection, undo/redo, save/load and object properties.
+
+Vents:
+- Type: SUPPLY INLET or EXTRACT OUTLET. Future: transfer grille / relief vent,
+  recirculation return and outdoor exhaust as separately named roles.
+- Shapes: RECTANGLE (square is a rectangle) and CIRCLE. No generic arbitrary
+  shape is necessary for the first release.
+- Placement: wall, interior ceiling, and optionally floor; snap to a planar
+  host surface with a stable host face/object ID and normalized local (u,v).
+- Position, width/height or diameter, rotation where meaningful, elevation,
+  area, face normal, local orientation, label, group, manufacturer/model notes.
+- Let the user edit size and move a vent without accidentally moving the wall.
+- Require vent footprint to fit its host face with configurable edge clearance.
+- Reject overlap with doors/windows, floor openings, other vents and invalid
+  host boundaries; for curved/nonplanar hosts use an explicit unsupported-state
+  message initially instead of silently placing incorrect geometry.
+- Set supply jet direction normal to host by default, with optionally editable
+  pitch/yaw or discharge angle; show arrows in plan and 3D.
+- CFD source identity and patch ID persist across display edits where feasible.
+- Store actual geometric area and open-area / effective-area or discharge
+  coefficient as separate fields; do not conflate nominal grille size with
+  free area. Allow explicit manufacturer effective area input.
+- For future adjoint optimisation: preserve fixed shape/size, allowed host face,
+  position range, min spacing, keep-out zones and movable/locked flags.
+
+Vent operating/boundary modes (show sensible types, validate conflicts):
+- Specified volume flow (m^3/s, L/s or m^3/h in UI), direction derived from role.
+- Specified mass flow rate (kg/s).
+- Specified mean normal velocity (m/s) with consistent effective/actual area.
+- Pressure opening / pressure boundary (gauge Pa and pressure reference).
+- Fan curve / pressure-flow characteristic: future advanced interface; schema
+  and fields can be prepared now, not interpreted as operational without solver.
+- Temperature, turbulence intensity and length scale / k-epsilon or k-omega
+  inlet profiles, scalar concentration when relevant.
+- Outlet pressure or flow target depending on selected BC; one authoritative
+  controlling quantity for each boundary, not contradictory pressure+flow.
+- Supply/return equipment pairs optionally linked with a shared fan/flow source,
+  including clear treatment of recirculation versus outdoor fresh-air exchange.
+
+Placeable equipment:
+- Wall/ceiling/floor AC units, fans, return grilles, radiators, heaters,
+  convectors, computer racks or other heat sources as engineering-aware assets.
+- Reuse the visual asset and placement engine. Store orientation, obstruction
+  proxy, thermal load, supply temperature and airflow metadata separately.
+- For complex packaged AC units, represent appropriate SUPPLY + RETURN patches
+  and thermal/flow settings, not an unphysical single inlet with no return.
+- Allow user to lock manufacturer geometry and only vary equipment position.
+
+Interactive UI:
+- Dedicated 'Add supply', 'Add extract', 'Add HVAC equipment' tools and
+  left/right properties inspector; searchable 'Boundary devices' list.
+- Clearly colour or icon-code inlet vs outlet and direction arrows, with an
+  accessible legend rather than relying solely on colour.
+- Preview flow-balance check in L/s and kg/s as appropriate, with warnings
+  about intended pressure boundaries and recirculation. Never imply that mass
+  imbalance is automatically a solver failure if a pressure/open boundary is
+  intentionally provided.
+- Clicking vent on 2D plan, 3D scene or table selects the SAME source object.
+
+============================================================
+7. FURNITURE, OCCUPANTS AND OTHER PHYSICS-AWARE OBJECTS
+============================================================
+
+This is ESSENTIAL to the product; do not hide furniture from HVAC engineers.
+The shared floor planner already supports furniture/asset placement. Climoptix
+must reuse that exact placement/editing code and add an optional 'CFD proxy' and
+engineering properties for each relevant asset.
+
+Store per asset instance:
+- Source asset/instance ID and floor/host transform; visible 3D mesh URI.
+- cfdRepresentation: none | solidProxy | porousProxy | sourceOnly.
+- Proxy geometry type, dimensions, local offset, rotation, fidelity/preset,
+  mesh refinement priority, obstruction class and whether to include in CFD.
+- Thermal properties: sensible heat gain W, surface thermal condition or
+  convective model, and optionally radiant load and operating schedule.
+- Scalar sources: e.g. occupant CO2 emission rate with units and preset.
+- Notes/calibration values to allow more advanced material models later.
+
+Suggested robust simplified proxies:
+- Desk: tabletop and legs, or bounding/slab proxy by fidelity.
+- Cabinet: simple solid box.
+- Shelving/open-rack: configurable solid or porous blockage depending on type.
+- Chair/sofa: simplified blocks; preserve seat/back geometry only when relevant.
+- Person: seated/standing simplified 3D obstruction, plus sensible heat and
+  optional CO2 source. Do not assume every person is stationary; allow named
+  occupancy scenarios/schedules and counts.
+- Computer/electronics: block and named thermal power source.
+- Window: boundary patch with thermal settings, NOT furniture and NOT a
+  connection to another modelled room.
+
+Expose an object list with 'Include in CFD', proxy quality, sensible heat,
+CO2 source and relevant materials. Permit object-group presets such as office,
+meeting room, classroom. Allow manual engineering values. Warn if no valid CFD
+proxy exists for a detailed asset; fall back to a conservative labelled box
+or allow user exclusion, NEVER silently pretend detailed mesh is CFD suitable.
+
+Transforms must remain synchronized: move a chair in the floor planner => CFD
+proxy location updates and affected snapshots become stale; moving the proxy
+must NOT secretly reposition a different furniture visual asset.
+
+============================================================
+8. BOUNDARY CONDITION EDITOR (EVERY DOMAIN PATCH)
+============================================================
+
+Each selected fluid-domain boundary surface requires an identity and physically
+meaningful boundary-condition family. Build an editable PATCH TABLE and a
+synchronized 3D patch picker:
+
+Patch categories: WALL, FLOOR, CEILING, DOOR, WINDOW, SUPPLY, EXTRACT,
+PERMANENT-PASSAGE-INTERFACE (should generally disappear from external boundary
+when volumes are merged), OBJECT_SURFACE, TEMPORARY_DOMAIN_CAP, OPEN_BOUNDARY,
+SYMMETRY (expert), POROUS_INTERFACE (expert/future).
+
+Boundary editor must support, as appropriate:
+- Flow: no-slip, slip/symmetry where valid, fixed velocity or volumetric flow,
+  mass-flow, pressure inlet/outlet, atmospheric/opening boundary; expert custom
+  future mapping.
+- Thermal: adiabatic, fixed temperature, specified heat flux W/m^2, heat
+  transfer coefficient h + ambient reference T, outdoor design temperature;
+  solar/radiation settings optional/deferred if solver lacks corresponding model.
+- Scalar: CO2/species concentration and flux, including occupant source
+  contributions where applicable.
+- Vent turbulence: intensity/length scale or directly k/epsilon/omega if using
+  a compatible turbulence model.
+- Wall roughness, wall-function settings (expert), emissivity and material
+  metadata where supported by the selected physics model.
+- Door/window state: Open/Closed can pick a suggested BC preset, but NEVER
+  changes volume-selection stop behaviour. Open door/window at domain edge
+  may be modelled as pressure opening; closed one as solid with thermal BC.
+- Reference/static pressure choice, gravity direction, consistent reference
+  temperature and units; avoid over-constraining the flow problem.
+
+Allow assigning a preset to a patch GROUP (all walls, all windows, etc.) with
+per-patch overrides. Offer 'unassigned boundary' warnings and quick links to fix.
+Don't expose mathematically impossible BC combinations for chosen physics. A
+pressure outlet's specified static pressure and a flow-controlled outlet should
+not both be active unless a documented supported specialised BC warrants it.
+
+Save stable patch IDs, names, user assignments, surface area/normal, geometry
+hash and source-object references, so later OpenFOAM mapping can be deterministic.
+
+============================================================
+9. SIMULATION PARAMETERS / PHYSICS CONFIGURATION
+============================================================
+
+Allow users to define ALL important inputs needed to PREPARE an indoor CFD case,
+with progressive disclosure rather than an unusable list of expert options.
+
+Simulation case:
+- Scenario name/description; operating scenario (occupied/unoccupied, design
+  summer/winter, office ventilation, cooling, heating).
+- Analysis mode: isothermal airflow, buoyant thermal airflow, or scalar/CO2
+  transport; optionally transient. Clearly show which results are meaningful
+  for each mode; treat unsupported solver combinations as 'planned'.
+- Steady-state vs transient, solver family planned (do not hard-code a single
+  executable), compressibility / Boussinesq assumptions where appropriate.
+- Coordinate system, gravity vector, pressure reference, reference location.
+- Site/design environmental conditions: indoor/outdoor T, reference pressure,
+  air properties and humidity if used by actual model (otherwise metadata only).
+
+Fluid properties (named Air preset, expert edits):
+- Density, dynamic or kinematic viscosity, cp, conductivity, Prandtl and
+  thermal expansion coefficient where relevant. Clearly document dependent
+  fields and physical units; avoid inconsistent simultaneous independent
+  values unless operating in an expert override mode.
+- Operating/reference temperature. All values stored as solver-ready SI.
+
+Flow/turbulence:
+- Laminar or RANS; initial candidates k-epsilon and k-omega SST, with
+  physically meaningful near-wall settings. More specialised modelling only
+  where later backend supports it; don't offer LES as active without support.
+- Initial velocity components, pressure, temperature, turbulent quantities,
+  scalar/background CO2 concentrations. Define meaning of external reference
+  CO2 and concentration units (ppm vs mass/mole fraction conversions).
+- Inlet turbulence model/preset and characteristic length where relevant.
+
+Thermal/transport:
+- Enable gravity and buoyancy, wall/floor/ceiling heat transfer BCs, person
+  and equipment heat sources, supply air T and thermal boundary materials.
+- Optional scalar species and source strength (CO2 initially; possible passive
+  tracer / age-of-air strategy later). Age of air requires proper transport
+  formulation, not just a toggle that fabricates outputs.
+- AC supply/return thermal balance and non-physical mass/heat-flow warnings.
+
+Time/algorithm controls:
+- Start/end time, timestep, automatic adjustable dt, target/max Courant
+  number, write interval, statistics interval, initialisation strategy.
+- Linear/numerical scheme preset, pressure-velocity coupling preset, non-
+  orthogonal corrections, relaxation factors and tolerance controls (EXPERT
+  only and future solver-mapped).
+- Residual target per equation, physical monitor targets, max iterations/time,
+  flow-balance tolerance and convergence rules that combine numerical residuals
+  and engineering quantities (flow/temperature/pressure/CO2 monitors).
+- Stationary solver and transient convergence/display expectations differ;
+  document them in the UI.
+
+Resource settings (future-run metadata):
+- Requested CPU cores/parallel partitions, max wall time, memory limit,
+  intended container/queue, output detail, output retention and storage limits.
+- Resource fields should not suggest that OpenFOAM is currently connected.
+
+Provide default validated example presets with explicit 'sample defaults, must be
+validated for each project' wording. Allow custom configurations and 'Reset to
+preset'. Units conversions must be tested; display SI/imperial as app supports.
+
+============================================================
+10. MESH RECIPE, REFINEMENT AND QA
+============================================================
+
+Build a mesh-configuration screen rich enough that a later OpenFOAM adapter can
+construct blockMesh/snappyHexMesh (or an alternative provider) WITHOUT asking
+the user to re-enter key settings. Store mesh intent independently of mesher
+command syntax and bind to a geometry hash.
+
+Basic controls:
+- Mesh preset: Draft / Standard / Fine / Custom. These are QUALITY INTENT
+  presets and should not be represented as proven accurate for arbitrary rooms.
+- Background mesh type/resolution: target global cell length, or cells per
+  major dimension, optional base-grid origin/alignment, min/max cell size.
+- Target/max cell count and RAM/time cost estimates with clear uncertainty
+  flags. No false actual cell counts until a real mesher runs.
+- Separate tolerances for geometry cleaning, small features and snap distance.
+
+Local refinements:
+- Vent/inlet/outlet face and jet zone; stronger refinement near small vents.
+- Doors/windows/terminated caps; recirculation-relevant opening edges.
+- Walls/floor/ceiling, thermal boundaries and high gradients.
+- People and furniture proxy surfaces; heat/CO2 source zones and wakes.
+- Geometric subregions (box, sphere, zone by object) with custom target size
+  or level and region labels; avoid redundant overlapping rules where possible.
+- User-created refinement zones in 2D/3D with consistent transforms.
+
+Near-wall treatment:
+- Enable/disable boundary layers, target layer count, first-layer thickness,
+  growth ratio, minimum thickness, smoothness/coverage and optional target y+.
+- Interrogate selected turbulence/wall function and warn if y+ intentions and
+  wall treatment are incompatible. No numerical claims of achieved y+ until
+  a physical mesh and flow solution exist.
+
+Mesher / quality advanced fields:
+- Snapping, castellated mesh controls, edge/feature refinement, curvature
+  sensitivity, refinement iteration/limit, balancing and cell-removal strategy.
+- Max non-orthogonality, skewness, aspect ratio, min positive volume,
+  concavity/face angles or comparable configurable acceptance thresholds.
+- Candidate mesh generation/execution backend names stored as provider
+  choices, but do not claim provider exists if it doesn't.
+- Boundary patch mapping must survive meshing and remain traceable to vents,
+  doors, windows, people/furniture and ceiling/floor parts.
+
+What can be implemented NOW without OpenFOAM:
+- All controls, validation, named refinement regions, 3D surface-region
+  highlighting, approximate size/complexity estimates (label as estimates),
+  geometry export manifest and persistent mesh recipe.
+
+What cannot be honestly implemented without a real mesher:
+- Actual 3D finite-volume cell tessellation, cell-quality histogram,
+  checkMesh output or achieved mesh conformity. Keep those placeholders clearly
+  disabled/not connected.
+
+============================================================
+11. REVIEW, VALIDATION, EXPORT AND FUTURE RUN MANAGEMENT
+============================================================
+
+Preflight checker should produce a detailed report grouped by:
+  Geometry, connectivity, vents, BCs, fluid/physics, mesh, resources and
+  expected analysis outputs. Each item has severity (error/warning/info),
+  stable code, object link, human-readable reason and repair action.
+
+Blocking examples:
+- No domain, unbounded/invalid fluid volume, disconnected selection, zero/NaN
+  dimension, missing mandatory boundary assignment, invalid vent host/area,
+  impossible temperature/pressure units, mutually exclusive BC conflict,
+  invalid/refinement size, non-positive timestep or impossible solver settings.
+
+Warnings, not automatic hard failures where context matters:
+- No supply, no outlet, mass imbalance with no pressure opening, inadequate
+  physical constraint, vent too close to wall/furniture, furniture too detailed
+  relative to requested cell size, missing heat/CO2 data in thermal/scalar mode,
+  target resources likely too low, unsupported ceiling shape for mesh.
+
+Use a stable JSON representation of the complete CFD scenario, plus a
+ geometry/patch manifest, recipe files and an optional surface-geometry export
+(if implementation is ready and valid). Clearly state exporter capabilities:
+writing a JSON manifest is NOT equivalent to creating a runnable OpenFOAM case.
+
+Allow explicit actions:
+- Save scenario to project / load / duplicate / restore revision if project
+  already has versioning / export JSON / import validated JSON.
+- Download preflight report and human-readable settings summary.
+- Export surface geometry + BC patch manifest only if geometry builder can
+  produce reliable faces/normals; otherwise report the limitation.
+- Future (disabled until adapter): Generate mesh, Run CFD, Stop/Cancel, Retry,
+  view console logs, inspect convergence graphs, download results.
+
+All scenario snapshots include modelRevision/geometryHash, scenarioRevision,
+units, application schemaVersion, timestamp and backendProvider identity/status.
+Mark an existing run/mesh 'STALE' if geometry, BC, physics or mesh inputs change.
+Never present old results as current for an edited model.
+
+============================================================
+12. OPENFOAM CONNECTION — KEEP OPEN, DO NOT IMPLEMENT YET
+============================================================
+
+Create a strict provider/adapter boundary. CFD editors and data model must NOT
+call OpenFOAM executables directly or embed solver-specific file templates all
+over frontend code. Use a backend interface for future Python / foamlib control,
+allowing later change to other solvers or meshing tools.
+
+Illustrative capabilities / method CONTRACT (adapt names to existing stack):
+
+  CfdProvider.capabilities() -> supported physics, mesh options, output types
+  CfdProvider.validateScenario(scenario, domainGeometry) -> diagnostics
+  CfdProvider.prepareGeometry(scenarioSnapshot) -> geometry/patch package
+  CfdProvider.prepareMeshRecipe(scenarioSnapshot) -> solver-neutral recipe
+  CfdProvider.generateCase(scenarioSnapshot) -> future case artifact
+  CfdProvider.submitMesh(scenarioId, revision) -> future async jobId
+  CfdProvider.submitRun(scenarioId, revision) -> future async jobId
+  CfdProvider.getJobStatus(jobId) -> progress, errors, logs
+  CfdProvider.cancelJob(jobId) -> cancellation result
+  CfdProvider.getResultManifest(jobId) -> metadata and artifacts
+
+Add a REAL 'Not connected' or 'Preparation only' provider now, returning explicit
+unsupported-capability statuses for solver and meshing actions. This must be
+implemented, not a mock claiming success. Future OpenFoamProvider can:
+- Generate OpenFOAM geometry/patch files and dictionaries.
+- Use Python + foamlib to modify/run cases and monitor the solver.
+- Support selectable vetted OpenFOAM distributions/versions and containerised
+  execution on Railway or detached compute services (infrastructure TBD).
+- Launch background jobs with timeouts, CPU/memory quotas, logs, progress,
+  cancellation and saved artefacts through a queue/object store.
+- Create fields from real solver output and visualise via a defined data format
+  (e.g. VTK series / server-derived slices) without coupling UX to solver files.
+- Track solver version, mesher version, config hashes and physics/mesh provenance.
+
+Design execution state machine, though remote execution is deferred:
+  Draft -> Validated -> Queued -> Meshing -> MeshCheck -> Running -> Postprocess
+  -> Completed, with Failed/Cancelled and Stale states.
+Only Draft, Validated/Ready and NotConnected states need be actively reachable
+until there is a working provider; do not fake Queued/Running/Completed statuses.
+
+For user safety/security and licensing architecture:
+- Don't ever expose arbitrary shell commands, paths, executable options or
+  unvalidated file templates from user input in future backend calls.
+- Use hardened validation, resource/size limits, tenant isolation, solver job
+  budgets, persistent logs and traceable outputs.
+- Keep LGPL/GPL and dependencies reviewed before distributed/on-prem use;
+  process/API separation is not by itself a guarantee of licensing compliance.
+- Prefer separate compute-worker packaging when adding real OpenFOAM later;
+  UI + project persistence should remain independent of solver deployment.
+
+============================================================
+13. FUTURE CFD RESULTS AND PROPRIETARY OPTIMISATION HOOKS
+============================================================
+
+Prepare display components and TYPE CONTRACTS for later CFD fields without
+fabricating numerical outputs:
+- Scalar fields: temperature, pressure, speed magnitude, CO2 concentration,
+  tracer/air age (when relevant), turbulence quantities.
+- Vector fields: velocity and streamlines; slices, isosurfaces, room sections,
+  surface heatmaps; derived summary metrics (only with real computed data).
+- Probe points/lines, occupied-zone statistics, threshold/comfort regions,
+  average/percentile values, air change effectiveness, before/after comparisons,
+  convergence and mass/energy balance reports.
+- Export results, image snapshots and later PDF/Excel-style reporting using the
+  existing application infrastructure, not an entirely new reporter.
+
+Placeholder UI: 'Results will appear when an OpenFOAM provider is connected.'
+No fabricated velocity streamlines or colour plots presented as actual CFD.
+
+Prepare optional optimisation metadata at VENT INSTANCE level:
+- Optimisable yes/no, host face, rectangular/circular fixed footprint,
+  centroid variables in host-surface local coordinates, allowable placement
+  polygon, clearance, collision/spacing rules, max displacement, locked vents.
+- Future objectives: air quality, temperature uniformity, occupied-zone
+  draught limits, contaminant removal, energy/fan power, comfort scores.
+- Allow objective weights, hard constraints and convergence settings to be
+  defined in a future optimisation screen but clearly label unsupported.
+
+LONGER-TERM TECHNOLOGY (DO NOT BUILD IN THIS TASK):
+- Fixed CFD background mesh with a thin porous-resistance layer on relevant
+  walls; movable low-resistance masks representing fixed-size rectangle or
+  circle supply/extract openings.
+- Primal CFD + adjoint gradient field -> integrate/project sensitivities onto
+  each vent's X/Z (host local u/v) translation coordinates; use an optimizer to
+  update vent positions with spacing/geometry constraints.
+- No brute-force design-of-experiments requirement. Projected sensitivities and
+  objective development constitute proprietary engineering IP.
+- Even after adjoint placement, a final mesh with real vent geometry and
+  verification CFD will be required before claiming physical performance.
+- Treat the above as experimental R&D requiring verification/gradient checks.
+  Current OpenFOAM cannot be assumed to provide every required porous-resistance
+  sensitivity out of the box.
+
+============================================================
+14. DATA MODEL / SERIALISATION (ILLUSTRATIVE)
+============================================================
+
+Adapt to the real repository types, NEVER mechanically replace existing objects.
+Build a VERSIONED, strongly typed schema and migration approach.
+
+BuildingProject
+  existing building/floors/room/roof/ceiling/assets/modelRevision
+  cfdScenarios: CFDScenario[]
+
+CFDScenario
+  id, name, description, schemaVersion, createdAt, updatedAt
+  sourceBuildingId, sourceGeometryRevision, sourceGeometryHash
+  seedRoomId, connectedRegionIds[], connectedFloorIds[], selectedDomainManifest
+  devices: CfdDevice[]
+  cfdAssetOverrides: CfdAssetOverride[]
+  boundaryConditions: CfdBoundaryCondition[]
+  physics: CfdPhysicsConfig
+  mesh: CfdMeshRecipe
+  outputRequests: CfdOutputRequests
+  resources: CfdResourceConfig
+  optimisation: CfdOptimisationConfig (future/inactive)
+  validationReport, providerId, providerCapabilities, scenarioStatus
+  jobIds[], resultManifests[] (future)
+
+CfdDevice
+  id, visual/sourceAssetId?, type: supply|extract|hvacUnit|heater|...
+  hostFaceId, hostObjectId, hostLevelId, positionLocalUV, orientation
+  footprint: { shape: rectangle|circle, width?, height?, diameter? }
+  mounting, operatingConditions, boundaryPatchId
+  fixedSize, canOptimizePosition, permissiblePlacementArea?, clearance
+
+CfdBoundaryCondition
+  stablePatchId, category, sourceObjectId, sourceLevelId, geometryHash
+  flowBC, thermalBC, speciesBC, turbulenceBC, roughness/material extras
+
+CfdMeshRecipe
+  preset, targetCellLength, minimumCellLength, maximumCellLength
+  cellBudget, baseGrid, localRefinements[], boundaryLayers,
+  snapControls, qualityThresholds, geometryTolerances, providerOverrides
+
+CfdPhysicsConfig
+  analysisMode, steadyOrTransient, fluidProperties, gravity,
+  pressureReference, temperatureReference, turbulenceModel,
+  initialFields, timeSettings, numericalControls, convergenceMonitors
+
+Essential storage rules:
+- Stable IDs + robust references; avoid copying the building into each scenario.
+- Recompute derived 3D surface geometry deterministically from floorplan+setup.
+- Store optional immutable snapshots for reproducible runs once jobs exist.
+- A CFD scenario must not mutate the building's authoritative floorplan/roof.
+- Multiple CFD scenarios can share a building without collisions or edits
+  leaking from one scenario to another.
+- Backward compatibility: existing projects open as usual with zero CFD scenarios.
+- Lossless round-trip of scenario data; preserve unknown future version fields
+  where practical or show explicit migration/version incompatibility.
+- Validate imported JSON, ranges, references and resource limits; never trust
+  arbitrary content from user-uploaded configuration or geometry.
+
+============================================================
+15. INCREMENTAL IMPLEMENTATION SEQUENCE (MUST REMAIN RUNNABLE)
+============================================================
+
+Do not build everything in one giant monolithic commit. Work in small, tested
+slices. Complete as much as is reasonable and clearly identify anything still
+staged. Prioritise end-to-end correctness over attractive-but-inert panels.
+
+PHASE A: Discover architecture; introduce feature mode/router, CFDScenario model,
+         storage migration, scenario list/navigation. Preserve planner behaviour.
+PHASE B: Domain selection with rigorous graph connectivity and hard stops for
+         all door/window states. Implement transparent preview and patch list.
+PHASE C: Derived CFD air-volume representation, geometry validation, 3D domain
+         and boundary patch inspector; handle floors/ceilings/openings correctly.
+PHASE D: Add inlet/outlet placement/engineering properties; connect furniture,
+         occupancy and heat-source CFD proxies; maintain undo/redo and saves.
+PHASE E: Boundary-condition and physics editors with presets, unit validation,
+         dependencies and group overrides.
+PHASE F: Mesh-configuration editor, custom refinements and accurate preflight
+         diagnostics/estimated complexity, then export scenario+patch manifests.
+PHASE G: Disabled honest solver/results views and typed adapter contracts;
+         robust documentation, regression tests and demo project fixtures.
+
+Use staged feature flags if useful. Do not enable a menu entry that leads to a
+broken step and do not call a disabled button a 'working CFD simulator'.
+
+============================================================
+16. ACCEPTANCE TEST MATRIX — MUST TEST REAL BEHAVIOUR
+============================================================
+
+A. PLATFORM:
+[ ] Launch Climoptix from both FreeFloorplan3D and PlannerBuild without fork.
+[ ] Switch between original editor and CFD workspace without lost changes.
+[ ] Legacy single-floor projects and all prior editing tools keep working.
+[ ] Multi-floor, smaller upper footprint, roof/ceiling and floor voids survive.
+[ ] Multiple scenarios per project load/save independently; duplicate works.
+
+B. TOPOLOGY (CRITICAL):
+[ ] Seed room with no permanent openings -> only that space selected.
+[ ] Two rooms joined by permanent open archway -> union selected.
+[ ] Open door -> STOP; closed door -> STOP; partially open door -> STOP.
+[ ] Open window -> STOP; closed window -> STOP.
+[ ] Windows/doors still have editable BC patch surfaces, if in domain.
+[ ] Unobstructed slab opening connects above/below as applicable.
+[ ] Open-plan labelled subareas are not wrongly separated by room names.
+[ ] Explicit non-door wall opening is traversed; solid shared wall is not.
+[ ] No joining across merely touching floors or rooms / invalid geometry.
+[ ] Domain shows included region IDs, connected floors and stopping patches.
+[ ] Repositioning/deleting wall/opening/door updates domain or marks stale.
+
+C. VENTS/ASSETS:
+[ ] Add rectangular, square and circular inlet/extract on suitable faces.
+[ ] Reposition/rotate/resize with correct world/local coordinates and normals.
+[ ] Reject vents crossing host boundaries or overlapping doors/windows.
+[ ] Inlet/outlet areas and velocity/flow conversions are dimensionally sound.
+[ ] Supply/outlet flow balance warning is correct and accounts for pressure BC.
+[ ] Furniture/people visual and proxy transforms remain in sync.
+[ ] Occupant heat and CO2 are editably stored, unit-labelled and serialised.
+[ ] Moving furniture invalidates derived geometry and stale mesh summaries.
+
+D. PHYSICS/BC/MESH:
+[ ] Every real domain boundary patch has an inspectable stable ID and category.
+[ ] Assign one BC across a group then override a single window or wall.
+[ ] Distinguish open/closed door BC from domain connectivity, always.
+[ ] Set SI/imperial or app-supported unit fields and get correct SI storage.
+[ ] Select isothermal vs buoyant vs scalar modes, turbulence and transient.
+[ ] Reject NaN, negative sizes, inconsistent pressures, invalid timesteps.
+[ ] Set mesh preset and override near-wall, vent, furniture refinement zones.
+[ ] Check budget thresholds and boundary-layer controls are saved.
+[ ] Invalid geometry/mesh/BC scenario shows actionable errors.
+[ ] Valid scenario exports JSON with patch, domain and mesh recipe manifest.
+
+E. FUTURE PROVIDER / HONESTY:
+[ ] No OpenFOAM executable is required to use/save/configure CFD mode.
+[ ] 'Run/Mesh' visibly unavailable without a connected provider.
+[ ] No fake converged residuals, heatmaps, cell counts or success statuses.
+[ ] Provider boundary is typed and independently mockable in TESTS only.
+[ ] Results views show appropriate empty states and future data contracts.
+[ ] Changing geometry/settings marks any prior scenario snapshots stale.
+
+F. CODE QUALITY:
+[ ] Existing tests pass. Add unit tests for connectivity and BC selections.
+[ ] Add geometry and serialization round-trip / migration tests.
+[ ] Add UI integration tests for domain/vent editing and phase navigation.
+[ ] Add sample 'open-plan two rooms', 'two rooms with open door',
+    'two-floor atrium', 'sloped-ceiling office', 'office with occupants' scenes.
+[ ] Verify loading/rendering/undo-redo/performance under typical projects.
+[ ] Run type checks, lints and test/build commands supported by repo.
+
+============================================================
+17. SPECIFIC RISK REGISTER AND CLARIFICATIONS
+============================================================
+
+1. DOOR/WINDOW HARD STOP IS INTENTIONAL, NOT A BUG. In reality air can cross an
+   open door, but this MVP models it as a CFD DOMAIN BOUNDARY, not a portal
+   connecting rooms. Prescribe the appropriate flow/pressure BC at the plane.
+
+2. PERMANENT OPENINGS ARE DIFFERENT from open doors. If the present floorplan
+   data cannot distinguish an archway from an open door, introduce an explicit
+   passage/opening type rather than guessing from a state flag.
+
+3. GEOMETRIC 'WATERTIGHT' does NOT mean all patches are no-slip walls. An open
+   boundary is geometrically capped and physically assigned an opening BC.
+
+4. MULTI-ROOM CONNECTIONS MUST BE PHYSICALLY CORRECT. No blind graph union of
+   rooms with merely adjacent walls. If robust connectivity detection is hard,
+   use explicit portal semantics and validation. Avoid inconsistent results.
+
+5. ROOF VS CEILING: Only the INTERNAL ceiling should bound interior CFD air.
+   An external pitched roof above a suspended ceiling is outside the CFD room.
+
+6. PRECISION: Small vents and furniture may need much smaller cells than global
+   room dimensions; keep cell count estimates labelled, constrain tiny shapes.
+
+7. PEOPLE: A human proxy blocks flow AND can emit sensible heat and CO2. Don't
+   assume one scalar per person is accurate for every activity/temperature.
+
+8. PHYSICS COMPLEXITY: UI can store advanced options, but actual compatible
+   OpenFOAM mapping and validated defaults must be demonstrated later. Never
+   mark an unimplemented model 'supported' just because it appears in a form.
+
+9. CFD RESULTS: Setting fields and settings does not equal actually solving.
+   OpenFOAM and adjoint connectivity is FUTURE WORK. No placeholder output that
+   masquerades as computed results.
+
+10. OPTIMISATION: User-placed vent positions and constrained movable footprints
+    must be represented now, but adjoint field projection / porous mask algorithm
+    remains R&D and is NOT to be implemented until after CFD validation.
+
+11. PRODUCT SCOPE: Avoid full BIM, whole-building airflow through arbitrary
+    doors/windows, detailed radiation, heat conduction through whole walls,
+    HVAC control systems or equipment catalogues in this first implementation.
+
+============================================================
+18. REQUIRED CODEX COMPLETION OUTPUT
+============================================================
+
+After implementation, provide a concise but precise handover containing:
+- Actual app architecture discovered and the selected integration approach.
+- List of changed/added source files and major functions/components.
+- What was implemented and what remains stubbed/deferred.
+- How to launch Climoptix, create a scenario, select connected volume, place
+  vents, set BC/physics/mesh parameters, validate and export a scenario.
+- What the hard stop at doors/windows means and example tests demonstrating it.
+- Data schema and migration details; how geometry snapshots invalidate.
+- Provider adapter interface for future OpenFOAM/foamlib integration.
+- Commands/tests run and their exact outcomes; known limitations and risks.
+- A proposed minimum next technical milestone to connect OpenFOAM later.
+
+WORK PRINCIPLES:
+- Reuse the existing geometry/scene/furniture infrastructure everywhere.
+- Keep UI intuitive, professional and progressive, with expert options available.
+- Implement solid fundamentals and tests before adding decorative complexity.
+- Preserve backwards compatibility and do not break the current core planner.
+- Keep commercial packaging/branding separate from technical architecture.
+- Do not make unsupported physics, meshing or solver-readiness claims.
+
+Proceed: inspect the repository, write a short execution plan, then implement.

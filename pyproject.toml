@@ -12,6 +12,9 @@ dependencies = [
   "uvicorn[standard]>=0.35,<1",
 ]
 
+[project.optional-dependencies]
+cfd = ["foamlib==1.7.3"]
+
 [dependency-groups]
 dev = [
   "httpx>=0.28,<1",

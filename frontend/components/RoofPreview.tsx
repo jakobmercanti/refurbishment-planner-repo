@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { Bounds, Center, OrbitControls, useBounds } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
-import type { RoofConfiguration } from "@/lib/buildingDocument";
+import type { FloorContent, RoofConfiguration } from "@/lib/buildingDocument";
 import type { PlanPolygons } from "@/lib/buildingGeometry";
 import { minimumRoofHeight } from "@/lib/buildingDocument";
-import { BuildingRoof } from "./BuildingSurfaces";
+import { BuildingRoof, CombinedBuildingRoof } from "./BuildingSurfaces";
 import { StableCanvas } from "./StableCanvas";
 
 function PreviewFrame({geometryKey,fitRequest,zoom}:{geometryKey:string;fitRequest:number;zoom:number}) {
@@ -19,9 +19,9 @@ function PreviewFrame({geometryKey,fitRequest,zoom}:{geometryKey:string;fitReque
 }
 
 /** Reuses the actual building roof surfaces; never feeds fit/thermal decisions. */
-export function RoofPreview({roof,footprint}:{roof:RoofConfiguration|null;footprint:PlanPolygons}) {
+export function RoofPreview({roof,footprint,content}:{roof:RoofConfiguration|null;footprint:PlanPolygons;content?:FloorContent}) {
   const [zoom,setZoom]=useState(1),[fitRequest,setFitRequest]=useState(0);
-  const geometryKey=roof?JSON.stringify([footprint,roof.type,roof.orientationDeg,roof.lowHeightMm,roof.highHeightMm,roof.thicknessMm,roof.splitFraction,roof.ceilingMode,roof.ceilingHeightMm]):"invalid";
+  const geometryKey=roof?JSON.stringify([footprint,roof,content?.rooms.map(room=>[room.id,room.vertices])]):"invalid";
   return <section className="building-roof-preview" aria-label="Live roof preview">
     <div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div>
     <div className="building-roof-preview-canvas">
@@ -29,7 +29,7 @@ export function RoofPreview({roof,footprint}:{roof:RoofConfiguration|null;footpr
         <ambientLight intensity={1.6}/><directionalLight position={[4,7,5]} intensity={2.7}/><directionalLight position={[-4,2,-3]} intensity={.8}/>
         <Bounds fit clip observe margin={1.25} maxDuration={.25}>
           <PreviewFrame geometryKey={geometryKey} fitRequest={fitRequest} zoom={zoom}/>
-          <Center cacheKey={geometryKey}><BuildingRoof footprint={footprint} roof={roof} wallTop={minimumRoofHeight(roof)}/></Center>
+          <Center cacheKey={geometryKey}>{content?<CombinedBuildingRoof content={content} roof={roof}/>:<BuildingRoof footprint={footprint} roof={roof} wallTop={minimumRoofHeight(roof)}/>}</Center>
         </Bounds>
         <OrbitControls makeDefault enablePan={false} enableZoom={false}/>
       </StableCanvas>:<p role="status">{footprint.length?"Enter valid roof dimensions to update the preview.":"Draw an enclosed room on the top floor to preview the roof."}</p>}

@@ -56,7 +56,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const heatingLayout = useHeatingLayout();
   const electrical = categoryFilter === "electric";
   const heating = categoryFilter === "heating";
-  const listedRoomObstacles = electrical ? room.obstacles.filter(isElectricalObstacle) : heating ? room.obstacles.filter(isHeatingElement) : categoryFilter === "people" ? room.obstacles.filter(isCataloguePerson) : room.obstacles.filter(item => !isHeatingElement(item));
+  const listedRoomObstacles = electrical ? room.obstacles.filter(isElectricalObstacle) : heating ? room.obstacles.filter(isHeatingElement) : categoryFilter === "people" ? room.obstacles.filter(isCataloguePerson) : categoryFilter==="balustrades"?room.obstacles.filter(item=>item.representation_key?.startsWith("balustrade-")):room.obstacles.filter(item => !isHeatingElement(item));
   const [mountingGap, setMountingGap] = useState(550);
   const [baseUnitId, setBaseUnitId] = useState("");
   const [mountingError, setMountingError] = useState("");

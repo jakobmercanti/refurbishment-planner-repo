@@ -6,7 +6,7 @@ import { projectScope } from "@/lib/projectScope";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import { validateFloorOpening } from "@/lib/buildingGeometry";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import styles from "./planner-guide.module.css";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
@@ -27,6 +27,7 @@ import { FullFloorplanEditor } from "@/components/FullFloorplanEditor";
 import { FloatingToolbar, positionedToolbarDock } from "@/components/FloatingToolbar";
 import { PersonEditor } from "@/components/PersonEditor";
 import { PlannerBuildWorkspace } from "@/components/PlannerBuildWorkspace";
+import { ClimoptixWorkspace } from "@/components/ClimoptixWorkspace";
 import { usePlannerBuildView } from "@/lib/plannerBuildView";
 import { constrainObstacleToRoom, requiresWallMount, DEFAULT_OBSTACLE_WALL_LOCK, obstacleFitsInRoom, transferObstacle, type PlacementCandidate, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
 import { normalizeRoomPerson } from "@/lib/person";
@@ -102,7 +103,13 @@ export default function Home() {
   const [uiSettings, setUiSettings] = useState<SoftwareUi | null>(null);
   const [demo, setDemo] = useState<DemoResponse | null>(null);
   const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
-  const [workspaceMode, setWorkspaceMode] = useState<"FLOORPLAN" | "PLANNERBUILD">("FLOORPLAN");
+  const [workspaceMode, setWorkspaceModeState] = useState<"FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX">("FLOORPLAN");
+  const workspaceRequest = useRef(0);
+  function setWorkspaceMode(nextMode: typeof workspaceMode) {
+    workspaceRequest.current++;
+    setWorkspaceModeState(nextMode);
+  }
+  const [cfdView,setCFDView]=useState<"2D"|"3D">("3D");
   const [plannerBuildView, setPlannerBuildView] = usePlannerBuildView();
   const [projectRooms, setProjectRooms] = useState<Room[]>([]);
   const [viewerRoomSelection, setViewerRoomSelection] = useState(FULL_FLOORPLAN_SELECTION);
@@ -289,7 +296,8 @@ export default function Home() {
     setElectricalLayoutRequest((request) => request + 1);
   }
 
-  async function changeWorkspaceMode(nextMode: "FLOORPLAN" | "PLANNERBUILD") {
+  async function changeWorkspaceMode(nextMode: "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX") {
+    const request = ++workspaceRequest.current;
     let demoMode = false;
     if (nextMode === "PLANNERBUILD") {
       let available = false;
@@ -306,6 +314,9 @@ export default function Home() {
           demoMode = true;
         }
       }
+      // An older account lookup must never override a later workspace choice,
+      // including a direct return from the shared service/source editors.
+      if (request !== workspaceRequest.current) return;
       if (!available && !demoMode) {
         openPlansDialog();
         return;
@@ -458,7 +469,7 @@ export default function Home() {
       return;
     }
     const selectedObstacle = (demo ? (projectRooms.length ? projectRooms : [demo.room]) : []).find(room => room.id === selection.roomId)?.obstacles.find(obstacle => obstacle.id === selection.id);
-    setViewerAddToPlanMode(selectedObstacle?.representation_key?.startsWith("people-") ? "PEOPLE" : selectedObstacle?.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : selectedObstacle && isHeatingElement(selectedObstacle) ? "HEATING" : "FURNITURE");
+    setViewerAddToPlanMode(selectedObstacle?.representation_key?.startsWith("balustrade-")?"BALUSTRADES":selectedObstacle?.representation_key?.startsWith("people-") ? "PEOPLE" : selectedObstacle?.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : selectedObstacle && isHeatingElement(selectedObstacle) ? "HEATING" : "FURNITURE");
     setViewerOpeningEditRequest(null);
     setViewerElementEditRequest((current) => ({ ...selection, requestId: (current?.requestId ?? 0) + 1 }));
     setCompactViewerTool("viewer-analysis");
@@ -610,12 +621,12 @@ export default function Home() {
       <header className="topbar">
         <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar buildingView={buildingView} onBuildingViewChange={changeBuildingView} roofAvailable={(roofPreview??building.roof).enabled!==false} onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} workspaceMode={workspaceMode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onDisplayUnitsChange={(units) => setPreferences((current) => ({ ...current, units }))} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenElectricalLayout={openElectricalLayout} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
-          <label className="workspace-mode-control"><span className="workspace-mode-label">Workspace</span><select className="workspace-mode-select" aria-label="Workspace" value={workspaceMode} onChange={(event) => void changeWorkspaceMode(event.target.value as "FLOORPLAN" | "PLANNERBUILD")}><option value="FLOORPLAN">Floorplan</option><option value="PLANNERBUILD">PlannerBuild</option></select></label>
-          <div className="app-nav-modes" role="group" aria-label={workspaceMode === "FLOORPLAN" ? "Floorplan view" : "PlannerBuild view"}>
+          <label className="workspace-mode-control"><span className="workspace-mode-label">Workspace</span><select className="workspace-mode-select" aria-label="Workspace" value={workspaceMode} onChange={(event) => void changeWorkspaceMode(event.target.value as "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX")}><option value="FLOORPLAN">Floorplan</option><option value="PLANNERBUILD">PlannerBuild</option><option value="CLIMOPTIX">Climoptix CFD</option></select></label>
+          <div className="app-nav-modes" role="group" aria-label={workspaceMode === "FLOORPLAN" ? "Floorplan view" : workspaceMode==="CLIMOPTIX"?"Climoptix view":"PlannerBuild view"}>
             {workspaceMode === "FLOORPLAN" ? <>
               <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => { setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("EDITOR"); }}>2D</button>
               <button aria-pressed={mode === "ANALYSIS"} className={mode === "ANALYSIS" ? "active" : ""} onClick={enterViewer}>3D</button>
-            </> : <select className="workspace-mode-select planner-build-view-select" aria-label="PlannerBuild view" value={plannerBuildView} onChange={event => setPlannerBuildView(event.target.value as "GANTT" | "DASHBOARD" | "QUOTE")}><option value="GANTT">Gantt</option><option value="DASHBOARD">Dashboard</option><option value="QUOTE">Quote Generator</option></select>}
+            </> : workspaceMode==="CLIMOPTIX"?<>{(["2D","3D"]as const).map(v=><button key={v} aria-pressed={cfdView===v} className={cfdView===v?"active":""} onClick={()=>setCFDView(v)}>{v}</button>)}</>:<select className="workspace-mode-select planner-build-view-select" aria-label="PlannerBuild view" value={plannerBuildView} onChange={event => setPlannerBuildView(event.target.value as "GANTT" | "DASHBOARD" | "QUOTE")}><option value="GANTT">Gantt</option><option value="DASHBOARD">Dashboard</option><option value="QUOTE">Quote Generator</option></select>}
           </div>
           <AccountStatusButton />
         </nav>
@@ -653,7 +664,7 @@ export default function Home() {
                 key={`viewer-${viewerAddToPlanMode}-${selectedViewerRoom.id}-${viewerElementEditRequest?.requestId ?? "new"}`}
                 apiUrl={API_URL}
                 refreshKey={Number(catalogueOpen) + Number(catalogueManagerOpen)}
-                categoryFilter={viewerAddToPlanMode === "PEOPLE" ? "people" : viewerAddToPlanMode === "ELECTRICAL" ? "electric" : viewerAddToPlanMode === "HEATING" ? "heating" : undefined}
+                categoryFilter={viewerAddToPlanMode === "BALUSTRADES"?"balustrades":viewerAddToPlanMode === "PEOPLE" ? "people" : viewerAddToPlanMode === "ELECTRICAL" ? "electric" : viewerAddToPlanMode === "HEATING" ? "heating" : undefined}
                 room={selectedViewerRoom}
                 displayUnits={preferences.units}
                 onChange={obstacles => applyObstacles(obstacles, selectedViewerRoom.id)}
@@ -705,6 +716,7 @@ export default function Home() {
         </section>
       ) : null}
       </div>
+      <section className="climoptix-screen" hidden={workspaceMode!=="CLIMOPTIX"} aria-hidden={workspaceMode!=="CLIMOPTIX"}><ClimoptixWorkspace active={workspaceMode==="CLIMOPTIX"} key={`${local.project.projectId}|${local.documentSession}`} project={local.project} apiUrl={API_URL} view={cfdView} onView={setCFDView} onChange={(next,checkpoint)=>local.setCFDScenarios(next,scopeToken,checkpoint)} onUndo={undoProject} onRedo={redoProject} canUndo={local.canUndo} canRedo={local.canRedo} onEditBuilding={()=>{setPlacement(null);setMode("EDITOR");void changeWorkspaceMode("FLOORPLAN");}}/></section>
       <section className="planner-build-screen" hidden={workspaceMode !== "PLANNERBUILD"} aria-hidden={workspaceMode !== "PLANNERBUILD"}>{local.project ? <PlannerBuildWorkspace project={local.project} view={plannerBuildView} displayUnits={preferences.units} defaultCurrency={defaultCurrency} onQuotesChange={local.setQuotes} onSaveQuotes={local.saveQuotes} onActivitiesChange={(activities) => local.setPlannerBuild({ ...(local.project?.plannerBuild ?? { activities: [] }), activities })} demoMode={plannerBuildDemoMode} onDemoLimitReached={openPlansDialog} /> : <p className="pb-loading-state" role="status">Loading project data…</p>}</section>
 {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && (requiresWallMount(placement.obstacle) ? " · Snaps and aligns to a wall" : " · R to rotate")}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
       {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={asset=>{if(local.isScopeCurrent(scopeToken))local.addAsset(asset);}} onChange={next=>{if(local.isScopeCurrent(scopeToken))local.setInstances(next);}} onClose={() => setAssetsOpen(false)} />}

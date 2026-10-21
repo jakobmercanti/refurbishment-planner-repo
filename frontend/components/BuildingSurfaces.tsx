@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
-import { buildRoofSurfaces, roofFrame, subtractVoids, type BuildingSurface, type PlanPolygons } from "@/lib/buildingGeometry";
-import type { FloorOpening, RoofConfiguration, RoofFinish } from "@/lib/buildingDocument";
+import { buildingRoofZones, buildRoofSurfaces, roofFrame, subtractVoids, type BuildingSurface, type PlanPolygons } from "@/lib/buildingGeometry";
+import { minimumRoofHeight, type FloorContent, type FloorOpening, type RoofConfiguration, type RoofFinish } from "@/lib/buildingDocument";
 import { resolvedRoofFinish, ROOF_MATERIALS, roofTexturePixels } from "@/lib/roofAppearance";
+import { OpeningBalustrades } from "./BalustradeFixture";
 
 export function shapesFromPolygons(polygons:PlanPolygons) {
   return polygons.map(poly=>{
@@ -29,14 +30,18 @@ function SurfaceMesh({surface,roof,frame}:{surface:BuildingSurface;roof:RoofConf
   useEffect(()=>()=>geometry.dispose(),[geometry]);
   return <mesh geometry={geometry} castShadow receiveShadow userData={{buildingSurface:surface.kind,roofMaterial:finish.material}}>{surface.kind==="ROOF"?<RoofMaterial finish={finish}/>:<meshStandardMaterial color={surface.kind==="FASCIA"||surface.kind==="STEP"?finish.colour:surface.kind==="CEILING"?"#f5f3ed":"#c8c3b9"} side={THREE.DoubleSide} roughness={.85}/>}</mesh>;
 }
-export function BuildingRoof({footprint,roof,wallTop}:{footprint:PlanPolygons;roof:RoofConfiguration;wallTop:number}) {
-  const surfaces=useMemo(()=>buildRoofSurfaces(footprint,roof,wallTop),[footprint,roof,wallTop]);
-  const frame=useMemo(()=>roofFrame(footprint,roof),[footprint,roof]);
+export function BuildingRoof({footprint,roof,wallTop,frameFootprint=footprint}:{footprint:PlanPolygons;roof:RoofConfiguration;wallTop:number;frameFootprint?:PlanPolygons}) {
+  const surfaces=useMemo(()=>buildRoofSurfaces(footprint,roof,wallTop,frameFootprint),[footprint,roof,wallTop,frameFootprint]);
+  const frame=useMemo(()=>roofFrame(frameFootprint,roof),[frameFootprint,roof]);
   return <group name="Building roof and interior ceiling">{surfaces.map((s,i)=><SurfaceMesh key={i} surface={s} roof={roof} frame={frame}/>)}</group>;
+}
+export function CombinedBuildingRoof({content,roof}:{content:FloorContent;roof:RoofConfiguration}) {
+  const zones=useMemo(()=>buildingRoofZones(content,roof),[content,roof]);
+  return <group name="Combined room roofs">{zones.map(zone=><group key={zone.id} userData={{roofRoomId:zone.id}}><BuildingRoof footprint={zone.footprint} frameFootprint={zone.frameFootprint} roof={zone.roof} wallTop={minimumRoofHeight(zone.roof)}/></group>)}</group>;
 }
 export function BuildingSlab({footprint,openings,thicknessMm}:{footprint:PlanPolygons;openings:FloorOpening[];thicknessMm:number}) {
   const shapes=useMemo(()=>shapesFromPolygons(subtractVoids(footprint,openings)),[footprint,openings]);
-  return <group name="Wall-aligned floor slab">{shapes.map((shape,i)=><mesh key={i} rotation={[-Math.PI/2,0,0]} position={[0,-thicknessMm*.001,0]} receiveShadow castShadow userData={{buildingSlab:true}}><extrudeGeometry args={[shape,{depth:thicknessMm*.001,bevelEnabled:false}]}/><meshStandardMaterial color="#b9b3a8" roughness={.88} side={THREE.DoubleSide}/></mesh>)}</group>;
+  return <group name="Wall-aligned floor slab">{shapes.map((shape,i)=><mesh key={i} rotation={[-Math.PI/2,0,0]} position={[0,-thicknessMm*.001,0]} receiveShadow castShadow userData={{buildingSlab:true}}><extrudeGeometry args={[shape,{depth:thicknessMm*.001,bevelEnabled:false}]}/><meshStandardMaterial color="#b9b3a8" roughness={.88} side={THREE.DoubleSide}/></mesh>)}<OpeningBalustrades openings={openings}/></group>;
 }
 export function TerraceCover({footprint,thickness}:{footprint:PlanPolygons;thickness:number}) {
   const shapes=useMemo(()=>shapesFromPolygons(footprint),[footprint]);

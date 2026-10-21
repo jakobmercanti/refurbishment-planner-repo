@@ -48,6 +48,10 @@ class CfdProxySpec(BaseModel):
         "people-standing",
         "people-seated",
         "people-lying",
+        "balustrade-open",
+        "balustrade-rails",
+        "balustrade-solid",
+        "balustrade-glass",
     ]
 
 

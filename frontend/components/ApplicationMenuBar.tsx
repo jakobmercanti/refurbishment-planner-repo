@@ -21,7 +21,7 @@ interface ApplicationMenuBarProps {
   onOpenAssets: () => void;
   onOpenPrivacy: () => void;
   mode: "EDITOR" | "ANALYSIS";
-  workspaceMode?: "FLOORPLAN" | "PLANNERBUILD";
+  workspaceMode?: "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX";
   wallMode: WallViewMode;
   floorplanStyle: FloorplanStyle;
   displayUnits: DisplayUnits;

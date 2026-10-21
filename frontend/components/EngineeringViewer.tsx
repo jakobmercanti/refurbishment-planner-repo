@@ -1,8 +1,8 @@
 "use client";
 import type { ProjectDocument } from "@/lib/projectDocument";
-import { minimumRoofHeight, activeFloor, buildingOf, projectFloors, type FloorOpening, type RoofConfiguration } from "@/lib/buildingDocument";
+import { minimumRoofHeight, roofForRoom, activeFloor, buildingOf, projectFloors, type FloorOpening, type RoofConfiguration } from "@/lib/buildingDocument";
 import { exposedCover, structuralFloorFootprint, polygonOf, subtractVoids } from "@/lib/buildingGeometry";
-import { BuildingRoof, BuildingSlab, shapesFromPolygons, TerraceCover } from "./BuildingSurfaces";
+import { CombinedBuildingRoof, BuildingSlab, shapesFromPolygons, TerraceCover } from "./BuildingSurfaces";
 import { wallEnvelope, wallThicknessMm as wallThickness } from "@/lib/wallEnvelope";
 import type { BuildingView } from "./BuildingControls";
 import { MetalReflections } from "@/components/MetalReflections";
@@ -522,7 +522,7 @@ function ExposedFloorCover({floor,above}:{floor:SceneFloor;above:SceneFloor}) {
 }
 function PassiveBuildingFloor({floor,above,roof,showRoof,wallMode,toggles}:{floor:SceneFloor;above?:SceneFloor;roof?:RoofConfiguration;showRoof:boolean;wallMode:WallViewMode;toggles:Toggles}) {
   const clear=above?above.elevationMm-above.slabThicknessMm-floor.elevationMm:roof?(roof.type==="STEPPED"?Math.min(roof.lowHeightMm,roof.highHeightMm):roof.lowHeightMm):floor.heightMm-floor.slabThicknessMm;
-  const rooms=useMemo(()=>floor.content.rooms.map(r=>({...r,wall_height:{...r.wall_height,value:clear}})),[floor.content.rooms,clear]);
+  const rooms=useMemo(()=>floor.content.rooms.map(r=>({...r,wall_height:{...r.wall_height,value:roof&&roof.enabled!==false?minimumRoofHeight(roofForRoom(roof,r.id)):clear}})),[floor.content.rooms,clear,roof]);
   const walls=useMemo(()=>{const solids=rooms.length===1?buildIsolatedRoomWalls(rooms[0]):buildRenderedWalls(rooms);return [...solids,...buildSharedWallFinishFaces(rooms,solids)];},[rooms]);
   const footprint=useMemo(()=>structuralFloorFootprint(floor.content),[floor.content]);
   return <><group name={floor.name} position={[0,floor.elevationMm*SCALE,0]}>
@@ -531,7 +531,7 @@ function PassiveBuildingFloor({floor,above,roof,showRoof,wallMode,toggles}:{floo
     <SkirtingBoards walls={walls} wallMode={wallMode} defaultWallColour={DEFAULT_WALL_COLOUR}/>
     {rooms.map(r=><group key={r.id}><Floor room={r} selected={false} openings={floor.openings} includeSlab={false}/>{r.openings.map(o=><OpeningFixture key={o.id} room={r} opening={o} selected={false}/>)}{toggles.elements&&r.obstacles.map(o=><FixtureMesh key={o.id} obstacle={o} selected={false}/>)}{toggles.person&&r.person_mockup?.enabled&&<PersonMesh person={r.person_mockup} showClearance={false} collision={false} selected={false}/>}</group>)}
     <LocalAssetScene instances={floor.content.assetInstances}/>
-    {showRoof&&roof&&<BuildingRoof footprint={footprint} roof={roof} wallTop={clear}/>}
+    {showRoof&&roof&&<CombinedBuildingRoof content={floor.content} roof={roof}/>}
   </group>{showRoof&&above&&<ExposedFloorCover floor={floor} above={above}/>}</>;
 }
 function Floor({ room, selected, onSelect, openings, slabThicknessMm = 10, includeSlab=true }: { room: Room; selected: boolean; onSelect?: () => void; openings?:FloorOpening[]; slabThicknessMm?:number; includeSlab?:boolean }) {
@@ -614,7 +614,7 @@ function safeRenderDimension(value: number, fallback: number) {
 }
 
 function ProceduralFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
-  if (obstacle.representation_key?.startsWith("people-")) return <ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} />;
+  if (obstacle.representation_key?.startsWith("people-")||obstacle.representation_key?.startsWith("balustrade-")) return <ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} />;
   const fixtureKind = fixtureKindForObstacle(obstacle);
   const customColour = obstacle.color_hex;
   if (obstacle.representation_key?.startsWith("electrical-") || ["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
@@ -1443,7 +1443,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevationMm*SCALE), [elevationMm]);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
-  const renderedRooms = useMemo(() => (wholeView?floors.find(f=>f.id===floorId)?.content.rooms??[]:sceneRooms?.length ? sceneRooms : room.vertices.length?[room]:[]).map(r=>clearHeight?{...r,wall_height:{...r.wall_height,value:clearHeight}}:r), [room, sceneRooms,clearHeight,wholeView,floors,floorId]);
+  const renderedRooms = useMemo(() => (wholeView?floors.find(f=>f.id===floorId)?.content.rooms??[]:sceneRooms?.length ? sceneRooms : room.vertices.length?[room]:[]).map(r=>clearHeight?{...r,wall_height:{...r.wall_height,value:!above&&buildingRoof&&buildingRoof.enabled!==false?minimumRoofHeight(roofForRoom(buildingRoof,r.id)):clearHeight}}:r), [room, sceneRooms,clearHeight,wholeView,floors,floorId,above,buildingRoof]);
   const activeFootprint=useMemo(()=>structuralFloorFootprint({rooms:renderedRooms,floorplan:null,assetInstances:[]}),[renderedRooms]);
   const multiRoom = renderedRooms.length > 1;
   const sceneBounds = useMemo(() => {
@@ -1454,7 +1454,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
     const minY = Math.min(...points.map((point) => point.y));
     const maxY = Math.max(...points.map((point) => point.y));
     const minZ=visibleFloors.length?Math.min(...visibleFloors.map(f=>f.elevationMm-f.slabThicknessMm)):elevationMm;
-    const maxZ=visibleFloors.length?Math.max(...visibleFloors.map(f=>{const above=floors[floors.findIndex(x=>x.id===f.id)+1],wallHeight=above?above.elevationMm-above.slabThicknessMm-f.elevationMm:buildingRoof?minimumRoofHeight(buildingRoof):f.heightMm-f.slabThicknessMm;return f.elevationMm+(f.id===topFloor?.id&&showRoof&&buildingRoof?Math.max(buildingRoof.lowHeightMm,buildingRoof.type==="FLAT"?0:buildingRoof.highHeightMm)+buildingRoof.thicknessMm:wallHeight);})):elevationMm+Math.max(2400,...renderedRooms.map(r=>r.wall_height.value));
+    const maxZ=visibleFloors.length?Math.max(...visibleFloors.map(f=>{const above=floors[floors.findIndex(x=>x.id===f.id)+1],wallHeight=above?above.elevationMm-above.slabThicknessMm-f.elevationMm:buildingRoof?minimumRoofHeight(buildingRoof):f.heightMm-f.slabThicknessMm;const profiles=buildingRoof?[buildingRoof,...(buildingRoof.roomRoofsEnabled?(buildingRoof.roomOverrides??[]).filter(item=>f.content.rooms.some(room=>room.id===item.roomId)).map(item=>item.roof):[])]:[];return f.elevationMm+(f.id===topFloor?.id&&showRoof&&buildingRoof?Math.max(...profiles.map(profile=>Math.max(profile.lowHeightMm,profile.type==="FLAT"?0:profile.highHeightMm)+profile.thicknessMm)):wallHeight);})):elevationMm+Math.max(2400,...renderedRooms.map(r=>r.wall_height.value));
     return { minX, maxX, minY, maxY, wallHeight:maxZ-minZ,minZ };
   }, [activeFootprint,renderedRooms,visibleFloors,floors,elevationMm,buildingRoof,showRoof,topFloor?.id]);
   const roomTarget = useMemo<VectorTuple>(() => {
@@ -1661,7 +1661,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
       })}
       {currentFloor&&<BuildingSlab footprint={activeFootprint} openings={currentFloor.openings} thicknessMm={currentFloor.slabThicknessMm}/>}
       <LocalAssetScene instances={assetInstances??[]}/>
-      {showRoof&&currentFloor?.id===topFloor?.id&&buildingRoof&&<BuildingRoof footprint={activeFootprint} roof={buildingRoof} wallTop={clearHeight??buildingRoof.lowHeightMm}/>}
+      {showRoof&&currentFloor&&currentFloor.id===topFloor?.id&&buildingRoof&&<CombinedBuildingRoof content={floors.find(f=>f.id===currentFloor.id)!.content} roof={buildingRoof}/>}
       {showGrid && <group userData={{ editorOnly: true }}><Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} /></group>}
       {placement && <group userData={{ editorOnly: true }}><PlacementCursor elevationMm={elevationMm} key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} onPreviewCandidate={setPreviewPlacementCandidate} /></group>}
       </group>

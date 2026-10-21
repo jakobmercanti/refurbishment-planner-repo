@@ -2,7 +2,8 @@
 import { forwardRef, useEffect, useEffectEvent, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Point2D } from "@/lib/types";
 import type { FloorContent, FloorOpening, RoofConfiguration } from "@/lib/buildingDocument";
-import { structuralFloorFootprint, roofFrame, validateFloorOpening } from "@/lib/buildingGeometry";
+import { buildingRoofZones, roofFrame, validateFloorOpening } from "@/lib/buildingGeometry";
+import { previewBalustradeFootprint } from "@/lib/balustrades";
 import { formatLength, type DisplayUnits } from "@/lib/units";
 import { closeOpeningDraft, moveOpeningVertex, openingDraftPoint } from "@/lib/floorOpeningDraft";
 import type { FloorOpeningTool } from "./BuildingControls";
@@ -56,7 +57,8 @@ export const BuildingPlanOverlay=forwardRef<BuildingPlanHandle,{
     const d=drag.current;if(!d)return;e.preventDefault();e.stopPropagation();try{const updated={...d.opening,vertices:d.vertices};validateFloorOpening(content,updated,openings);onError("");onChange(openings.map(o=>o.id===updated.id?updated:o));}catch(error){onError(error instanceof Error?error.message:"Cannot move this opening.");}drag.current=null;setPreview(null);
   }} onPointerCancel={()=>{drag.current=null;setPreview(null);}}>
     {openings.map(o=>{const vertices=preview?.id===o.id?preview.vertices:o.vertices,centre=vertices.reduce((s,p)=>({x:s.x+p.x/vertices.length,y:s.y+p.y/vertices.length}),{x:0,y:0}),label=toScreen(centre);return <g key={o.id} data-floor-opening-id={o.id} role="button" tabIndex={interactive?0:-1} aria-disabled={!interactive} aria-label={`Floor opening: ${o.name}`} onKeyDown={e=>{if(interactive&&(e.key==="Enter"||e.key===" ")){e.preventDefault();e.stopPropagation();onSelect(o.id);}}}>
-      <polygon points={path(vertices)} className={selected===o.id?"floor-opening-contour selected":"floor-opening-contour"} onPointerDown={e=>begin(e,o)}/><text className="floor-opening-name" x={label.x} y={label.y} textAnchor="middle" pointerEvents="none">{o.name} · VOID</text>
+      {o.balustrade?.enabled&&previewBalustradeFootprint(vertices,o.balustrade).map((poly,i)=><path key={i} className="floor-opening-balustrade" d={poly.map(ring=>`M${ring.map(([x,y])=>{const p=toScreen({x,y});return`${p.x},${p.y}`;}).join("L")}Z`).join(" ")} fillRule="evenodd" pointerEvents="none"/>)}
+      <polygon points={path(vertices)} className={selected===o.id?"floor-opening-contour selected":"floor-opening-contour"} onPointerDown={e=>begin(e,o)}/><text className="floor-opening-name" x={label.x} y={label.y} textAnchor="middle" pointerEvents="none">{o.name} · VOID{o.balustrade?.enabled?" · guarded":""}</text>
       {interactive&&selected===o.id&&vertices.map((v,i)=>{const s=toScreen(v);return <circle key={i} role="button" aria-label={`Move opening vertex ${i+1}`} cx={s.x} cy={s.y} r="5" className="floor-opening-handle" onPointerDown={e=>begin(e,o,i)}/>;})}
     </g>;})}
     {tool&&outline.length>0&&<g pointerEvents="none"><polygon points={path(outline)} className="floor-opening-draft"/>{outline.map((p,i)=>{const s=toScreen(p);return <circle key={i} cx={s.x} cy={s.y} r="3" fill="var(--accent)"/>;})}{cursor&&<text className="floor-opening-name" x={toScreen(cursor).x+8} y={toScreen(cursor).y-10}>{tool==="RECTANGLE"&&draft[0]?`${formatLength(Math.abs(cursor.x-draft[0].x),units)} × ${formatLength(Math.abs(cursor.y-draft[0].y),units)}`:`${draft.length} vertices · Enter to finish`}</text>}</g>}
@@ -64,7 +66,9 @@ export const BuildingPlanOverlay=forwardRef<BuildingPlanHandle,{
   </g>;
 });
 function RoofPlanIndicator({content,roof,toScreen}:{content:FloorContent;roof:RoofConfiguration;toScreen:(p:Point2D)=>Point2D}) {
-  const footprint=structuralFloorFootprint(content);if(!footprint.length||roof.enabled===false||roof.type==="FLAT")return null;
+  return <>{buildingRoofZones(content,roof).filter(zone=>zone.roof.type!=="FLAT").map(zone=><RoofZoneIndicator key={zone.id} footprint={zone.frameFootprint} roof={zone.roof} toScreen={toScreen}/>)}</>;
+}
+function RoofZoneIndicator({footprint,roof,toScreen}:{footprint:ReturnType<typeof buildingRoofZones>[number]["footprint"];roof:RoofConfiguration;toScreen:(p:Point2D)=>Point2D}) {
   const f=roofFrame(footprint,roof),u=roof.type==="STEPPED"?f.min+(f.max-f.min)*roof.splitFraction:(f.min+f.max)/2,v=(f.vmin+f.vmax)/2;
   const at=(u:number,v:number)=>toScreen({x:u*f.ux-v*f.uy,y:u*f.uy+v*f.ux});
   const a=roof.type==="MONO"?at(f.min,v):at(u,f.vmin),b=roof.type==="MONO"?at(f.max,v):at(u,f.vmax);

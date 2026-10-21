@@ -17,6 +17,7 @@ import type { EnergyProject } from "./energyDocument";
 import { commitHeatingElements } from "./heatingElements";
 import { ProjectHistory } from "./projectHistory";
 import { matchesProjectScope } from "./projectScope";
+import { cfdScenariosSchema, type CFDScenario } from "./climoptixDocument";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
@@ -39,13 +40,14 @@ export function useLocalProject() {
     });
     return () => { cancelled = true; };
   }, [replace]);
-  const update = useCallback((changes: Partial<ProjectDocument>) => {
+  const update = useCallback((changes: Partial<ProjectDocument>, forceHistory = false) => {
     const p = current.current; if (!p) return;
     // An empty floor publishes a fresh [] when the editor is restored. Avoid
     // feeding an unchanged snapshot back into the editor and starving autosave.
     if (Object.entries(changes).every(([key,value]) => JSON.stringify(p[key as keyof ProjectDocument]) === JSON.stringify(value))) return;
-    const next = { ...p, ...changes, updatedAt: new Date().toISOString() };
-    history.current.record(p,next);
+    let next = { ...p, ...changes, updatedAt: new Date().toISOString() };
+    if(changes.rooms&&next.building?.roof.roomOverrides){const ids=new Set(projectFloors(next).flatMap(f=>f.content.rooms.map(room=>room.id)));next={...next,building:{...next.building,roof:{...next.building.roof,roomOverrides:next.building.roof.roomOverrides.filter(item=>ids.has(item.roomId))}}};}
+    history.current.record(p,next,forceHistory);
     refreshHistory();
     current.current = next; setProject(next);
   }, [refreshHistory]);
@@ -119,9 +121,16 @@ export function useLocalProject() {
     const next = commitHeatingElements(heatingLayout, p.rooms); update(next); return next.rooms;
   }, [update]);
   const setEnergyLayout = useCallback((energyLayout: EnergyProject) => update({ energyLayout }), [update]);
+  const setCFDScenarios = useCallback((scenarios: CFDScenario[],scope?:string,checkpoint=false) => {
+    const p=current.current;
+    if(!p||!matchesProjectScope(p,scope,sessionRef.current))return;
+    const next=cfdScenariosSchema.parse(scenarios);
+    if(next.some(s=>s.sourceBuildingId!==p.projectId))throw new Error("Scenario source does not match this project.");
+    update({cfdScenarios:next},checkpoint);
+  },[update]);
   const restoreEdit = useCallback((p: ProjectDocument | null) => { if(!p)return null;refreshHistory(); const next={...p,updatedAt:new Date().toISOString()};current.current=next;setProject(next);setRestore(next);setRevision(r=>r+1);return next; },[refreshHistory]);
   const editBuilding = useCallback((operation:(p:ProjectDocument)=>ProjectDocument,resetDocument=false) => { const before=current.current;if(!before)return null;const result=operation(before);if(result===before)return before;const next=parseProject(result);if(JSON.stringify(before.building?.floors.map(f=>f.id))!==JSON.stringify(next.building?.floors.map(f=>f.id)))validateFloorSupports(projectFloors(next));history.current.record(before,next,true);if(resetDocument)resetSession();return restoreEdit(next); },[restoreEdit,resetSession]);
   const undo = useCallback(()=>current.current ? restoreEdit(history.current.undo(current.current)) : null,[restoreEdit]);
   const redo = useCallback(()=>current.current ? restoreEdit(history.current.redo(current.current)) : null,[restoreEdit]);
-  return { project, restore, revision, documentSession, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, editBuilding, undo, redo, isScopeCurrent, ...historyStatus };
+  return { project, restore, revision, documentSession, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, setCFDScenarios, editBuilding, undo, redo, isScopeCurrent, ...historyStatus };
 }

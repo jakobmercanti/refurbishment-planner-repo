@@ -6,6 +6,7 @@ import base64
 import http.client
 import ipaddress
 import json
+import math
 import os
 import socket
 import ssl
@@ -26,6 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.aggregate_analytics import router as aggregate_analytics_router
+from backend.app.climoptix_api import router as climoptix_router
 from backend.app.commercial_api import router as commercial_api_router
 from backend.app.deployment import DeploymentBoundary
 from backend.app.schemas import (
@@ -99,6 +101,8 @@ class RequestBodyLimitMiddleware:
             limit = 256
         elif path == "/commercial/stripe/webhook":
             limit = 1_000_000
+        elif path in {"/climoptix/prepare", "/climoptix/openfoam-settings"}:
+            limit = 4 * 1024 * 1024
         else:
             limit = self.default_limit
         messages: list[dict[str, Any]] = []
@@ -123,6 +127,26 @@ class RequestBodyLimitMiddleware:
             elif message.get("type") == "http.disconnect":
                 return
         index = 0
+        if path in {"/climoptix/prepare", "/climoptix/openfoam-settings"}:
+
+            def finite_json_number(value: str) -> float:
+                number = float(value)
+                if not math.isfinite(number):
+                    raise ValueError("Non-finite JSON number")
+                return number
+
+            try:
+                json.loads(
+                    b"".join(message.get("body", b"") for message in messages),
+                    parse_float=finite_json_number,
+                    parse_constant=finite_json_number,
+                )
+            except (ValueError, RecursionError):
+                await JSONResponse(
+                    status_code=422,
+                    content={"detail": "Climoptix requires valid JSON with finite numbers and bounded nesting."},
+                )(scope, receive, send)
+                return
 
         async def replay() -> dict[str, Any]:
             nonlocal index
@@ -156,6 +180,7 @@ app.add_middleware(
 )
 app.include_router(aggregate_analytics_router)
 app.include_router(commercial_api_router)
+app.include_router(climoptix_router)
 initialise_catalogue()
 # Keep the human-readable administrator configuration available from the
 # moment the API starts, including before the first browser request.

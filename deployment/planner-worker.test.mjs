@@ -183,3 +183,71 @@ test('engineering proxy rejects foreign origins and strips credentials', async (
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('Climoptix proxy exposes only preparation and capabilities, never run/job operations', async () => {
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  const base = origin + '/planner/engineering-api/climoptix';
+  const originalFetch = globalThis.fetch, forwarded = [];
+  try {
+    globalThis.fetch = async (url, options) => {
+      forwarded.push(String(url));
+      assert.deepEqual(options.headers, { 'Content-Type': 'application/json' });
+      return Response.json({ preparationOnly: true });
+    };
+    assert.equal((await worker.fetch(new Request(base + '/capabilities'), env)).status, 200);
+    for (const unsafe of ['/run', '/jobs', '/prepare/run', '/optimize', '/capabilities/delete']) {
+      for (const method of ['GET', 'POST', 'DELETE'])
+        assert.equal((await worker.fetch(new Request(base + unsafe, { method }), env)).status, 403);
+    }
+    assert.equal((await worker.fetch(new Request(base + '/prepare', { method: 'POST', body: '{}' }), env)).status, 403);
+    assert.equal((await worker.fetch(new Request(base + '/prepare', {
+      method: 'POST', body: '{}', headers: { Origin: 'https://foreign.example' },
+    }), env)).status, 403);
+    const response = await worker.fetch(new Request(base + '/prepare', {
+      method: 'POST', body: '{}', headers: { Origin: origin, Cookie: 'private=x', Authorization: 'Bearer private' },
+    }), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.deepEqual(forwarded, [env.ENGINEERING_API_ORIGIN + '/climoptix/capabilities', env.ENGINEERING_API_ORIGIN + '/climoptix/prepare']);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Climoptix streamed bodies are bounded without relying on Content-Length', async () => {
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  const endpoint = origin + '/planner/engineering-api/climoptix/prepare';
+  const originalFetch = globalThis.fetch;
+  let cancelled = false, reads = 0;
+  try {
+    globalThis.fetch = async () => { throw new Error('Oversized body must not reach the backend'); };
+    const stream = new ReadableStream({
+      pull(controller) { reads++; controller.enqueue(new Uint8Array(1024 * 1024)); },
+      cancel() { cancelled = true; },
+    });
+    const response = await worker.fetch(new Request(endpoint, {
+      method: 'POST', headers: { Origin: origin }, body: stream, duplex: 'half',
+    }), env);
+    assert.equal(response.status, 413);
+    assert.equal(cancelled, true);
+    assert.ok(reads <= 7, 'Abort the stream as soon as it exceeds 4 MiB');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Foamlib settings export is same-origin POST-only, strips credentials and preserves ZIP data', async () => {
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  const endpoint = origin + '/planner/engineering-api/climoptix/openfoam-settings';
+  for (const method of ['GET', 'PUT', 'DELETE']) assert.equal((await worker.fetch(new Request(endpoint, { method }), env)).status, 403);
+  assert.equal((await worker.fetch(new Request(endpoint, { method: 'POST', body: '{}' }), env)).status, 403);
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (target, options) => {
+      assert.equal(String(target), env.ENGINEERING_API_ORIGIN + '/climoptix/openfoam-settings');
+      assert.deepEqual(options.headers, { 'Content-Type': 'application/json' });
+      return new Response(new Uint8Array([80,75,3,4]), {headers:{'Content-Type':'application/zip'}});
+    };
+    const response = await worker.fetch(new Request(endpoint, { method:'POST', headers:{Origin:origin,Authorization:'Bearer private',Cookie:'private=value'}, body:'{}' }), env);
+    assert.equal(response.status,200);
+    assert.equal(response.headers.get('Content-Type'),'application/zip');
+    assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[80,75,3,4]);
+    assert.equal(response.headers.get('Cache-Control'),'no-store');
+  } finally { globalThis.fetch = originalFetch; }
+});

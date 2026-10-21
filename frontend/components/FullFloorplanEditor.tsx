@@ -2955,7 +2955,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   function selectFixtureForEdit(fixture: Obstacle, owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id))) {
     const roomId = owner?.id ?? selectedRoomDraft()?.id;
     setTool("SELECT");
-    setElementTab(fixture.representation_key?.startsWith("people-") ? "PEOPLE" : fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
+    setElementTab(fixture.representation_key?.startsWith("balustrade-")?"BALUSTRADES":fixture.representation_key?.startsWith("people-") ? "PEOPLE" : fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
     setSelectedAnnotationId(null);
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
@@ -3649,7 +3649,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     const fixture = owner?.obstacles.find(item => item.id === elementEditRequest.id) ?? fixtures.find(item => item.id === elementEditRequest.id);
     if (!fixture) return;
     if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
-    setElementTab(fixture.representation_key?.startsWith("people-") ? "PEOPLE" : fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
+    setElementTab(fixture.representation_key?.startsWith("balustrade-")?"BALUSTRADES":fixture.representation_key?.startsWith("people-") ? "PEOPLE" : fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
     setSelectedSegment(null);
@@ -4148,7 +4148,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
           if (!placement.opening && isElectricalObstacle(candidate.obstacle)) recordElectricalUndo();
           onCommitPlacement?.(candidate);
           if (!placement.opening && candidate.roomId) {
-            setElementTab(candidate.obstacle.representation_key?.startsWith("people-") ? "PEOPLE" : candidate.obstacle.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(candidate.obstacle) ? "HEATING" : "FURNITURE");
+            setElementTab(candidate.obstacle.representation_key?.startsWith("balustrade-")?"BALUSTRADES":candidate.obstacle.representation_key?.startsWith("people-") ? "PEOPLE" : candidate.obstacle.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(candidate.obstacle) ? "HEATING" : "FURNITURE");
             setSelectedFixtureId(candidate.obstacle.id);
             const target = planRooms.find(room => room.id === candidate.roomId);
             if (target?.source_floorplan_room_id) setSelectedRoomId(target.source_floorplan_room_id);
@@ -4414,12 +4414,12 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   }
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const annotationPanelSelection: AnnotationPanelSelection = selectedAnnotation ? { type: selectedAnnotation.type, text: selectedAnnotation.text } : null;
-  const selectedAddToPlanMode: AddToPlanMode = heating.data.enabled ? "HEATING" : openingEditorTarget && ["FURNITURE", "PEOPLE", "ELECTRICAL", "HEATING"].includes(elementTab) ? openingKind : elementTab;
+  const selectedAddToPlanMode: AddToPlanMode = heating.data.enabled ? "HEATING" : openingEditorTarget && ["FURNITURE", "PEOPLE", "BALUSTRADES", "ELECTRICAL", "HEATING"].includes(elementTab) ? openingKind : elementTab;
   const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add to plan">
     {!electricalMode && !heating.data.enabled && <select className="add-to-plan-mode" aria-label="Add to plan" value={selectedAddToPlanMode} onChange={event => selectAddToPlanMode(event.target.value as AddToPlanMode)}>
-      {ADD_TO_PLAN_MODES.map(option => <option key={option.value} value={option.value} disabled={Boolean(openingEditorTarget && ["FURNITURE", "PEOPLE", "ELECTRICAL", "HEATING"].includes(option.value))}>{option.label}</option>)}
+      {ADD_TO_PLAN_MODES.map(option => <option key={option.value} value={option.value} disabled={Boolean(openingEditorTarget && ["FURNITURE", "PEOPLE", "BALUSTRADES", "ELECTRICAL", "HEATING"].includes(option.value))}>{option.label}</option>)}
     </select>}
-    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add items.</p> : ["FURNITURE", "PEOPLE", "ELECTRICAL", "HEATING"].includes(selectedAddToPlanMode) && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedAddToPlanMode}-${selectedRoom!.id}`} categoryFilter={selectedAddToPlanMode === "PEOPLE" ? "people" : selectedAddToPlanMode === "ELECTRICAL" ? "electric" : selectedAddToPlanMode === "HEATING" ? "heating" : undefined} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={selectedAddToPlanMode === "HEATING" ? heatingElementEditRequest ?? elementEditRequest : elementEditRequest} onEditEnd={() => { if (selectedAddToPlanMode === "HEATING") setHeatingSelection(null);onElementSelected?.(null); }} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
+    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add items.</p> : ["FURNITURE", "PEOPLE", "BALUSTRADES", "ELECTRICAL", "HEATING"].includes(selectedAddToPlanMode) && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedAddToPlanMode}-${selectedRoom!.id}`} categoryFilter={selectedAddToPlanMode === "BALUSTRADES"?"balustrades":selectedAddToPlanMode === "PEOPLE" ? "people" : selectedAddToPlanMode === "ELECTRICAL" ? "electric" : selectedAddToPlanMode === "HEATING" ? "heating" : undefined} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={selectedAddToPlanMode === "HEATING" ? heatingElementEditRequest ?? elementEditRequest : elementEditRequest} onEditEnd={() => { if (selectedAddToPlanMode === "HEATING") setHeatingSelection(null);onElementSelected?.(null); }} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
     <p className="tool-note">Choose a variant and click Add. Select a wall first to use its offset, or place the preview on a wall with the cursor.</p>
     <div className="fixture-cascading-menu opening-cascading-menu" ref={openingSelectorRef}>
       {!openingSelectorExpanded ? <div className="fixture-cascading-collapsed">

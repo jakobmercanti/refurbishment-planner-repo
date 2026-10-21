@@ -1,0 +1,7 @@
+[
+  {"id":"VERTICAL","key":"balustrade-vertical","name":"Vertical metal","colour":"#394750","depthMm":100,"cfdProfile":"balustrade-open"},
+  {"id":"HORIZONTAL","key":"balustrade-horizontal","name":"Horizontal rails","colour":"#869399","depthMm":100,"cfdProfile":"balustrade-rails"},
+  {"id":"GLASS","key":"balustrade-glass","name":"Glass panels","colour":"#779da4","depthMm":100,"cfdProfile":"balustrade-glass"},
+  {"id":"TIMBER","key":"balustrade-timber","name":"Timber spindles","colour":"#95714c","depthMm":120,"cfdProfile":"balustrade-open"},
+  {"id":"SOLID","key":"balustrade-solid","name":"Solid parapet","colour":"#c6c2b6","depthMm":150,"cfdProfile":"balustrade-solid"}
+]

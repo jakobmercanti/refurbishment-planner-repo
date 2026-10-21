@@ -13,6 +13,7 @@ from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from database.balustrade_defaults import seed_balustrade_defaults
 from database.catalogue_assets import migrate_legacy_pictures
 from database.cfd_proxies import seed_cfd_proxies
 from database.colour_parts import MANIFEST as COLOUR_PART_MANIFEST
@@ -55,6 +56,7 @@ def configure_sqlite(connection: object, _record: object) -> None:
 
 
 CATEGORIES = [
+    ("balustrades", "Balustrades", "Opening guards and railing sections with coarse CFD proxies.", 66, 0.0, 0.0),
     (
         "people",
         "People",
@@ -390,6 +392,7 @@ def initialise_catalogue() -> None:
         seed_electrical_defaults(session)
         seed_heating_defaults(session)
         seed_people_defaults(session)
+        seed_balustrade_defaults(session)
         session.flush()
         seed_cfd_proxies(session)
         obsolete_stair_category = session.get(FurnitureCategoryRecord, "staircases-main")

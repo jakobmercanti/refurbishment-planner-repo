@@ -45,6 +45,7 @@ export function sourceUsage() {
   const roots = sources.filter((file) =>
     /^frontend\/app\/(?:.*\/)?(?:page|layout|route|template|loading|error|global-error|not-found|default|robots|sitemap|manifest|icon|apple-icon|opengraph-image|twitter-image)\.[jt]sx?$/.test(file) ||
     /^frontend\/(?:[^/]+config\.[cm]?[jt]s|next-env\.d\.ts|scripts\/|tests\/)/.test(file) ||
+    /^frontend\/types\/.*\.d\.ts$/.test(file) || // Ambient declarations are loaded by tsconfig, not runtime imports.
     file.startsWith("deployment/"));
   const reachable = new Set();
   const queue = [...roots];

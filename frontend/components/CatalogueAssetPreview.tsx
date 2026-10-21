@@ -45,7 +45,7 @@ export function CatalogueAssetPreview({ item, apiUrl }: { item: CatalogueItem; a
   const size = { width: item.width_mm / largest, depth: item.depth_mm / largest, height: item.height_mm / largest };
   const procedural = <ParametricFixture obstacle={obstacle} {...size} />;
   const baseClearance = result.mesh ? Math.min(...result.mesh.vertices_mm.map(point => point[2])) : 0;
-  const knownDetailed = Boolean(item.stl_base64 || /^(people-|electrical-|furniture-|window-|door-|shower-|basin-|toilet-|heating-)/.test(item.representation_key ?? ""));
+  const knownDetailed = Boolean(item.stl_base64 || /^(balustrade-|people-|electrical-|furniture-|window-|door-|shower-|basin-|toilet-|heating-)/.test(item.representation_key ?? ""));
   return <section className="catalogue-asset-preview" aria-label="Catalogue 3D asset viewer">
     <header><h4>3D preview</h4><span>{mode === "CFD" ? "Simplified obstruction" : knownDetailed ? "Asset model" : "Dimension envelope"}</span></header>
     <div className="catalogue-preview-modes" role="group" aria-label="Asset representation">

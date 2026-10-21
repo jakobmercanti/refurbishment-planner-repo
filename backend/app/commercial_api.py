@@ -211,6 +211,7 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
                 "heatingLayout",
                 "energyLayout",
                 "building",
+                "cfdScenarios",
             }
         )
         or type(document.get("schemaVersion")) is not int
@@ -329,6 +330,20 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
             raise HTTPException(status_code=422, detail="Project text exceeds the supported limit.")
 
     inspect(document)
+    if "cfdScenarios" in document:
+        from geometry.climoptix_models import Scenario
+
+        scenarios = document["cfdScenarios"]
+        if not isinstance(scenarios, list) or len(scenarios) > 100:
+            raise HTTPException(status_code=422, detail="A project supports up to 100 Climoptix scenarios.")
+        try:
+            parsed_scenarios = [Scenario.model_validate(s) for s in scenarios]
+            if len({s.id for s in parsed_scenarios}) != len(parsed_scenarios):
+                raise ValueError("Scenario IDs must be unique.")
+            if any(s.sourceBuildingId != str(project_id) for s in parsed_scenarios):
+                raise ValueError("A Climoptix scenario belongs to another project.")
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=f"Invalid Climoptix scenario: {error}") from None
     if "building" in document:
         from backend.app.building_document import validate_building
 
@@ -381,6 +396,8 @@ def _asset_record(user: VerifiedUser, asset_id: UUID, db: SupabaseREST) -> dict[
 def _macro_category_name(category_id: str) -> str:
     if category_id == "people":
         return "People"
+    if category_id == "balustrades":
+        return "Balustrades"
     if category_id in {"showers", "basins", "toilets", "baths", "storage"}:
         return "Bathroom"
     if category_id.startswith("kitchen-"):

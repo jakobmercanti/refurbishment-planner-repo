@@ -37,7 +37,7 @@ export class LocalProjectRepository implements ProjectRepository {
   async duplicateProject(id: string) {
     const p = await this.getProject(id); if (!p) throw new Error("Project not found.");
     const projectId = crypto.randomUUID();
-    const copy = { ...p, projectId, name: `${p.name} copy`, generated: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), quotes: (p.quotes ?? []).map(quote => ({ ...structuredClone(quote), projectId, quoteId: crypto.randomUUID() })) };
+    const copy = { ...p, projectId, name: `${p.name} copy`, generated: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), quotes: (p.quotes ?? []).map(quote => ({ ...structuredClone(quote), projectId, quoteId: crypto.randomUUID() })), ...(p.cfdScenarios?{cfdScenarios:p.cfdScenarios.map(s=>({...structuredClone(s),id:crypto.randomUUID(),sourceBuildingId:projectId,validation:null}))}:{}) };
     await this.saveProject(copy); return copy;
   }
 }

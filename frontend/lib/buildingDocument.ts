@@ -12,21 +12,44 @@ export const roofFinishSchema = z.object({
   tileHeightMm: z.number().finite().min(100).max(4000),
 }).strict();
 export type RoofFinish = z.infer<typeof roofFinishSchema>;
-export const floorOpeningSchema = z.object({ id, name: z.string().trim().min(1).max(100), shape: z.enum(["RECTANGLE", "POLYGON"]), vertices: z.array(point).min(3).max(200) }).strict();
+export const balustradeSchema = z.object({
+  enabled:z.boolean(),style:z.enum(["VERTICAL","HORIZONTAL","GLASS","TIMBER","SOLID"]),
+  heightMm:z.number().finite().min(600).max(2000),colour:z.string().regex(/^#[0-9a-fA-F]{6}$/),
+}).strict();
+export type BalustradeConfiguration = z.infer<typeof balustradeSchema>;
+export const floorOpeningSchema = z.object({ id, name: z.string().trim().min(1).max(100), shape: z.enum(["RECTANGLE", "POLYGON"]), vertices: z.array(point).min(3).max(200), balustrade:balustradeSchema.optional() }).strict();
 export type FloorOpening = z.infer<typeof floorOpeningSchema>;
-export const roofSchema = z.object({
+const roofFields = z.object({
   enabled: z.boolean().optional(), finish: roofFinishSchema.optional(),
   type: z.enum(["FLAT", "MONO", "GABLE", "STEPPED"]),
   lowHeightMm: z.number().finite().min(1800).max(20000), highHeightMm: z.number().finite().min(1800).max(20000),
   orientationDeg: z.number().finite().min(0).max(360), splitFraction: z.number().finite().min(.05).max(.95),
   thicknessMm: z.number().finite().min(20).max(1000), ceilingMode: z.enum(["FOLLOWS_ROOF", "FLAT"]),
   ceilingHeightMm: z.number().finite().min(1800).max(20000),
-}).strict().superRefine((r, ctx) => {
+}).strict();
+function checkRoof(r:z.infer<typeof roofFields>,ctx:z.RefinementCtx) {
   if ((r.type === "MONO" || r.type === "GABLE") && r.highHeightMm < r.lowHeightMm + 50) ctx.addIssue({ code: "custom", message: "The high side/ridge must be at least 50 mm above the eaves.", path: ["highHeightMm"] });
   if (r.type === "STEPPED" && Math.abs(r.highHeightMm-r.lowHeightMm)<50) ctx.addIssue({code:"custom",message:"Stepped roof zones must differ by at least 50 mm.",path:["highHeightMm"]});
   if (r.ceilingMode === "FLAT" && r.ceilingHeightMm > minimumRoofHeight(r)) ctx.addIssue({ code: "custom", message: "The flat ceiling must not pass above the lowest roof underside.", path: ["ceilingHeightMm"] });
+}
+export const roofProfileSchema=roofFields.superRefine(checkRoof);
+export type RoofProfile=z.infer<typeof roofProfileSchema>;
+export const roofSchema=roofFields.extend({
+  roomRoofsEnabled:z.boolean().optional(),
+  roomOverrides:z.array(z.object({roomId:id,roof:roofProfileSchema}).strict()).max(500).optional(),
+}).strict().superRefine((r,ctx)=>{
+  checkRoof(r,ctx);
+  if(new Set(r.roomOverrides?.map(item=>item.roomId)).size!==(r.roomOverrides?.length??0))ctx.addIssue({code:"custom",path:["roomOverrides"],message:"Each room can have only one roof override."});
+  r.roomOverrides?.forEach((item,i)=>{if(item.roof.enabled===false)ctx.addIssue({code:"custom",path:["roomOverrides",i,"roof","enabled"],message:"A room roof must remain enabled; remove its override to use the shared roof."});});
 });
 export type RoofConfiguration = z.infer<typeof roofSchema>;
+/** Flat profile value, so room overrides cannot contain recursive roof documents. */
+export function sharedRoofProfile(roof:RoofConfiguration):RoofProfile {
+  return Object.fromEntries(Object.entries(roof).filter(([key])=>key!=="roomRoofsEnabled"&&key!=="roomOverrides")) as RoofProfile;
+}
+export function roofForRoom(roof:RoofConfiguration,roomId:string):RoofProfile {
+  return roof.roomRoofsEnabled?roof.roomOverrides?.find(item=>item.roomId===roomId)?.roof??roof:roof;
+}
 export function minimumRoofHeight(roof:{type:string;lowHeightMm:number;highHeightMm:number}):number {
   return roof.type==="STEPPED"?Math.min(roof.lowHeightMm,roof.highHeightMm):roof.lowHeightMm;
 }
@@ -69,6 +92,7 @@ export function validateFloorStack(b: BuildingDocument) {
     if (next && Math.abs(next.elevationMm - f.elevationMm - f.heightMm) > .001) throw new Error("Floor elevations must form a contiguous stack; split levels are not supported.");
     if (f.heightMm - (next?.slabThicknessMm ?? f.slabThicknessMm) < 1800) throw new Error("Floor/slab heights must leave at least 1800 mm clear headroom.");
     if (new Set(f.openings.map(o => o.id)).size !== f.openings.length) throw new Error("Duplicate floor-opening ID.");
+    if(f.openings.some(o=>o.balustrade?.enabled&&o.balustrade.heightMm>f.heightMm-(next?.slabThicknessMm??f.slabThicknessMm)))throw new Error("Balustrade height exceeds this floor's clear height.");
     if (i === 0 && f.openings.length) throw new Error("Slab openings are available only above the lowest floor.");
   }
 }
@@ -108,7 +132,9 @@ export function duplicateFloor(p: ProjectDocument, floorId: string, includeAsset
   do {const tail=` copy${suffix===1?"":` ${suffix}`}`;name=source.name.slice(0,100-tail.length)+tail;suffix++;}while(b.floors.some(f=>f.name===name));
   const copy:FloorLevel={...source,id:crypto.randomUUID(),name,content:copyContent(source.content,includeAssets),openings:source.openings.map(o=>({...structuredClone(o),id:crypto.randomUUID()}))};
   const floors=[...b.floors];floors.splice(at+1,0,copy);
-  const next=selectFloor({...p,building:{...b,floors:reflow(floors,b.floors[0].elevationMm)}},copy.id);
+  const copiedRoofs=(b.roof.roomOverrides??[]).flatMap(item=>{const index=source.content.rooms.findIndex(room=>room.id===item.roomId);return index<0?[]:[{roomId:copy.content!.rooms[index].id,roof:structuredClone(item.roof)}];});
+  const roof=copiedRoofs.length?{...b.roof,roomOverrides:[...(b.roof.roomOverrides??[]),...copiedRoofs]}:b.roof;
+  const next=selectFloor({...p,building:{...b,roof,floors:reflow(floors,b.floors[0].elevationMm)}},copy.id);
   validateFloorStack(buildingOf(next));return supportedFloors(next);
 }
 function reflow(floors: FloorLevel[], base: number) { let elevation = base; return floors.map(f => { const next = { ...f, elevationMm: elevation }; elevation += f.heightMm; return next; }); }
@@ -153,5 +179,7 @@ export function deleteFloor(p: ProjectDocument, floorId: string): ProjectDocumen
   if (b.activeFloorId === floorId) { p = selectFloor(p, b.floors[index ? index-1 : 1].id); b = buildingOf(p); }
   // A newly lowest floor has no inter-storey slab: its former voids are removed.
   const floors = reflow(b.floors.filter(f => f.id !== floorId), b.floors[0].elevationMm).map((f,i) => i ? f : { ...f, openings: [] });
-  return supportedFloors({ ...p, building: { ...b, floors } });
+  const removedRooms=new Set(projectFloors(p).find(f=>f.id===floorId)?.content.rooms.map(r=>r.id));
+  const roof={...b.roof,...(b.roof.roomOverrides?{roomOverrides:b.roof.roomOverrides.filter(item=>!removedRooms.has(item.roomId))}:{})};
+  return supportedFloors({ ...p, building: { ...b, floors,roof } });
 }

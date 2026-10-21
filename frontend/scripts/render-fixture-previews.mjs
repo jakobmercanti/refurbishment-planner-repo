@@ -6,6 +6,10 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const origin = process.env.PREVIEW_ORIGIN || "http://localhost:3000";
 async function catalogueItems() {
+  if(process.env.PREVIEW_KEY_PREFIX==="balustrade-"){
+    const styles=JSON.parse(await readFile(new URL("../lib/balustradeStyles.json",import.meta.url),"utf8"));
+    return styles.map(style=>({is_default:true,representation_key:style.key,width_mm:1000,depth_mm:style.depthMm,height_mm:1100,color_hex:style.colour}));
+  }
   if (process.env.PREVIEW_KEY_PREFIX === "electrical-") {
     const assets = JSON.parse(await readFile(new URL("../lib/electricalAssets.json", import.meta.url), "utf8"));
     return assets.map(asset => ({ is_default:true, representation_key:asset.key, width_mm:asset.width, depth_mm:asset.depth, height_mm:asset.height, color_hex:asset.colour }));
@@ -23,7 +27,7 @@ try {
   page.on("pageerror", error => { throw error; });
   for (const item of items.filter(item => item.is_default && item.representation_key && (!process.env.PREVIEW_KEY_PREFIX || item.representation_key.startsWith(process.env.PREVIEW_KEY_PREFIX)))) {
     const query = new URLSearchParams({key:item.representation_key,width:String(item.width_mm),depth:String(item.depth_mm),height:String(item.height_mm),colour:item.color_hex});
-    await page.goto(`${origin}/fixture-studio?${query}`,{waitUntil:"networkidle"});
+    await page.goto(`${origin}/fixture-studio/?${query}`,{waitUntil:"networkidle"});
     await page.locator("canvas").waitFor();
     await page.addStyleTag({content:"nextjs-portal { display: none !important; }"});
     await page.waitForTimeout(800);

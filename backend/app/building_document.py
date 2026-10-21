@@ -14,6 +14,9 @@ from shapely.errors import GEOSException
 from shapely.geometry import LineString, Polygon
 from shapely.ops import unary_union
 
+from backend.app.building_roof import validate_roof_document
+from geometry.balustrades import BalustradeConfiguration, balustrade_footprint
+
 
 def validate_building(
     building: Any, document: dict[str, Any], validate_content: Callable[[dict[str, Any]], Any]
@@ -38,6 +41,7 @@ def validate_building(
         fail("A building must have 1-20 floors.")
     ids: set[str] = set()
     entity_ids: set[str] = set()
+    room_ids: set[str] = set()
     for index, floor in enumerate(floors):
         if not isinstance(floor, dict) or set(floor) - {
             "id",
@@ -83,7 +87,7 @@ def validate_building(
             base = {
                 k: v
                 for k, v in document.items()
-                if k not in {"building", "electricalLayout", "heatingLayout", "energyLayout"}
+                if k not in {"building", "electricalLayout", "heatingLayout", "energyLayout", "cfdScenarios"}
             }
             validate_content({**base, **payload})
         owned_ids: set[str] = set()
@@ -91,6 +95,7 @@ def validate_building(
             if not isinstance(room, dict) or not identifier(room.get("id")):
                 fail("Invalid floor room ID.")
             owned_ids.add(room["id"])
+            room_ids.add(room["id"])
             obstacles = room.get("obstacles", [])
             if not isinstance(obstacles, list):
                 fail("Invalid floor objects.")
@@ -110,6 +115,7 @@ def validate_building(
             fail("Invalid floor openings.")
         opening_ids: set[str] = set()
         polygons: list[Polygon] = []
+        guards = []
         rooms = payload.get("rooms", []) or (payload.get("floorplan") or {}).get("rooms", [])
         try:
             footprint = unary_union([Polygon([(p["x"], p["y"]) for p in room["vertices"]]) for room in rooms])
@@ -132,7 +138,8 @@ def validate_building(
             for opening in openings:
                 if (
                     not isinstance(opening, dict)
-                    or set(opening) != {"id", "name", "shape", "vertices"}
+                    or not {"id", "name", "shape", "vertices"}.issubset(opening)
+                    or set(opening) - {"id", "name", "shape", "vertices", "balustrade"}
                     or not identifier(opening.get("id"))
                     or opening["id"] in opening_ids
                     or not isinstance(opening.get("name"), str)
@@ -186,76 +193,68 @@ def validate_building(
                     ):
                         fail("Rectangle openings need four axis-aligned sides of at least 100 mm.")
                 polygons.append(poly)
+                if "balustrade" in opening:
+                    config = BalustradeConfiguration.model_validate(opening["balustrade"])
+                    if config.enabled:
+                        guard = balustrade_footprint(vertices, config)
+                        if not footprint.buffer(1e-7).covers(guard):
+                            fail("Balustrade must sit completely on the slab.")
+                        if any(
+                            guard.intersection(
+                                LineString([(a["x"], a["y"]), (b["x"], b["y"])]).buffer(t / 2 + 10, cap_style="flat")
+                            ).area
+                            > 0.01
+                            for a, b, t in walls
+                        ):
+                            fail("Balustrade crosses or touches a wall.")
+                        if config.heightMm > floor["heightMm"] - floor["slabThicknessMm"]:
+                            fail("Balustrade height exceeds this floor's clear height.")
+                        guards.append(guard)
+            if any(guard.intersection(unary_union(polygons)).area > 0.01 for guard in guards):
+                fail("Balustrade must stay clear of every floor opening.")
+            if any(
+                guard.intersection(other).area > 0.01 for i, guard in enumerate(guards) for other in guards[i + 1 :]
+            ):
+                fail("Balustrades around neighbouring openings cannot overlap.")
         except (KeyError, TypeError, ValueError, GEOSException):
             fail("Invalid floor/opening geometry.")
     if building["activeFloorId"] not in ids:
         fail("Selected floor does not exist.")
     if floors[-1]["heightMm"] - floors[-1]["slabThicknessMm"] < 1800:
         fail("Top floor has insufficient clear headroom.")
-    roof = building["roof"]
-    required_roof = {
-        "type",
-        "lowHeightMm",
-        "highHeightMm",
-        "orientationDeg",
-        "splitFraction",
-        "thicknessMm",
-        "ceilingMode",
-        "ceilingHeightMm",
-    }
-    if (
-        not isinstance(roof, dict)
-        or not required_roof.issubset(roof)
-        or set(roof) - required_roof - {"enabled", "finish"}
-    ):
-        fail("Invalid roof document.")
-    if "enabled" in roof and type(roof["enabled"]) is not bool:
-        fail("Invalid roof visibility setting.")
-    if "finish" in roof:
-        finish = roof["finish"]
-        if (
-            not isinstance(finish, dict)
-            or set(finish) != {"material", "colour", "tileWidthMm", "tileHeightMm"}
-            or not isinstance(finish["material"], str)
-            or finish["material"]
-            not in {
-                "CLAY_TILES",
-                "CONCRETE_TILES",
-                "SLATE",
-                "CEMENT",
-                "METAL",
-                "ASPHALT_SHINGLES",
-                "TIMBER_SHINGLES",
-                "BITUMEN",
-                "CORRUGATED_METAL",
-            }
-            or not isinstance(finish["colour"], str)
-            or re.fullmatch(r"#[0-9a-fA-F]{6}", finish["colour"]) is None
-            or not number(finish["tileWidthMm"], 100, 2000)
-            or not number(finish["tileHeightMm"], 100, 4000)
+    for index, floor in enumerate(floors):
+        slab = floors[index + 1]["slabThicknessMm"] if index + 1 < len(floors) else floor["slabThicknessMm"]
+        if any(
+            o.get("balustrade", {}).get("enabled") and o["balustrade"]["heightMm"] > floor["heightMm"] - slab
+            for o in floor["openings"]
         ):
-            fail("Invalid roof finish.")
-    if (
-        not isinstance(roof["type"], str)
-        or roof["type"] not in {"FLAT", "MONO", "GABLE", "STEPPED"}
-        or not isinstance(roof["ceilingMode"], str)
-        or roof["ceilingMode"] not in {"FOLLOWS_ROOF", "FLAT"}
-    ):
-        fail("Unsupported roof or ceiling mode.")
-    for key, low, high in (
-        ("lowHeightMm", 1800, 20000),
-        ("highHeightMm", 1800, 20000),
-        ("ceilingHeightMm", 1800, 20000),
-        ("thicknessMm", 20, 1000),
-        ("orientationDeg", 0, 360),
-        ("splitFraction", 0.05, 0.95),
-    ):
-        if not number(roof[key], low, high):
-            fail("Invalid roof dimensions.")
-    if roof["type"] in {"MONO", "GABLE"} and roof["highHeightMm"] < roof["lowHeightMm"] + 50:
-        fail("Ridge/high side must rise at least 50 mm.")
-    if roof["type"] == "STEPPED" and abs(roof["highHeightMm"] - roof["lowHeightMm"]) < 50:
-        fail("Stepped zones must differ by at least 50 mm.")
-    lowest = min(roof["lowHeightMm"], roof["highHeightMm"]) if roof["type"] == "STEPPED" else roof["lowHeightMm"]
-    if roof["ceilingMode"] == "FLAT" and roof["ceilingHeightMm"] > lowest:
-        fail("Flat ceiling must not pass above the roof underside.")
+            fail("Balustrade height exceeds the clear height below the next slab.")
+    try:
+        roof = validate_roof_document(building["roof"], room_ids)
+        top_content = document if floors[-1]["id"] == building["activeFloorId"] else floors[-1]["content"]
+        if roof.enabled:
+            for opening in floors[-1]["openings"]:
+                if not opening.get("balustrade", {}).get("enabled"):
+                    continue
+                guard = balustrade_footprint(
+                    opening["vertices"], BalustradeConfiguration.model_validate(opening["balustrade"])
+                )
+                for room in top_content.get("rooms", []):
+                    if guard.intersection(Polygon([(p["x"], p["y"]) for p in room["vertices"]])).area <= 0.01:
+                        continue
+                    profile = (
+                        next((item.roof for item in roof.roomOverrides if item.roomId == room["id"]), roof)
+                        if roof.roomRoofsEnabled
+                        else roof
+                    )
+                    clear = (
+                        profile.ceilingHeightMm
+                        if profile.ceilingMode == "FLAT"
+                        else min(profile.lowHeightMm, profile.highHeightMm)
+                        if profile.type == "STEPPED"
+                        else profile.lowHeightMm
+                    )
+                    if opening["balustrade"]["heightMm"] > clear:
+                        fail("Balustrade exceeds its room roof zone's lowest clear ceiling height.")
+    except ValueError as exc:
+        fail(f"Invalid roof document: {exc}")

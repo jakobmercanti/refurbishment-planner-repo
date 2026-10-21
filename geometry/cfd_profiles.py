@@ -74,6 +74,36 @@ SOFA_NOTE = (
 )
 
 PROFILES: dict[str, Profile] = {
+    "balustrade-open": Profile(
+        "Open balustrade — posts and handrail",
+        ((0, 0, 0, 0.08, 1, 1), (0.92, 0, 0, 1, 1, 1), (0, 0, 0.95, 1, 1, 1)),
+        notes=("Fine spindles are omitted rather than replaced by a solid screen. The main open flow path remains.",
+               "Omitted spindle drag is not modelled. Use a calibrated porous screen or finer resolved geometry "
+               "when pressure loss across guarding matters. Nominal single section, not an assembled opening guard."),
+    ),
+    "balustrade-rails": Profile(
+        "Horizontal balustrade — coarse rails and posts",
+        ((0, 0, 0, 0.08, 1, 1), (0.92, 0, 0, 1, 1, 1), (0, 0, 0.95, 1, 1, 1),
+         (0.08, 0.25, 0.48, 0.92, 0.75, 0.52)),
+        notes=("Three fine intermediate rails are reduced to one coarse middle rail; main openings remain.",
+               "This changes local drag. Resolve actual rails or calibrate a porous model for pressure-loss studies. "
+               "Nominal single section, not an assembled opening guard."),
+    ),
+    "balustrade-glass": Profile(
+        "Glass balustrade — panel, posts and handrail",
+        ((0, 0, 0, 0.08, 1, 1), (0.92, 0, 0, 1, 1, 1), (0, 0, 0.95, 1, 1, 1),
+         (0.08, 0.4, 0.11, 0.92, 0.6, 0.95)),
+        notes=("Glass is a closed panel, not porous; the broad under-panel passage remains open.",
+               "Panel thickness is coarsened to 20% of the section depth (20 mm for the nominal section). "
+               "Confirm actual glass, gaps and refinements. Nominal single section, not an assembled opening guard."),
+    ),
+    "balustrade-solid": Profile(
+        "Closed balustrade — continuous obstruction",
+        ((0, 0, 0, 1, 1, 1),),
+        notes=("Parapet finishes and cappings are omitted; the full solid envelope is sealed, not porous.",
+               "Nominal section depth includes posts. Confirm actual panel thickness and end gaps in the solver. "
+               "Nominal single section, not an assembled opening guard."),
+    ),
     "people-standing": Profile(
         "Standing occupant — coarse joined body",
         (

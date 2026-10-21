@@ -8,6 +8,7 @@ import { StaircaseFixture, WindowFixture } from "@/components/ArchitecturalFixtu
 import { RoundedBox } from "@react-three/drei";
 import { RoomFurniture } from "@/components/RoomFurniture";
 import { PersonFixture } from "@/components/PersonFixture";
+import { BalustradeFixture } from "@/components/BalustradeFixture";
 import { KitchenFurniture } from "@/components/KitchenFurniture";
 import { Vector2, Vector3, CatmullRomCurve3, DoubleSide, Shape, Path } from "three";
 import { fixtureRepresentation } from "@/components/FixturePlanSymbol";
@@ -47,6 +48,7 @@ function Block({ position, size, colour = "#f4f3ef" }: { position: [number, numb
 export function ParametricFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
   const key = fixtureRepresentation(obstacle);
   const colours = resolvedPartColours({ ...obstacle, representation_key: key });
+  if(key.startsWith("balustrade-"))return <BalustradeFixture representation={key} width={width} depth={depth} height={height} colour={colours.body??obstacle.color_hex??"#394750"}/>;
   if (key.startsWith("people-")) return <PersonFixture obstacle={obstacle} width={width} depth={depth} height={height} colours={colours} />;
   if (key.startsWith("electrical-")) return <ElectricalFixture colours={colours} representation={key} width={width} depth={depth} height={height} colour={colours.body ?? obstacle.color_hex ?? "#F4F3EE"} />;
   if (key.startsWith("furniture-bath-")) return <BathFixture representation={key} width={width} depth={depth} height={height} colour={colours.body} interiorColour={colours.interior} hardwareColour={colours.hardware} legsColour={colours.legs} />;

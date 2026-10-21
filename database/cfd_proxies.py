@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database.models import FurnitureItemRecord
+from geometry.balustrades import BALUSTRADE_STYLES
 from geometry.cfd import CfdProxySpec
 
 
@@ -16,7 +17,11 @@ def cfd_proxy_for(category: str, kind: str, representation: str) -> dict[str, ob
         or key.startswith(("electrical-", "door-", "window-", "furniture-stair-"))
     ):
         return None
-    if key in ("people-standing", "people-seated", "people-lying") and kind == "FURNITURE":
+    if key.startswith("balustrade-") and kind == "FURNITURE":
+        profile = next((style["cfdProfile"] for style in BALUSTRADE_STYLES if style["key"] == key), None)
+        if profile is None:
+            return None
+    elif key in ("people-standing", "people-seated", "people-lying") and kind == "FURNITURE":
         profile = key
     elif kind == "SHOWER":
         profile = {

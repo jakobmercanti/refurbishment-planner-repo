@@ -16,5 +16,6 @@ test("real edge catalogue and browser worker remain reachable", () => {
   const result = sourceUsage();
   assert(result.reachable.has("frontend/lib/commercialCatalogue.ts"));
   assert(result.reachable.has("frontend/lib/heatingWorker.ts"));
+  assert(result.reachable.has("frontend/types/vtk-legacy.d.ts"));
   assert.deepEqual(result.unused, []);
 });

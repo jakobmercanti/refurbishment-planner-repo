@@ -151,8 +151,9 @@ export default {
         /^\/(health|demo|settings|products)(\/[^/]+)?$/.test(endpoint)
         || /^\/catalog\/(categories|items|materials)(\/[^/]+)?(\/images\/\d+)?$/.test(endpoint)
         || /^\/catalog\/items\/[^/]+\/cfd(?:\.stl)?$/.test(endpoint)
+        || endpoint === '/climoptix/capabilities'
       );
-      const calculable = request.method === 'POST' && ['/rooms/validate', '/layout-checks', '/fit-checks', '/placements'].includes(endpoint);
+      const calculable = request.method === 'POST' && ['/rooms/validate', '/layout-checks', '/fit-checks', '/placements', '/climoptix/prepare', '/climoptix/openfoam-settings'].includes(endpoint);
       if (!readable && !calculable) return respond(Response.json({ detail: 'This operation is unavailable publicly.' }, { status: 403 }));
       if (calculable && request.headers.get('Origin') !== url.origin) return respond(new Response('Forbidden', { status: 403 }));
       if (!env.ENGINEERING_API_ORIGIN) return respond(Response.json({ detail: 'Engineering service is not configured.' }, { status: 503 }));
@@ -160,8 +161,19 @@ export default {
       if (origin.protocol !== 'https:') return respond(new Response('Invalid API configuration', { status: 503 }));
       const target = new URL(endpoint + url.search, origin);
       try {
-        const body = calculable ? await request.arrayBuffer() : undefined;
-        if (body && body.byteLength > 4 * 1024 * 1024) return respond(new Response('Request too large', { status: 413 }));
+        let body;
+        if (calculable && request.body) {
+          const reader=request.body.getReader(),chunks=[];
+          let length=0;
+          while(true){
+            const part=await reader.read();if(part.done)break;
+            length+=part.value.byteLength;
+            if(length>4*1024*1024){await reader.cancel();return respond(new Response('Request too large',{status:413}));}
+            chunks.push(part.value);
+          }
+          body=new Uint8Array(length);let offset=0;
+          for(const chunk of chunks){body.set(chunk,offset);offset+=chunk.byteLength;}
+        }
         const result = await fetch(target, { method: request.method, headers: { 'Content-Type': 'application/json' }, body, redirect: 'manual', signal: AbortSignal.timeout(25000) });
         if (result.status >= 300 && result.status < 400) throw new Error('Unexpected upstream redirect');
         const out = respond(result); out.headers.set('Cache-Control', 'no-store'); return out;

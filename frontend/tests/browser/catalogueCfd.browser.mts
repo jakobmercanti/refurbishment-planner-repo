@@ -12,6 +12,10 @@ before(async()=>{
 });
 after(async()=>{await harness?.close();});
 const definitions=[
+  ["balustrade-open","balustrades","Balustrades","FURNITURE","balustrade-vertical",1000,100,1100],
+  ["balustrade-rails","balustrades","Balustrades","FURNITURE","balustrade-horizontal",1000,100,1100],
+  ["balustrade-glass","balustrades","Balustrades","FURNITURE","balustrade-glass",1000,100,1100],
+  ["balustrade-solid","balustrades","Balustrades","FURNITURE","balustrade-solid",1000,150,1100],
   ["people-standing","people","People","FURNITURE","people-standing",522,360,1800],
   ["people-seated","people","People","FURNITURE","people-seated",558,900,1377],
   ["people-lying","people","People","FURNITURE","people-lying",540,1800,324],

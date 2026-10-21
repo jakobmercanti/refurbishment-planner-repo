@@ -33,7 +33,7 @@ interface CatalogueBrowserProps {
   onInsert: (item: CatalogueItem) => void;
 }
 
-type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "people" | "living" | "bedroom" | "kitchen" | "staircases" | "radiators" | "electrical";
+type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "people" | "balustrades" | "living" | "bedroom" | "kitchen" | "staircases" | "radiators" | "electrical";
 type CatalogueDetailSelection =
   | { type: "object"; item: CatalogueItem }
   | { type: "material"; item: MaterialItem; family: MaterialFamily; collection: MaterialCollection };
@@ -41,6 +41,7 @@ type CatalogueContextMenu = { x: number; y: number };
 
 const CATEGORY_KINDS: Record<string, CatalogueItemInput["fixture_kind"]> = {
   people: "FURNITURE",
+  balustrades: "FURNITURE",
   electric: "FURNITURE",
   ...Object.fromEntries(DOOR_MODELS.map(model => [model.family, "DOOR" as const])),
   "living-chairs": "FURNITURE", "living-sofas": "FURNITURE", "living-armchairs": "FURNITURE", "living-tables": "FURNITURE",
@@ -278,6 +279,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     staircases: categories.filter((category) => category.id.startsWith("staircases-")),
     bathroom: bathroomFixtureCategories,
     people: categories.filter(category => category.id === "people"),
+    balustrades: categories.filter(category => category.id === "balustrades"),
     doors: categories.filter((category) => category.id === "doors" || category.id.startsWith("doors-")),
     windows: categories.filter((category) => category.id === "windows"),
     kitchen: categories.filter((category) => category.id.startsWith("kitchen-")),
@@ -293,6 +295,7 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     const branchKeys = [
       "fixtures",
       "people",
+      "balustrades",
       "doors",
       "windows",
       "kitchen",
@@ -599,6 +602,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
             {topLevelOpeningCategories.map((category) => renderOpeningCategory(category, category.id as "doors" | "windows"))}
             <button className="catalogue-disclosure" aria-expanded={expanded.people ?? false} aria-controls="catalogue-people" onClick={() => { setExpanded(current => ({ ...current, people: !current.people })); selectObjectGroup("people", "people"); }}><strong>People</strong><span aria-hidden>{expanded.people ? "−" : "+"}</span></button>
             {expanded.people && <div id="catalogue-people" className="catalogue-branch">{renderGroupAll("people")}{["Standing", "Seated", "Lying down"].map(posture => <button key={posture} className={activeObjectGroup === "people" && activeSubcategory === posture ? "active" : ""} onClick={() => selectObjectGroup("people", "people", posture)}><span>{posture}</span><small>{navigationItems.filter(item => item.category_id === "people" && item.subcategory === posture).length}</small></button>)}</div>}
+            <button className="catalogue-disclosure" aria-expanded={expanded.balustrades??false} aria-controls="catalogue-balustrades" onClick={()=>{setExpanded(current=>({...current,balustrades:!current.balustrades}));selectObjectGroup("balustrades","balustrades");}}><strong>Balustrades</strong><span aria-hidden>{expanded.balustrades?"−":"+"}</span></button>
+            {expanded.balustrades&&<div id="catalogue-balustrades" className="catalogue-branch">{renderGroupAll("balustrades")}{objectGroupCategories.balustrades.map(category=>renderCategoryTree(category,"balustrades"))}</div>}
             <button className="catalogue-disclosure" aria-expanded={expanded.electrical ?? false} aria-controls="catalogue-electrical" onClick={() => { setExpanded(current => ({ ...current, electrical: !current.electrical })); selectObjectGroup("electrical", "electric"); }}><strong>Electrical</strong><span aria-hidden>{expanded.electrical ? "−" : "+"}</span></button>
             {expanded.electrical && <div id="catalogue-electrical" className="catalogue-branch">
               {renderGroupAll("electrical")}
