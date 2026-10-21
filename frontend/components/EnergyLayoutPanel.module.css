@@ -6,7 +6,7 @@
 .sectionNav { display:flex; align-items:end; justify-content:space-between; gap:10px; flex-wrap:wrap; border-bottom:1px solid var(--line); }
 .sectionNav .energyTabs { border-bottom:0; flex:1 1 250px; }
 .panel.panel .defineLayers { min-height:42px; min-width:140px; padding:9px 16px; margin-bottom:3px; }
-.energyTabs { width:100%; grid-template-columns:repeat(4,minmax(0,1fr)); }
+.energyTabs { width:100%; grid-template-columns:repeat(5,minmax(0,1fr)); }
 .constructionSection { display:grid; gap:10px; }
 .constructionSection .wallSummary { margin-bottom:0; }
 .panel .limitations { font-size:inherit; color:inherit; }

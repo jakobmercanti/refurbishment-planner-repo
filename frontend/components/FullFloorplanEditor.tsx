@@ -959,6 +959,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   const lastThermalAction = useRef<"ENERGY" | "HEATING" | "FLOORPLAN">("ENERGY");
   const energyUndo = useRef<Array<{ data: EnergyProject; walls: Wall[]; thickness: number }>>([]), energyRedo = useRef<Array<{ data: EnergyProject; walls: Wall[]; thickness: number }>>([]);
   const [energySelection, setEnergySelection] = useState<string[]>([]);
+  const [handledInsulationRequest, setHandledInsulationRequest] = useState<string>();
   function selectEnergyWall(ids: string[]) {
     const allowed = new Set(energyElements(planRooms, heating.data, energy.data).filter(e => isInsulationSelectable(e, planRooms)).map(e => e.elementId));
     ids = ids.filter(id => allowed.has(id));
@@ -1440,6 +1441,18 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     };
   }, [activeSourceRoomId, currentFixtures, initialFloorplan?.wallThickness, openingCatalogueItems, openings, projectRooms, restoredFinishes, wallHeight, wallThickness, walls]);
   const planRooms = useMemo(() => rooms.map(roomDraftForOutline), [roomDraftForOutline, rooms]);
+  if (energy.editRequest && handledInsulationRequest !== energy.editRequest.id && planRooms.length) {
+    const request = energy.editRequest;
+    const elements = energyElements(planRooms, heating.data, energy.data);
+    const candidates = elements.filter(e => e.elementId === request.elementId || e.elementId.startsWith(request.elementId + ":"));
+    const target = candidates.find(e => {
+      if (!request.pointMm || !e.startMm || !e.endMm) return true;
+      const dx=e.endMm.x-e.startMm.x, dy=e.endMm.y-e.startMm.y;
+      const along=((request.pointMm[0]-e.startMm.x)*dx+(request.pointMm[1]-e.startMm.y)*dy)/(dx*dx+dy*dy);
+      return along >= -1e-6 && along <= 1+1e-6;
+    });
+    if (target) { setHandledInsulationRequest(request.id);setEnergySelection([target.elementId]); }
+  }
   const electricalDocumentRooms = useMemo(() => {
     const byId = new Map<string, Room>();
     projectRooms.forEach((room) => byId.set(room.id, room));

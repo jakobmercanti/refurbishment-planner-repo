@@ -17,6 +17,8 @@ from pydantic import (
     model_validator,
 )
 
+from geometry.thermal_models import ThermalSetup, ThermalSnapshot
+
 Id = Annotated[str, Field(pattern=r"^[A-Za-z0-9_:-]+$", min_length=1, max_length=150)]
 PatchId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_:.-]+$", min_length=1, max_length=500)]
 Positive = Annotated[StrictFloat, Field(gt=0, le=1e12)]
@@ -374,6 +376,8 @@ class Scenario(Contract):
     postProcessing: PostProcessing = Field(default_factory=PostProcessing)
     optimization: Optimization = Field(default_factory=Optimization)
     validation: ValidationStamp | None = None
+    thermalEnvelope: ThermalSetup | None = None
+    thermalSnapshots: list[ThermalSnapshot] = Field(default_factory=list, max_length=3)
 
     @model_validator(mode="after")
     def unique_entities(self) -> Self:

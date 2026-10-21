@@ -837,13 +837,25 @@ class PreparationOnlyProvider:
                     region.id,
                 )
             if refinement_level(scenario.mesh, region) > 10:
-                _issue(domain.diagnostics, "error", "mesh", "refinement-level-range",
-                       "A cell target needs more than 10 snappyHexMesh levels.", "Increase its cell size.", region.id)
+                _issue(
+                    domain.diagnostics,
+                    "error",
+                    "mesh",
+                    "refinement-level-range",
+                    "A cell target needs more than 10 snappyHexMesh levels.",
+                    "Increase its cell size.",
+                    region.id,
+                )
         for field in scenario.postProcessing.fields:
             if (field == "T" and not scenario.physics.energy) or (field == "CO2" and not scenario.physics.co2):
-                _issue(domain.diagnostics, "error", "outputs", "inactive-slice-field",
-                       f"Slice field {field} requires its transport equation.",
-                       "Enable the equation or deselect the field.")
+                _issue(
+                    domain.diagnostics,
+                    "error",
+                    "outputs",
+                    "inactive-slice-field",
+                    f"Slice field {field} requires its transport equation.",
+                    "Enable the equation or deselect the field.",
+                )
         for probe in scenario.outputs.probesMm:
             if not any(
                 r.id in domain.included and r.air.covers(Point(probe[:2])) and r.base <= probe[2] <= r.top(*probe[:2])
@@ -922,7 +934,8 @@ class PreparationOnlyProvider:
         errors = sum(d.severity == "error" for d in domain.diagnostics)
         warnings = sum(d.severity == "warning" for d in domain.diagnostics)
         config = scenario.model_dump(
-            mode="json", exclude={"validation", "name", "description", "archived", "createdAt", "updatedAt"}
+            mode="json",
+            exclude={"validation", "thermalSnapshots", "name", "description", "archived", "createdAt", "updatedAt"},
         )
         stamp = ValidationStamp(
             clientRevision=client_revision,

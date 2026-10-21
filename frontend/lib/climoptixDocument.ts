@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { thermalSetupSchema, thermalSnapshotSchema } from "./thermalDocument";
 
 const id = z.string().regex(/^[\w:-]{1,150}$/),
   patchId = z.string().regex(/^[\w:.-]{1,500}$/);
@@ -424,6 +425,8 @@ export const cfdScenarioSchema = z
       })
       .strict()
       .prefault({}),
+    thermalEnvelope: thermalSetupSchema.nullable().optional(),
+    thermalSnapshots: z.array(thermalSnapshotSchema).max(3).optional(),
     validation: validationSchema.nullable().default(null),
   })
   .strict()
@@ -462,8 +465,10 @@ export function newCFDScenario(
 }
 export function duplicateCFDScenario(s: CFDScenario): CFDScenario {
   const now = new Date().toISOString();
+  const copy = structuredClone(s);
+  delete copy.thermalSnapshots;
   return {
-    ...structuredClone(s),
+    ...copy,
     id: crypto.randomUUID(),
     name: `${s.name.slice(0, 114)} copy`,
     createdAt: now,

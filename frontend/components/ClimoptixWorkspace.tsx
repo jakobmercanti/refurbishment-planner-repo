@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { projectFloors } from "@/lib/buildingDocument";
+import {
+  thermalSetupSchema,
+  type ThermalMetric,
+  type ThermalPackage,
+  type ThermalSurface,
+} from "@/lib/thermalDocument";
+import { requestThermal } from "@/lib/thermalClient";
+import { ThermalEnvelopeWindow } from "./ThermalEnvelopeWindow";
 import {
   cfdScenarioSchema,
   duplicateCFDScenario,
@@ -159,6 +168,10 @@ interface Props {
   canUndo: boolean;
   canRedo: boolean;
   onEditBuilding: () => void;
+  onEditInsulation?: (
+    surface: ThermalSurface,
+    constructionScenario: string | null,
+  ) => void;
 }
 export function ClimoptixWorkspace({
   active,
@@ -172,6 +185,7 @@ export function ClimoptixWorkspace({
   canUndo,
   canRedo,
   onEditBuilding,
+  onEditInsulation,
 }: Props) {
   const [selectedId, setSelectedId] = useState(""),
     [phase, setPhase] = useState<Phase>("domain"),
@@ -189,6 +203,19 @@ export function ClimoptixWorkspace({
   const [simulationTab, setSimulationTab] = useState<SimulationTab>("mesh");
   const [showRefinements, setShowRefinements] = useState(true);
   const [monitorOpen, setMonitorOpen] = useState(false);
+  const [thermalOpen, setThermalOpen] = useState(false);
+  const [thermalReports, setThermalReports] = useState<
+    Record<string, ThermalPackage>
+  >({});
+  const [thermalTask, setThermalTask] = useState({
+    studyId: "",
+    busy: false,
+    error: "",
+  });
+  const [thermalMetric, setThermalMetric] = useState<ThermalMetric>("off");
+  const [thermalSelected, setThermalSelected] = useState<string | null>(null);
+  const thermalAbort = useRef<AbortController | null>(null);
+  const thermalOpener = useRef<HTMLButtonElement | null>(null);
   const [monitorFocus, setMonitorFocus] = useState(0);
   const monitorOpener = useRef<HTMLButtonElement | null>(null);
   const { logs, importLog, clearLog } = useConvergenceLogs();
@@ -246,6 +273,7 @@ export function ClimoptixWorkspace({
     () => () => {
       abort.current?.abort();
       exportAbort.current?.abort();
+      thermalAbort.current?.abort();
       importRead.current++;
     },
     [],
@@ -279,6 +307,138 @@ export function ClimoptixWorkspace({
     onChange(
       scenarios.map((v) => (v.id === s.id ? result.data : v)),
       checkpoint || devicesChanged || regionsChanged,
+    );
+  };
+  const thermalReport = scenario ? (thermalReports[scenario.id] ?? null) : null;
+  const thermalBusy = thermalTask.studyId === scenario?.id && thermalTask.busy;
+  const thermalError =
+    thermalTask.studyId === scenario?.id ? thermalTask.error : "";
+  const thermalStale =
+    !thermalReport || !revision || thermalReport.sourceRevision !== revision;
+  const calculateThermal = useCallback(
+    async (calculate: boolean, target = scenario) => {
+      if (!target?.seed) return;
+      thermalAbort.current?.abort();
+      const controller = new AbortController();
+      thermalAbort.current = controller;
+      setThermalTask({ studyId: target.id, busy: true, error: "" });
+      const captured = preparationInput(project, target);
+      try {
+        const token = await preparationRevision(captured);
+        const result = await requestThermal(
+          apiUrl,
+          project,
+          target,
+          token,
+          calculate,
+          controller.signal,
+        );
+        const live = current.current.scenarios.find((s) => s.id === target.id);
+        if (
+          controller.signal.aborted ||
+          !live ||
+          preparationInput(current.current.project, live) !== captured
+        )
+          return;
+        setThermalReports((values) => ({ ...values, [target.id]: result }));
+        if (!calculate && result.surfaces.length) setThermalMetric("missing");
+      } catch (reason) {
+        if (!controller.signal.aborted)
+          setThermalTask({
+            studyId: target.id,
+            busy: false,
+            error:
+              reason instanceof Error
+                ? reason.message
+                : "Thermal preparation failed.",
+          });
+      } finally {
+        if (!controller.signal.aborted)
+          setThermalTask((task) =>
+            task.studyId === target.id ? { ...task, busy: false } : task,
+          );
+      }
+    },
+    [apiUrl, project, scenario],
+  );
+  const previouslyActive = useRef(active);
+  useEffect(() => {
+    const returning = active && !previouslyActive.current;
+    previouslyActive.current = active;
+    if (returning && thermalOpen) void calculateThermal(false);
+  }, [active, thermalOpen, calculateThermal]);
+  const openThermal = () => {
+    if (!scenario) return;
+    if (document.activeElement instanceof HTMLButtonElement)
+      thermalOpener.current = document.activeElement;
+    const setup = scenario.thermalEnvelope ?? thermalSetupSchema.parse({});
+    const insulationScenarios = Object.fromEntries(
+      projectFloors(project).map((f) => [
+        f.id,
+        Object.hasOwn(setup.insulationScenarios, f.id)
+          ? setup.insulationScenarios[f.id]
+          : (f.content.energyLayout?.activeScenarioId ?? null),
+      ]),
+    );
+    const target =
+      !scenario.thermalEnvelope ||
+      JSON.stringify(insulationScenarios) !==
+        JSON.stringify(setup.insulationScenarios)
+        ? { ...scenario, thermalEnvelope: { ...setup, insulationScenarios } }
+        : scenario;
+    if (target !== scenario) change(target, true);
+    setThermalOpen(true);
+    void calculateThermal(false, target);
+  };
+  const applyThermal = () => {
+    if (!scenario || thermalStale || !thermalReport?.validation.applyReady)
+      return;
+    const snapshot = {
+      schemaVersion: 1 as const,
+      caseHash: thermalReport.caseHash,
+      sourceRevision: thermalReport.sourceRevision,
+      createdAt: new Date().toISOString(),
+      package: structuredClone(thermalReport),
+    };
+    const next = {
+      ...scenario,
+      thermalSnapshots: [
+        snapshot,
+        ...(scenario.thermalSnapshots ?? []).filter(
+          (s) => s.caseHash !== snapshot.caseHash,
+        ),
+      ].slice(0, 3),
+    };
+    if (
+      (scenario.thermalSnapshots?.length ?? 0) >= 3 &&
+      !scenario.thermalSnapshots?.some(
+        (s) => s.caseHash === snapshot.caseHash,
+      ) &&
+      !window.confirm(
+        "Three thermal contracts are stored. Applying will replace the oldest history. Export it first if you need to retain it. Continue?",
+      )
+    )
+      return;
+    if (
+      new TextEncoder().encode(
+        JSON.stringify({
+          ...project,
+          cfdScenarios: scenarios.map((s) => (s.id === scenario.id ? next : s)),
+        }),
+      ).byteLength >
+      8 * 1024 * 1024
+    ) {
+      setThermalTask({
+        studyId: scenario.id,
+        busy: false,
+        error:
+          "This applied history would exceed the 8 MB project limit. Export the contract, then remove an older thermal history before applying.",
+      });
+      return;
+    }
+    change(next, true);
+    setMessage(
+      "Thermal contract applied and saved with this study. Flow/scalar conditions are unchanged. No CFD run was performed.",
     );
   };
   const add = () => {
@@ -680,13 +840,27 @@ export function ClimoptixWorkspace({
                 />
               )}
               {phase === "boundaries" && (
-                <BoundariesPanel
-                  scenario={scenario}
-                  report={activeReport}
-                  selected={selected}
-                  onSelect={setSelected}
-                  onChange={change}
-                />
+                <>
+                  <button className="cfx-primary" onClick={openThermal}>
+                    Thermal Envelope &amp; Solar Conditions
+                  </button>
+                  {scenario.thermalSnapshots?.length ? (
+                    <p className="cfx-notice">
+                      Thermal handoff stored ·{" "}
+                      {thermalStale
+                        ? "refresh to verify current sources"
+                        : "current source revision"}
+                      . Contract only, not executed.
+                    </p>
+                  ) : null}
+                  <BoundariesPanel
+                    scenario={scenario}
+                    report={activeReport}
+                    selected={selected}
+                    onSelect={setSelected}
+                    onChange={change}
+                  />
+                </>
               )}
               {phase === "physics" && (
                 <PhysicsPanel scenario={scenario} onChange={change} />
@@ -933,10 +1107,57 @@ export function ClimoptixWorkspace({
                   }
                   showRefinements={showRefinements}
                   onShowRefinements={setShowRefinements}
+                  thermalSurfaces={
+                    thermalStale ? [] : (thermalReport?.surfaces ?? [])
+                  }
+                  thermalMetric={thermalMetric}
+                  thermalSelected={thermalSelected}
+                  onThermalSelect={(id) => {
+                    setThermalSelected(id);
+                    setThermalOpen(true);
+                  }}
+                  thermalNorthDeg={scenario.thermalEnvelope?.northDeg}
                 />
               )
             )}
           </div>
+          {thermalOpen && (
+            <ThermalEnvelopeWindow
+              key={scenario.id}
+              project={project}
+              scenario={scenario}
+              apiUrl={apiUrl}
+              report={thermalReport}
+              busy={thermalBusy}
+              error={
+                thermalError ||
+                (error.startsWith("Changes not applied") ? error : "")
+              }
+              stale={thermalStale}
+              metric={thermalMetric}
+              onMetric={setThermalMetric}
+              selected={thermalSelected}
+              onSelect={setThermalSelected}
+              onChange={change}
+              onRequest={(calculate) => void calculateThermal(calculate)}
+              onApply={applyThermal}
+              onEditInsulation={(face) => {
+                if (onEditInsulation)
+                  onEditInsulation(
+                    face,
+                    scenario.thermalEnvelope?.insulationScenarios[
+                      face.floorId
+                    ] ?? null,
+                  );
+                else onEditBuilding();
+              }}
+              onClose={() => {
+                setThermalOpen(false);
+                if (thermalOpener.current?.isConnected)
+                  thermalOpener.current.focus();
+              }}
+            />
+          )}
           <footer className="cfx-statusbar">
             <div>
               {error ? (

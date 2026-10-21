@@ -11,6 +11,7 @@ from shapely.errors import GEOSException
 from backend.app.climoptix_provider import PreparationOnlyProvider
 from backend.app.commercial_api import _validate_project
 from geometry.climoptix_models import ProviderCapabilities, Scenario
+from geometry.thermal_models import ThermalPackage
 
 router = APIRouter(prefix="/climoptix", tags=["Climoptix preparation"])
 provider = PreparationOnlyProvider()
@@ -39,6 +40,46 @@ def prepare(request: PreparationRequest) -> dict[str, Any]:
         ) from None
 
 
+@router.post("/thermal-envelope", response_model=ThermalPackage)
+def thermal_envelope(request: PreparationRequest) -> ThermalPackage:
+    return _thermal(request, calculate=False)
+
+
+@router.post("/thermal-preview", response_model=ThermalPackage)
+def thermal_preview(request: PreparationRequest) -> ThermalPackage:
+    return _thermal(request, calculate=True)
+
+
+def _thermal(request: PreparationRequest, *, calculate: bool) -> ThermalPackage:
+    from geometry.thermal_balance import thermal_package
+
+    report = prepare(request)
+    try:
+        return thermal_package(request.project, request.scenario, report, calculate=calculate)
+    except ImportError:
+        raise HTTPException(
+            503, "Thermal dependencies are unavailable. Install the pinned pvlib/tzdata dependencies on this service."
+        ) from None
+    except (KeyError, TypeError, ValueError, GEOSException) as error:
+        raise HTTPException(422, f"Cannot prepare the thermal envelope: {str(error)[:1500]}") from None
+
+
+class EPWRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(max_length=4 * 1024 * 1024)
+    filename: str = Field(max_length=120)
+
+
+@router.post("/thermal-epw")
+def thermal_epw(request: EPWRequest) -> dict[str, Any]:
+    from geometry.thermal_epw import parse_epw
+
+    try:
+        return parse_epw(request.text, request.filename)
+    except ValueError as error:
+        raise HTTPException(422, str(error)[:1500]) from None
+
+
 @router.post("/openfoam-settings")
 def openfoam_settings(request: PreparationRequest) -> Response:
     """Revalidate trusted source; never accept a browser-supplied report or server path."""
@@ -46,7 +87,8 @@ def openfoam_settings(request: PreparationRequest) -> Response:
 
     report = prepare(request)
     try:
-        content = settings_package(request.scenario, report)
+        thermal = _thermal(request, calculate=True) if request.scenario.thermalEnvelope else None
+        content = settings_package(request.scenario, report, thermal=thermal)
     except ImportError:
         raise HTTPException(
             503, "Foamlib is not installed on this service. Enable the optional cfd dependency."

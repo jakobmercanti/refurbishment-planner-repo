@@ -347,6 +347,18 @@ const reportGuard = z
   })
   .passthrough();
 
+function thermalInsulation(content: FloorContent) {
+  const e = content.energyLayout;
+  return e
+    ? {
+        materials: e.materials,
+        assemblies: e.assemblies,
+        existingAssignments: e.existingAssignments,
+        scenarios: e.scenarios,
+        activeScenarioId: e.activeScenarioId,
+      }
+    : null;
+}
 function stable(value: unknown): string {
   return JSON.stringify(value, (_key, v: unknown) =>
     v && typeof v === "object" && !Array.isArray(v)
@@ -378,6 +390,9 @@ export function preparationInput(
       wallRuns: f.content.floorplan?.walls ?? [],
       sourceWallHeightMm: f.content.floorplan?.wallHeight,
       sourceWallThicknessMm: f.content.floorplan?.wallThickness,
+      insulation: scenario.thermalEnvelope
+        ? thermalInsulation(f.content)
+        : undefined,
       rooms: f.content.rooms.map((r) => ({
         id: r.id,
         vertices: r.vertices,
@@ -391,6 +406,7 @@ export function preparationInput(
     scenario: {
       ...scenario,
       validation: undefined,
+      thermalSnapshots: undefined,
       name: undefined,
       description: undefined,
       createdAt: undefined,
@@ -437,6 +453,7 @@ export function preparationRequestBody(
         }
       : null,
     assetInstances: content.assetInstances,
+    energyLayout: scenario.thermalEnvelope ? content.energyLayout : undefined,
   });
   const b = buildingOf(project),
     source = {
@@ -455,9 +472,13 @@ export function preparationRequestBody(
       renderCamera: undefined,
       electricalLayout: undefined,
       heatingLayout: undefined,
-      energyLayout: undefined,
+      energyLayout: scenario.thermalEnvelope ? project.energyLayout : undefined,
     };
-  const body = JSON.stringify({ project: source, scenario, clientRevision });
+  const body = JSON.stringify({
+    project: source,
+    scenario: { ...scenario, thermalSnapshots: undefined },
+    clientRevision,
+  });
   if (new TextEncoder().encode(body).byteLength > 4 * 1024 * 1024)
     throw new Error(
       "This preparation exceeds 4 MB. Reduce scenario complexity or use a smaller source project.",

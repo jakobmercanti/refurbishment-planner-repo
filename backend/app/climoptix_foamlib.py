@@ -11,9 +11,10 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from geometry.climoptix_models import Scenario
 from geometry.climoptix_workflow import refinement_cell_mm, refinement_level, sampling_planes
+from geometry.thermal_models import ThermalPackage
 
 
-def settings_package(scenario: Scenario, report: dict[str, Any]) -> bytes:
+def settings_package(scenario: Scenario, report: dict[str, Any], *, thermal: ThermalPackage | None = None) -> bytes:
     from foamlib import FoamFile
 
     if report["validation"]["errors"] or not report["surface"]["exportable"]:
@@ -149,6 +150,8 @@ def settings_package(scenario: Scenario, report: dict[str, Any]) -> bytes:
             archive.writestr(f"settings/system/{name}", encoded)
         archive.writestr("scenario.json", scenario.model_dump_json(indent=2))
         archive.writestr("preparation.json", json.dumps(report))
+        if thermal is not None:
+            archive.writestr("thermal-boundary-contract.json", thermal.model_dump_json(indent=2))
         archive.writestr(
             "manifest.json",
             json.dumps(
@@ -158,6 +161,12 @@ def settings_package(scenario: Scenario, report: dict[str, Any]) -> bytes:
                     "runnable": False,
                     "dialect": "OpenCFD-v2312",
                     "writer": "foamlib",
+                    "thermalContract": {
+                        "present": thermal is not None,
+                        "runnable": False,
+                        "ready": thermal.validation.applyReady if thermal is not None else False,
+                        "caseHash": thermal.caseHash if thermal is not None else None,
+                    },
                     "solverIntent": solver,
                     "validation": report["validation"],
                     "geometryUnits": "metres",
@@ -191,6 +200,10 @@ def settings_package(scenario: Scenario, report: dict[str, Any]) -> bytes:
                 "Background cells, origin/alignment, local surface/wake targets and layers need worker translation.\n"
                 "Sampling uses ASCII VTK; download full solver VTK artifacts unchanged for ParaView once available.\n"
                 "No mesh, residuals or computed fields were produced by this export.\n"
+                "Optional thermal-boundary-contract.json is a freshly validated candidate, "
+                "not an executed T dictionary.\n"
+                "Check its validation; thermal face splits, Robin Rtotal-Rsi "
+                "and lumped solar sources need a worker adapter.\n"
             ),
         )
     return output.getvalue()

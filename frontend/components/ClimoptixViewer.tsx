@@ -23,6 +23,11 @@ import { projectFloors } from "@/lib/buildingDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDPatch, CFDRegion, CFDReport, Vec3 } from "@/lib/climoptix";
 import type { CFDScenario, CFDVent } from "@/lib/climoptixDocument";
+import {
+  thermalColour,
+  type ThermalMetric,
+  type ThermalSurface,
+} from "@/lib/thermalDocument";
 import { ParametricFixture } from "./ParametricFixture";
 import { samplingPlanes, refinementColour } from "@/lib/climoptixWorkflow";
 import {
@@ -84,6 +89,51 @@ interface Props {
   showSamplingPlanes?: boolean;
   showRefinements: boolean;
   onShowRefinements: (show: boolean) => void;
+  thermalSurfaces?: ThermalSurface[];
+  thermalMetric?: ThermalMetric;
+  thermalSelected?: string | null;
+  onThermalSelect?: (id: string) => void;
+  thermalNorthDeg?: number;
+}
+function ThermalFaceMesh({
+  face,
+  metric,
+  selected,
+  onSelect,
+}: {
+  face: ThermalSurface;
+  metric: ThermalMetric;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const geometry = useMemo(() => {
+    const g = new BufferGeometry();
+    const positions = face.triangles.flatMap((t) =>
+      t.flatMap((index) => scene(face.verticesMm[index] as Vec3)),
+    );
+    g.setAttribute("position", new Float32BufferAttribute(positions, 3));
+    g.computeVertexNormals();
+    return g;
+  }, [face]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return (
+    <mesh
+      name={face.surfaceId}
+      geometry={geometry}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+    >
+      <meshStandardMaterial
+        color={selected ? "#ffcc64" : thermalColour(face, metric)}
+        side={DoubleSide}
+        transparent
+        opacity={selected ? 0.95 : 0.66}
+        roughness={0.9}
+      />
+    </mesh>
+  );
 }
 function PatchMesh({
   patch,
@@ -258,7 +308,17 @@ export function ClimoptixViewer({
   showSamplingPlanes = false,
   showRefinements,
   onShowRefinements,
+  thermalSurfaces = [],
+  thermalMetric = "off",
+  thermalSelected = null,
+  onThermalSelect,
+  thermalNorthDeg,
 }: Props) {
+  const thermalVisible = thermalMetric !== "off" && thermalSurfaces.length > 0;
+  const thermalPatchIds = useMemo(
+    () => new Set(thermalSurfaces.map((f) => f.patchId)),
+    [thermalSurfaces],
+  );
   const [floorId, setFloorId] = useState(""),
     [ceilings, setCeilings] = useState(false),
     [context, setContext] = useState(true),
@@ -527,6 +587,16 @@ export function ClimoptixViewer({
         </p>
       )}
       <div className="cfx-viewport" data-view={view} ref={viewportRef}>
+        {thermalNorthDeg !== undefined && view === "2D" && (
+          <div
+            className="thermal-view-north"
+            aria-label={`Plan north bearing ${thermalNorthDeg} degrees`}
+          >
+            <span style={{ transform: `rotate(${thermalNorthDeg}deg)` }}>
+              ↓ N
+            </span>
+          </div>
+        )}
         {view === "2D" ? (
           <svg
             aria-label="CFD room plan"
@@ -819,8 +889,51 @@ export function ClimoptixViewer({
                   />
                 </g>
               ))}
+            {thermalVisible &&
+              thermalSurfaces
+                .filter((f) => f.floorId === floor.id)
+                .map((face) => (
+                  <g
+                    key={face.surfaceId}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Thermal ${face.roomName} ${face.elementId.split("|")[1]}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onThermalSelect?.(face.surfaceId);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onThermalSelect?.(face.surfaceId);
+                      }
+                    }}
+                  >
+                    {face.triangles.map((triangle, index) => (
+                      <polygon
+                        key={index}
+                        points={triangle
+                          .map(
+                            (i) =>
+                              `${face.verticesMm[i][0]},${face.verticesMm[i][1]}`,
+                          )
+                          .join(" ")}
+                        fill={thermalColour(face, thermalMetric)}
+                        fillOpacity={0.2}
+                        stroke={
+                          thermalSelected === face.surfaceId
+                            ? "#ffcc64"
+                            : thermalColour(face, thermalMetric)
+                        }
+                        strokeWidth={
+                          thermalSelected === face.surfaceId ? 35 : 15
+                        }
+                      />
+                    ))}
+                  </g>
+                ))}
           </svg>
-        ) : report?.surface.triangles.length ? (
+        ) : report?.surface.triangles.length || thermalVisible ? (
           <StableCanvas
             frameloop="demand"
             dpr={[1, 1.5]}
@@ -830,7 +943,7 @@ export function ClimoptixViewer({
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
             <Bounds fit clip observe margin={1.15} maxDuration={0.25}>
               <Frame
-                request={`${scenario.id}:${report.validation.sourceHash}:${fit}`}
+                request={`${scenario.id}:${report?.validation.sourceHash ?? thermalSurfaces[0]?.surfaceId}:${fit}`}
               />
               {patches
                 .filter(
@@ -841,6 +954,7 @@ export function ClimoptixViewer({
                     (!detailed || p.kind !== "object"),
                 )
                 .filter((p) => !isolated || p.id === selectedPatch?.id)
+                .filter((p) => !thermalVisible || !thermalPatchIds.has(p.id))
                 .map((p) => (
                   <PatchMesh
                     key={p.id}
@@ -856,6 +970,23 @@ export function ClimoptixViewer({
                     onPointerUp={onMeshUp}
                   />
                 ))}
+              {thermalVisible &&
+                thermalSurfaces
+                  .filter(
+                    (f) =>
+                      ceilings ||
+                      f.kind !== "ceiling" ||
+                      f.surfaceId === thermalSelected,
+                  )
+                  .map((face) => (
+                    <ThermalFaceMesh
+                      key={face.surfaceId}
+                      face={face}
+                      metric={thermalMetric}
+                      selected={face.surfaceId === thermalSelected}
+                      onSelect={() => onThermalSelect?.(face.surfaceId)}
+                    />
+                  ))}
               {scenario.vents.map((vent) => {
                 if (isolated && selected !== `vent:${vent.id}`) return null;
                 const host = patches.find((p) => p.id === vent.host.patchId);
@@ -883,7 +1014,7 @@ export function ClimoptixViewer({
                 );
               })}
               {showSamplingPlanes &&
-                report.domain.boundsMm &&
+                report?.domain.boundsMm &&
                 samplingPlanes(
                   report.domain.boundsMm,
                   scenario.postProcessing,
@@ -952,7 +1083,7 @@ export function ClimoptixViewer({
                 ))}
               {context &&
                 !isolated &&
-                report.domain.regions
+                report?.domain.regions
                   .filter((r) => !r.included)
                   .map((region) => (
                     <GhostRegion
@@ -1028,6 +1159,18 @@ export function ClimoptixViewer({
         )}
       </div>
       <footer>
+        {thermalVisible && (
+          <p className="cfx-caption" aria-label="Thermal overlay legend">
+            Thermal {thermalMetric} · estimate, not CFD.{" "}
+            {thermalMetric === "heat"
+              ? "Orange: gain · blue: loss · green: balanced · grey: unavailable"
+              : thermalMetric === "u"
+                ? "Green ≤0.3 · amber ≤0.7 · orange >0.7 W/m²K · red: missing"
+                : thermalMetric === "missing"
+                  ? "Red: incomplete / stale · green: available or inapplicable"
+                  : "Blue: outdoors · brown: ground · purple: adjacent · green: internal · grey: adiabatic"}
+          </p>
+        )}
         {showRefinements && !isolated && refinements.length > 0 && (
           <ul
             className="cfx-refinement-legend"
