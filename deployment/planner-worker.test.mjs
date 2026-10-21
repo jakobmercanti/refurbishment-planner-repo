@@ -212,9 +212,29 @@ test('Climoptix proxy exposes only preparation and capabilities, never run/job o
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test('Climoptix streamed bodies are bounded without relying on Content-Length', async () => {
+for (const operation of ['geometry', 'thermal-envelope', 'thermal-preview', 'thermal-epw']) test('Climoptix ' + operation + ' is same-origin POST-only, strips credentials and bypasses caching', async () => {
   const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
-  const endpoint = origin + '/planner/engineering-api/climoptix/prepare';
+  const endpoint = origin + '/planner/engineering-api/climoptix/' + operation;
+  for (const method of ['GET', 'PUT', 'DELETE']) assert.equal((await worker.fetch(new Request(endpoint, { method }), env)).status, 403);
+  for (const source of [undefined, 'https://foreign.example']) assert.equal((await worker.fetch(new Request(endpoint, { method: 'POST', headers: source ? { Origin: source } : {}, body: '{}' }), env)).status, 403);
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (target, options) => {
+      assert.equal(String(target), env.ENGINEERING_API_ORIGIN + '/climoptix/' + operation);
+      assert.deepEqual(options.headers, { 'Content-Type': 'application/json' });
+      assert.equal(new TextDecoder().decode(options.body), '{"project":{}}');
+      return Response.json({ kind: 'ClimoptixBuildingView' });
+    };
+    const response = await worker.fetch(new Request(endpoint, { method: 'POST', headers: { Origin: origin, Cookie: 'private=x', Authorization: 'Bearer private' }, body: '{"project":{}}' }), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.deepEqual(await response.json(), { kind: 'ClimoptixBuildingView' });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+for (const operation of ['prepare', 'geometry']) test('Climoptix ' + operation + ' streamed bodies are bounded without relying on Content-Length', async () => {
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  const endpoint = origin + '/planner/engineering-api/climoptix/' + operation;
   const originalFetch = globalThis.fetch;
   let cancelled = false, reads = 0;
   try {

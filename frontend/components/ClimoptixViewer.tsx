@@ -1,27 +1,27 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
 import {
   BufferGeometry,
   DoubleSide,
   Float32BufferAttribute,
-  ExtrudeGeometry,
-  Shape,
   Plane,
   Vector3,
 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
+import { FloatingToolbar } from "./FloatingToolbar";
+import {
+  requestScene,
+  sceneInput,
+  scenePositions,
+  type CFDScene,
+  type CFDViewPatch,
+} from "@/lib/climoptixScene";
 import { projectFloors } from "@/lib/buildingDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
-import type { CFDPatch, CFDRegion, CFDReport, Vec3 } from "@/lib/climoptix";
+import type { CFDPatch, CFDReport, Vec3 } from "@/lib/climoptix";
 import type { CFDScenario, CFDVent } from "@/lib/climoptixDocument";
 import {
   thermalColour,
@@ -77,11 +77,14 @@ interface Props {
   project: ProjectDocument;
   scenario: CFDScenario;
   report: CFDReport | null;
-  view: "2D" | "3D";
+  active: boolean;
+  apiUrl: string;
+  viewSettingsOpen: boolean;
+  viewFocus: number;
+  onViewSettings: (open: boolean) => void;
   stale: boolean;
   selected: string | null;
   onSelect: (id: string) => void;
-  onSeed: (floorId: string, roomId: string) => void;
   picking: boolean;
   onHostPick: (patchId: string, u: number, v: number) => void;
   onMoveVent: (id: string, u: number, v: number) => void;
@@ -93,7 +96,6 @@ interface Props {
   thermalMetric?: ThermalMetric;
   thermalSelected?: string | null;
   onThermalSelect?: (id: string) => void;
-  thermalNorthDeg?: number;
 }
 function ThermalFaceMesh({
   face,
@@ -144,7 +146,7 @@ function PatchMesh({
   onPointerUp,
   offset,
 }: {
-  patch: CFDPatch;
+  patch: CFDViewPatch;
   positions: number[];
   selected: boolean;
   onPointerDown: (e: ThreeEvent<PointerEvent>) => void;
@@ -176,49 +178,6 @@ function PatchMesh({
         opacity={vent || selected ? 1 : 0.34}
         roughness={0.85}
         depthWrite={vent || selected}
-      />
-    </mesh>
-  );
-}
-function GhostRegion({
-  region,
-  onSelect,
-}: {
-  region: CFDRegion;
-  onSelect: () => void;
-}) {
-  const geometry = useMemo(() => {
-    const shape = new Shape();
-    region.verticesMm.forEach(([x, y], i) => {
-      if (i === 0) shape.moveTo(x * 0.001, y * 0.001);
-      else shape.lineTo(x * 0.001, y * 0.001);
-    });
-    const g = new ExtrudeGeometry(shape, {
-      depth: (region.ceilingRangeMm[0] - region.baseMm) * 0.001,
-      bevelEnabled: false,
-    });
-    g.rotateX(-Math.PI / 2);
-    return g;
-  }, [region]);
-  useEffect(() => () => geometry.dispose(), [geometry]);
-  return (
-    <mesh
-      name={`excluded:${region.id}`}
-      geometry={geometry}
-      position={[0, region.baseMm * 0.001, 0]}
-      onPointerDown={(e) => {
-        if (e.intersections.some((hit) => hit.object.name.startsWith("vent:")))
-          return;
-        e.stopPropagation();
-        onSelect();
-      }}
-    >
-      <meshBasicMaterial
-        color="#8495a5"
-        wireframe
-        transparent
-        opacity={0.14}
-        depthWrite={false}
       />
     </mesh>
   );
@@ -296,11 +255,14 @@ export function ClimoptixViewer({
   project,
   scenario,
   report,
-  view,
+  active,
+  apiUrl,
+  viewSettingsOpen,
+  viewFocus,
+  onViewSettings,
   stale,
   selected,
   onSelect,
-  onSeed,
   picking,
   onHostPick,
   onMoveVent,
@@ -312,37 +274,80 @@ export function ClimoptixViewer({
   thermalMetric = "off",
   thermalSelected = null,
   onThermalSelect,
-  thermalNorthDeg,
 }: Props) {
   const thermalVisible = thermalMetric !== "off" && thermalSurfaces.length > 0;
   const thermalPatchIds = useMemo(
     () => new Set(thermalSurfaces.map((f) => f.patchId)),
     [thermalSurfaces],
   );
-  const [floorId, setFloorId] = useState(""),
-    [ceilings, setCeilings] = useState(false),
-    [context, setContext] = useState(true),
-    [detailed, setDetailed] = useState(false),
-    [isolate, setIsolate] = useState(false),
-    [fit, setFit] = useState(0);
+  const [ceilings, setCeilings] = useState(false);
+  const [detailed, setDetailed] = useState(false);
+  const [isolate, setIsolate] = useState(false);
+  const [fit, setFit] = useState(0);
+  const [scope, setScope] = useState("building");
+  const [retry, setRetry] = useState(0);
+  const [sceneState, setSceneState] = useState<{
+    input: string;
+    data: CFDScene | null;
+    error: string;
+  }>({ input: "", data: null, error: "" });
+  const source = useMemo(() => sceneInput(project), [project]);
+  const projectRef = useRef(project);
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+  useEffect(() => {
+    if (!active) return;
+    const controller = new AbortController();
+    let cancelled = false;
+    void requestScene(apiUrl, projectRef.current, controller.signal)
+      .then((data) => {
+        if (!cancelled) setSceneState({ input: source, data, error: "" });
+      })
+      .catch((error) => {
+        if (!cancelled)
+          setSceneState({
+            input: source,
+            data: null,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Cannot load building geometry.",
+          });
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [active, apiUrl, source, retry]);
+  const buildingScene = sceneState.input === source ? sceneState.data : null;
+  const floors = projectFloors(project);
+  const rooms = floors.flatMap((f) =>
+    f.content.rooms.map((r) => ({
+      id: r.id,
+      floorId: f.id,
+      label: `${f.name} · ${r.name}`,
+    })),
+  );
+  const volumes = buildingScene?.airVolumes ?? [];
+  const scopes = [
+    { id: "building", label: "Whole building", rooms: rooms.map((r) => r.id) },
+    ...rooms.map((r) => ({
+      id: `room:${r.id}`,
+      label: r.label,
+      rooms: [r.id],
+    })),
+    ...volumes.map((ids, i) => ({
+      id: `air:${JSON.stringify(ids)}`,
+      label: `Air volume ${i + 1} · ${ids.length} ${ids.length === 1 ? "room" : "rooms"}`,
+      rooms: ids,
+    })),
+  ];
+  const viewScope = scopes.find((s) => s.id === scope) ?? scopes[0];
+  const visibleRooms = new Set(viewScope.rooms);
   const [drag, setDrag] = useState<{ id: string; u: number; v: number } | null>(
     null,
   );
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const [viewportSize, setViewportSize] = useState({ width: 800, height: 600 });
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry.contentRect.width > 0 && entry.contentRect.height > 0)
-        setViewportSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
-        });
-    });
-    observer.observe(viewport);
-    return () => observer.disconnect();
-  }, []);
   const dragRef = useRef<{
     id: string;
     patch: CFDPatch;
@@ -367,27 +372,31 @@ export function ClimoptixViewer({
       window.removeEventListener("keydown", key);
     };
   }, []);
-  const floors = projectFloors(project),
-    floor =
-      floors.find((f) => f.id === floorId) ??
-      floors.find((f) => f.id === scenario.seed?.floorId) ??
-      floors[0];
-  const coordinates = floor.content.rooms.flatMap((r) => r.vertices),
-    xs = coordinates.map((p) => p.x),
-    ys = coordinates.map((p) => p.y);
-  const left = coordinates.length ? Math.min(...xs) - 400 : 0,
-    top = coordinates.length ? Math.min(...ys) - 400 : 0;
-  const width = coordinates.length ? Math.max(...xs) - left + 400 : 8000,
-    height = coordinates.length ? Math.max(...ys) - top + 400 : 6000;
-  // Text is screen-sized annotation, not physical geometry. Keep it readable
-  // when a whole multi-room floor is fitted into a narrow viewport.
-  const planPixelMm = Math.max(
-    width / viewportSize.width,
-    height / viewportSize.height,
+  useEffect(() => {
+    dragRef.current = null;
+    // Release the interaction immediately; clear the rendered handle next frame.
+    const frame = requestAnimationFrame(() => setDrag(null));
+    return () => cancelAnimationFrame(frame);
+  }, [scenario.id, source, viewScope.id]);
+  const prepared =
+    buildingScene && report?.validation.sourceHash === buildingScene.sourceHash
+      ? report
+      : null;
+  const patches = prepared?.patches ?? [];
+  const positions = useMemo(() => patchPositions(prepared), [prepared]);
+  const basePositions = useMemo(
+    () =>
+      buildingScene
+        ? scenePositions(buildingScene)
+        : new Map<string, number[]>(),
+    [buildingScene],
   );
-  const included = new Set(report?.domain.includedRoomIds ?? []);
-  const patches = report?.patches ?? [];
-  const positions = useMemo(() => patchPositions(report), [report]);
+  const displayPatches = [
+    ...(buildingScene?.patches.map(
+      (p) => patches.find((prepared) => prepared.id === p.id) ?? p,
+    ) ?? []),
+    ...patches.filter((p) => p.kind === "object"),
+  ].filter((p) => visibleRooms.has(p.roomId));
   const refinements = refinementPreviews(scenario, report);
   const refinementLegend = [
     ...new Map(refinements.map((region) => [region.level, region.cellMm])),
@@ -397,23 +406,7 @@ export function ClimoptixViewer({
   );
   const isolated =
     isolate && Boolean(selectedPatch || selected?.startsWith("vent:"));
-  const intentVents = scenario.vents.flatMap((vent) => {
-    const host = patches.find((p) => p.id === vent.host.patchId);
-    if (!host?.host) return [];
-    const h = host.host,
-      u = drag?.id === vent.id ? drag.u : vent.host.u,
-      v = drag?.id === vent.id ? drag.v : vent.host.v;
-    return [
-      {
-        vent,
-        host,
-        center: ventCenter(vent, h, u, v),
-        footprint: ventFootprint(vent, h, u, v),
-        direction: ventDirection(vent, h),
-      },
-    ];
-  });
-  const onMeshDown = (e: ThreeEvent<PointerEvent>, patch: CFDPatch) => {
+  const onMeshDown = (e: ThreeEvent<PointerEvent>, patch: CFDViewPatch) => {
     if (
       !picking &&
       !patch.id.startsWith("vent:") &&
@@ -437,8 +430,9 @@ export function ClimoptixViewer({
       }
       return;
     }
-    if (picking && patch.host) {
-      const location = hostLocation(patch, millimetres(e.point));
+    const hostPatch = patches.find((p) => p.id === patch.id);
+    if (picking && hostPatch?.host) {
+      const location = hostLocation(hostPatch, millimetres(e.point));
       if (location) onHostPick(patch.id, ...location);
     }
   };
@@ -470,33 +464,6 @@ export function ClimoptixViewer({
     setDrag(null);
     onMoveVent(current.id, current.u, current.v);
   };
-  const onPlanMove = (e: ReactPointerEvent<SVGGElement>) => {
-    const current = dragRef.current,
-      h = current?.patch.host,
-      svg = e.currentTarget.ownerSVGElement,
-      matrix = svg?.getScreenCTM();
-    if (!current || !h || !svg || !matrix) return;
-    e.stopPropagation();
-    const point = svg.createSVGPoint();
-    point.x = e.clientX;
-    point.y = e.clientY;
-    const xy = point.matrixTransform(matrix.inverse());
-    const z =
-      Math.abs(h.normal[2]) > 1e-8
-        ? (dot(h.originMm, h.normal) -
-            h.normal[0] * xy.x -
-            h.normal[1] * xy.y) /
-          h.normal[2]
-        : h.originMm[2] +
-          h.uAxis[2] * current.u * h.widthMm +
-          h.vAxis[2] * current.v * h.heightMm;
-    const location = hostLocation(current.patch, [xy.x, xy.y, z]);
-    if (location) {
-      current.u = location[0];
-      current.v = location[1];
-      setDrag({ id: current.id, u: current.u, v: current.v });
-    }
-  };
   const dragOffset = (pid: string): Vec3 | undefined => {
     if (!drag || `vent:${drag.id}` !== pid) return;
     const vent = scenario.vents.find((v) => v.id === drag.id),
@@ -511,64 +478,96 @@ export function ClimoptixViewer({
   };
   return (
     <section className="cfx-viewer" aria-label="Climoptix geometry viewer">
-      <header>
-        <strong>
-          {view === "2D" ? "Plan & connectivity" : "Air boundary preview"}
-        </strong>
-        <div className="cfx-inline">
-          {view === "2D" ? (
-            <label>
-              Floor
-              <select
-                aria-label="Climoptix view floor"
-                value={floor.id}
-                onChange={(e) => setFloorId(e.target.value)}
-              >
-                {floors.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
+      <div className="cfx-view-selector">
+        <label htmlFor="cfx-view-scope">View</label>
+        <select
+          id="cfx-view-scope"
+          aria-label="CFD view scope"
+          value={viewScope.id}
+          onChange={(e) => {
+            setScope(e.target.value);
+            setIsolate(false);
+          }}
+        >
+          <option value="building">Whole building</option>
+          <optgroup label="Rooms">
+            {scopes
+              .filter((s) => s.id.startsWith("room:"))
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+          </optgroup>
+          <optgroup label="Connected air volumes">
+            {scopes
+              .filter((s) => s.id.startsWith("air:"))
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+          </optgroup>
+        </select>
+        <button type="button" onClick={() => setFit((x) => x + 1)}>
+          Fit
+        </button>
+        <button
+          type="button"
+          aria-expanded={viewSettingsOpen}
+          onClick={() => onViewSettings(!viewSettingsOpen)}
+        >
+          View properties
+        </button>
+      </div>
+      {viewSettingsOpen && (
+        <FloatingToolbar
+          title="View properties"
+          helpSteps={[
+            {
+              heading: "Inspect without editing",
+              text: "The View selector shows the whole building, a measured room, or a connected air volume. Permanent doorless passages and slab openings connect rooms; doors and windows never do. Changing this view does not change the simulation seed.",
+            },
+            {
+              heading: "Frame and display",
+              text: "Drag the building to orbit, scroll to zoom, or choose Fit. Toggle ceilings, detailed visual assets, refinement intent, or isolate a selected prepared face. These are display choices, not geometry or simulation changes.",
+            },
+            {
+              heading: "Floating windows",
+              text: "Open or hide windows using Toolbar or a right-click on the background. Drag their titlebars to move them and their edges to resize them. Validate & refresh checks the study; it does not launch a CFD solver.",
+            },
+          ]}
+          defaultPosition={{ x: 1000, y: 72 }}
+          initialSize={{ width: 330 }}
+          focusRequest={viewFocus}
+          onClose={() => onViewSettings(false)}
+        >
+          <div className="cfx-inspector" aria-label="CFD view properties">
+            <label className="cfx-check">
+              <input
+                type="checkbox"
+                checked={ceilings}
+                onChange={(e) => setCeilings(e.target.checked)}
+              />
+              Ceilings
             </label>
-          ) : (
-            <>
-              <label className="cfx-check">
-                <input
-                  type="checkbox"
-                  checked={ceilings}
-                  onChange={(e) => setCeilings(e.target.checked)}
-                />
-                Ceilings
-              </label>
-              <label className="cfx-check">
-                <input
-                  type="checkbox"
-                  checked={context}
-                  onChange={(e) => setContext(e.target.checked)}
-                />
-                Context
-              </label>
-              <label className="cfx-check">
-                <input
-                  type="checkbox"
-                  checked={detailed}
-                  onChange={(e) => setDetailed(e.target.checked)}
-                />
-                Visual assets
-              </label>
-              <label className="cfx-check">
-                <input
-                  type="checkbox"
-                  checked={isolate}
-                  disabled={!selectedPatch && !selected?.startsWith("vent:")}
-                  onChange={(e) => setIsolate(e.target.checked)}
-                />
-                Isolate selection
-              </label>
-            </>
-          )}
-          {!!refinements.length && (
+            <label className="cfx-check">
+              <input
+                type="checkbox"
+                checked={detailed}
+                onChange={(e) => setDetailed(e.target.checked)}
+              />
+              Visual assets
+            </label>
+            <label className="cfx-check">
+              <input
+                type="checkbox"
+                checked={isolate}
+                disabled={!selectedPatch && !selected?.startsWith("vent:")}
+                onChange={(e) => setIsolate(e.target.checked)}
+              />
+              Isolate selection
+            </label>
             <label className="cfx-check">
               <input
                 type="checkbox"
@@ -577,363 +576,29 @@ export function ClimoptixViewer({
               />
               Refinement intent
             </label>
-          )}
-          <button onClick={() => setFit((x) => x + 1)}>Fit</button>
-        </div>
-      </header>
+            <p className="cfx-caption">
+              Viewing a room or air volume does not change the simulation seed.
+              Air volumes connect only through permanent passages and slab
+              openings, never doors or windows.
+            </p>
+            <button type="button" onClick={() => setFit((x) => x + 1)}>
+              Fit view
+            </button>
+          </div>
+        </FloatingToolbar>
+      )}
       {stale && report && (
         <p className="cfx-stale" role="status">
-          Source or setup changed · validate to refresh this preview
+          Study setup changed · validate to refresh simulation overlays
         </p>
       )}
-      <div className="cfx-viewport" data-view={view} ref={viewportRef}>
-        {thermalNorthDeg !== undefined && view === "2D" && (
-          <div
-            className="thermal-view-north"
-            aria-label={`Plan north bearing ${thermalNorthDeg} degrees`}
-          >
-            <span style={{ transform: `rotate(${thermalNorthDeg}deg)` }}>
-              ↓ N
-            </span>
-          </div>
-        )}
-        {view === "2D" ? (
-          <svg
-            aria-label="CFD room plan"
-            viewBox={`${left} ${top} ${width} ${height}`}
-          >
-            {floor.content.rooms.map((room) => (
-              <g
-                key={room.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`Use ${room.name} as seed`}
-                onClick={() => onSeed(floor.id, room.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSeed(floor.id, room.id);
-                  }
-                }}
-              >
-                <polygon
-                  points={room.vertices.map((p) => `${p.x},${p.y}`).join(" ")}
-                  fill={
-                    included.has(room.id)
-                      ? "var(--cfx-plan-air)"
-                      : "var(--surface-muted)"
-                  }
-                  fillOpacity={included.has(room.id) ? 1 : 0.5}
-                  stroke={
-                    scenario.seed?.roomId === room.id ? "#0b74bd" : "#8b9eac"
-                  }
-                  strokeWidth={scenario.seed?.roomId === room.id ? 25 : 12}
-                />
-                <text
-                  x={
-                    room.vertices.reduce((s, p) => s + p.x, 0) /
-                    room.vertices.length
-                  }
-                  y={
-                    room.vertices.reduce((s, p) => s + p.y, 0) /
-                    room.vertices.length
-                  }
-                  fontSize={12 * planPixelMm}
-                  className="cfx-room-label"
-                  textAnchor="middle"
-                  fill="currentColor"
-                >
-                  {room.name}
-                </text>
-              </g>
-            ))}
-            {floor.content.floorplan?.walls.map((w) => (
-              <polyline
-                key={`source:${w.id}`}
-                data-source-wall={w.id}
-                points={w.points.map((p) => `${p.x},${p.y}`).join(" ")}
-                fill="none"
-                stroke={selected === w.id ? "#b74646" : "#8b9eac"}
-                strokeWidth={selected === w.id ? 40 : 12}
-                pointerEvents="none"
-              />
-            ))}
-            {floor.openings.map((opening) => (
-              <g
-                key={opening.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`Slab void ${opening.name}`}
-                onClick={() => onSelect(opening.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onSelect(opening.id);
-                }}
-              >
-                <polygon
-                  points={opening.vertices
-                    .map((p) => `${p.x},${p.y}`)
-                    .join(" ")}
-                  fill="var(--paper)"
-                  stroke="var(--accent)"
-                  strokeWidth={18}
-                  strokeDasharray="60 35"
-                />
-                <text
-                  x={
-                    opening.vertices.reduce((s, p) => s + p.x, 0) /
-                    opening.vertices.length
-                  }
-                  y={
-                    opening.vertices.reduce((s, p) => s + p.y, 0) /
-                    opening.vertices.length
-                  }
-                  textAnchor="middle"
-                  fontSize={11 * planPixelMm}
-                  fill="currentColor"
-                >
-                  ↕ {opening.name}
-                </text>
-              </g>
-            ))}
-            {report?.domain.portals
-              .filter((p) =>
-                p.rooms.some((id) =>
-                  floor.content.rooms.some((r) => r.id === id),
-                ),
-              )
-              .map((portal) => {
-                const ring = Object.values(portal.ringsMm)[0];
-                if (!ring?.length) return null;
-                const p = ring[0],
-                  q = ring[1];
-                return (
-                  <g
-                    key={portal.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${portal.traversed ? "Passage" : "STOP"}: ${portal.id}`}
-                    onClick={() => onSelect(portal.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") onSelect(portal.id);
-                    }}
-                  >
-                    <line
-                      x1={p[0]}
-                      y1={p[1]}
-                      x2={q[0]}
-                      y2={q[1]}
-                      stroke={portal.traversed ? "#16846b" : "#b74646"}
-                      strokeWidth={65}
-                    />
-                    <text
-                      x={(p[0] + q[0]) / 2}
-                      y={(p[1] + q[1]) / 2 - 80}
-                      fontSize={11 * planPixelMm}
-                      textAnchor="middle"
-                      fill={portal.traversed ? "#16846b" : "#b74646"}
-                    >
-                      {portal.traversed ? "↔" : "STOP"}
-                    </text>
-                  </g>
-                );
-              })}
-            {showRefinements &&
-              refinements
-                .filter(
-                  (r) =>
-                    r.centerMm[2] + r.sizeMm[2] / 2 >= floor.elevationMm &&
-                    r.centerMm[2] - r.sizeMm[2] / 2 <=
-                      floor.elevationMm + floor.heightMm,
-                )
-                .map((r) => (
-                  <g
-                    key={r.id}
-                    data-refinement={r.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Select refinement ${r.name}`}
-                    onClick={() => onSelect(`refinement:${r.id}`)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") onSelect(`refinement:${r.id}`);
-                    }}
-                  >
-                    {r.shape === "sphere" ? (
-                      <circle
-                        cx={r.centerMm[0]}
-                        cy={r.centerMm[1]}
-                        r={r.sizeMm[0] / 2}
-                        fill="none"
-                        stroke={r.colour}
-                        strokeWidth={
-                          selected === `refinement:${r.id}` ? 30 : 20
-                        }
-                        strokeDasharray="60 35"
-                      />
-                    ) : (
-                      <rect
-                        x={r.centerMm[0] - r.sizeMm[0] / 2}
-                        y={r.centerMm[1] - r.sizeMm[1] / 2}
-                        width={r.sizeMm[0]}
-                        height={r.sizeMm[1]}
-                        fill="none"
-                        stroke={r.colour}
-                        strokeWidth={
-                          selected === `refinement:${r.id}` ? 30 : 20
-                        }
-                        strokeDasharray="60 35"
-                      />
-                    )}
-                    <text
-                      x={r.centerMm[0]}
-                      y={r.centerMm[1] - r.sizeMm[1] / 2 - 60}
-                      textAnchor="middle"
-                      fill="currentColor"
-                      fontSize={11 * planPixelMm}
-                    >
-                      {r.name} · L{r.level} · {r.cellMm} mm intent
-                    </text>
-                  </g>
-                ))}
-            {intentVents
-              .filter((v) => v.host.floorId === floor.id)
-              .map(({ vent, host, center, footprint, direction }) => (
-                <g
-                  key={vent.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Select ${vent.name}`}
-                  style={{ touchAction: canMoveVents ? "none" : "auto" }}
-                  onClick={() => onSelect(`vent:${vent.id}`)}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    onSelect(`vent:${vent.id}`);
-                    if (canMoveVents) {
-                      e.preventDefault();
-                      dragRef.current = {
-                        id: vent.id,
-                        patch: host,
-                        u: vent.host.u,
-                        v: vent.host.v,
-                      };
-                      setDrag({ id: vent.id, u: vent.host.u, v: vent.host.v });
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                    }
-                  }}
-                  onPointerMove={onPlanMove}
-                  onPointerUp={(e) => {
-                    const current = dragRef.current;
-                    if (!current) return;
-                    e.stopPropagation();
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                    dragRef.current = null;
-                    setDrag(null);
-                    onMoveVent(current.id, current.u, current.v);
-                  }}
-                  onPointerCancel={() => {
-                    dragRef.current = null;
-                    setDrag(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") onSelect(`vent:${vent.id}`);
-                  }}
-                >
-                  <title>
-                    {vent.name} · {vent.role} · prescribed direction, not a
-                    solved field
-                  </title>
-                  <polygon
-                    data-vent-footprint={vent.id}
-                    points={footprint.map((p) => `${p[0]},${p[1]}`).join(" ")}
-                    fill={COLORS[vent.role]}
-                    fillOpacity={0.7}
-                    stroke={
-                      selected === `vent:${vent.id}` ? "#ffcc64" : "white"
-                    }
-                    strokeWidth={20}
-                  />
-                  {Math.hypot(direction[0], direction[1]) > 0.05 ? (
-                    <g
-                      pointerEvents="none"
-                      stroke={COLORS[vent.role]}
-                      strokeWidth={25}
-                      fill="none"
-                    >
-                      <path
-                        d={`M ${center[0]} ${center[1]} l ${direction[0] * 650} ${direction[1] * 650}`}
-                      />
-                      <path
-                        d={`M ${center[0] + direction[0] * 500 - direction[1] * 80} ${center[1] + direction[1] * 500 + direction[0] * 80} L ${center[0] + direction[0] * 650} ${center[1] + direction[1] * 650} L ${center[0] + direction[0] * 500 + direction[1] * 80} ${center[1] + direction[1] * 500 - direction[0] * 80}`}
-                      />
-                    </g>
-                  ) : (
-                    <text
-                      pointerEvents="none"
-                      x={center[0] + 80}
-                      y={center[1] - 80}
-                      fontSize={12 * planPixelMm}
-                      fill="currentColor"
-                    >
-                      {direction[2] > 0 ? "↑" : "↓"}
-                    </text>
-                  )}
-                  <circle
-                    data-vent-handle={vent.id}
-                    cx={center[0]}
-                    cy={center[1]}
-                    r={70}
-                    fill={vent.role === "supply" ? "#278ade" : "#be5b9d"}
-                    stroke={
-                      selected === `vent:${vent.id}` ? "#ffcc64" : "white"
-                    }
-                    strokeWidth={25}
-                  />
-                </g>
-              ))}
-            {thermalVisible &&
-              thermalSurfaces
-                .filter((f) => f.floorId === floor.id)
-                .map((face) => (
-                  <g
-                    key={face.surfaceId}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Thermal ${face.roomName} ${face.elementId.split("|")[1]}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onThermalSelect?.(face.surfaceId);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onThermalSelect?.(face.surfaceId);
-                      }
-                    }}
-                  >
-                    {face.triangles.map((triangle, index) => (
-                      <polygon
-                        key={index}
-                        points={triangle
-                          .map(
-                            (i) =>
-                              `${face.verticesMm[i][0]},${face.verticesMm[i][1]}`,
-                          )
-                          .join(" ")}
-                        fill={thermalColour(face, thermalMetric)}
-                        fillOpacity={0.2}
-                        stroke={
-                          thermalSelected === face.surfaceId
-                            ? "#ffcc64"
-                            : thermalColour(face, thermalMetric)
-                        }
-                        strokeWidth={
-                          thermalSelected === face.surfaceId ? 35 : 15
-                        }
-                      />
-                    ))}
-                  </g>
-                ))}
-          </svg>
-        ) : report?.surface.triangles.length || thermalVisible ? (
+      <div
+        className="cfx-viewport"
+        data-view="3D"
+        data-visible-rooms={viewScope.rooms.join(",")}
+        data-scope={viewScope.id}
+      >
+        {buildingScene?.triangles.length ? (
           <StableCanvas
             frameloop="demand"
             dpr={[1, 1.5]}
@@ -943,9 +608,9 @@ export function ClimoptixViewer({
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
             <Bounds fit clip observe margin={1.15} maxDuration={0.25}>
               <Frame
-                request={`${scenario.id}:${report?.validation.sourceHash ?? thermalSurfaces[0]?.surfaceId}:${fit}`}
+                request={`${buildingScene?.sourceHash}:${viewScope.id}:${fit}`}
               />
-              {patches
+              {displayPatches
                 .filter(
                   (p) =>
                     (ceilings || p.kind !== "ceiling" || p.id === selected) &&
@@ -959,7 +624,11 @@ export function ClimoptixViewer({
                   <PatchMesh
                     key={p.id}
                     patch={p}
-                    positions={positions.get(p.id) ?? EMPTY_POSITIONS}
+                    positions={
+                      positions.get(p.id) ??
+                      basePositions.get(p.id) ??
+                      EMPTY_POSITIONS
+                    }
                     selected={
                       p.id === selected ||
                       (p.kind === "object" && p.sourceId === selected)
@@ -974,9 +643,10 @@ export function ClimoptixViewer({
                 thermalSurfaces
                   .filter(
                     (f) =>
-                      ceilings ||
-                      f.kind !== "ceiling" ||
-                      f.surfaceId === thermalSelected,
+                      visibleRooms.has(f.roomId) &&
+                      (ceilings ||
+                        f.kind !== "ceiling" ||
+                        f.surfaceId === thermalSelected),
                   )
                   .map((face) => (
                     <ThermalFaceMesh
@@ -990,7 +660,7 @@ export function ClimoptixViewer({
               {scenario.vents.map((vent) => {
                 if (isolated && selected !== `vent:${vent.id}`) return null;
                 const host = patches.find((p) => p.id === vent.host.patchId);
-                if (!host?.host) return null;
+                if (!host?.host || !visibleRooms.has(host.roomId)) return null;
                 const marker = {
                   ...host,
                   id: `vent:${vent.id}`,
@@ -1081,21 +751,10 @@ export function ClimoptixViewer({
                     />
                   </mesh>
                 ))}
-              {context &&
-                !isolated &&
-                report?.domain.regions
-                  .filter((r) => !r.included)
-                  .map((region) => (
-                    <GhostRegion
-                      key={region.id}
-                      region={region}
-                      onSelect={() => onSeed(region.floorId, region.id)}
-                    />
-                  ))}
               {detailed &&
                 floors.flatMap((f) =>
                   f.content.rooms
-                    .filter((r) => included.has(r.id))
+                    .filter((r) => visibleRooms.has(r.id))
                     .flatMap((r) =>
                       r.obstacles
                         .filter(
@@ -1147,14 +806,21 @@ export function ClimoptixViewer({
         ) : (
           <div className="cfx-empty">
             <strong>
-              {report
-                ? "No surface could be prepared"
-                : "Prepare the measured building"}
+              {sceneState.input === source && sceneState.error
+                ? "Building preview unavailable"
+                : buildingScene
+                  ? "No measured rooms yet"
+                  : "Loading building geometry…"}
             </strong>
             <p>
-              Select a seed room, then Validate &amp; refresh. No display mesh
-              is used to decide connectivity.
+              {(sceneState.input === source && sceneState.error) ||
+                "Draw measured rooms in Floorplan. The geometry kernel determines connected air volumes."}
             </p>
+            {sceneState.error && (
+              <button onClick={() => setRetry((x) => x + 1)}>
+                Retry geometry
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1199,9 +865,7 @@ export function ClimoptixViewer({
         <small>
           {picking
             ? "Click a planar host in 3D to place the vent."
-            : view === "3D"
-              ? "Orbit/zoom · select a face or drag a vent · arrows show prescribed directions, not solved flow"
-              : "Green passages connect; STOP boundaries do not. Arrows are prescribed directions, not results."}
+            : "Drag to orbit · scroll to zoom · right-click for windows · arrows show prescribed directions, not solved flow"}
         </small>
       </footer>
     </section>

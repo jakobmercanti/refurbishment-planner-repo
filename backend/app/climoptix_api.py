@@ -24,6 +24,23 @@ class PreparationRequest(BaseModel):
     clientRevision: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class GeometryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    project: dict[str, Any]
+
+
+@router.post("/geometry")
+def geometry(request: GeometryRequest) -> dict[str, Any]:
+    """Browse the entire building without changing or validating a study."""
+    from geometry.climoptix_scene import building_scene
+
+    try:
+        _validate_project(request.project, UUID(request.project["projectId"]))
+        return building_scene(request.project)
+    except (KeyError, TypeError, ValueError, GEOSException) as error:
+        raise HTTPException(422, f"Cannot display this source geometry: {str(error)[:1500]}") from None
+
+
 @router.get("/capabilities", response_model=ProviderCapabilities)
 def capabilities() -> ProviderCapabilities:
     return provider.capabilities()

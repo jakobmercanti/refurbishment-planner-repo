@@ -1,3 +1,4 @@
+import { cfdWindow } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -69,7 +70,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
     (p) => p.cfdScenarios?.[0].validation?.errors === 0,
   );
   const source = JSON.stringify(saved.rooms);
-  await ui.getByRole("button", { name: /Equipment/ }).click();
+  await cfdWindow(ui, "Equipment");
   await ui.getByRole("button", { name: "+ Supply", exact: true }).click();
   await ui.getByRole("button", { name: "+ Extract", exact: true }).click();
   await ui
@@ -85,7 +86,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
     "180",
   );
   await validate(ui);
-  await ui.getByRole("button", { name: /Boundaries/ }).click();
+  await cfdWindow(ui, "Boundaries");
   await ui.locator("summary", { hasText: "Group presets" }).click();
   await ui
     .getByRole("combobox", { name: "Boundary thermal condition", exact: true })
@@ -93,16 +94,16 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
   await ui
     .getByRole("spinbutton", { name: "Boundary temperature (K)", exact: true })
     .fill("295.15");
-  await ui.getByRole("button", { name: /Physics/ }).click();
+  await cfdWindow(ui, "Physics");
   await ui
     .getByRole("combobox", { name: "Physics preset", exact: true })
     .selectOption("co2");
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   await ui
     .getByRole("combobox", { name: "Mesh intent preset", exact: true })
     .selectOption("Draft");
   await validate(ui);
-  await ui.getByRole("button", { name: /Review & export/ }).click();
+  await cfdWindow(ui, "Review & export");
   const exporting = page.waitForEvent("download");
   await ui
     .getByRole("button", { name: "Export preparation ZIP", exact: true })
@@ -137,7 +138,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
       .isVisible(),
     true,
   );
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   await ui.getByRole("tab", { name: "Run", exact: true }).click();
   assert.match(await ui.innerText(), /No computed results/);
   assert.equal(
@@ -159,6 +160,7 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
   await connect(context);
   const ui = await open(page);
   await validate(ui);
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Duplicate", exact: true }).click();
   await eventually(s.saved, (p) => p.cfdScenarios.length === 2);
   await ui
@@ -167,6 +169,7 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
   await eventually(s.saved, (p) =>
     p.cfdScenarios.some((s) => s.name === "Winter study"),
   );
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Archive", exact: true }).click();
   await eventually(s.saved, (p) =>
     p.cfdScenarios.some((s) => s.name === "Winter study" && s.archived),
@@ -183,6 +186,7 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
   await ui
     .getByRole("combobox", { name: "CFD scenario", exact: true })
     .selectOption(stored.cfdScenarios[1].id);
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Delete", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "Delete CFD scenario",
@@ -190,14 +194,16 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
   });
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   assert.equal((await s.saved()).cfdScenarios.length, 2);
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Delete", exact: true }).click();
   await dialog
     .getByRole("button", { name: "Delete study", exact: true })
     .click();
   await eventually(s.saved, (p) => p.cfdScenarios.length === 1);
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Undo", exact: true }).click();
   await eventually(s.saved, (p) => p.cfdScenarios.length === 2);
-  await ui.getByRole("button", { name: /Review & export/ }).click();
+  await cfdWindow(ui, "Review & export");
   await ui.getByLabel("Import CFD scenario", { exact: true }).setInputFiles({
     name: "study.json",
     mimeType: "application/json",
@@ -260,7 +266,7 @@ test("late validation cannot bless a changed study; unavailable service can be r
     () => arrived,
     (v) => v,
   );
-  await ui.getByRole("button", { name: /Physics/ }).click();
+  await cfdWindow(ui, "Physics");
   await ui
     .getByRole("combobox", { name: "Physics preset", exact: true })
     .selectOption("co2");
@@ -300,7 +306,8 @@ test("CFD help, dark mode and narrow-screen controls remain accessible and align
   }));
   assert.notEqual(colours.background, colours.ink);
   const contrast = await ui
-    .locator(".cfx-phases button.active")
+    .locator(".cfx-primary")
+    .first()
     .evaluate((el) => {
       const luminance = (text) => {
         const values = text
@@ -325,22 +332,18 @@ test("CFD help, dark mode and narrow-screen controls remain accessible and align
       path: `${process.env.BROWSER_ARTIFACTS}/climoptix-dark.png`,
     });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page
-    .getByRole("group", { name: "Climoptix view", exact: true })
-    .getByRole("button", { name: "2D", exact: true })
-    .click();
-  assert.ok(await ui.locator("svg[aria-label='CFD room plan']").isVisible());
-  await eventually(
-    () => ui.locator(".cfx-room-label").first().boundingBox(),
-    (box) => box.height >= 11,
-    "Room labels remain readable on a narrow fitted plan",
+  assert.ok(await ui.locator("canvas").isVisible());
+  assert.ok(
+    await ui
+      .getByRole("combobox", { name: "CFD view scope", exact: true })
+      .isVisible(),
   );
   assert.ok(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   );
-  await ui.getByRole("button", { name: /Equipment/ }).click();
+  await cfdWindow(ui, "Equipment");
   await ui
     .getByRole("button", { name: "+ Supply", exact: true })
     .scrollIntoViewIfNeeded();
@@ -361,7 +364,7 @@ test("numeric drafts apply only when committed, reject invalid settings clearly,
   const { page, context } = s;
   await connect(context);
   const ui = await open(page);
-  await ui.getByRole("button", { name: /Physics/ }).click();
+  await cfdWindow(ui, "Physics");
   const physics = ui.getByRole("combobox", {
     name: "Physics preset",
     exact: true,
@@ -402,7 +405,7 @@ test("numeric drafts apply only when committed, reject invalid settings clearly,
       .count(),
     0,
   );
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   const mesh = ui.getByRole("combobox", {
     name: "Mesh intent preset",
     exact: true,
@@ -416,7 +419,7 @@ test("numeric drafts apply only when committed, reject invalid settings clearly,
   assert.equal(after.cfdScenarios[0].mesh.baseCellMm, 400);
 });
 
-function goldPixel(png) {
+function goldPixel(png, obscured = []) {
   const root = fileURLToPath(new URL("../../../", import.meta.url));
   const python = path.join(
     root,
@@ -431,9 +434,11 @@ function goldPixel(png) {
         "import sys,io,json",
         "from PIL import Image",
         "im=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert('RGB')",
-        "points=[(x,y) for y in range(im.height) for x in range(im.width) if (lambda r,g,b: r>180 and g>130 and r>b*1.55 and g>b*1.35)(*im.getpixel((x,y)))]",
+        "obscured=json.loads(sys.argv[1])",
+        "points=[(x,y) for y in range(im.height) for x in range(im.width) if not any(a<=x<=a+w and b<=y<=b+h for a,b,w,h in obscured) and (lambda r,g,b: r>180 and g>130 and r>b*1.55 and g>b*1.35)(*im.getpixel((x,y)))]",
         "print(json.dumps([sum(x for x,y in points)/len(points),sum(y for x,y in points)/len(points)] if points else None))",
       ].join("; "),
+      JSON.stringify(obscured),
     ],
     { input: png, encoding: "utf8", timeout: 15000 },
   );
@@ -441,7 +446,7 @@ function goldPixel(png) {
   return JSON.parse(value.stdout);
 }
 
-test("vents can be picked and dragged in the real 2D and 3D viewers without changing source geometry", async (t) => {
+test("vents can be picked and dragged in the full-size 3D viewer without changing source geometry", async (t) => {
   const s = await harness.session(cfdProject());
   t.after(() => s.close());
   const { page, context } = s;
@@ -449,7 +454,7 @@ test("vents can be picked and dragged in the real 2D and 3D viewers without chan
   const ui = await open(page);
   await validate(ui);
   const source = JSON.stringify((await s.saved()).rooms);
-  await ui.getByRole("button", { name: /Equipment/ }).click();
+  await cfdWindow(ui, "Equipment");
   await ui.getByRole("button", { name: "+ Supply", exact: true }).click();
   const host = ui.getByRole("combobox", {
     name: "Vent host face",
@@ -467,19 +472,6 @@ test("vents can be picked and dragged in the real 2D and 3D viewers without chan
   });
   await width.fill("700");
   await width.press("Enter");
-  const views = page.getByRole("group", {
-    name: "Climoptix view",
-    exact: true,
-  });
-  await views.getByRole("button", { name: "2D", exact: true }).click();
-  const handle = ui.getByRole("button", {
-    name: "Select Supply vent",
-    exact: true,
-  });
-  await handle.waitFor();
-  const box = await handle.locator("[data-vent-handle]").boundingBox();
-  // Read the current editor state, not IndexedDB before its debounced autosave.
-  // Keeping this immediate also tests Undo within the history-coalescing window.
   const before = {
     host: {
       u: Number(
@@ -494,34 +486,38 @@ test("vents can be picked and dragged in the real 2D and 3D viewers without chan
       ),
     },
   };
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  // Leave the floating equipment inspector outside the vent's screen location.
+  const title = await page
+    .getByLabel("Move Equipment", { exact: true })
+    .boundingBox();
+  const workspace = await ui.boundingBox();
+  await page.mouse.move(title.x + 85, title.y + 24);
   await page.mouse.down();
-  await page.mouse.move(
-    box.x + box.width / 2 + 30,
-    box.y + box.height / 2 + 20,
-    { steps: 8 },
-  );
+  await page.mouse.move(workspace.x + 100, workspace.y + 120, { steps: 8 });
   await page.mouse.up();
-  const moved = await eventually(
-    s.saved,
-    (p) =>
-      !!p.cfdScenarios[0].vents[0] &&
-      p.cfdScenarios[0].vents[0].host.u !== before.host.u,
-  );
-  assert.notEqual(moved.cfdScenarios[0].vents[0].host.v, before.host.v);
-  await ui.getByRole("button", { name: "Undo", exact: true }).click();
-  await eventually(
-    s.saved,
-    (p) =>
-      !!p.cfdScenarios[0].vents[0] &&
-      p.cfdScenarios[0].vents[0].host.u === before.host.u,
-  );
-  await views.getByRole("button", { name: "3D", exact: true }).click();
   await ui.getByRole("button", { name: "Fit", exact: true }).click();
   const canvas = ui.locator("canvas");
   await canvas.waitFor();
   await page.waitForTimeout(650);
-  const pixel = goldPixel(await canvas.screenshot());
+  const canvasBounds = await canvas.boundingBox();
+  const obscured = await ui
+    .locator(
+      ".floating-toolbar, .cfx-view-selector, .cfx-stale, .cfx-statusbar, .cfx-viewer > footer",
+    )
+    .evaluateAll(
+      (items, canvasBounds) =>
+        items.map((el) => {
+          const b = el.getBoundingClientRect();
+          return [
+            b.x - canvasBounds.x,
+            b.y - canvasBounds.y,
+            b.width,
+            b.height,
+          ];
+        }),
+      canvasBounds,
+    );
+  const pixel = goldPixel(await canvas.screenshot(), obscured);
   if (!pixel && process.env.BROWSER_ARTIFACTS)
     await canvas.screenshot({
       path: `${process.env.BROWSER_ARTIFACTS}/climoptix-vent-missing.png`,
@@ -544,7 +540,7 @@ test("vents can be picked and dragged in the real 2D and 3D viewers without chan
       Math.abs(p.cfdScenarios[0].vents[0].host.v - before.host.v) > 0.001,
   );
   assert.equal(JSON.stringify(dragged.rooms), source);
-  assert.ok(await ui.getByText(/Source or setup changed/).isVisible());
+  assert.ok(await ui.getByText(/Study setup changed/).isVisible());
   if (process.env.BROWSER_ARTIFACTS)
     await ui.screenshot({
       path: `${process.env.BROWSER_ARTIFACTS}/climoptix-vent-drag.png`,
@@ -564,7 +560,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
       .innerText(),
     /Last checked bounds/,
   );
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   await ui
     .getByRole("button", { name: "Add refinement region", exact: true })
     .click();
@@ -582,15 +578,13 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   });
   await diameter.fill("800");
   await diameter.press("Enter");
-  const views = page.getByRole("group", {
-    name: "Climoptix view",
-    exact: true,
-  });
-  await views.getByRole("button", { name: "2D", exact: true }).click();
-  await ui
-    .getByRole("button", { name: "Select refinement Desk zone", exact: true })
-    .waitFor();
-  assert.equal(await ui.locator("[data-refinement] circle").count(), 1);
+  assert.ok(await ui.locator("canvas").isVisible());
+  assert.match(
+    await ui
+      .getByRole("list", { name: "Refinement colour legend", exact: true })
+      .innerText(),
+    /Level/,
+  );
   await eventually(
     s.saved,
     (p) =>
@@ -618,7 +612,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   );
   await validate(ui);
   const downloadEvent = page.waitForEvent("download");
-  await ui.getByRole("button", { name: /Review & export/ }).click();
+  await cfdWindow(ui, "Review & export");
   await ui
     .getByRole("button", { name: "Download settings & preflight", exact: true })
     .click();
@@ -627,17 +621,17 @@ test("refinement regions are editable visual intent, patch isolation works, and 
     await readFile(await file.path(), "utf8"),
     /MESH INTENT — NOT GENERATED CELLS/,
   );
-  await ui.getByRole("button", { name: /Boundaries/ }).click();
+  await cfdWindow(ui, "Boundaries");
   await ui
     .getByRole("list", { name: "CFD boundary patches", exact: true })
     .getByRole("button")
     .first()
     .click();
-  await views.getByRole("button", { name: "3D", exact: true }).click();
   const canvas = ui.locator("canvas");
   await canvas.waitFor();
   await page.waitForTimeout(350);
   const full = await canvas.screenshot();
+  await cfdWindow(ui, "View properties");
   await ui
     .getByRole("checkbox", { name: "Isolate selection", exact: true })
     .check();
@@ -646,6 +640,9 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   await ui
     .getByRole("checkbox", { name: "Isolate selection", exact: true })
     .uncheck();
+  await page
+    .getByRole("button", { name: "Hide View properties", exact: true })
+    .click();
   await ui
     .getByRole("searchbox", { name: "Find a CFD patch", exact: true })
     .fill("desk");
@@ -654,7 +651,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
     .getByRole("button")
     .first()
     .click();
-  await ui.getByRole("button", { name: /Equipment/ }).click();
+  await cfdWindow(ui, "Equipment");
   assert.ok(
     await ui
       .locator("details[open]")

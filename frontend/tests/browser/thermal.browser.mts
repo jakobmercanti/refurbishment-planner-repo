@@ -1,3 +1,4 @@
+import { cfdWindow } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -44,7 +45,7 @@ async function open(session) {
   await session.page
     .getByRole("combobox", { name: "Workspace", exact: true })
     .selectOption("CLIMOPTIX");
-  await session.page.getByRole("button", { name: /Boundaries/ }).click();
+  await cfdWindow(session.page, "Boundaries");
   await session.page
     .getByRole("button", {
       name: "Thermal Envelope & Solar Conditions",
@@ -246,7 +247,7 @@ test("thermal workflow calculates real balance, saves immutable Apply, exports J
   await s.page
     .getByRole("combobox", { name: "Workspace", exact: true })
     .selectOption("CLIMOPTIX");
-  await s.page.getByRole("button", { name: /Boundaries/ }).click();
+  await cfdWindow(s.page, "Boundaries");
   await s.page
     .getByRole("button", {
       name: "Thermal Envelope & Solar Conditions",
@@ -722,7 +723,7 @@ test("audit: gain names can be replaced naturally and blank drafts are explained
   assert.equal(await name.inputValue(), "Occupants");
 });
 
-test("audit: uncalculated totals stay unavailable and both plan compasses use the same axes", async (t) => {
+test("audit: uncalculated totals stay unavailable and north bearing stays explicit in the 3D-only workbench", async (t) => {
   const s = await harness.session(thermalProject());
   t.after(() => s.close());
   const ui = await open(s);
@@ -765,11 +766,7 @@ test("audit: uncalculated totals stay unavailable and both plan compasses use th
   });
   await bearing.fill("45");
   await bearing.press("Enter");
-  await s.page.getByRole("button", { name: "2D", exact: true }).click();
-  const arrows = [
-    ui.locator(".thermal-compass > span"),
-    s.page.locator(".thermal-view-north > span"),
-  ];
+  const arrows = [ui.locator(".thermal-compass > span")];
   for (const arrow of arrows) {
     assert.equal((await arrow.innerText()).trim(), "↓ N");
     assert.equal(
@@ -795,6 +792,7 @@ test("audit: a failed calculation in one study cannot show an error in another s
     .getByRole("button", { name: "Calculate & preview", exact: true })
     .click();
   await eventually(() => !!held, Boolean);
+  await cfdWindow(s.page, "Studies");
   await s.page
     .getByRole("combobox", { name: "CFD scenario", exact: true })
     .selectOption(second.id);

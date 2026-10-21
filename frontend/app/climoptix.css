@@ -16,19 +16,6 @@
   background: var(--paper);
   font-size: 13px;
 }
-.cfx-heading {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 14px 20px 10px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-}
-.cfx-heading h1 {
-  margin: 3px 0 0;
-  font-size: clamp(18px, 1.7vw, 24px);
-  letter-spacing: -0.035em;
-}
 .cfx-eyebrow {
   color: var(--muted);
   font-size: 10px;
@@ -150,43 +137,6 @@
   display: flex;
   gap: 6px;
   margin-left: auto;
-}
-.cfx-body {
-  display: grid;
-  grid-template-columns: 174px minmax(320px, 420px) minmax(280px, 1fr);
-  gap: 0;
-  flex: 1;
-  min-height: 0;
-}
-.cfx-phases {
-  padding: 12px 8px;
-  border-right: 1px solid var(--line);
-  overflow-y: auto;
-  background: var(--panel);
-}
-.cfx-phases button {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  margin-bottom: 7px;
-  padding: 11px 8px;
-  text-align: left;
-  background: transparent;
-  border-color: transparent;
-}
-.cfx-phases button > span {
-  font-size: 10px;
-  opacity: 0.65;
-}
-.cfx-phases button > div {
-  display: grid;
-  gap: 3px;
-}
-.cfx-phases small {
-  font-weight: 450;
-  font-size: 10px;
-  opacity: 0.8;
 }
 .cfx-inspector {
   min-height: 0;
@@ -436,37 +386,16 @@
   align-items: center;
   gap: 9px;
 }
-.cfx-workspace .cfx-phases button.active,
-.cfx-workspace .cfx-phases button.active:hover {
-  background: var(--deep);
-  color: var(--primary-action-text);
-  border-color: var(--deep);
-}
-.cfx-workspace .cfx-phases button:hover:not(.active) {
-  color: var(--ink);
-}
-.cfx-workspace .cfx-phases button:not(.active) {
-  color: var(--ink);
-}
 .cfx-inline label {
   display: flex;
   align-items: center;
   gap: 7px;
 }
 .cfx-viewport {
-  --cfx-plan-air: color-mix(in srgb, var(--accent) 16%, var(--panel));
   position: relative;
   flex: 1;
   min-height: 250px;
   overflow: hidden;
-}
-.cfx-room-label {
-  font-weight: 650;
-}
-.cfx-viewport > svg {
-  width: 100%;
-  height: 100%;
-  min-height: 250px;
 }
 .cfx-viewer .stable-canvas-host {
   position: absolute;
@@ -756,117 +685,192 @@
   height: 9px;
   background: linear-gradient(90deg, #264dbf, #1acca6, #e6401a);
 }
-@media (max-width: 1150px) {
-  .cfx-body {
-    grid-template-columns: 140px minmax(300px, 360px) minmax(250px, 1fr);
-  }
-  .cfx-phases small {
-    display: none;
-  }
+
+/* The measured building remains full-size beneath independent native windows. */
+.cfx-workspace {
+  overflow: hidden;
 }
-@media (max-width: 900px) {
-  .cfx-heading {
-    padding: 10px 12px;
-  }
-  .cfx-heading h1 {
-    font-size: 18px;
-  }
-  .cfx-provider {
-    max-width: 165px;
-    font-size: 10px;
-  }
-  .cfx-studybar {
-    padding: 8px 12px;
-  }
-  .cfx-body {
-    grid-template-columns: minmax(290px, 1fr) minmax(290px, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-  .cfx-phases {
-    grid-column: 1 / -1;
-    display: flex;
-    overflow-x: auto;
-    padding: 6px;
-    border-bottom: 1px solid var(--line);
-  }
-  .cfx-phases button {
-    flex: 0 0 auto;
-    width: auto;
-    margin: 0 3px 0 0;
-    min-height: 40px;
-    padding: 8px 10px;
-  }
-  .cfx-phases button > span {
-    display: none;
-  }
-  .cfx-inspector {
-    padding: 14px;
-  }
-  .cfx-viewer {
-    margin: 9px;
-  }
+.cfx-menu-slot {
+  display: contents;
 }
-@media (max-width: 650px) {
-  .cfx-workspace {
-    overflow-y: auto;
+.cfx-workspace > .cfx-viewer {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.cfx-viewer > .cfx-viewport {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+}
+.cfx-view-selector {
+  position: absolute;
+  z-index: 10;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 24px);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--panel);
+  box-shadow: var(--ui-window-shadow);
+}
+.cfx-view-selector select {
+  width: min(310px, 32vw);
+}
+.cfx-view-selector label {
+  color: var(--muted);
+  padding-left: 5px;
+}
+.cfx-viewer > .cfx-stale {
+  position: absolute;
+  z-index: 9;
+  top: 74px;
+  right: 12px;
+  max-width: min(440px, calc(100% - 24px));
+  border-radius: var(--radius-control);
+  pointer-events: none;
+}
+.cfx-viewer > footer {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 8;
+  max-width: min(450px, calc(100% - 24px));
+  padding: 8px 10px;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  pointer-events: none;
+}
+.cfx-viewer > footer p {
+  margin: 0;
+}
+.cfx-statusbar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 12;
+  max-width: min(440px, calc(100% - 24px));
+  padding: 8px;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  box-shadow: var(--ui-window-shadow);
+}
+.cfx-statusbar > div {
+  overflow-wrap: anywhere;
+}
+.cfx-statusbar > button {
+  flex-shrink: 0;
+}
+.cfx-inspector {
+  overflow: visible;
+  padding: 14px;
+  border: 0;
+}
+.cfx-studybar {
+  padding: 0;
+  border: 0;
+  gap: 8px;
+}
+.cfx-studybar > label:first-child {
+  max-width: none;
+  flex-basis: 100%;
+}
+.cfx-studybar > button {
+  flex: 1 1 90px;
+}
+.cfx-studybar .cfx-history {
+  margin-left: 0;
+}
+.cfx-provider {
+  margin-left: 0;
+  padding: 7px 9px;
+}
+.cfx-welcome {
+  width: auto;
+  margin: 0;
+  padding: 8px 0;
+}
+.cfx-welcome h2 {
+  font-size: 22px;
+}
+.cfx-welcome p {
+  margin-bottom: 16px;
+}
+.cfx-viewport > .cfx-empty {
+  position: absolute;
+  inset: 0;
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+  max-width: 580px;
+  margin: auto;
+}
+.cfx-vtk-viewer {
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.cfx-vtk-viewer > .cfx-stale {
+  position: static;
+  pointer-events: auto;
+  max-width: none;
+}
+.cfx-vtk-viewer > footer {
+  position: static;
+  max-width: none;
+  pointer-events: auto;
+}
+.cfx-vtk-viewer > header {
+  flex-shrink: 0;
+}
+.cfx-window-menu {
+  width: 310px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+}
+.cfx-context-menu {
+  z-index: 2000;
+  max-height: calc(100dvh - 16px);
+}
+@media (max-width: 700px) {
+  .cfx-view-selector {
+    top: 8px;
+    right: 8px;
+    gap: 4px;
+    max-width: calc(100% - 16px);
   }
-  .cfx-heading {
-    gap: 8px;
+  .cfx-view-selector select {
+    width: 100%;
+    flex: 1;
   }
-  .cfx-heading h1 {
-    font-size: 16px;
+  .cfx-view-selector button {
+    padding-inline: 8px;
   }
-  .cfx-provider {
-    max-width: 120px;
-    font-size: 9px;
-    padding: 6px 8px;
-  }
-  .cfx-studybar {
-    gap: 6px;
-  }
-  .cfx-studybar > label:first-child {
-    flex: 1 1 100%;
-    max-width: none;
-  }
-  .cfx-studybar > button {
-    flex: 1 1 65px;
-  }
-  .cfx-body {
-    display: flex;
-    flex-direction: column;
-    min-height: auto;
-    flex: none;
-  }
-  .cfx-phases {
-    flex: none;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-  }
-  .cfx-inspector {
-    overflow: visible;
-    order: 2;
-    border: 0;
-    padding: 16px;
-  }
-  .cfx-viewer {
-    flex: none;
-    height: 350px;
-    order: 1;
+  .cfx-view-selector label {
+    display: none;
   }
   .cfx-statusbar {
-    position: sticky;
-    bottom: 0;
-    z-index: 3;
-    padding: 9px 12px;
+    bottom: 8px;
+    right: 8px;
   }
-  .cfx-statusbar > div {
-    font-size: 10px;
+  .cfx-viewer > footer {
+    display: none;
   }
-  .cfx-three {
-    grid-template-columns: 1fr;
+  .cfx-window-menu {
+    max-height: calc(100dvh - 150px);
   }
-  .cfx-welcome {
-    padding: 24px 12px;
+  .cfx-context-menu {
+    max-height: calc(100dvh - 16px);
   }
 }

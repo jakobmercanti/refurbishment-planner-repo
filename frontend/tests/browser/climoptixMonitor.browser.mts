@@ -1,3 +1,4 @@
+import { cfdWindow } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { cfdProject, realPreparation } from "../climoptixFixtures";
@@ -47,7 +48,7 @@ const solverLog = {
 
 test("convergence history survives leaving Simulation and has an independently accessible window", async (t) => {
   const { page, ui } = await setup(t);
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   await ui.getByRole("tab", { name: "Run", exact: true }).click();
   await ui
     .getByLabel("Import solver log", { exact: true })
@@ -55,8 +56,8 @@ test("convergence history survives leaving Simulation and has an independently a
   await ui
     .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
     .waitFor();
-  await ui.getByRole("button", { name: /Domain/ }).click();
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Domain");
+  await cfdWindow(ui, "Simulation");
   assert.equal(
     await ui
       .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
@@ -64,7 +65,8 @@ test("convergence history survives leaving Simulation and has an independently a
     1,
     "Leaving the phase must not throw away the imported history",
   );
-  await ui.getByRole("button", { name: /Domain/ }).click();
+  await cfdWindow(ui, "Domain");
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Convergence", exact: true }).click();
   const monitor = page.getByRole("region", {
     name: "Convergence monitor",
@@ -77,6 +79,7 @@ test("convergence history survives leaving Simulation and has an independently a
   await page
     .getByRole("button", { name: "Hide CFD convergence", exact: true })
     .click();
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Convergence", exact: true }).click();
   await monitor
     .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
@@ -102,7 +105,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     () => ui.locator(".cfx-state").innerText(),
     (value) => value === "Validated",
   );
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   const editNumber = async (name, value) => {
     const input = ui.getByRole("spinbutton", { name, exact: true });
     await input.fill(String(value));
@@ -162,6 +165,19 @@ test("3D refinements use distinct level colours, a matching legend and a working
       ),
   );
   const pixelCounts = async () => {
+    const canvasBounds = await canvas.boundingBox();
+    const obscured = await ui
+      .locator(
+        ".floating-toolbar, .cfx-view-selector, .cfx-stale, .cfx-statusbar, .cfx-viewer > footer",
+      )
+      .evaluateAll(
+        (items, bounds) =>
+          items.map((el) => {
+            const b = el.getBoundingClientRect();
+            return [b.x - bounds.x, b.y - bounds.y, b.width, b.height];
+          }),
+        canvasBounds,
+      );
     const root = fileURLToPath(new URL("../../../", import.meta.url));
     const result = spawnSync(
       path.join(
@@ -171,13 +187,19 @@ test("3D refinements use distinct level colours, a matching legend and a working
       ),
       [
         "-c",
-        "import io,sys,json; from PIL import Image; p=list(Image.open(io.BytesIO(sys.stdin.buffer.read())).convert('RGB').getdata()); print(json.dumps([sum(r<g*.75 and b>r*1.3 and g>70 for r,g,b in p),sum(r>g*1.3 and g>b*1.3 and r>110 for r,g,b in p)]))",
+        "import io,sys,json; from PIL import Image; im=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert('RGB'); masks=json.loads(sys.argv[1]); p=[im.getpixel((x,y)) for y in range(im.height) for x in range(im.width) if not any(a<=x<=a+w and b<=y<=b+h for a,b,w,h in masks)]; print(json.dumps([sum(g>120 and abs(g-b)<15 and r<g*.5 for r,g,b in p),sum(r>180 and 70<g<165 and b<80 for r,g,b in p)]))",
+        JSON.stringify(obscured),
       ],
       { input: await canvas.screenshot(), encoding: "utf8", timeout: 15000 },
     );
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   };
+  // A full-size canvas lies under the tools. Clear the centre before inspecting
+  // wireframe pixels, then keep only the right-hand view controls open.
+  await page.getByRole("button", { name: "Toolbar", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Hide all windows", exact: true }).click();
+  await cfdWindow(ui, "View properties");
   const visible = await eventually(
     pixelCounts,
     (values) => values.every((value) => value > 10),
@@ -197,6 +219,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     `${visible} -> ${hidden}`,
   );
   assert.equal(await legend.count(), 0);
+  await cfdWindow(ui, "Simulation");
   await ui
     .getByRole("button", { name: "View refinements in 3D", exact: true })
     .click();
@@ -224,6 +247,7 @@ test("the convergence window keeps study histories separate and supports shared 
   copy.name = "Other study";
   project.cfdScenarios!.push(copy);
   const { page, ui } = await setup(t, project);
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Convergence", exact: true }).click();
   const monitor = ui.getByRole("region", {
     name: "Convergence monitor",
@@ -401,6 +425,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
     study.id = ["900", "8", "100", "1"][i];
   });
   const { page, ui, saved } = await setup(t, project);
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Convergence", exact: true }).click();
   const monitor = ui.getByRole("region", {
     name: "Convergence monitor",
@@ -473,6 +498,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
     .getByRole("button", { name: "Hide CFD convergence", exact: true })
     .click();
   await chooser.selectOption(project.cfdScenarios[3].id);
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Convergence", exact: true }).click();
   await monitor
     .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
@@ -481,7 +507,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
 
 test("repeated refinement copies have distinct names and independent dimensions", async (t) => {
   const { ui, saved } = await setup(t);
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   await ui
     .getByRole("button", { name: "Add refinement region", exact: true })
     .click();
@@ -523,6 +549,7 @@ test("repeated refinement copies have distinct names and independent dimensions"
       .inputValue(),
     "Occupied zone copy",
   );
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Undo", exact: true }).click();
   assert.equal(await ui.locator(".cfx-refinement-row").count(), 3);
   await ui
@@ -570,7 +597,7 @@ test("adding after a deletion keeps refinement names unique and deleting the las
     }),
   );
   const { ui, saved } = await setup(t, project);
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   await ui
     .getByRole("button", { name: "Delete Refinement 2", exact: true })
     .click();
@@ -604,6 +631,7 @@ test("adding after a deletion keeps refinement names unique and deleting the las
       .isDisabled(),
     true,
   );
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Undo", exact: true }).click();
   assert.equal(await ui.locator(".cfx-refinement-row").count(), 1);
 });

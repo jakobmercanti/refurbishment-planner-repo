@@ -38,12 +38,13 @@ catalogue/people proxy recipes remain authoritative.
 ## Use it
 
 1. Draw or open a building in Floorplan. Select **Workspace → Climoptix CFD**.
-2. Create a study, name it and select its seed floor and room. Studies can be
+2. Open **Toolbar → Studies** to create/name a study, and **Domain** to select
+   its seed floor and room. Studies can be
    duplicated, archived, deleted with confirmation, imported and restored by Undo.
 3. Select **Validate & refresh** to discover the connected air region and prepare
-   its tagged boundary. Inspect included/excluded rooms and passage/STOP markers.
+   its tagged boundary. Inspect included/excluded rooms and the connectivity list.
 4. In Equipment, add supply/extract devices or use **Place on face** in 3D. Use
-   precise host U/V coordinates, or drag a vent in 2D/3D. Geometry and dimensions
+   precise host U/V coordinates, or drag a vent in 3D. Geometry and dimensions
    are millimetres. Numeric entries apply on Enter or leaving the field; rejected
    values are not persisted. New/moved vent markers show intent, not a checked
    perforated surface, until validation refreshes it.
@@ -63,9 +64,9 @@ catalogue/people proxy recipes remain authoritative.
    is m/s. Volume-flow display offers L/s, m³/h and m³/s. CO₂ concentration is ppm
    by volume (1 ppm = 10⁻⁶ fraction); object emissions are pure-CO₂ m³/s, not ppm/s.
    For example, 293.15 K is 20 °C. Presets are illustrative, not certified inputs.
-   Named box/sphere/object refinement extents appear in 2D/3D as wireframe intent.
+   Named box/sphere/object refinement extents appear in 3D as wireframe intent.
    Cuboids have editable X/Y/Z centres and dimensions, a numbered snappyHexMesh
-   level and a matching colour in the region list and 2D/3D viewer. Level N means
+   level and a matching colour in the region list and 3D viewer. Level N means
    base cell / 2^N along each axis. The list supports selection, duplication,
    reordering and deletion; ordering does not override the highest overlapping
    refinement level. Legacy cell-size regions remain editable and round to the
@@ -81,7 +82,7 @@ catalogue/people proxy recipes remain authoritative.
    `summary.txt` alongside the complete structured inputs and diagnostics.
 
 File → Save/Open includes every study in the existing `.floorplan3d` package.
-Settings, selection and study edits survive switching between the workspaces.
+Study selection, saved settings and edits survive switching between workspaces.
 Completed vent drags have independent Undo checkpoints. Numeric drafts commit on
 blur/Enter, while text editing retains ordinary history coalescing.
 Only a small in-memory preview cache is retained; triangles are not copied into
@@ -526,7 +527,7 @@ and Delete; copies have independent IDs/dimensions and collision-free names,
 including names at the Unicode length limit. Deleting the edited entry selects
 its neighbour, and project Undo restores the deletion. Validate the domain once,
 then use **View refinements in 3D** to reveal the overlays without changing the
-recipe or the selected refinement. The viewer's **Refinement intent** checkbox
+recipe or the selected refinement. **View properties → Refinement intent**
 hides/shows them. The list, actual wireframes and sorted legend use the same
 refinement-level colours and resolved nominal cell sizes. These are requested
 regions, not achieved mesh cells or solver metrics.
@@ -560,6 +561,58 @@ orphans), frontend types, formatting and whitespace checks passed. All **118 CFD
 backend regressions** passed; the existing TestClient deprecation warning remains.
 The final frontend rerun passed **546 unit and 19 project/persistence tests**.
 Together these checks cover **742 cases**, with zero failures or skips.
+
+## 3D workspace and floating windows — 21 October 2026
+
+The CFD workbench is now exclusively 3D. The building canvas fills the workspace
+below the application menu, including before a study is created or validated.
+There is no CFD 2D mode or second drawing editor. Floorplan's own 2D/3D modes are
+unchanged.
+
+- **View** offers Whole building, every measured room (with its floor name), and
+  every connected air volume. These are inspection choices, not changes to the
+  study seed, validation, geometry, saved settings or source floor selection.
+- The read-only `POST /climoptix/geometry` endpoint uses the same authoritative
+  discovery and analytic interior-face kernel as preparation. Only validated
+  permanent passages and slab voids join its graph; doors and windows stop it.
+  The viewer never infers connectivity from scene intersections or proximity.
+  Room-specific roof slopes, aperture reveals and slab sides remain measured
+  millimetre geometry. Scene-unit conversion happens at the Three.js boundary.
+- The scene has no solver/export validity claim. Its bounded response is checked
+  for invalid coordinates, triangle indices, patch references and air-volume
+  membership. Aborted or superseded requests cannot replace current geometry.
+  A service/geometry failure shows an explicit message and Retry geometry.
+  The public proxy permits only same-origin POST requests for this read-only
+  operation, strips credentials and disables caching. Proxy and API enforce
+  the existing 4 MiB streaming limit; API JSON guards reject non-finite numbers
+  and excessive nesting before project adaptation.
+  The floating Thermal window's existing envelope, preview and EPW requests
+  also use this allowlist and the same guards; public proxy routing no longer
+  blocks these preparation-only operations. Solver/job endpoints remain denied.
+- **Toolbar** and background right-click expose Studies, Domain, Equipment,
+  Boundaries, Physics, Simulation, Review & export, View properties, Thermal,
+  Convergence and imported results. Unavailable actions are disabled. Windows
+  use the shared draggable/resizable chrome, help, theme and focus behaviour.
+  Hide all windows clears the tools without shrinking or hiding the canvas.
+- Thermal and convergence retain their existing independent, study-scoped state.
+  Imported VTK results now have their own floating window and never replace the
+  building canvas. Numeric edits, source-insulation round trips and exports keep
+  the existing revision and persistence guards.
+- A shared floating-window fix ignores zero-size hidden workbenches when clamping
+  positions. This prevents windows stacking at the origin on first entry or
+  when returning from a source editor. Obsolete CFD SVG/2D drag code, old sidebar
+  layouts and the 2D-only thermal north-overlay styling have been removed.
+
+Audit coverage includes initial hidden-workbench activation, full-size canvas,
+passage/door/window/slab connectivity, per-room roofs, viewer/study independence,
+window movement/resizing/overlap, top/context menu keyboard controls, geometry
+failure/retry, real 3D vent dragging, refinement visibility, thermal round trips,
+convergence histories and portable exports. The final full runs passed 642 backend
+tests, 554 frontend unit tests, 19 persistence tests, 75 browser tests across all
+13 workbench test files, and 18 public-proxy tests. ESLint/source reachability
+(360 modules, no orphans), scoped Ruff, TypeScript/production build and whitespace
+checks also passed. The existing Starlette/httpx deprecation warning remains.
+No mesher, solver, remote job or deployment is enabled here.
 
 ## Smallest next solver milestone
 

@@ -5,6 +5,17 @@ import { roofProject } from "./roofBalustradeFixtures";
 import { newCFDScenario } from "../lib/climoptixDocument";
 import type { CFDReport } from "../lib/climoptix";
 import type { ProjectDocument } from "../lib/projectDocument";
+import { parseScene, type CFDScene } from "../lib/climoptixScene";
+
+export function realScene(project: ProjectDocument): CFDScene {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const python = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+  const result = spawnSync(python, ["-c", "import json,sys; from geometry.climoptix_scene import building_scene; print(json.dumps(building_scene(json.load(sys.stdin))))"], {
+    cwd: root, input: JSON.stringify(project), encoding: "utf8", timeout: 25000, maxBuffer: 12 * 1024 * 1024,
+  });
+  if (result.status !== 0) throw new Error(result.stderr || result.error?.message || "Building geometry failed");
+  return parseScene(JSON.parse(result.stdout));
+}
 
 export function realExampleProjects(): Record<string, ProjectDocument> {
   const root = fileURLToPath(new URL("../../", import.meta.url));

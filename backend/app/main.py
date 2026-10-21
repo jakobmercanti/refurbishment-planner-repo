@@ -79,6 +79,11 @@ from geometry.models import FitResult, GenericOpening, LayoutResult, ObstacleDef
 from geometry.shapes import obstacle_footprint
 from geometry.walls import PolygonValidationError, derive_walls, room_polygon
 
+CFD_JSON_ENDPOINTS = {
+    "/climoptix/geometry", "/climoptix/prepare", "/climoptix/openfoam-settings",
+    "/climoptix/thermal-envelope", "/climoptix/thermal-preview", "/climoptix/thermal-epw",
+}
+
 
 class RequestBodyLimitMiddleware:
     """Reject oversized streamed request bodies before route parsing."""
@@ -101,7 +106,7 @@ class RequestBodyLimitMiddleware:
             limit = 256
         elif path == "/commercial/stripe/webhook":
             limit = 1_000_000
-        elif path in {"/climoptix/prepare", "/climoptix/openfoam-settings"}:
+        elif path in CFD_JSON_ENDPOINTS:
             limit = 4 * 1024 * 1024
         else:
             limit = self.default_limit
@@ -127,7 +132,7 @@ class RequestBodyLimitMiddleware:
             elif message.get("type") == "http.disconnect":
                 return
         index = 0
-        if path in {"/climoptix/prepare", "/climoptix/openfoam-settings"}:
+        if path in CFD_JSON_ENDPOINTS:
 
             def finite_json_number(value: str) -> float:
                 number = float(value)

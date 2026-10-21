@@ -1,3 +1,4 @@
+import { cfdWindow } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { spawnSync } from "node:child_process";
@@ -146,7 +147,7 @@ async function setup(t) {
     () => ui.locator(".cfx-state").innerText(),
     (v) => v === "Validated",
   );
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   return { ...session, ui, workspace };
 }
 
@@ -174,15 +175,15 @@ test("independent workbench saves level-coloured cuboids, run settings and named
   await ui
     .getByRole("button", { name: "Delete Occupant zone copy", exact: true })
     .click();
-  const view = page.getByRole("group", { name: "Climoptix view", exact: true });
-  await view.getByRole("button", { name: "2D", exact: true }).click();
   const swatch = await ui
     .locator(".cfx-level-swatch")
     .evaluate((e) => getComputedStyle(e).backgroundColor);
-  const stroke = await ui
-    .locator("[data-refinement] rect")
-    .evaluate((e) => getComputedStyle(e).stroke);
-  assert.equal(swatch, stroke);
+  const renderedLegend = await ui
+    .getByRole("list", { name: "Refinement colour legend", exact: true })
+    .locator("i")
+    .evaluate((e) => getComputedStyle(e).backgroundColor);
+  assert.equal(swatch, renderedLegend);
+  assert.ok(await ui.locator("canvas").isVisible());
   await ui.getByRole("tab", { name: "Run", exact: true }).click();
   await ui
     .getByRole("spinbutton", { name: "CPU cores", exact: true })
@@ -418,7 +419,7 @@ test("simulation tabs remain usable on narrow screens and inactive navigation is
     (v) => v === "dark",
   );
   const ratio = await ui
-    .locator(".cfx-phases button:not(.active)")
+    .locator(".cfx-simulation-tabs button")
     .first()
     .evaluate((el) => {
       const light = (css) => {
@@ -456,6 +457,7 @@ test("simulation tabs remain usable on narrow screens and inactive navigation is
   await ui
     .getByRole("button", { name: "Duplicate Refinement 1", exact: true })
     .click();
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Undo", exact: true }).click();
   assert.equal(await ui.locator(".cfx-refinement-row").count(), 1);
   if (process.env.BROWSER_ARTIFACTS)

@@ -72,6 +72,14 @@ export async function startBrowserHarness() {
     async session(project) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
       await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+      await context.route("**/climoptix/geometry", async route => {
+        const { realScene } = await import("../climoptixFixtures.ts");
+        try {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(realScene(route.request().postDataJSON().project)) });
+        } catch (error) {
+          await route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ detail: String(error) }) });
+        }
+      });
       await context.addInitScript("window.__name = value => value; window.showSaveFilePicker = undefined; window.showOpenFilePicker = undefined;");
       const page = await context.newPage(), errors = [];
       page.setDefaultTimeout(12000); page.on("pageerror", error => errors.push(error.message));
@@ -100,4 +108,26 @@ export async function startBrowserHarness() {
 export async function menu(page, heading, entry) {
   await page.getByRole("button", { name: heading, exact: true }).click();
   await page.getByRole("button", { name: entry, exact: typeof entry === "string" }).click();
+}
+
+/** Navigate the real floating-window menu, not the retired CFD sidebar. */
+export async function cfdWindow(ui, name) {
+  const page = typeof ui.page === "function" ? ui.page() : ui;
+  for (const other of ["Domain", "Equipment", "Boundaries", "Physics", "Simulation", "Review & export"]) {
+    if (other === name || name === "Studies" || name === "View properties") continue;
+    const close = page.getByRole("button", { name: `Hide ${other}`, exact: true });
+    if (await close.isVisible()) {
+      await page.getByRole("button", { name: "Toolbar", exact: true }).click();
+      await page.getByRole("menuitemcheckbox", { name: other, exact: true }).click();
+    }
+  }
+  await page.getByRole("button", { name: "Toolbar", exact: true }).click();
+  const item = page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitemcheckbox", { name, exact: true });
+  if (await item.getAttribute("aria-checked") === "true") {
+    await item.click();
+    await page.getByRole("button", { name: "Toolbar", exact: true }).click();
+    await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitemcheckbox", { name, exact: true }).click();
+  } else await item.click();
+  const title = page.getByRole("region", { name: "Climoptix CFD workspace", exact: true }).getByLabel(`Move ${name}`, { exact: true });
+  if (await title.isVisible()) await title.click({ position: { x: 65, y: 24 } });
 }

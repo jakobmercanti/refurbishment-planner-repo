@@ -10,6 +10,38 @@ from pydantic import ValidationError
 from backend.app.climoptix_provider import PreparationOnlyProvider, UnsupportedProviderOperation
 from backend.app.commercial_api import _validate_project
 from geometry.climoptix_models import Scenario
+from geometry.climoptix_scene import building_scene
+
+
+@pytest.mark.parametrize(
+    "profile,kind,connected",
+    [(None, "DOOR", False), (None, "WINDOW", False), ("RECTANGULAR", "DOOR", True), ("ROUND_ARCH", "DOOR", True)],
+)
+def test_building_view_uses_kernel_connectivity_without_mutating_study(profile, kind, connected):
+    p = project(True)
+    opening = aperture(profile)
+    opening["kind"] = kind
+    p["rooms"][0]["openings"] = [opening]
+    before = deepcopy(p)
+    scene = building_scene(p)
+    assert p == before
+    assert scene["units"] == "mm"
+    assert scene["airVolumes"] == ([["a", "b"]] if connected else [["a"], ["b"]])
+    assert {patch["roomId"] for patch in scene["patches"]} == {"a", "b"}
+    assert len(scene["triangles"]) == len(scene["trianglePatches"])
+    assert all(0 <= index < len(scene["verticesMm"]) for triangle in scene["triangles"] for index in triangle)
+    assert all(tag in {patch["id"] for patch in scene["patches"]} for tag in scene["trianglePatches"])
+
+
+def test_building_view_covers_combined_roofs_without_flattening_them():
+    p = building(project(True))
+    p["building"]["roof"].update(roomRoofsEnabled=True, roomOverrides=[{"roomId": "a", "roof": roof("MONO")}])
+    scene = building_scene(p)
+    assert len(scene["rooms"]) == 2
+    assert 3300 < max(vertex[2] for vertex in scene["verticesMm"]) < 3400  # Actual inset air face, not outer roof edge.
+    p["rooms"] = []
+    empty = building_scene(p)
+    assert empty["airVolumes"] == empty["triangles"] == empty["rooms"] == []
 
 
 def measured(value):
@@ -233,6 +265,9 @@ def test_multifloor_void_is_a_real_connection_and_has_slab_sides():
     assert report["surface"]["closed"], report["diagnostics"]
     assert report["domain"]["volumeM3"] == pytest.approx(57.8)
     assert len([p for p in report["patches"] if p["kind"] == "slabSide"]) == 4
+    scene = building_scene(p)
+    assert scene["airVolumes"] == [["a", "upper"]]
+    assert len([patch for patch in scene["patches"] if patch["kind"] == "slabSide"]) == 4
 
 
 def test_concave_nonrectilinear_room_surface():
@@ -412,6 +447,41 @@ def test_preparation_api_is_stateless_and_solver_routes_do_not_exist():
     assert response.status_code == 200, response.text
     assert response.json()["surface"]["closed"]
     assert client.post("/climoptix/run", json={"command": "anything"}).status_code == 404
+
+
+def test_building_view_api_needs_no_study_and_rejects_bad_geometry_or_extra_fields():
+    from backend.app.main import app
+
+    client = TestClient(app)
+    p = project(True)
+    before = deepcopy(p)
+    response = client.post("/climoptix/geometry", json={"project": p})
+    assert response.status_code == 200, response.text
+    assert response.json()["airVolumes"] == [["a"], ["b"]]
+    assert {patch["roomId"] for patch in response.json()["patches"]} == {"a", "b"}
+    assert p == before
+    assert client.post("/climoptix/geometry", json={"project": p, "scenario": {}}).status_code == 422
+    p["rooms"][0]["vertices"] = [{"x": 0, "y": 0}] * 3
+    assert client.post("/climoptix/geometry", json={"project": p}).status_code == 422
+
+
+@pytest.mark.parametrize("body", ['{"x":NaN}', '{"x":Infinity}', '{"x":1e999}', "[" * 10000 + "]" * 10000])
+@pytest.mark.parametrize("operation", ["geometry", "thermal-envelope", "thermal-preview", "thermal-epw"])
+def test_view_and_thermal_json_guard_rejects_nonfinite_values_and_deep_nesting(body, operation):
+    from backend.app.main import app
+
+    response = TestClient(app).post(
+        f"/climoptix/{operation}", content=body, headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("operation", ["geometry", "thermal-envelope", "thermal-preview", "thermal-epw"])
+def test_view_and_thermal_bodies_are_bounded_before_project_parsing(operation):
+    from backend.app.main import app
+
+    response = TestClient(app).post(f"/climoptix/{operation}", content=" " * (4 * 1024 * 1024 + 1))
+    assert response.status_code == 413
 
 
 def source_runs(p, stable=False):

@@ -1,3 +1,4 @@
+import { cfdWindow } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { cfdProject, realPreparation } from "../climoptixFixtures";
@@ -42,7 +43,7 @@ test("a delayed study import rechecks the project capacity after the file is rea
     name: `Study ${i + 1}`,
   }));
   const { page, ui, saved } = await open(t, project);
-  await ui.getByRole("button", { name: /Review & export/ }).click();
+  await cfdWindow(ui, "Review & export");
   await page.evaluate(() => {
     const original = File.prototype.text;
     File.prototype.text = function () {
@@ -61,6 +62,7 @@ test("a delayed study import rechecks the project capacity after the file is rea
     () => page.evaluate(() => typeof window.__releaseStudy),
     (v) => v === "function",
   );
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "New study", exact: true }).click();
   await eventually(saved, (p) => p.cfdScenarios.length === 100);
   await page.evaluate(() => window.__releaseStudy());
@@ -80,7 +82,7 @@ test("a settings export is cancelled when a different project replaces its workb
     () => ui.locator(".cfx-state").innerText(),
     (v) => v === "Validated",
   );
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   await ui.getByRole("tab", { name: "Run", exact: true }).click();
   let held, requested;
   const arrived = new Promise<void>((resolve) => {
@@ -143,6 +145,7 @@ test("a settings export is cancelled when a different project replaces its workb
 
 test("delete confirmation uses the shared window styling and keeps cancellation keyboard-safe", async (t) => {
   const { page, ui, saved } = await open(t);
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Delete", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "Delete CFD scenario",
@@ -189,6 +192,7 @@ test("delete confirmation uses the shared window styling and keeps cancellation 
       .evaluate((el) => el === document.activeElement),
     true,
   );
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Delete", exact: true }).click();
   await dialog
     .getByRole("button", { name: "Delete study", exact: true })
@@ -200,6 +204,7 @@ test("delete confirmation uses the shared window styling and keeps cancellation 
       .evaluate((el) => el === document.activeElement),
     true,
   );
+  await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Undo", exact: true }).click();
   await eventually(saved, (p) => p.cfdScenarios.length === 1);
 });
@@ -213,7 +218,7 @@ test("boundary search finds the room and surface names displayed to the user", a
     () => ui.locator(".cfx-state").innerText(),
     (v) => v === "Validated",
   );
-  await ui.getByRole("button", { name: /Boundaries/ }).click();
+  await cfdWindow(ui, "Boundaries");
   const search = ui.getByRole("searchbox", {
     name: "Find a CFD patch",
     exact: true,
@@ -233,7 +238,7 @@ test("boundary search finds the room and surface names displayed to the user", a
 
 test("legacy VTK never wraps integer result values and accepts standard whitespace and empty cell blocks", async (t) => {
   const { ui } = await open(t);
-  await ui.getByRole("button", { name: /Simulation/ }).click();
+  await cfdWindow(ui, "Simulation");
   await ui.getByRole("tab", { name: "Post-processing", exact: true }).click();
   const legacy =
     "# vtk DataFile Version 3.0\nSlice\nASCII\nDATASET POLYDATA\nPOINTS 4 float\n0 0 0 1 0 0 1 1 0 0 1 0\nPOLYGONS 1 5\n4 0 1 2 3\nPOINT_DATA 4\nSCALARS label long 1\nLOOKUP_TABLE default\n3000000000 3000000000 3000000000 3000000000";
@@ -338,10 +343,7 @@ for (const style of ["DEFAULT", "MODERN"])
           "Simulation",
           "Review & export",
         ]) {
-          await ui
-            .locator(".cfx-phases")
-            .getByRole("button", { name: new RegExp(phase) })
-            .click();
+          await cfdWindow(ui, phase);
           const inspector = ui.getByRole("region", {
             name: `${phase} settings`,
             exact: true,
@@ -404,6 +406,7 @@ for (const style of ["DEFAULT", "MODERN"])
             `${style} ${theme} ${viewport.width}: page overflow`,
           );
         }
+        await cfdWindow(ui, "Studies");
         await ui
           .getByRole("button", { name: "Help for Climoptix CFD", exact: true })
           .click();
@@ -418,10 +421,7 @@ for (const style of ["DEFAULT", "MODERN"])
         );
         await page.keyboard.press("Escape");
         await help.waitFor({ state: "hidden" });
-        await ui
-          .locator(".cfx-phases")
-          .getByRole("button", { name: /Simulation/ })
-          .click();
+        await cfdWindow(ui, "Simulation");
         await ui.getByRole("tab", { name: "Run", exact: true }).click();
         await ui
           .getByRole("combobox", { name: "Simulation type", exact: true })

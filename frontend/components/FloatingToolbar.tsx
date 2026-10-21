@@ -6,6 +6,7 @@ import { WindowIcon } from "@/components/WindowIcon";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
 import { useServiceMenuHelp } from "@/lib/serviceMenuHelp";
+import type { WindowHelpStep } from "@/lib/windowHelp";
 
 export interface ToolbarDock {
   side: "LEFT" | "RIGHT";
@@ -33,6 +34,8 @@ export function positionedToolbarDock(side: ToolbarDock["side"], top: string | n
 interface FloatingToolbarProps {
   title: string;
   help?: boolean;
+  helpTitle?: string;
+  helpSteps?: WindowHelpStep[];
   children: ReactNode;
   className?: string;
   compact?: boolean;
@@ -132,7 +135,7 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
   return <FloatingToolbarWindow key={props.layoutResetKey ?? 0} {...props} />;
 }
 
-function FloatingToolbarWindow({ title, help = true, children, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, focusRequest, onClose }: FloatingToolbarProps) {
+function FloatingToolbarWindow({ title, help = true, helpTitle = title, helpSteps, children, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, focusRequest, onClose }: FloatingToolbarProps) {
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);
   useServiceMenuHelp(panelRef, title);
@@ -214,6 +217,9 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
     function keepPanelInsideWorkspace() {
       const panelBounds = workspacePanel.getBoundingClientRect();
       const visible = getVisibleWorkspace(workspace);
+      // Workbenches stay mounted while hidden. A zero-size parent is not a
+      // real resize: clamping here stacks every window at (8,8) on first use.
+      if (visible.right <= visible.left || visible.bottom <= visible.top) return;
       setVisibleWorkspace(current => current && Object.keys(visible).every(key => current[key as keyof typeof current] === visible[key as keyof typeof visible]) ? current : visible);
       setPosition((current) => {
         const x = Math.max(visible.left + 8, Math.min(visible.right - Math.min(panelBounds.width, visible.right - visible.left - 16) - 8, current.x));
@@ -431,7 +437,7 @@ function FloatingToolbarWindow({ title, help = true, children, className = "", c
       <span className="floating-toolbar-drag" aria-hidden>⠿</span>
       <span className="floating-toolbar-icon"><WindowIcon title={title} /></span>
       <strong>{title}</strong>
-      <div className="window-header-actions">{help && <WindowHelpButton title={title} />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
+      <div className="window-header-actions">{help && <WindowHelpButton title={helpTitle} steps={helpSteps} />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
     </header>
     <div className="floating-toolbar-content" hidden={compact}>{children}</div>
     {(["TOP", "LEFT", "RIGHT", "BOTTOM"] as const).map((edge) => <button key={edge} type="button" tabIndex={-1} className={`floating-toolbar-resize floating-toolbar-resize-${edge.toLowerCase()}`} aria-label={`Resize ${title} from the ${edge.toLowerCase()} edge`} onPointerDown={(event) => beginResize(edge, event)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} />)}

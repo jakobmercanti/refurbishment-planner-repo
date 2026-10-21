@@ -1,6 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FloatingToolbar } from "./FloatingToolbar";
+import {
+  ClimoptixWindowMenu,
+  CFD_WINDOWS,
+  type CFDWindowId,
+  type CFDWindowVisibility,
+} from "./ClimoptixWindowMenu";
 import { projectFloors } from "@/lib/buildingDocument";
 import {
   thermalSetupSchema,
@@ -58,6 +65,10 @@ const PHASES = [
 const EMPTY_SCENARIOS: CFDScenario[] = [];
 type Phase = (typeof PHASES)[number]["id"];
 const HELP = [
+  {
+    heading: "Your 3D workspace",
+    text: "Use View to inspect the whole building, a room or a connected air volume. This does not change your study's seed room. Open, hide and reopen floating windows from Toolbar or by right-clicking the background. Drag a titlebar to move a window and its edges to resize it.",
+  },
   {
     heading: "One shared building",
     text: "Create a study, choose a seed room, then Validate & refresh. Geometry, furniture and people come from your existing project in millimetres; Climoptix does not maintain a second building. File → Save includes all studies.",
@@ -160,8 +171,7 @@ interface Props {
   active: boolean;
   project: ProjectDocument;
   apiUrl: string;
-  view: "2D" | "3D";
-  onView: (v: "2D" | "3D") => void;
+  menuTarget: HTMLElement | null;
   onChange: (scenarios: CFDScenario[], checkpoint?: boolean) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -177,8 +187,7 @@ export function ClimoptixWorkspace({
   active,
   project,
   apiUrl,
-  view,
-  onView,
+  menuTarget,
   onChange,
   onUndo,
   onRedo,
@@ -188,8 +197,37 @@ export function ClimoptixWorkspace({
   onEditInsulation,
 }: Props) {
   const [selectedId, setSelectedId] = useState(""),
-    [phase, setPhase] = useState<Phase>("domain"),
     [showArchived, setShowArchived] = useState(false);
+  const [windows, setWindows] = useState<CFDWindowVisibility>(
+    () =>
+      Object.fromEntries(
+        CFD_WINDOWS.map((w) => [
+          w.id,
+          w.id === "studies" ||
+            (w.id === "domain" &&
+              !!project.cfdScenarios?.some((s) => !s.archived)),
+        ]),
+      ) as CFDWindowVisibility,
+  );
+  const [windowFocus, setWindowFocus] = useState<
+    Partial<Record<CFDWindowId, number>>
+  >({});
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const previewScenario = useMemo(
+    () => newCFDScenario(project.projectId, "Building view"),
+    [project.projectId],
+  );
+  const openPhase = (id: Phase) => {
+    setWindows((previous) => ({ ...previous, [id]: true }));
+    setWindowFocus((previous) => ({
+      ...previous,
+      [id]: (previous[id] ?? 0) + 1,
+    }));
+  };
   const [selected, setSelected] = useState<string | null>(null),
     [reports, setReports] = useState<Record<string, CFDReport>>({});
   const [hash, setHash] = useState({ input: "", revision: "" }),
@@ -454,7 +492,8 @@ export function ClimoptixWorkspace({
     );
     onChange([...scenarios, s], true);
     setSelectedId(s.id);
-    setPhase("domain");
+    setWindows((previous) => ({ ...previous, studies: false }));
+    openPhase("domain");
     setError("");
   };
   const validate = async () => {
@@ -605,7 +644,7 @@ export function ClimoptixWorkspace({
     change({ ...scenario, vents: [...scenario.vents, vent] });
     setSelected(`vent:${vent.id}`);
     setPicking(null);
-    setPhase("equipment");
+    openPhase("equipment");
   };
   const moveVent = (id: string, u: number, v: number) => {
     if (scenario)
@@ -628,10 +667,10 @@ export function ClimoptixWorkspace({
       : undefined;
     if (objectId) setSelected(device ? `vent:${objectId}` : objectId);
     if (device || object) {
-      setPhase("equipment");
+      openPhase("equipment");
       return;
     }
-    setPhase(
+    openPhase(
       group === "vents"
         ? "equipment"
         : group === "boundaries"
@@ -654,473 +693,544 @@ export function ClimoptixWorkspace({
     activeReport?.diagnostics.filter(
       (d) => diagnosticFilter === "all" || d.severity === diagnosticFilter,
     ) ?? [];
+  const visibility = {
+    ...windows,
+    thermal: thermalOpen,
+    convergence: monitorOpen,
+    results: resultsOpen && vtkFile?.studyId === scenario?.id,
+  };
+  const available = (id: CFDWindowId) =>
+    id === "studies" ||
+    id === "view" ||
+    (!!scenario && (id !== "results" || vtkFile?.studyId === scenario.id));
+  const toggleWindow = (id: CFDWindowId) => {
+    if (id === "thermal") {
+      if (thermalOpen) setThermalOpen(false);
+      else openThermal();
+    } else if (id === "convergence") {
+      if (monitorOpen) closeConvergence();
+      else openConvergence();
+    } else if (id === "results") setResultsOpen(!resultsOpen);
+    else {
+      setWindows((previous) => ({ ...previous, [id]: !previous[id] }));
+      setWindowFocus((previous) => ({
+        ...previous,
+        [id]: (previous[id] ?? 0) + 1,
+      }));
+    }
+    setPicking(null);
+  };
   return (
-    <section className="cfx-workspace" aria-label="Climoptix CFD workspace">
-      <header className="cfx-heading">
-        <div>
-          <span className="cfx-eyebrow">CLIMOPTIX CFD</span>
-          <h1>Prepare indoor airflow</h1>
-        </div>
-        <span
-          className="cfx-provider"
-          title="No mesher, CFD solver or job service is connected."
-        >
-          Preparation only · solver not connected
-        </span>
-        <WindowHelpButton title="Climoptix CFD" steps={HELP} />
-      </header>
-      <div className="cfx-studybar">
-        <label>
-          Study
-          <select
-            aria-label="CFD scenario"
-            value={scenario?.id ?? ""}
-            onChange={(e) => {
-              setSelectedId(e.target.value);
-              setSelected(null);
-              setError("");
-              setMessage("");
-              setPicking(null);
-            }}
-          >
-            {!visible.length && <option value="">No studies yet</option>}
-            {visible.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.archived ? " · archived" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button onClick={add}>New study</button>
-        <button
-          disabled={!scenario}
-          onClick={openConvergence}
-          aria-expanded={monitorOpen && !!scenario}
-        >
-          Convergence
-        </button>
-        <button
-          disabled={!scenario || scenarios.length >= 100}
-          onClick={() => {
-            if (scenario) {
-              const copy = duplicateCFDScenario(scenario);
-              onChange([...scenarios, copy], true);
-              setSelectedId(copy.id);
-            }
+    <section
+      className="cfx-workspace"
+      aria-label="Climoptix CFD workspace"
+      onContextMenu={(event) => {
+        if (
+          (event.target as Element).closest(
+            ".floating-toolbar, button, input, select, textarea",
+          )
+        )
+          return;
+        event.preventDefault();
+        setContextMenu({ x: event.clientX, y: event.clientY });
+      }}
+    >
+      {active && (
+        <ClimoptixWindowMenu
+          target={menuTarget}
+          context={contextMenu}
+          onDismiss={() => setContextMenu(null)}
+          visible={visibility}
+          available={available}
+          onToggle={toggleWindow}
+          onHideAll={() => {
+            setWindows(
+              (previous) =>
+                Object.fromEntries(
+                  Object.keys(previous).map((id) => [id, false]),
+                ) as CFDWindowVisibility,
+            );
+            setThermalOpen(false);
+            setMonitorOpen(false);
+            setResultsOpen(false);
+            setPicking(null);
           }}
-        >
-          Duplicate
-        </button>
-        <button
-          disabled={!scenario}
-          onClick={() =>
-            scenario && change({ ...scenario, archived: !scenario.archived })
+        />
+      )}
+      {active && (
+        <ClimoptixViewer
+          key={project.projectId}
+          project={project}
+          scenario={scenario ?? previewScenario}
+          report={activeReport}
+          active={active}
+          apiUrl={apiUrl}
+          viewSettingsOpen={windows.view}
+          viewFocus={windowFocus.view ?? 0}
+          onViewSettings={(show) =>
+            setWindows((previous) => ({ ...previous, view: show }))
+          }
+          stale={stale}
+          selected={selected}
+          onSelect={(id) => {
+            setSelected(id);
+            if (id.startsWith("refinement:")) {
+              openPhase("mesh");
+              setSimulationTab("mesh");
+            }
+            if (
+              id.startsWith("vent:") ||
+              activeReport?.objects.some((obj) => obj.id === id)
+            )
+              openPhase("equipment");
+          }}
+          picking={!!picking}
+          onHostPick={hostPick}
+          onMoveVent={moveVent}
+          canMoveVents={true}
+          showSamplingPlanes={windows.mesh && simulationTab === "post"}
+          showRefinements={showRefinements}
+          onShowRefinements={setShowRefinements}
+          thermalSurfaces={thermalStale ? [] : (thermalReport?.surfaces ?? [])}
+          thermalMetric={thermalMetric}
+          thermalSelected={thermalSelected}
+          onThermalSelect={(id) => {
+            setThermalSelected(id);
+            setThermalOpen(true);
+          }}
+        />
+      )}
+      {windows.studies && (
+        <FloatingToolbar
+          title="Studies"
+          helpTitle="Climoptix CFD"
+          helpSteps={HELP}
+          defaultPosition={{ x: 16, y: 72 }}
+          initialSize={{ width: 390 }}
+          maxHeight={650}
+          focusRequest={windowFocus.studies}
+          onClose={() =>
+            setWindows((previous) => ({ ...previous, studies: false }))
           }
         >
-          {scenario?.archived ? "Unarchive" : "Archive"}
-        </button>
-        <button
-          disabled={!scenario}
-          className="cfx-danger"
-          onClick={(e) => setDeleting(e.currentTarget)}
-        >
-          Delete
-        </button>
-        <label className="cfx-check">
-          <input
-            type="checkbox"
-            checked={showArchived}
-            onChange={(e) => setShowArchived(e.target.checked)}
-          />
-          Archived
-        </label>
-        <div className="cfx-history">
-          <button disabled={!canUndo} onClick={onUndo}>
-            Undo
-          </button>
-          <button disabled={!canRedo} onClick={onRedo}>
-            Redo
-          </button>
-        </div>
-      </div>
-      {!scenario ? (
-        <div className="cfx-welcome">
-          {error && (
-            <p role="alert" className="cfx-error">
-              {error}
-            </p>
-          )}
-          <span className="cfx-eyebrow">
-            ONE BUILDING. INDEPENDENT STUDIES.
-          </span>
-          <h2>Start with the space you already designed.</h2>
-          <p>
-            Create a study to prepare connected air volumes, vents, occupants
-            and engineering conditions. Your floorplan stays authoritative; no
-            solver results are invented.
-          </p>
-          <div className="cfx-actions">
-            <button className="cfx-primary" onClick={add}>
-              Create first study
-            </button>
-            <label className="cfx-file">
-              Import study
-              <input
-                aria-label="Import CFD scenario"
-                type="file"
-                accept=".json,application/json"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  e.target.value = "";
-                  if (f) void importScenario(f);
-                }}
-              />
-            </label>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="cfx-body">
-            <nav className="cfx-phases" aria-label="CFD preparation phases">
-              {PHASES.map((p, i) => (
-                <button
-                  key={p.id}
-                  aria-current={phase === p.id ? "step" : undefined}
-                  className={phase === p.id ? "active" : ""}
-                  onClick={() => {
-                    setPhase(p.id);
+          <div className="cfx-inspector">
+            <div className="cfx-inspector-heading">
+              <span className="cfx-provider">
+                Preparation only · solver not connected
+              </span>
+            </div>
+            <div className="cfx-studybar">
+              <label>
+                Study
+                <select
+                  aria-label="CFD scenario"
+                  value={scenario?.id ?? ""}
+                  onChange={(e) => {
+                    setSelectedId(e.target.value);
+                    setSelected(null);
+                    setError("");
+                    setMessage("");
                     setPicking(null);
                   }}
                 >
-                  <span>{String(i + 1).padStart(2, "0")}</span>
-                  <div>
-                    <strong>{p.label}</strong>
-                    <small>{p.hint}</small>
-                  </div>
+                  {!visible.length && <option value="">No studies yet</option>}
+                  {visible.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.archived ? " · archived" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button onClick={add}>New study</button>
+              <button
+                disabled={!scenario}
+                onClick={openConvergence}
+                aria-expanded={monitorOpen && !!scenario}
+              >
+                Convergence
+              </button>
+              <button
+                disabled={!scenario || scenarios.length >= 100}
+                onClick={() => {
+                  if (scenario) {
+                    const copy = duplicateCFDScenario(scenario);
+                    onChange([...scenarios, copy], true);
+                    setSelectedId(copy.id);
+                  }
+                }}
+              >
+                Duplicate
+              </button>
+              <button
+                disabled={!scenario}
+                onClick={() =>
+                  scenario &&
+                  change({ ...scenario, archived: !scenario.archived })
+                }
+              >
+                {scenario?.archived ? "Unarchive" : "Archive"}
+              </button>
+              <button
+                disabled={!scenario}
+                className="cfx-danger"
+                onClick={(e) => setDeleting(e.currentTarget)}
+              >
+                Delete
+              </button>
+              <label className="cfx-check">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                />
+                Archived
+              </label>
+              <div className="cfx-history">
+                <button disabled={!canUndo} onClick={onUndo}>
+                  Undo
                 </button>
-              ))}
-            </nav>
-            <section
-              className="cfx-inspector"
-              key={editorReset}
-              aria-label={`${PHASES.find((p) => p.id === phase)!.label} settings`}
-            >
-              <div className="cfx-inspector-heading">
-                <h2>{PHASES.find((p) => p.id === phase)!.label}</h2>
-                <span className={`cfx-state ${status.toLowerCase()}`}>
-                  {status}
-                </span>
+                <button disabled={!canRedo} onClick={onRedo}>
+                  Redo
+                </button>
               </div>
+            </div>
+
+            {scenario ? (
               <CFDText
                 label="Study name"
                 value={scenario.name}
                 onChange={(name) => change({ ...scenario, name })}
               />
-              {phase === "domain" && (
-                <DomainPanel
-                  project={project}
-                  scenario={scenario}
-                  report={activeReport}
-                  onChange={change}
-                />
-              )}
-              {phase === "equipment" && (
-                <EquipmentPanel
-                  scenario={scenario}
-                  report={activeReport}
-                  selected={selected}
-                  onSelect={setSelected}
-                  onChange={change}
-                  onPick={(role) => {
-                    setPicking(role);
-                    onView("3D");
-                  }}
-                  onEditSource={onEditBuilding}
-                />
-              )}
-              {phase === "boundaries" && (
-                <>
-                  <button className="cfx-primary" onClick={openThermal}>
-                    Thermal Envelope &amp; Solar Conditions
-                  </button>
-                  {scenario.thermalSnapshots?.length ? (
-                    <p className="cfx-notice">
-                      Thermal handoff stored ·{" "}
-                      {thermalStale
-                        ? "refresh to verify current sources"
-                        : "current source revision"}
-                      . Contract only, not executed.
-                    </p>
-                  ) : null}
-                  <BoundariesPanel
-                    scenario={scenario}
-                    report={activeReport}
-                    selected={selected}
-                    onSelect={setSelected}
-                    onChange={change}
-                  />
-                </>
-              )}
-              {phase === "physics" && (
-                <PhysicsPanel scenario={scenario} onChange={change} />
-              )}
-              {phase === "mesh" && (
-                <ClimoptixSimulation
-                  tab={simulationTab}
-                  onTab={setSimulationTab}
-                  scenario={scenario}
-                  report={activeReport}
-                  onChange={change}
-                  selected={selected}
-                  onSelect={setSelected}
-                  onExport={() => void exportOpenFOAM()}
-                  exporting={exporting}
-                  exportDisabled={
-                    stale || !!activeReport?.validation.errors || !!error
-                  }
-                  onVTK={(file) => {
-                    setVTKFile({
-                      studyId: scenario.id,
-                      file,
-                      token: crypto.randomUUID(),
-                    });
-                    onView("3D");
-                  }}
-                  onShowRefinements={() => {
-                    setShowRefinements(true);
-                    setSelected((value) =>
-                      value?.startsWith("refinement:") ? value : null,
-                    );
-                    onView("3D");
-                  }}
-                  onConvergence={openConvergence}
-                  convergence={
-                    monitorOpen ? (
-                      <p className="cfx-caption">
-                        The convergence window is open. You can keep working
-                        while inspecting the log.
-                      </p>
-                    ) : (
-                      <ClimoptixConvergence
-                        state={logs.get(scenario.id)}
-                        onImport={(file) => void importLog(scenario.id, file)}
-                        onClear={() => clearLog(scenario.id)}
-                      />
-                    )
-                  }
-                />
-              )}
-              {phase === "review" && (
-                <>
-                  <p className="cfx-intro">
-                    Validate the current source and setup. A preparation
-                    manifest may contain blocking diagnostics; surface export is
-                    included only when all geometry checks pass. Neither is a
-                    runnable solver case.
+            ) : (
+              <div className="cfx-welcome">
+                {error && (
+                  <p role="alert" className="cfx-error">
+                    {error}
                   </p>
-                  <label>
-                    Study notes
-                    <textarea
-                      value={scenario.description}
-                      maxLength={2000}
-                      onChange={(e) =>
-                        change({ ...scenario, description: e.target.value })
-                      }
+                )}
+                <span className="cfx-eyebrow">
+                  ONE BUILDING. INDEPENDENT STUDIES.
+                </span>
+                <h2>Start with the space you already designed.</h2>
+                <p>
+                  Create a study to prepare connected air volumes, vents,
+                  occupants and engineering conditions. Your floorplan stays
+                  authoritative; no solver results are invented.
+                </p>
+                <div className="cfx-actions">
+                  <button className="cfx-primary" onClick={add}>
+                    Create first study
+                  </button>
+                  <label className="cfx-file">
+                    Import study
+                    <input
+                      aria-label="Import CFD scenario"
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) void importScenario(f);
+                      }}
                     />
                   </label>
-                  <div className="cfx-actions">
-                    <button onClick={exportScenario}>Export study JSON</button>
-                    <label className="cfx-file">
-                      Import study
-                      <input
-                        aria-label="Import CFD scenario"
-                        type="file"
-                        accept=".json,application/json"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          e.target.value = "";
-                          if (f) void importScenario(f);
-                        }}
-                      />
-                    </label>
-                    <button
-                      className="cfx-primary"
-                      disabled={stale || !!error}
-                      onClick={() => {
-                        try {
-                          if (activeReport)
-                            downloadCFD(
-                              preparationPackage(
-                                scenario,
-                                activeReport,
-                                revision,
-                              ),
-                              `${scenario.name}.climoptix.zip`,
-                            );
-                        } catch (e) {
-                          setError(
-                            e instanceof Error ? e.message : "Export failed.",
-                          );
-                        }
-                      }}
-                    >
-                      Export preparation ZIP
-                    </button>
-                    <button
-                      disabled={stale || !!error}
-                      onClick={() => {
-                        try {
-                          if (activeReport)
-                            downloadCFD(
-                              new Blob(
-                                [
-                                  preparationSummary(
-                                    scenario,
-                                    activeReport,
-                                    revision,
-                                  ),
-                                ],
-                                { type: "text/plain;charset=utf-8" },
-                              ),
-                              `${scenario.name}-preflight.txt`,
-                            );
-                        } catch (e) {
-                          setError(
-                            e instanceof Error
-                              ? e.message
-                              : "Report export failed.",
-                          );
-                        }
-                      }}
-                    >
-                      Download settings &amp; preflight
-                    </button>
-                  </div>
-                  {activeReport && (
-                    <>
-                      <dl className="cfx-provenance">
-                        <dt>Geometry SHA-256</dt>
-                        <dd>{activeReport.validation.sourceHash}</dd>
-                        <dt>Configuration SHA-256</dt>
-                        <dd>{activeReport.validation.configurationHash}</dd>
-                        <dt>Checked</dt>
-                        <dd>
-                          {new Date(
-                            activeReport.validation.checkedAt,
-                          ).toLocaleString()}
-                        </dd>
-                        <dt>Surface</dt>
-                        <dd>
-                          {activeReport.surface.exportable
-                            ? `${activeReport.surface.triangleCount} boundary triangles · STL in metres`
-                            : `Blocked · ${activeReport.surface.badEdges} non-manifold/open edges`}
-                        </dd>
-                      </dl>
-                      <h3>Provider limitations</h3>
-                      <ul>
-                        {activeReport.limitations.map((v) => (
-                          <li key={v}>{v}</li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                  <h3>Preflight diagnostics</h3>
-                  <label>
-                    Severity
-                    <select
-                      aria-label="CFD diagnostic severity"
-                      value={diagnosticFilter}
-                      onChange={(e) => setDiagnosticFilter(e.target.value)}
-                    >
-                      <option value="all">All</option>
-                      <option value="error">Blocking errors</option>
-                      <option value="warning">Warnings</option>
-                      <option value="info">Information</option>
-                    </select>
-                  </label>
-                  {diagnostics.map((d, i) => (
-                    <article
-                      className={`cfx-diagnostic ${d.severity}`}
-                      key={`${d.code}:${d.objectId}:${i}`}
-                    >
-                      <strong>
-                        {d.severity.toUpperCase()} · {d.group}
-                      </strong>
-                      <p>{d.message}</p>
-                      <small>{d.repair}</small>
-                      {d.objectId && (
-                        <button onClick={() => jump(d.objectId, d.group)}>
-                          Inspect {d.objectId}
-                        </button>
-                      )}
-                    </article>
-                  ))}
-                  {!activeReport && (
-                    <p>Validate to generate the diagnostic report.</p>
-                  )}
-                </>
-              )}
-            </section>
-            {active &&
-            phase === "mesh" &&
-            simulationTab === "post" &&
-            vtkFile?.studyId === scenario.id ? (
-              <ClimoptixVTKViewer
-                key={vtkFile.token}
-                file={vtkFile.file}
-                onClose={() => setVTKFile(null)}
-              />
-            ) : (
-              active && (
-                <ClimoptixViewer
-                  key={`${scenario.id}|${scenario.seed?.floorId ?? ""}`}
-                  project={project}
-                  scenario={scenario}
-                  report={activeReport}
-                  view={view}
-                  stale={stale}
-                  selected={selected}
-                  onSelect={(id) => {
-                    setSelected(id);
-                    if (id.startsWith("refinement:")) {
-                      setPhase("mesh");
-                      setSimulationTab("mesh");
-                    }
-                    if (
-                      id.startsWith("vent:") ||
-                      activeReport?.objects.some((obj) => obj.id === id)
-                    )
-                      setPhase("equipment");
-                  }}
-                  onSeed={(floorId, roomId) => {
-                    if (phase === "domain")
-                      change({ ...scenario, seed: { floorId, roomId } });
-                    else setSelected(roomId);
-                  }}
-                  picking={!!picking}
-                  onHostPick={hostPick}
-                  onMoveVent={moveVent}
-                  canMoveVents={phase === "equipment"}
-                  showSamplingPlanes={
-                    phase === "mesh" && simulationTab === "post"
-                  }
-                  showRefinements={showRefinements}
-                  onShowRefinements={setShowRefinements}
-                  thermalSurfaces={
-                    thermalStale ? [] : (thermalReport?.surfaces ?? [])
-                  }
-                  thermalMetric={thermalMetric}
-                  thermalSelected={thermalSelected}
-                  onThermalSelect={(id) => {
-                    setThermalSelected(id);
-                    setThermalOpen(true);
-                  }}
-                  thermalNorthDeg={scenario.thermalEnvelope?.northDeg}
-                />
-              )
+                </div>
+              </div>
             )}
           </div>
+        </FloatingToolbar>
+      )}
+      {scenario && (
+        <>
+          {PHASES.map(
+            (panel, i) =>
+              windows[panel.id] && (
+                <FloatingToolbar
+                  key={panel.id}
+                  title={panel.label}
+                  defaultPosition={{ x: 430 + i * 24, y: 72 + i * 24 }}
+                  initialSize={{ width: 470, height: 620 }}
+                  maxHeight={720}
+                  focusRequest={windowFocus[panel.id]}
+                  onClose={() => {
+                    setWindows((previous) => ({
+                      ...previous,
+                      [panel.id]: false,
+                    }));
+                    if (panel.id === "equipment") setPicking(null);
+                  }}
+                >
+                  <section
+                    className="cfx-inspector"
+                    key={`${scenario.id}|${editorReset}`}
+                    aria-label={`${panel.label} settings`}
+                  >
+                    <div className="cfx-inspector-heading">
+                      <h2>{panel.label}</h2>
+                      <span className={`cfx-state ${status.toLowerCase()}`}>
+                        {status}
+                      </span>
+                    </div>
+                    {panel.id === "domain" && (
+                      <DomainPanel
+                        project={project}
+                        scenario={scenario}
+                        report={activeReport}
+                        onChange={change}
+                      />
+                    )}
+                    {panel.id === "equipment" && (
+                      <EquipmentPanel
+                        scenario={scenario}
+                        report={activeReport}
+                        selected={selected}
+                        onSelect={setSelected}
+                        onChange={change}
+                        onPick={(role) => {
+                          setPicking(role);
+                        }}
+                        onEditSource={onEditBuilding}
+                      />
+                    )}
+                    {panel.id === "boundaries" && (
+                      <>
+                        <button className="cfx-primary" onClick={openThermal}>
+                          Thermal Envelope &amp; Solar Conditions
+                        </button>
+                        {scenario.thermalSnapshots?.length ? (
+                          <p className="cfx-notice">
+                            Thermal handoff stored ·{" "}
+                            {thermalStale
+                              ? "refresh to verify current sources"
+                              : "current source revision"}
+                            . Contract only, not executed.
+                          </p>
+                        ) : null}
+                        <BoundariesPanel
+                          scenario={scenario}
+                          report={activeReport}
+                          selected={selected}
+                          onSelect={setSelected}
+                          onChange={change}
+                        />
+                      </>
+                    )}
+                    {panel.id === "physics" && (
+                      <PhysicsPanel scenario={scenario} onChange={change} />
+                    )}
+                    {panel.id === "mesh" && (
+                      <ClimoptixSimulation
+                        tab={simulationTab}
+                        onTab={setSimulationTab}
+                        scenario={scenario}
+                        report={activeReport}
+                        onChange={change}
+                        selected={selected}
+                        onSelect={setSelected}
+                        onExport={() => void exportOpenFOAM()}
+                        exporting={exporting}
+                        exportDisabled={
+                          stale || !!activeReport?.validation.errors || !!error
+                        }
+                        onVTK={(file) => {
+                          setResultsOpen(true);
+                          setVTKFile({
+                            studyId: scenario.id,
+                            file,
+                            token: crypto.randomUUID(),
+                          });
+                        }}
+                        onShowRefinements={() => {
+                          setShowRefinements(true);
+                          setSelected((value) =>
+                            value?.startsWith("refinement:") ? value : null,
+                          );
+                        }}
+                        onConvergence={openConvergence}
+                        convergence={
+                          monitorOpen ? (
+                            <p className="cfx-caption">
+                              The convergence window is open. You can keep
+                              working while inspecting the log.
+                            </p>
+                          ) : (
+                            <ClimoptixConvergence
+                              state={logs.get(scenario.id)}
+                              onImport={(file) =>
+                                void importLog(scenario.id, file)
+                              }
+                              onClear={() => clearLog(scenario.id)}
+                            />
+                          )
+                        }
+                      />
+                    )}
+                    {panel.id === "review" && (
+                      <>
+                        <p className="cfx-intro">
+                          Validate the current source and setup. A preparation
+                          manifest may contain blocking diagnostics; surface
+                          export is included only when all geometry checks pass.
+                          Neither is a runnable solver case.
+                        </p>
+                        <label>
+                          Study notes
+                          <textarea
+                            value={scenario.description}
+                            maxLength={2000}
+                            onChange={(e) =>
+                              change({
+                                ...scenario,
+                                description: e.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <div className="cfx-actions">
+                          <button onClick={exportScenario}>
+                            Export study JSON
+                          </button>
+                          <label className="cfx-file">
+                            Import study
+                            <input
+                              aria-label="Import CFD scenario"
+                              type="file"
+                              accept=".json,application/json"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                e.target.value = "";
+                                if (f) void importScenario(f);
+                              }}
+                            />
+                          </label>
+                          <button
+                            className="cfx-primary"
+                            disabled={stale || !!error}
+                            onClick={() => {
+                              try {
+                                if (activeReport)
+                                  downloadCFD(
+                                    preparationPackage(
+                                      scenario,
+                                      activeReport,
+                                      revision,
+                                    ),
+                                    `${scenario.name}.climoptix.zip`,
+                                  );
+                              } catch (e) {
+                                setError(
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Export failed.",
+                                );
+                              }
+                            }}
+                          >
+                            Export preparation ZIP
+                          </button>
+                          <button
+                            disabled={stale || !!error}
+                            onClick={() => {
+                              try {
+                                if (activeReport)
+                                  downloadCFD(
+                                    new Blob(
+                                      [
+                                        preparationSummary(
+                                          scenario,
+                                          activeReport,
+                                          revision,
+                                        ),
+                                      ],
+                                      { type: "text/plain;charset=utf-8" },
+                                    ),
+                                    `${scenario.name}-preflight.txt`,
+                                  );
+                              } catch (e) {
+                                setError(
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Report export failed.",
+                                );
+                              }
+                            }}
+                          >
+                            Download settings &amp; preflight
+                          </button>
+                        </div>
+                        {activeReport && (
+                          <>
+                            <dl className="cfx-provenance">
+                              <dt>Geometry SHA-256</dt>
+                              <dd>{activeReport.validation.sourceHash}</dd>
+                              <dt>Configuration SHA-256</dt>
+                              <dd>
+                                {activeReport.validation.configurationHash}
+                              </dd>
+                              <dt>Checked</dt>
+                              <dd>
+                                {new Date(
+                                  activeReport.validation.checkedAt,
+                                ).toLocaleString()}
+                              </dd>
+                              <dt>Surface</dt>
+                              <dd>
+                                {activeReport.surface.exportable
+                                  ? `${activeReport.surface.triangleCount} boundary triangles · STL in metres`
+                                  : `Blocked · ${activeReport.surface.badEdges} non-manifold/open edges`}
+                              </dd>
+                            </dl>
+                            <h3>Provider limitations</h3>
+                            <ul>
+                              {activeReport.limitations.map((v) => (
+                                <li key={v}>{v}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        <h3>Preflight diagnostics</h3>
+                        <label>
+                          Severity
+                          <select
+                            aria-label="CFD diagnostic severity"
+                            value={diagnosticFilter}
+                            onChange={(e) =>
+                              setDiagnosticFilter(e.target.value)
+                            }
+                          >
+                            <option value="all">All</option>
+                            <option value="error">Blocking errors</option>
+                            <option value="warning">Warnings</option>
+                            <option value="info">Information</option>
+                          </select>
+                        </label>
+                        {diagnostics.map((d, i) => (
+                          <article
+                            className={`cfx-diagnostic ${d.severity}`}
+                            key={`${d.code}:${d.objectId}:${i}`}
+                          >
+                            <strong>
+                              {d.severity.toUpperCase()} · {d.group}
+                            </strong>
+                            <p>{d.message}</p>
+                            <small>{d.repair}</small>
+                            {d.objectId && (
+                              <button onClick={() => jump(d.objectId, d.group)}>
+                                Inspect {d.objectId}
+                              </button>
+                            )}
+                          </article>
+                        ))}
+                        {!activeReport && (
+                          <p>Validate to generate the diagnostic report.</p>
+                        )}
+                      </>
+                    )}
+                  </section>
+                </FloatingToolbar>
+              ),
+          )}
           {thermalOpen && (
             <ThermalEnvelopeWindow
               key={scenario.id}
@@ -1158,6 +1268,25 @@ export function ClimoptixWorkspace({
               }}
             />
           )}
+
+          {active && resultsOpen && vtkFile?.studyId === scenario.id && (
+            <FloatingToolbar
+              title="Imported results"
+              defaultPosition={{ x: 170, y: 100 }}
+              initialSize={{ width: 850, height: 650 }}
+              maxHeight={850}
+              onClose={() => setResultsOpen(false)}
+            >
+              <ClimoptixVTKViewer
+                key={vtkFile.token}
+                file={vtkFile.file}
+                onClose={() => {
+                  setVTKFile(null);
+                  setResultsOpen(false);
+                }}
+              />
+            </FloatingToolbar>
+          )}
           <footer className="cfx-statusbar">
             <div>
               {error ? (
@@ -1174,8 +1303,7 @@ export function ClimoptixWorkspace({
                 </span>
               ) : (
                 <span role="status">
-                  {message ||
-                    "Local autosave · numbers apply on Enter or leaving the field · mm geometry / SI physics"}
+                  {message || "Local autosave · mm geometry / SI physics"}
                 </span>
               )}
             </div>
