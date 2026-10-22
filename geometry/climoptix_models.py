@@ -50,6 +50,8 @@ class Contract(BaseModel):
             raise ValueError("Version must be an integer.")
         if info.field_name == "name" and isinstance(value, str) and not value.strip():
             raise ValueError("Names cannot be blank.")
+        if info.field_name == "group" and isinstance(value, str):
+            return value.strip()
         return value
 
 
@@ -361,6 +363,7 @@ class Scenario(Contract):
     id: Id
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
+    group: str = Field(default="General", min_length=1, max_length=80)
     archived: bool = False
     createdAt: AwareDatetime
     updatedAt: AwareDatetime

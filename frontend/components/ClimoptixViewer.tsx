@@ -11,7 +11,8 @@ import {
 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
-import { FloatingToolbar } from "./FloatingToolbar";
+import { createPortal } from "react-dom";
+import { ReadOnlyBuildingScene } from "./EngineeringViewer";
 import {
   requestScene,
   sceneInput,
@@ -80,7 +81,7 @@ interface Props {
   active: boolean;
   apiUrl: string;
   viewSettingsOpen: boolean;
-  viewFocus: number;
+  viewTarget: HTMLElement | null;
   onViewSettings: (open: boolean) => void;
   stale: boolean;
   selected: string | null;
@@ -258,7 +259,7 @@ export function ClimoptixViewer({
   active,
   apiUrl,
   viewSettingsOpen,
-  viewFocus,
+  viewTarget,
   onViewSettings,
   stale,
   selected,
@@ -520,28 +521,8 @@ export function ClimoptixViewer({
           View properties
         </button>
       </div>
-      {viewSettingsOpen && (
-        <FloatingToolbar
-          title="View properties"
-          helpSteps={[
-            {
-              heading: "Inspect without editing",
-              text: "The View selector shows the whole building, a measured room, or a connected air volume. Permanent doorless passages and slab openings connect rooms; doors and windows never do. Changing this view does not change the simulation seed.",
-            },
-            {
-              heading: "Frame and display",
-              text: "Drag the building to orbit, scroll to zoom, or choose Fit. Toggle ceilings, detailed visual assets, refinement intent, or isolate a selected prepared face. These are display choices, not geometry or simulation changes.",
-            },
-            {
-              heading: "Floating windows",
-              text: "Open or hide windows using Toolbar or a right-click on the background. Drag their titlebars to move them and their edges to resize them. Validate & refresh checks the study; it does not launch a CFD solver.",
-            },
-          ]}
-          defaultPosition={{ x: 1000, y: 72 }}
-          initialSize={{ width: 330 }}
-          focusRequest={viewFocus}
-          onClose={() => onViewSettings(false)}
-        >
+      {viewTarget &&
+        createPortal(
           <div className="cfx-inspector" aria-label="CFD view properties">
             <label className="cfx-check">
               <input
@@ -584,8 +565,22 @@ export function ClimoptixViewer({
             <button type="button" onClick={() => setFit((x) => x + 1)}>
               Fit view
             </button>
-          </div>
-        </FloatingToolbar>
+          </div>,
+          viewTarget,
+        )}
+      {!buildingScene && rooms.length > 0 && (
+        <div className="cfx-geometry-notice" role="status">
+          <span>
+            {sceneState.input === source && sceneState.error
+              ? "Building shown from your project · connectivity service unavailable"
+              : "Building shown from your project · checking air volumes…"}
+          </span>
+          {sceneState.input === source && sceneState.error && (
+            <button onClick={() => setRetry((x) => x + 1)}>
+              Retry geometry
+            </button>
+          )}
+        </div>
       )}
       {stale && report && (
         <p className="cfx-stale" role="status">
@@ -597,8 +592,9 @@ export function ClimoptixViewer({
         data-view="3D"
         data-visible-rooms={viewScope.rooms.join(",")}
         data-scope={viewScope.id}
+        data-geometry-source={buildingScene ? "validated" : "project-display"}
       >
-        {buildingScene?.triangles.length ? (
+        {rooms.length > 0 ? (
           <StableCanvas
             frameloop="demand"
             dpr={[1, 1.5]}
@@ -607,8 +603,16 @@ export function ClimoptixViewer({
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
             <Bounds fit clip observe margin={1.15} maxDuration={0.25}>
+              {!buildingScene && (
+                <ReadOnlyBuildingScene
+                  project={project}
+                  roomIds={viewScope.rooms}
+                  showRoof={ceilings}
+                  assets={detailed}
+                />
+              )}
               <Frame
-                request={`${buildingScene?.sourceHash}:${viewScope.id}:${fit}`}
+                request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit}`}
               />
               {displayPatches
                 .filter(

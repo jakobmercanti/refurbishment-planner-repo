@@ -7,7 +7,6 @@ import {
   parseResidualLog,
   type ResidualSample,
 } from "@/lib/climoptixWorkflow";
-import { FloatingToolbar } from "./FloatingToolbar";
 
 interface ConvergenceLog {
   file: File | null;
@@ -272,56 +271,5 @@ export function ClimoptixConvergence({
         </>
       )}
     </section>
-  );
-}
-
-export function ClimoptixConvergenceWindow({
-  studyName,
-  focusRequest,
-  onClose,
-  ...props
-}: Parameters<typeof ClimoptixConvergence>[0] & {
-  studyName: string;
-  focusRequest: number;
-  onClose: () => void;
-}) {
-  const container = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    container.current
-      ?.querySelector<HTMLButtonElement>(".floating-toolbar-close")
-      ?.focus();
-  }, [focusRequest]);
-  return (
-    <div
-      className="cfx-monitor-host"
-      ref={container}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          onClose();
-        }
-      }}
-    >
-      <FloatingToolbar
-        title="CFD convergence"
-        className="cfx-convergence-window"
-        defaultPosition={{ x: 60, y: 50 }}
-        initialSize={{ width: 760 }}
-        maxHeight={760}
-        bringToFront
-        focusRequest={focusRequest}
-        onClose={onClose}
-      >
-        <div
-          className="cfx-monitor-content"
-          role="region"
-          aria-label="Convergence monitor"
-        >
-          <h2>{studyName}</h2>
-          <ClimoptixConvergence {...props} />
-        </div>
-      </FloatingToolbar>
-    </div>
   );
 }

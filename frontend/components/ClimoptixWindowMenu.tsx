@@ -4,27 +4,31 @@ import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export const CFD_WINDOWS = [
-  { id: "studies", name: "Studies" },
-  { id: "domain", name: "Domain" },
-  { id: "equipment", name: "Equipment" },
-  { id: "boundaries", name: "Boundaries" },
-  { id: "physics", name: "Physics" },
-  { id: "mesh", name: "Simulation" },
-  { id: "review", name: "Review & export" },
-  { id: "view", name: "View properties" },
-  { id: "thermal", name: "Thermal Envelope & Solar Conditions" },
-  { id: "convergence", name: "Convergence monitor" },
-  { id: "results", name: "Imported results" },
+  { id: "studies", name: "Studies", tab: "Studies" },
+  { id: "domain", name: "Domain", tab: "Domain" },
+  { id: "equipment", name: "Equipment", tab: "Objects" },
+  { id: "boundaries", name: "Boundaries", tab: "Bounds" },
+  { id: "physics", name: "Physics", tab: "Physics" },
+  { id: "mesh", name: "Simulation", tab: "Solver" },
+  { id: "review", name: "Review & export", tab: "Export" },
+  { id: "view", name: "View properties", tab: "View" },
+  {
+    id: "thermal",
+    name: "Thermal Envelope & Solar Conditions",
+    tab: "Thermal",
+  },
+  { id: "convergence", name: "Convergence monitor", tab: "Monitor" },
+  { id: "results", name: "Imported results", tab: "Results" },
 ] as const;
 export type CFDWindowId = (typeof CFD_WINDOWS)[number]["id"];
-export type CFDWindowVisibility = Record<CFDWindowId, boolean>;
 
 /** The same menu content serves the application Toolbar and viewer context menu. */
 export function ClimoptixWindowMenu({
   target,
   context,
   onDismiss,
-  visible,
+  selected,
+  setupOpen,
   available,
   onToggle,
   onHideAll,
@@ -32,7 +36,8 @@ export function ClimoptixWindowMenu({
   target: HTMLElement | null;
   context: { x: number; y: number } | null;
   onDismiss: () => void;
-  visible: CFDWindowVisibility;
+  selected: CFDWindowId;
+  setupOpen: boolean;
   available: (id: CFDWindowId) => boolean;
   onToggle: (id: CFDWindowId) => void;
   onHideAll: () => void;
@@ -115,15 +120,29 @@ export function ClimoptixWindowMenu({
             button.current?.focus();
           }}
         >
-          Hide all windows
+          Hide setup window
         </button>
       </div>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          onToggle(selected);
+          dismiss();
+          button.current?.focus();
+        }}
+      >
+        Simulation setup…
+      </button>
+      <p className="cfx-menu-caption">Setup tabs</p>
       {CFD_WINDOWS.map((window) => (
         <button
           key={window.id}
           type="button"
-          role="menuitemcheckbox"
-          aria-checked={visible[window.id]}
+          role="menuitem"
+          aria-current={
+            setupOpen && selected === window.id ? "page" : undefined
+          }
           disabled={!available(window.id)}
           onClick={() => {
             onToggle(window.id);
@@ -132,7 +151,7 @@ export function ClimoptixWindowMenu({
           }}
         >
           <span className="menu-check" aria-hidden="true">
-            {visible[window.id] ? "✓" : ""}
+            {setupOpen && selected === window.id ? "✓" : ""}
           </span>
           <span>{window.name}</span>
         </button>

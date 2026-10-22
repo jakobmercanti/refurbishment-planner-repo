@@ -614,6 +614,92 @@ tests, 554 frontend unit tests, 19 persistence tests, 75 browser tests across al
 checks also passed. The existing Starlette/httpx deprecation warning remains.
 No mesher, solver, remote job or deployment is enabled here.
 
+## Unified setup and immediate building display — 22 October 2026
+
+This replaces the independent CFD setup windows described in the previous entry.
+**Simulation setup** is one native draggable/resizable window over the full-size
+building. Toolbar and the background context menu reopen it at the requested tab.
+Equal-width, keyboard-accessible tabs are Studies, Domain, Objects, Bounds,
+Physics, Solver, Export, View, Thermal, Monitor and Results. Solver retains its
+Mesh/Run/Post-processing controls; thermal retains its six study-scoped steps.
+Compact screens use the available workspace height, not the generic short drawer.
+Escape from non-input controls dismisses the active setup/editor; input Escape
+keeps its existing draft-cancel behaviour. Nested help/menu dismissal stays local.
+
+The measured building is drawn immediately with the existing Floorplan renderer,
+even while `/climoptix/geometry` is loading or returns 404. The small service
+notice is non-blocking and Retry remains available. This fallback is **display
+only**: it never establishes air connectivity, vent hosts, export validity or
+solver readiness. Connected-air-volume choices and prepared overlays still
+require the current canonical geometry response. Changing a room/view never
+changes the study seed or measured source geometry.
+
+Studies persist a bounded `group` label (legacy default: General) and array order.
+Select a simulation to load all other tabs. Add, duplicate, archive, delete and
+Undo retain existing project persistence and revision guards. Drag grips reorder
+within groups or move between groups; Arrow Up/Down is the keyboard alternative,
+and the selected study's group field can create or change its group. Group/name
+changes do not invalidate geometry, preparation or thermal configuration hashes.
+The group label is omitted from preparation-service requests for compatibility
+with existing preparation-only servers. Active worker jobs cannot be archived or
+deleted through the study controls.
+
+Mesh refinements use the same insertion-boundary drag pattern. Rows contain an
+explicit Edit button, Duplicate and Delete, with no old move-up button or inline
+editor/region selector. Edit opens a separate native floating window containing
+all shape, level, centre, size and source-object fields. It is scoped to the
+selected study, saves edits through the same validation path and uses the same
+level colours as the 3D wireframes/legend. View refinements in 3D clears the setup
+chrome to reveal the building; Toolbar reopens the saved setup tab.
+
+### Connecting a worker later
+
+No worker is connected in this release. Mesh/Run are disabled and rows say Not
+submitted; no request, job, elapsed-time estimate or progress is invented.
+
+- Implement `CFDWorkerAdapter` in `frontend/lib/climoptixJobs.ts` and pass it as
+  `workerAdapter` to `ClimoptixWorkspace` at the planner composition root. Its
+  capabilities come from a trusted authenticated worker service, not user flags.
+  No service URL, solver process or permissive proxy route is preconfigured.
+- `submit(request, signal)` accepts an immutable `CFDSubmission`: operation,
+  study ID, client revision, source/configuration hashes, measured project in
+  **millimetres**, and the full study settings (including resources and slices).
+  Each selected study passes real preflight independently before submission;
+  changed/archived/deleted studies are rejected before worker dispatch. One
+  failure does not stop the remaining batch. CPU/memory/time/storage limits must
+  be independently enforced by the worker, not trusted from browser validation.
+- `status(jobId, signal)` returns the bounded job shape validated by
+  `workerJobSchema`: matching ID/study/revision, phase, optional current-phase
+  completion percentage (`null` if not known), and a bounded message. The UI polls
+  through one non-overlapping loop, retains job IDs through transient status
+  errors and rejects mismatched responses. Adapters must honour AbortSignal and
+  apply their own network timeouts. Terminal phases stop polling. No percentage
+  is derived from elapsed time or fabricated on completion.
+- Jobs pin the submitted revision. Editing settings labels an older job as older
+  setup; its results must not be applied to a newer revision. Full authoritative
+  artifact provenance, worker restart/reconnection, durable remote queue recovery,
+  cancellation and authenticated live-log streaming remain worker milestones.
+  Monitor currently accepts real imported logs and never implies a live solver.
+- Existing public proxy rules still deny job/run operations. Enabling a real
+  worker requires reviewed authenticated server/proxy routes, execution isolation,
+  idempotent submission, resource enforcement and end-to-end worker tests.
+
+Regressions cover 404/offline display and retry, canonical-only air volumes,
+simulation grouping/order/portable persistence, batch disconnected state, field
+isolation, refinement editor/drag operations, dark/compact layouts, real log/VTK
+imports, delayed operations, numerical contracts and immutable worker handoffs.
+Validation evidence is saved as `.local-logs/cfd-tabbed-*`.
+
+Release checks: 643 backend tests, 560 frontend unit tests, 19 persistence tests
+and 18 public-proxy tests passed. The full 78-case production-browser audit
+passed 77 initially; the remaining test still assumed an independent Thermal
+window. It was migrated to the shared-header workflow, then all 11 affected
+release reruns passed, including thermal error isolation, active/inactive study
+deletion, grouping, refinement editing, geometry failure/retry and compact/dark
+layouts. Production build, TypeScript, ESLint/source reachability (366 modules,
+no orphans), scoped Ruff and whitespace checks passed. The existing
+Starlette/httpx deprecation warning remains. No real solver run is claimed.
+
 ## Smallest next solver milestone
 
 Choose and license-review one OpenFOAM distribution/version, then implement one

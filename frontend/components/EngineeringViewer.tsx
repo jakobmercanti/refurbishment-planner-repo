@@ -534,6 +534,23 @@ function PassiveBuildingFloor({floor,above,roof,showRoof,wallMode,toggles}:{floo
     {showRoof&&roof&&<CombinedBuildingRoof content={floor.content} roof={roof}/>}
   </group>{showRoof&&above&&<ExposedFloorCover floor={floor} above={above}/>}</>;
 }
+/** Display-only building reuse. CFD validity and air connectivity still come from the kernel. */
+export function ReadOnlyBuildingScene({ project, roomIds, showRoof = false, assets = true }: {
+  project: ProjectDocument; roomIds: string[]; showRoof?: boolean; assets?: boolean;
+}) {
+  const floors = projectFloors(project), roof = buildingOf(project).roof;
+  const visible = new Set(roomIds);
+  return <>{floors.map((floor, index) => {
+    const rooms = floor.content.rooms.filter(room => visible.has(room.id));
+    if (!rooms.length) return null;
+    const shown = rooms.length === floor.content.rooms.length ? floor : {
+      ...floor, content: { ...floor.content, rooms, floorplan: null, assetInstances: [] },
+    };
+    return <PassiveBuildingFloor key={floor.id} floor={shown} above={floors[index + 1]}
+      roof={index === floors.length - 1 ? roof : undefined} showRoof={showRoof}
+      wallMode="TRANSPARENT" toggles={{ elements: assets, person: assets, openingImprints: false, collisions: false, clearance: false }}/>;
+  })}</>;
+}
 function Floor({ room, selected, onSelect, openings, slabThicknessMm = 10, includeSlab=true }: { room: Room; selected: boolean; onSelect?: () => void; openings?:FloorOpening[]; slabThicknessMm?:number; includeSlab?:boolean }) {
   const vertices = room.vertices;
   const shape = useMemo(() => {

@@ -1,5 +1,7 @@
 "use client";
 
+import { CFDReorderList } from "./CFDReorderList";
+import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { useState } from "react";
 import {
   assetOverrideSchema,
@@ -1385,6 +1387,7 @@ export function MeshPanel({
   selected,
   onSelect,
   onShowRefinements,
+  onEditRefinement,
 }: {
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -1392,23 +1395,11 @@ export function MeshPanel({
   selected: string | null;
   onSelect: (id: string | null) => void;
   onShowRefinements: () => void;
+  onEditRefinement: (id: string) => void;
 }) {
   const regions = scenario.mesh.refinements,
     region =
       regions.find((r) => `refinement:${r.id}` === selected) ?? regions[0];
-  const solids =
-    report?.objects.filter(
-      (o) => o.mode === "solidProxy" && o.verticesMm.length,
-    ) ?? [];
-  const editRegion = (next: typeof region) =>
-    onChange({
-      ...scenario,
-      mesh: {
-        ...scenario.mesh,
-        preset: "Custom",
-        refinements: regions.map((r) => (r.id === next.id ? next : r)),
-      },
-    });
   return (
     <>
       <p className="cfx-intro">
@@ -1484,16 +1475,13 @@ export function MeshPanel({
         preview—not cells or achieved resolution. Coordinates and sizes are
         millimetres.
       </p>
-      <button
-        disabled={!regions.length || !report?.surface.verticesMm.length}
-        onClick={onShowRefinements}
-      >
+      <button disabled={!regions.length} onClick={onShowRefinements}>
         View refinements in 3D
       </button>
       {!report && (
         <p className="cfx-caption">
-          Use Validate &amp; refresh once to preview refinement regions against
-          your building.
+          Refinements are display intent. Validate &amp; refresh to check them
+          against the simulation domain.
         </p>
       )}
       <button
@@ -1532,16 +1520,29 @@ export function MeshPanel({
             },
           });
           onSelect(`refinement:${next.id}`);
+          onEditRefinement(next.id);
         }}
       >
         Add refinement region
       </button>
-      <ol className="cfx-refinement-list" aria-label="Refinement regions">
-        {regions.map((r, index) => {
+      <CFDReorderList
+        items={regions}
+        label="Refinement regions"
+        scope={`refinements:${scenario.id}`}
+        onMove={(id, boundary) =>
+          onChange({
+            ...scenario,
+            mesh: {
+              ...scenario.mesh,
+              refinements: insertAtBoundary(regions, id, boundary),
+            },
+          })
+        }
+      >
+        {(r, index) => {
           const level = refinementLevel(scenario.mesh.baseCellMm, r);
           return (
-            <li
-              key={r.id}
+            <div
               className={`cfx-refinement-row ${region?.id === r.id ? "selected" : ""}`}
             >
               <span
@@ -1552,7 +1553,7 @@ export function MeshPanel({
               <button
                 className="cfx-refinement-name"
                 onClick={() => onSelect(`refinement:${r.id}`)}
-                aria-label={`Edit ${r.name}`}
+                aria-label={`Select ${r.name}`}
               >
                 <strong>{r.name}</strong>
                 <small>
@@ -1563,21 +1564,13 @@ export function MeshPanel({
               </button>
               <div className="cfx-refinement-actions">
                 <button
-                  aria-label={`Move ${r.name} up`}
-                  disabled={index === 0}
+                  aria-label={`Edit ${r.name}`}
                   onClick={() => {
-                    const reordered = [...regions];
-                    [reordered[index - 1], reordered[index]] = [
-                      reordered[index],
-                      reordered[index - 1],
-                    ];
-                    onChange({
-                      ...scenario,
-                      mesh: { ...scenario.mesh, refinements: reordered },
-                    });
+                    onSelect(`refinement:${r.id}`);
+                    onEditRefinement(r.id);
                   }}
                 >
-                  ↑
+                  Edit
                 </button>
                 <button
                   disabled={regions.length >= 200}
@@ -1631,201 +1624,15 @@ export function MeshPanel({
                   Delete
                 </button>
               </div>
-            </li>
+            </div>
           );
-        })}
-      </ol>
+        }}
+      </CFDReorderList>
       {!regions.length && (
         <p className="cfx-caption">
           No local refinements yet. Add a cuboid, set its level, then inspect it
           in 3D. Each list entry has Duplicate and Delete controls.
         </p>
-      )}
-      {!!regions.length && (
-        <label>
-          Region
-          <select
-            aria-label="Selected refinement"
-            value={region.id}
-            onChange={(e) => onSelect(`refinement:${e.target.value}`)}
-          >
-            {regions.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {region && (
-        <section className="cfx-card">
-          <CFDText
-            label="Refinement name"
-            value={region.name}
-            onChange={(name) => editRegion({ ...region, name })}
-          />
-          <div className="cfx-grid">
-            <label>
-              Region shape
-              <select
-                aria-label="Refinement shape"
-                value={region.shape}
-                onChange={(e) => {
-                  const shape = e.target.value as typeof region.shape;
-                  editRegion({
-                    ...region,
-                    shape,
-                    sizeMm:
-                      shape === "sphere"
-                        ? [region.sizeMm[0], region.sizeMm[0], region.sizeMm[0]]
-                        : region.sizeMm,
-                    objectId:
-                      shape === "object"
-                        ? (solids[0]?.id ?? null)
-                        : region.objectId,
-                  });
-                }}
-              >
-                <option value="box">Cuboid</option>
-                <option value="sphere">Sphere</option>
-                <option value="object" disabled={!solids.length}>
-                  Object extents
-                </option>
-              </select>
-            </label>
-            <label>
-              snappyHexMesh refinement level
-              <select
-                aria-label="Refinement level"
-                value={region.level ?? "custom"}
-                onChange={(e) => {
-                  const level =
-                    e.target.value === "custom" ? null : Number(e.target.value);
-                  const cellMm =
-                    level === null
-                      ? region.cellMm
-                      : scenario.mesh.baseCellMm / 2 ** level;
-                  onChange({
-                    ...scenario,
-                    mesh: {
-                      ...scenario.mesh,
-                      preset: "Custom",
-                      minCellMm: Math.min(scenario.mesh.minCellMm, cellMm),
-                      refinements: regions.map((r) =>
-                        r.id === region.id ? { ...region, level, cellMm } : r,
-                      ),
-                    },
-                  });
-                }}
-              >
-                {Array.from({ length: 11 }, (_, level) => (
-                  <option key={level} value={level}>
-                    Level {level} ·{" "}
-                    {(scenario.mesh.baseCellMm / 2 ** level).toLocaleString()}{" "}
-                    mm
-                  </option>
-                ))}
-                <option value="custom">Custom cell size</option>
-              </select>
-            </label>
-            {region.level === null ? (
-              <>
-                <CFDNumber
-                  label="Refinement cell size (mm)"
-                  value={region.cellMm}
-                  onChange={(cellMm) => editRegion({ ...region, cellMm })}
-                />
-                <p className="cfx-caption">
-                  Target {region.cellMm.toLocaleString()} mm rounds to level{" "}
-                  {refinementLevel(scenario.mesh.baseCellMm, region)} · nominal{" "}
-                  {refinementCell(
-                    scenario.mesh.baseCellMm,
-                    region,
-                  ).toLocaleString()}{" "}
-                  mm. Global limits apply to the rounded size too.
-                </p>
-              </>
-            ) : (
-              <p className="cfx-caption">
-                Each level halves the base cell along X, Y and Z. Level{" "}
-                {region.level} uses base ÷ 2<sup>{region.level}</sup>; colours
-                are identical in the list and viewer.
-              </p>
-            )}
-          </div>
-          {region.shape === "object" ? (
-            <label>
-              Source object
-              <select
-                aria-label="Refinement object"
-                value={region.objectId ?? ""}
-                onChange={(e) =>
-                  editRegion({ ...region, objectId: e.target.value || null })
-                }
-              >
-                {!solids.some((o) => o.id === region.objectId) && (
-                  <option value={region.objectId ?? ""}>
-                    Missing solid · reassign
-                  </option>
-                )}
-                {solids.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-              <small>
-                Extents follow the last checked solid proxy. Refresh after
-                changing its source placement.
-              </small>
-            </label>
-          ) : (
-            <>
-              <div className="cfx-grid cfx-three">
-                {region.centerMm.map((v, i) => (
-                  <CFDNumber
-                    key={i}
-                    label={`Refinement centre ${["X", "Y", "Z"][i]} (mm)`}
-                    value={v}
-                    onChange={(value) =>
-                      editRegion({
-                        ...region,
-                        centerMm: region.centerMm.map((x, j) =>
-                          j === i ? value : x,
-                        ) as [number, number, number],
-                      })
-                    }
-                  />
-                ))}
-              </div>
-              {region.shape === "sphere" ? (
-                <CFDNumber
-                  label="Refinement diameter (mm)"
-                  value={region.sizeMm[0]}
-                  onChange={(d) => editRegion({ ...region, sizeMm: [d, d, d] })}
-                />
-              ) : (
-                <div className="cfx-grid cfx-three">
-                  {region.sizeMm.map((v, i) => (
-                    <CFDNumber
-                      key={i}
-                      label={`Refinement size ${["X", "Y", "Z"][i]} (mm)`}
-                      value={v}
-                      onChange={(value) =>
-                        editRegion({
-                          ...region,
-                          sizeMm: region.sizeMm.map((x, j) =>
-                            j === i ? value : x,
-                          ) as [number, number, number],
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </section>
       )}
       <details>
         <summary>Refinements, layers, tolerances &amp; quality intent</summary>
@@ -1849,5 +1656,209 @@ export function MeshPanel({
         />
       </details>
     </>
+  );
+}
+
+/** Live, study-scoped fields for the separate floating refinement editor. */
+export function RefinementEditor({
+  scenario,
+  report,
+  id,
+  onChange,
+}: {
+  scenario: CFDScenario;
+  report: CFDReport | null;
+  id: string;
+  onChange: (s: CFDScenario) => void;
+}) {
+  const regions = scenario.mesh.refinements;
+  const region = regions.find((r) => r.id === id);
+  const solids =
+    report?.objects.filter(
+      (o) => o.mode === "solidProxy" && o.verticesMm.length,
+    ) ?? [];
+  const editRegion = (next: NonNullable<typeof region>) =>
+    onChange({
+      ...scenario,
+      mesh: {
+        ...scenario.mesh,
+        preset: "Custom",
+        refinements: regions.map((r) => (r.id === next.id ? next : r)),
+      },
+    });
+  if (!region)
+    return (
+      <p>
+        This refinement was removed. Close the editor or choose another region.
+      </p>
+    );
+  return (
+    <section className="cfx-card">
+      <CFDText
+        label="Refinement name"
+        value={region.name}
+        onChange={(name) => editRegion({ ...region, name })}
+      />
+      <div className="cfx-grid">
+        <label>
+          Region shape
+          <select
+            aria-label="Refinement shape"
+            value={region.shape}
+            onChange={(e) => {
+              const shape = e.target.value as typeof region.shape;
+              editRegion({
+                ...region,
+                shape,
+                sizeMm:
+                  shape === "sphere"
+                    ? [region.sizeMm[0], region.sizeMm[0], region.sizeMm[0]]
+                    : region.sizeMm,
+                objectId:
+                  shape === "object"
+                    ? (solids[0]?.id ?? null)
+                    : region.objectId,
+              });
+            }}
+          >
+            <option value="box">Cuboid</option>
+            <option value="sphere">Sphere</option>
+            <option value="object" disabled={!solids.length}>
+              Object extents
+            </option>
+          </select>
+        </label>
+        <label>
+          snappyHexMesh refinement level
+          <select
+            aria-label="Refinement level"
+            value={region.level ?? "custom"}
+            onChange={(e) => {
+              const level =
+                e.target.value === "custom" ? null : Number(e.target.value);
+              const cellMm =
+                level === null
+                  ? region.cellMm
+                  : scenario.mesh.baseCellMm / 2 ** level;
+              onChange({
+                ...scenario,
+                mesh: {
+                  ...scenario.mesh,
+                  preset: "Custom",
+                  minCellMm: Math.min(scenario.mesh.minCellMm, cellMm),
+                  refinements: regions.map((r) =>
+                    r.id === region.id ? { ...region, level, cellMm } : r,
+                  ),
+                },
+              });
+            }}
+          >
+            {Array.from({ length: 11 }, (_, level) => (
+              <option key={level} value={level}>
+                Level {level} ·{" "}
+                {(scenario.mesh.baseCellMm / 2 ** level).toLocaleString()} mm
+              </option>
+            ))}
+            <option value="custom">Custom cell size</option>
+          </select>
+        </label>
+        {region.level === null ? (
+          <>
+            <CFDNumber
+              label="Refinement cell size (mm)"
+              value={region.cellMm}
+              onChange={(cellMm) => editRegion({ ...region, cellMm })}
+            />
+            <p className="cfx-caption">
+              Target {region.cellMm.toLocaleString()} mm rounds to level{" "}
+              {refinementLevel(scenario.mesh.baseCellMm, region)} · nominal{" "}
+              {refinementCell(
+                scenario.mesh.baseCellMm,
+                region,
+              ).toLocaleString()}{" "}
+              mm. Global limits apply to the rounded size too.
+            </p>
+          </>
+        ) : (
+          <p className="cfx-caption">
+            Each level halves the base cell along X, Y and Z. Level{" "}
+            {region.level} uses base ÷ 2<sup>{region.level}</sup>; colours are
+            identical in the list and viewer.
+          </p>
+        )}
+      </div>
+      {region.shape === "object" ? (
+        <label>
+          Source object
+          <select
+            aria-label="Refinement object"
+            value={region.objectId ?? ""}
+            onChange={(e) =>
+              editRegion({ ...region, objectId: e.target.value || null })
+            }
+          >
+            {!solids.some((o) => o.id === region.objectId) && (
+              <option value={region.objectId ?? ""}>
+                Missing solid · reassign
+              </option>
+            )}
+            {solids.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+          <small>
+            Extents follow the last checked solid proxy. Refresh after changing
+            its source placement.
+          </small>
+        </label>
+      ) : (
+        <>
+          <div className="cfx-grid cfx-three">
+            {region.centerMm.map((v, i) => (
+              <CFDNumber
+                key={i}
+                label={`Refinement centre ${["X", "Y", "Z"][i]} (mm)`}
+                value={v}
+                onChange={(value) =>
+                  editRegion({
+                    ...region,
+                    centerMm: region.centerMm.map((x, j) =>
+                      j === i ? value : x,
+                    ) as [number, number, number],
+                  })
+                }
+              />
+            ))}
+          </div>
+          {region.shape === "sphere" ? (
+            <CFDNumber
+              label="Refinement diameter (mm)"
+              value={region.sizeMm[0]}
+              onChange={(d) => editRegion({ ...region, sizeMm: [d, d, d] })}
+            />
+          ) : (
+            <div className="cfx-grid cfx-three">
+              {region.sizeMm.map((v, i) => (
+                <CFDNumber
+                  key={i}
+                  label={`Refinement size ${["X", "Y", "Z"][i]} (mm)`}
+                  value={v}
+                  onChange={(value) =>
+                    editRegion({
+                      ...region,
+                      sizeMm: region.sizeMm.map((x, j) =>
+                        j === i ? value : x,
+                      ) as [number, number, number],
+                    })
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }

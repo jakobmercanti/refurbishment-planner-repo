@@ -409,6 +409,7 @@ export function preparationInput(
       thermalSnapshots: undefined,
       name: undefined,
       description: undefined,
+      group: undefined,
       createdAt: undefined,
       updatedAt: undefined,
       archived: undefined,
@@ -476,7 +477,9 @@ export function preparationRequestBody(
     };
   const body = JSON.stringify({
     project: source,
-    scenario: { ...scenario, thermalSnapshots: undefined },
+    // Grouping is local presentation metadata, not part of the solver contract.
+    // Omitting it also keeps existing preparation-only workers compatible.
+    scenario: { ...scenario, group: undefined, thermalSnapshots: undefined },
     clientRevision,
   });
   if (new TextEncoder().encode(body).byteLength > 4 * 1024 * 1024)

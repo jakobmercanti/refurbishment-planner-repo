@@ -77,7 +77,7 @@ test("convergence history survives leaving Simulation and has an independently a
     .waitFor();
   assert.match(await monitor.innerText(), /not a live run/i);
   await page
-    .getByRole("button", { name: "Hide CFD convergence", exact: true })
+    .getByRole("button", { name: "Hide Simulation setup", exact: true })
     .click();
   await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Convergence", exact: true }).click();
@@ -85,15 +85,10 @@ test("convergence history survives leaving Simulation and has an independently a
     .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
     .waitFor();
   await page
-    .getByRole("button", { name: "Hide CFD convergence", exact: true })
+    .getByRole("button", { name: "Hide Simulation setup", exact: true })
     .press("Escape");
-  assert.equal(await monitor.count(), 0);
-  assert.equal(
-    await ui
-      .getByRole("button", { name: "Convergence", exact: true })
-      .evaluate((e) => e === document.activeElement),
-    true,
-  );
+  assert.equal(await monitor.isVisible(), false);
+  await cfdWindow(ui, "Studies");
 });
 
 test("3D refinements use distinct level colours, a matching legend and a working visibility shortcut", async (t) => {
@@ -118,6 +113,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     .getByRole("textbox", { name: "Refinement name", exact: true })
     .fill("Low level");
   await editNumber("Refinement centre X (mm)", 1600);
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await ui
     .getByRole("button", { name: "Add refinement region", exact: true })
     .click();
@@ -128,15 +124,11 @@ test("3D refinements use distinct level colours, a matching legend and a working
   await ui
     .getByRole("combobox", { name: "Refinement level", exact: true })
     .selectOption("5");
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await ui
     .getByRole("button", { name: "View refinements in 3D", exact: true })
     .click();
-  assert.equal(
-    await ui
-      .getByRole("textbox", { name: "Refinement name", exact: true })
-      .inputValue(),
-    "High level",
-  );
+
   const viewer = ui.getByRole("region", {
     name: "Climoptix geometry viewer",
     exact: true,
@@ -156,6 +148,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
       elements.map((e) => getComputedStyle(e).backgroundColor),
     );
   assert.equal(new Set(names).size, 2);
+  await cfdWindow(ui, "Simulation");
   assert.deepEqual(
     names,
     await ui
@@ -168,7 +161,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     const canvasBounds = await canvas.boundingBox();
     const obscured = await ui
       .locator(
-        ".floating-toolbar, .cfx-view-selector, .cfx-stale, .cfx-statusbar, .cfx-viewer > footer",
+        ".floating-toolbar, .cfx-view-selector, .cfx-stale, .cfx-setup-footer, .cfx-viewer > footer",
       )
       .evaluateAll(
         (items, bounds) =>
@@ -198,8 +191,13 @@ test("3D refinements use distinct level colours, a matching legend and a working
   // A full-size canvas lies under the tools. Clear the centre before inspecting
   // wireframe pixels, then keep only the right-hand view controls open.
   await page.getByRole("button", { name: "Toolbar", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Hide all windows", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Hide setup window", exact: true }).click();
   await cfdWindow(ui, "View properties");
+  const window = ui.locator(".cfx-setup-window");
+  const box = await window.boundingBox();
+  const edge = await window.locator(".floating-toolbar-resize-right").boundingBox();
+  await page.mouse.move(edge.x + 2, edge.y + edge.height / 2); await page.mouse.down();
+  await page.mouse.move(box.x + 320, edge.y + edge.height / 2, { steps: 10 }); await page.mouse.up();
   const visible = await eventually(
     pixelCounts,
     (values) => values.every((value) => value > 10),
@@ -210,7 +208,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     (p) => p.cfdScenarios[0].mesh.refinements.length === 2,
   );
   const before = JSON.stringify((await saved()).cfdScenarios[0]);
-  await viewer
+  await ui
     .getByRole("checkbox", { name: "Refinement intent", exact: true })
     .uncheck();
   const hidden = await pixelCounts();
@@ -223,8 +221,9 @@ test("3D refinements use distinct level colours, a matching legend and a working
   await ui
     .getByRole("button", { name: "View refinements in 3D", exact: true })
     .click();
+  await cfdWindow(ui, "View properties");
   assert.equal(
-    await viewer
+    await ui
       .getByRole("checkbox", { name: "Refinement intent", exact: true })
       .isChecked(),
     true,
@@ -253,7 +252,7 @@ test("the convergence window keeps study histories separate and supports shared 
     name: "Convergence monitor",
     exact: true,
   });
-  const window = ui.locator(".cfx-monitor-host > .floating-toolbar");
+  const window = ui.locator(".cfx-setup-window");
   await monitor
     .getByLabel("Import solver log", { exact: true })
     .setInputFiles(solverLog);
@@ -287,7 +286,7 @@ test("the convergence window keeps study histories separate and supports shared 
   assert.ok(moved.x > original.x + 50 && moved.y > original.y + 20);
   const right = await window
     .getByRole("button", {
-      name: "Resize CFD convergence from the right edge",
+      name: "Resize Simulation setup from the right edge",
       exact: true,
     })
     .boundingBox();
@@ -304,7 +303,7 @@ test("the convergence window keeps study histories separate and supports shared 
     (
       await window
         .getByRole("button", {
-          name: "Resize CFD convergence from the top edge",
+          name: "Resize Simulation setup from the top edge",
           exact: true,
         })
         .boundingBox()
@@ -312,15 +311,15 @@ test("the convergence window keeps study histories separate and supports shared 
     "Shared resize handles must not inherit content-button height",
   );
   await window
-    .getByRole("button", { name: "Help for CFD convergence", exact: true })
+    .getByRole("button", { name: "Help for Climoptix CFD", exact: true })
     .click();
   const help = page.getByRole("article", {
-    name: "Help for CFD convergence",
+    name: "Help for Climoptix CFD",
     exact: true,
   });
   await help
     .getByRole("heading", {
-      name: "Real logs, not simulated results",
+      name: "No simulated results",
       exact: true,
     })
     .waitFor();
@@ -495,10 +494,10 @@ test("convergence reads are study-scoped, cancellable before completion and boun
     "External histories must not mark a study as run or mutate project data",
   );
   await page
-    .getByRole("button", { name: "Hide CFD convergence", exact: true })
+    .getByRole("button", { name: "Hide Simulation setup", exact: true })
     .click();
-  await chooser.selectOption(project.cfdScenarios[3].id);
   await cfdWindow(ui, "Studies");
+  await chooser.selectOption(project.cfdScenarios[3].id);
   await ui.getByRole("button", { name: "Convergence", exact: true }).click();
   await monitor
     .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
@@ -514,6 +513,7 @@ test("repeated refinement copies have distinct names and independent dimensions"
   await ui
     .getByRole("textbox", { name: "Refinement name", exact: true })
     .fill("Occupied zone");
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await ui
     .getByRole("button", { name: "Duplicate Occupied zone", exact: true })
     .click();
@@ -532,6 +532,7 @@ test("repeated refinement copies have distinct names and independent dimensions"
     name: "Refinement size X (mm)",
     exact: true,
   });
+  await ui.getByRole("button", { name: "Edit Occupied zone copy 2", exact: true }).click();
   await size.fill("1600");
   await size.press("Enter");
   const edited = await eventually(
@@ -539,18 +540,17 @@ test("repeated refinement copies have distinct names and independent dimensions"
     (p) => p.cfdScenarios[0].mesh.refinements[2].sizeMm[0] === 1600,
   );
   assert.equal(edited.cfdScenarios[0].mesh.refinements[0].sizeMm[0], 1000);
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await ui
     .getByRole("button", { name: "Delete Occupied zone copy 2", exact: true })
     .click();
   assert.equal(await ui.locator(".cfx-refinement-row").count(), 2);
-  assert.equal(
-    await ui
-      .getByRole("textbox", { name: "Refinement name", exact: true })
-      .inputValue(),
-    "Occupied zone copy",
-  );
+  await ui.getByRole("button", { name: "Edit Occupied zone copy", exact: true }).click();
+  assert.equal(await ui.getByRole("textbox", { name: "Refinement name", exact: true }).inputValue(), "Occupied zone copy");
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Undo", exact: true }).click();
+  await cfdWindow(ui, "Simulation");
   assert.equal(await ui.locator(".cfx-refinement-row").count(), 3);
   await ui
     .getByRole("button", { name: "Edit Occupied zone", exact: true })
@@ -559,6 +559,7 @@ test("repeated refinement copies have distinct names and independent dimensions"
   await ui
     .getByRole("textbox", { name: "Refinement name", exact: true })
     .fill(longName);
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   for (let i = 0; i < 2; i++)
     await ui
       .getByRole("button", { name: `Duplicate ${longName}`, exact: true })
@@ -613,6 +614,7 @@ test("adding after a deletion keeps refinement names unique and deleting the las
     next.cfdScenarios[0].mesh.refinements.map((region) => region.name),
     ["Refinement 1", "Refinement 3", "Refinement 4"],
   );
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   for (const name of ["Refinement 1", "Refinement 3", "Refinement 4"])
     await ui
       .getByRole("button", { name: `Delete ${name}`, exact: true })

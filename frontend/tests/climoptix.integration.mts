@@ -13,6 +13,8 @@ test("multiple CFD studies survive IndexedDB and portable packages, with indepen
   const p = cfdProject(),
     s = duplicateCFDScenario(p.cfdScenarios![0]);
   s.name = "CO2 study";
+  s.group = "Summer";
+  p.cfdScenarios![0].group = "Winter";
   s.physics.co2 = true;
   p.cfdScenarios!.push(s);
   await projectRepository.saveProject(p);

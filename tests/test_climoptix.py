@@ -90,6 +90,21 @@ def scenario(p):
     )
 
 
+def test_study_groups_are_bounded_metadata_and_do_not_invalidate_solver_configuration():
+    p = project()
+    s = scenario(p)
+    assert s.group == "General"
+    before = PreparationOnlyProvider().validate_scenario(p, s, "a" * 64)
+    grouped = Scenario.model_validate({**s.model_dump(mode="json"), "group": "  Summer  "})
+    assert grouped.group == "Summer"
+    after = PreparationOnlyProvider().validate_scenario(p, grouped, "a" * 64)
+    assert before["validation"]["configurationHash"] == after["validation"]["configurationHash"]
+    assert before["validation"]["sourceHash"] == after["validation"]["sourceHash"]
+    for invalid in ("", " ", "x" * 81, None, True):
+        with pytest.raises(ValidationError):
+            Scenario.model_validate({**s.model_dump(mode="json"), "group": invalid})
+
+
 def aperture(profile=None, angle=90):
     return {
         "id": "opening",

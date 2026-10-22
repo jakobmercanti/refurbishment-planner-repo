@@ -446,7 +446,9 @@ def thermal_package(
         )
     config = scenario.model_dump(
         mode="json",
-        exclude={"validation", "thermalSnapshots", "name", "description", "archived", "createdAt", "updatedAt"},
+        exclude={
+            "validation", "thermalSnapshots", "name", "description", "group", "archived", "createdAt", "updatedAt"
+        },
     )
     # Provenance timestamps are retained in the snapshot, not physical hash keys.
     for override in (config.get("thermalEnvelope") or {}).get("overrides", {}).values():

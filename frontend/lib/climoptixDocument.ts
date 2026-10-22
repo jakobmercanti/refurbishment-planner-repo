@@ -387,6 +387,7 @@ export const cfdScenarioSchema = z
     id,
     name: z.string().trim().min(1).max(120),
     description: z.string().max(2000).default(""),
+    group: z.string().trim().min(1).max(80).default("General"),
     archived: z.boolean().default(false),
     createdAt: z.iso.datetime({ offset: true }),
     updatedAt: z.iso.datetime({ offset: true }),

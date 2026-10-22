@@ -9,6 +9,13 @@ import { WindowHelpButton } from "./WindowHelpButton";
 
 export type SimulationTab = "mesh" | "run" | "post";
 
+export interface RunConnection {
+  connected: boolean;
+  canRun: boolean;
+  busy: boolean;
+  onRun: () => void;
+}
+
 function RunPanel({
   scenario,
   onChange,
@@ -17,6 +24,7 @@ function RunPanel({
   exportDisabled,
   convergence,
   onConvergence,
+  connection,
 }: {
   scenario: CFDScenario;
   onChange: (s: CFDScenario) => void;
@@ -25,16 +33,19 @@ function RunPanel({
   exportDisabled: boolean;
   convergence: ReactNode;
   onConvergence: () => void;
+  connection?: RunConnection;
 }) {
   const physics = scenario.physics;
   return (
     <>
       <div className="cfx-notice">
-        <strong>Solver not connected</strong>
+        <strong>
+          {connection?.connected ? "Worker connected" : "Solver not connected"}
+        </strong>
         <small>
-          Save the run settings now. Play becomes available only when an
-          isolated OpenFOAM worker can mesh, check and run this study. No
-          background job is submitted.
+          {connection?.connected
+            ? "Run submits this study after preflight. Use Studies to queue multiple simulations and inspect worker-reported phase progress."
+            : "Save the run settings now. Play becomes available only when an isolated OpenFOAM worker can mesh, check and run this study. No background job is submitted."}
         </small>
       </div>
       <div className="cfx-grid">
@@ -143,8 +154,13 @@ function RunPanel({
       <div className="cfx-actions">
         <button
           className="cfx-primary"
-          disabled
-          title="No OpenFOAM worker is connected"
+          disabled={!connection?.canRun || connection.busy || scenario.archived}
+          onClick={() => connection?.onRun()}
+          title={
+            connection?.canRun
+              ? "Validate and submit this study"
+              : "No OpenFOAM worker is connected"
+          }
           aria-label="Run solver"
         >
           ▶ Play
@@ -330,6 +346,8 @@ export function ClimoptixSimulation({
   convergence,
   onConvergence,
   onShowRefinements,
+  onEditRefinement,
+  connection,
 }: {
   tab: SimulationTab;
   onTab: (t: SimulationTab) => void;
@@ -344,6 +362,8 @@ export function ClimoptixSimulation({
   convergence: ReactNode;
   onConvergence: () => void;
   onShowRefinements: () => void;
+  onEditRefinement: (id: string) => void;
+  connection?: RunConnection;
   onVTK: (f: File) => void;
 }) {
   return (
@@ -355,7 +375,7 @@ export function ClimoptixSimulation({
           steps={[
             {
               heading: "Mesh",
-              text: "Set the global base cell size. Add cuboids with precise millimetre centres and dimensions, then assign a snappyHexMesh level. Each level halves the cell along every axis. Colours match in the list and 2D/3D viewer. The highest overlapping level wins; list order is for organisation.",
+              text: "Set the global base cell size. Add cuboids with precise millimetre centres and dimensions, then assign a snappyHexMesh level. Each level halves the cell along every axis. Colours match in the list and 3D viewer. The highest overlapping level wins; list order is for organisation.",
             },
             {
               heading: "Run",
@@ -423,6 +443,7 @@ export function ClimoptixSimulation({
           onSelect={onSelect}
           onChange={onChange}
           onShowRefinements={onShowRefinements}
+          onEditRefinement={onEditRefinement}
         />
       </section>
       <section
@@ -441,6 +462,7 @@ export function ClimoptixSimulation({
           exportDisabled={exportDisabled}
           convergence={convergence}
           onConvergence={onConvergence}
+          connection={connection}
         />
       </section>
       <section

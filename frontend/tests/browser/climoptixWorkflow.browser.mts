@@ -168,6 +168,7 @@ test("independent workbench saves level-coloured cuboids, run settings and named
   await ui
     .getByRole("spinbutton", { name: "Refinement size X (mm)", exact: true })
     .press("Enter");
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await ui
     .getByRole("button", { name: "Duplicate Occupant zone", exact: true })
     .click();
@@ -293,7 +294,7 @@ test("independent workbench saves level-coloured cuboids, run settings and named
   });
   const download = page.waitForEvent("download").catch(async (e) => {
     throw new Error(
-      `${e.message}\nCFD status: ${await ui.locator(".cfx-statusbar").innerText()}\nWorkspace: ${await workspace.inputValue()}`,
+      `${e.message}\nCFD status: ${await ui.locator(".cfx-setup-footer").innerText()}\nWorkspace: ${await workspace.inputValue()}`,
     );
   });
   await ui
@@ -454,6 +455,7 @@ test("simulation tabs remain usable on narrow screens and inactive navigation is
   await ui
     .getByRole("button", { name: "Add refinement region", exact: true })
     .click();
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await ui
     .getByRole("button", { name: "Duplicate Refinement 1", exact: true })
     .click();

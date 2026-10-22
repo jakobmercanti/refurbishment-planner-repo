@@ -110,24 +110,11 @@ export async function menu(page, heading, entry) {
   await page.getByRole("button", { name: entry, exact: typeof entry === "string" }).click();
 }
 
-/** Navigate the real floating-window menu, not the retired CFD sidebar. */
+/** Navigate a tab in the consolidated native floating setup window. */
 export async function cfdWindow(ui, name) {
   const page = typeof ui.page === "function" ? ui.page() : ui;
-  for (const other of ["Domain", "Equipment", "Boundaries", "Physics", "Simulation", "Review & export"]) {
-    if (other === name || name === "Studies" || name === "View properties") continue;
-    const close = page.getByRole("button", { name: `Hide ${other}`, exact: true });
-    if (await close.isVisible()) {
-      await page.getByRole("button", { name: "Toolbar", exact: true }).click();
-      await page.getByRole("menuitemcheckbox", { name: other, exact: true }).click();
-    }
-  }
   await page.getByRole("button", { name: "Toolbar", exact: true }).click();
-  const item = page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitemcheckbox", { name, exact: true });
-  if (await item.getAttribute("aria-checked") === "true") {
-    await item.click();
-    await page.getByRole("button", { name: "Toolbar", exact: true }).click();
-    await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitemcheckbox", { name, exact: true }).click();
-  } else await item.click();
-  const title = page.getByRole("region", { name: "Climoptix CFD workspace", exact: true }).getByLabel(`Move ${name}`, { exact: true });
+  await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitem", { name, exact: true }).click();
+  const title = page.getByRole("region", { name: "Climoptix CFD workspace", exact: true }).getByLabel("Move Simulation setup", { exact: true });
   if (await title.isVisible()) await title.click({ position: { x: 65, y: 24 } });
 }

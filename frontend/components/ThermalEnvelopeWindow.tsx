@@ -16,6 +16,7 @@ import {
   type ThermalSurface,
 } from "@/lib/thermalDocument";
 import { importEPW, type EPWData } from "@/lib/thermalClient";
+import type { ReactNode } from "react";
 import { FloatingToolbar } from "./FloatingToolbar";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { SurfaceOverride, ThermalNumber, ThermalText } from "./ThermalFields";
@@ -123,6 +124,33 @@ function Breakdown({ report }: { report: ThermalPackage }) {
   );
 }
 
+/** The thermal editor can share the setup window without nesting floating chrome. */
+function ThermalFrame({
+  embedded,
+  onClose,
+  children,
+}: {
+  embedded: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return embedded ? (
+    children
+  ) : (
+    <FloatingToolbar
+      title="Thermal Envelope & Solar Conditions"
+      help={false}
+      className="thermal-window"
+      defaultPosition={{ x: 24, y: 12 }}
+      initialSize={{ width: 1160, height: 760 }}
+      maxHeight={1000}
+      bringToFront
+      onClose={onClose}
+    >
+      {children}
+    </FloatingToolbar>
+  );
+}
 export function ThermalEnvelopeWindow({
   project,
   scenario,
@@ -140,6 +168,7 @@ export function ThermalEnvelopeWindow({
   onApply,
   onEditInsulation,
   onClose,
+  embedded = false,
 }: {
   project: ProjectDocument;
   scenario: CFDScenario;
@@ -157,6 +186,7 @@ export function ThermalEnvelopeWindow({
   onApply: () => void;
   onEditInsulation: (face: ThermalSurface) => void;
   onClose: () => void;
+  embedded?: boolean;
 }) {
   const [step, setStep] = useState(0),
     [query, setQuery] = useState(""),
@@ -303,9 +333,10 @@ export function ThermalEnvelopeWindow({
   return (
     <div
       ref={host}
-      className="thermal-host"
+      className={embedded ? "thermal-host thermal-embedded" : "thermal-host"}
       onKeyDown={(e) => {
         if (
+          !embedded &&
           e.key === "Escape" &&
           !(
             e.target instanceof Element &&
@@ -317,16 +348,7 @@ export function ThermalEnvelopeWindow({
         }
       }}
     >
-      <FloatingToolbar
-        title="Thermal Envelope & Solar Conditions"
-        help={false}
-        className="thermal-window"
-        defaultPosition={{ x: 24, y: 12 }}
-        initialSize={{ width: 1160, height: 760 }}
-        maxHeight={1000}
-        bringToFront
-        onClose={onClose}
-      >
+      <ThermalFrame embedded={embedded} onClose={onClose}>
         <div
           className="thermal-content"
           role="region"
@@ -1728,7 +1750,7 @@ export function ThermalEnvelopeWindow({
             </div>
           </footer>
         </div>
-      </FloatingToolbar>
+      </ThermalFrame>
     </div>
   );
 }

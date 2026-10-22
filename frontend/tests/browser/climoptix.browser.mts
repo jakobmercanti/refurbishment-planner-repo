@@ -59,6 +59,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
   await connect(context);
   const ui = await open(page);
   await validate(ui);
+  await cfdWindow(ui, "Domain");
   assert.match(
     await ui
       .getByRole("region", { name: "Domain settings", exact: true })
@@ -187,7 +188,7 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
     .getByRole("combobox", { name: "CFD scenario", exact: true })
     .selectOption(stored.cfdScenarios[1].id);
   await cfdWindow(ui, "Studies");
-  await ui.getByRole("button", { name: "Delete", exact: true }).click();
+  await ui.locator(".cfx-study-row.selected").getByRole("button", { name: /^Delete / }).click();
   const dialog = page.getByRole("dialog", {
     name: "Delete CFD scenario",
     exact: true,
@@ -195,7 +196,7 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   assert.equal((await s.saved()).cfdScenarios.length, 2);
   await cfdWindow(ui, "Studies");
-  await ui.getByRole("button", { name: "Delete", exact: true }).click();
+  await ui.locator(".cfx-study-row.selected").getByRole("button", { name: /^Delete / }).click();
   await dialog
     .getByRole("button", { name: "Delete study", exact: true })
     .click();
@@ -348,7 +349,8 @@ test("CFD help, dark mode and narrow-screen controls remain accessible and align
     .getByRole("button", { name: "+ Supply", exact: true })
     .scrollIntoViewIfNeeded();
   await ui.getByRole("button", { name: "+ Supply", exact: true }).click();
-  for (const button of await ui.locator(".cfx-studybar > button").all()) {
+  await cfdWindow(ui, "Studies");
+  for (const button of await ui.locator(".cfx-study-tools > button").all()) {
     const box = await button.boundingBox();
     assert.ok(box.height >= 39);
   }
@@ -486,15 +488,7 @@ test("vents can be picked and dragged in the full-size 3D viewer without changin
       ),
     },
   };
-  // Leave the floating equipment inspector outside the vent's screen location.
-  const title = await page
-    .getByLabel("Move Equipment", { exact: true })
-    .boundingBox();
-  const workspace = await ui.boundingBox();
-  await page.mouse.move(title.x + 85, title.y + 24);
-  await page.mouse.down();
-  await page.mouse.move(workspace.x + 100, workspace.y + 120, { steps: 8 });
-  await page.mouse.up();
+  await page.getByRole("button", { name: "Hide Simulation setup", exact: true }).click();
   await ui.getByRole("button", { name: "Fit", exact: true }).click();
   const canvas = ui.locator("canvas");
   await canvas.waitFor();
@@ -502,7 +496,7 @@ test("vents can be picked and dragged in the full-size 3D viewer without changin
   const canvasBounds = await canvas.boundingBox();
   const obscured = await ui
     .locator(
-      ".floating-toolbar, .cfx-view-selector, .cfx-stale, .cfx-statusbar, .cfx-viewer > footer",
+      ".floating-toolbar, .cfx-view-selector, .cfx-stale, .cfx-setup-footer, .cfx-viewer > footer",
     )
     .evaluateAll(
       (items, canvasBounds) =>
@@ -554,6 +548,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   await connect(context);
   const ui = await open(page);
   await validate(ui);
+  await cfdWindow(ui, "Domain");
   assert.match(
     await ui
       .getByRole("region", { name: "Domain settings", exact: true })
@@ -592,16 +587,12 @@ test("refinement regions are editable visual intent, patch isolation works, and 
       p.cfdScenarios[0].mesh.refinements[0].sizeMm.every((n) => n === 800),
   );
   await shape.selectOption("object");
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await ui
     .getByRole("combobox", { name: "Mesh intent preset", exact: true })
     .selectOption("Fine");
-  assert.equal(
-    await ui
-      .getByRole("combobox", { name: "Selected refinement", exact: true })
-      .locator("option")
-      .count(),
-    1,
-  );
+  assert.equal(await ui.locator(".cfx-refinement-row").count(), 1);
+  await ui.getByRole("button", { name: "Edit Desk zone", exact: true }).click();
   assert.ok(
     (
       await ui
@@ -610,6 +601,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
         .allTextContents()
     ).some((t) => /desk|chair|occupant/i.test(t)),
   );
+  await ui.getByRole("button", { name: "Done", exact: true }).click();
   await validate(ui);
   const downloadEvent = page.waitForEvent("download");
   await cfdWindow(ui, "Review & export");
@@ -641,8 +633,9 @@ test("refinement regions are editable visual intent, patch isolation works, and 
     .getByRole("checkbox", { name: "Isolate selection", exact: true })
     .uncheck();
   await page
-    .getByRole("button", { name: "Hide View properties", exact: true })
+    .getByRole("button", { name: "Hide Simulation setup", exact: true })
     .click();
+  await cfdWindow(ui, "Boundaries");
   await ui
     .getByRole("searchbox", { name: "Find a CFD patch", exact: true })
     .fill("desk");

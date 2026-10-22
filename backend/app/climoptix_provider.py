@@ -935,7 +935,9 @@ class PreparationOnlyProvider:
         warnings = sum(d.severity == "warning" for d in domain.diagnostics)
         config = scenario.model_dump(
             mode="json",
-            exclude={"validation", "thermalSnapshots", "name", "description", "archived", "createdAt", "updatedAt"},
+            exclude={
+                "validation", "thermalSnapshots", "name", "description", "group", "archived", "createdAt", "updatedAt"
+            },
         )
         stamp = ValidationStamp(
             clientRevision=client_revision,

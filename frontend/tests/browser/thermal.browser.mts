@@ -505,7 +505,7 @@ test("modern thermal window uses actual configured design tokens, can drag/resiz
     () => s.page.locator("body").getAttribute("data-ui-style"),
     (style) => style === "modern",
   );
-  const window = s.page.locator(".thermal-window"),
+  const window = s.page.locator(".cfx-setup-window"),
     before = await window.boundingBox(),
     header = await window.locator(".floating-toolbar-titlebar").boundingBox();
   await s.page.mouse.move(header.x + 120, header.y + header.height / 2);
@@ -792,7 +792,7 @@ test("audit: a failed calculation in one study cannot show an error in another s
     .getByRole("button", { name: "Calculate & preview", exact: true })
     .click();
   await eventually(() => !!held, Boolean);
-  await cfdWindow(s.page, "Studies");
+  // The active-study selector now stays in the shared setup header; keep Thermal visible.
   await s.page
     .getByRole("combobox", { name: "CFD scenario", exact: true })
     .selectOption(second.id);
@@ -889,7 +889,7 @@ test("audit: a narrow manually resized desktop window keeps all steps and action
   const s = await harness.session(thermalProject());
   t.after(() => s.close());
   const ui = await open(s);
-  const window = s.page.locator(".thermal-window");
+  const window = s.page.locator(".cfx-setup-window");
   const bounds = await window.boundingBox();
   const edge = await window
     .locator(".floating-toolbar-resize-right")
