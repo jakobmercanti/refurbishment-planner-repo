@@ -1,4 +1,4 @@
-import { cfdWindow } from "./harness.mjs";
+import { cfdSettings, cfdWindow, cfdRefresh } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { cfdProject, realPreparation } from "../climoptixFixtures";
@@ -49,7 +49,7 @@ const solverLog = {
 test("convergence history survives changing phases and its guidance is available through contextual help", async (t) => {
   const { page, ui } = await setup(t);
   await cfdWindow(ui, "Simulation");
-  await ui.getByRole("tab", { name: "Run", exact: true }).click();
+  await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
   await ui
     .getByLabel("Import solver log", { exact: true })
     .setInputFiles(solverLog);
@@ -67,7 +67,7 @@ test("convergence history survives changing phases and its guidance is available
   );
   await cfdWindow(ui, "Domain");
   await cfdWindow(ui, "Studies");
-  await ui.getByRole("button", { name: "Convergence", exact: true }).click();
+  await cfdWindow(ui, "Convergence monitor");
   const monitor = page.getByRole("region", {
     name: "Convergence monitor",
     exact: true,
@@ -93,7 +93,7 @@ test("convergence history survives changing phases and its guidance is available
     .getByRole("button", { name: "Hide Simulation setup", exact: true })
     .click();
   await cfdWindow(ui, "Studies");
-  await ui.getByRole("button", { name: "Convergence", exact: true }).click();
+  await cfdWindow(ui, "Convergence monitor");
   await monitor
     .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
     .waitFor();
@@ -106,9 +106,7 @@ test("convergence history survives changing phases and its guidance is available
 
 test("3D refinements use distinct level colours, a matching legend and a working visibility shortcut", async (t) => {
   const { page, ui, saved } = await setup(t);
-  await ui
-    .getByRole("button", { name: "Validate & refresh", exact: true })
-    .click();
+  await cfdRefresh(ui);
   await eventually(
     () => ui.locator(".cfx-state").innerText(),
     (value) => value === "Validated",
@@ -165,7 +163,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
   assert.deepEqual(
     names,
     await ui
-      .locator(".cfx-level-swatch")
+      .locator(".cfx-refinement-row .cfx-level-swatch")
       .evaluateAll((elements) =>
         elements.map((e) => getComputedStyle(e).backgroundColor),
       ),
@@ -208,7 +206,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     .getByRole("menuitem", { name: "Hide setup window", exact: true })
     .click();
   await cfdWindow(ui, "View properties");
-  const window = ui.locator(".cfx-setup-window");
+  const window = ui.locator(".cfx-view-window");
   const box = await window.boundingBox();
   const edge = await window
     .locator(".floating-toolbar-resize-right")
@@ -226,7 +224,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     saved,
     (p) => p.cfdScenarios[0].mesh.refinements.length === 2,
   );
-  const before = JSON.stringify((await saved()).cfdScenarios[0]);
+  const before = cfdSettings(await saved());
   await ui
     .getByRole("checkbox", { name: "Refinement intent", exact: true })
     .uncheck();
@@ -249,7 +247,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
   );
   await legend.waitFor();
   assert.equal(
-    JSON.stringify((await saved()).cfdScenarios[0]),
+    cfdSettings(await saved()),
     before,
     "View-only controls must not change the mesh recipe",
   );
@@ -266,7 +264,7 @@ test("the convergence window keeps study histories separate and supports shared 
   project.cfdScenarios!.push(copy);
   const { page, ui } = await setup(t, project);
   await cfdWindow(ui, "Studies");
-  await ui.getByRole("button", { name: "Convergence", exact: true }).click();
+  await cfdWindow(ui, "Convergence monitor");
   const monitor = ui.getByRole("region", {
     name: "Convergence monitor",
     exact: true,
@@ -444,7 +442,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
   });
   const { page, ui, saved } = await setup(t, project);
   await cfdWindow(ui, "Studies");
-  await ui.getByRole("button", { name: "Convergence", exact: true }).click();
+  await cfdWindow(ui, "Convergence monitor");
   const monitor = ui.getByRole("region", {
     name: "Convergence monitor",
     exact: true,
@@ -454,7 +452,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
     name: "CFD scenario",
     exact: true,
   });
-  const source = JSON.stringify((await saved()).cfdScenarios);
+  const source = cfdSettings(await saved());
   await page.evaluate(() => {
     const original = File.prototype.text;
     File.prototype.text = function () {
@@ -508,7 +506,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
     0,
   );
   assert.equal(
-    JSON.stringify((await saved()).cfdScenarios),
+    cfdSettings(await saved()),
     source,
     "External histories must not mark a study as run or mutate project data",
   );
@@ -517,7 +515,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
     .click();
   await cfdWindow(ui, "Studies");
   await chooser.selectOption(project.cfdScenarios[3].id);
-  await ui.getByRole("button", { name: "Convergence", exact: true }).click();
+  await cfdWindow(ui, "Convergence monitor");
   await monitor
     .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
     .waitFor();

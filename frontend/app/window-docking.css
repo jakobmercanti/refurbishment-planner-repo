@@ -138,9 +138,3 @@ body .floating-toolbar .window-header-actions > .floating-toolbar-dock {
   .floating-toolbar.dockable-editor .appearance-popup-preview { flex: 0 0 auto; min-height: 260px; }
   .floating-toolbar.dockable-editor .popup-content { display: block; padding: 12px; overflow: auto; }
 }
-@container cfx-setup (max-width: 450px) {
-  .cfx-study-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .cfx-study-row > .cfx-check { grid-column: 1; grid-row: 1; }
-  .cfx-study-row > .cfx-danger { grid-column: 2; grid-row: 1; }
-  .cfx-study-row > .cfx-study-name { grid-column: 1 / -1; grid-row: 2; }
-}

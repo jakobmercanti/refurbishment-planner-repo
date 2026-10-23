@@ -72,6 +72,11 @@ export async function startBrowserHarness() {
     async session(project, options = {}) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, ...options });
       await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+      await context.route("**/climoptix/prepare", async route => {
+        const { realPreparation } = await import("../climoptixFixtures.ts");
+        try { await route.fulfill({ contentType: "application/json", body: JSON.stringify(realPreparation(route.request().postDataJSON())) }); }
+        catch (error) { await route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ detail: String(error) }) }); }
+      });
       await context.route("**/climoptix/geometry", async route => {
         const { realScene } = await import("../climoptixFixtures.ts");
         try {
@@ -113,8 +118,37 @@ export async function menu(page, heading, entry) {
 /** Navigate a tab in the consolidated native floating setup window. */
 export async function cfdWindow(ui, name) {
   const page = typeof ui.page === "function" ? ui.page() : ui;
+  const aliases = { Studies: "Simulations", Simulation: "Solver", "Thermal Envelope & Solar Conditions": "Boundaries", "Convergence monitor": "Solver" };
+  if (name === "View properties") {
+    const control = page.locator(".cfx-view-selector").getByRole("button", { name, exact: true });
+    if (await control.getAttribute("aria-expanded") !== "true") await control.click();
+    await page.locator(".cfx-view-window").getByLabel("Move View properties", { exact: true }).click({ position: { x: 220, y: 20 } });
+    return;
+  }
   await page.getByRole("button", { name: "Toolbar", exact: true }).click();
-  await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitem", { name, exact: true }).click();
+  await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitem", { name: aliases[name] ?? name, exact: true }).click();
+  if (name === "Thermal Envelope & Solar Conditions") await ui.getByRole("tab", { name: "Thermal", exact: true }).click();
+  if (name === "Convergence monitor") await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
   const title = page.getByRole("region", { name: "Climoptix CFD workspace", exact: true }).getByLabel("Move Simulation setup", { exact: true });
   if (await title.isVisible()) await title.click({ position: { x: 65, y: 24 } });
 }
+
+export async function cfdRefresh(ui, wait = true) {
+  const page = typeof ui.page === "function" ? ui.page() : ui;
+  await page.getByRole("button", { name: "Toolbar", exact: true }).click();
+  const refresh = page.getByRole("menuitem", { name: "Refresh checks", exact: true });
+  await eventually(() => refresh.isEnabled(), Boolean);
+  const before = await ui.getAttribute("data-preparation-stamp");
+  const response = wait ? page.waitForResponse(r => new URL(r.url()).pathname.endsWith("/climoptix/prepare")) : null;
+  await refresh.click();
+  if (response) {
+    await response;
+    await eventually(async () => ({ stamp: await ui.getAttribute("data-preparation-stamp"), state: await ui.getAttribute("data-preparation-state") }),
+      value => value.stamp !== before || value.state === "error");
+  }
+}
+
+// Automatic preflight updates validation stamps, not editable simulation data.
+export const cfdSettings = project => JSON.stringify(project.cfdScenarios?.map(scenario => {
+  const settings = { ...scenario }; delete settings.validation; return settings;
+}));

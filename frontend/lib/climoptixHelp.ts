@@ -6,24 +6,28 @@ type HelpStep = { heading: string; text: string };
 export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   studies: [
     {
-      heading: "Studies and groups",
-      text: "Each study uses the shared building but stores independent simulation settings. Select a name to load its settings in every phase. Enter a group name to create a group. Drag the grip to reorder or move between groups; Arrow Up/Down reorders within a group. Save project includes all studies; imported logs and VTK files are session-only.",
+      heading: "Simulations and folders",
+      text: "Each simulation uses the shared measured building and independent settings. Add group creates an empty folder. Rename folders inline; use a simulation's actions menu to rename, duplicate, archive or move it. Only grips initiate drag/drop, with insertion previews; Escape cancels. Mouse, touch/pen and Arrow Up/Down are supported, and Move to group is the non-drag alternative. Folder duplication copies its simulations with fresh IDs and cleared validation/history. Deleting a folder keeps its simulations in Ungrouped. Undo restores organizational changes. Files include empty folders and simulation order; imported logs and VTK remain session-only.",
     },
     {
       heading: "Mesh and Run",
-      text: "Select one or more studies for a batch submission. Each study is validated against its current building and settings before being sent to a trusted worker. Mesh prepares and checks the mesh; Run also requests the solver. Jobs run independently. Progress is reported by the worker for the current phase, never estimated from elapsed time. Without a connected worker these actions remain unavailable. If submission status is unknown, retry the same operation to recover the original request, even if you have edited the setup since. Resolve that request before starting a different operation. Active or unresolved jobs cannot be deleted or archived.",
+      text: "Use Mesh or Run on a simulation's row to submit that simulation. Each simulation is validated against its current building and settings before being sent to a trusted worker. Mesh prepares and checks the mesh; Run also requests the solver. You can submit other simulations independently without changing the active selection. Progress is reported by the worker for the current phase, never estimated from elapsed time. Without a connected worker these actions remain unavailable. If submission status is unknown, retry the same operation to recover the original request, even if you have edited the setup since. Resolve that request before starting a different operation. Active or unresolved jobs cannot be deleted or archived.",
     },
   ],
   domain: [
     {
       heading: "Choose the simulation volume",
-      text: "Choose a seed floor and room, then Validate & refresh. Only permanent doorless passages and physical slab voids expand the connected air volume. Doors and windows stop discovery at every open state. Their virtual caps may use an opening/pressure boundary; they are not automatically solid walls. The viewer's inspection scope does not change this seed.",
+      text: "Choose a seed floor and room. Checks refresh automatically after committed changes; Toolbar → Refresh checks can retry manually. Only permanent doorless passages and physical slab voids expand the connected air volume. Doors and windows stop discovery at every open state. Their virtual caps may use an opening/pressure boundary; they are not automatically solid walls. The viewer's inspection scope does not change this seed. Checks are preparation only, never a mesh or solve.",
+    },
+    {
+      heading: "Global mesh settings",
+      text: "Choose the mesh intent preset, base/minimum/maximum cell sizes in millimetres, target cell count and maximum cell budget here in Domain. Custom preserves your current values; changing a numeric setting selects Custom. Presets retain existing refinement regions, mesh origin and alignment. These settings express mesh intent, not achieved resolution or cell count. Local refinement regions, layers, tolerances and quality controls are in Solver → Mesh. Validate after changing global or local settings.",
     },
   ],
   equipment: [
     {
       heading: "Vents and objects",
-      text: "Validate a seed room to discover room-facing wall and ceiling hosts. Add supply/extract vents, place them on a face or use precise host coordinates. Supply/Extract determines flow direction; enter a positive magnitude. Dragging a vent changes its host coordinates. A recirculating unit needs separate supply and return devices. Optimization lock and allowable host-local polygons are metadata only; no optimizer is connected. Furniture, people and fixtures come from the shared project. Source placement must be edited in Floorplan and refreshed here; object overrides are study-specific. Deleted or disconnected references remain until removed.",
+      text: "A checked seed room provides room-facing wall and ceiling hosts. Add Supply/Extract creates a device in the draggable equipment list and opens its floating editor. Each device has Edit, Duplicate and Delete. Use the grip or Arrow Up/Down to reorder. Place on face uses a checked 3D host; dragging a marker changes host coordinates, not measured building geometry. Supply/Extract determines flow direction; enter a positive magnitude. A recirculating unit needs separate supply and return devices. Optimization settings are metadata, not an active optimizer. Furniture, people and fixtures remain owned by the shared Floorplan building; their CFD overrides belong to this simulation.",
     },
     {
       heading: "Simplified representations",
@@ -33,7 +37,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   boundaries: [
     {
       heading: "Surface conditions",
-      text: "Every derived patch is named and coloured. Group conditions are inherited unless a patch has an override. Clear override restores inheritance. Vents get flow and inflow properties from Equipment. Search by room, surface name or source ID. Thermal opens the envelope calculator; applied thermal conditions retain their source revision and must be refreshed after source changes.",
+      text: "Default surfaces initially contains all checked patches. Add boundary group creates an empty group; drag surface grips between groups, use the Move menu, or create a new group from a surface. Group colours match the 3D viewer and legend. Select a group to inspect its members and conditions. Default-group conditions form the global base; a named group's conditions override that base, and explicit surface overrides take priority. Clear surface overrides in group restores inheritance. Surface type defaults preserve older configurations. Vents remain controlled by their Equipment settings, and object heat/temperature inputs cannot be silently over-constrained. Missing references are reported, not discarded. The Thermal sub-tab contains envelope, sun, weather and applied thermal contracts.",
     },
   ],
   physics: [
@@ -45,7 +49,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   mesh: [
     {
       heading: "Mesh, Run and Post-processing",
-      text: "Mesh defines the recipe and local refinements; Run defines numerics, cores and resource limits; Post-processing defines named X/Y/Z slices and fields before execution. Recipes, counts and quality intentions are not a generated mesh or achieved quality. Validate after changing settings. Play stays unavailable until a trusted OpenFOAM worker is connected.",
+      text: "Domain defines global mesh preset, cell sizes and budgets. Solver → Mesh defines local refinements, layers, tolerances and quality intent; Run defines numerics, cores and resource limits; Monitor imports real residual logs; Post defines named X/Y/Z slices and fields before execution. Checks refresh automatically after committed changes. Intent and estimates are not a generated mesh or solved result. Play remains unavailable until a trusted OpenFOAM worker is connected.",
     },
   ],
   review: [
@@ -56,8 +60,8 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   ],
   view: [
     {
-      heading: "Inspect without changing the study",
-      text: "View the whole building, an individual room or a connected air volume. This changes only the inspection scope, not the simulation seed. Orbit by dragging, zoom with the wheel or touch gesture, and use Fit to reset framing. Toggle surface, vent and refinement overlays here. Right-click the background or use Toolbar to reopen the setup window. Drag its titlebar to move it; resize using its edges.",
+      heading: "Inspect without changing the simulation",
+      text: "The 3D viewer's View properties button opens a separate floating window, not a simulation phase. View the whole building, a room or connected air volume without changing the seed. Orbit by dragging, zoom with the wheel or touch gesture, and Fit resets framing. Toggle ceilings, detailed assets, selection isolation and refinement overlays here. Floating windows can be moved, resized or attached to a side.",
     },
   ],
   thermal: [
@@ -69,13 +73,13 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   convergence: [
     {
       heading: "Convergence monitor",
-      text: "Import a real OpenFOAM solver log to inspect initial residuals in Monitor or Solver → Run. Histories are session-only for the latest three studies, not saved with the project. These are external logs, not live or verified results for the active study. Repeated pressure corrections are retained. Plots are clipped to 10⁻¹²–1 and decimated for readability; download preserves the original file. Residuals alone do not establish convergence or conservation.",
+      text: "Solver → Monitor imports a real OpenFOAM log and plots initial residuals. Histories are session-only for the latest three simulations, not saved with the project. Imported logs are external, not live or verified results for the current simulation. Repeated pressure corrections are retained. Plots are clipped to 10⁻¹²–1 and decimated for readability; download preserves the original file. Residuals alone do not establish convergence or conservation.",
     },
   ],
   results: [
     {
       heading: "Imported VTK results",
-      text: "Open a real VTK PolyData surface or slice in Solver → Post-processing. Imported results stay local and are labelled external/unverified; they are not evidence that this study ran. Supports bounded ASCII .vtp and legacy POLYDATA .vtk up to 25 MB. Select a scalar or vector magnitude; drag to orbit, use the wheel or zoom buttons to zoom, and Fit to reset framing. Every displayed value comes from the imported file. Download preserves the original for ParaView. Legacy FIELD, colour/texture sections and 64-bit IDs need ASCII .vtp; VTU volumes and compressed/binary files need a worker-side surface/slice export.",
+      text: "Open a real VTK PolyData surface or slice in Solver → Post-processing. Imported results stay local and are labelled external/unverified; they are not evidence that this simulation ran. Supports bounded ASCII .vtp and legacy POLYDATA .vtk up to 25 MB. Select a scalar or vector magnitude; drag to orbit, use the wheel or zoom buttons to zoom, and Fit to reset framing. Every displayed value comes from the imported file. Download preserves the original for ParaView. Legacy FIELD, colour/texture sections and 64-bit IDs need ASCII .vtp; VTU volumes and compressed/binary files need a worker-side surface/slice export.",
     },
   ],
 };
@@ -83,7 +87,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
 export const CFD_REFINEMENT_HELP: HelpStep[] = [
   {
     heading: "Refinement region",
-    text: "Changes save to this study as you edit. Centres and dimensions are millimetres. Cuboids and spheres use explicit bounds; object extents follow the last checked solid proxy and need refresh after source placement changes. Regions are wireframe intent, not cells or achieved resolution. Duplicate, delete and reorder regions in Solver → Mesh. The highest overlapping level wins; list order is only organisational.",
+    text: "Changes save to this simulation as you edit. Centres and dimensions are millimetres. Cuboids and spheres use explicit bounds; object extents follow the last checked solid proxy and need refresh after source placement changes. Regions are wireframe intent, not cells or achieved resolution. Duplicate, delete and reorder regions in Solver → Mesh. The highest overlapping level wins; list order is only organisational.",
   },
   {
     heading: "Level and nominal size",
@@ -96,7 +100,7 @@ export const CFD_SIMULATION_HELP: HelpStep[] = [
   ...CFD_REFINEMENT_HELP,
   {
     heading: "Run and export",
-    text: "Select steady/transient, cores, memory and time limits. A connected worker validates each study before submission; Studies supports batch Mesh/Run and worker-reported phase progress. Without a worker no background job is submitted. Foamlib exports settings for OpenCFD v2312, including cores, run controls, refinement regions and named slices. This ZIP is a configuration handoff, not a runnable case. A worker must enforce resource limits and support the selected physics.",
+    text: "Select steady/transient, cores, memory and time limits. A connected worker validates each simulation before submission; Simulations provides Mesh/Run on each row and worker-reported phase progress. Without a worker no background job is submitted. Foamlib exports settings for OpenCFD v2312, including cores, run controls, refinement regions and named slices. This ZIP is a configuration handoff, not a runnable case. A worker must enforce resource limits and support the selected physics.",
   },
   {
     heading: "Slices",

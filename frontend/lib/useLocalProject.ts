@@ -17,7 +17,7 @@ import type { EnergyProject } from "./energyDocument";
 import { commitHeatingElements } from "./heatingElements";
 import { ProjectHistory } from "./projectHistory";
 import { matchesProjectScope } from "./projectScope";
-import { cfdScenariosSchema, type CFDScenario } from "./climoptixDocument";
+import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
@@ -121,12 +121,12 @@ export function useLocalProject() {
     const next = commitHeatingElements(heatingLayout, p.rooms); update(next); return next.rooms;
   }, [update]);
   const setEnergyLayout = useCallback((energyLayout: EnergyProject) => update({ energyLayout }), [update]);
-  const setCFDScenarios = useCallback((scenarios: CFDScenario[],scope?:string,checkpoint=false) => {
+  const setCFDScenarios = useCallback((scenarios: CFDScenario[],scope?:string,checkpoint=false,groups?:CFDSimulationGroup[]) => {
     const p=current.current;
     if(!p||!matchesProjectScope(p,scope,sessionRef.current))return;
     const next=cfdScenariosSchema.parse(scenarios);
     if(next.some(s=>s.sourceBuildingId!==p.projectId))throw new Error("Scenario source does not match this project.");
-    update({cfdScenarios:next},checkpoint);
+    update({cfdScenarios:next,...(groups ? {cfdSimulationGroups:simulationGroupsSchema.parse(groups)} : {})},checkpoint);
   },[update]);
   const restoreEdit = useCallback((p: ProjectDocument | null) => { if(!p)return null;refreshHistory(); const next={...p,updatedAt:new Date().toISOString()};current.current=next;setProject(next);setRestore(next);setRevision(r=>r+1);return next; },[refreshHistory]);
   const editBuilding = useCallback((operation:(p:ProjectDocument)=>ProjectDocument,resetDocument=false) => { const before=current.current;if(!before)return null;const result=operation(before);if(result===before)return before;const next=parseProject(result);if(JSON.stringify(before.building?.floors.map(f=>f.id))!==JSON.stringify(next.building?.floors.map(f=>f.id)))validateFloorSupports(projectFloors(next));history.current.record(before,next,true);if(resetDocument)resetSession();return restoreEdit(next); },[restoreEdit,resetSession]);

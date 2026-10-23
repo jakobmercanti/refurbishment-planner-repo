@@ -62,8 +62,8 @@ test("mobile and tablet use a single phase selector; every available phase remai
         "Solver",
       );
       assert.equal(
-        await phase.locator('option[value="thermal"]').textContent(),
-        "Thermal",
+        await phase.locator('option[value="boundaries"]').textContent(),
+        "Bounds",
       );
       const resultOption = phase.locator('option[value="results"]');
       assert.ok(
@@ -78,9 +78,6 @@ test("mobile and tablet use a single phase selector; every available phase remai
         "physics",
         "mesh",
         "review",
-        "view",
-        "thermal",
-        "convergence",
       ]) {
         await phase.selectOption(id);
         assert.equal(await phase.inputValue(), id);
@@ -97,6 +94,20 @@ test("mobile and tablet use a single phase selector; every available phase remai
           `${id} should use the available window height: ${JSON.stringify(box)}`,
         );
         assert.equal(await ui.locator(".floating-toolbar").count(), 1);
+        if (id === "studies") {
+          const row = panel.locator(".cfx-study-row").first();
+          const name = await row.locator("strong").boundingBox();
+          const status = await row.locator(".cfx-study-name small").boundingBox();
+          assert.ok(Math.abs(name.y + name.height / 2 - status.y - status.height / 2) < 2,
+            "Name and status stay inline on compact screens");
+          const actions = await row.locator(".cfx-study-actions > button").evaluateAll((buttons) =>
+            buttons.map((button) => ({ y: button.getBoundingClientRect().y, height: button.getBoundingClientRect().height })));
+          assert.ok(Math.max(...actions.map((b) => b.y)) - Math.min(...actions.map((b) => b.y)) < 1,
+            "Per-study actions share a row on mobile and tablet");
+          assert.ok(actions.every((b) => b.height >= 36 && b.height <= 44));
+          if (process.env.BROWSER_ARTIFACTS)
+            await page.screenshot({ path: `${process.env.BROWSER_ARTIFACTS}/cfd-studies-${theme}-${width}.png` });
+        }
       }
       await phase.selectOption("mesh");
       await ui.getByRole("tab", { name: "Run", exact: true }).click();
@@ -132,7 +143,7 @@ test("mobile and tablet use a single phase selector; every available phase remai
     name: "Climoptix setup",
     exact: true,
   });
-  assert.equal(await tabs.getByRole("tab").count(), 11);
+  assert.equal(await tabs.getByRole("tab").count(), 8);
   assert.equal(
     await tabs
       .getByRole("tab", { name: "Solver", exact: true })
@@ -152,11 +163,12 @@ test("mobile and tablet use a single phase selector; every available phase remai
   await tabs.getByRole("tab", { name: "Solver", exact: true }).press("Home");
   assert.equal(
     await tabs
-      .getByRole("tab", { name: "Studies", exact: true })
+      .getByRole("tab", { name: "Simulations", exact: true })
       .getAttribute("aria-selected"),
     "true",
   );
-  await tabs.getByRole("tab", { name: "Thermal", exact: true }).click();
+  await tabs.getByRole("tab", { name: "Bounds", exact: true }).click();
+  await ui.getByRole("tab", { name: "Thermal", exact: true }).click();
   assert.equal(
     await ui
       .getByRole("combobox", { name: "Thermal step", exact: true })
@@ -190,8 +202,8 @@ test("a narrow resized laptop window switches navigation without losing the sele
   await resize(-350);
   const select = ui.getByRole("combobox", { name: "CFD phase", exact: true });
   await select.waitFor();
-  await select.selectOption("view");
-  await ui.getByRole("button", { name: "Fit view", exact: true }).waitFor();
+  await select.selectOption("domain");
+  await ui.getByRole("combobox", { name: "Seed room", exact: true }).waitFor();
   await resize(350);
   await eventually(
     () => select.isVisible(),
@@ -199,7 +211,7 @@ test("a narrow resized laptop window switches navigation without losing the sele
   );
   assert.equal(
     await ui
-      .getByRole("tab", { name: "View", exact: true })
+      .getByRole("tab", { name: "Domain", exact: true })
       .getAttribute("aria-selected"),
     "true",
   );
@@ -226,7 +238,8 @@ test("landscape touch tablets use selectors; guidance is in contextual help and 
     .waitFor();
   assert.match(await help.innerText(), /Doors and windows stop discovery/);
   await page.keyboard.press("Escape");
-  await phase.selectOption("thermal");
+  await phase.selectOption("boundaries");
+  await ui.getByRole("tab", { name: "Thermal", exact: true }).click();
   const thermal = ui.getByRole("region", {
     name: "Thermal envelope setup",
     exact: true,

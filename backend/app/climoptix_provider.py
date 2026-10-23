@@ -519,10 +519,18 @@ def _resolve_boundaries(
     devices = {f"vent:{v.id}": v for v in scenario.vents}
     assets = {a.objectId: a for a in scenario.assetOverrides}
     powers = {o["id"]: o["heatW"] for o in objects}
+    collections = {pid: group for group in scenario.boundaries.collections if group.id != "all-surfaces" for pid in group.patchIds}
+    default_group = next((g for g in scenario.boundaries.collections if g.id == "all-surfaces"), None)
     for pid, patch in patches.items():
         kind = patch["kind"]
-        bc = scenario.boundaries.patches.get(pid) or scenario.boundaries.groups.get(kind)
-        origin = "patch override" if pid in scenario.boundaries.patches else "group preset" if bc else "sample default"
+        collection = collections.get(pid, default_group)
+        group_bc = (collection.boundary if collection and collection.boundary is not None else
+                    default_group.boundary if default_group else None)
+        bc = scenario.boundaries.patches.get(pid) or group_bc or scenario.boundaries.groups.get(kind)
+        condition_group = collection if collection and collection.boundary is not None else default_group
+        origin = ("patch override" if pid in scenario.boundaries.patches else
+                  f"boundary group: {condition_group.name}" if group_bc and condition_group else
+                  "group preset" if bc else "sample default")
         if kind in ("supply", "extract"):
             vent = devices[pid]
             bc = Boundary.model_validate(
@@ -549,7 +557,7 @@ def _resolve_boundaries(
         if kind == "object":
             asset = assets.get(patch["sourceId"])
             if asset and asset.temperatureK is not None:
-                if pid in scenario.boundaries.patches and bc.thermal.type != "adiabatic":
+                if (pid in scenario.boundaries.patches or group_bc) and bc.thermal.type != "adiabatic":
                     _issue(
                         domain.diagnostics,
                         "error",
@@ -563,7 +571,7 @@ def _resolve_boundaries(
                 origin = "asset temperature"
             heat = powers.get(patch["sourceId"], 0)
             if heat > 0:
-                if pid in scenario.boundaries.patches and bc.thermal.type != "adiabatic":
+                if (pid in scenario.boundaries.patches or group_bc) and bc.thermal.type != "adiabatic":
                     _issue(
                         domain.diagnostics,
                         "error",
@@ -616,6 +624,10 @@ def _resolve_boundaries(
             "Remove the override or reassign it to the current patch.",
             pid,
         )
+    for pid in collections.keys() - patches.keys():
+        _issue(domain.diagnostics, "warning", "boundaries", "orphan-boundary-group",
+               "A grouped surface no longer matches the current geometry.",
+               "Review the boundary group and remove or reassign this surface.", pid)
 
 
 class PreparationOnlyProvider:

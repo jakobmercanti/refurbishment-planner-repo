@@ -24,6 +24,7 @@ import { projectFloors } from "@/lib/buildingDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDPatch, CFDReport, Vec3 } from "@/lib/climoptix";
 import type { CFDScenario, CFDVent } from "@/lib/climoptixDocument";
+import type { BoundaryDisplayGroup } from "@/lib/climoptixGroups";
 import {
   thermalColour,
   type ThermalMetric,
@@ -97,6 +98,8 @@ interface Props {
   thermalMetric?: ThermalMetric;
   thermalSelected?: string | null;
   onThermalSelect?: (id: string) => void;
+  boundaryGroups?: BoundaryDisplayGroup[];
+  boundarySelection?: string;
 }
 function ThermalFaceMesh({
   face,
@@ -146,6 +149,8 @@ function PatchMesh({
   onPointerMove,
   onPointerUp,
   offset,
+  colour,
+  highlighted = false,
 }: {
   patch: CFDViewPatch;
   positions: number[];
@@ -154,6 +159,8 @@ function PatchMesh({
   onPointerMove: (e: ThreeEvent<PointerEvent>) => void;
   onPointerUp: (e: ThreeEvent<PointerEvent>) => void;
   offset?: Vec3;
+  colour?: string;
+  highlighted?: boolean;
 }) {
   const geometry = useMemo(() => {
     const g = new BufferGeometry();
@@ -173,10 +180,10 @@ function PatchMesh({
       onPointerUp={onPointerUp}
     >
       <meshStandardMaterial
-        color={selected ? "#ffcc64" : (COLORS[patch.kind] ?? "#8b9eac")}
+        color={selected ? "#ffcc64" : colour ?? (COLORS[patch.kind] ?? "#8b9eac")}
         side={DoubleSide}
         transparent={!vent && !selected}
-        opacity={vent || selected ? 1 : 0.34}
+        opacity={vent || selected ? 1 : highlighted ? 0.66 : 0.34}
         roughness={0.85}
         depthWrite={vent || selected}
       />
@@ -192,6 +199,7 @@ function VentIntent({
   onMove,
   onUp,
   onCancel,
+  colour,
 }: {
   vent: CFDVent;
   host: CFDPatch;
@@ -201,6 +209,7 @@ function VentIntent({
   onMove: (e: ThreeEvent<PointerEvent>) => void;
   onUp: (e: ThreeEvent<PointerEvent>) => void;
   onCancel: () => void;
+  colour?: string;
 }) {
   const geometry = useMemo(() => {
     const h = host.host!,
@@ -234,7 +243,7 @@ function VentIntent({
         onPointerCancel={onCancel}
       >
         <meshStandardMaterial
-          color={selected ? "#ffcc64" : COLORS[vent.role]}
+          color={selected ? "#ffcc64" : colour ?? COLORS[vent.role]}
           side={DoubleSide}
           roughness={0.8}
         />
@@ -275,6 +284,8 @@ export function ClimoptixViewer({
   thermalMetric = "off",
   thermalSelected = null,
   onThermalSelect,
+  boundaryGroups = [],
+  boundarySelection,
 }: Props) {
   const thermalVisible = thermalMetric !== "off" && thermalSurfaces.length > 0;
   const thermalPatchIds = useMemo(
@@ -384,6 +395,8 @@ export function ClimoptixViewer({
       ? report
       : null;
   const patches = prepared?.patches ?? [];
+  const groupColours = new Map(prepared ? boundaryGroups.flatMap(g => g.patchIds.map(id => [id, g.colour] as const)) : []);
+  const groupSelection = new Set(boundaryGroups.find(g => g.id === boundarySelection)?.patchIds);
   const positions = useMemo(() => patchPositions(prepared), [prepared]);
   const basePositions = useMemo(
     () =>
@@ -579,7 +592,7 @@ export function ClimoptixViewer({
       )}
       {stale && report && (
         <p className="cfx-stale" role="status">
-          Study setup changed · validate to refresh simulation overlays
+          Simulation setup changed · overlays not yet checked
         </p>
       )}
       <div
@@ -588,6 +601,7 @@ export function ClimoptixViewer({
         data-visible-rooms={viewScope.rooms.join(",")}
         data-scope={viewScope.id}
         data-geometry-source={buildingScene ? "validated" : "project-display"}
+        data-boundary-groups={JSON.stringify(boundaryGroups.map(g => ({ id: g.id, colour: g.colour, patchIds: g.patchIds })))}
       >
         {rooms.length > 0 ? (
           <StableCanvas
@@ -612,7 +626,7 @@ export function ClimoptixViewer({
               {displayPatches
                 .filter(
                   (p) =>
-                    (ceilings || p.kind !== "ceiling" || p.id === selected) &&
+                    (ceilings || boundaryGroups.length > 0 || p.kind !== "ceiling" || p.id === selected) &&
                     p.kind !== "supply" &&
                     p.kind !== "extract" &&
                     (!detailed || p.kind !== "object"),
@@ -633,6 +647,8 @@ export function ClimoptixViewer({
                       (p.kind === "object" && p.sourceId === selected)
                     }
                     offset={dragOffset(p.id)}
+                    colour={groupColours.get(p.id)}
+                    highlighted={groupSelection.has(p.id)}
                     onPointerDown={(e) => onMeshDown(e, p)}
                     onPointerMove={onMeshMove}
                     onPointerUp={onMeshUp}
@@ -672,6 +688,7 @@ export function ClimoptixViewer({
                     host={host}
                     selected={selected === marker.id}
                     offset={dragOffset(marker.id)}
+                    colour={groupColours.get(marker.id)}
                     onDown={(e) => onMeshDown(e, marker)}
                     onMove={onMeshMove}
                     onUp={onMeshUp}
@@ -824,6 +841,9 @@ export function ClimoptixViewer({
         )}
       </div>
       <footer>
+        {boundaryGroups.length > 0 && <ul className="cfx-refinement-legend" aria-label="Boundary group colours">
+          {boundaryGroups.map(g => <li key={g.id}><i style={{ background: g.colour }} aria-hidden="true" />{g.name} · {g.patchIds.length}</li>)}
+        </ul>}
         {thermalVisible && (
           <p className="cfx-caption" aria-label="Thermal overlay legend">
             Thermal {thermalMetric} · estimate, not CFD.{" "}

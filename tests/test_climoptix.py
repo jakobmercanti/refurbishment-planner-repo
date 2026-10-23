@@ -105,6 +105,49 @@ def test_study_groups_are_bounded_metadata_and_do_not_invalidate_solver_configur
             Scenario.model_validate({**s.model_dump(mode="json"), "group": invalid})
 
 
+def test_boundary_collections_resolve_physical_conditions_and_reject_duplicate_membership():
+    from geometry.climoptix_models import Boundary, BoundaryCollection
+    p = project()
+    s = scenario(p)
+    baseline = prepare(p, s)
+    walls = [patch for patch in baseline["patches"] if patch["kind"] == "wall"]
+    s.boundaries.collections = [
+        BoundaryCollection(id="all-surfaces", name="Default", boundary=Boundary(flow={"type": "slip"})),
+        BoundaryCollection(id="warm", name="Warm wall", patchIds=[walls[0]["id"]], boundary=Boundary(thermal={"type": "temperature", "value": 300})),
+    ]
+    s.boundaries.patches[walls[1]["id"]] = Boundary(flow={"type": "symmetry"})
+    report = prepare(p, s)
+    patches = {patch["id"]: patch for patch in report["patches"]}
+    assert patches[walls[0]["id"]]["boundary"]["thermal"]["value"] == 300
+    assert patches[walls[0]["id"]]["boundaryOrigin"] == "boundary group: Warm wall"
+    assert patches[walls[1]["id"]]["boundary"]["flow"]["type"] == "symmetry"
+    assert patches[walls[2]["id"]]["boundary"]["flow"]["type"] == "slip"
+    assert report["validation"]["configurationHash"] != baseline["validation"]["configurationHash"]
+    raw = s.model_dump(mode="json")
+    raw["boundaries"]["collections"].append({"id": "dup", "name": "Duplicate", "patchIds": [walls[0]["id"]]})
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(raw)
+    raw["boundaries"]["collections"][-1] = {"id": "duplicate-name", "name": " warm wall ", "patchIds": []}
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(raw)
+
+
+def test_simulation_folders_are_validated_cloud_metadata_not_geometry():
+    p = project()
+    before = building_scene(p)
+    p["cfdSimulationGroups"] = [{"id": "empty", "name": "Empty folder"}]
+    _validate_project(p, UUID(p["projectId"]))
+    assert building_scene(p) == before
+    p["cfdSimulationGroups"].append({"id": "other", "name": "empty folder"})
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        _validate_project(p, UUID(p["projectId"]))
+    p["cfdSimulationGroups"] = [{"id": f"g{i}", "name": f"Folder {i}"} for i in range(100)]
+    p["cfdScenarios"] = [scenario(p).model_dump(mode="json")]
+    with pytest.raises(HTTPException, match="100 simulation groups"):
+        _validate_project(p, UUID(p["projectId"]))
+
+
 def aperture(profile=None, angle=90):
     return {
         "id": "opening",

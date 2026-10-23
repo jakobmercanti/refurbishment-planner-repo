@@ -91,9 +91,36 @@ class Boundary(Contract):
     roughnessM: Nonnegative = 0
 
 
+class SimulationGroup(Contract):
+    id: Id
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def trim_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class BoundaryCollection(SimulationGroup):
+    patchIds: list[PatchId] = Field(default_factory=list, max_length=20000)
+    boundary: Boundary | None = None
+
+
 class Boundaries(Contract):
     groups: dict[PatchKind, Boundary] = Field(default_factory=dict, max_length=11)
     patches: dict[PatchId, Boundary] = Field(default_factory=dict, max_length=10000)
+    collections: list[BoundaryCollection] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_groups(self) -> Self:
+        members = [pid for group in self.collections for pid in group.patchIds]
+        if len(self.collections) == 100 and not any(g.id == "all-surfaces" for g in self.collections):
+            raise ValueError("Boundary groups reserve one of 100 slots for Default surfaces.")
+        if (len({g.id for g in self.collections}) != len(self.collections)
+                or len({g.name.lower() for g in self.collections}) != len(self.collections)
+                or len(set(members)) != len(members) or len(members) > 20000):
+            raise ValueError("Boundary groups require unique IDs, names and surface membership.")
+        return self
 
 
 class Host(Contract):

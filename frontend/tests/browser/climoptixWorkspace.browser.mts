@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { cfdProject } from "../climoptixFixtures";
 import { duplicateCFDScenario } from "../../lib/climoptixDocument";
-import { cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
+import { cfdSettings, cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
 
 let harness;
 before(async () => {
@@ -64,7 +64,7 @@ test("building is immediately rendered from the shared project even when geometr
     });
 });
 
-test("simulation groups persist drag order, selected settings and batch selection without inventing worker jobs", async (t) => {
+test("simulation groups persist drag order and selected settings with compact per-study actions", async (t) => {
   const project = cfdProject(),
     first = project.cfdScenarios![0];
   first.name = "Summer baseline";
@@ -78,28 +78,42 @@ test("simulation groups persist drag order, selected settings and batch selectio
   project.cfdScenarios = [first, second, third];
   const { ui, page, saved } = await open(t, project);
   const originalRooms = JSON.stringify((await saved()).rooms);
-  await ui
-    .getByRole("checkbox", { name: "Queue Summer baseline", exact: true })
-    .check();
-  await ui
-    .getByRole("checkbox", { name: "Queue Winter baseline", exact: true })
-    .check();
-  const batch = ui.getByLabel("Simulation submissions", { exact: true });
-  assert.match(await batch.innerText(), /2 selected/);
-  assert.ok(
-    await batch.getByRole("button", { name: "Mesh", exact: true }).isDisabled(),
-  );
-  assert.ok(
-    await batch.getByRole("button", { name: "Run", exact: true }).isDisabled(),
-  );
+  assert.equal(await ui.getByLabel("Simulation submissions", { exact: true }).count(), 0);
+  assert.equal(await ui.getByRole("checkbox", { name: /^Queue / }).count(), 0);
+  assert.equal(await ui.getByRole("heading", { name: "Studies", exact: true }).count(), 0);
+  assert.equal(await ui.getByText("Preparation only · solver not connected", { exact: true }).count(), 0);
+  for (const name of [first.name, second.name, third.name]) {
+    assert.ok(await ui.getByRole("button", { name: `Mesh ${name}`, exact: true }).isDisabled());
+    assert.ok(await ui.getByRole("button", { name: `Run ${name}`, exact: true }).isDisabled());
+    const row = ui.locator(".cfx-study-row").filter({ has: page.getByRole("button", { name: `Select ${name}`, exact: true }) });
+    const box = await row.boundingBox();
+    const nameBox = await row.locator("strong").boundingBox();
+    const statusBox = await row.locator(".cfx-study-name small").boundingBox();
+    const meshBox = await row.getByRole("button", { name: `Mesh ${name}`, exact: true }).boundingBox();
+    assert.ok(box.height <= 52, `Study rows should be compact: ${JSON.stringify(box)}`);
+    assert.ok(Math.abs(nameBox.y + nameBox.height / 2 - statusBox.y - statusBox.height / 2) < 2, "Name and status share a row");
+    assert.ok(Math.abs(meshBox.y + meshBox.height / 2 - nameBox.y - nameBox.height / 2) < 2, "Study actions share the row on a laptop");
+  }
+  const header = ui.locator(".cfx-study-select");
+  const inlineLabel = await header.evaluate((label) => {
+    const range = document.createRange();
+    range.selectNodeContents(label.firstChild!);
+    const text = range.getBoundingClientRect(), select = label.querySelector("select")!.getBoundingClientRect();
+    return { textY: text.y + text.height / 2, selectY: select.y + select.height / 2, height: label.getBoundingClientRect().height };
+  });
+  assert.ok(Math.abs(inlineLabel.textY - inlineLabel.selectY) < 2, "Study label and selector share a row");
+  assert.ok(inlineLabel.height < 60);
+  if (process.env.BROWSER_ARTIFACTS)
+    await page.screenshot({ path: `${process.env.BROWSER_ARTIFACTS}/cfd-studies-laptop.png` });
   assert.equal(
     await ui
       .getByRole("progressbar", {
         name: "Summer baseline phase progress",
         exact: true,
       })
-      .getAttribute("aria-valuenow"),
-    null,
+      .count(),
+    0,
+    "Unsubmitted studies do not have empty progress bars",
   );
   await ui
     .getByRole("button", { name: "Reorder Summer high flow", exact: true })
@@ -124,7 +138,7 @@ test("simulation groups persist drag order, selected settings and batch selectio
   await ui
     .getByRole("button", { name: "Select Summer high flow", exact: true })
     .click();
-  await cfdWindow(ui, "Simulation");
+  await cfdWindow(ui, "Domain");
   assert.equal(
     await ui
       .getByRole("spinbutton", { name: "Base Cell (mm)", exact: true })
@@ -141,9 +155,11 @@ test("simulation groups persist drag order, selected settings and batch selectio
     "200",
   );
   await cfdWindow(ui, "Studies");
-  await ui
-    .getByRole("textbox", { name: "Simulation group", exact: true })
-    .fill("Autumn");
+  await ui.getByRole("button", { name: "Add group", exact: true }).click();
+  const groupName = ui.getByRole("textbox", { name: "Rename group Group", exact: true });
+  await groupName.fill("Autumn"); await groupName.press("Enter");
+  await ui.getByLabel("Actions for Summer baseline", { exact: true }).click();
+  await ui.getByRole("combobox", { name: "Move Summer baseline to group", exact: true }).selectOption({ label: "Autumn" });
   await eventually(saved, (p) =>
     p.cfdScenarios?.some((s) => s.id === first.id && s.group === "Autumn"),
   );
@@ -152,7 +168,7 @@ test("simulation groups persist drag order, selected settings and batch selectio
     .click();
   await page
     .getByRole("dialog", { name: "Delete CFD scenario", exact: true })
-    .getByRole("button", { name: "Delete study", exact: true })
+    .getByRole("button", { name: "Delete simulation", exact: true })
     .click();
   await eventually(saved, (p) => p.cfdScenarios?.length === 2);
   assert.equal(
@@ -171,6 +187,62 @@ test("simulation groups persist drag order, selected settings and batch selectio
     .waitFor();
   assert.equal(JSON.stringify((await saved()).rooms), originalRooms);
   assert.equal(await ui.locator(".floating-toolbar").count(), 1);
+});
+
+test("global mesh settings belong to Domain, persist per study and are absent from Solver", async (t) => {
+  const project = cfdProject(), first = project.cfdScenarios![0];
+  const second = duplicateCFDScenario(first);
+  second.name = "Alternative mesh";
+  second.mesh.baseCellMm = 300;
+  project.cfdScenarios!.push(second);
+  const { ui, page, saved } = await open(t, project);
+  const source = JSON.stringify((await saved()).rooms);
+  await cfdWindow(ui, "Domain");
+  const domain = ui.locator("#cfx-setup-panel-domain");
+  const settings = [
+    ["Base Cell (mm)", "baseCellMm", 240],
+    ["Min Cell (mm)", "minCellMm", 30],
+    ["Max Cell (mm)", "maxCellMm", 480],
+    ["Target cell count", "targetCells", 600000],
+    ["Maximum cell budget", "maxCells", 2500000],
+  ] as const;
+  const preset = domain.getByRole("combobox", { name: "Mesh intent preset", exact: true });
+  await preset.selectOption("Draft");
+  await preset.selectOption("Custom");
+  for (const [label, key, value] of settings) {
+    const input = domain.getByRole("spinbutton", { name: label, exact: true });
+    await input.fill(String(value));
+    await input.press("Enter");
+    await eventually(saved, (p) => p.cfdScenarios[0].mesh[key] === value);
+  }
+  await cfdWindow(ui, "Simulation");
+  const solver = ui.locator("#cfx-setup-panel-mesh");
+  assert.equal(await solver.getByLabel("Mesh intent preset", { exact: true }).count(), 0);
+  for (const [label] of settings)
+    assert.equal(await solver.getByLabel(label, { exact: true }).count(), 0);
+  assert.ok(await solver.getByRole("button", { name: "Add refinement region", exact: true }).isVisible());
+  await ui.getByRole("combobox", { name: "CFD scenario", exact: true }).selectOption(second.id);
+  await cfdWindow(ui, "Domain");
+  assert.equal(await domain.getByRole("spinbutton", { name: "Base Cell (mm)", exact: true }).inputValue(), "300");
+  await ui.getByRole("combobox", { name: "CFD scenario", exact: true }).selectOption(first.id);
+  for (const [label, , value] of settings)
+    assert.equal(await domain.getByRole("spinbutton", { name: label, exact: true }).inputValue(), String(value));
+  if (process.env.BROWSER_ARTIFACTS)
+    await page.screenshot({ path: `${process.env.BROWSER_ARTIFACTS}/cfd-domain-mesh-laptop.png` });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await ui.getByRole("combobox", { name: "CFD phase", exact: true }).selectOption("domain");
+  assert.equal(await domain.evaluate((node) => node.scrollWidth > node.clientWidth + 2), false);
+  for (const [label] of settings)
+    assert.ok(await domain.getByRole("spinbutton", { name: label, exact: true }).isVisible());
+  if (process.env.BROWSER_ARTIFACTS)
+    await page.screenshot({ path: `${process.env.BROWSER_ARTIFACTS}/cfd-domain-mesh-mobile-dark.png` });
+  await page.reload();
+  await page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("CLIMOPTIX");
+  await ui.getByRole("combobox", { name: "CFD phase", exact: true }).selectOption("domain");
+  for (const [label, , value] of settings)
+    assert.equal(await domain.getByRole("spinbutton", { name: label, exact: true }).inputValue(), String(value));
+  assert.equal(JSON.stringify((await saved()).rooms), source);
 });
 
 test("refinements have independent floating editors and layer-style keyboard and drag reordering", async (t) => {
@@ -268,7 +340,7 @@ async function hideAll(page) {
 for (const passage of [true, false])
   test(`3D-only full workspace browses ${passage ? "a permanent passage volume" : "door-separated air volumes"} without editing the study`, async (t) => {
     const { page, ui, saved } = await open(t, cfdProject(passage));
-    const before = JSON.stringify((await saved()).cfdScenarios);
+    const before = cfdSettings(await saved());
     const selector = ui.getByRole("combobox", {
       name: "CFD view scope",
       exact: true,
@@ -313,7 +385,7 @@ for (const passage of [true, false])
       Math.abs(workspace.width - canvas.width) < 2 &&
         Math.abs(workspace.height - canvas.height) < 2,
     );
-    assert.equal(JSON.stringify((await saved()).cfdScenarios), before);
+    assert.equal(cfdSettings(await saved()), before);
     if (process.env.BROWSER_ARTIFACTS)
       await page.screenshot({
         path: `${process.env.BROWSER_ARTIFACTS}/cfd-full-3d-${passage}.png`,
@@ -379,7 +451,7 @@ test("one native setup window contains equal-width tabs, moves and resizes, and 
     exact: true,
   });
   await context
-    .getByRole("menuitem", { name: "Simulation", exact: true })
+    .getByRole("menuitem", { name: "Solver", exact: true })
     .click();
   assert.ok(await panel.isVisible());
   await cfdWindow(ui, "Convergence monitor");
@@ -447,7 +519,7 @@ test("one native setup window contains equal-width tabs, moves and resizes, and 
       );
     } else {
       assert.equal(await compact.isVisible(), false);
-      assert.equal(widths.length, 11);
+      assert.equal(widths.length, 8);
       assert.ok(Math.max(...widths) - Math.min(...widths) < 1);
     }
     if (process.env.BROWSER_ARTIFACTS)
@@ -464,7 +536,7 @@ test("the building remains visible before the first study, and geometry failure 
   const { page, context, ui } = await open(t, project);
   assert.ok(
     await ui
-      .getByRole("button", { name: "Create first study", exact: true })
+      .getByRole("button", { name: "Create first simulation", exact: true })
       .isVisible(),
   );
   await hideAll(page);
@@ -477,7 +549,7 @@ test("the building remains visible before the first study, and geometry failure 
   await page.keyboard.press("Escape");
   await cfdWindow(ui, "Studies");
   await ui
-    .getByRole("button", { name: "Create first study", exact: true })
+    .getByRole("button", { name: "Create first simulation", exact: true })
     .click();
   assert.ok(
     await page.getByLabel("Move Simulation setup", { exact: true }).isVisible(),

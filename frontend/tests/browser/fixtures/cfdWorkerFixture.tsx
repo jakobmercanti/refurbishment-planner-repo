@@ -76,6 +76,7 @@ function Fixture() {
   );
   const scenarios = project.cfdScenarios!;
   const [selectedId, setSelectedId] = useState(scenarios[0].id);
+  const [showArchived, setShowArchived] = useState(false);
   useLayoutEffect(() => {
     scope.cfdFixture = {
       transport,
@@ -106,8 +107,8 @@ function Fixture() {
       project={project}
       scenarios={scenarios}
       scenario={scenarios.find((s) => s.id === selectedId)}
-      showArchived={false}
-      onShowArchived={() => {}}
+      showArchived={showArchived}
+      onShowArchived={setShowArchived}
       onSelect={setSelectedId}
       onChange={(next) =>
         setProject((p) => ({
@@ -117,12 +118,10 @@ function Fixture() {
           ),
         }))
       }
-      onOrder={(next) => setProject((p) => ({ ...p, cfdScenarios: next }))}
+      onOrder={(next, groups) => setProject((p) => ({ ...p, cfdScenarios: next, ...(groups ? { cfdSimulationGroups: groups } : {}) }))}
       onAdd={() => {}}
-      onDuplicate={() => {}}
       onDelete={() => {}}
       onImport={() => {}}
-      onConvergence={() => {}}
       entries={entries}
       worker={adapter}
       onSubmit={(op, studies) => void submit(op, studies)}

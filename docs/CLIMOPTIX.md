@@ -39,7 +39,7 @@ catalogue/people proxy recipes remain authoritative.
 
 1. Draw or open a building in Floorplan. Select **Workspace → Climoptix CFD**.
 2. Open **Toolbar → Studies** to create/name a study, and **Domain** to select
-   its seed floor and room. Studies can be
+   its seed floor and room, mesh preset, cell sizes and cell-count limits. Studies can be
    duplicated, archived, deleted with confirmation, imported and restored by Undo.
 3. Select **Validate & refresh** to discover the connected air region and prepare
    its tagged boundary. Inspect included/excluded rooms and the connectivity list.
@@ -60,7 +60,9 @@ catalogue/people proxy recipes remain authoritative.
 6. In Boundaries, set group conditions, search/select coloured patches and apply
    overrides. Vent conditions come from their devices. Removed host references
    are reported, not silently retargeted; stale overrides can be removed.
-7. Configure Physics, then **Simulation → Mesh / Run / Post-processing**. Temperatures are K; pressure is Pa; velocity
+7. Configure global mesh settings in **Domain**, then Physics and
+   **Solver → Mesh / Run / Post-processing** for local refinements, run controls
+   and output slices. Temperatures are K; pressure is Pa; velocity
    is m/s. Volume-flow display offers L/s, m³/h and m³/s. CO₂ concentration is ppm
    by volume (1 ppm = 10⁻⁶ fraction); object emissions are pure-CO₂ m³/s, not ppm/s.
    For example, 293.15 K is 20 °C. Presets are illustrative, not certified inputs.
@@ -279,9 +281,11 @@ The top-right selector contains Floorplan, PlannerBuild and Climoptix CFD, in
 that order. They share the same saved building; Climoptix retains its independent
 study and setup controls when switching between all three workspaces.
 
-**Simulation** contains three keyboard-accessible tabs:
+**Domain** contains the global mesh preset, cell sizes and cell-count budgets
+alongside the seed floor and room. Settings remain study-specific and retain the
+same export contract. **Solver** contains three keyboard-accessible tabs:
 
-- **Mesh:** global cell sizes and budgets plus an insulation-style list of local
+- **Mesh:** an insulation-style list of local
   regions. Cuboids use measured millimetre dimensions. Levels 0–10 have a stable
   palette, shared between the list, 2D footprint and 3D wireframe. Explicit levels
   take precedence over the retained legacy `cellMm` field. Selecting a finer
@@ -644,6 +648,14 @@ The group label is omitted from preparation-service requests for compatibility
 with existing preparation-only servers. Active worker jobs cannot be archived or
 deleted through the study controls.
 
+The desktop Study label and selector share a single row. Studies has no repeated
+heading, connection badge or batch-selection strip. Each compact simulation row
+shows its name and status inline, with Mesh, Run and Delete beside them (a second
+action row in narrow/docked layouts). Mesh/Run act on that row without changing
+the active study. Drafts do not show an empty progress bar; real worker progress
+and errors remain visible. Contextual help explains worker availability and
+submission recovery.
+
 Mesh refinements use the same insertion-boundary drag pattern. Rows contain an
 explicit Edit button, Duplicate and Delete, with no old move-up button or inline
 editor/region selector. Edit opens a separate native floating window containing
@@ -664,9 +676,9 @@ submitted; no request, job, elapsed-time estimate or progress is invented.
 - `submit(request, signal)` accepts an immutable `CFDSubmission`: operation,
   study ID, client revision, source/configuration hashes, measured project in
   **millimetres**, and the full study settings (including resources and slices).
-  Each selected study passes real preflight independently before submission;
+  Each submitted study passes real preflight independently before submission;
   changed/archived/deleted studies are rejected before worker dispatch. One
-  failure does not stop the remaining batch. CPU/memory/time/storage limits must
+  failure does not stop other studies. CPU/memory/time/storage limits must
   be independently enforced by the worker, not trusted from browser validation.
 - `status(jobId, signal)` returns the bounded job shape validated by
   `workerJobSchema`: matching ID/study/revision, phase, optional current-phase
@@ -685,7 +697,7 @@ submitted; no request, job, elapsed-time estimate or progress is invented.
   idempotent submission, resource enforcement and end-to-end worker tests.
 
 Regressions cover 404/offline display and retry, canonical-only air volumes,
-simulation grouping/order/portable persistence, batch disconnected state, field
+simulation grouping/order/portable persistence, per-study disconnected state, field
 isolation, refinement editor/drag operations, dark/compact layouts, real log/VTK
 imports, delayed operations, numerical contracts and immutable worker handoffs.
 Validation evidence is saved as `.local-logs/cfd-tabbed-*`.
@@ -786,3 +798,62 @@ the final light/dark/compact matrix. Production export, TypeScript, ESLint,
 source reachability (372 modules, no orphans) and whitespace checks passed.
 Screenshots were reviewed for docked Floorplan/CFD, compact dark/Modern layouts
 and the construction editor. Evidence: `.local-logs/window-docking-*`.
+
+## Compact simulation workflow — 23 October 2026
+
+The setup phases are now Simulations, Domain, Objects, Bounds, Physics, Solver,
+Export and Results. Desktop uses equal-width tabs; narrow windows and touch
+tablets use one Phase selector, including Simulations. View properties remains a
+separate floating/dockable viewer window. Bounds contains Conditions and Thermal;
+Solver contains Mesh, Run, Monitor and Post. Instructions live in contextual help.
+The former status/validation footer, standalone View/Thermal/Monitor phases and
+bottom name/group form are removed. Current preparation diagnostics remain in
+Export; failed requests have a compact retry alert. Checks run after committed
+changes, cancel obsolete requests and never apply a stale response. Toolbar →
+Refresh checks is the manual retry.
+
+Simulations have persistent, independently ordered folders, including empty ones.
+Add, rename, duplicate or delete a folder from its header; deleting a folder moves
+its simulations to Ungrouped rather than deleting them. Per-simulation actions
+provide equal-width Mesh/Run/Delete and a menu for rename, duplicate, archive and
+Move to group. Only grips initiate reordering: same-session scoped transfers,
+insertion previews, movement thresholds for touch/pen, Escape cancellation and
+Arrow Up/Down prevent accidental or foreign drops. Folder metadata is retained
+in local/portable/cloud projects but omitted from physical worker snapshots.
+The project limit is 100 simulations and 100 folders, including derived legacy
+group labels. Group duplication respects both limits atomically.
+
+Supply/Extract devices are an ordered equipment list with Edit/Duplicate/Delete
+and an independent floating/dockable parameter editor. Building objects and
+occupants continue to come from the authoritative Floorplan source, with
+simulation-specific CFD overrides; equipment edits never duplicate or change
+measured geometry. Domain places seed selectors together where space permits
+and owns global cell sizes, presets and budgets. Physics uses adaptive two/three
+column forms. Long surface lists scroll within their groups.
+
+Bounds initially shows a catch-all Default surfaces group. Create groups and
+move checked surfaces by grip or the surface menu. Group colours and selected
+members are displayed in the 3D viewer. Saved collections carry actual physical
+conditions: patch override → named-group condition → default-group condition →
+legacy type preset → physical default/suggestion. Null conditions inherit the
+default base. Default-group patch IDs are display ordering only. Vents remain
+device-controlled; conflicting object thermal inputs and missing group references
+produce diagnostics. The UI offers explicit cleanup of unavailable references.
+Boundary collections reserve one of their 100 slots for the catch-all group;
+cleanup is disabled until the current preparation has completed.
+
+No solver has been connected by this change. Worker preflight, idempotency,
+resource guards and provenance are retained; mock-worker tests verify the
+integration boundary, not OpenFOAM execution. Release evidence is under
+`.local-logs/cfd-ui-v2-*`.
+
+Release verification: 645 backend, 572 frontend unit and 19 project-persistence
+tests passed, along with the production build, TypeScript, ESLint/source usage
+(375 modules, no orphans) and whitespace checks. The 67-workflow CFD/thermal/
+docking browser sweep exposed obsolete selectors for removed navigation and
+the new grouped lists. All failed workflows were migrated and rechecked, with
+additional coverage for scoped touch/mouse drops, folder and boundary Undo/Redo,
+equipment-editor focus return, group conditions through real preparation and
+compact convergence plots. Desktop/mobile screenshots were inspected. The
+dedicated Bugbot runtime was unavailable in this session; the source audit was
+performed manually. No real OpenFOAM execution was performed.

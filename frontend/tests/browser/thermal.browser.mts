@@ -47,8 +47,8 @@ async function open(session) {
     .selectOption("CLIMOPTIX");
   await cfdWindow(session.page, "Boundaries");
   await session.page
-    .getByRole("button", {
-      name: "Thermal Envelope & Solar Conditions",
+    .getByRole("tab", {
+      name: "Thermal",
       exact: true,
     })
     .click();
@@ -267,8 +267,8 @@ test("thermal workflow calculates real balance, saves immutable Apply, exports J
     .selectOption("CLIMOPTIX");
   await cfdWindow(s.page, "Boundaries");
   await s.page
-    .getByRole("button", {
-      name: "Thermal Envelope & Solar Conditions",
+    .getByRole("tab", {
+      name: "Thermal",
       exact: true,
     })
     .click();

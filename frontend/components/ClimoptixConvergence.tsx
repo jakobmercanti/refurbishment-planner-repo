@@ -104,10 +104,12 @@ export function ClimoptixConvergence({
   state = EMPTY_LOG,
   onImport,
   onClear,
+  name,
 }: {
   state?: ConvergenceLog;
   onImport: (file: File) => void;
   onClear: () => void;
+  name?: string;
 }) {
   const { series, maxIteration } = useMemo(() => {
     const grouped = new Map<string, ResidualSample[]>();
@@ -125,7 +127,7 @@ export function ClimoptixConvergence({
       className="cfx-convergence"
       aria-label="Imported convergence history"
     >
-      <h3>Convergence · initial residuals</h3>
+      <h3>Convergence{name ? ` · ${name}` : ""} · initial residuals</h3>
       <p className="cfx-caption">External log · unverified · session only</p>
       <label className="cfx-file">
         {state.reading ? "Reading solver log…" : "Import solver log"}

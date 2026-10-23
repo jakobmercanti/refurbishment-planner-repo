@@ -293,7 +293,7 @@ export function ClimoptixVTKViewer({
         <button onClick={onClose}>Back to geometry</button>
       </header>
       <p className="cfx-stale">
-        External file · study provenance and physical units unverified
+        External file · simulation provenance and physical units unverified
       </p>
       <div className="cfx-inline cfx-vtk-toolbar">
         <label>

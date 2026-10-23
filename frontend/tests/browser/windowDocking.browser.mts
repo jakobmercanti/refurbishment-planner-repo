@@ -213,8 +213,13 @@ test("dark/light compact screens suspend docks safely, restore them on resize, a
         assert.equal(await ui.getByRole("combobox", { name: "CFD scenario", exact: true }).count(), 0);
         assert.ok(await ui.getByRole("combobox", { name: "CFD phase", exact: true }).isVisible());
       } else {
-        const name = await ui.locator(".cfx-study-name strong").first().boundingBox();
-        assert.ok(name.width > 100 && name.height < 80, JSON.stringify(name));
+        const name = ui.locator(".cfx-study-name strong").first();
+        const metrics = await name.evaluate(element => ({
+          height: element.getBoundingClientRect().height,
+          width: element.clientWidth,
+          contentWidth: element.scrollWidth,
+        }));
+        assert.ok(metrics.height < 28 && metrics.width >= metrics.contentWidth, JSON.stringify(metrics));
       }
       const box = await window.boundingBox();
       assert.ok(box.x >= -1 && box.x + box.width <= width + 1);

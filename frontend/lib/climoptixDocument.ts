@@ -84,6 +84,22 @@ export const boundarySchema = z
   .strict()
   .prefault({});
 export type CFDBoundary = z.infer<typeof boundarySchema>;
+export const boundaryCollectionSchema = z.object({
+  id,
+  name: z.string().trim().min(1).max(80),
+  patchIds: z.array(patchId).max(20000).default([]),
+  boundary: boundarySchema.nullable().default(null),
+}).strict();
+export type CFDBoundaryCollection = z.infer<typeof boundaryCollectionSchema>;
+export const simulationGroupsSchema = z.array(z.object({
+  id,
+  name: z.string().trim().min(1).max(80),
+}).strict()).max(100).superRefine((groups, ctx) => {
+  if (new Set(groups.map(g => g.id)).size !== groups.length ||
+      new Set(groups.map(g => g.name.toLowerCase())).size !== groups.length)
+    ctx.addIssue({ code: "custom", message: "Simulation group IDs and names must be unique." });
+});
+export type CFDSimulationGroup = z.infer<typeof simulationGroupsSchema>[number];
 const ventOptimization = z
   .object({
     locked: z.boolean().default(true),
@@ -404,6 +420,7 @@ export const cfdScenarioSchema = z
         groups: z
           .partialRecord(z.enum(PATCH_KINDS), boundarySchema)
           .default({}),
+        collections: z.array(boundaryCollectionSchema).max(100).default([]),
         patches: z
           .record(patchId, boundarySchema)
           .refine((v) => Object.keys(v).length <= 10000)
@@ -432,6 +449,14 @@ export const cfdScenarioSchema = z
   })
   .strict()
   .superRefine((s, c) => {
+    const collections = s.boundaries.collections;
+    const members = collections.flatMap(g => g.patchIds);
+    if (new Set(collections.map(g => g.id)).size !== collections.length ||
+        new Set(collections.map(g => g.name.toLowerCase())).size !== collections.length ||
+        new Set(members).size !== members.length || members.length > 20000)
+      c.addIssue({ code: "custom", message: "Boundary groups require unique IDs, names and surface membership." });
+    if (collections.length === 100 && !collections.some(g => g.id === "all-surfaces"))
+      c.addIssue({ code: "custom", message: "Boundary groups reserve one of 100 slots for Default surfaces." });
     if (
       new Set(s.vents.map((v) => v.id)).size !== s.vents.length ||
       new Set(s.assetOverrides.map((v) => v.objectId)).size !==

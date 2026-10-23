@@ -19,7 +19,7 @@ function editKey(p: ProjectDocument) {
   }));
   // Schema parsing and editor hydration can insert identical fields in a
   // different order. Compare object contents, while retaining array order.
-  return JSON.stringify([floors,buildingOf(p).roof,p.cfdScenarios?.map(s=>({...s,validation:undefined,updatedAt:undefined}))??[]],(_key,value:unknown)=>
+  return JSON.stringify([floors,buildingOf(p).roof,p.cfdScenarios?.map(s=>({...s,validation:undefined,updatedAt:undefined}))??[],p.cfdSimulationGroups??[]],(_key,value:unknown)=>
     value&&typeof value==="object"&&!Array.isArray(value)
       ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0))
       :value);

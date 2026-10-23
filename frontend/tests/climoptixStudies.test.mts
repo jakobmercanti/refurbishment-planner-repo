@@ -230,10 +230,8 @@ test("study rows show only the worker's current-phase progress, never a syntheti
     onChange() {},
     onOrder() {},
     onAdd() {},
-    onDuplicate() {},
     onDelete() {},
     onImport() {},
-    onConvergence() {},
     onSubmit() {},
     onUndo() {},
     onRedo() {},
@@ -274,6 +272,15 @@ test("study rows show only the worker's current-phase progress, never a syntheti
   assert.doesNotMatch(complete, /aria-valuenow=/);
   assert.match(complete, /progress not reported/);
   assert.doesNotMatch(complete, /awaiting phase progress/);
+
+  props.entries = {};
+  props.worker = null;
+  const draft = renderToStaticMarkup(createElement(ClimoptixStudies, props));
+  assert.doesNotMatch(draft, /role="progressbar"|cfx-batch|cfx-study-heading/);
+  assert.doesNotMatch(draft, /Preparation only|Select for batch/);
+  assert.match(draft, /aria-label="Mesh Office airflow" disabled=""/);
+  assert.match(draft, /aria-label="Run Office airflow" disabled=""/);
+  assert.match(draft, new RegExp(`aria-describedby="cfx-study-status-${scenario.id}"`));
 });
 
 test("worker submissions pin inputs before awaiting preflight and fail closed on non-exportable geometry", async () => {

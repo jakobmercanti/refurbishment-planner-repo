@@ -60,7 +60,50 @@ async function fixture(t, project = cfdProject(), prepare?) {
   return session;
 }
 
-test("connected worker batches are reserved atomically, preserve handoff settings and show only checked real progress", async (t) => {
+test("row Mesh/Run actions submit the correct study independently and block archived or disconnected studies", async (t) => {
+  const project = cfdProject(),
+    first = project.cfdScenarios![0],
+    second = duplicateCFDScenario(first),
+    archived = duplicateCFDScenario(first);
+  second.name = "Alternative";
+  second.resources.cpu = 8;
+  archived.name = "Archived study";
+  archived.archived = true;
+  project.cfdScenarios!.push(second, archived);
+  const { page } = await fixture(t, project);
+  assert.equal(await page.getByRole("progressbar").count(), 0);
+  await page.getByRole("button", { name: "Mesh Office airflow", exact: true }).click();
+  await page.getByRole("button", { name: "Run Alternative", exact: true }).click();
+  const requests = await eventually(
+    () => page.evaluate(() => window.cfdFixture.transport.submissions),
+    (s) => s.length === 2,
+  );
+  assert.equal(requests.find((r) => r.studyId === first.id).operation, "mesh");
+  assert.equal(requests.find((r) => r.studyId === second.id).operation, "run");
+  assert.equal(requests.find((r) => r.studyId === second.id).scenario.resources.cpu, 8);
+  assert.equal(await page.getByRole("button", { name: `Select ${first.name}`, exact: true }).getAttribute("aria-pressed"), "true",
+    "Submitting another row must not switch the selected study");
+  for (const name of [first.name, second.name]) {
+    for (const action of ["Mesh", "Run", "Delete"])
+      assert.ok(await page.getByRole("button", { name: `${action} ${name}`, exact: true }).isDisabled());
+    assert.equal(await page.getByRole("progressbar", { name: `${name} phase progress`, exact: true }).getAttribute("aria-valuenow"), null);
+  }
+  await page.getByRole("checkbox", { name: "Archived", exact: true }).check();
+  for (const action of ["Mesh", "Run"])
+    assert.ok(await page.getByRole("button", { name: `${action} ${archived.name}`, exact: true }).isDisabled());
+  await page.evaluate(() => {
+    for (const job of Object.values(window.cfdFixture.transport.jobs)) job.phase = "Completed";
+  });
+  await eventually(() => page.getByRole("button", { name: "Run Alternative", exact: true }).isEnabled(), Boolean);
+  await page.evaluate(() => window.cfdFixture.connect(false));
+  for (const name of [first.name, second.name]) {
+    for (const action of ["Mesh", "Run"])
+      assert.ok(await page.getByRole("button", { name: `${action} ${name}`, exact: true }).isDisabled());
+  }
+  assert.equal((await page.evaluate(() => window.cfdFixture.transport.submissions)).length, 2);
+});
+
+test("worker batch reservations remain atomic, preserve handoff settings and show only checked real progress", async (t) => {
   const project = cfdProject(),
     first = project.cfdScenarios![0],
     second = duplicateCFDScenario(first);
@@ -230,16 +273,16 @@ test("ambiguous submission retries reuse their ID, status failures retain the jo
       .getByRole("button", { name: "Delete Office airflow" })
       .isDisabled(),
   );
+  assert.ok(await page.getByRole("button", { name: "Mesh Office airflow", exact: true }).isDisabled());
+  assert.ok(await page.getByRole("button", { name: "Run Office airflow", exact: true }).isEnabled());
   await page.evaluate((id) => window.cfdFixture.submit([id], "mesh"), id);
   await page
     .getByRole("alert")
     .filter({ hasText: "Recover the previous run submission" })
     .waitFor();
   await page.evaluate((id) => window.cfdFixture.editCpu(id, 12), id);
-  await page.evaluate((id) => {
-    window.cfdFixture.transport.failSubmit = false;
-    window.cfdFixture.submit([id]);
-  }, id);
+  await page.evaluate(() => { window.cfdFixture.transport.failSubmit = false; });
+  await page.getByRole("button", { name: "Run Office airflow", exact: true }).click();
   const requests = await eventually(
     () => page.evaluate(() => window.cfdFixture.transport.submissions),
     (s) => s.length === 2,
@@ -320,8 +363,11 @@ test("connection replacement and unmount abort pending submissions without leavi
     window.cfdFixture.transport.holdSubmit = false;
     window.cfdFixture.connect(true);
   });
-  await page.getByText("Worker connected", { exact: true }).waitFor();
-  await page.evaluate((id) => window.cfdFixture.submit([id]), id);
+  await eventually(
+    () => page.getByRole("button", { name: "Run Office airflow", exact: true }).isEnabled(),
+    Boolean,
+  );
+  await page.getByRole("button", { name: "Run Office airflow", exact: true }).click();
   await eventually(
     () => page.evaluate(() => window.cfdFixture.transport.submissions.length),
     (n) => n === 2,

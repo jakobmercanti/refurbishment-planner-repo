@@ -2,6 +2,7 @@
 
 import { CFDReorderList } from "./CFDReorderList";
 import { insertAtBoundary } from "@/lib/climoptixStudies";
+import { boundaryGroups, boundaryMembers, BOUNDARY_COLOURS, DEFAULT_BOUNDARY_GROUP, effectiveBoundary, moveBoundary, uniqueGroupName } from "@/lib/climoptixGroups";
 import { useState } from "react";
 import {
   assetOverrideSchema,
@@ -102,9 +103,7 @@ export function CFDText({
           setDraft(e.target.value);
           if (e.target.value.trim()) onChange(e.target.value);
         }}
-        onBlur={() => {
-          if (!draft.trim()) setDraft(value);
-        }}
+        onBlur={() => setDraft(value)}
       />
     </label>
   );
@@ -367,6 +366,7 @@ export function DomainPanel({
     floor = floors.find((f) => f.id === scenario.seed?.floorId) ?? floors[0];
   return (
     <>
+      <div className="cfx-grid cfx-domain-seed">
       <label>
         Seed floor
         <select
@@ -411,9 +411,12 @@ export function DomainPanel({
           ))}
         </select>
       </label>
+      </div>
       {!floor.content.rooms.length && (
         <p className="cfx-notice">No measured enclosed rooms on this floor.</p>
       )}
+      <h3>Mesh settings</h3>
+      <MeshSettings scenario={scenario} onChange={onChange} />
       {report && (
         <>
           <div className="cfx-metrics">
@@ -493,6 +496,8 @@ export function EquipmentPanel({
   onChange,
   onPick,
   onEditSource,
+  onEditVent,
+  editor = false,
 }: {
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -501,6 +506,8 @@ export function EquipmentPanel({
   onChange: (s: CFDScenario) => void;
   onPick: (role: "supply" | "extract") => void;
   onEditSource: () => void;
+  onEditVent?: (id: string) => void;
+  editor?: boolean;
 }) {
   const [flowUnit, setFlowUnit] = useState("L/s");
   const selectedObjectId =
@@ -516,7 +523,7 @@ export function EquipmentPanel({
       vents: scenario.vents.map((a) => (a.id === v.id ? v : a)),
     });
   const add = (role: "supply" | "extract") => {
-    if (!hosts.length) return;
+    if (!hosts.length || scenario.vents.length >= 500) return;
     const v = ventSchema.parse({
       id: crypto.randomUUID(),
       name: role === "supply" ? "Supply vent" : "Extract vent",
@@ -525,42 +532,45 @@ export function EquipmentPanel({
     });
     onChange({ ...scenario, vents: [...scenario.vents, v] });
     onSelect(`vent:${v.id}`);
+    onEditVent?.(v.id);
   };
   const derived = report?.vents.find((v) => v.id === vent?.id);
   const flowFactor = flowUnit === "L/s" ? 1000 : flowUnit === "m³/h" ? 3600 : 1;
   return (
     <>
+      {!editor && <>
       <div className="cfx-actions">
-        <button disabled={!hosts.length} onClick={() => add("supply")}>
+        <button disabled={!hosts.length || scenario.vents.length >= 500} onClick={() => add("supply")}>
           + Supply
         </button>
-        <button disabled={!hosts.length} onClick={() => add("extract")}>
+        <button disabled={!hosts.length || scenario.vents.length >= 500} onClick={() => add("extract")}>
           + Extract
         </button>
-        <button disabled={!hosts.length} onClick={() => onPick("supply")}>
+        <button disabled={!hosts.length || scenario.vents.length >= 500} onClick={() => onPick("supply")}>
           Place on face…
         </button>
       </div>
       {!hosts.length && (
         <p className="cfx-notice">No validated vent hosts available.</p>
       )}
-      {!!scenario.vents.length && (
-        <label>
-          Device
-          <select
-            aria-label="Selected CFD vent"
-            value={vent?.id}
-            onChange={(e) => onSelect(`vent:${e.target.value}`)}
-          >
-            {scenario.vents.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name} · {v.role}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {vent && (
+      <CFDReorderList items={scenario.vents} label="CFD equipment" scope={`equipment:${scenario.id}`}
+        onMove={(id, at) => onChange({ ...scenario, vents: insertAtBoundary(scenario.vents, id, at) })}>
+        {v => <article className={`cfx-device-row${selected === `vent:${v.id}` ? " selected" : ""}`}>
+          <button className="cfx-device-name" aria-label={`Select ${v.name}`} onClick={() => onSelect(`vent:${v.id}`)}>
+            <strong>{v.name}</strong><small>{v.role} · {v.shape === "circle" ? `Ø ${v.diameterMm}` : `${v.widthMm} × ${v.heightMm}`} mm</small>
+          </button>
+          <div className="cfx-device-actions">
+            <button aria-label={`Edit ${v.name}`} onClick={() => { onSelect(`vent:${v.id}`); onEditVent?.(v.id); }}>Edit</button>
+            <button aria-label={`Duplicate ${v.name}`} disabled={scenario.vents.length >= 500} onClick={() => {
+              const copy = { ...structuredClone(v), id: crypto.randomUUID(), name: v.name.slice(0, 114) + " copy", host: { ...v.host, u: Math.min(0.9, v.host.u + 0.15) } };
+              onChange({ ...scenario, vents: [...scenario.vents, copy] }); onSelect(`vent:${copy.id}`);
+            }}>Duplicate</button>
+            <button className="cfx-danger" aria-label={`Delete ${v.name}`} onClick={() => onChange({ ...scenario, vents: scenario.vents.filter(vent => vent.id !== v.id) })}>Delete</button>
+          </div>
+        </article>}
+      </CFDReorderList>
+      </>}
+      {editor && vent && (
         <section className="cfx-card">
           <CFDText
             label="Vent name"
@@ -759,35 +769,9 @@ export function EquipmentPanel({
             />
             <small className="cfx-caption">Optimization: metadata only</small>
           </details>
-          <div className="cfx-actions">
-            <button
-              onClick={() => {
-                const copy = {
-                  ...structuredClone(vent),
-                  id: crypto.randomUUID(),
-                  name: vent.name.slice(0, 115) + " copy",
-                  host: { ...vent.host, u: Math.min(0.9, vent.host.u + 0.15) },
-                };
-                onChange({ ...scenario, vents: [...scenario.vents, copy] });
-                onSelect(`vent:${copy.id}`);
-              }}
-            >
-              Duplicate
-            </button>
-            <button
-              className="cfx-danger"
-              onClick={() =>
-                onChange({
-                  ...scenario,
-                  vents: scenario.vents.filter((v) => v.id !== vent.id),
-                })
-              }
-            >
-              Delete vent
-            </button>
-          </div>
         </section>
       )}
+      {!editor && <>
       <h3>Objects &amp; occupants</h3>
       <button onClick={onEditSource}>Edit source building &amp; assets</button>
       {report?.objects.map((obj) => {
@@ -929,6 +913,7 @@ export function EquipmentPanel({
               ))}
           </details>
         )}
+      </>}
     </>
   );
 }
@@ -1054,15 +1039,22 @@ export function BoundariesPanel({
   selected,
   onSelect,
   onChange,
+  selectedGroup,
+  onSelectGroup,
+  checked,
 }: {
   scenario: CFDScenario;
   report: CFDReport | null;
   selected: string | null;
   onSelect: (id: string) => void;
   onChange: (s: CFDScenario) => void;
+  selectedGroup: string;
+  onSelectGroup: (id: string) => void;
+  checked: boolean;
 }) {
   const [search, setSearch] = useState(""),
     [group, setGroup] = useState<PatchKind>("wall");
+  const [groupNameError, setGroupNameError] = useState<{ id: string; text: string } | null>(null);
   const patch = report?.patches.find(
     (p) =>
       p.id === selected || (p.kind === "object" && p.sourceId === selected),
@@ -1085,10 +1077,84 @@ export function BoundariesPanel({
         groups: { ...scenario.boundaries.groups, [group]: v },
       },
     });
+  const collections = boundaryGroups(scenario);
+  const currentGroup = collections.find(g => g.id === selectedGroup) ?? collections[0];
+  const allPatches = report?.patches ?? [];
+  const availablePatchIds = new Set(allPatches.map(p => p.id));
+  const updateCollections = (next: typeof collections) => onChange({ ...scenario, boundaries: { ...scenario.boundaries, collections: next } });
+  const newGroup = (patchId?: string) => {
+    if (collections.length >= 100) return;
+    const patch = allPatches.find(p => p.id === patchId);
+    const added = { id: crypto.randomUUID(), name: uniqueGroupName(collections.map(g => g.name)), patchIds: patchId ? [patchId] : [],
+      boundary: patch && patch.kind !== "supply" && patch.kind !== "extract" ? effectiveBoundary(scenario, patch) : null };
+    updateCollections([...collections.map(g => ({ ...g, patchIds: g.patchIds.filter(id => id !== patchId) })), added]);
+    onSelectGroup(added.id);
+  };
   return (
     <>
+      <div className="cfx-actions"><button disabled={collections.length >= 100} onClick={() => newGroup()}>Add boundary group</button></div>
+      <label>Find a surface<input type="search" aria-label="Find a CFD patch" value={search} maxLength={500} onChange={e => setSearch(e.target.value)} placeholder="Room, surface or source" /></label>
+      <div className="cfx-boundary-tree">
+        {collections.map((collection, index) => {
+          const members = boundaryMembers(collection, collections, rows);
+          const allMembers = boundaryMembers(collection, collections, allPatches);
+          return <section className={`cfx-boundary-group${currentGroup.id === collection.id ? " selected" : ""}`} key={collection.id}
+            aria-label={`Boundary group ${collection.name}`} style={{ "--boundary-colour": BOUNDARY_COLOURS[index % BOUNDARY_COLOURS.length] } as import("react").CSSProperties}>
+            <header className="cfx-group-heading"><button className="cfx-group-select" aria-pressed={currentGroup.id === collection.id}
+              onClick={() => onSelectGroup(collection.id)}><span className="cfx-level-swatch" aria-hidden="true" style={{ background: "var(--boundary-colour)" }} />{collection.name}</button>
+              <small>{allMembers.length} {allMembers.length === 1 ? "surface" : "surfaces"}</small>
+              <button disabled={collection.id === DEFAULT_BOUNDARY_GROUP} aria-label={`Delete boundary group ${collection.name}`} className="cfx-danger"
+                title="Return its surfaces to the default group" onClick={() => { updateCollections(collections.filter(g => g.id !== collection.id)); onSelectGroup(DEFAULT_BOUNDARY_GROUP); }}>Delete</button>
+            </header>
+            <CFDReorderList items={members.map(p => ({ ...p, name: `${p.label ?? labelFor(p.kind)} · ${p.sourceId}` }))}
+              label={`${collection.name} surfaces`} scope={`boundary-surfaces:${scenario.id}`}
+              onMove={(id, at) => {
+                const anchor = members[at]?.id;
+                onChange(moveBoundary(scenario, id, collection.id, anchor ? allMembers.findIndex(p => p.id === anchor) : allMembers.length, allPatches));
+              }}>
+              {p => <article className={`cfx-surface-row${patch?.id === p.id ? " selected" : ""}`}>
+                <button className="cfx-surface-name" aria-label={`Select surface ${p.id}`} onClick={() => { onSelectGroup(collection.id); onSelect(p.id); }}>
+                  <strong>{p.label ?? labelFor(p.kind)}</strong><small>{roomNames.get(p.roomId) ?? p.roomId} · {p.areaM2.toFixed(2)} m²{scenario.boundaries.patches[p.id] ? " · override" : ""}</small>
+                </button>
+                <details className="cfx-row-menu" onClick={event => {
+                  if (event.target instanceof Element && event.target.closest("button")) event.currentTarget.open = false;
+                }}><summary aria-label={`Move surface ${p.id}`}>⋯</summary><div>
+                  <label>Move to group<select aria-label={`Group for surface ${p.id}`} value={collection.id} onChange={e => {
+                    e.currentTarget.closest("details")!.open = false;
+                    onChange(moveBoundary(scenario, p.id, e.target.value, 0, allPatches)); }}>
+                    {collections.map(g => <option value={g.id} key={g.id}>{g.name}</option>)}
+                  </select></label><button onClick={() => newGroup(p.id)}>New group from surface</button>
+                </div></details>
+              </article>}
+            </CFDReorderList>
+          </section>;
+        })}
+      </div>
+      <section className="cfx-card" aria-label="Boundary group conditions">
+        <CFDText key={currentGroup.id} label="Group name" value={currentGroup.name} maxLength={80}
+          onChange={name => {
+            if (collections.some(g => g.id !== currentGroup.id && g.name.toLowerCase() === name.trim().toLowerCase())) {
+              setGroupNameError({ id: currentGroup.id, text: "A boundary group already has that name." }); return;
+            }
+            setGroupNameError(null);
+            updateCollections(collections.map(g => g.id === currentGroup.id ? { ...g, name } : g));
+          }} />
+        {groupNameError?.id === currentGroup.id && <small className="cfx-error" role="alert">{groupNameError.text}</small>}
+        {report && currentGroup.id !== DEFAULT_BOUNDARY_GROUP && currentGroup.patchIds.some(id => !availablePatchIds.has(id)) &&
+          <button disabled={!checked} title={checked ? undefined : "Wait for current preparation checks before removing references"} onClick={() => {
+            updateCollections(collections.map(g => g.id === currentGroup.id ? { ...g, patchIds: g.patchIds.filter(id => availablePatchIds.has(id)) } : g));
+          }}>Remove unavailable surface references</button>}
+        <label className="cfx-check"><input type="checkbox" checked={currentGroup.boundary !== null} onChange={e => updateCollections(collections.map(g =>
+          g.id === currentGroup.id ? { ...g, boundary: e.target.checked ? boundarySchema.parse({}) : null } : g))} />Use group conditions</label>
+        {currentGroup.boundary ? <BoundaryEditor value={currentGroup.boundary} onChange={boundary => updateCollections(collections.map(g => g.id === currentGroup.id ? { ...g, boundary } : g))} /> :
+          <small className="cfx-caption">Inherited / per-surface conditions</small>}
+        {boundaryMembers(currentGroup, collections, allPatches).some(p => !!scenario.boundaries.patches[p.id]) && <button onClick={() => {
+          const ids = new Set(boundaryMembers(currentGroup, collections, allPatches).map(p => p.id));
+          onChange({ ...scenario, boundaries: { ...scenario.boundaries, collections, patches: Object.fromEntries(Object.entries(scenario.boundaries.patches).filter(([id]) => !ids.has(id))) } });
+        }}>Clear surface overrides in group</button>}
+      </section>
       <details>
-        <summary>Group presets</summary>
+        <summary>Surface type defaults</summary>
         <label>
           Patch group
           <select
@@ -1110,38 +1176,6 @@ export function BoundariesPanel({
           Assign this group preset
         </button>
       </details>
-      <label>
-        Find a patch
-        <input
-          type="search"
-          aria-label="Find a CFD patch"
-          value={search}
-          maxLength={500}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Room, surface or source ID"
-        />
-      </label>
-      <div
-        className="cfx-patch-list"
-        role="list"
-        aria-label="CFD boundary patches"
-      >
-        {rows.map((p) => (
-          <button
-            className={patch?.id === p.id ? "active" : ""}
-            key={p.id}
-            onClick={() => onSelect(p.id)}
-          >
-            <strong>
-              {p.label ?? labelFor(p.kind)} · {p.sourceId}
-            </strong>
-            <small>
-              {roomNames.get(p.roomId) ?? p.roomId} · {p.areaM2.toFixed(3)} m² ·{" "}
-              {p.boundaryOrigin}
-            </small>
-          </button>
-        ))}
-      </div>
       {report && !rows.length && (
         <p role="status" className="cfx-caption">
           No matching patches.
@@ -1158,7 +1192,7 @@ export function BoundariesPanel({
           ) : (
             <>
               <BoundaryEditor
-                value={scenario.boundaries.patches[patch.id] ?? patch.boundary}
+                value={effectiveBoundary(scenario, patch)}
                 onChange={(value) =>
                   onChange({
                     ...scenario,
@@ -1227,6 +1261,7 @@ export function PhysicsPanel({
   const p = scenario.physics;
   return (
     <>
+      <div className="cfx-grid cfx-physics-primary">
       <label>
         Physics preset
         <select
@@ -1248,7 +1283,6 @@ export function PhysicsPanel({
           <option value="custom">Custom</option>
         </select>
       </label>
-      <div className="cfx-grid">
         <label>
           Turbulence
           <select
@@ -1341,26 +1375,13 @@ export function PhysicsPanel({
     </>
   );
 }
-export function MeshPanel({
+function MeshSettings({
   scenario,
-  report,
   onChange,
-  selected,
-  onSelect,
-  onShowRefinements,
-  onEditRefinement,
 }: {
   scenario: CFDScenario;
-  report: CFDReport | null;
   onChange: (s: CFDScenario) => void;
-  selected: string | null;
-  onSelect: (id: string | null) => void;
-  onShowRefinements: () => void;
-  onEditRefinement: (id: string) => void;
 }) {
-  const regions = scenario.mesh.refinements,
-    region =
-      regions.find((r) => `refinement:${r.id}` === selected) ?? regions[0];
   return (
     <>
       <label>
@@ -1413,6 +1434,32 @@ export function MeshPanel({
           />
         ))}
       </div>
+    </>
+  );
+}
+
+export function MeshPanel({
+  scenario,
+  report,
+  onChange,
+  selected,
+  onSelect,
+  onShowRefinements,
+  onEditRefinement,
+}: {
+  scenario: CFDScenario;
+  report: CFDReport | null;
+  onChange: (s: CFDScenario) => void;
+  selected: string | null;
+  onSelect: (id: string | null) => void;
+  onShowRefinements: () => void;
+  onEditRefinement: (id: string) => void;
+}) {
+  const regions = scenario.mesh.refinements,
+    region =
+      regions.find((r) => `refinement:${r.id}` === selected) ?? regions[0];
+  return (
+    <>
       {report && (
         <div className="cfx-notice">
           <strong>

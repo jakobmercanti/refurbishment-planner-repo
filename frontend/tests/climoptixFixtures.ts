@@ -10,7 +10,7 @@ import { parseScene, type CFDScene } from "../lib/climoptixScene";
 export function realScene(project: ProjectDocument): CFDScene {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const python = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-  const result = spawnSync(python, ["-c", "import json,sys; from geometry.climoptix_scene import building_scene; print(json.dumps(building_scene(json.load(sys.stdin))))"], {
+  const result = spawnSync(python, ["-X", "utf8", "-c", "import json,sys; from geometry.climoptix_scene import building_scene; print(json.dumps(building_scene(json.load(sys.stdin))))"], {
     cwd: root, input: JSON.stringify(project), encoding: "utf8", timeout: 25000, maxBuffer: 12 * 1024 * 1024,
   });
   if (result.status !== 0) throw new Error(result.stderr || result.error?.message || "Building geometry failed");
@@ -27,7 +27,7 @@ export function realExampleProjects(): Record<string, ProjectDocument> {
   const result = spawnSync(
     python,
     [
-      "-c",
+      "-X", "utf8", "-c",
       "import json; from scripts.audit_climoptix import example_projects; print(json.dumps(example_projects()))",
     ],
     { cwd: root, encoding: "utf8", timeout: 15000, maxBuffer: 4 * 1024 * 1024 },
@@ -103,7 +103,7 @@ export function realPreparation(request: {
   const result = spawnSync(
     python,
     [
-      "-c",
+      "-X", "utf8", "-c",
       "import json,sys; from geometry.climoptix_models import Scenario; from backend.app.climoptix_provider import PreparationOnlyProvider; data=json.load(sys.stdin); print(json.dumps(PreparationOnlyProvider().validate_scenario(data['project'], Scenario.model_validate(data['scenario']), data['clientRevision'])))",
     ],
     {

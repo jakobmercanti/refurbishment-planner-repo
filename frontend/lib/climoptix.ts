@@ -470,6 +470,7 @@ export function preparationRequestBody(
       plannerBuild: { activities: [] },
       quotes: [],
       cfdScenarios: undefined,
+      cfdSimulationGroups: undefined,
       renderCamera: undefined,
       electricalLayout: undefined,
       heatingLayout: undefined,

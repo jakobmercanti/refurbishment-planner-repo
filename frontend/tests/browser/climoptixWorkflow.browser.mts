@@ -1,4 +1,4 @@
-import { cfdWindow } from "./harness.mjs";
+import { cfdWindow, cfdRefresh } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { spawnSync } from "node:child_process";
@@ -140,9 +140,7 @@ async function setup(t) {
     name: "Climoptix CFD workspace",
     exact: true,
   });
-  await ui
-    .getByRole("button", { name: "Validate & refresh", exact: true })
-    .click();
+  await cfdRefresh(ui);
   await eventually(
     () => ui.locator(".cfx-state").innerText(),
     (v) => v === "Validated",
@@ -177,7 +175,7 @@ test("independent workbench saves level-coloured cuboids, run settings and named
     .getByRole("button", { name: "Delete Occupant zone copy", exact: true })
     .click();
   const swatch = await ui
-    .locator(".cfx-level-swatch")
+    .locator(".cfx-refinement-row .cfx-level-swatch")
     .evaluate((e) => getComputedStyle(e).backgroundColor);
   const renderedLegend = await ui
     .getByRole("list", { name: "Refinement colour legend", exact: true })
@@ -258,9 +256,7 @@ test("independent workbench saves level-coloured cuboids, run settings and named
       .getAttribute("aria-selected"),
     "true",
   );
-  await ui
-    .getByRole("button", { name: "Validate & refresh", exact: true })
-    .click();
+  await cfdRefresh(ui);
   await eventually(
     () => ui.locator(".cfx-state").innerText(),
     (v) => v === "Validated",
@@ -294,7 +290,7 @@ test("independent workbench saves level-coloured cuboids, run settings and named
   });
   const download = page.waitForEvent("download").catch(async (e) => {
     throw new Error(
-      `${e.message}\nCFD status: ${await ui.locator(".cfx-setup-footer").innerText()}\nWorkspace: ${await workspace.inputValue()}`,
+      `${e.message}\nCFD status: ${await ui.getAttribute("data-preparation-state")}\nWorkspace: ${await workspace.inputValue()}`,
     );
   });
   await ui
@@ -314,7 +310,7 @@ test("independent workbench saves level-coloured cuboids, run settings and named
 
 test("real log records draw a graph and VTK point/cell fields render, zoom and download without ParaView", async (t) => {
   const { page, ui } = await setup(t);
-  await ui.getByRole("tab", { name: "Run", exact: true }).click();
+  await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
   await ui.getByLabel("Import solver log", { exact: true }).setInputFiles({
     name: "solver.log",
     mimeType: "text/plain",
@@ -326,7 +322,7 @@ test("real log records draw a graph and VTK point/cell fields render, zoom and d
     .getByRole("img", { name: "Residual graph for Ux", exact: true })
     .waitFor();
   await ui.getByRole("tab", { name: "Mesh", exact: true }).click();
-  await ui.getByRole("tab", { name: "Run", exact: true }).click();
+  await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
   assert.equal(
     await ui
       .getByRole("img", { name: "Residual graph for Ux", exact: true })
@@ -553,7 +549,7 @@ test("VTK warns about unusable result arrays and rejects coordinates beyond rend
 
 test("a late solver-log read cannot replace a newer import or repopulate a cleared graph", async (t) => {
   const { page, ui } = await setup(t);
-  await ui.getByRole("tab", { name: "Run", exact: true }).click();
+  await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
   await page.evaluate(() => {
     const original = File.prototype.text;
     File.prototype.text = function () {

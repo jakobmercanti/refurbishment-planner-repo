@@ -8,7 +8,7 @@ import { CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
 import { CFDNumber, Parameters, MeshPanel } from "./ClimoptixPanels";
 import { WindowHelpButton } from "./WindowHelpButton";
 
-export type SimulationTab = "mesh" | "run" | "post";
+export type SimulationTab = "mesh" | "run" | "monitor" | "post";
 
 export interface RunConnection {
   connected: boolean;
@@ -24,7 +24,6 @@ function RunPanel({
   onExport,
   exporting,
   exportDisabled,
-  convergence,
   onConvergence,
   connection,
 }: {
@@ -33,7 +32,6 @@ function RunPanel({
   onExport: () => void;
   exporting: boolean;
   exportDisabled: boolean;
-  convergence: ReactNode;
   onConvergence: () => void;
   connection?: RunConnection;
 }) {
@@ -154,7 +152,7 @@ function RunPanel({
           title={
             connection?.blockedReason ||
             (connection?.canRun
-              ? "Validate and submit this study"
+              ? "Validate and submit this simulation"
               : connection?.connected
                 ? "The worker does not support Run"
                 : "No OpenFOAM worker is connected")
@@ -168,7 +166,6 @@ function RunPanel({
         </button>
       </div>
       <button onClick={onConvergence}>Open monitor</button>
-      {convergence}
     </>
   );
 }
@@ -358,6 +355,7 @@ export function ClimoptixSimulation({
           [
             ["mesh", "Mesh"],
             ["run", "Run"],
+            ["monitor", "Monitor"],
             ["post", "Post-processing"],
           ] as const
         ).map(([id, title]) => (
@@ -375,14 +373,14 @@ export function ClimoptixSimulation({
               if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key))
                 return;
               e.preventDefault();
-              const ids = ["mesh", "run", "post"] as const,
+              const ids = ["mesh", "run", "monitor", "post"] as const,
                 index = ids.indexOf(id);
               const next =
                 e.key === "Home"
                   ? 0
                   : e.key === "End"
-                    ? 2
-                    : (index + (e.key === "ArrowRight" ? 1 : 2)) % 3;
+                    ? 3
+                    : (index + (e.key === "ArrowRight" ? 1 : 3)) % 4;
               onTab(ids[next]);
               document.getElementById(`cfx-tab-${ids[next]}`)?.focus();
             }}
@@ -423,10 +421,13 @@ export function ClimoptixSimulation({
           onExport={onExport}
           exporting={exporting}
           exportDisabled={exportDisabled}
-          convergence={convergence}
           onConvergence={onConvergence}
           connection={connection}
         />
+      </section>
+      <section role="tabpanel" id="cfx-panel-monitor" aria-labelledby="cfx-tab-monitor"
+        className="cfx-simulation-panel" hidden={tab !== "monitor"}>
+        <section aria-label="Convergence monitor">{convergence}</section>
       </section>
       <section
         role="tabpanel"

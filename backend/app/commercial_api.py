@@ -212,6 +212,7 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
                 "energyLayout",
                 "building",
                 "cfdScenarios",
+                "cfdSimulationGroups",
             }
         )
         or type(document.get("schemaVersion")) is not int
@@ -330,6 +331,18 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
             raise HTTPException(status_code=422, detail="Project text exceeds the supported limit.")
 
     inspect(document)
+    if "cfdSimulationGroups" in document:
+        from geometry.climoptix_models import SimulationGroup
+
+        raw_groups = document["cfdSimulationGroups"]
+        try:
+            if not isinstance(raw_groups, list) or len(raw_groups) > 100:
+                raise ValueError("At most 100 simulation groups are supported.")
+            groups = [SimulationGroup.model_validate(g) for g in raw_groups]
+            if len({g.id for g in groups}) != len(groups) or len({g.name.lower() for g in groups}) != len(groups):
+                raise ValueError("Simulation group IDs and names must be unique.")
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=f"Invalid simulation groups: {error}") from None
     if "cfdScenarios" in document:
         from geometry.climoptix_models import Scenario
 
@@ -344,6 +357,10 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
                 raise ValueError("A Climoptix scenario belongs to another project.")
         except ValueError as error:
             raise HTTPException(status_code=422, detail=f"Invalid Climoptix scenario: {error}") from None
+    group_names = {g["name"].strip().lower() for g in document.get("cfdSimulationGroups", [])}
+    group_names.update(s.get("group", "General").strip().lower() for s in document.get("cfdScenarios", []))
+    if len(group_names) > 100:
+        raise HTTPException(status_code=422, detail="A project supports up to 100 simulation groups, including empty folders.")
     if "building" in document:
         from backend.app.building_document import validate_building
 

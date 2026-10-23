@@ -14,7 +14,7 @@ import { buildingSchema, defaultBuilding, floorContent, projectFloors, validateF
 import { validateFloorOpening, validateRoofGuardClearance } from "./buildingGeometry";
 import { PASSAGE_PROFILES, passageProfileForKey } from "./passageOpenings";
 import { personSpecSchema, supportsPerson, PERSON_MODELS } from "./people";
-import { cfdScenariosSchema, type CFDScenario } from "./climoptixDocument";
+import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -62,6 +62,7 @@ const documentSchema = z.object({
   quotes: z.array(quoteSchema).max(100).optional().default([]),
   building: buildingSchema.optional(),
   cfdScenarios: cfdScenariosSchema.optional(),
+  cfdSimulationGroups: simulationGroupsSchema.optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
@@ -74,6 +75,7 @@ export interface ProjectDocument {
   quotes?: QuoteDocument[];
   building?: BuildingDocument;
   cfdScenarios?: CFDScenario[];
+  cfdSimulationGroups?: CFDSimulationGroup[];
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -105,6 +107,8 @@ export function parseProject(input: unknown): ProjectDocument {
   if(p.energyLayout===undefined)delete p.energyLayout;
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
   if (p.cfdScenarios?.some(s => s.sourceBuildingId !== p.projectId)) throw new Error("A Climoptix scenario belongs to another project.");
+  if (new Set([...(p.cfdSimulationGroups ?? []).map(g => g.name.toLowerCase()), ...(p.cfdScenarios ?? []).map(s => s.group.toLowerCase())]).size > 100)
+    throw new Error("A project supports up to 100 simulation groups, including empty folders.");
   if (p.heatingLayout) p.heatingLayout = parseHeatingProject(p.heatingLayout);
   if (p.heatingLayout || p.rooms.some(room => room.obstacles.some(isHeatingElement))) Object.assign(p, migrateHeatingElements(p.rooms, p.heatingLayout));
   if (p.energyLayout) p.energyLayout = parseEnergyProject(p.energyLayout);

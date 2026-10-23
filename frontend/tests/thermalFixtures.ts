@@ -88,7 +88,7 @@ export function realThermal(
   const result = spawnSync(
     python,
     [
-      "-c",
+      "-X", "utf8", "-c",
       "import json,sys; from geometry.climoptix_models import Scenario; from backend.app.climoptix_provider import PreparationOnlyProvider; from geometry.thermal_balance import thermal_package; d=json.load(sys.stdin); s=Scenario.model_validate(d['scenario']); r=PreparationOnlyProvider().validate_scenario(d['project'],s,d['clientRevision']); print(thermal_package(d['project'],s,r,calculate=" +
         (calculate ? "True" : "False") +
         ").model_dump_json())",

@@ -33,7 +33,9 @@ must recompute the current thermal contract and match those hashes before using
 it; reject stale or unsupported application rather than executing stored output.
 Merely configuring or previewing Thermal must not apply its conditions to a run.
 
-Reserve the entire UI batch before asynchronous preparation. Preflight failures
+Mesh/Run controls submit the study on their own row, independently of the active
+selection. Reserve submissions synchronously before asynchronous preparation
+(including every study if a caller uses the hook's multi-study API). Preflight failures
 are per-study; changed, archived or deleted studies are rejected before dispatch.
 Non-exportable geometry is rejected even if a malformed report claims no errors.
 The worker must independently parse both schemas, re-prepare the pinned input and
@@ -98,6 +100,15 @@ Aborting a request is **not** proof that an accepted remote job was cancelled.
    external VTK. Neither import certifies that the selected study has run.
 
 ## Acceptance gate before enabling production Mesh/Run
+
+Custom boundary collections are resolved by authoritative preparation before
+export or worker submission. A worker must use the resolved patch conditions,
+not reinterpret folder colours or display ordering as physical membership.
+Explicit patch overrides take priority over named groups, the default group and
+legacy surface-type presets. Device boundaries remain device-controlled; object
+thermal conflicts block export. Simulation folders are organizational metadata
+and are stripped from the source snapshot. All other existing revision, resource
+and artifact-provenance checks still apply.
 
 Run a pinned real worker case through preparation → mesh → quality check → solve
 → convergence/conservation checks → plane export → result inspection. Cover serial

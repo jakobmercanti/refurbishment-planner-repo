@@ -1,4 +1,4 @@
-import { cfdWindow } from "./harness.mjs";
+import { cfdWindow, cfdRefresh } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { cfdProject, realPreparation } from "../climoptixFixtures";
@@ -63,21 +63,19 @@ test("a delayed study import rechecks the project capacity after the file is rea
     (v) => v === "function",
   );
   await cfdWindow(ui, "Studies");
-  await ui.getByRole("button", { name: "New study", exact: true }).click();
+  await ui.getByRole("button", { name: "New simulation", exact: true }).click();
   await eventually(saved, (p) => p.cfdScenarios.length === 100);
   await page.evaluate(() => window.__releaseStudy());
   await ui
     .getByRole("alert")
-    .filter({ hasText: /100 studies/ })
+    .filter({ hasText: /100 simulations/ })
     .waitFor();
   assert.equal((await saved()).cfdScenarios.length, 100);
 });
 
 test("a settings export is cancelled when a different project replaces its workbench", async (t) => {
   const { page, context, ui, saved } = await open(t);
-  await ui
-    .getByRole("button", { name: "Validate & refresh", exact: true })
-    .click();
+  await cfdRefresh(ui);
   await eventually(
     () => ui.locator(".cfx-state").innerText(),
     (v) => v === "Validated",
@@ -168,16 +166,16 @@ test("delete confirmation uses the shared window styling and keeps cancellation 
     true,
   );
   await dialog
-    .getByRole("button", { name: "Help for Delete CFD study", exact: true })
+    .getByRole("button", { name: "Help for Delete CFD simulation", exact: true })
     .click();
   const deleteHelp = page.getByRole("article", {
-    name: "Help for Delete CFD study",
+    name: "Help for Delete CFD simulation",
     exact: true,
   });
   await deleteHelp.waitFor();
   assert.match(
     await deleteHelp.innerText(),
-    /shared building, assets and other studies are unchanged/,
+    /shared building, assets and other simulations are unchanged/,
   );
   await page.keyboard.press("Escape");
   await deleteHelp.waitFor({ state: "hidden" });
@@ -202,12 +200,12 @@ test("delete confirmation uses the shared window styling and keeps cancellation 
     .getByRole("button", { name: /^Delete / })
     .click();
   await dialog
-    .getByRole("button", { name: "Delete study", exact: true })
+    .getByRole("button", { name: "Delete simulation", exact: true })
     .click();
   await eventually(saved, (p) => p.cfdScenarios.length === 0);
   assert.equal(
     await ui
-      .getByRole("button", { name: "New study", exact: true })
+      .getByRole("button", { name: "New simulation", exact: true })
       .evaluate((el) => el === document.activeElement),
     true,
   );
@@ -218,9 +216,7 @@ test("delete confirmation uses the shared window styling and keeps cancellation 
 
 test("boundary search finds the room and surface names displayed to the user", async (t) => {
   const { ui } = await open(t);
-  await ui
-    .getByRole("button", { name: "Validate & refresh", exact: true })
-    .click();
+  await cfdRefresh(ui);
   await eventually(
     () => ui.locator(".cfx-state").innerText(),
     (v) => v === "Validated",
@@ -231,11 +227,11 @@ test("boundary search finds the room and surface names displayed to the user", a
     exact: true,
   });
   await search.fill("Living room");
-  assert.ok((await ui.locator(".cfx-patch-list button").count()) > 0);
-  for (const row of await ui.locator(".cfx-patch-list button").all())
+  assert.ok((await ui.locator(".cfx-surface-name").count()) > 0);
+  for (const row of await ui.locator(".cfx-surface-name").all())
     assert.match(await row.innerText(), /Living room/);
   await search.fill("Wall 1");
-  assert.ok((await ui.locator(".cfx-patch-list button").count()) > 0);
+  assert.ok((await ui.locator(".cfx-surface-name").count()) > 0);
   await search.fill("no-such-room");
   await ui
     .getByRole("status")
@@ -309,9 +305,7 @@ for (const style of ["DEFAULT", "MODERN"])
       },
       { style, theme: palette },
     );
-    await ui
-      .getByRole("button", { name: "Validate & refresh", exact: true })
-      .click();
+    await cfdRefresh(ui);
     await eventually(
       () => ui.locator(".cfx-state").innerText(),
       (v) => v === "Validated",
@@ -362,7 +356,7 @@ for (const style of ["DEFAULT", "MODERN"])
             })
             .scrollIntoViewIfNeeded();
           for (const summary of await inspector
-            .locator("details > summary")
+            .locator("details:not(.cfx-row-menu) > summary")
             .all()) {
             if (
               (await summary.isVisible()) &&
@@ -373,7 +367,7 @@ for (const style of ["DEFAULT", "MODERN"])
               await summary.click();
           }
           if (phase === "Boundaries")
-            await ui.locator(".cfx-patch-list button").first().click();
+            await ui.locator(".cfx-surface-name").first().click();
           if (phase === "Simulation")
             for (const title of ["Mesh", "Run", "Post-processing"]) {
               await ui.getByRole("tab", { name: title, exact: true }).click();
@@ -397,7 +391,7 @@ for (const style of ["DEFAULT", "MODERN"])
               exact: true,
             });
             await help.waitFor();
-            assert.match(await help.innerText(), /Play stays unavailable/);
+            assert.match(await help.innerText(), /Play remains unavailable/);
             await page.keyboard.press("Escape");
             await help.waitFor({ state: "hidden" });
           }

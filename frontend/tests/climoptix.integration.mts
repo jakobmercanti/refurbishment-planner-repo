@@ -17,6 +17,7 @@ test("multiple CFD studies survive IndexedDB and portable packages, with indepen
   p.cfdScenarios![0].group = "Winter";
   s.physics.co2 = true;
   p.cfdScenarios!.push(s);
+  p.cfdSimulationGroups = [{ id: "empty", name: "Empty folder" }, { id: "summer", name: "Summer" }];
   await projectRepository.saveProject(p);
   assert.deepEqual(
     (await projectRepository.getProject(p.projectId))?.cfdScenarios,
@@ -25,6 +26,7 @@ test("multiple CFD studies survive IndexedDB and portable packages, with indepen
   const backup = await exportProject(p),
     loaded = await importProject(new File([backup], "climoptix.floorplan3d"));
   assert.deepEqual(loaded.cfdScenarios, p.cfdScenarios);
+  assert.deepEqual(loaded.cfdSimulationGroups, p.cfdSimulationGroups);
   assert.deepEqual(loaded.building, p.building);
   const duplicated = await projectRepository.duplicateProject(p.projectId);
   assert.ok(

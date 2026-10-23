@@ -1,4 +1,4 @@
-import { cfdWindow } from "./harness.mjs";
+import { cfdWindow, cfdRefresh } from "./harness.mjs";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -43,9 +43,7 @@ async function connect(context, handler) {
   });
 }
 async function validate(ui) {
-  await ui
-    .getByRole("button", { name: "Validate & refresh", exact: true })
-    .click();
+  await cfdRefresh(ui);
   await eventually(
     () => ui.locator(".cfx-state").innerText(),
     (text) => text === "Validated",
@@ -73,6 +71,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
   const source = JSON.stringify(saved.rooms);
   await cfdWindow(ui, "Equipment");
   await ui.getByRole("button", { name: "+ Supply", exact: true }).click();
+  await ui.getByRole("region", { name: "Equipment editor", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
   await ui.getByRole("button", { name: "+ Extract", exact: true }).click();
   await ui
     .getByRole("spinbutton", { name: "Host U (0–1)", exact: true })
@@ -86,9 +85,10 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
       .inputValue(),
     "180",
   );
+  await ui.getByRole("region", { name: "Equipment editor", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
   await validate(ui);
   await cfdWindow(ui, "Boundaries");
-  await ui.locator("summary", { hasText: "Group presets" }).click();
+  await ui.locator("summary", { hasText: "Surface type defaults" }).click();
   await ui
     .getByRole("combobox", { name: "Boundary thermal condition", exact: true })
     .selectOption("temperature");
@@ -99,7 +99,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
   await ui
     .getByRole("combobox", { name: "Physics preset", exact: true })
     .selectOption("co2");
-  await cfdWindow(ui, "Simulation");
+  await cfdWindow(ui, "Domain");
   await ui
     .getByRole("combobox", { name: "Mesh intent preset", exact: true })
     .selectOption("Draft");
@@ -141,13 +141,14 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
   );
   await cfdWindow(ui, "Simulation");
   await ui.getByRole("tab", { name: "Run", exact: true }).click();
-  assert.match(await ui.innerText(), /No residual samples/);
   assert.equal(
     await ui
       .getByRole("button", { name: "Run solver", exact: true })
       .isDisabled(),
     true,
   );
+  await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
+  assert.match(await ui.innerText(), /No residual samples/);
   if (process.env.BROWSER_ARTIFACTS)
     await page.screenshot({
       path: `${process.env.BROWSER_ARTIFACTS}/climoptix-desktop.png`,
@@ -162,15 +163,18 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
   const ui = await open(page);
   await validate(ui);
   await cfdWindow(ui, "Studies");
-  await ui.getByRole("button", { name: "Duplicate", exact: true }).click();
+  await ui.getByLabel("Actions for Office airflow", { exact: true }).click();
+  await ui.getByRole("button", { name: "Duplicate simulation", exact: true }).click();
   await eventually(s.saved, (p) => p.cfdScenarios.length === 2);
-  await ui
-    .getByRole("textbox", { name: "Study name", exact: true })
-    .fill("Winter study");
+  await ui.getByLabel("Actions for Office airflow copy", { exact: true }).click();
+  await ui.locator(".cfx-study-row.selected").getByRole("button", { name: "Rename", exact: true }).click();
+  const renamed = ui.getByRole("textbox", { name: "Simulation name", exact: true });
+  await renamed.fill("Winter study"); await renamed.press("Enter");
   await eventually(s.saved, (p) =>
     p.cfdScenarios.some((s) => s.name === "Winter study"),
   );
   await cfdWindow(ui, "Studies");
+  await ui.getByLabel("Actions for Winter study", { exact: true }).click();
   await ui.getByRole("button", { name: "Archive", exact: true }).click();
   await eventually(s.saved, (p) =>
     p.cfdScenarios.some((s) => s.name === "Winter study" && s.archived),
@@ -198,7 +202,7 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
   await cfdWindow(ui, "Studies");
   await ui.locator(".cfx-study-row.selected").getByRole("button", { name: /^Delete / }).click();
   await dialog
-    .getByRole("button", { name: "Delete study", exact: true })
+    .getByRole("button", { name: "Delete simulation", exact: true })
     .click();
   await eventually(s.saved, (p) => p.cfdScenarios.length === 1);
   await cfdWindow(ui, "Studies");
@@ -222,7 +226,7 @@ test("late validation cannot bless a changed study; unavailable service can be r
   const s = await harness.session(cfdProject());
   t.after(() => s.close());
   const { page, context } = s;
-  let release,
+  let release, releaseNew,
     arrived = false,
     failedOnce = false;
   await context.route("**/climoptix/prepare", async (route) => {
@@ -237,9 +241,7 @@ test("late validation cannot bless a changed study; unavailable service can be r
     }
     const value = realPreparation(route.request().postDataJSON());
     arrived = true;
-    await new Promise((resolve) => {
-      release = resolve;
-    });
+    await new Promise((resolve) => { if (route.request().postDataJSON().scenario.physics.co2) releaseNew = resolve; else release = resolve; });
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -248,21 +250,11 @@ test("late validation cannot bless a changed study; unavailable service can be r
   });
   const ui = await open(page);
   await ui
-    .getByRole("button", { name: "Validate & refresh", exact: true })
-    .click();
-  await ui
     .getByRole("alert")
     .filter({ hasText: "temporarily unavailable" })
     .waitFor();
-  assert.equal(
-    await ui
-      .getByRole("button", { name: "Validate & refresh", exact: true })
-      .isEnabled(),
-    true,
-  );
-  await ui
-    .getByRole("button", { name: "Validate & refresh", exact: true })
-    .click();
+  assert.ok(await ui.getByRole("button", { name: "Retry check", exact: true }).isEnabled());
+  await ui.getByRole("button", { name: "Retry check", exact: true }).click();
   await eventually(
     () => arrived,
     (v) => v,
@@ -272,12 +264,14 @@ test("late validation cannot bless a changed study; unavailable service can be r
     .getByRole("combobox", { name: "Physics preset", exact: true })
     .selectOption("co2");
   release();
-  await ui.getByText(/older response was not applied/).waitFor();
   const stored = await eventually(
     s.saved,
     (p) => p.cfdScenarios[0].physics.co2,
   );
   assert.equal(stored.cfdScenarios[0].validation, null);
+  await eventually(() => typeof releaseNew, value => value === "function");
+  releaseNew();
+  await eventually(() => ui.getAttribute("data-preparation-state"), value => value === "checked");
 });
 
 test("CFD help, dark mode and narrow-screen controls remain accessible and aligned", async (t) => {
@@ -407,7 +401,7 @@ test("numeric drafts apply only when committed, reject invalid settings clearly,
       .count(),
     0,
   );
-  await cfdWindow(ui, "Simulation");
+  await cfdWindow(ui, "Domain");
   const mesh = ui.getByRole("combobox", {
     name: "Mesh intent preset",
     exact: true,
@@ -488,6 +482,7 @@ test("vents can be picked and dragged in the full-size 3D viewer without changin
       ),
     },
   };
+  await ui.getByRole("region", { name: "Equipment editor", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
   await page.getByRole("button", { name: "Hide Simulation setup", exact: true }).click();
   await ui.getByRole("button", { name: "Fit", exact: true }).click();
   const canvas = ui.locator("canvas");
@@ -534,7 +529,7 @@ test("vents can be picked and dragged in the full-size 3D viewer without changin
       Math.abs(p.cfdScenarios[0].vents[0].host.v - before.host.v) > 0.001,
   );
   assert.equal(JSON.stringify(dragged.rooms), source);
-  assert.ok(await ui.getByText(/Study setup changed/).isVisible());
+  await eventually(() => ui.getAttribute("data-preparation-state"), state => state === "checked");
   if (process.env.BROWSER_ARTIFACTS)
     await ui.screenshot({
       path: `${process.env.BROWSER_ARTIFACTS}/climoptix-vent-drag.png`,
@@ -588,9 +583,11 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   );
   await shape.selectOption("object");
   await ui.getByRole("button", { name: "Done", exact: true }).click();
+  await cfdWindow(ui, "Domain");
   await ui
     .getByRole("combobox", { name: "Mesh intent preset", exact: true })
     .selectOption("Fine");
+  await cfdWindow(ui, "Simulation");
   assert.equal(await ui.locator(".cfx-refinement-row").count(), 1);
   await ui.getByRole("button", { name: "Edit Desk zone", exact: true }).click();
   assert.ok(
@@ -614,11 +611,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
     /MESH INTENT — NOT GENERATED CELLS/,
   );
   await cfdWindow(ui, "Boundaries");
-  await ui
-    .getByRole("list", { name: "CFD boundary patches", exact: true })
-    .getByRole("button")
-    .first()
-    .click();
+  await ui.locator(".cfx-surface-name").first().click();
   const canvas = ui.locator("canvas");
   await canvas.waitFor();
   await page.waitForTimeout(350);
@@ -632,6 +625,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   await ui
     .getByRole("checkbox", { name: "Isolate selection", exact: true })
     .uncheck();
+  await ui.getByRole("button", { name: "Hide View properties", exact: true }).click();
   await page
     .getByRole("button", { name: "Hide Simulation setup", exact: true })
     .click();
@@ -639,11 +633,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   await ui
     .getByRole("searchbox", { name: "Find a CFD patch", exact: true })
     .fill("desk");
-  await ui
-    .getByRole("list", { name: "CFD boundary patches", exact: true })
-    .getByRole("button")
-    .first()
-    .click();
+  await ui.locator(".cfx-surface-name").first().click();
   await cfdWindow(ui, "Equipment");
   assert.ok(
     await ui

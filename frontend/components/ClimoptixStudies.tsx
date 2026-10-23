@@ -1,342 +1,146 @@
 "use client";
 
-import { useState } from "react";
-import type { CFDScenario } from "@/lib/climoptixDocument";
+import { useEffect, useRef, useState } from "react";
+import { duplicateCFDScenario, type CFDScenario, type CFDSimulationGroup } from "@/lib/climoptixDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDOperation, CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { terminalJob, workerInput } from "@/lib/climoptixJobs";
-import { moveStudy } from "@/lib/climoptixStudies";
+import { insertAtBoundary, moveStudy } from "@/lib/climoptixStudies";
+import { duplicateSimulationGroup, sameGroup, simulationGroups, uniqueGroupName } from "@/lib/climoptixGroups";
 import type { CFDJobEntry } from "./useCFDJobs";
 import { CFDReorderList } from "./CFDReorderList";
-import { CFDText } from "./ClimoptixPanels";
 
-export function ClimoptixStudies({
-  project,
-  scenarios,
-  scenario,
-  showArchived,
-  onShowArchived,
-  onSelect,
-  onChange,
-  onOrder,
-  onAdd,
-  onDuplicate,
-  onDelete,
-  onImport,
-  onConvergence,
-  entries,
-  worker,
-  onSubmit,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
+function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
+  value: string; label: string; maxLength?: number; onCommit: (value: string) => void | boolean; onDone?: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const input = useRef<HTMLInputElement>(null);
+  const editing = !!onDone;
+  useEffect(() => { if (editing) { input.current?.focus(); input.current?.select(); } }, [editing]);
+  return <input ref={input} className="cfx-inline-name" aria-label={label} value={draft} maxLength={maxLength}
+    onChange={e => setDraft(e.target.value)} onBlur={() => { if (!draft.trim() || onCommit(draft.trim()) === false) setDraft(value); onDone?.(); }}
+    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setDraft(value); onDone?.(); } }} />;
+}
+
+export function ClimoptixStudies({ project, scenarios, scenario, showArchived, onShowArchived, onSelect,
+  onChange, onOrder, onAdd, onDelete, onImport, entries, worker, onSubmit, onUndo, onRedo, canUndo, canRedo,
 }: {
-  project: ProjectDocument;
-  scenarios: CFDScenario[];
-  scenario?: CFDScenario;
-  showArchived: boolean;
-  onShowArchived: (show: boolean) => void;
-  onSelect: (id: string) => void;
+  project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
+  onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
   onChange: (s: CFDScenario, checkpoint?: boolean) => void;
-  onOrder: (s: CFDScenario[]) => void;
-  onAdd: () => void;
-  onDuplicate: () => void;
+  onOrder: (s: CFDScenario[], groups?: CFDSimulationGroup[]) => void;
+  onAdd: (group?: string) => void;
   onDelete: (id: string, opener: HTMLButtonElement) => void;
   onImport: (f: File) => void;
-  onConvergence: () => void;
-  entries: Record<string, CFDJobEntry>;
-  worker: CFDWorkerAdapter | null;
+  entries: Record<string, CFDJobEntry>; worker: CFDWorkerAdapter | null;
   onSubmit: (operation: CFDOperation, studies: CFDScenario[]) => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
+  onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
 }) {
-  const [chosen, setChosen] = useState<string[]>([]);
-  const visible = scenarios.filter((s) => showArchived || !s.archived);
-  const groups = [...new Set(visible.map((s) => s.group))];
-  const selected = scenarios.filter(
-    (s) => chosen.includes(s.id) && !s.archived,
-  );
-  const busy = (s: CFDScenario) =>
-    entries[s.id]?.submitting ||
-    (entries[s.id]?.job && !terminalJob(entries[s.id].job!));
-  const blocked = !selected.length || selected.some((s) => busy(s));
-  return (
-    <div className="cfx-studies">
-      <header className="cfx-study-heading">
-        <div>
-          <h2>Studies</h2>
-        </div>
-        <span className="cfx-provider">
-          {worker?.capabilities.connected
-            ? "Worker connected"
-            : "Preparation only · solver not connected"}
-        </span>
-      </header>
-      <div className="cfx-study-tools">
-        <button
-          className="cfx-primary"
-          onClick={onAdd}
-          disabled={scenarios.length >= 100}
-        >
-          New study
-        </button>
-        <button
-          onClick={onDuplicate}
-          disabled={!scenario || scenarios.length >= 100}
-        >
-          Duplicate
-        </button>
-        <button
-          onClick={() =>
-            scenario &&
-            onChange({ ...scenario, archived: !scenario.archived }, true)
-          }
-          disabled={
-            !scenario || !!busy(scenario) || entries[scenario.id]?.dispatched
-          }
-        >
-          {scenario?.archived ? "Unarchive" : "Archive"}
-        </button>
-        <button onClick={onConvergence} disabled={!scenario}>
-          Convergence
-        </button>
-        <label className="cfx-check">
-          <input
-            type="checkbox"
-            checked={showArchived}
-            onChange={(e) => onShowArchived(e.target.checked)}
-          />
-          Archived
-        </label>
-        <div className="cfx-history">
-          <button disabled={!canUndo} onClick={onUndo}>
-            Undo
-          </button>
-          <button disabled={!canRedo} onClick={onRedo}>
-            Redo
-          </button>
-        </div>
-      </div>
-      <div className="cfx-batch" aria-label="Simulation submissions">
-        <label className="cfx-check">
-          <input
-            type="checkbox"
-            aria-label="Select all simulations"
-            checked={
-              visible.some((s) => !s.archived) &&
-              visible
-                .filter((s) => !s.archived)
-                .every((s) => chosen.includes(s.id))
-            }
-            onChange={(e) =>
-              setChosen(
-                e.target.checked
-                  ? visible.filter((s) => !s.archived).map((s) => s.id)
-                  : [],
-              )
-            }
-          />
-          {selected.length} selected
-        </label>
-        <button
-          disabled={
-            blocked ||
-            selected.some(
-              (s) =>
-                entries[s.id]?.dispatched && entries[s.id].operation !== "mesh",
-            ) ||
-            !worker?.capabilities.connected ||
-            !worker.capabilities.mesh
-          }
-          onClick={() => onSubmit("mesh", selected)}
-        >
-          Mesh
-        </button>
-        <button
-          className="cfx-primary"
-          disabled={
-            blocked ||
-            selected.some(
-              (s) =>
-                entries[s.id]?.dispatched && entries[s.id].operation !== "run",
-            ) ||
-            !worker?.capabilities.connected ||
-            !worker.capabilities.run
-          }
-          onClick={() => onSubmit("run", selected)}
-        >
-          Run
-        </button>
-        {worker?.capabilities.reason && (
-          <small>{worker.capabilities.reason}</small>
-        )}
-      </div>
-      {!visible.length && (
-        <div className="cfx-welcome">
-          <h3>No studies</h3>
-          <button onClick={onAdd}>Create first study</button>
-          <label className="cfx-file">
-            Import study
-            <input
-              aria-label="Import CFD scenario"
-              type="file"
-              accept=".json,application/json"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) onImport(file);
-              }}
-            />
-          </label>
-        </div>
-      )}
-      {groups.map((group) => (
-        <section
-          className="cfx-study-group"
-          key={group}
-          aria-label={`Simulation group ${group}`}
-        >
-          <h3>
-            {group}
-            <small>
-              {visible.filter((s) => s.group === group).length} studies
-            </small>
-          </h3>
-          <CFDReorderList
-            items={visible.filter((s) => s.group === group)}
-            label={`${group} simulations`}
-            scope={`studies:${project.projectId}`}
-            onMove={(id, boundary) => {
-              // Archived rows hidden from this list must not shift insertion targets.
-              const shown = visible.filter((s) => s.group === group);
-              const anchor = shown[boundary]?.id;
-              const all = scenarios.filter((s) => s.group === group);
-              const at = anchor
-                ? all.findIndex((s) => s.id === anchor)
-                : all.length;
-              onOrder(moveStudy(scenarios, id, group, at));
-            }}
-          >
-            {(s) => {
-              const entry = entries[s.id];
-              const job = entry?.job;
-              const stale = !!job && entry.input !== workerInput(project, s);
-              const phase = entry?.submitting
-                ? "Checking & submitting…"
-                : job
-                  ? `${job.phase}${stale ? " · older setup" : ""}`
-                  : entry?.dispatched
-                    ? "Submission status unknown"
-                    : "Not submitted";
-              const progress = job?.progress;
-              return (
-                <article
-                  className={`cfx-study-row${s.id === scenario?.id ? " selected" : ""}`}
-                >
-                  <label className="cfx-check">
-                    <input
-                      type="checkbox"
-                      aria-label={`Queue ${s.name}`}
-                      disabled={s.archived}
-                      checked={chosen.includes(s.id)}
-                      onChange={(e) =>
-                        setChosen((ids) =>
-                          e.target.checked
-                            ? [...ids.filter((id) => id !== s.id), s.id]
-                            : ids.filter((id) => id !== s.id),
-                        )
-                      }
-                    />
-                    <span className="sr-only">Select for batch</span>
-                  </label>
-                  <button
-                    className="cfx-study-name"
-                    aria-label={`Select ${s.name}`}
-                    aria-pressed={s.id === scenario?.id}
-                    onClick={() => onSelect(s.id)}
-                  >
-                    <strong>{s.name}</strong>
-                    <small>
-                      {s.archived ? "Archived · " : ""}
-                      {phase}
-                    </small>
-                  </button>
-                  <button
-                    aria-label={`Delete ${s.name}`}
-                    className="cfx-danger"
-                    disabled={!!busy(s) || entry?.dispatched}
-                    title={
-                      entry?.dispatched
-                        ? "Recover the previous submission before deleting this study"
-                        : busy(s)
-                          ? "Wait for this worker job to finish before deleting the study"
-                          : undefined
-                    }
-                    onClick={(e) => onDelete(s.id, e.currentTarget)}
-                  >
-                    Delete
-                  </button>
-                  <div
-                    className="cfx-job-progress"
-                    role="progressbar"
-                    aria-label={`${s.name} phase progress`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={progress ?? undefined}
-                    aria-valuetext={
-                      job
-                        ? `${phase}${progress == null ? " · progress not reported" : ` · ${progress}%`}`
-                        : phase
-                    }
-                  >
-                    <span style={{ width: `${progress ?? 0}%` }} />
-                  </div>
-                  {job && (
-                    <small className="cfx-job-detail">
-                      {job.phase}
-                      {progress != null
-                        ? ` · ${progress}% of phase`
-                        : terminalJob(job)
-                          ? ""
-                          : " · progress not reported"}
-                      {job.message && ` · ${job.message}`}
-                    </small>
-                  )}
-                  {entry?.error && (
-                    <p className="cfx-error" role="alert">
-                      {entry.error}
-                    </p>
-                  )}
-                </article>
-              );
-            }}
-          </CFDReorderList>
-        </section>
-      ))}
-      {scenario && (
-        <section
-          className="cfx-card cfx-grid"
-          aria-label="Selected study details"
-          key={scenario.id}
-        >
-          <CFDText
-            label="Study name"
-            value={scenario.name}
-            onChange={(name) => onChange({ ...scenario, name })}
-          />
-          <CFDText
-            label="Simulation group"
-            value={scenario.group}
-            maxLength={80}
-            onChange={(group) =>
-              onChange({ ...scenario, group: group.trim() }, true)
-            }
-          />
-        </section>
-      )}
+  const visible = scenarios.filter(s => showArchived || !s.archived);
+  const groups = simulationGroups(scenarios, project.cfdSimulationGroups);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const busy = (s: CFDScenario) => !!entries[s.id]?.submitting || !!(entries[s.id]?.job && !terminalJob(entries[s.id].job!));
+  const renameGroup = (group: CFDSimulationGroup, name: string) => {
+    if (groups.some(g => g.id !== group.id && sameGroup(g.name, name))) { setError("A group already has that name."); return false; }
+    setError("");
+    onOrder(scenarios.map(s => sameGroup(s.group, group.name) ? { ...s, group: name } : s), groups.map(g => g.id === group.id ? { ...g, name } : g));
+    return true;
+  };
+  const deleteGroup = (group: CFDSimulationGroup) => {
+    const members = scenarios.filter(s => sameGroup(s.group, group.name));
+    const remaining = groups.filter(g => g.id !== group.id);
+    let destination = remaining.find(g => sameGroup(g.name, "Ungrouped"));
+    if (members.length && !destination) { destination = { id: crypto.randomUUID(), name: "Ungrouped" }; remaining.push(destination); }
+    onOrder(scenarios.map(s => sameGroup(s.group, group.name) ? { ...s, group: destination!.name } : s), remaining);
+  };
+  return <div className="cfx-studies">
+    <div className="cfx-study-tools">
+      <button className="cfx-primary" onClick={() => onAdd()} disabled={scenarios.length >= 100}>New simulation</button>
+      <button disabled={groups.length >= 100} onClick={() => onOrder(scenarios, [...groups, {
+        id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name)),
+      }])}>Add group</button>
+      <label className="cfx-check"><input type="checkbox" checked={showArchived} onChange={e => onShowArchived(e.target.checked)} />Archived</label>
+      <div className="cfx-history"><button disabled={!canUndo} onClick={onUndo}>Undo</button><button disabled={!canRedo} onClick={onRedo}>Redo</button></div>
     </div>
-  );
+    {error && <p className="cfx-error" role="alert">{error}</p>}
+    {!scenarios.length && <div className="cfx-welcome"><h3>No simulations</h3>
+      <button onClick={() => onAdd()}>Create first simulation</button>
+      <label className="cfx-file">Import simulation<input aria-label="Import CFD scenario" type="file" accept=".json,application/json"
+        onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onImport(file); }} /></label>
+    </div>}
+    <div className="cfx-group-tree">
+      <CFDReorderList items={groups} label="Simulation groups" scope={`simulation-groups:${project.projectId}`}
+        onMove={(id, at) => onOrder(scenarios, insertAtBoundary(groups, id, at))}>
+        {group => {
+          const members = visible.filter(s => sameGroup(s.group, group.name));
+          const allMembers = scenarios.filter(s => sameGroup(s.group, group.name));
+          return <section className="cfx-study-group" aria-label={`Simulation group ${group.name}`}>
+            <header className="cfx-group-heading">
+              <InlineName key={`${group.id}:${group.name}`} value={group.name} label={`Rename group ${group.name}`} maxLength={80} onCommit={name => renameGroup(group, name)} />
+              <small>{allMembers.length} {allMembers.length === 1 ? "simulation" : "simulations"}</small>
+              <div className="cfx-group-actions">
+                <button aria-label={`Add simulation to ${group.name}`} disabled={scenarios.length >= 100} onClick={() => onAdd(group.name)}>+ Simulation</button>
+                <button aria-label={`Duplicate group ${group.name}`} disabled={scenarios.length + allMembers.length > 100 || groups.length >= 100}
+                  onClick={() => { const copy = duplicateSimulationGroup(scenarios, groups, group.id); if (copy) onOrder(copy.scenarios, copy.groups); }}>Duplicate</button>
+                <button className="cfx-danger" aria-label={`Delete group ${group.name}`} title="Remove this folder; keep its simulations in Ungrouped"
+                  onClick={() => deleteGroup(group)}>Delete</button>
+              </div>
+            </header>
+            <CFDReorderList items={members} label={`${group.name} simulations`} scope={`simulations:${project.projectId}`}
+              onMove={(id, at) => {
+                const anchor = members[at]?.id;
+                const original = scenarios.filter(s => sameGroup(s.group, group.name));
+                const boundary = anchor ? original.findIndex(s => s.id === anchor) : original.length;
+                onOrder(moveStudy(scenarios, id, group.name, boundary), groups);
+              }}>
+              {s => {
+                const entry = entries[s.id], job = entry?.job;
+                const stale = !!job && entry.input !== workerInput(project, s);
+                const phase = entry?.submitting ? "Checking & submitting…" : job ? `${job.phase}${stale ? " · older setup" : ""}` : entry?.dispatched ? "Submission status unknown" : "Not submitted";
+                const reason = (operation: CFDOperation) => s.archived ? "Unarchive this simulation before submitting" : busy(s) ? "Wait for this job to finish" :
+                  entry?.dispatched && entry.operation !== operation ? `Recover the previous ${entry.operation} submission first` :
+                  !worker?.capabilities.connected ? worker?.capabilities.reason || "Connect an OpenFOAM worker to submit this simulation" :
+                  !worker.capabilities[operation] ? worker.capabilities.reason || `This worker does not support ${operation}` : undefined;
+                return <article className={`cfx-study-row${s.id === scenario?.id ? " selected" : ""}`}>
+                  {renaming === s.id ? <InlineName key={s.id} value={s.name} label="Simulation name" onCommit={name => onChange({ ...s, name }, true)} onDone={() => setRenaming(null)} /> :
+                    <button className="cfx-study-name" aria-label={`Select ${s.name}`} aria-pressed={s.id === scenario?.id}
+                      aria-describedby={`cfx-study-status-${s.id}`} title={`${s.name} · ${phase}`} onClick={() => onSelect(s.id)} onDoubleClick={() => setRenaming(s.id)}>
+                      <strong>{s.name}</strong><small id={`cfx-study-status-${s.id}`}>{s.archived ? "Archived · " : ""}{phase}</small>
+                    </button>}
+                  <div className="cfx-study-actions">
+                    {(["mesh", "run"] as const).map(operation => <button key={operation} className={operation === "run" ? "cfx-primary" : undefined}
+                      aria-label={`${operation === "mesh" ? "Mesh" : "Run"} ${s.name}`} disabled={!!reason(operation)} title={reason(operation)} onClick={() => onSubmit(operation, [s])}>
+                      {operation === "mesh" ? "Mesh" : "Run"}</button>)}
+                    <button aria-label={`Delete ${s.name}`} className="cfx-danger" disabled={busy(s) || entry?.dispatched}
+                      title={entry?.dispatched ? "Recover the previous submission before deleting this simulation" : undefined} onClick={e => onDelete(s.id, e.currentTarget)}>Delete</button>
+                  </div>
+                  <details className="cfx-row-menu" onClick={event => {
+                    if (event.target instanceof Element && event.target.closest("button")) event.currentTarget.open = false;
+                  }}><summary aria-label={`Actions for ${s.name}`}>⋯</summary><div>
+                    <button onClick={e => { e.currentTarget.closest("details")!.open = false; setRenaming(s.id); }}>Rename</button>
+                    <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups); onSelect(copy.id); }}>Duplicate simulation</button>
+                    <button disabled={busy(s) || entry?.dispatched} onClick={() => onChange({ ...s, archived: !s.archived }, true)}>{s.archived ? "Unarchive" : "Archive"}</button>
+                    <label>Move to group<select aria-label={`Move ${s.name} to group`} value={group.id} onChange={e => {
+                      const target = groups.find(g => g.id === e.target.value)!;
+                      e.currentTarget.closest("details")!.open = false;
+                      onOrder(moveStudy(scenarios, s.id, target.name, scenarios.filter(v => sameGroup(v.group, target.name)).length), groups);
+                    }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
+                  </div></details>
+                  {(entry?.submitting || entry?.dispatched || job) && <div className="cfx-job-progress" role="progressbar" aria-label={`${s.name} phase progress`}
+                    aria-valuemin={0} aria-valuemax={100} aria-valuenow={job?.progress ?? undefined}
+                    aria-valuetext={job ? `${phase}${job.progress == null ? " · progress not reported" : ` · ${job.progress}%`}` : phase}>
+                    <span style={{ width: `${job?.progress ?? 0}%` }} /></div>}
+                  {job && <small className="cfx-job-detail">{job.phase}{job.progress != null ? ` · ${job.progress}% of phase` : terminalJob(job) ? "" : " · progress not reported"}{job.message && ` · ${job.message}`}</small>}
+                  {entry?.error && <p className="cfx-error" role="alert">{entry.error}</p>}
+                </article>;
+              }}
+            </CFDReorderList>
+            {!members.length && <p className="cfx-empty-drop">{allMembers.length ? "All simulations in this group are archived" : "Empty group"}</p>}
+          </section>;
+        }}
+      </CFDReorderList>
+    </div>
+  </div>;
 }
