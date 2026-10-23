@@ -141,7 +141,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
   );
   await cfdWindow(ui, "Simulation");
   await ui.getByRole("tab", { name: "Run", exact: true }).click();
-  assert.match(await ui.innerText(), /No computed results/);
+  assert.match(await ui.innerText(), /No residual samples/);
   assert.equal(
     await ui
       .getByRole("button", { name: "Run solver", exact: true })

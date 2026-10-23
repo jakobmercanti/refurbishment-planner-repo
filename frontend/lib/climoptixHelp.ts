@@ -1,0 +1,107 @@
+import type { CFDWindowId } from "@/components/ClimoptixWindowMenu";
+
+type HelpStep = { heading: string; text: string };
+
+/** Contextual guidance lives in the native help window, not above editable data. */
+export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
+  studies: [
+    {
+      heading: "Studies and groups",
+      text: "Each study uses the shared building but stores independent simulation settings. Select a name to load its settings in every phase. Enter a group name to create a group. Drag the grip to reorder or move between groups; Arrow Up/Down reorders within a group. Save project includes all studies; imported logs and VTK files are session-only.",
+    },
+    {
+      heading: "Mesh and Run",
+      text: "Select one or more studies for a batch submission. Each study is validated against its current building and settings before being sent to a trusted worker. Mesh prepares and checks the mesh; Run also requests the solver. Jobs run independently. Progress is reported by the worker for the current phase, never estimated from elapsed time. Without a connected worker these actions remain unavailable. If submission status is unknown, retry the same operation to recover the original request, even if you have edited the setup since. Resolve that request before starting a different operation. Active or unresolved jobs cannot be deleted or archived.",
+    },
+  ],
+  domain: [
+    {
+      heading: "Choose the simulation volume",
+      text: "Choose a seed floor and room, then Validate & refresh. Only permanent doorless passages and physical slab voids expand the connected air volume. Doors and windows stop discovery at every open state. Their virtual caps may use an opening/pressure boundary; they are not automatically solid walls. The viewer's inspection scope does not change this seed.",
+    },
+  ],
+  equipment: [
+    {
+      heading: "Vents and objects",
+      text: "Validate a seed room to discover room-facing wall and ceiling hosts. Add supply/extract vents, place them on a face or use precise host coordinates. Supply/Extract determines flow direction; enter a positive magnitude. Dragging a vent changes its host coordinates. A recirculating unit needs separate supply and return devices. Optimization lock and allowable host-local polygons are metadata only; no optimizer is connected. Furniture, people and fixtures come from the shared project. Source placement must be edited in Floorplan and refreshed here; object overrides are study-specific. Deleted or disconnected references remain until removed.",
+    },
+    {
+      heading: "Simplified representations",
+      text: "Solid proxies are simplified CFD obstacles, not detailed render meshes. Excluded objects have no CFD effect; heat-only sources do not create solid obstacles. Dimensions are millimetres, power is watts, temperatures are kelvin, and concentration is ppm by volume. Emissions start at zero and require calibrated inputs: the CO₂ source rate is pure-gas m³/s, not ppm/s. Review proxy assumptions and source summaries before running.",
+    },
+  ],
+  boundaries: [
+    {
+      heading: "Surface conditions",
+      text: "Every derived patch is named and coloured. Group conditions are inherited unless a patch has an override. Clear override restores inheritance. Vents get flow and inflow properties from Equipment. Search by room, surface name or source ID. Thermal opens the envelope calculator; applied thermal conditions retain their source revision and must be refreshed after source changes.",
+    },
+  ],
+  physics: [
+    {
+      heading: "Physics and units",
+      text: "Presets are starting intentions, not certified engineering settings. Physics uses SI units: temperatures in kelvin and CO₂ in ppm by volume (1 ppm = 10⁻⁶ volume fraction). Numerical controls and time stepping are in Solver → Run. Age of air and comfort are requested future outputs, not computed metrics. A worker must explicitly support the selected solver, turbulence, energy and scalar models before execution.",
+    },
+  ],
+  mesh: [
+    {
+      heading: "Mesh, Run and Post-processing",
+      text: "Mesh defines the recipe and local refinements; Run defines numerics, cores and resource limits; Post-processing defines named X/Y/Z slices and fields before execution. Recipes, counts and quality intentions are not a generated mesh or achieved quality. Validate after changing settings. Play stays unavailable until a trusted OpenFOAM worker is connected.",
+    },
+  ],
+  review: [
+    {
+      heading: "Validation and export",
+      text: "Validate the current source and setup before exporting. The preparation manifest records blocking diagnostics; boundary STL is included only when geometry checks pass. Source geometry is millimetres; exported STL is metres. Preparation and optional Foamlib settings ZIPs are configuration handoffs, not runnable solver cases. A worker must revalidate, construct a complete case, mesh and check it before solving. Review the visible diagnostics, assumptions and provenance hashes.",
+    },
+  ],
+  view: [
+    {
+      heading: "Inspect without changing the study",
+      text: "View the whole building, an individual room or a connected air volume. This changes only the inspection scope, not the simulation seed. Orbit by dragging, zoom with the wheel or touch gesture, and use Fit to reset framing. Toggle surface, vent and refinement overlays here. Right-click the background or use Toolbar to reopen the setup window. Drag its titlebar to move it; resize using its edges.",
+    },
+  ],
+  thermal: [
+    {
+      heading: "Thermal envelope",
+      text: "Choose source constructions, site/weather, gains and calculation assumptions, then Calculate & preview. The Thermal help button explains each step and its engineering assumptions. Preview is an envelope estimate, not a solved CFD result. Apply transfers a revision-bound thermal contract; stale or incomplete calculations cannot be applied. A future worker still needs validated thermal boundary/source adapters.",
+    },
+  ],
+  convergence: [
+    {
+      heading: "Convergence monitor",
+      text: "Import a real OpenFOAM solver log to inspect initial residuals in Monitor or Solver → Run. Histories are session-only for the latest three studies, not saved with the project. These are external logs, not live or verified results for the active study. Repeated pressure corrections are retained. Plots are clipped to 10⁻¹²–1 and decimated for readability; download preserves the original file. Residuals alone do not establish convergence or conservation.",
+    },
+  ],
+  results: [
+    {
+      heading: "Imported VTK results",
+      text: "Open a real VTK PolyData surface or slice in Solver → Post-processing. Imported results stay local and are labelled external/unverified; they are not evidence that this study ran. Supports bounded ASCII .vtp and legacy POLYDATA .vtk up to 25 MB. Select a scalar or vector magnitude; drag to orbit, use the wheel or zoom buttons to zoom, and Fit to reset framing. Every displayed value comes from the imported file. Download preserves the original for ParaView. Legacy FIELD, colour/texture sections and 64-bit IDs need ASCII .vtp; VTU volumes and compressed/binary files need a worker-side surface/slice export.",
+    },
+  ],
+};
+
+export const CFD_REFINEMENT_HELP: HelpStep[] = [
+  {
+    heading: "Refinement region",
+    text: "Changes save to this study as you edit. Centres and dimensions are millimetres. Cuboids and spheres use explicit bounds; object extents follow the last checked solid proxy and need refresh after source placement changes. Regions are wireframe intent, not cells or achieved resolution. Duplicate, delete and reorder regions in Solver → Mesh. The highest overlapping level wins; list order is only organisational.",
+  },
+  {
+    heading: "Level and nominal size",
+    text: "Each snappyHexMesh level halves the base cell along X, Y and Z. A custom target rounds up to a level that is at least as fine; global limits also apply to the rounded size. Colours match between the list and viewer. Cell counts, snapping, layers, quality and y+ must be measured by a real mesher; the displayed count range is only an estimate.",
+  },
+];
+
+export const CFD_SIMULATION_HELP: HelpStep[] = [
+  ...CFD_PHASE_HELP.mesh,
+  ...CFD_REFINEMENT_HELP,
+  {
+    heading: "Run and export",
+    text: "Select steady/transient, cores, memory and time limits. A connected worker validates each study before submission; Studies supports batch Mesh/Run and worker-reported phase progress. Without a worker no background job is submitted. Foamlib exports settings for OpenCFD v2312, including cores, run controls, refinement regions and named slices. This ZIP is a configuration handoff, not a runnable case. A worker must enforce resource limits and support the selected physics.",
+  },
+  {
+    heading: "Slices",
+    text: "Planes are normal to source X, Y or Z and evenly spaced inside the last checked domain bounds. Choose plane counts, solved fields and sampling every N field writes before running. Validate to resolve positions. Named cutting planes and fields are included in the settings export for the future worker.",
+  },
+  ...CFD_PHASE_HELP.convergence,
+  ...CFD_PHASE_HELP.results,
+];

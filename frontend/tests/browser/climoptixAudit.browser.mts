@@ -146,7 +146,10 @@ test("a settings export is cancelled when a different project replaces its workb
 test("delete confirmation uses the shared window styling and keeps cancellation keyboard-safe", async (t) => {
   const { page, ui, saved } = await open(t);
   await cfdWindow(ui, "Studies");
-  await ui.locator(".cfx-study-row.selected").getByRole("button", { name: /^Delete / }).click();
+  await ui
+    .locator(".cfx-study-row.selected")
+    .getByRole("button", { name: /^Delete / })
+    .click();
   const dialog = page.getByRole("dialog", {
     name: "Delete CFD scenario",
     exact: true,
@@ -188,12 +191,16 @@ test("delete confirmation uses the shared window styling and keeps cancellation 
   assert.equal((await saved()).cfdScenarios.length, 1);
   assert.equal(
     await ui
-      .locator(".cfx-study-row.selected").getByRole("button", { name: /^Delete / })
+      .locator(".cfx-study-row.selected")
+      .getByRole("button", { name: /^Delete / })
       .evaluate((el) => el === document.activeElement),
     true,
   );
   await cfdWindow(ui, "Studies");
-  await ui.locator(".cfx-study-row.selected").getByRole("button", { name: /^Delete / }).click();
+  await ui
+    .locator(".cfx-study-row.selected")
+    .getByRole("button", { name: /^Delete / })
+    .click();
   await dialog
     .getByRole("button", { name: "Delete study", exact: true })
     .click();
@@ -349,7 +356,10 @@ for (const style of ["DEFAULT", "MODERN"])
             exact: true,
           });
           await inspector
-            .getByRole("heading", { name: phase, exact: true })
+            .getByRole("heading", {
+              name: phase === "Simulation" ? "Simulation controls" : phase,
+              exact: true,
+            })
             .scrollIntoViewIfNeeded();
           for (const summary of await inspector
             .locator("details > summary")

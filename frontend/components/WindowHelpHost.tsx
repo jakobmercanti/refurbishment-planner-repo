@@ -16,6 +16,8 @@ export function WindowHelpHost() {
     const open = (event: Event) => { activeRequest.current = (event as CustomEvent<HelpRequest>).detail; setRequest(activeRequest.current); };
     const key = (event: KeyboardEvent) => {
       if (!activeRequest.current) return;
+      if (event.target instanceof Element && event.target.closest(".window-dock-menu")) return;
+      if (event.key === "Escape" && event.target instanceof Element && event.target.closest("[data-window-dragging]")) return;
       if (event.key === "Tab") {
         const controls = Array.from(container.current?.querySelectorAll<HTMLElement>('button:not([disabled]),summary,a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]') ?? []).filter(element => element.getClientRects().length > 0);
         if (!controls.length) return;
@@ -40,6 +42,6 @@ export function WindowHelpHost() {
   if (!request) return null;
   return createPortal(<div ref={container} className={`window-help-host ${compact ? "compact-workspace" : ""}`}><FloatingToolbar key={request.title} title={`Help — ${request.title}`} help={false} defaultPosition={{ x: 70, y: 80 }} initialSize={{ width: 540 }} maxHeight={650} bringToFront onClose={() => { activeRequest.current = null; setRequest(null); request.opener?.focus(); }}><article className="window-help-content" aria-label={`Help for ${request.title}`}>
     {(request.steps ?? windowHelpSteps(request.title)).map(step => <section key={step.heading}><h3>{step.heading}</h3><p>{step.text}</p></section>)}
-    <p>Drag the header to move this help window; drag an edge to resize. Close it or press Escape to return to the original window.</p>
+    <p>Drag the header to move this help window; drag an edge to resize. Drag to either side to preview attaching it, then release to dock. Use Window layout for keyboard-accessible docking or to float the window again. Close it or press Escape to return to the original window.</p>
   </article></FloatingToolbar></div>, request.opener.closest("dialog") ?? document.body);
 }

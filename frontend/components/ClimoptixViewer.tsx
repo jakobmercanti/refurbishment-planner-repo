@@ -557,11 +557,6 @@ export function ClimoptixViewer({
               />
               Refinement intent
             </label>
-            <p className="cfx-caption">
-              Viewing a room or air volume does not change the simulation seed.
-              Air volumes connect only through permanent passages and slab
-              openings, never doors or windows.
-            </p>
             <button type="button" onClick={() => setFit((x) => x + 1)}>
               Fit view
             </button>
@@ -818,7 +813,7 @@ export function ClimoptixViewer({
             </strong>
             <p>
               {(sceneState.input === source && sceneState.error) ||
-                "Draw measured rooms in Floorplan. The geometry kernel determines connected air volumes."}
+                "No measured geometry available."}
             </p>
             {sceneState.error && (
               <button onClick={() => setRetry((x) => x + 1)}>
@@ -866,11 +861,7 @@ export function ClimoptixViewer({
             refinements.length > 0 &&
             " · Dashed/wireframe = refinement intent"}
         </span>
-        <small>
-          {picking
-            ? "Click a planar host in 3D to place the vent."
-            : "Drag to orbit · scroll to zoom · right-click for windows · arrows show prescribed directions, not solved flow"}
-        </small>
+        <small>Arrows: prescribed flow, not solved results</small>
       </footer>
     </section>
   );

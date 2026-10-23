@@ -69,8 +69,8 @@ export async function startBrowserHarness() {
   } catch (error) { await new Promise(resolve => server.close(resolve)); throw error; }
   return {
     origin, events, requests,
-    async session(project) {
-      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    async session(project, options = {}) {
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, ...options });
       await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
       await context.route("**/climoptix/geometry", async route => {
         const { realScene } = await import("../climoptixFixtures.ts");

@@ -433,7 +433,23 @@ test("one native setup window contains equal-width tabs, moves and resizes, and 
     const widths = await tabs.evaluateAll((nodes) =>
       nodes.map((n) => n.getBoundingClientRect().width),
     );
-    assert.ok(Math.max(...widths) - Math.min(...widths) < 1);
+    const compact = ui.getByRole("combobox", {
+      name: "CFD phase",
+      exact: true,
+    });
+    if (size.width <= 1024) {
+      assert.ok(await compact.isVisible());
+      assert.equal(await compact.inputValue(), "mesh");
+      assert.equal(
+        widths.length,
+        0,
+        "Compact screens use one selector, not hidden multi-row tabs",
+      );
+    } else {
+      assert.equal(await compact.isVisible(), false);
+      assert.equal(widths.length, 11);
+      assert.ok(Math.max(...widths) - Math.min(...widths) < 1);
+    }
     if (process.env.BROWSER_ARTIFACTS)
       await page.screenshot({
         path: `${process.env.BROWSER_ARTIFACTS}/cfd-tabbed-${size.width}.png`,

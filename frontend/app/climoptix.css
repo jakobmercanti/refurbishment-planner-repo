@@ -164,7 +164,6 @@
   background: var(--verify-soft);
   color: var(--verify);
 }
-.cfx-intro,
 .cfx-caption {
   color: var(--muted);
   line-height: 1.6;
@@ -364,6 +363,10 @@
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
+.cfx-viewer > header > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .cfx-inline {
   display: flex;
   flex-wrap: wrap;
@@ -475,7 +478,7 @@
 .cfx-simulation-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
+  border-bottom: 1px solid var(--line);
 }
 .cfx-simulation-tabs button {
   padding: 8px 5px;
@@ -776,20 +779,73 @@
 }
 .cfx-setup-heading > label {
   flex: 1;
+  min-width: 0;
 }
 .cfx-setup-heading select {
   max-width: 100%;
 }
+.cfx-phase-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.cfx-active-study {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-weight: 500;
+}
 .cfx-setup-tabs {
   display: grid;
   grid-template-columns: repeat(11, minmax(0, 1fr));
-  gap: 4px;
-  padding: 8px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--line);
 }
 .cfx-workspace .cfx-setup-tabs > button {
   padding: 8px 3px;
   font-size: 11px;
+}
+/* Navigation shares a baseline, not the rounded styling of action buttons.
+   Control variables also preserve this distinction in the Modern theme. */
+.cfx-workspace
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .thermal-steps)
+  > button {
+  --control-bg: transparent;
+  --control-text: var(--muted);
+  --control-border: transparent;
+  --control-hover-bg: var(--surface-muted);
+  --control-hover-text: var(--ink);
+  --control-hover-border: transparent;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0 !important;
+  background: var(--control-bg);
+  color: var(--control-text);
+  box-shadow: none;
+}
+.cfx-workspace
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .thermal-steps)
+  > button:hover:not(:disabled) {
+  background: var(--control-hover-bg);
+  color: var(--control-hover-text);
+}
+.cfx-workspace
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .thermal-steps)
+  > button:is([aria-selected="true"], [aria-current="step"]) {
+  --control-bg: var(--panel);
+  --control-text: var(--ink);
+  --control-border: transparent;
+  --control-hover-bg: var(--surface-muted);
+  --control-hover-text: var(--ink);
+  --control-hover-border: transparent;
+  background: var(--control-bg);
+  color: var(--control-text);
+  box-shadow: inset 0 -3px var(--accent);
 }
 .cfx-setup-panel {
   flex: 1;
@@ -817,7 +873,8 @@
   font-size: 11px;
 }
 .cfx-setup-footer > div {
-  flex: 1 1 240px;
+  flex: 1 1 100px;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 .cfx-setup-footer > button {
@@ -985,15 +1042,41 @@
   min-width: 0;
   min-height: 0;
 }
+.cfx-setup-heading > .cfx-phase-select,
+.cfx-workspace .thermal-step-select {
+  display: none;
+}
 @container cfx-setup (max-width: 760px) {
-  .cfx-setup-tabs {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+  .cfx-setup-heading > .cfx-phase-select {
+    display: grid;
+  }
+  .cfx-setup-tabs,
+  .cfx-setup-heading > .cfx-study-select,
+  .cfx-setup-heading > .cfx-state,
+  .thermal-embedded .thermal-steps {
+    display: none;
+  }
+  .thermal-embedded .thermal-step-select {
+    display: grid;
+    margin: 0 16px 10px;
+  }
+}
+@media (max-width: 1024px), (max-width: 1366px) and (pointer: coarse) {
+  .cfx-setup-heading > .cfx-phase-select {
+    display: grid;
+  }
+  .cfx-setup-tabs,
+  .cfx-setup-heading > .cfx-study-select,
+  .cfx-setup-heading > .cfx-state,
+  .thermal-steps {
+    display: none;
+  }
+  .cfx-workspace .thermal-step-select {
+    display: grid;
+    margin: 0 16px 10px;
   }
 }
 @container cfx-setup (max-width: 450px) {
-  .cfx-setup-tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
   .cfx-study-tools > button {
     flex: 1 1 100px;
   }

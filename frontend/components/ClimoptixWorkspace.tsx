@@ -5,6 +5,7 @@ import { ClimoptixStudies } from "./ClimoptixStudies";
 import { useCFDJobs } from "./useCFDJobs";
 import { terminalJob } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
+import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP } from "@/lib/climoptixHelp";
 import { FloatingToolbar } from "./FloatingToolbar";
 import {
   ClimoptixWindowMenu,
@@ -73,7 +74,7 @@ const HELP = [
   },
   {
     heading: "One shared building",
-    text: "Create a study, choose a seed room, then Validate & refresh. Geometry, furniture and people come from your existing project in millimetres; Climoptix does not maintain a second building. File → Save includes all studies.",
+    text: "Create a study, choose a seed room, then Validate & refresh. On phones, tablets and narrow windows, choose Studies from the Phase menu to select or create a study, then choose the phase to edit. The active study name stays above that menu. On wider screens, use the Study selector and phase tabs. Geometry, furniture and people come from your existing project in millimetres; Climoptix does not maintain a second building. File → Save includes all studies.",
   },
   {
     heading: "Connectivity is explicit",
@@ -85,7 +86,7 @@ const HELP = [
   },
   {
     heading: "No simulated results",
-    text: "No mesher, solver or job service is connected, so Play remains disabled and no study results are computed. You can inspect imported real solver logs and VTK surface/slice files; these remain external, not verified results for this study. Counts are estimates. Review engineering assumptions before connecting a worker.",
+    text: "Without a connected worker, Mesh/Run stay disabled and no study results are computed. Connected jobs show only worker-reported progress. Imported real solver logs and VTK surface/slice files remain external, not verified results for this study. Counts are estimates. Review engineering assumptions before connecting a worker.",
   },
 ];
 function DeleteStudy({
@@ -545,7 +546,7 @@ export function ClimoptixWorkspace({
       setMessage(
         value.validation.errors
           ? `${value.validation.errors} blocking issue(s). Review diagnostics before exporting a surface.`
-          : `Preparation checked · ${value.validation.warnings} warning(s). No solver has run.`,
+          : `Preparation checked · ${value.validation.warnings} warning(s). No solve requested.`,
       );
     } catch (reason) {
       if (!controller.signal.aborted) {
@@ -706,10 +707,24 @@ export function ClimoptixWorkspace({
     if (id === "thermal") openThermal();
     else openPhase(id);
   };
+  const closeRefinementEditor = () => {
+    setRefinementEditor(null);
+    const target = [
+      document.querySelector<HTMLSelectElement>(".cfx-phase-select select"),
+      document.querySelector<HTMLButtonElement>(
+        ".cfx-setup-tabs button[aria-selected=true]",
+      ),
+      document.querySelector<HTMLButtonElement>(
+        ".cfx-view-selector button[aria-expanded]",
+      ),
+    ].find((node) => node?.getClientRects().length);
+    target?.focus();
+  };
   const deletingStudy = scenarios.find((s) => s.id === deleting?.id);
   return (
     <section
       className="cfx-workspace"
+      data-dock-workspace="climoptix"
       aria-label="Climoptix CFD workspace"
       onKeyDown={(event) => {
         if (
@@ -724,12 +739,7 @@ export function ClimoptixWorkspace({
         if (editor) {
           event.preventDefault();
           event.stopPropagation();
-          setRefinementEditor(null);
-          document
-            .querySelector<HTMLButtonElement>(
-              ".cfx-setup-tabs button[aria-selected=true]",
-            )
-            ?.focus();
+          closeRefinementEditor();
         } else if (
           event.target instanceof Element &&
           event.target.closest(".cfx-setup-window")
@@ -820,7 +830,7 @@ export function ClimoptixWorkspace({
         <FloatingToolbar
           title="Simulation setup"
           helpTitle="Climoptix CFD"
-          helpSteps={HELP}
+          helpSteps={[...CFD_PHASE_HELP[shownTab], ...HELP]}
           className="cfx-setup-window"
           defaultPosition={{ x: 20, y: 72 }}
           initialSize={{ width: 1000, height: 720 }}
@@ -833,8 +843,8 @@ export function ClimoptixWorkspace({
         >
           <div className="cfx-setup">
             <header className="cfx-setup-heading">
-              <label>
-                Active study
+              <label className="cfx-study-select">
+                Study
                 <select
                   aria-label="CFD scenario"
                   value={scenario?.id ?? ""}
@@ -858,6 +868,31 @@ export function ClimoptixWorkspace({
                           </option>
                         ))}
                     </optgroup>
+                  ))}
+                </select>
+              </label>
+              <label className="cfx-phase-select">
+                <span className="cfx-phase-label">
+                  <span>Phase</span>
+                  <span className="cfx-active-study" title={scenario?.name}>
+                    {scenario?.name ?? "No study selected"}
+                  </span>
+                </span>
+                <select
+                  aria-label="CFD phase"
+                  value={shownTab}
+                  onChange={(event) =>
+                    chooseTab(event.target.value as CFDWindowId)
+                  }
+                >
+                  {CFD_WINDOWS.map((item) => (
+                    <option
+                      key={item.id}
+                      value={item.id}
+                      disabled={!available(item.id)}
+                    >
+                      {item.tab}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -970,7 +1005,7 @@ export function ClimoptixWorkspace({
                     className="cfx-inspector"
                     aria-label={`${panel.label} settings`}
                   >
-                    <h2>{panel.label}</h2>
+                    {panel.id !== "mesh" && <h2>{panel.label}</h2>}
                     {panel.id === "domain" && (
                       <DomainPanel
                         project={project}
@@ -1026,7 +1061,16 @@ export function ClimoptixWorkspace({
                             workerAdapter?.capabilities.connected ?? false,
                           canRun:
                             !!workerAdapter?.capabilities.connected &&
-                            workerAdapter.capabilities.run,
+                            workerAdapter.capabilities.run &&
+                            !(
+                              jobs[scenario.id]?.dispatched &&
+                              jobs[scenario.id].operation !== "run"
+                            ),
+                          blockedReason:
+                            jobs[scenario.id]?.dispatched &&
+                            jobs[scenario.id].operation !== "run"
+                              ? "Recover the previous Mesh submission from Studies first"
+                              : undefined,
                           busy:
                             !!jobs[scenario.id]?.submitting ||
                             (!!jobs[scenario.id]?.job &&
@@ -1084,12 +1128,6 @@ export function ClimoptixWorkspace({
                     )}
                     {panel.id === "review" && (
                       <>
-                        <p className="cfx-intro">
-                          Validate the current source and setup. A preparation
-                          manifest may contain blocking diagnostics; surface
-                          export is included only when all geometry checks pass.
-                          Neither is a runnable solver case.
-                        </p>
                         <label>
                           Study notes
                           <textarea
@@ -1238,9 +1276,7 @@ export function ClimoptixWorkspace({
                             )}
                           </article>
                         ))}
-                        {!activeReport && (
-                          <p>Validate to generate the diagnostic report.</p>
-                        )}
+                        {!activeReport && <p>No validation report yet.</p>}
                       </>
                     )}
                   </section>
@@ -1355,7 +1391,7 @@ export function ClimoptixWorkspace({
                   </span>
                 ) : (
                   <span role="status">
-                    {message || "Local autosave · mm geometry / SI physics"}
+                    {message || `${status} · saved locally`}
                   </span>
                 )}
               </div>
@@ -1395,18 +1431,15 @@ export function ClimoptixWorkspace({
       {active && scenario && refinementEditor?.studyId === scenario.id && (
         <FloatingToolbar
           title="Edit refinement"
+          helpSteps={CFD_REFINEMENT_HELP}
           className="cfx-refinement-editor"
           defaultPosition={{ x: 250, y: 100 }}
           initialSize={{ width: 600, height: 620 }}
           maxHeight={850}
           bringToFront
-          onClose={() => setRefinementEditor(null)}
+          onClose={closeRefinementEditor}
         >
           <section className="cfx-inspector" aria-label="Refinement editor">
-            <p className="cfx-caption">
-              Changes save to this study as you edit. Dimensions are
-              millimetres.
-            </p>
             <RefinementEditor
               key={`${scenario.id}:${refinementEditor.id}`}
               scenario={scenario}
@@ -1414,7 +1447,7 @@ export function ClimoptixWorkspace({
               id={refinementEditor.id}
               onChange={change}
             />
-            <button onClick={() => setRefinementEditor(null)}>Done</button>
+            <button onClick={closeRefinementEditor}>Done</button>
           </section>
         </FloatingToolbar>
       )}

@@ -5,6 +5,7 @@ import {
   checkedWorkerJob,
   terminalJob,
   prepareWorkerSubmission,
+  workerInput,
 } from "../lib/climoptixJobs";
 import {
   cfdScenarioSchema,
@@ -19,6 +20,7 @@ import { cfdProject, realPreparation } from "./climoptixFixtures";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ClimoptixStudies } from "../components/ClimoptixStudies";
+import { thermalProject, realThermal } from "./thermalFixtures";
 
 test("insertion boundaries move adjacent and distant items in both directions without mutating the source", () => {
   const items = ["a", "b", "c", "d"].map((id) => ({ id }));
@@ -239,7 +241,7 @@ test("study rows show only the worker's current-phase progress, never a syntheti
     canRedo: false,
     entries: {
       [scenario.id]: {
-        input: preparationInput(project, scenario),
+        input: workerInput(project, scenario),
         job: {
           id: "job",
           studyId: scenario.id,
@@ -271,4 +273,138 @@ test("study rows show only the worker's current-phase progress, never a syntheti
   const complete = renderToStaticMarkup(createElement(ClimoptixStudies, props));
   assert.doesNotMatch(complete, /aria-valuenow=/);
   assert.match(complete, /progress not reported/);
+  assert.doesNotMatch(complete, /awaiting phase progress/);
+});
+
+test("worker submissions pin inputs before awaiting preflight and fail closed on non-exportable geometry", async () => {
+  const project = cfdProject(),
+    scenario = project.cfdScenarios![0];
+  const original = globalThis.fetch;
+  let exportable = true,
+    sent;
+  try {
+    globalThis.fetch = async (_url, options) => {
+      sent = JSON.parse(options!.body as string);
+      const report = realPreparation(sent);
+      if (!exportable) {
+        assert.equal(report.validation.errors, 0);
+        report.surface.exportable = false;
+      }
+      return new Response(JSON.stringify(report), {
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const cpu = scenario.resources.cpu,
+      vertex = project.rooms[0].vertices[0].x;
+    const pending = prepareWorkerSubmission(
+      "/api",
+      project,
+      scenario,
+      "run",
+      new AbortController().signal,
+      "retry-key",
+    );
+    scenario.resources.cpu = 12;
+    project.rooms[0].vertices[0].x = 50;
+    const request = await pending;
+    assert.equal(request.contractVersion, 1);
+    assert.equal(request.dialect, "OpenCFD-v2312");
+    assert.equal(request.sourceUnits, "mm");
+    assert.equal(request.submissionId, "retry-key");
+    assert.equal(request.scenario.resources.cpu, cpu);
+    assert.equal(sent.scenario.resources.cpu, cpu);
+    assert.equal(sent.project.rooms[0].vertices[0].x, vertex);
+    assert.equal(
+      (request.project as typeof project).rooms[0].vertices[0].x,
+      vertex,
+    );
+    exportable = false;
+    const blockedProject = cfdProject();
+    await assert.rejects(
+      () =>
+        prepareWorkerSubmission(
+          "/api",
+          blockedProject,
+          blockedProject.cfdScenarios![0],
+          "mesh",
+          new AbortController().signal,
+        ),
+      /Preflight blocked/,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("thermal worker handoffs preserve authoritative hashes but omit histories and unrelated studies", async () => {
+  const project = thermalProject(),
+    scenario = project.cfdScenarios![0];
+  const revision = await preparationRevision(
+    preparationInput(project, scenario),
+  );
+  const beforeApply = workerInput(project, scenario);
+  const historical = realThermal(
+    JSON.parse(preparationRequestBody(project, scenario, revision)),
+    false,
+  );
+  scenario.thermalSnapshots = [
+    {
+      schemaVersion: 1,
+      caseHash: historical.caseHash,
+      sourceRevision: historical.sourceRevision,
+      createdAt: "2026-10-23T12:00:00Z",
+      package: historical,
+    },
+  ];
+  assert.notEqual(
+    workerInput(project, scenario),
+    beforeApply,
+    "Apply intent changes job freshness, not the geometry revision",
+  );
+  const afterApply = workerInput(project, scenario);
+  scenario.thermalSnapshots[0].createdAt = "2026-10-23T13:00:00Z";
+  assert.equal(
+    workerInput(project, scenario),
+    afterApply,
+    "Reapplying the same contract is not a physical change",
+  );
+  scenario.thermalSnapshots[0].createdAt = "2026-10-23T12:00:00Z";
+  const fetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (_url, options) =>
+      new Response(
+        JSON.stringify(realPreparation(JSON.parse(options!.body as string))),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    const request = await prepareWorkerSubmission(
+      "/api",
+      project,
+      scenario,
+      "run",
+      new AbortController().signal,
+    );
+    assert.equal(
+      request.clientRevision,
+      revision,
+      "Slim snapshots must not change the physical revision",
+    );
+    assert.equal(request.scenario.thermalSnapshots, undefined);
+    assert.deepEqual(request.thermalApplication, {
+      caseHash: historical.caseHash,
+      sourceRevision: historical.sourceRevision,
+      createdAt: "2026-10-23T12:00:00Z",
+    });
+    assert.equal((request.project as typeof project).cfdScenarios, undefined);
+    assert.deepEqual(
+      request.scenario.thermalEnvelope,
+      scenario.thermalEnvelope,
+    );
+    assert.equal(
+      scenario.thermalSnapshots.length,
+      1,
+      "The saved history belongs to the user and is unchanged",
+    );
+  } finally {
+    globalThis.fetch = fetch;
+  }
 });

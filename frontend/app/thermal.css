@@ -37,8 +37,7 @@
 .thermal-steps {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
-  padding: 8px 16px 14px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
 }
 .thermal-steps button {
@@ -60,12 +59,6 @@ body[data-ui-style="modern"] .thermal-steps button {
 .thermal-gains {
   display: grid;
   gap: 14px;
-}
-.cfx-workspace .thermal-steps button.active,
-.cfx-workspace .thermal-steps button.active:hover:not(:disabled) {
-  background: var(--ui-button-activeBackground);
-  color: var(--ui-button-activeText);
-  border-color: var(--ui-button-activeBackground);
 }
 .thermal-scroll {
   flex: 1;

@@ -46,7 +46,7 @@ const solverLog = {
   ),
 };
 
-test("convergence history survives leaving Simulation and has an independently accessible window", async (t) => {
+test("convergence history survives changing phases and its guidance is available through contextual help", async (t) => {
   const { page, ui } = await setup(t);
   await cfdWindow(ui, "Simulation");
   await ui.getByRole("tab", { name: "Run", exact: true }).click();
@@ -75,7 +75,20 @@ test("convergence history survives leaving Simulation and has an independently a
   await monitor
     .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
     .waitFor();
-  assert.match(await monitor.innerText(), /not a live run/i);
+  assert.match(
+    await monitor.innerText(),
+    /External log · unverified · session only/,
+  );
+  await ui
+    .getByRole("button", { name: "Help for Climoptix CFD", exact: true })
+    .click();
+  const help = page.getByRole("article", {
+    name: "Help for Climoptix CFD",
+    exact: true,
+  });
+  assert.match(await help.innerText(), /not live or verified results/);
+  assert.match(await help.innerText(), /session-only/);
+  await page.keyboard.press("Escape");
   await page
     .getByRole("button", { name: "Hide Simulation setup", exact: true })
     .click();
@@ -191,13 +204,19 @@ test("3D refinements use distinct level colours, a matching legend and a working
   // A full-size canvas lies under the tools. Clear the centre before inspecting
   // wireframe pixels, then keep only the right-hand view controls open.
   await page.getByRole("button", { name: "Toolbar", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Hide setup window", exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Hide setup window", exact: true })
+    .click();
   await cfdWindow(ui, "View properties");
   const window = ui.locator(".cfx-setup-window");
   const box = await window.boundingBox();
-  const edge = await window.locator(".floating-toolbar-resize-right").boundingBox();
-  await page.mouse.move(edge.x + 2, edge.y + edge.height / 2); await page.mouse.down();
-  await page.mouse.move(box.x + 320, edge.y + edge.height / 2, { steps: 10 }); await page.mouse.up();
+  const edge = await window
+    .locator(".floating-toolbar-resize-right")
+    .boundingBox();
+  await page.mouse.move(edge.x + 2, edge.y + edge.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 320, edge.y + edge.height / 2, { steps: 10 });
+  await page.mouse.up();
   const visible = await eventually(
     pixelCounts,
     (values) => values.every((value) => value > 10),
@@ -532,7 +551,9 @@ test("repeated refinement copies have distinct names and independent dimensions"
     name: "Refinement size X (mm)",
     exact: true,
   });
-  await ui.getByRole("button", { name: "Edit Occupied zone copy 2", exact: true }).click();
+  await ui
+    .getByRole("button", { name: "Edit Occupied zone copy 2", exact: true })
+    .click();
   await size.fill("1600");
   await size.press("Enter");
   const edited = await eventually(
@@ -545,8 +566,15 @@ test("repeated refinement copies have distinct names and independent dimensions"
     .getByRole("button", { name: "Delete Occupied zone copy 2", exact: true })
     .click();
   assert.equal(await ui.locator(".cfx-refinement-row").count(), 2);
-  await ui.getByRole("button", { name: "Edit Occupied zone copy", exact: true }).click();
-  assert.equal(await ui.getByRole("textbox", { name: "Refinement name", exact: true }).inputValue(), "Occupied zone copy");
+  await ui
+    .getByRole("button", { name: "Edit Occupied zone copy", exact: true })
+    .click();
+  assert.equal(
+    await ui
+      .getByRole("textbox", { name: "Refinement name", exact: true })
+      .inputValue(),
+    "Occupied zone copy",
+  );
   await ui.getByRole("button", { name: "Done", exact: true }).click();
   await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "Undo", exact: true }).click();
@@ -626,7 +654,7 @@ test("adding after a deletion keeps refinement names unique and deleting the las
       .count(),
     0,
   );
-  await ui.getByText(/No local refinements yet/).waitFor();
+  await ui.getByText("No local refinement regions.", { exact: true }).waitFor();
   assert.equal(
     await ui
       .getByRole("button", { name: "View refinements in 3D", exact: true })

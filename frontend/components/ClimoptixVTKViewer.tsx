@@ -359,10 +359,6 @@ export function ClimoptixVTKViewer({
             · file units
           </span>
         )}
-        <span>
-          Drag to orbit · wheel to zoom · all scalar/vector values come from
-          this file.
-        </span>
         <button onClick={() => downloadCFD(file, file.name)}>
           Download full original data
         </button>

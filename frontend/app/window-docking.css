@@ -1,0 +1,146 @@
+/* Docking reserves actual canvas space; floating tools never reserve any. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.building-plan-stage .environment-screen .full-plan-drawing {
+  left: var(--workspace-dock-left, 0px);
+  right: var(--workspace-dock-right, 0px);
+  width: auto;
+}
+.building-plan-stage .analysis-workspace > .viewer-shell {
+  margin-left: var(--workspace-dock-left, 0px);
+  width: calc(100% - var(--workspace-dock-left, 0px) - var(--workspace-dock-right, 0px));
+}
+.building-plan-stage > .building-floor-bar {
+  /* A floating property editor can cover the selector; its title actions must
+     remain clickable. Docking moves the selector into the free canvas area. */
+  z-index: 15;
+  right: calc(var(--workspace-dock-right, 0px) + 8px);
+  max-width: calc(100% - var(--workspace-dock-left, 0px) - var(--workspace-dock-right, 0px) - 16px);
+}
+.cfx-workspace[data-dock-workspace] > .cfx-viewer {
+  left: var(--workspace-dock-left, 0px);
+  right: var(--workspace-dock-right, 0px);
+}
+/* Fixed, workspace-clipped boxes also cover tools portalled to document.body.
+   Explicit docking outranks compact/tool-specific floating size presets. */
+body .floating-toolbar[data-edge-docked][data-dock-capable] {
+  position: fixed !important;
+  left: var(--edge-dock-left) !important;
+  right: auto !important;
+  top: var(--edge-dock-top) !important;
+  bottom: auto !important;
+  width: var(--edge-dock-width) !important;
+  height: var(--edge-dock-height) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: var(--edge-dock-width) !important;
+  max-height: var(--edge-dock-height) !important;
+}
+.floating-toolbar[data-dock-capable] .floating-toolbar-titlebar {
+  cursor: grab;
+  touch-action: none;
+}
+.floating-toolbar[data-edge-docked] .floating-toolbar-resize {
+  display: none;
+}
+.floating-toolbar[data-edge-docked="LEFT"] .floating-toolbar-resize-right,
+.floating-toolbar[data-edge-docked="RIGHT"] .floating-toolbar-resize-left {
+  display: block;
+}
+body .floating-toolbar .window-header-actions > .floating-toolbar-dock {
+  display: inline-grid;
+  place-items: center;
+  width: var(--window-icon-size, 32px);
+  height: var(--window-icon-size, 32px);
+  min-height: var(--window-icon-size, 32px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--ui-button-radius);
+  background: var(--ui-button-background);
+  color: var(--ui-button-text);
+  cursor: pointer;
+}
+.window-dock-preview {
+  position: fixed;
+  z-index: 20000;
+  pointer-events: none;
+  border: 2px dashed var(--accent);
+  border-radius: var(--ui-window-radius, 12px);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.window-dock-preview > span {
+  display: block;
+  margin: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: var(--ink);
+  font: 650 12px/1.4 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.window-dock-menu {
+  position: fixed;
+  z-index: 20001;
+  width: 180px;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--ui-window-shadow);
+}
+.window-dock-menu > button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--ui-button-radius);
+  background: var(--ui-button-background);
+  color: var(--ui-button-text);
+  text-align: left;
+  font: 650 12px/1.4 var(--font-sans);
+  cursor: pointer;
+}
+.window-dock-menu > button:hover:not(:disabled) { background: var(--ui-button-hoverBackground); }
+.window-dock-menu > button:disabled { opacity: .5; cursor: not-allowed; }
+.window-dock-menu > button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.window-dock-menu > small { padding: 6px; color: var(--muted); font: 500 11px/1.4 var(--font-sans); }
+.dockable-editor-host { display: contents; }
+.floating-toolbar[data-dock-workspace-hidden] { display: none !important; }
+.floating-toolbar.dockable-editor > .floating-toolbar-content {
+  display: flex;
+  container: docked-editor / inline-size;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+}
+.floating-toolbar.dockable-editor .popup-content { width: 100%; }
+.floating-toolbar.dockable-editor > .popup-actions { flex: 0 0 auto; }
+@container docked-editor (max-width: 700px) {
+  .floating-toolbar.dockable-editor .appearance-popup-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: auto;
+    max-height: none;
+  }
+  .floating-toolbar.dockable-editor .appearance-popup-form { flex: 0 0 auto; overflow: visible; }
+  .floating-toolbar.dockable-editor .appearance-popup-preview { flex: 0 0 auto; min-height: 260px; }
+  .floating-toolbar.dockable-editor .popup-content { display: block; padding: 12px; overflow: auto; }
+}
+@container cfx-setup (max-width: 450px) {
+  .cfx-study-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cfx-study-row > .cfx-check { grid-column: 1; grid-row: 1; }
+  .cfx-study-row > .cfx-danger { grid-column: 2; grid-row: 1; }
+  .cfx-study-row > .cfx-study-name { grid-column: 1 / -1; grid-row: 2; }
+}

@@ -14,6 +14,7 @@ import "./window-help.css";
 import "./building.css";
 import "./climoptix.css";
 import "./thermal.css";
+import "./window-docking.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.freefloorplan3d.com"),

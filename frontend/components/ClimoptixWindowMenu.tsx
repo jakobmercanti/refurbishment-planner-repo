@@ -134,7 +134,7 @@ export function ClimoptixWindowMenu({
       >
         Simulation setup…
       </button>
-      <p className="cfx-menu-caption">Setup tabs</p>
+      <p className="cfx-menu-caption">Setup phases</p>
       {CFD_WINDOWS.map((window) => (
         <button
           key={window.id}

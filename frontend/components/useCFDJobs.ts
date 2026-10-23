@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDScenario } from "@/lib/climoptixDocument";
-import { preparationInput } from "@/lib/climoptix";
 import {
   checkedWorkerJob,
   prepareWorkerSubmission,
   terminalJob,
+  workerInput,
   type CFDOperation,
+  type CFDSubmission,
   type CFDWorkerAdapter,
   type CFDWorkerJob,
 } from "@/lib/climoptixJobs";
@@ -18,6 +19,10 @@ export type CFDJobEntry = {
   job?: CFDWorkerJob;
   error?: string;
   submitting?: boolean;
+  submissionId?: string;
+  operation?: CFDOperation;
+  /** Dispatch may have succeeded even if its response was lost. */
+  dispatched?: boolean;
 };
 
 export function useCFDJobs(
@@ -28,31 +33,55 @@ export function useCFDJobs(
   const [entries, setEntries] = useState<Record<string, CFDJobEntry>>({});
   const latest = useRef({ project, adapter });
   const pending = useRef(new Map<string, AbortController>());
+  const unresolved = useRef(new Map<string, CFDSubmission>());
   const submitAbort = useRef(new AbortController());
   const entriesRef = useRef(entries);
   useEffect(() => {
     latest.current = { project, adapter };
-    entriesRef.current = entries;
-  }, [project, adapter, entries]);
+  }, [project, adapter]);
+  const update = useCallback((id: string, entry: CFDJobEntry) => {
+    // The synchronous ref is the submission lock; React rendering is not a lock.
+    const next = { ...entriesRef.current, [id]: entry };
+    entriesRef.current = next;
+    setEntries(next);
+  }, []);
+  const projectId = useRef(project.projectId);
   useEffect(() => {
     const controller = new AbortController();
     submitAbort.current = controller;
     const submitting = pending.current;
+    if (projectId.current !== project.projectId) {
+      projectId.current = project.projectId;
+      entriesRef.current = {};
+      unresolved.current.clear();
+      setEntries({});
+    } else {
+      for (const [id, entry] of Object.entries(entriesRef.current)) {
+        if (entry.submitting)
+          update(id, {
+            ...entry,
+            submitting: false,
+            error:
+              "Connection changed before submission completed. Retry to check or resume this request.",
+          });
+      }
+    }
     return () => {
       controller.abort();
       submitting.clear();
     };
-  }, [project.projectId, adapter]);
-  const update = useCallback(
-    (id: string, entry: CFDJobEntry) =>
-      setEntries((values) => ({ ...values, [id]: entry })),
-    [],
-  );
+  }, [project.projectId, adapter, update]);
   const submit = async (operation: CFDOperation, studies: CFDScenario[]) => {
     if (!adapter?.capabilities.connected || !adapter.capabilities[operation])
       return;
     const controller = submitAbort.current;
-    // Sequential preparation bounds resource use; each submitted worker job can run independently.
+    // Reserve the whole batch before awaiting preflight: rapid clicks cannot queue duplicates.
+    const queue: {
+      study: CFDScenario;
+      input: string;
+      submissionId: string;
+      recovery?: CFDSubmission;
+    }[] = [];
     for (const study of studies) {
       if (
         controller.signal.aborted ||
@@ -62,38 +91,88 @@ export function useCFDJobs(
         continue;
       const existing = entriesRef.current[study.id];
       if (existing?.job && !terminalJob(existing.job)) continue;
+      const recovery = unresolved.current.get(study.id);
+      if (recovery && recovery.operation !== operation) {
+        update(study.id, {
+          ...existing!,
+          error: `Recover the previous ${recovery.operation} submission before starting ${operation}.`,
+        });
+        continue;
+      }
       pending.current.set(study.id, controller);
-      const input = preparationInput(project, study);
-      update(study.id, { input, submitting: true });
+      const input = recovery ? existing!.input : workerInput(project, study);
+      const submissionId =
+        recovery?.submissionId ??
+        (existing?.input === input &&
+        existing.operation === operation &&
+        existing.submissionId &&
+        !existing.job
+          ? existing.submissionId
+          : crypto.randomUUID());
+      update(study.id, {
+        input,
+        operation,
+        submissionId,
+        submitting: true,
+        dispatched: !!recovery,
+      });
+      queue.push({
+        study: structuredClone(study),
+        input,
+        submissionId,
+        recovery,
+      });
+    }
+    // Sequential preparation bounds resource use; worker jobs can run independently.
+    for (const { study, input, submissionId, recovery } of queue) {
+      if (controller.signal.aborted) return;
       try {
-        const request = await prepareWorkerSubmission(
-          apiUrl,
-          project,
-          study,
-          operation,
-          controller.signal,
-        );
+        const request =
+          recovery ??
+          (await prepareWorkerSubmission(
+            apiUrl,
+            project,
+            study,
+            operation,
+            controller.signal,
+            submissionId,
+          ));
         const live = latest.current.project.cfdScenarios?.find(
           (s) => s.id === study.id,
         );
         if (controller.signal.aborted) return;
         if (
-          !live ||
-          live.archived ||
-          preparationInput(latest.current.project, live) !== input
+          !recovery &&
+          (!live ||
+            live.archived ||
+            workerInput(latest.current.project, live) !== input)
         )
           throw new Error(
             "Setup changed before submission. Select the updated study and submit again.",
           );
+        unresolved.current.set(study.id, request);
+        update(study.id, {
+          input,
+          operation,
+          submissionId,
+          submitting: true,
+          dispatched: true,
+        });
         const job = checkedWorkerJob(
-          await adapter.submit(request, controller.signal),
+          await adapter.submit(structuredClone(request), controller.signal),
           { studyId: study.id, clientRevision: request.clientRevision },
         );
-        if (!controller.signal.aborted) update(study.id, { input, job });
+        if (!controller.signal.aborted) {
+          unresolved.current.delete(study.id);
+          update(study.id, { input, operation, submissionId, job });
+        }
       } catch (error) {
         if (!controller.signal.aborted)
           update(study.id, {
             input,
+            submissionId,
+            operation,
+            dispatched: unresolved.current.has(study.id),
             error:
               error instanceof Error
                 ? error.message

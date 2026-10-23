@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { samplingPlanes } from "@/lib/climoptixWorkflow";
+import { CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
 import { CFDNumber, Parameters, MeshPanel } from "./ClimoptixPanels";
 import { WindowHelpButton } from "./WindowHelpButton";
 
@@ -13,6 +14,7 @@ export interface RunConnection {
   connected: boolean;
   canRun: boolean;
   busy: boolean;
+  blockedReason?: string;
   onRun: () => void;
 }
 
@@ -38,16 +40,9 @@ function RunPanel({
   const physics = scenario.physics;
   return (
     <>
-      <div className="cfx-notice">
-        <strong>
-          {connection?.connected ? "Worker connected" : "Solver not connected"}
-        </strong>
-        <small>
-          {connection?.connected
-            ? "Run submits this study after preflight. Use Studies to queue multiple simulations and inspect worker-reported phase progress."
-            : "Save the run settings now. Play becomes available only when an isolated OpenFOAM worker can mesh, check and run this study. No background job is submitted."}
-        </small>
-      </div>
+      <span className="cfx-provider">
+        {connection?.connected ? "Worker connected" : "Solver not connected"}
+      </span>
       <div className="cfx-grid">
         <label>
           Simulation type
@@ -157,25 +152,22 @@ function RunPanel({
           disabled={!connection?.canRun || connection.busy || scenario.archived}
           onClick={() => connection?.onRun()}
           title={
-            connection?.canRun
+            connection?.blockedReason ||
+            (connection?.canRun
               ? "Validate and submit this study"
-              : "No OpenFOAM worker is connected"
+              : connection?.connected
+                ? "The worker does not support Run"
+                : "No OpenFOAM worker is connected")
           }
           aria-label="Run solver"
         >
           ▶ Play
         </button>
-        <button disabled>Cancel job</button>
         <button disabled={exportDisabled || exporting} onClick={onExport}>
           {exporting ? "Exporting…" : "Export OpenFOAM settings"}
         </button>
       </div>
-      <p className="cfx-caption">
-        Foamlib generates settings for OpenCFD v2312, including cores, run
-        control, refinement regions and named slices. The ZIP is a configuration
-        handoff, not a runnable case. Validate this study before exporting.
-      </p>
-      <button onClick={onConvergence}>Open convergence window</button>
+      <button onClick={onConvergence}>Open monitor</button>
       {convergence}
     </>
   );
@@ -196,11 +188,6 @@ function PostPanel({
     planes = samplingPlanes(report?.domain.boundsMm ?? null, post);
   return (
     <>
-      <p className="cfx-intro">
-        Define slices before running. Planes are normal to source X, Y or Z and
-        are evenly spaced inside the last checked domain bounds. The settings
-        export records these planes and fields for a future connected solver.
-      </p>
       {(["x", "y", "z"] as const).map((axis) => (
         <div className="cfx-slice-row" key={axis}>
           <label className="cfx-check">
@@ -282,7 +269,7 @@ function PostPanel({
       <details>
         <summary>Named planes · {planes.length}</summary>
         {!report ? (
-          <p>Validate the domain to resolve plane positions.</p>
+          <p>Plane positions pending validation.</p>
         ) : (
           <ul className="cfx-inspector-list">
             {planes.map((p) => (
@@ -298,15 +285,6 @@ function PostPanel({
           </ul>
         )}
       </details>
-      <div className="cfx-notice">
-        <strong>VTK · direct 3D field inspection</strong>
-        <small>
-          Import a VTK PolyData surface or slice from a real result. It stays
-          local and is labelled external/unverified; it is not evidence that
-          this study has run. Full volume/multi-time solver output will remain
-          available as original artifacts when a worker is connected.
-        </small>
-      </div>
       <label className="cfx-file">
         Open VTK result
         <input
@@ -320,13 +298,9 @@ function PostPanel({
           }}
         />
       </label>
-      <p className="cfx-caption">
-        Supports bounded ASCII .vtp and legacy POLYDATA .vtk (25 MB). Choose a
-        scalar or vector magnitude, orbit, zoom and Fit in the viewer. Download
-        preserves the original data for ParaView. Legacy FIELD, colour/texture
-        sections and 64-bit IDs need an ASCII .vtp export. VTU volume grids and
-        compressed/binary files require a worker-side surface/slice export.
-      </p>
+      <small className="cfx-caption">
+        ASCII .vtp / .vtk · 25 MB · external, unverified
+      </small>
     </>
   );
 }
@@ -372,20 +346,7 @@ export function ClimoptixSimulation({
         <h3>Simulation controls</h3>
         <WindowHelpButton
           title="Mesh, Run & Post-processing"
-          steps={[
-            {
-              heading: "Mesh",
-              text: "Set the global base cell size. Add cuboids with precise millimetre centres and dimensions, then assign a snappyHexMesh level. Each level halves the cell along every axis. Colours match in the list and 3D viewer. The highest overlapping level wins; list order is for organisation.",
-            },
-            {
-              heading: "Run",
-              text: "Select steady/transient, cores and resource limits. Export the Foamlib settings ZIP after validation. Play stays unavailable until a trusted worker is connected. Imported log plots show real residual records, never invented live convergence.",
-            },
-            {
-              heading: "Post-processing",
-              text: "Choose how many interior X/Y/Z planes to sample and which solved fields to write. Settings are saved with the study and exported as named cutting planes. VTK surface/slice files can be inspected directly and downloaded unchanged for ParaView. Imported results are external and not bound to this study.",
-            },
-          ]}
+          steps={CFD_SIMULATION_HELP}
         />
       </div>
       <div
@@ -406,6 +367,8 @@ export function ClimoptixSimulation({
             id={`cfx-tab-${id}`}
             aria-controls={`cfx-panel-${id}`}
             aria-selected={tab === id}
+            aria-label={title}
+            title={title}
             className={tab === id ? "active" : ""}
             onClick={() => onTab(id)}
             onKeyDown={(e) => {
@@ -425,7 +388,7 @@ export function ClimoptixSimulation({
             }}
             tabIndex={tab === id ? 0 : -1}
           >
-            {title}
+            {id === "post" ? "Post" : title}
           </button>
         ))}
       </div>

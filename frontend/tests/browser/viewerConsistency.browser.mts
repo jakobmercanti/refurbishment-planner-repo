@@ -72,6 +72,12 @@ test("a new multi-gang switch matches existing fittings at 50%, 100% and enlarge
   await page.reload(); await menu(page, "Tools", "Full Electrical Layout module…");
   const electrical = page.locator('.electrical-layout-window:not(.heating-layout-window)'), title = await electrical.locator('.floating-toolbar-titlebar').boundingBox();
   await page.mouse.move(title.x + 140, title.y + title.height / 2); await page.mouse.down(); await page.mouse.move(148, title.y + title.height / 2, { steps: 12 }); await page.mouse.up();
+  // This test measures symbols on the original canvas. Reaching the left edge
+  // now intentionally docks; explicitly float again to retain that setup.
+  if (await electrical.getAttribute("data-edge-docked")) {
+    await electrical.getByRole("button", { name: "Window layout for Full Electrical Layout module", exact: true }).click();
+    await page.getByRole("menu", { name: "Full Electrical Layout module window layout", exact: true }).getByRole("menuitem", { name: "Float window", exact: true }).click();
+  }
   await electrical.getByRole("button", { name: "Add electrical fitting…", exact: true }).click();
   const fittings = page.getByRole("region", { name: "Add fittings", exact: true });
   const expand = fittings.getByRole("button", { name: "Expand fittings selector", exact: true }); if(await expand.isVisible())await expand.click();

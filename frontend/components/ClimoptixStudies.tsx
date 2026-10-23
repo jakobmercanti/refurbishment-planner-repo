@@ -3,9 +3,8 @@
 import { useState } from "react";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
-import { preparationInput } from "@/lib/climoptix";
 import type { CFDOperation, CFDWorkerAdapter } from "@/lib/climoptixJobs";
-import { terminalJob } from "@/lib/climoptixJobs";
+import { terminalJob, workerInput } from "@/lib/climoptixJobs";
 import { moveStudy } from "@/lib/climoptixStudies";
 import type { CFDJobEntry } from "./useCFDJobs";
 import { CFDReorderList } from "./CFDReorderList";
@@ -68,9 +67,6 @@ export function ClimoptixStudies({
     <div className="cfx-studies">
       <header className="cfx-study-heading">
         <div>
-          <span className="cfx-eyebrow">
-            ONE BUILDING · INDEPENDENT SIMULATIONS
-          </span>
           <h2>Studies</h2>
         </div>
         <span className="cfx-provider">
@@ -98,7 +94,9 @@ export function ClimoptixStudies({
             scenario &&
             onChange({ ...scenario, archived: !scenario.archived }, true)
           }
-          disabled={!scenario || !!busy(scenario)}
+          disabled={
+            !scenario || !!busy(scenario) || entries[scenario.id]?.dispatched
+          }
         >
           {scenario?.archived ? "Unarchive" : "Archive"}
         </button>
@@ -146,6 +144,10 @@ export function ClimoptixStudies({
         <button
           disabled={
             blocked ||
+            selected.some(
+              (s) =>
+                entries[s.id]?.dispatched && entries[s.id].operation !== "mesh",
+            ) ||
             !worker?.capabilities.connected ||
             !worker.capabilities.mesh
           }
@@ -157,6 +159,10 @@ export function ClimoptixStudies({
           className="cfx-primary"
           disabled={
             blocked ||
+            selected.some(
+              (s) =>
+                entries[s.id]?.dispatched && entries[s.id].operation !== "run",
+            ) ||
             !worker?.capabilities.connected ||
             !worker.capabilities.run
           }
@@ -164,22 +170,13 @@ export function ClimoptixStudies({
         >
           Run
         </button>
-        <small>
-          {worker?.capabilities.connected
-            ? "Each study is validated before submission. Jobs run independently."
-            : "Worker not connected. Settings are saved; Mesh and Run become available when a trusted worker is connected."}
-        </small>
         {worker?.capabilities.reason && (
           <small>{worker.capabilities.reason}</small>
         )}
       </div>
       {!visible.length && (
         <div className="cfx-welcome">
-          <h3>Start with the building you already designed.</h3>
-          <p>
-            Create a study or import its settings. Your shared building remains
-            authoritative.
-          </p>
+          <h3>No studies</h3>
           <button onClick={onAdd}>Create first study</button>
           <label className="cfx-file">
             Import study
@@ -226,13 +223,14 @@ export function ClimoptixStudies({
             {(s) => {
               const entry = entries[s.id];
               const job = entry?.job;
-              const stale =
-                !!job && entry.input !== preparationInput(project, s);
+              const stale = !!job && entry.input !== workerInput(project, s);
               const phase = entry?.submitting
                 ? "Checking & submitting…"
                 : job
                   ? `${job.phase}${stale ? " · older setup" : ""}`
-                  : "Not submitted";
+                  : entry?.dispatched
+                    ? "Submission status unknown"
+                    : "Not submitted";
               const progress = job?.progress;
               return (
                 <article
@@ -269,11 +267,13 @@ export function ClimoptixStudies({
                   <button
                     aria-label={`Delete ${s.name}`}
                     className="cfx-danger"
-                    disabled={!!busy(s)}
+                    disabled={!!busy(s) || entry?.dispatched}
                     title={
-                      busy(s)
-                        ? "Wait for this worker job to finish before deleting the study"
-                        : undefined
+                      entry?.dispatched
+                        ? "Recover the previous submission before deleting this study"
+                        : busy(s)
+                          ? "Wait for this worker job to finish before deleting the study"
+                          : undefined
                     }
                     onClick={(e) => onDelete(s.id, e.currentTarget)}
                   >
@@ -299,7 +299,9 @@ export function ClimoptixStudies({
                       {job.phase}
                       {progress != null
                         ? ` · ${progress}% of phase`
-                        : " · awaiting phase progress"}
+                        : terminalJob(job)
+                          ? ""
+                          : " · progress not reported"}
                       {job.message && ` · ${job.message}`}
                     </small>
                   )}
@@ -333,11 +335,6 @@ export function ClimoptixStudies({
               onChange({ ...scenario, group: group.trim() }, true)
             }
           />
-          <p className="cfx-caption">
-            Select a name to load its settings in every tab. Drag the grip to
-            reorder or move between groups; Arrow Up/Down reorders within a
-            group. Enter a new group name here to create one.
-          </p>
         </section>
       )}
     </div>

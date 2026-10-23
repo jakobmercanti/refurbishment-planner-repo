@@ -59,7 +59,7 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
   const chosenLambda = insulationLambda ?? material?.lambda ?? null;
   const suggested = targetU ? minimumInsulationThickness(assembly, data, chosenLambda, targetU) : null;
   if (typeof document === "undefined") return null;
-  return createPortal(<div onKeyDown={event => { event.stopPropagation();if (event.key === "Escape") { event.preventDefault();onCancel(); } }}><Popup open className={"appearance-popup wall-layers-popup " + ui.popup}
+  return createPortal(<div onKeyDown={event => { event.stopPropagation();if (event.key === "Escape") { event.preventDefault();onCancel(); } }}><Popup open dockable className={"appearance-popup wall-layers-popup " + ui.popup}
     title={`Define ${category} layers`} message="" confirmLabel="Done" autoFocusTarget="content"
     confirmDisabled={stale || !!error} onCancel={onCancel} onConfirm={() => { if (!stale && !error) onCommit(setWallAssembly(data, first, assembly)); }}>
     <div className="appearance-popup-grid">

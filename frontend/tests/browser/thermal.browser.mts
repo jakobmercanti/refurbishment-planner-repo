@@ -69,11 +69,24 @@ async function open(session) {
   );
   return ui;
 }
-const step = async (ui, name) =>
-  ui
+const step = async (ui, name) => {
+  const select = ui.getByRole("combobox", {
+    name: "Thermal step",
+    exact: true,
+  });
+  if (await select.isVisible()) {
+    const value = await select
+      .locator("option")
+      .filter({ hasText: name })
+      .getAttribute("value");
+    await select.selectOption(value);
+    return;
+  }
+  await ui
     .getByRole("navigation", { name: "Thermal setup steps" })
     .getByRole("button", { name: new RegExp(name) })
     .click();
+};
 async function calculate(ui) {
   await ui
     .getByRole("button", { name: "Calculate & preview", exact: true })
@@ -102,25 +115,30 @@ async function layoutMatrix(ui, page, theme, style = "default") {
       "Review & apply",
     ].entries()) {
       await step(ui, name);
-      const contrast = await ui
-        .locator(".thermal-steps button.active")
-        .evaluate((button) => {
-          const style = getComputedStyle(button);
-          const luminance = (value) => {
-            const rgb = value
-              .match(/[\d.]+/g)
-              .slice(0, 3)
-              .map(Number)
-              .map((c) => c / 255)
-              .map((c) =>
-                c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
-              );
-            return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-          };
-          const a = luminance(style.color),
-            b = luminance(style.backgroundColor);
-          return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-        });
+      const compact = ui.getByRole("combobox", {
+        name: "Thermal step",
+        exact: true,
+      });
+      const control = (await compact.isVisible())
+        ? compact
+        : ui.locator(".thermal-steps button.active");
+      const contrast = await control.evaluate((button) => {
+        const style = getComputedStyle(button);
+        const luminance = (value) => {
+          const rgb = value
+            .match(/[\d.]+/g)
+            .slice(0, 3)
+            .map(Number)
+            .map((c) => c / 255)
+            .map((c) =>
+              c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
+            );
+          return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+        };
+        const a = luminance(style.color),
+          b = luminance(style.backgroundColor);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      });
       assert.ok(
         contrast >= 4.5,
         `Active step contrast ${contrast} at ${width}px`,
@@ -901,12 +919,17 @@ test("audit: a narrow manually resized desktop window keeps all steps and action
   });
   await s.page.mouse.up();
   assert.ok((await window.boundingBox()).width < 520);
+  const selector = ui.getByRole("combobox", {
+    name: "Thermal step",
+    exact: true,
+  });
+  await selector.waitFor();
+  assert.equal(
+    await ui.getByRole("navigation", { name: "Thermal setup steps" }).count(),
+    0,
+  );
   for (let index = 0; index < 6; index++) {
-    await ui
-      .getByRole("navigation", { name: "Thermal setup steps" })
-      .getByRole("button")
-      .nth(index)
-      .click();
+    await selector.selectOption(String(index));
     assert.equal(
       await ui
         .locator(".thermal-scroll")

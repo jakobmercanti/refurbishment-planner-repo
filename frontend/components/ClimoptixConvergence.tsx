@@ -126,11 +126,7 @@ export function ClimoptixConvergence({
       aria-label="Imported convergence history"
     >
       <h3>Convergence · initial residuals</h3>
-      <p className="cfx-caption">
-        No live solver connection. Import a real log to inspect residuals.
-        Histories are session-only (latest three studies), not saved with the
-        project.
-      </p>
+      <p className="cfx-caption">External log · unverified · session only</p>
       <label className="cfx-file">
         {state.reading ? "Reading solver log…" : "Import solver log"}
         <input
@@ -174,10 +170,7 @@ export function ClimoptixConvergence({
         </div>
       )}
       {!state.samples.length ? (
-        <p>
-          No computed results or residuals. Import a real OpenFOAM solver log to
-          inspect convergence.
-        </p>
+        <p>No residual samples.</p>
       ) : (
         <>
           <svg
@@ -262,12 +255,6 @@ export function ClimoptixConvergence({
               </li>
             ))}
           </ul>
-          <p className="cfx-caption">
-            Imported data, not a live run. Repeated pressure corrections are
-            retained. Chart display is clipped to 10⁻¹²–1 and decimated for
-            readability; the original log is unchanged. Residuals alone do not
-            establish convergence or conservation.
-          </p>
         </>
       )}
     </section>

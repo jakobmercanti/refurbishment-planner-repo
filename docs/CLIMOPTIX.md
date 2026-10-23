@@ -709,3 +709,80 @@ generate restricted dictionaries, run real meshing and quality checks, and retur
 provenance-bound job/artifact manifests. Add real log/cancellation/failure tests
 before enabling any Mesh or Run control. Do not launch a solver from the browser
 or accept arbitrary shell commands, filesystem paths or executable user templates.
+
+## Compact navigation and data-first setup — 23 October 2026
+
+Phone/tablet screens use one Phase dropdown, with Studies as an entry rather
+than a separate Study dropdown. Choose Studies to select/create a study, then
+choose the phase to edit; the active study name remains above the menu.
+Laptops retain the Study selector and equal-width keyboard-accessible tabs. A narrow
+resized setup window also uses the selector; landscape touch tablets use it up to
+1366px. Changing presentation preserves the active phase/study and saved inputs.
+Unavailable phases (such as Results before import) stay disabled. Thermal uses
+the same compact approach for its six steps and retains invalid-draft guards.
+
+Instructions have moved into contextual native help windows for the active phase,
+Solver and refinement editor. Run settings show compact real connection status,
+not the large disconnected-worker instruction notice. Errors, preflight warnings,
+computed values, proxy assumptions, units and result provenance remain visible.
+The footer shows study state/save status. Post is a short equal-width subtab, and
+the nonfunctional Cancel job placeholder has been removed pending real worker
+cancellation support.
+
+The worker handoff now declares contract version, dialect and source units and
+pins its inputs before awaiting preflight. Batch entries are reserved synchronously
+to prevent repeat-click races; retries retain their submission ID after an
+ambiguous response and recover the original payload before allowing a different
+operation. New runs after resolved/terminal jobs use fresh IDs and current settings.
+Unresolved dispatches are labelled unknown and cannot be deleted or archived.
+Connection changes abort pending requests and clear stuck submitting state.
+Unknown terminal progress is never called “awaiting”. Snapshots omit unrelated
+studies and historical thermal packages; an applied thermal contract retains its
+hash reference for authoritative worker revalidation.
+
+See [the OpenFOAM handoff and acceptance gate](CLIMOPTIX_OPENFOAM_HANDOFF.md) for
+the exact integration contract and remaining worker implementation. Controlled
+worker tests exercise the actual React job hook with real canonical preflight;
+they are not a claim that OpenFOAM ran. No worker, deployment or execution route
+has been enabled.
+
+Verification before the subsequent navigation styling follow-up: 643 backend tests, 562 frontend unit tests,
+19 persistence tests, 53 CFD/thermal production-browser tests and 18 public-proxy
+tests passed. TypeScript, ESLint/source reachability (370 modules, no orphans),
+production build and whitespace checks passed. Five representative building
+preparations produced exportable canonical boundaries. The broader 85-case UI
+run initially exposed five assertions for removed captions/headings or old button
+navigation; those checks were migrated without removing functional coverage, then
+the complete 53-case CFD/thermal suite passed against the final production bundle.
+Evidence is under `.local-logs/cfd-responsive-*`. The existing Starlette/httpx
+deprecation warning remains. No real OpenFOAM mesh or solve was performed.
+
+Navigation styling follow-up: phase, Mesh/Run/Post and Thermal navigation now
+use flat tabs with a shared baseline and an active underline, separate from
+action-button styling in both UI themes. Compact layouts have only the Phase
+dropdown, including Studies. Closing the refinement editor returns focus to
+the visible phase control rather than a hidden desktop tab. Context menus use
+the same phase terminology. Results-viewer interaction guidance lives in help,
+leaving field ranges, provenance and data controls visible; long result filenames
+can wrap. This follow-up was source-reviewed only; no tests, build or lint were
+run at the user's request.
+
+## Shared edge docking — 23 October 2026
+
+See [Workbench window docking](WINDOW_DOCKING.md) for the shared CFD/Floorplan
+interaction, viewport allocation, accessibility, compact-screen behavior and
+regression coverage. This follow-up also includes the previously local CFD
+navigation and worker-preparation changes above. It does not enable an OpenFOAM
+worker or claim a real mesh/solve.
+
+Release validation: 643 backend, 569 frontend unit and 19 project-persistence
+tests passed. The complete 92-case browser audit exposed unintended snapping of
+wide roof editors, rail-resize and selector-layering issues, and test assumptions
+about mobile Study controls, floating electrical panels and optional persisted
+defaults. Those were corrected; all 29 affected browser workflows passed against
+the rebuilt release export, including every failed case. A graphics-context
+failure in the long run did not reproduce in the independent isolated check or
+the final light/dark/compact matrix. Production export, TypeScript, ESLint,
+source reachability (372 modules, no orphans) and whitespace checks passed.
+Screenshots were reviewed for docked Floorplan/CFD, compact dark/Modern layouts
+and the construction editor. Evidence: `.local-logs/window-docking-*`.

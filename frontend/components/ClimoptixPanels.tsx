@@ -367,11 +367,6 @@ export function DomainPanel({
     floor = floors.find((f) => f.id === scenario.seed?.floorId) ?? floors[0];
   return (
     <>
-      <p className="cfx-intro">
-        Choose one seed room. Permanent passages and physical slab voids expand
-        the connected air volume. Doors and windows always stop it—even when
-        open.
-      </p>
       <label>
         Seed floor
         <select
@@ -417,10 +412,7 @@ export function DomainPanel({
         </select>
       </label>
       {!floor.content.rooms.length && (
-        <p className="cfx-notice">
-          This floor has no measured enclosed rooms. Draw one in Floorplan
-          first; switching workspaces preserves this study.
-        </p>
+        <p className="cfx-notice">No measured enclosed rooms on this floor.</p>
       )}
       {report && (
         <>
@@ -538,11 +530,6 @@ export function EquipmentPanel({
   const flowFactor = flowUnit === "L/s" ? 1000 : flowUnit === "m³/h" ? 3600 : 1;
   return (
     <>
-      <p className="cfx-intro">
-        Vents are apertures on real room-facing surfaces. Flow sign comes from
-        Supply/Extract, not from a negative flow rate. Drag a vent in 3D or use
-        precise host coordinates below.
-      </p>
       <div className="cfx-actions">
         <button disabled={!hosts.length} onClick={() => add("supply")}>
           + Supply
@@ -555,9 +542,7 @@ export function EquipmentPanel({
         </button>
       </div>
       {!hosts.length && (
-        <p className="cfx-notice">
-          Validate a seed room to discover available wall/ceiling hosts.
-        </p>
+        <p className="cfx-notice">No validated vent hosts available.</p>
       )}
       {!!scenario.vents.length && (
         <label>
@@ -772,11 +757,7 @@ export function EquipmentPanel({
               ]}
               onChange={(v) => edit(v as CFDVent)}
             />
-            <p className="cfx-caption">
-              Optimization lock and allowable host-local polygon are metadata
-              only; no optimizer is connected. A recirculating unit needs
-              separate supply and return devices.
-            </p>
+            <small className="cfx-caption">Optimization: metadata only</small>
           </details>
           <div className="cfx-actions">
             <button
@@ -809,11 +790,6 @@ export function EquipmentPanel({
       )}
       <h3>Objects &amp; occupants</h3>
       <button onClick={onEditSource}>Edit source building &amp; assets</button>
-      <p className="cfx-caption">
-        Source assets stay in the shared floorplan. Overrides change only this
-        study. Emissions start at zero; supply calibrated inputs. CO₂ source is
-        pure-gas m³/s, not ppm/s.
-      </p>
       {report?.objects.map((obj) => {
         const override =
           scenario.assetOverrides.find((v) => v.objectId === obj.id) ??
@@ -934,10 +910,6 @@ export function EquipmentPanel({
         ) && (
           <details>
             <summary>Unavailable object overrides</summary>
-            <p className="cfx-caption">
-              Deleted or disconnected source references are retained until you
-              remove them.
-            </p>
             {scenario.assetOverrides
               .filter((a) => !report.objects.some((o) => o.id === a.objectId))
               .map((a) => (
@@ -1115,11 +1087,6 @@ export function BoundariesPanel({
     });
   return (
     <>
-      <p className="cfx-intro">
-        Every derived patch is named and coloured. Group conditions are
-        inherited unless a patch has an override. Vent flow and inflow
-        properties come from its device inspector.
-      </p>
       <details>
         <summary>Group presets</summary>
         <label>
@@ -1177,7 +1144,7 @@ export function BoundariesPanel({
       </div>
       {report && !rows.length && (
         <p role="status" className="cfx-caption">
-          No matching patches. Try a room, surface name or source ID.
+          No matching patches.
         </p>
       )}
       {patch && (
@@ -1260,12 +1227,6 @@ export function PhysicsPanel({
   const p = scenario.physics;
   return (
     <>
-      <p className="cfx-intro">
-        Sample indoor-air intentions—not certified simulation settings. Physics
-        is stored in SI. Temperatures are kelvin; CO₂ concentration is ppm by
-        volume (1 ppm = 10⁻⁶ volume fraction). Time stepping and numerical
-        controls are in Simulation → Run.
-      </p>
       <label>
         Physics preset
         <select
@@ -1402,11 +1363,6 @@ export function MeshPanel({
       regions.find((r) => `refinement:${r.id}` === selected) ?? regions[0];
   return (
     <>
-      <p className="cfx-intro">
-        This is a mesh recipe, not a generated mesh. Geometry cleanup, snapping
-        and cell size are separate intentions. Achieved quality, y+ and cell
-        counts remain unavailable until a mesher is connected.
-      </p>
       <label>
         Mesh intent preset
         <select
@@ -1466,24 +1422,13 @@ export function MeshPanel({
               .join("–")}{" "}
             cells
           </strong>
-          <small>{report.meshRecipe.estimate.disclaimer}</small>
         </div>
       )}
       <h3>Local refinement regions</h3>
-      <p className="cfx-caption">
-        Box, sphere or object extents are shown as wireframe intent in the
-        preview—not cells or achieved resolution. Coordinates and sizes are
-        millimetres.
-      </p>
       <button disabled={!regions.length} onClick={onShowRefinements}>
         View refinements in 3D
       </button>
-      {!report && (
-        <p className="cfx-caption">
-          Refinements are display intent. Validate &amp; refresh to check them
-          against the simulation domain.
-        </p>
-      )}
+      {!report && <p className="cfx-caption">Refinement validation pending.</p>}
       <button
         disabled={regions.length >= 200}
         onClick={() => {
@@ -1629,10 +1574,7 @@ export function MeshPanel({
         }}
       </CFDReorderList>
       {!regions.length && (
-        <p className="cfx-caption">
-          No local refinements yet. Add a cuboid, set its level, then inspect it
-          in 3D. Each list entry has Duplicate and Delete controls.
-        </p>
+        <p className="cfx-caption">No local refinement regions.</p>
       )}
       <details>
         <summary>Refinements, layers, tolerances &amp; quality intent</summary>
@@ -1776,14 +1718,14 @@ export function RefinementEditor({
                 scenario.mesh.baseCellMm,
                 region,
               ).toLocaleString()}{" "}
-              mm. Global limits apply to the rounded size too.
+              mm.
             </p>
           </>
         ) : (
           <p className="cfx-caption">
-            Each level halves the base cell along X, Y and Z. Level{" "}
-            {region.level} uses base ÷ 2<sup>{region.level}</sup>; colours are
-            identical in the list and viewer.
+            Level {region.level} · nominal{" "}
+            {refinementCell(scenario.mesh.baseCellMm, region).toLocaleString()}{" "}
+            mm
           </p>
         )}
       </div>
@@ -1808,10 +1750,6 @@ export function RefinementEditor({
               </option>
             ))}
           </select>
-          <small>
-            Extents follow the last checked solid proxy. Refresh after changing
-            its source placement.
-          </small>
         </label>
       ) : (
         <>

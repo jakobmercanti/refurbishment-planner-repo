@@ -30,11 +30,22 @@ export const workerJobSchema = z.object({
 export type CFDWorkerJob = z.infer<typeof workerJobSchema>;
 export type CFDOperation = "mesh" | "run";
 export interface CFDSubmission {
+  contractVersion: 1;
+  dialect: "OpenCFD-v2312";
+  sourceUnits: "mm";
+  /** The adapter must deduplicate retries with this ID before creating a job. */
+  submissionId: string;
   operation: CFDOperation;
   studyId: string;
   clientRevision: string;
   sourceHash: string;
   configurationHash: string;
+  /** Applied intent only. A worker must recompute and match these hashes, never execute a saved preview. */
+  thermalApplication: {
+    caseHash: string;
+    sourceRevision: string;
+    createdAt: string;
+  } | null;
   project: unknown;
   scenario: CFDScenario;
 }
@@ -51,6 +62,15 @@ export interface CFDWorkerAdapter {
   status(jobId: string, signal: AbortSignal): Promise<unknown>;
 }
 
+/** Job freshness also includes Apply intent, without invalidating geometry preparation. */
+export function workerInput(
+  project: ProjectDocument,
+  scenario: CFDScenario,
+): string {
+  const applied = scenario.thermalSnapshots?.[0];
+  return `${preparationInput(project, scenario)}\nthermal:${applied?.caseHash ?? "none"}:${applied?.sourceRevision ?? "none"}`;
+}
+
 /** Validate a bounded, immutable handoff before any worker submission is allowed. */
 export async function prepareWorkerSubmission(
   apiUrl: string,
@@ -58,8 +78,23 @@ export async function prepareWorkerSubmission(
   scenario: CFDScenario,
   operation: CFDOperation,
   signal: AbortSignal,
+  submissionId: string = crypto.randomUUID(),
 ): Promise<CFDSubmission> {
   signal.throwIfAborted();
+  const applied = scenario.thermalSnapshots?.[0];
+  const thermalApplication = applied
+    ? {
+        caseHash: applied.caseHash,
+        sourceRevision: applied.sourceRevision,
+        createdAt: applied.createdAt,
+      }
+    : null;
+  // Detach only the bounded solver source, not unrelated studies or thermal histories.
+  // Do this before the first await, including when a caller mutates its objects.
+  scenario = structuredClone({ ...scenario, thermalSnapshots: undefined });
+  project = JSON.parse(
+    preparationRequestBody(project, scenario, "0".repeat(64)),
+  ).project;
   const clientRevision = await preparationRevision(
     preparationInput(project, scenario),
   );
@@ -72,20 +107,23 @@ export async function prepareWorkerSubmission(
     signal,
   );
   signal.throwIfAborted();
-  if (report.validation.errors)
+  if (report.validation.errors || !report.surface.exportable)
     throw new Error(
       "Preflight blocked this submission. Validate the study and resolve its diagnostics.",
     );
   return {
+    contractVersion: 1,
+    dialect: "OpenCFD-v2312",
+    sourceUnits: "mm",
+    submissionId,
     operation,
     studyId: scenario.id,
     clientRevision,
     sourceHash: report.validation.sourceHash,
     configurationHash: report.validation.configurationHash,
-    project: JSON.parse(
-      preparationRequestBody(project, scenario, clientRevision),
-    ).project,
-    scenario: structuredClone(scenario),
+    thermalApplication,
+    project,
+    scenario,
   };
 }
 

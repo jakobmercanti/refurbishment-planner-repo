@@ -294,7 +294,7 @@ export function ElectricalScheduleWindow({ rooms, assets, instances, layout, pro
       <p className="electrical-schedule-disclaimer">Schematic route length is calculated from the line drawn between item centres and its waypoints. It is not a physical cable route or cable allowance.</p>
     </div>}
     {bomEditor && typeof document !== "undefined" && createPortal(<div onKeyDown={event => { event.stopPropagation();if (event.key === "Escape") { event.preventDefault();setBomEditor(null); } }}>
-      <Popup open title="Electrical BOM item details" message="" className="electrical-bom-editor" confirmLabel="Save details" confirmDisabled={editorStale || picturePending} autoFocusTarget="content" onCancel={() => setBomEditor(null)} onConfirm={() => { if (!editorStale && !picturePending) { onLayoutChange({ ...layout, documentation: bomEditor.draft });setBomEditor(null); } }}>
+      <Popup open dockable title="Electrical BOM item details" message="" className="electrical-bom-editor" confirmLabel="Save details" confirmDisabled={editorStale || picturePending} autoFocusTarget="content" onCancel={() => setBomEditor(null)} onConfirm={() => { if (!editorStale && !picturePending) { onLayoutChange({ ...layout, documentation: bomEditor.draft });setBomEditor(null); } }}>
         <p>Item details, notes and pictures are saved together. Cancel discards this draft.</p>
         {editorStale && <p role="alert" className="inline-error">The electrical document changed while editing. Cancel and reopen this item.</p>}
         {error && <p role="alert" className="inline-error">{error}</p>}

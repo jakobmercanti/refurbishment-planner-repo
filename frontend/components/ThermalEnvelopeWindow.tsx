@@ -50,6 +50,18 @@ const HELP = [
     heading: "Apply, save and history",
     text: "Calculate explicitly after changing inputs. Apply stores a versioned immutable contract with source hashes, preserving flow and scalar conditions. Changes make previous results stale; up to three applied packages are retained in the project. No OpenFOAM worker is connected, so exports are not executable cases and do not represent a run.",
   },
+  {
+    heading: "Location, weather and sun",
+    text: "No location is detected or fetched. At 0°, plan +X is east and +Y north; the north angle is the clockwise true-north bearing of plan +Y, without moving geometry. Preset names are labels, not regulatory design conditions. Representative means one selected hour, not a full-day or peak prediction. A saved EPW record retains the selected hour; reimport the file to choose another after reopening. EPW uses a fixed standard-time offset without DST; editing IANA timezone returns to timezone rules. For manual per-surface solar, use Envelope → Advanced surface override to enter irradiance on every outdoor face, including zero on unlit faces; the multiplier is applied once.",
+  },
+  {
+    heading: "Gains and balance",
+    text: "HVAC is off in this screening calculation: do not include heater/chiller output as an internal gain. No infiltration is assumed; known supply and extract must balance. Each gain is count × heat per item × sensible fraction × operating fraction. Radiant share is included once as lumped sensible heat, not resolved radiation. Envelope bars include equivalent sol-air forcing; glazing solar is counted separately once and residual includes every term. A finite equilibrium requires all inputs and heat-removal routes.",
+  },
+  {
+    heading: "Modelling defaults",
+    text: "Overall U is for the lumped balance; Robin uses Rtotal − Rsi and is blocked if the film split is unknown. Sol-air exterior h changes forcing, not exterior resistance. Defaults are review inputs, not validated project values: 20 °C reference, 1.2 kg/m³, 1005 J/kgK, unshaded multiplier 1, no longwave correction and 0.01 W residual tolerance. Emissivity is metadata and does not activate radiation. The visible controls retain the actual saved values.",
+  },
 ];
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null
@@ -116,10 +128,6 @@ function Breakdown({ report }: { report: ThermalPackage }) {
           </div>
         ))}
       </div>
-      <p className="cfx-caption">
-        Envelope bars include equivalent sol-air forcing. Glazing solar is
-        counted separately, once. Residual includes all terms.
-      </p>
     </figure>
   );
 }
@@ -371,6 +379,20 @@ export function ThermalEnvelopeWindow({
             </div>
             <WindowHelpButton title="Thermal envelope help" steps={HELP} />
           </header>
+          <label className="thermal-step-select">
+            Thermal step
+            <select
+              aria-label="Thermal step"
+              value={step}
+              onChange={(event) => navigate(Number(event.target.value))}
+            >
+              {STEPS.map((label, index) => (
+                <option key={label} value={index}>
+                  {index + 1}. {label}
+                </option>
+              ))}
+            </select>
+          </label>
           <nav className="thermal-steps" aria-label="Thermal setup steps">
             {STEPS.map((label, index) => (
               <button
@@ -699,10 +721,6 @@ export function ThermalEnvelopeWindow({
                           calculating.
                         </p>
                       )}
-                      <p className="cfx-caption">
-                        Opens the existing editor on this floor and surface; use
-                        Return to Climoptix afterwards.
-                      </p>
                       {!!face.warnings.length && (
                         <ul className="cfx-error">
                           {face.warnings.map((w) => (
@@ -749,11 +767,6 @@ export function ThermalEnvelopeWindow({
             {step === 1 && (
               <>
                 <h3>Location &amp; true north</h3>
-                <p>
-                  No location is detected or fetched. Plan +X is east and +Y is
-                  north at 0°; the angle is the true-north clockwise bearing of
-                  plan +Y. Rotating north does not move geometry.
-                </p>
                 <ThermalText
                   label="Location name / city"
                   value={setup.location.name}
@@ -823,7 +836,6 @@ export function ThermalEnvelopeWindow({
                   <p className="cfx-notice">
                     EPW fixed standard offset: UTC{" "}
                     {setup.location.fixedUtcOffsetMinutes / 60} h · no DST.
-                    Editing IANA timezone returns to timezone rules.
                   </p>
                 )}
                 <div
@@ -860,12 +872,6 @@ export function ThermalEnvelopeWindow({
             {step === 2 && (
               <>
                 <h3>One instant, explicit weather</h3>
-                <p>
-                  Preset names are labels, not regulatory design conditions. No
-                  season, hemisphere or climate values are assumed.
-                  Representative means one selected hour, not a full-day or peak
-                  prediction.
-                </p>
                 <label>
                   Scenario label
                   <select
@@ -984,13 +990,6 @@ export function ThermalEnvelopeWindow({
                     {num("groundAlbedo", "Ground albedo (0–1)", 0, 1)}
                   </div>
                 )}
-                {setup.weather.solarMode === "perSurface" && (
-                  <p className="cfx-notice">
-                    Use Envelope → Advanced surface override to enter irradiance
-                    on every outdoor face, including zero on unlit faces. The
-                    multiplier is applied once.
-                  </p>
-                )}
                 <details>
                   <summary>Import an hourly EPW file</summary>
                   <label className="cfx-file">
@@ -1061,8 +1060,7 @@ export function ThermalEnvelopeWindow({
                   )}
                   {setup.weather.epwRecord && (
                     <p className="cfx-caption">
-                      Saved selected record: {setup.weather.epwRecord}. Reimport
-                      the file to select a different hour after reopening.
+                      EPW record: {setup.weather.epwRecord}
                     </p>
                   )}
                 </details>
@@ -1070,18 +1068,7 @@ export function ThermalEnvelopeWindow({
             )}
             {step === 3 && (
               <>
-                <h3>HVAC off · outdoor air exchange remains independent</h3>
-                <p>
-                  Equipment geometry may remain, but do not include
-                  heater/chiller output as an internal gain. No infiltration is
-                  assumed. The preview requires balanced, known supply and
-                  extract.
-                </p>
-                <p className="cfx-caption">
-                  Each gain is count × heat per item × sensible fraction ×
-                  operating fraction. Its radiant share is included once as
-                  lumped sensible heat, not resolved radiation.
-                </p>
+                <h3>Gains &amp; air exchange · HVAC off</h3>
                 <label>
                   Air exchange model
                   <select
@@ -1361,12 +1348,6 @@ export function ThermalEnvelopeWindow({
             {step === 4 && (
               <>
                 <h3>Transparent modelling assumptions</h3>
-                <p>
-                  Overall U is used only for the lumped balance. Robin uses
-                  Rtotal − Rsi; unknown film splits block that projection.
-                  Sol-air exterior h changes the equivalent forcing, not an
-                  added exterior resistance.
-                </p>
                 <label>
                   Global CFD wall method
                   <select
@@ -1447,19 +1428,16 @@ export function ThermalEnvelopeWindow({
                     )}
                   </div>
                 )}
-                <p className="cfx-caption">
-                  Defaults for review: 20 °C reference, 1.2 kg/m³, 1005 J/kgK,
-                  unshaded multiplier 1, no longwave correction, 0.01 W residual
-                  tolerance. Emissivity is metadata; it does not activate a
-                  radiation model.
-                </p>
-                <ul>
-                  {(
-                    report?.limitations ?? HELP.slice(1, 4).map((h) => h.text)
-                  ).map((text) => (
-                    <li key={text}>{text}</li>
-                  ))}
-                </ul>
+                {!!report?.limitations.length && (
+                  <details>
+                    <summary>Model limitations</summary>
+                    <ul>
+                      {report.limitations.map((text) => (
+                        <li key={text}>{text}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
                 <label className="cfx-check">
                   <input
                     type="checkbox"
@@ -1503,11 +1481,6 @@ export function ThermalEnvelopeWindow({
             {step === 5 && (
               <>
                 <h3>Review · calculate · hand off</h3>
-                <p>
-                  No CFD solution is computed here. Results are a reduced steady
-                  sensible balance; a finite equilibrium is returned only when
-                  all required inputs and heat-removal routes are defined.
-                </p>
                 {report && (
                   <>
                     {applied?.caseHash === report.caseHash && !stale && (
