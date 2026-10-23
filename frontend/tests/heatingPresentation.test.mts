@@ -9,6 +9,7 @@ import { HeatingLayoutPanel } from "../components/HeatingLayoutPanel";
 import { HeatingLayoutOverlay } from "../components/HeatingLayoutOverlay";
 import { HeatingLayoutProvider, useHeatingLayout } from "../components/HeatingLayoutContext";
 import type { Room } from "../lib/types";
+import { windowHelpSteps } from "../lib/windowHelp";
 
 const measured = (value: number) => ({ value, uncertainty_mm: 0, verified: true, source_type: "USER_MEASURED" });
 const room: Room = { id: "room", name: "Living room", version: 1, vertices: [{ x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 4000 }, { x: 0, y: 4000 }], wall_height: measured(2500), wall_thickness: measured(100), openings: [], obstacles: [] };
@@ -83,8 +84,10 @@ test("redesigned panel has structured room balance, expandable technical fields,
   assert.doesNotMatch(html, /Heating layout mode/); assert.match(html, /Room heating balance/);
   assert.match(html, /Heat required/); assert.match(html, /Heat available/);
   assert.match(html, /Room setup/); assert.match(html, /Heating elements/);
-  assert.match(html, /independent Heating element editor/); assert.doesNotMatch(html, /Identity, dimensions &amp; position/);
-  assert.match(html, /Heating pipes &amp; connections/); assert.match(html, /Assumptions &amp; professional review/);
+  assert.doesNotMatch(html, /independent Heating element editor|Identity, dimensions &amp; position/);
+  assert.match(html, /Heating pipes &amp; connections/);
+  assert.doesNotMatch(html, /Assumptions &amp; professional review/);
+  assert.ok(windowHelpSteps("Heating Layout").some(step => step.heading === "Assumptions & professional review"));
   assert.doesNotMatch(html, /Auto Design Heating|Advanced automatic sizing reference|\+ Add heating element/);
   assert.equal((html.match(/role="tab"/g) ?? []).length, 5);
 });

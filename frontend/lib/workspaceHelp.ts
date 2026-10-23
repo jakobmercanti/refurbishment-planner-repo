@@ -41,10 +41,12 @@ export function workspaceHelp(title:string):WindowHelpStep[]|null {
   ];
   if(/^Appearance(?: & dimensions)?$|^Selected object controls$/i.test(title))return [
     step("Edit the selected object","Review the object's name and measured dimensions before changing its position, rotation, material or component colours. Finishes are visual choices; they do not establish a product's thermal or fit performance."),
+    step("Move and inspect","Drag a selected object across the floor to reposition it. Use Human mock-up for the reference person's posture and clearance controls. Screen colours come from the chosen catalogue collection; confirm with a physical sample before ordering."),
     step("Check how changes are saved","In an Appearance dialog, Done applies the draft and Cancel discards it. Other selected-object fields may update immediately. Use the available Undo control for applied changes. The preview can be rotated; its zoom and Fit controls do not resize the real object."),
   ];
   if(/^Camera(?: properties)?$/i.test(title))return [
     step("Frame a view","Adjust the camera position, direction and lens settings while checking the live preview. These change the view, not room or object dimensions. Fit and the view controls help you recover a useful angle."),
+    step("Precise camera values","Position is stored in millimetres. Camera angles use Three.js XYZ Euler order. Changes appear in the camera preview immediately, without changing the building geometry."),
     step("Capture and keep the project","Use the camera's capture/save control for an image of the framed view. Use File → Save separately to retain the editable building and camera data. A preview or rendered image is not evidence that a product fits."),
   ];
   if(/^(Human mock.?up|Person|Reference person)$/i.test(title))return [

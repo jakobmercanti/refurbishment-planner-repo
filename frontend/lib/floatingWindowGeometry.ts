@@ -42,6 +42,19 @@ export interface WindowDockEntry {
   width: number;
 }
 
+/** Free screen-space rectangle shared by the viewer and all floating tools. */
+export function floatingWindowArea(bounds: FloatingWindowBox, left = 0, right = 0): FloatingWindowBox {
+  const reservedLeft = Math.max(0, Math.min(bounds.width, left));
+  const reservedRight = Math.max(0, Math.min(bounds.width - reservedLeft, right));
+  return { ...bounds, left: bounds.left + reservedLeft, width: bounds.width - reservedLeft - reservedRight };
+}
+
+export function maximizedFloatingWindow(bounds: FloatingWindowBox): FloatingWindowBox {
+  const marginX = Math.min(FLOATING_WINDOW_MARGIN, bounds.width / 2);
+  const marginY = Math.min(FLOATING_WINDOW_MARGIN, bounds.height / 2);
+  return { left: bounds.left + marginX, top: bounds.top + marginY, width: Math.max(0, bounds.width - 2 * marginX), height: Math.max(0, bounds.height - 2 * marginY) };
+}
+
 /** UI pixels only. Keep room/model coordinates independent of window layout. */
 export function edgeDockLayout(bounds: FloatingWindowBox, entries: WindowDockEntry[]) {
   const boxes: Record<string, FloatingWindowBox> = {};

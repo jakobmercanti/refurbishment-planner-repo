@@ -3,6 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SettingsDialog } from "../components/SettingsDialog.tsx";
+import { windowHelpSteps } from "../lib/windowHelp";
 import {
   APP_APPEARANCE_STORAGE_KEY,
   DEFAULT_APP_PREFERENCES,
@@ -53,7 +54,8 @@ test("settings exposes the selected default currency and explains that values ar
   assert.match(markup, /Default currency/);
   assert.match(markup, /id="settings-default-currency"/);
   assert.match(markup, /value="USD" selected/);
-  assert.match(markup, /never converts existing amounts/);
+  assert.doesNotMatch(markup, /never converts existing amounts/);
+  assert.match(windowHelpSteps("Preferences").map(step => step.text).join(" "), /never converts existing amounts/);
 });
 
 test("malformed or unsupported stored appearance values fall back independently", () => {

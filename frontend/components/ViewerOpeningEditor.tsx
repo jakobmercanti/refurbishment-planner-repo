@@ -268,7 +268,6 @@ export function ViewerOpeningEditor({
   }
 
   return <section className="tool-section full-plan-openings-panel viewer-opening-editor" aria-label={`Add ${kind === "DOOR" ? "doors" : "windows"}`}>
-    <p className="tool-note">Choose a catalogue model and size, then click the wall in the 3D view to place it. Openings keep clear of corners and existing doors or windows.</p>
     {catalogueError && <p role="alert" className="inline-error">{catalogueError}</p>}
     {categories.length > 0 && <>
       <div className="fixture-cascading-menu" ref={selectorRef}>

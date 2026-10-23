@@ -26,8 +26,26 @@ test("main energy preview precedes expandable thickness guidance without inline 
   assert.ok(html.indexOf("Wall composition preview") < html.indexOf("Wall thickness &amp; shared heating calculation"));
   assert.match(html, /Define wall layers/);
   assert.doesNotMatch(html, /Layer 1 material|Layer 1 thickness mm|Find minimum additional insulation/);
-  assert.match(html, /<details[^>]*><summary>Planning assumptions &amp; limitations/);
-  assert.match(html, /<details><summary>Layer key &amp; preview guidance/);
+  assert.doesNotMatch(html, /Planning assumptions &amp; limitations|How the score is calculated|Drag to rotate/);
+  assert.match(html, /<details><summary>Layer key · outside → inside/);
+});
+
+test("clearing insulation selection leaves no implied first wall or edit controls", () => {
+  const html = renderToStaticMarkup(createElement(EnergyLayoutPanel, { rooms: [room], data: energy, heating, selectedIds: [], onChange() {}, onHeatingChange() {}, onSelect() {}, onUndo() {}, onRedo() {}, canUndo: false, canRedo: false, projectName: "Test" }));
+  assert.match(html, /<option value="" selected="">Select wall/);
+  assert.doesNotMatch(html, /Define wall layers|Wall composition preview|Dimensions come from the floorplan/);
+});
+
+test("relocated insulation guidance remains available in contextual help with official links", () => {
+  const main = windowHelpSteps("Energy & Insulation");
+  assert.ok(main.some(step => step.heading === "Planning assumptions & limitations"));
+  assert.match(main.map(step => step.text).join(" "), /whole-element U-value|score|empty plan space/);
+  assert.equal(main.find(step => step.heading === "Official UK U-value guidance")?.links?.length, 4);
+  const opening = windowHelpSteps("Energy & Insulation — Select opening");
+  assert.match(opening.map(step => step.text).join(" "), /whole-element U-value/);
+  assert.ok(opening.some(step => step.heading === "Planning assumptions & limitations"));
+  assert.match(windowHelpSteps("Heating Layout").map(step => step.text).join(" "), /qualified heating professional/);
+  assert.match(windowHelpSteps("Thermal materials").map(step => step.text).join(" "), /no universal U-value/);
 });
 test("undefined walls show a visible preview without claiming a calculated U-value", () => {
   const html = panel();

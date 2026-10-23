@@ -56,6 +56,32 @@ body .floating-toolbar[data-edge-docked][data-dock-capable] {
 .floating-toolbar[data-edge-docked="RIGHT"] .floating-toolbar-resize-left {
   display: block;
 }
+/* Keep every floating header outside occupied rails, including portalled tools.
+   Preferred dimensions stay untouched so undocking restores the prior layout. */
+body .floating-toolbar[data-window-reflow]:not([data-window-maximized]) {
+  right: auto !important;
+  left: clamp(var(--window-free-left), var(--window-preferred-left), calc(var(--window-free-right) - min(var(--window-preferred-width), var(--window-free-width)))) !important;
+  width: min(var(--window-preferred-width), var(--window-free-width)) !important;
+  min-width: 0 !important;
+  max-width: var(--window-free-width) !important;
+}
+body .floating-toolbar[data-window-maximized]:not([data-edge-docked]) {
+  position: fixed !important;
+  left: var(--window-max-left) !important;
+  top: var(--window-max-top) !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: var(--window-max-width) !important;
+  height: var(--window-max-height) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: var(--window-max-width) !important;
+  max-height: var(--window-max-height) !important;
+}
+.floating-toolbar[data-window-maximized] > .floating-toolbar-resize { display: none !important; }
+.floating-toolbar[data-window-maximized] > .floating-toolbar-titlebar { cursor: default; }
+.window-dialog-maximize { display: none; }
+body .window-header-actions > .window-dialog-maximize,
 body .floating-toolbar .window-header-actions > .floating-toolbar-dock {
   display: inline-grid;
   place-items: center;
@@ -69,6 +95,21 @@ body .floating-toolbar .window-header-actions > .floating-toolbar-dock {
   color: var(--ui-button-text);
   cursor: pointer;
 }
+body .floating-toolbar > .floating-toolbar-titlebar > .window-header-actions > .window-dialog-maximize { display: none; }
+body :is([role="dialog"],dialog)[data-window-maximized]:not(.floating-toolbar) {
+  position: fixed !important;
+  inset: 8px !important;
+  margin: 0 !important;
+  transform: none !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  overflow: auto;
+}
+.drawing-calibration-panel[data-window-maximized] > .popup { width: 100%; height: 100%; max-width: none; max-height: none; }
 .window-dock-preview {
   position: fixed;
   z-index: 20000;
@@ -91,6 +132,8 @@ body .floating-toolbar .window-header-actions > .floating-toolbar-dock {
   position: fixed;
   z-index: 20001;
   width: 180px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
   display: grid;
   gap: 4px;
   padding: 6px;

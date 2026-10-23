@@ -56,7 +56,6 @@ export function CatalogueAssetPreview({ item, apiUrl }: { item: CatalogueItem; a
     {mode === "DETAIL" || result.mesh ? <FixturePreview key={`${item.id}:${mode}`} obstacle={obstacle} appearanceControls>
       {mode === "CFD" && result.mesh ? <CfdProxyMesh mesh={result.mesh} /> : item.stl_base64 ? <StlFixture obstacle={obstacle} {...size} colour={item.color_hex} fallback={procedural} /> : procedural}
     </FixturePreview> : <div className="catalogue-preview-status" role={result.error ? "alert" : "status"}>{result.error ?? "Loading simplified CFD surface…"}</div>}
-    <p className="catalogue-preview-guidance">Drag to orbit · scroll or use the slider to zoom · Fit resets the framing</p>
     {mode === "CFD" && result.mesh && <div className="catalogue-cfd-info">
       <strong>{result.mesh.label}</strong><p>Closed surface · {result.mesh.triangles.length} triangles · millimetres</p>
       <p>Outline marks the asset origin; it is not exported.{baseClearance > 0 && <> Underside: {baseClearance.toLocaleString("en-GB", { maximumFractionDigits: 1 })} mm above origin. Check mounting height.</>}</p>

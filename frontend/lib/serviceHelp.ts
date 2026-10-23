@@ -1,4 +1,5 @@
 import type { WindowHelpStep } from "./windowHelp";
+import { ENERGY_DISCLAIMER } from "./energyDocument";
 export function serviceHelp(title: string): WindowHelpStep[] | null {
   const context=title.split(" — ")[0];
   const heating=/heating|UFH|underfloor/i.test(context),thermal=/energy|insulation|define (wall|floor|roof) layers/i.test(context),electrical=/electrical|lighting/i.test(context);
@@ -6,6 +7,15 @@ export function serviceHelp(title: string): WindowHelpStep[] | null {
   const menu = title.split(" — ").at(-1) ?? title;
   if (!title.includes(" — ") && !/underfloor heating setup|import UFH|heating element editor/i.test(title)) return null;
   const step = (heading: string, text: string) => ({ heading, text });
+  if (thermal && /^Select (wall|floor|roof|opening)$/i.test(menu)) return [
+    step("Select construction", "Select the element on the plan or in this list. Dimensions come from the measured floorplan. Clicking empty plan space clears the selection; navigation gestures do not. Define layers edits a separate draft, saved only with Done."),
+    step("Opening performance", "For openings use the tested whole-element U-value for the complete frame and glazing/door system. A simple layer stack does not capture frame or edge effects. Review the boundary, adjacent temperature and glazing g/SHGC rather than accepting an unverified rating."),
+    step("Planning assumptions & limitations", ENERGY_DISCLAIMER),
+  ];
+  if (heating && /system|flow|return/i.test(menu)) return [
+    step("Water temperatures", "Flow is water sent to the emitters; return is water coming back. Lower water temperatures reduce hydronic output. Electric heaters are unchanged. Use the actual operating conditions and supplied ratings, not boiler capacity, to check room heat output."),
+    step("Review performance", "Estimated outputs are not verified capacity. Heat-pump emitter compatibility is not a heat-pump selection or seasonal-efficiency model. Confirm product ratings, installation and design with a qualified professional."),
+  ];
   if(heating&&/import UFH performance data/i.test(title))return [
     step("Use the manufacturer's performance table","Import JSON for the actual pipe and floor system, with a name and source reference. Check that its diameter, floor construction, spacing, covering resistance and temperatures match the installed system. Importing a table does not certify it."),
     step("JSON fields","The file contains name, reference, pipeDiameterMm, floorConstruction and points[]. Each point contains spacingMm, floorResistance, flowC, returnC, roomC, outputWm2 and surfaceTemperatureC (a number or null). Resistance is m²K/W. Use published values; never invent a missing rating."),

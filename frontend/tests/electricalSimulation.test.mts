@@ -72,6 +72,6 @@ test("window help explains electrical checkout and each specialist workflow", ()
   assert.match(JSON.stringify(windowHelpSteps("Full Electrical Layout module")), /press Enter/);
   assert.match(JSON.stringify(windowHelpSteps("Lighting layout test")), /Two-way/);
   assert.match(JSON.stringify(windowHelpSteps("Electrical BOM & schedule")), /order quantities/);
-  assert.match(JSON.stringify(windowHelpSteps("Energy & Insulation")), /not official EPCs/);
+  assert.match(JSON.stringify(windowHelpSteps("Energy & Insulation")), /not an official EPC/);
   assert.match(JSON.stringify(windowHelpSteps("Heating Layout")), /UFH/);
 });

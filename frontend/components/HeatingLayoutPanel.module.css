@@ -41,7 +41,6 @@
 .status[data-status=Sufficient] { color:var(--fit); }
 .status[data-status=Marginal],.status[data-status="Not verified"] { color:var(--verify); }
 .status[data-status=Insufficient] { color:var(--fail,#ba4242); }
-.disclaimer { opacity:.8; font-size:11px; border-top:1px solid var(--line); padding-top:9px; }
 .sectionHeading { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
 .panel button.primary { background:var(--primary-action,var(--deep)); border-color:var(--primary-action,var(--deep)); color:var(--primary-action-text,#fff); }
 .panel p.guide,.panel p.hint { color:var(--muted,#526b80); margin:0; }
@@ -86,8 +85,6 @@
 .panel button.resultRoom[data-balance=insufficient] { border-left-color:#b91c1c; }
 .scenarioGrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
 .scenario { display:grid; gap:5px; padding:10px; border:1px solid var(--line); border-radius:8px; }
-.panel details.disclaimer { opacity:1; padding:9px 10px; }
-.disclaimer summary { color:var(--muted,#526b80); font-size:11px; }
 @container electrical-layout-window (max-width:420px) {
   .systemPresets { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }

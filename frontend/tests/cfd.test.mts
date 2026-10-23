@@ -28,7 +28,8 @@ const item = (overrides:Partial<CatalogueItem> = {}):CatalogueItem => ({id:"test
 test("eligible asset viewer exposes both modes and keyboard-accessible zoom/fit controls", () => {
   const html = renderToStaticMarkup(createElement(CatalogueAssetPreview,{item:item(),apiUrl:"/api"}));
   assert.match(html,/CFD shape/);assert.match(html,/Asset representation/);assert.match(html,/Preview zoom/);assert.match(html,/>Fit</);
-  assert.match(html,/Measured dimensions/);assert.match(html,/Drag to orbit/);
+  assert.match(html,/Measured dimensions/);assert.doesNotMatch(html,/Drag to orbit/);
+  assert.match(windowHelpSteps("Catalogue entry details").map(step => step.text).join(" "), /Drag to orbit/);
 });
 
 test("doors, windows, electrical entries and legacy records cannot offer accidental furniture CFD modes", () => {

@@ -1745,13 +1745,13 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
       {selection.type === "ELEMENT" && selectedElement && <>
         <span className="eyebrow">Selected element</span>
         <strong>{selectedElement.name}</strong>
-        <p>Drag the selected element across the floor to reposition it.</p>
+
         <label className="viewer-lock-choice"><input type="checkbox" checked={selectedElement.wall_lock ?? false} onChange={(event) => setWallLock(event.target.checked)} /><span>Keep adjacent to nearest wall</span></label>
       </>}
       {selection.type === "PERSON" && <>
         <span className="eyebrow">Selected human mock-up</span>
         <strong>Person usability model</strong>
-        <p>Drag the body across the floor to reposition it. Use the Human mock-up toolbar for rotation, posture and clearance settings.</p>
+
       </>}
       {selection.type === "WALL" && <>
         <div className="selected-wall-heading"><span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span><strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong></div>
@@ -1767,7 +1767,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
             return <button key={shade.id} type="button" title={shade.name} aria-label={`Paint selected walls ${shade.name}`} className={active ? "selected" : ""} onClick={() => setWallColour(shade)}><span className="paint-shade-swatch" style={{ background: shade.colour }} /><strong>{shade.name}</strong></button>;
           })}</div>
           {!visiblePaintShades.length && <p className="paint-empty">No shades match this search.</p>}
-          <p className="paint-code-note">Screen colours come from the selected catalogue collection. Confirm with a physical sample before ordering.</p>
+
         </div>
         <button className="review-style-button colour-reset-button" type="button" onClick={() => setWallColour()}>Reset to default</button>
       </>}
@@ -2043,7 +2043,7 @@ export function EngineeringViewer(props: ViewerProps) {
               if (Number.isFinite(value)) setLighting((current) => ({ ...current, [key]: Math.min(max, Math.max(min, value)) }));
             }} />
           </label>)}
-          <small>Direction is measured clockwise from the top of the floorplan (0°). Lower elevation creates longer shadows.</small>
+
           <button type="button" className="review-style-button" onClick={() => setLighting({ ...DEFAULT_LIGHTING })}>Reset lighting</button>
           </>}
         </div>
@@ -2146,7 +2146,7 @@ export function EngineeringViewer(props: ViewerProps) {
       </FloatingToolbar>}
       {cameraPropertiesOpen && renderCamera && cameraAngles && <FloatingToolbar className="viewer-camera-properties-window" title="Camera properties" defaultPosition={cameraPropertiesPosition} initialSize={{ width: 380 }} maxHeight={360} bringToFront onClose={() => setCameraPropertiesOpen(false)}>
         <div className="viewer-camera-properties">
-          <p>Set the camera position and orientation precisely. Updates appear in the camera preview immediately.</p>
+
           <fieldset className="viewer-camera-property-fields">
             <legend>Position <small>millimetres</small></legend>
             {(["X", "Y", "Z"] as const).map((axis, index) => <label key={axis}><span>{axis}</span><input type="number" step={10} value={Math.round(renderCamera.positionMm[index] * 10) / 10} aria-label={`Camera position ${axis} in millimetres`} onChange={(event) => {
@@ -2168,7 +2168,7 @@ export function EngineeringViewer(props: ViewerProps) {
             }} /></label>)}
           </fieldset>
           {cameraMessage && <p className="viewer-camera-error" role="status">{cameraMessage}</p>}
-          <small className="viewer-camera-properties-note">Angles use Three.js XYZ Euler order. Position is stored in millimetres.</small>
+
           <button className="review-style-button" type="button" onClick={() => setCameraPropertiesOpen(false)}>Done</button>
         </div>
       </FloatingToolbar>}

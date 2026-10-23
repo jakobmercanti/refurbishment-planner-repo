@@ -4,6 +4,7 @@ import { useEnergyLayout } from "./EnergyLayoutContext";
 import { NumberField } from "./EnergyNumberField";
 import { parseEnergyProject, type ThermalMaterial } from "@/lib/energyDocument";
 import styles from "./HeatingLayoutPanel.module.css";
+import { WindowHelpButton } from "./WindowHelpButton";
 
 /** Project database: the same persisted materials consumed by wall calculations. */
 export function ThermalMaterialsLibrary({ search = "" }: { search?: string }) {
@@ -20,9 +21,8 @@ export function ThermalMaterialsLibrary({ search = "" }: { search?: string }) {
   const query = search.toLowerCase().trim();
   return <section className={styles.panel} aria-label="Thermal materials database">
     <div className={styles.sectionHeading}><h3>Materials · thermal library</h3><button onClick={() => save([...energy.data.materials, { materialId: crypto.randomUUID(), name: "New material", category: "Construction", lambda: null, resistance: null, density: null, vapourResistance: null, reference: "User-defined material; verify product data.", editable: true }])} disabled={energy.data.materials.length >= 300}>+ Add material</button></div>
-    <p>Saved with this project and used by every wall referencing the material. Individual layer overrides remain independent.</p>
     {error && <p role="alert">{error}</p>}
-    <details><summary>Conductivity, resistance & U-value</summary><p>λ is a material property. R depends on thickness: R = thickness / 1000 / λ. A fixed tested/cavity R overrides λ. A wall U-value also includes all other layers and surface resistances; a material has no universal U-value.</p><NumberField label="Sample thickness mm" value={sampleThickness} min={.1} max={3000} onChange={v => { if (v) setSampleThickness(v); }} /><p>The layer-only conductance below is 1/R at this sample thickness, not the full wall U-value.</p><p>Defaults are indicative, not certified installation values. Density, moisture, temperature and product grade matter. Cavity defaults assume an unventilated vertical air gap with ordinary surfaces, at least 25 mm deep.</p></details>
+    <div className={styles.sectionHeading}><NumberField label="Sample thickness mm" value={sampleThickness} min={.1} max={3000} onChange={v => { if (v) setSampleThickness(v); }} /><WindowHelpButton title="Thermal materials" /></div>
     {energy.data.materials.filter(m => `${m.name} ${m.category} ${m.reference}`.toLowerCase().includes(query)).map(m => {
       const r = m.resistance != null ? sampleThickness >= (m.resistanceMinThicknessMm ?? 0) && (m.resistanceReferenceThicknessMm == null || Math.abs(sampleThickness - m.resistanceReferenceThicknessMm) < .001) ? m.resistance : null : m.lambda ? sampleThickness / 1000 / m.lambda : null;
       const source = m.reference.match(/https:\/\/[^\s]+/)?.[0];

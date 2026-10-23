@@ -244,13 +244,17 @@ test("wall-layer property editor docks with an adaptive preview, preserves its d
   const { page, saved } = await open(t);
   await menu(page, "Tools", "Energy & Insulation");
   const energy = page.locator(".energy-layout-window");
-  await energy.getByRole("combobox", { name: "Select wall", exact: true }).selectOption({ index: 0 });
+  await energy.getByRole("combobox", { name: "Select wall", exact: true }).selectOption({ index: 1 });
   await eventually(saved, project => project.energyLayout?.enabled === true);
   const before = (await saved()).energyLayout;
   await energy.getByRole("button", { name: /Define wall layers/ }).click();
   const editor = page.getByRole("dialog", { name: "Define wall layers", exact: true });
   await editor.getByRole("button", { name: "Add layer", exact: true }).click();
   const draft = await editor.locator(".appearance-object-heading").textContent();
+  await layout(page, "Define wall layers", "Maximise window");
+  assert.equal(await editor.getAttribute("data-window-maximized"), "true");
+  assert.equal(await editor.locator(".appearance-object-heading").textContent(), draft);
+  await layout(page, "Define wall layers", "Restore window");
   await layout(page, "Define wall layers", "Dock right");
   const box = await editor.boundingBox();
   assert.ok(box.width <= 561);

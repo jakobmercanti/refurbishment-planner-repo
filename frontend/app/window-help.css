@@ -13,7 +13,7 @@ button.window-help-button { flex:0 0 auto; box-sizing:border-box; width:var(--wi
 .floating-toolbar summary>.service-menu-help { margin-left:auto; }
 .floating-toolbar-titlebar:has(.window-header-actions), .popup-titlebar:has(.window-header-actions) { grid-template-columns: 20px 18px minmax(0, 1fr) auto; }
 .compact-workspace .floating-toolbar-titlebar:has(.window-header-actions) { grid-template-columns: 18px minmax(0, 1fr) auto; }
-.window-help-host { position: fixed; inset: 0; z-index: 10000; pointer-events: none; }
+.window-help-host { display: contents; }
 .window-help-host > .floating-toolbar { pointer-events: auto; }
 .window-help-content { padding: 10px 14px; color: var(--ink); line-height: 1.55; }
 .window-help-content h3 { margin: 12px 0 5px; font-size: 15px; }

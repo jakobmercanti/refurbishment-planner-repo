@@ -1,9 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_FLOATING_WINDOW_WIDTH, edgeDockLayout, edgeDockTarget, floatingDockLayout, resizeFloatingWindow, visibleFloatingWorkspace } from "../lib/floatingWindowGeometry.ts";
+import { DEFAULT_FLOATING_WINDOW_WIDTH, edgeDockLayout, edgeDockTarget, floatingDockLayout, floatingWindowArea, maximizedFloatingWindow, resizeFloatingWindow, visibleFloatingWorkspace } from "../lib/floatingWindowGeometry.ts";
 
 const workspace = { width: 1200, height: 800 };
 const windowBox = { left: 100, top: 80, width: DEFAULT_FLOATING_WINDOW_WIDTH, height: 300 };
+
+test("floating tools and maximised windows share the viewer area outside both dock rails", () => {
+  const bounds = { left: 30, top: 120, width: 1440, height: 780 };
+  for (const entries of [[], [{ id: "left", side: "LEFT" as const, width: 340 }], [{ id: "right", side: "RIGHT" as const, width: 400 }], [{ id: "left", side: "LEFT" as const, width: 560 }, { id: "right", side: "RIGHT" as const, width: 560 }]]) {
+    const layout = edgeDockLayout(bounds, entries), area = floatingWindowArea(bounds, layout.left, layout.right);
+    assert.equal(area.width + layout.left + layout.right, bounds.width);
+    const full = maximizedFloatingWindow(area);
+    assert.equal(full.left, area.left + 8);
+    assert.equal(full.top, area.top + 8);
+    assert.equal(full.width, area.width - 16);
+    assert.equal(full.height, area.height - 16);
+    if (layout.boxes.left) assert.ok(full.left >= layout.boxes.left.left + layout.boxes.left.width + 8);
+    if (layout.boxes.right) assert.ok(full.left + full.width <= layout.boxes.right.left - 8);
+  }
+});
+
+test("maximisation stays finite on tiny or clipped workspaces", () => {
+  assert.deepEqual(maximizedFloatingWindow({ left: 10, top: 90, width: 8, height: 12 }), { left: 14, top: 96, width: 0, height: 0 });
+  assert.deepEqual(floatingWindowArea({ left: 0, top: 0, width: 100, height: 100 }, 150, 80), { left: 100, top: 0, width: 0, height: 100 });
+});
 
 test("every dock slot shares the area below the pinned selector, rather than moving only the first window", () => {
   const first = floatingDockLayout(0, 3);

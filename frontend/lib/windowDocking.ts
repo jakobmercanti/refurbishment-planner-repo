@@ -1,17 +1,21 @@
 "use client";
 
 import { useLayoutEffect, useState, useSyncExternalStore, type RefObject } from "react";
-import { edgeDockLayout, visibleFloatingWorkspace, type FloatingWindowBox, type WindowDockEntry, type WindowDockSide } from "./floatingWindowGeometry";
+import { edgeDockLayout, floatingWindowArea, visibleFloatingWorkspace, type FloatingWindowBox, type WindowDockEntry, type WindowDockSide } from "./floatingWindowGeometry";
+import { windowViewport } from "./windowViewport";
 
 type Entry = WindowDockEntry & { panel: HTMLElement };
 interface Snapshot {
   bounds: FloatingWindowBox;
+  freeBounds: FloatingWindowBox;
+  hasRails: boolean;
   enabled: boolean;
   boxes: Record<string, FloatingWindowBox>;
   sides: Record<string, WindowDockSide>;
   preview: { id: string; side: WindowDockSide; box: FloatingWindowBox } | null;
 }
-const EMPTY: Snapshot = { bounds: { left: 0, top: 0, width: 0, height: 0 }, enabled: false, boxes: {}, sides: {}, preview: null };
+const EMPTY_BOUNDS = { left: 0, top: 0, width: 0, height: 0 };
+const EMPTY: Snapshot = { bounds: EMPTY_BOUNDS, freeBounds: EMPTY_BOUNDS, hasRails: false, enabled: false, boxes: {}, sides: {}, preview: null };
 const managers = new WeakMap<HTMLElement, DockManager>();
 const subscribeNothing = () => () => {};
 const emptySnapshot = () => EMPTY;
@@ -57,14 +61,13 @@ class DockManager {
   }
   private refresh = () => {
     const rect = this.root.getBoundingClientRect();
-    const viewport = window.visualViewport;
-    const visible = visibleFloatingWorkspace(rect, { left: viewport?.offsetLeft ?? 0, top: viewport?.offsetTop ?? 0, width: viewport?.width ?? document.documentElement.clientWidth, height: viewport?.height ?? window.innerHeight });
+    const visible = visibleFloatingWorkspace(rect, windowViewport());
     const bounds = { left: rect.left + visible.left, top: rect.top + visible.top, width: visible.right - visible.left, height: visible.bottom - visible.top };
     const shown = [...this.entries.values()].filter(entry => entry.panel.isConnected && entry.panel.getClientRects().length && !entry.panel.closest("[hidden]"));
     const layout = edgeDockLayout(bounds, shown);
     const pending = this.pending;
     const previewBox = pending && edgeDockLayout(bounds, [...shown.filter(entry => entry.id !== pending.id), pending]).boxes[pending.id];
-    const next: Snapshot = { bounds, enabled: layout.enabled, boxes: layout.boxes, sides: Object.fromEntries([...this.entries.values()].map(entry => [entry.id, entry.side])), preview: pending && previewBox ? { id: pending.id, side: pending.side, box: previewBox } : null };
+    const next: Snapshot = { bounds, freeBounds: floatingWindowArea(bounds, layout.left, layout.right), hasRails: !!(layout.left || layout.right), enabled: layout.enabled, boxes: layout.boxes, sides: Object.fromEntries([...this.entries.values()].map(entry => [entry.id, entry.side])), preview: pending && previewBox ? { id: pending.id, side: pending.side, box: previewBox } : null };
     this.setInset("--workspace-dock-left", layout.left);
     this.setInset("--workspace-dock-right", layout.right);
     const signature = JSON.stringify(next);
@@ -147,6 +150,8 @@ export function useWindowDocking(panel: RefObject<HTMLElement | null>) {
     inactive: !!connection && (!snapshot.bounds.width || !snapshot.bounds.height),
     enabled: snapshot.enabled,
     bounds: snapshot.bounds,
+    freeBounds: snapshot.freeBounds,
+    hasRails: snapshot.hasRails,
     box: connection ? snapshot.boxes[connection.id] : undefined,
     side: connection ? snapshot.sides[connection.id] : undefined,
     preview: connection && snapshot.preview?.id === connection.id ? snapshot.preview : null,

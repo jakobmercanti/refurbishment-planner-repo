@@ -642,7 +642,7 @@ button { font: inherit; }
 .catalogue-preview-status { display: grid; place-items: center; padding: 20px; color: var(--muted); }
 html[data-theme="dark"] body .catalogue-asset-preview .fixture-preview-fit-button,
 .catalogue-asset-preview .fixture-preview-fit-button { min-width: 44px; min-height: 32px; border: 1px solid #91aaa4; border-radius: 8px; background: #f5f9f7; color: #173f4c; text-shadow: none; }
-.catalogue-preview-guidance, .catalogue-preview-disclaimer { margin: 0; color: var(--muted); font-size: calc(9px * var(--density-font-scale, 1)); line-height: 1.5; }
+.catalogue-preview-disclaimer { margin: 0; color: var(--muted); font-size: calc(9px * var(--density-font-scale, 1)); line-height: 1.5; }
 .catalogue-cfd-info { flex: none; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-muted, var(--panel)); font-size: calc(9px * var(--density-font-scale, 1)); }
 .catalogue-cfd-info p { margin: 5px 0; color: var(--muted); }
 .catalogue-cfd-info a { display: inline-block; padding: 5px 0; color: var(--deep); font-weight: 650; }
@@ -909,8 +909,6 @@ html[data-theme="dark"] body .catalogue-asset-preview .fixture-preview-fit-butto
 .paint-shade-swatch { width: 28px; height: 28px; border: 1px solid rgba(40,55,49,.15); border-radius: 5px; }
 .paint-shades strong { min-width: 0; font: 600 calc(7px * var(--density-font-scale, 1))/1.25 var(--font-mono); overflow-wrap: anywhere; }
 .paint-empty { margin: 8px 0; color: var(--muted); font-size: calc((9px) * var(--density-font-scale, 1)); text-align: center; }
-.paint-code-note { margin: 8px 0 0; color: var(--muted); font-size: calc((8px) * var(--density-font-scale, 1)); line-height: 1.4; }
-.paint-code-note a { color: var(--deep); font-weight: 700; }
 .finish-palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 10px 0; }
 .finish-palette button { aspect-ratio: 1; min-width: 0; border: 2px solid white; border-radius: 6px; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
 .finish-palette button.selected { box-shadow: 0 0 0 2px var(--deep); }
@@ -1740,7 +1738,6 @@ textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
 .viewer-camera-property-fields label { display: grid; gap: 4px; color: var(--muted); font: 700 calc(9px * var(--density-font-scale, 1)) var(--font-mono); }
 .viewer-camera-property-fields input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 38px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); font: 600 calc(12px * var(--density-font-scale, 1)) var(--font-sans); }
 .viewer-camera-property-fields input:focus-visible { border-color: #1682df; outline: 2px solid rgba(22,130,223,.18); }
-.viewer-camera-properties-note { color: var(--muted); font-size: calc((9px) * var(--density-font-scale, 1)); line-height: 1.4; }
 .viewer-camera-properties > .review-style-button { min-height: 36px; margin: 0; }
 .viewer-camera-panel { display: grid; gap: 4px; padding: 0; }
 .viewer-camera-live { display: grid; gap: 3px; min-width: 0; }
