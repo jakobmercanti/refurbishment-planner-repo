@@ -433,15 +433,22 @@ export function preparationRequestBody(
 ): string {
   // This stateless public preparation endpoint does not need quotations, other
   // studies, service layouts, reference drawings or embedded symbol pictures.
+  // Symbol URLs are drawing metadata, not air-domain geometry. In particular,
+  // /planner-prefixed built-ins and empty URL fields fail the public resource
+  // guard. Omit only these known display fields; never relax that server guard.
+  const withoutSymbols = <T extends object>(value: T): T => {
+    const next = { ...value } as T & Record<string, unknown>;
+    for (const key of ["plan_symbol_url", "plan_symbol_data_url", "planSymbolUrl", "planSymbolDataUrl"]) delete next[key];
+    return next;
+  };
   const slim = (content: FloorContent): FloorContent => ({
     rooms: content.rooms.map((room) => ({
       ...room,
       finishes: undefined,
       person_mockup: undefined,
-      obstacles: room.obstacles.map((obj) => ({
-        ...obj,
-        plan_symbol_data_url: undefined,
-      })),
+      obstacles: room.obstacles.map(withoutSymbols),
+      openings: room.openings.map(opening => ({ ...withoutSymbols(opening),
+        metadata: opening.metadata ? withoutSymbols(opening.metadata) : undefined })),
     })),
     floorplan: content.floorplan
       ? {
@@ -452,6 +459,7 @@ export function preparationRequestBody(
           hiddenDimensions: [],
           roomFinishes: undefined,
           viewSettings: undefined,
+          openings: content.floorplan.openings.map(withoutSymbols),
         }
       : null,
     assetInstances: content.assetInstances,

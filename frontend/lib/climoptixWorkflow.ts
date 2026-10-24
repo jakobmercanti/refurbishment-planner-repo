@@ -8,7 +8,7 @@ export const LEVEL_COLOURS = [
   "#009c9a",
   "#34a853",
   "#c69a00",
-  "#e47d20",
+  "#436b85",
   "#d34c65",
   "#aa59c6",
   "#7754d1",

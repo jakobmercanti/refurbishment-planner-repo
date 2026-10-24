@@ -100,7 +100,7 @@ test("mesh/physics columns follow window width and all phase content remains rea
   await layout(page, "Maximise window");
   for (const density of ["Comfortable", "Compact"]) {
     await preferences(page, dialog => button(dialog, density).click());
-    for (const [width, columns] of [[1900, 4], [1050, 3], [760, 2], [390, 1]]) {
+    for (const [width, columns] of [[1900, 4], [1050, 3], [760, 3], [390, 1]]) {
       await page.setViewportSize({ width, height: 1000 });
       await cfdWindow(ui, "Domain");
       const grid = ui.locator(".cfx-adaptive-grid");

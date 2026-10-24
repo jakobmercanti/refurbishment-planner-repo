@@ -127,11 +127,14 @@ body .cfx-workspace .cfx-row-menu-panel > * + * { margin-top: 0; }
 body .cfx-workspace :is(.cfx-simulation-panel, .cfx-physics-fields) > details > summary { font-size: inherit; font-family: inherit; }
 body .cfx-setup-panel:has(.cfx-domain-seed) > .cfx-inspector > h2 { margin-bottom: calc(var(--density-section-gap) * 1.5); }
 body .cfx-workspace .cfx-domain-seed + h3 { margin-top: calc(var(--density-section-gap) * 1.5); }
-body .cfx-workspace .cfx-post-planes { align-items: stretch; }
+body .cfx-workspace .cfx-post-planes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--density-section-gap); align-items: stretch; margin-top: var(--density-section-gap); }
 body .cfx-workspace .cfx-post-planes .cfx-slice-row { grid-template-columns: minmax(0, 1fr); gap: var(--density-field-gap); padding: var(--density-row-padding); }
-body .cfx-workspace .cfx-post-planes > label { align-self: end; }
-body .cfx-workspace .cfx-segments { display: flex; flex: 1 1 auto; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; overflow: visible; }
-body .cfx-workspace .cfx-segments > button { flex: 1 1 auto; white-space: nowrap; border-radius: var(--radius-control) var(--radius-control) 0 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); }
+body .cfx-workspace .cfx-simulation-panel > * + * { margin-top: var(--density-section-gap); }
+body .cfx-workspace .cfx-simulation-panel details > :not(summary) { margin-top: var(--density-section-gap); }
+body .cfx-workspace .cfx-review > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+body .cfx-workspace .cfx-segments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; flex: 1 1 auto; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; overflow: visible; }
+body .cfx-workspace .cfx-segments > button { min-width: 0; white-space: normal; text-align: center; border-radius: var(--radius-control) var(--radius-control) 0 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); }
+body .cfx-workspace .cfx-transfer-actions > :is(button, .cfx-file) { display: flex; align-items: center; justify-content: center; text-align: center; min-width: 0; }
 body .cfx-workspace .cfx-segments > button[aria-selected="true"] { border-bottom-color: var(--focus-ring); background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); }
 body .cfx-viewer > footer { display: grid; height: auto; max-height: min(40%, 260px); overflow: auto; pointer-events: auto; margin: 0; padding: var(--density-row-padding) var(--density-window-padding); }
 body .cfx-viewer > footer > * { min-width: 0; margin: 0; }

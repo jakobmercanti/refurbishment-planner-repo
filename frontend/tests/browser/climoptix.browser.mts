@@ -251,12 +251,13 @@ test("late validation cannot bless a changed study; unavailable service can be r
     });
   });
   const ui = await open(page);
+  await cfdWindow(ui, "Review & export");
   await ui
     .getByRole("alert")
     .filter({ hasText: "temporarily unavailable" })
     .waitFor();
-  assert.ok(await ui.getByRole("button", { name: "Retry check", exact: true }).isEnabled());
-  await ui.getByRole("button", { name: "Retry check", exact: true }).click();
+  assert.ok(await ui.getByRole("button", { name: "Refresh checks", exact: true }).isEnabled());
+  await ui.getByRole("button", { name: "Refresh checks", exact: true }).click();
   await eventually(
     () => arrived,
     (v) => v,

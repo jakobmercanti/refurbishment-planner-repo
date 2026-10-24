@@ -291,7 +291,10 @@
   border-color: color-mix(in srgb, var(--fail), transparent 70%);
 }
 .cfx-workspace .cfx-file {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   position: relative;
   overflow: hidden;
 }
@@ -910,19 +913,26 @@
 .cfx-physics-fields > details { grid-column: 1 / -1; }
 .cfx-physics-fields > * + * { margin-top: 0; }
 .cfx-setup .cfx-grid:not(.cfx-three) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@container cfx-setup (min-width: 850px) {
+@container cfx-setup (min-width: 700px) {
   .cfx-setup .cfx-grid:not(.cfx-domain-seed, .cfx-three), .cfx-physics-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-@container cfx-setup (min-width: 1200px) {
+@container cfx-setup (min-width: 1100px) {
   .cfx-setup .cfx-grid:not(.cfx-domain-seed, .cfx-three), .cfx-physics-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @container cfx-setup (max-width: 460px) {
   .cfx-setup .cfx-grid:not(.cfx-three), .cfx-physics-fields { grid-template-columns: minmax(0, 1fr); }
 }
 .cfx-bound-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
-.cfx-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 14px; color: var(--fail); border-bottom: 1px solid var(--line); }
-.cfx-feedback > span { flex: 1 1 220px; max-height: 5em; overflow: auto; overflow-wrap: anywhere; }
-.cfx-workspace .cfx-feedback > button { min-height: 32px; padding: 4px 8px; }
+.cfx-review-failure { padding: var(--density-window-padding); border: 1px solid var(--fail); border-radius: var(--radius-control); }
+.cfx-review-failure > p { color: var(--fail); overflow-wrap: anywhere; }
+.cfx-input-failure { color: var(--fail); overflow-wrap: anywhere; margin-bottom: var(--density-section-gap); }
+.cfx-connection-status { margin-block: var(--density-section-gap); color: var(--muted); font-size: inherit; }
+.cfx-probe-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: var(--density-field-gap); padding-block: var(--density-row-padding); }
+.cfx-probe-row + .cfx-probe-row { border-top: 1px solid var(--line); }
+.cfx-surface-assignment { max-height: 360px; overflow: auto; overscroll-behavior: contain; margin-block: var(--density-section-gap); }
+.cfx-surface-assignment > label { display: flex; align-items: center; gap: var(--density-section-gap); padding: var(--density-row-padding); }
+.cfx-surface-assignment span { min-width: 0; overflow-wrap: anywhere; }
+.cfx-surface-assignment small { display: block; color: var(--muted); }
 .cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item { display: block; position: relative; }
 .cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item > .cfx-grip { position: absolute; left: calc(var(--density-window-padding) + 1px); top: calc(var(--density-window-padding) + 1px); width: 32px; z-index: 2; }
 .cfx-study-group { padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-panel); min-width: 0; }

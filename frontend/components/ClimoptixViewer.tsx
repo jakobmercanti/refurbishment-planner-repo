@@ -5,6 +5,8 @@ import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
 import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
+  Box3,
+  Mesh,
   DoubleSide,
   Float32BufferAttribute,
   Plane,
@@ -40,6 +42,8 @@ import {
   ventCenter,
   ventDirection,
   ventFootprint,
+  snapVentUV,
+  CFD_SELECTION_COLOUR,
 } from "@/lib/climoptixPreview";
 
 const COLORS: Record<string, string> = {
@@ -66,7 +70,7 @@ function hostLocation(patch: CFDPatch, p: Vec3): [number, number] | null {
     Math.max(0, Math.min(1, dot(delta, h.vAxis) / h.heightMm)),
   ];
 }
-function Frame({ request }: { request: string }) {
+function Frame({ request, focus, target }: { request: string; focus: string; target: string }) {
   const bounds = useBounds();
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -74,6 +78,15 @@ function Frame({ request }: { request: string }) {
     });
     return () => cancelAnimationFrame(id);
   }, [bounds, request]);
+  useEffect(() => {
+    if (!target) return;
+    const [low, high] = JSON.parse(target) as [Vec3, Vec3];
+    const box = new Box3(new Vector3(...scene(low)), new Vector3(...scene(high)));
+    // Z changes handedness at the renderer boundary; normalize after conversion.
+    const min = box.min.clone().min(box.max), max = box.min.clone().max(box.max);
+    const id = requestAnimationFrame(() => bounds.refresh(new Box3(min, max).expandByScalar(.25)).clip().fit());
+    return () => cancelAnimationFrame(id);
+  }, [bounds, focus, target]);
   return null;
 }
 interface Props {
@@ -87,8 +100,9 @@ interface Props {
   onViewSettings: (open: boolean) => void;
   stale: boolean;
   selected: string | null;
+  selectionFocus?: number;
   onSelect: (id: string) => void;
-  picking: boolean;
+  picking: CFDVent | boolean;
   onHostPick: (patchId: string, u: number, v: number) => void;
   onMoveVent: (id: string, u: number, v: number) => void;
   canMoveVents: boolean;
@@ -135,7 +149,7 @@ function ThermalFaceMesh({
       }}
     >
       <meshStandardMaterial
-        color={selected ? "#ffcc64" : thermalColour(face, metric)}
+        color={selected ? CFD_SELECTION_COLOUR : thermalColour(face, metric)}
         side={DoubleSide}
         transparent
         opacity={selected ? 0.95 : 0.66}
@@ -183,7 +197,7 @@ function PatchMesh({
       onPointerUp={onPointerUp}
     >
       <meshStandardMaterial
-        color={selected ? "#ffcc64" : colour ?? (COLORS[patch.kind] ?? "#8b9eac")}
+        color={selected ? CFD_SELECTION_COLOUR : colour ?? (COLORS[patch.kind] ?? "#8b9eac")}
         side={DoubleSide}
         transparent={!vent && !selected}
         opacity={vent || selected ? 1 : highlighted ? 0.66 : 0.34}
@@ -202,7 +216,6 @@ function VentIntent({
   onMove,
   onUp,
   onCancel,
-  colour,
 }: {
   vent: CFDVent;
   host: CFDPatch;
@@ -212,7 +225,6 @@ function VentIntent({
   onMove: (e: ThreeEvent<PointerEvent>) => void;
   onUp: (e: ThreeEvent<PointerEvent>) => void;
   onCancel: () => void;
-  colour?: string;
 }) {
   const geometry = useMemo(() => {
     const h = host.host!,
@@ -245,10 +257,11 @@ function VentIntent({
         onPointerUp={onUp}
         onPointerCancel={onCancel}
       >
-        <meshStandardMaterial
-          color={selected ? "#ffcc64" : colour ?? COLORS[vent.role]}
+        <meshBasicMaterial
+          color={selected ? CFD_SELECTION_COLOUR : COLORS[vent.role]}
           side={DoubleSide}
-          roughness={0.8}
+          transparent={false}
+          opacity={1}
         />
       </mesh>
       <arrowHelper
@@ -275,6 +288,7 @@ export function ClimoptixViewer({
   onViewSettings,
   stale,
   selected,
+  selectionFocus = 0,
   onSelect,
   picking,
   onHostPick,
@@ -410,23 +424,50 @@ export function ClimoptixViewer({
         : new Map<string, number[]>(),
     [buildingScene],
   );
-  const displayPatches = [
+  const allDisplayPatches = [
     ...(buildingScene?.patches.map(
       (p) => patches.find((prepared) => prepared.id === p.id) ?? p,
     ) ?? []),
     ...patches.filter((p) => p.kind === "object"),
-  ].filter((p) => visibleRooms.has(p.roomId));
+  ];
+  const displayPatches = allDisplayPatches.filter((p) => visibleRooms.has(p.roomId));
   const refinements = refinementPreviews(scenario, report);
   const refinementLegend = [
     ...new Map(refinements.map((region) => [region.level, region.cellMm])),
   ].sort(([a], [b]) => a - b);
-  const selectedPatch = patches.find(
+  const selectedPatch = allDisplayPatches.find(
     (p) => p.id === selected || p.sourceId === selected,
   );
   const isolated =
     isolate && Boolean(selectedPatch || selected?.startsWith("vent:"));
+  const selectedRegion = refinements.find(r => `refinement:${r.id}` === selected);
+  const selectedVent = scenario.vents.find(v => `vent:${v.id}` === selected);
+  const selectedHost = patches.find(p => p.id === selectedVent?.host.patchId)?.host;
+  const selectedRoom = selectedVent ? patches.find(p => p.id === selectedVent.host.patchId)?.roomId : selectedPatch?.roomId;
+  const scopeIncludesSelection = !selectedRoom || visibleRooms.has(selectedRoom);
+  const previousSelection = useRef({ selected, selectionFocus });
+  useEffect(() => {
+    const explicit = previousSelection.current.selected !== selected || previousSelection.current.selectionFocus !== selectionFocus;
+    previousSelection.current = { selected, selectionFocus };
+    if (!explicit || scopeIncludesSelection) return;
+    const frame = requestAnimationFrame(() => setScope("building"));
+    return () => cancelAnimationFrame(frame);
+  }, [selectionFocus, selected, scopeIncludesSelection]);
+  const focusPoints = selectedRegion ? [
+    selectedRegion.centerMm.map((v, i) => v - selectedRegion.sizeMm[i] / 2) as Vec3,
+    selectedRegion.centerMm.map((v, i) => v + selectedRegion.sizeMm[i] / 2) as Vec3,
+  ] : selectedVent && selectedHost ? ventFootprint(selectedVent, selectedHost) :
+    selectedPatch ? (positions.get(selectedPatch.id) ?? basePositions.get(selectedPatch.id) ?? []).reduce<Vec3[]>((points, _, i, values) => {
+      if (i % 3 === 0) points.push([values[i] * 1000, -values[i + 2] * 1000, values[i + 1] * 1000]);
+      return points;
+    }, []) : [];
+  const focusTarget = focusPoints.length ? JSON.stringify(focusPoints.reduce(
+    ([low, high], point) => [low.map((v, i) => Math.min(v, point[i])), high.map((v, i) => Math.max(v, point[i]))],
+    [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]],
+  )) : "";
   const onMeshDown = (e: ThreeEvent<PointerEvent>, patch: CFDViewPatch) => {
     if (e.button !== 0) return;
+    if (picking && patch.id.startsWith("vent:")) return;
     if (
       !picking &&
       !patch.id.startsWith("vent:") &&
@@ -453,7 +494,8 @@ export function ClimoptixViewer({
     const hostPatch = patches.find((p) => p.id === patch.id);
     if (picking && hostPatch?.host) {
       const location = hostLocation(hostPatch, millimetres(e.point));
-      if (location) onHostPick(patch.id, ...location);
+      const uv = location && typeof picking === "object" ? snapVentUV(picking, hostPatch.host, ...location) : location;
+      if (uv) onHostPick(patch.id, ...uv);
     }
   };
   const onMeshMove = (e: ThreeEvent<PointerEvent>) => {
@@ -468,7 +510,9 @@ export function ClimoptixViewer({
       );
     const point = e.ray.intersectPlane(plane, new Vector3());
     if (!point) return;
-    const uv = hostLocation(current.patch, millimetres(point));
+    const proposed = hostLocation(current.patch, millimetres(point));
+    const vent = scenario.vents.find(v => v.id === current.id);
+    const uv = proposed && vent ? snapVentUV(vent, h, ...proposed) : null;
     if (uv) {
       current.u = uv[0];
       current.v = uv[1];
@@ -629,11 +673,13 @@ export function ClimoptixViewer({
               )}
               <Frame
                 request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit}`}
+                focus={`${selected}:${selectionFocus}:${viewScope.id}`}
+                target={drag || !scopeIncludesSelection ? "" : focusTarget}
               />
               {displayPatches
                 .filter(
                   (p) =>
-                    (ceilings || boundaryGroups.length > 0 || p.kind !== "ceiling" || p.id === selected) &&
+                    (ceilings || picking || boundaryGroups.length > 0 || p.kind !== "ceiling" || p.id === selected) &&
                     p.kind !== "supply" &&
                     p.kind !== "extract" &&
                     (!detailed || p.kind !== "object"),
@@ -695,7 +741,6 @@ export function ClimoptixViewer({
                     host={host}
                     selected={selected === marker.id}
                     offset={dragOffset(marker.id)}
-                    colour={groupColours.get(marker.id)}
                     onDown={(e) => onMeshDown(e, marker)}
                     onMove={onMeshMove}
                     onUp={onMeshUp}
@@ -742,6 +787,7 @@ export function ClimoptixViewer({
                   <mesh
                     key={r.id}
                     name={`refinement:${r.id}`}
+                    raycast={picking ? () => {} : Mesh.prototype.raycast}
                     position={scene(r.centerMm)}
                     onPointerDown={(e) => {
                       if (e.button !== 0) return;
@@ -767,10 +813,10 @@ export function ClimoptixViewer({
                       />
                     )}
                     <meshBasicMaterial
-                      color={r.colour}
-                      wireframe
+                      color={selected === `refinement:${r.id}` ? CFD_SELECTION_COLOUR : r.colour}
+                      side={DoubleSide}
                       transparent
-                      opacity={selected === `refinement:${r.id}` ? 1 : 0.65}
+                      opacity={selected === `refinement:${r.id}` ? .38 : .22}
                       depthWrite={false}
                     />
                   </mesh>
@@ -887,8 +933,6 @@ export function ClimoptixViewer({
           <li><i style={{ background: COLORS.extract }} />Extract</li>
           <li><i style={{ background: COLORS.door }} />Boundary cap</li>
         </ul>
-        {showRefinements && refinements.length > 0 && <small>Dashed/wireframe = refinement intent</small>}
-        <small>Arrows: prescribed flow, not solved results</small>
       </footer>
     </section>
   );

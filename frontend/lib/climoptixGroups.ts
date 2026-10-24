@@ -80,3 +80,17 @@ export function effectiveBoundary(scenario: CFDScenario, patch: CFDPatch) {
   const defaults = scenario.boundaries.collections.find(g => g.id === DEFAULT_BOUNDARY_GROUP);
   return scenario.boundaries.patches[patch.id] ?? collection?.boundary ?? defaults?.boundary ?? scenario.boundaries.groups[patch.kind] ?? patch.boundary ?? boundarySchema.parse({});
 }
+
+/** Assign only checked, existing non-device surfaces. Keep stale references and
+ * overrides for explicit review; removed members fall back to the default group. */
+export function assignBoundarySurfaces(scenario: CFDScenario, target: string, ids: string[], patches: CFDPatch[]): CFDScenario {
+  const groups = boundaryGroups(scenario);
+  if (target === DEFAULT_BOUNDARY_GROUP || !groups.some(g => g.id === target)) return scenario;
+  const eligible = new Set(patches.filter(p => p.kind !== "supply" && p.kind !== "extract").map(p => p.id));
+  const selected = new Set(ids.filter(id => eligible.has(id)));
+  return { ...scenario, boundaries: { ...scenario.boundaries, collections: groups.map(g => {
+    if (g.id !== target) return { ...g, patchIds: g.patchIds.filter(id => !selected.has(id)) };
+    const kept = g.patchIds.filter(id => !eligible.has(id) || selected.has(id));
+    return { ...g, patchIds: [...kept, ...[...selected].filter(id => !kept.includes(id))] };
+  }) } };
+}

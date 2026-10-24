@@ -7,10 +7,11 @@ import { WindowHelpButton } from "./WindowHelpButton";
 
 const TABS = [["review", "Simulation review"], ["warnings", "Warnings & checks"], ["transfer", "Import / export"]] as const;
 
-export function ClimoptixReview({ scenario, report, revision, stale, blocked, onChange, onImport, onExport, onError, onRefresh, onInspect }: {
+export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onDismissFailure, onChange, onImport, onExport, onError, onRefresh, onInspect }: {
   scenario: CFDScenario; report: CFDReport | null; revision: string; stale: boolean; blocked: boolean;
   onChange: (scenario: CFDScenario) => void; onImport: (file: File) => void; onExport: () => void;
   onError: (message: string) => void; onRefresh: () => void; onInspect: (id: string, group: string) => void;
+  failure?: string; onDismissFailure?: () => void;
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("review");
   const [severity, setSeverity] = useState("all");
@@ -39,6 +40,10 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, on
         ...((report?.limitations ?? []).map(text => ({ heading: "Provider limitation", text }))),
       ]} />
     </header>
+    {failure && <div className="cfx-review-failure" role="alert"><p>{failure}</p>
+      {failure.startsWith("Changes not applied") && <button onClick={onDismissFailure}>Keep saved values</button>}
+      <small>Checks and preparation exports remain blocked until this is resolved. Use Refresh checks in Review or Warnings to retry.</small>
+    </div>}
     <section role="tabpanel" id={`${prefix}-panel-review`} aria-labelledby={`${prefix}-review`} hidden={tab !== "review"}>
       <div className="cfx-inline-toolbar">
         <strong>{scenario.name}</strong>

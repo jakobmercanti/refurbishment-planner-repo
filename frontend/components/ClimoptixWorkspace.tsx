@@ -246,6 +246,8 @@ export function ClimoptixWorkspace({
   };
   const [selected, setSelected] = useState<string | null>(null),
     [reports, setReports] = useState<Record<string, CFDReport>>({});
+  const [selectionFocus, setSelectionFocus] = useState(0);
+  const selectObject = (id: string | null) => { setSelected(id); setSelectionFocus(v => v + 1); if (id?.startsWith("refinement:")) setShowRefinements(true); };
   const [hash, setHash] = useState({ input: "", revision: "" }),
     [preparing, setPreparing] = useState(""),
     [message, setMessage] = useState(""),
@@ -254,7 +256,7 @@ export function ClimoptixWorkspace({
       id: string;
       opener: HTMLButtonElement;
     } | null>(null);
-  const [picking, setPicking] = useState<"supply" | "extract" | null>(null);
+  const [picking, setPicking] = useState<{ role: "supply" | "extract"; ventId?: string } | null>(null);
   const [editorReset, setEditorReset] = useState(0);
   const [clearing, setClearing] = useState<HTMLButtonElement | null>(null);
   const [preparationRetry, setPreparationRetry] = useState(0);
@@ -644,14 +646,16 @@ export function ClimoptixWorkspace({
   };
   const hostPick = (patchId: string, u: number, v: number) => {
     if (!scenario || !picking) return;
+    const existing = scenario.vents.find(v => v.id === picking.ventId);
     const vent = ventSchema.parse({
-      id: crypto.randomUUID(),
-      name: picking === "supply" ? "Supply vent" : "Extract vent",
-      role: picking,
+      ...(existing ?? {}),
+      id: existing?.id ?? crypto.randomUUID(),
+      name: existing?.name ?? (picking.role === "supply" ? "Supply vent" : "Extract vent"),
+      role: picking.role,
       host: { patchId, u, v },
     });
-    change({ ...scenario, vents: [...scenario.vents, vent] });
-    setSelected(`vent:${vent.id}`);
+    change({ ...scenario, vents: existing ? scenario.vents.map(v => v.id === existing.id ? vent : v) : [...scenario.vents, vent] });
+    selectObject(`vent:${vent.id}`);
     setVentEditor({ studyId: scenario.id, id: vent.id });
     setPicking(null);
     openPhase("equipment");
@@ -834,9 +838,10 @@ export function ClimoptixWorkspace({
           onViewSettings={setViewOpen}
           stale={stale}
           selected={selected}
+          selectionFocus={selectionFocus}
           onSelect={(id) => {
-            setSelected(id);
-            if (id.startsWith("refinement:")) {
+            selectObject(id);
+            if (setupOpen && id.startsWith("refinement:")) {
               openPhase("mesh");
               setSimulationTab("mesh");
             }
@@ -847,7 +852,7 @@ export function ClimoptixWorkspace({
             )
               openPhase("equipment");
           }}
-          picking={!!picking}
+          picking={picking && scenario ? scenario.vents.find(v => v.id === picking.ventId) ?? ventSchema.parse({ id: "placement-preview", name: "Placement", role: picking.role, host: { patchId: "unassigned" } }) : false}
           onHostPick={hostPick}
           onMoveVent={moveVent}
           canMoveVents={true}
@@ -943,11 +948,6 @@ export function ClimoptixWorkspace({
                 </select>
               </label>
             </header>
-            {(error || preparationError) && <div className="cfx-feedback" role="alert"><span>{error || preparationError}</span>
-              <button onClick={() => {
-                if (error) { setError(""); if (error.startsWith("Changes not applied")) setEditorReset(x => x + 1); }
-                else setPreparationRetry(x => x + 1);
-              }}>{error.startsWith("Changes not applied") ? "Keep saved values" : error ? "Dismiss" : "Retry check"}</button></div>}
             <span className="sr-only" role="status">{message}</span>
             <div
               className="cfx-setup-tabs"
@@ -1006,6 +1006,7 @@ export function ClimoptixWorkspace({
               hidden={shownTab !== "studies"}
               className="cfx-setup-panel"
             >
+              {error && shownTab === "studies" && <p className="cfx-input-failure" role="alert">{error}</p>}
               <ClimoptixStudies
                 project={project}
                 scenarios={scenarios}
@@ -1049,6 +1050,10 @@ export function ClimoptixWorkspace({
                     aria-label={`${panel.label} settings`}
                   >
                     {panel.id === "domain" && <h2>{panel.label}</h2>}
+                    {error && panel.id === shownTab && panel.id !== "review" && <div className="cfx-input-failure" role="alert">
+                      <p>{error}</p>
+                      {error.startsWith("Changes not applied") && <button onClick={() => { setError(""); setEditorReset(v => v + 1); }}>Keep saved values</button>}
+                    </div>}
                     {panel.id === "domain" && (
                       <DomainPanel
                         project={project}
@@ -1063,10 +1068,11 @@ export function ClimoptixWorkspace({
                         scenario={scenario}
                         report={activeReport}
                         selected={selected}
-                        onSelect={setSelected}
+                        onSelect={selectObject}
                         onChange={change}
-                        onPick={(role) => {
-                          setPicking(role);
+                        onPick={(role, ventId) => {
+                          setPicking({ role, ventId });
+                          setVentEditor(null);
                           setSetupOpen(false);
                         }}
                         onEditSource={onEditBuilding}
@@ -1090,7 +1096,7 @@ export function ClimoptixWorkspace({
                           scenario={scenario}
                           report={activeReport}
                           selected={selected}
-                          onSelect={setSelected}
+                          onSelect={selectObject}
                           onChange={change}
                           selectedGroup={boundaryGroup}
                           onSelectGroup={id => { setBoundaryGroup(id); setSelected(null); }}
@@ -1132,7 +1138,7 @@ export function ClimoptixWorkspace({
                         report={activeReport}
                         onChange={change}
                         selected={selected}
-                        onSelect={setSelected}
+                        onSelect={selectObject}
                         onExport={() => void exportOpenFOAM()}
                         exporting={exporting}
                         exportDisabled={
@@ -1174,7 +1180,8 @@ export function ClimoptixWorkspace({
                         }
                       />
                     )}
-                    {panel.id === "review" && <ClimoptixReview scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error}
+                    {panel.id === "review" && <ClimoptixReview scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError}
+                      onDismissFailure={() => { setError(""); if (error.startsWith("Changes not applied")) setEditorReset(x => x + 1); }}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
                       onRefresh={() => setPreparationRetry(x => x + 1)} onInspect={jump} />}
                   </section>
@@ -1261,14 +1268,14 @@ export function ClimoptixWorkspace({
           defaultPosition={{ x: 260, y: 88 }} bringToFront onClose={closeEquipmentEditor} helpSteps={CFD_PHASE_HELP.equipment}>
           <section className="cfx-inspector" aria-label="Equipment editor">
             <EquipmentPanel key={`${scenario.id}:${ventEditor.id}`} editor scenario={scenario} report={activeReport}
-              selected={`vent:${ventEditor.id}`} onSelect={setSelected} onChange={change} onPick={setPicking} onEditSource={onEditBuilding} />
+              selected={`vent:${ventEditor.id}`} onSelect={selectObject} onChange={change} onPick={(role, ventId) => { setPicking({ role, ventId }); setVentEditor(null); setSetupOpen(false); }} onEditSource={onEditBuilding} />
             <button onClick={closeEquipmentEditor}>Done</button>
           </section>
         </FloatingToolbar>}
       {picking && (
         <div className="cfx-placement">
           <span>
-            Click a validated planar host to place the {picking} vent.
+            Click an existing wall, floor or roof/ceiling face to snap the {picking.role} vent to its surface.
           </span>
           <button
             onClick={() => {

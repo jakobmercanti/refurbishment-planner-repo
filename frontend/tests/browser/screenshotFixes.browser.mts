@@ -78,8 +78,8 @@ test("boundary folders edit only on request, drafts remain grouped, responsive s
   for (const title of ["Models & equations", "Fluid properties", "Reference & ambient conditions", "Initial fields", "Requested outputs & monitoring points"]) assert.ok(await ui.locator("summary").getByText(title, { exact: true }).isVisible());
   await capture(page, "physics-sections");
   await cfdWindow(ui, "Solver"); await ui.getByRole("tab", { name: "Post-processing", exact: true }).click();
-  const planes = ui.getByRole("group", { name: "Sampling planes & interval", exact: true });
-  assert.equal(await planes.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 4);
+  const planes = ui.getByRole("group", { name: "Sampling plane directions", exact: true });
+  assert.equal(await planes.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 3);
   await page.setViewportSize({ width: 1050, height: 850 });
   await eventually(() => planes.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), n => n === 3);
   await capture(page, "post-columns");

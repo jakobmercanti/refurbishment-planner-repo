@@ -8,7 +8,10 @@ import {
   previewScene,
   patchPositions,
   refinementPreviews,
+  snapVentUV,
+  CFD_SELECTION_COLOUR,
 } from "../lib/climoptixPreview";
+import { refinementColour } from "../lib/climoptixWorkflow";
 import { cfdProject, realPreparation } from "./climoptixFixtures";
 
 test("prescribed direction, UV placement and rotated footprint agree with the actual provider", () => {
@@ -63,6 +66,33 @@ test("prescribed direction, UV placement and rotated footprint agree with the ac
     );
     assert.equal(ventFootprint({ ...vent, shape: "circle" }, host).length, 64);
   }
+});
+
+test("vent snapping stays on canonical wall/floor/ceiling frames and keeps the rotated footprint within frame bounds", () => {
+  const p = cfdProject(), s = p.cfdScenarios![0], report = realPreparation({ project: p, scenario: s, clientRevision: "a".repeat(64) });
+  for (const kind of ["wall", "floor", "ceiling"]) {
+    const patch = report.patches.find(p => p.kind === kind && p.host)!;
+    assert.ok(patch, kind);
+    const h = patch.host!;
+    for (const shape of ["rectangle", "circle"] as const) {
+      const vent = ventSchema.parse({ id: "snap", name: "Snapped", role: "supply", shape, rotationDeg: 37, host: { patchId: patch.id } });
+      const uv = snapVentUV(vent, h, -2, 5)!;
+      assert.ok(uv && uv.every(v => v >= 0 && v <= 1));
+      for (const point of ventFootprint(vent, h, ...uv)) {
+        const delta = point.map((v, i) => v - h.originMm[i]);
+        assert.ok(Math.abs(delta.reduce((v, x, i) => v + x * h.normal[i], 0)) < 1e-7);
+        for (const [axis, extent] of [[h.uAxis, h.widthMm], [h.vAxis, h.heightMm]] as const) {
+          const distance = delta.reduce((v, x, i) => v + x * axis[i], 0);
+          assert.ok(distance >= vent.edgeClearanceMm - 1e-7 && distance <= extent - vent.edgeClearanceMm + 1e-7);
+        }
+      }
+      assert.equal(snapVentUV({ ...vent, widthMm: h.widthMm * 10, diameterMm: h.widthMm * 10 }, h, .5, .5), null);
+      assert.equal(snapVentUV(vent, h, NaN, .5), null);
+    }
+  }
+  assert.equal(CFD_SELECTION_COLOUR, "#ff7900");
+  for (let level = 0; level <= 10; level++) assert.notEqual(refinementColour(level), CFD_SELECTION_COLOUR);
+  assert.notEqual(refinementColour(5), "#e47d20");
 });
 
 test("patch positions are grouped once with the explicit right-handed display transform", () => {

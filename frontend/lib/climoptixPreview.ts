@@ -7,6 +7,24 @@ import {
   refinementCell,
 } from "./climoptixWorkflow";
 
+/** Reserved for selection, never a refinement-level or vent-role colour. */
+export const CFD_SELECTION_COLOUR = "#ff7900";
+
+/** Propose a host-plane UV position, keeping the rectangular footprint in its
+ * frame. This is UI snapping only: authoritative preparation still checks the
+ * real polygon, holes, obstructions, clearances and neighbouring vents. */
+export function snapVentUV(vent: CFDVent, host: CFDHost, u: number, v: number): [number, number] | null {
+  const angle = vent.rotationDeg * Math.PI / 180;
+  const halfU = vent.shape === "circle" ? vent.diameterMm / 2 :
+    (Math.abs(Math.cos(angle)) * vent.widthMm + Math.abs(Math.sin(angle)) * vent.heightMm) / 2;
+  const halfV = vent.shape === "circle" ? vent.diameterMm / 2 :
+    (Math.abs(Math.sin(angle)) * vent.widthMm + Math.abs(Math.cos(angle)) * vent.heightMm) / 2;
+  const marginU = (halfU + vent.edgeClearanceMm) / host.widthMm;
+  const marginV = (halfV + vent.edgeClearanceMm) / host.heightMm;
+  if (marginU > .5 || marginV > .5 || !Number.isFinite(u + v)) return null;
+  return [Math.max(marginU, Math.min(1 - marginU, u)), Math.max(marginV, Math.min(1 - marginV, v))];
+}
+
 export const previewScene = (p: Vec3): Vec3 => [
   p[0] * 0.001,
   p[2] * 0.001,

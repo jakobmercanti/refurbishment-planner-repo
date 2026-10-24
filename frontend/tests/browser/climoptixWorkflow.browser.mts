@@ -197,14 +197,14 @@ test("independent workbench saves level-coloured cuboids, run settings and named
     true,
   );
   await ui.getByRole("tab", { name: "Post-processing", exact: true }).click();
-  await ui.getByRole("checkbox", { name: "X planes", exact: true }).check();
+  await ui.getByRole("checkbox", { name: "YZ slices (normal X)", exact: true }).check();
   await ui
     .getByRole("spinbutton", { name: "X plane count", exact: true })
     .fill("2");
   await ui
     .getByRole("spinbutton", { name: "X plane count", exact: true })
     .press("Enter");
-  await ui.locator("summary", { hasText: "Named planes" }).click();
+  await ui.locator("summary", { hasText: "Plane positions" }).click();
   await ui.getByText("slice_x_002", { exact: true }).waitFor();
   const stored = await eventually(
     saved,

@@ -38,9 +38,9 @@ function RunPanel({
   const physics = scenario.physics;
   return (
     <>
-      <span className="cfx-provider">
+      <p className="cfx-connection-status" role="status">
         {connection?.connected ? "Worker connected" : "Solver not connected"}
-      </span>
+      </p>
       <details open><summary>Simulation &amp; resources</summary>
       <div className="cfx-grid">
         <label>
@@ -183,9 +183,12 @@ function PostPanel({
 }) {
   const post = scenario.postProcessing,
     planes = samplingPlanes(report?.domain.boundsMm ?? null, post);
+  const requested = (["x", "y", "z"] as const).reduce((count, axis) => count + (post[axis].enabled ? post[axis].count : 0), 0);
   return (
     <>
-      <div className="cfx-grid cfx-post-planes" role="group" aria-label="Sampling planes & interval">
+      <details open><summary>Sampling planes</summary>
+      <p className="cfx-caption">Equally spaced interior slices. The normal is perpendicular to the named plane; positions use the checked domain in millimetres.</p>
+      <div className="cfx-post-planes" role="group" aria-label="Sampling plane directions">
       {(["x", "y", "z"] as const).map((axis) => (
         <div className="cfx-slice-row" key={axis}>
           <label className="cfx-check">
@@ -202,13 +205,14 @@ function PostPanel({
                 })
               }
             />
-            {axis.toUpperCase()} planes
+            {{ x: "YZ slices (normal X)", y: "XZ slices (normal Y)", z: "XY slices (normal Z)" }[axis]}
           </label>
           <CFDNumber
             label={`${axis.toUpperCase()} plane count`}
             value={post[axis].count}
             min={1}
             max={100}
+            disabled={!post[axis].enabled}
             onChange={(count) =>
               onChange({
                 ...scenario,
@@ -218,12 +222,9 @@ function PostPanel({
           />
         </div>
       ))}
-      <CFDNumber
-        label="Sample every N field writes"
-        value={post.writeInterval} min={1} max={1000000}
-        onChange={writeInterval => onChange({ ...scenario, postProcessing: { ...post, writeInterval } })}
-      />
       </div>
+      </details>
+      <details open><summary>Sampled fields &amp; output cadence</summary>
       <fieldset>
         <legend>Fields to sample</legend>
         <div className="cfx-grid">
@@ -261,10 +262,18 @@ function PostPanel({
           ))}
         </div>
       </fieldset>
+      <div className="cfx-grid">
+        <CFDNumber label="Sample every N field writes" value={post.writeInterval} min={1} max={1000000}
+          onChange={writeInterval => onChange({ ...scenario, postProcessing: { ...post, writeInterval } })} />
+      </div>
+      <small className="cfx-caption">One means every saved field set, not every solver iteration.</small>
+      </details>
       <details>
-        <summary>Named planes · {planes.length}</summary>
-        {!report ? (
-          <p>Plane positions pending validation.</p>
+        <summary>Plane positions · {report?.domain.boundsMm ? planes.length : `${requested} requested · domain pending`}</summary>
+        {!report?.domain.boundsMm ? (
+          <p>Choose a seed room in Domain and resolve preparation checks to calculate plane positions.</p>
+        ) : !planes.length ? (
+          <p>No sampling planes selected.</p>
         ) : (
           <ul className="cfx-inspector-list">
             {planes.map((p) => (
@@ -273,7 +282,7 @@ function PostPanel({
                 <small>
                   {p.axis} ={" "}
                   {p.pointMm[["X", "Y", "Z"].indexOf(p.axis)].toLocaleString()}{" "}
-                  mm
+                  mm · checked domain
                 </small>
               </li>
             ))}

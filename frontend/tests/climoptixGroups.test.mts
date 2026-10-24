@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { boundarySchema, cfdScenarioSchema, simulationGroupsSchema, ventSchema } from "../lib/climoptixDocument";
-import { boundaryGroups, boundaryMembers, duplicateSimulationGroup, effectiveBoundary, moveBoundary, simulationGroups, uniqueGroupName } from "../lib/climoptixGroups";
+import { assignBoundarySurfaces, boundaryGroups, boundaryMembers, duplicateSimulationGroup, effectiveBoundary, moveBoundary, simulationGroups, uniqueGroupName } from "../lib/climoptixGroups";
 import { insertAtBoundary, moveStudy } from "../lib/climoptixStudies";
 import { preparationInput, preparationRequestBody } from "../lib/climoptix";
 import { cfdProject, realPreparation } from "./climoptixFixtures";
@@ -78,6 +78,27 @@ test("surface groups move and reorder by stable ID, never duplicate membership, 
   assert.deepEqual(cfdScenarioSchema.parse({ ...imported, boundaries: { ...imported.boundaries, collections: boundaryGroups(imported) } }).boundaries.collections.map(g => g.name), ["Default surfaces 2", "Default surfaces"]);
   imported.boundaries.collections = Array.from({ length: 100 }, (_, i) => ({ id: `g${i}`, name: `Group ${i}`, patchIds: [], boundary: null }));
   assert.equal(cfdScenarioSchema.safeParse(imported).success, false, "The catch-all group has a reserved slot");
+});
+
+test("checkbox surface assignment transfers unique members, returns unchecked members and preserves stale references and overrides", () => {
+  const p = cfdProject(), s = p.cfdScenarios![0], report = realPreparation({ project: p, scenario: s, clientRevision: "a".repeat(64) });
+  const [a, b, c] = report.patches.filter(p => p.kind === "wall");
+  s.boundaries.collections = [
+    { id: "all-surfaces", name: "Default surfaces", patchIds: [], boundary: null },
+    { id: "a", name: "A", patchIds: [a.id, "stale"], boundary: null },
+    { id: "b", name: "B", patchIds: [b.id], boundary: null },
+  ];
+  s.boundaries.patches[a.id] = boundarySchema.parse({ flow: { type: "slip" } });
+  const before = structuredClone(s);
+  const next = assignBoundarySurfaces(s, "a", [b.id, c.id, b.id, "foreign"], report.patches);
+  assert.deepEqual(next.boundaries.collections[1].patchIds, ["stale", b.id, c.id]);
+  assert.deepEqual(next.boundaries.collections[2].patchIds, []);
+  assert.ok(boundaryMembers(next.boundaries.collections[0], boundaryGroups(next), report.patches).some(p => p.id === a.id));
+  assert.deepEqual(next.boundaries.patches, s.boundaries.patches);
+  assert.deepEqual(s, before);
+  assert.ok(cfdScenarioSchema.safeParse(next).success);
+  assert.equal(assignBoundarySurfaces(s, "missing", [a.id], report.patches), s);
+  assert.equal(assignBoundarySurfaces(s, "all-surfaces", [a.id], report.patches), s);
 });
 
 test("custom physical group conditions roundtrip to preparation with correct precedence and provenance", () => {
