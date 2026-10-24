@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useWindowFocusMode } from "@/lib/windowFocusMode";
 
 /** Modal windows keep their backdrop/focus behaviour; only their box changes. */
 export function WindowMaximizeButton({ title }: { title: string }) {
   const [maximized, setMaximized] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  useWindowFocusMode(ref, maximized, true, () => setMaximized(false));
   const label = `${maximized ? "Restore" : "Maximise"} ${title}`;
-  return <button type="button" className="window-dialog-maximize" aria-label={label} title={label} aria-pressed={maximized} onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onClick={event => {
+  return <button ref={ref} type="button" className="window-dialog-maximize" aria-label={label} title={label} aria-pressed={maximized} onPointerDown={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()} onClick={event => {
     event.preventDefault(); event.stopPropagation();
     const dialog = event.currentTarget.closest(".window-header-actions")?.closest<HTMLElement>("[role=dialog],dialog");
     if (!dialog) return;

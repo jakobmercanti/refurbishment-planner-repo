@@ -29,10 +29,13 @@ async function layout(page, name) {
   await page.getByRole("menuitem", { name, exact: true }).click();
 }
 async function preferences(page, apply) {
+  const wasMaximized = await frame(page).count() && await frame(page).getAttribute("data-window-maximized");
+  if (wasMaximized) await layout(page, "Restore window");
   await menu(page, "Settings", "Preferences…");
   const dialog = page.getByRole("dialog", { name: "Preferences", exact: true });
   await apply(dialog);
   await button(dialog, "Close settings").click();
+  if (wasMaximized) await layout(page, "Maximise window");
 }
 async function capture(page, name) {
   if (process.env.BROWSER_ARTIFACTS) await page.screenshot({ path: `${process.env.BROWSER_ARTIFACTS}/compact-cfd-${name}.png` });
@@ -146,9 +149,9 @@ test("objects, boundary groups, refinements and review tabs use compact independ
   const add = await button(ui, "Add boundary group").boundingBox(), find = await ui.getByRole("searchbox", { name: "Find a CFD patch" }).boundingBox();
   assert.ok(Math.abs(nav.y - add.y) < 3 && Math.abs(add.y - find.y) < 3);
   await button(ui, "Add boundary group").click();
-  await button(ui, "Hide Edit boundary group").click();
+  assert.equal(await button(ui, "Hide Edit boundary group").count(), 0);
   await button(ui, "Duplicate boundary group Group").click();
-  await button(ui, "Hide Edit boundary group").click();
+  assert.equal(await button(ui, "Hide Edit boundary group").count(), 0);
   await eventually(saved, p => p.cfdScenarios[0].boundaries.collections.length === 3);
   const groups = (await saved()).cfdScenarios[0].boundaries.collections;
   assert.equal(new Set(groups.flatMap(g => g.patchIds)).size, groups.flatMap(g => g.patchIds).length);

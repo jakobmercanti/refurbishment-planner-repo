@@ -7,12 +7,13 @@ import { DEFAULT_OBJECT_GROUP, deleteObjectEntry, duplicateObjectEntry, moveObje
 import { uniqueGroupName } from "@/lib/climoptixGroups";
 import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { CFDReorderList } from "./CFDReorderList";
+import { CFDRowMenu } from "./CFDRowMenu";
 import { CFDEditorWindow } from "./CFDEditorWindow";
 
-export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChange, onAdd, onPick, onEditVent, onEditSource, renderObject, canAdd, checked }: {
+export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChange, onAdd, onPick, onEditVent, onEditSource, renderObject, canAdd, canPlace, checked }: {
   scenario: CFDScenario; objects: CFDObject[]; selected: string | null; onSelect: (id: string) => void; onChange: (scenario: CFDScenario) => void;
   onAdd: (role: "supply" | "extract", group: string) => void; onPick: () => void; onEditVent?: (id: string) => void;
-  onEditSource: () => void; renderObject: (id: string) => ReactNode; canAdd: boolean; checked: boolean;
+  onEditSource: () => void; renderObject: (id: string) => ReactNode; canAdd: boolean; canPlace: boolean; checked: boolean;
 }) {
   const groups = objectGroups(scenario), entries = objectEntries(scenario, objects);
   const [selectedGroup, setSelectedGroup] = useState(DEFAULT_OBJECT_GROUP);
@@ -37,12 +38,13 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     <div className="cfx-inline-toolbar">
       <button disabled={!canAdd} onClick={() => onAdd("supply", currentGroup.id)}>+ Supply</button>
       <button disabled={!canAdd} onClick={() => onAdd("extract", currentGroup.id)}>+ Extract</button>
-      <button disabled={!canAdd} onClick={onPick}>Place on face…</button>
+      <button disabled={!canPlace} title={!canPlace ? "Choose a seed room in Domain and resolve preparation checks to obtain validated host faces" : undefined} onClick={onPick}>Place on face…</button>
       <button disabled={groups.length >= 100} onClick={() => {
         const group = { id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name)), memberIds: [] };
         onChange({ ...scenario, objectGroups: [...groups, group] }); setSelectedGroup(group.id);
       }}>Add object group</button>
     </div>
+    {!canPlace && canAdd && <p className="cfx-caption" role="status">Supply / Extract can be added as drafts now. Face placement needs a seed room in Domain and validated host geometry; assign a host in Edit before running.</p>}
     {error && <p className="cfx-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></p>}
     <div className="cfx-group-tree">
       <CFDReorderList items={groups} label="Object groups" scope={`object-groups:${scenario.id}`} onMove={(id, at) => onChange({ ...scenario, objectGroups: insertAtBoundary(groups, id, at) })}>
@@ -81,11 +83,11 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
                   <button aria-label={`Duplicate ${entry.name}`} disabled={entry.type === "object" && objects.find(o => o.id === entry.sourceId)?.roomId === "unresolved"} onClick={() => duplicate(entry, group.id)}>Duplicate</button>
                   <button className="cfx-danger" aria-label={`Delete ${entry.name}`} onClick={() => { onChange(deleteObjectEntry(scenario, entry)); if (editing?.id === entry.sourceId) setEditing(null); }}>Delete</button>
                 </div>
-                <details className="cfx-row-menu"><summary aria-label={`Move ${entry.name}`}>⋯</summary><div><label>Move to group<select aria-label={`Move ${entry.name} to group`} value={group.id} onChange={e => {
+                <CFDRowMenu label={`Move ${entry.name}`}><label>Move to group<select aria-label={`Move ${entry.name} to group`} value={group.id} onChange={e => {
                   const target = groups.find(g => g.id === e.target.value)!;
                   onChange(moveObject(scenario, entry.id, target.id, objectMembers(target, groups, entries).length, objects));
                   setSelectedGroup(target.id); e.currentTarget.closest("details")!.open = false;
-                }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label></div></details>
+                }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label></CFDRowMenu>
               </article>}
             </CFDReorderList>
           </section>;

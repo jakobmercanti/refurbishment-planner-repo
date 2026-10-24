@@ -260,15 +260,15 @@ test("wall-layer property editor docks with an adaptive preview, preserves its d
   await energy.getByRole("button", { name: /Define wall layers/ }).click();
   const editor = page.getByRole("dialog", { name: "Define wall layers", exact: true });
   await editor.getByRole("button", { name: "Add layer", exact: true }).click();
-  const draft = await editor.locator(".appearance-object-heading").textContent();
+  const draft = await editor.locator('[role="group"]').first().textContent();
   await layout(page, "Define wall layers", "Maximise window");
   assert.equal(await editor.getAttribute("data-window-maximized"), "true");
-  assert.equal(await editor.locator(".appearance-object-heading").textContent(), draft);
+  assert.equal(await editor.locator('[role="group"]').first().textContent(), draft);
   await layout(page, "Define wall layers", "Restore window");
   await layout(page, "Define wall layers", "Dock right");
   const box = await editor.boundingBox();
   assert.ok(box.width <= 561);
-  assert.equal(await editor.locator(".appearance-object-heading").textContent(), draft);
+  assert.equal(await editor.locator('[role="group"]').first().textContent(), draft);
   assert.equal(await editor.locator(".popup-content").evaluate(element => element.scrollWidth > element.clientWidth + 2), false);
   const cancel = editor.getByRole("button", { name: "Cancel", exact: true });
   const footer = await cancel.boundingBox();

@@ -129,6 +129,7 @@ export function ClimoptixConvergence({
     >
       <h3>Convergence{name ? ` · ${name}` : ""} · initial residuals</h3>
       <p className="cfx-caption">External log · unverified · session only</p>
+      <p className="cfx-caption">Live residual streaming is not connected. Import an OpenFOAM log to inspect residuals; worker job status is not a residual feed.</p>
       <label className="cfx-file">
         {state.reading ? "Reading solver log…" : "Import solver log"}
         <input

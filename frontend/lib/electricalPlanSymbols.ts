@@ -54,6 +54,10 @@ export function electricalDevicePlanSymbol(key: string | null | undefined, elect
 
 /** Display units only: preserve the device-face aspect ratio instead of its shallow wall depth. */
 export function electricalDevicePlanSize(key: string | null | undefined, width: number, depth: number, electricalLayout = false) {
+  // Lighting plans use a compact schematic, not the shade's physical footprint.
+  // Existing fittings, previews and route envelopes share this display-only
+  // size; electricalPlanPresentation applies the current zoom afterwards.
+  if (electricalLayout && /^electrical-(pendant-|ceiling-)/.test(key ?? "")) return { width: 32, depth: 32 };
   const symbol = electricalDevicePlanSymbol(key, electricalLayout);
   if (!symbol) return { width, depth };
   const minimumHeight = electricalLayout ? 32 : 13;

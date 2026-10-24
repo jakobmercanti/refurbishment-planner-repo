@@ -9,6 +9,7 @@ import { insertAtBoundary, moveStudy } from "@/lib/climoptixStudies";
 import { duplicateSimulationGroup, sameGroup, simulationGroups, uniqueGroupName } from "@/lib/climoptixGroups";
 import type { CFDJobEntry } from "./useCFDJobs";
 import { CFDReorderList } from "./CFDReorderList";
+import { CFDRowMenu } from "./CFDRowMenu";
 
 function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
   value: string; label: string; maxLength?: number; onCommit: (value: string) => void | boolean; onDone?: () => void;
@@ -130,9 +131,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                     <button aria-label={`Delete ${s.name}`} className="cfx-danger" disabled={busy(s) || entry?.dispatched}
                       title={entry?.dispatched ? "Recover the previous submission before deleting this simulation" : undefined} onClick={e => onDelete(s.id, e.currentTarget)}>Delete</button>
                   </div>
-                  <details className="cfx-row-menu" onClick={event => {
-                    if (event.target instanceof Element && event.target.closest("button")) event.currentTarget.open = false;
-                  }}><summary aria-label={`Actions for ${s.name}`}>⋯</summary><div>
+                  <CFDRowMenu label={`Actions for ${s.name}`}>
                     <button onClick={e => { e.currentTarget.closest("details")!.open = false; setRenaming(s.id); }}>Rename</button>
                     <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups); onSelect(copy.id); }}>Duplicate simulation</button>
                     <button disabled={busy(s) || entry?.dispatched} onClick={() => onChange({ ...s, archived: !s.archived }, true)}>{s.archived ? "Unarchive" : "Archive"}</button>
@@ -141,7 +140,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       e.currentTarget.closest("details")!.open = false;
                       onOrder(moveStudy(scenarios, s.id, target.name, scenarios.filter(v => sameGroup(v.group, target.name)).length), groups);
                     }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
-                  </div></details>
+                  </CFDRowMenu>
                   {(entry?.submitting || entry?.dispatched || job) && <div className="cfx-job-progress" role="progressbar" aria-label={`${s.name} phase progress`}
                     aria-valuemin={0} aria-valuemax={100} aria-valuenow={job?.progress ?? undefined}
                     aria-valuetext={job ? `${phase}${job.progress == null ? " · progress not reported" : ` · ${job.progress}%`}` : phase}>

@@ -131,7 +131,7 @@ test("boundary groups colour real 3D patches, transfer surfaces and apply physic
   await ui.getByRole("list", { name: "Boundary group colours", exact: true }).waitFor();
   const first = reports.at(-1).patches.find(p => p.kind === "wall");
   await ui.getByRole("button", { name: "Add boundary group", exact: true }).click();
-  await ui.getByRole("button", { name: "Hide Edit boundary group", exact: true }).click();
+  assert.equal(await ui.getByRole("button", { name: "Hide Edit boundary group", exact: true }).count(), 0);
   const target = ui.getByRole("region", { name: "Boundary group Group", exact: true });
   const sourceRow = original.locator(".cfx-reorder-item").filter({ has: page.getByRole("button", { name: `Select surface ${first.id}`, exact: true }) });
   await sourceRow.getByRole("button", { name: /^Reorder / }).dragTo(target.getByRole("list", { name: "Group surfaces", exact: true }), { targetPosition: { x: 60, y: 20 } });
@@ -171,7 +171,7 @@ test("phase navigation integrates Thermal in Bounds and residual monitoring in S
   const fields = ui.locator(".cfx-physics-primary select");
   const positions = await fields.evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().y));
   assert.ok(Math.max(...positions) - Math.min(...positions) < 1);
-  const columns = await ui.locator(".cfx-physics-fields > .cfx-grid:not(.cfx-physics-primary)").evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length);
+  const columns = await ui.locator(".cfx-physics-fields > details").filter({ has: page.locator("summary").getByText("Fluid properties", { exact: true }) }).locator(":scope > .cfx-grid").evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length);
   assert.equal(columns, 3);
   await cfdWindow(ui, "Boundaries");
   await ui.getByRole("tab", { name: "Thermal", exact: true }).click();

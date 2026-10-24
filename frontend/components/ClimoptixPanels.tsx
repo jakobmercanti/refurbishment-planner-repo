@@ -1,6 +1,7 @@
 "use client";
 
 import { CFDReorderList } from "./CFDReorderList";
+import { CFDRowMenu } from "./CFDRowMenu";
 import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { boundaryGroups, boundaryMembers, BOUNDARY_COLOURS, DEFAULT_BOUNDARY_GROUP, effectiveBoundary, moveBoundary, uniqueGroupName } from "@/lib/climoptixGroups";
 import { useState, type ReactNode } from "react";
@@ -421,6 +422,12 @@ export function DomainPanel({
       )}
       <h3>Mesh settings</h3>
       <MeshSettings scenario={scenario} onChange={onChange} />
+      <details>
+        <summary>Mesh origin &amp; alignment</summary>
+        <Parameters value={scenario.mesh} omit={Object.keys(scenario.mesh).filter(k => !["originMm", "alignmentDeg"].includes(k))}
+          onChange={mesh => onChange({ ...scenario, mesh: mesh as typeof scenario.mesh })} />
+        <p className="cfx-caption">Domain extents follow the measured, connected rooms. Origin and alignment position the mesh grid; they do not resize the building.</p>
+      </details>
       {report && (
         <>
           <div className="cfx-metrics">
@@ -529,12 +536,12 @@ export function EquipmentPanel({
       vents: scenario.vents.map((a) => (a.id === v.id ? v : a)),
     });
   const add = (role: "supply" | "extract", groupId?: string) => {
-    if (!hosts.length || scenario.vents.length >= 500) return;
+    if (scenario.vents.length >= 500) return;
     const v = ventSchema.parse({
       id: crypto.randomUUID(),
       name: role === "supply" ? "Supply vent" : "Extract vent",
       role,
-      host: { patchId: hosts[0].id },
+      host: { patchId: hosts[0]?.id ?? "unassigned" },
     });
     onChange({ ...scenario, vents: [...scenario.vents, v], ...(groupId ? { objectGroups: objectGroups(scenario).map(g => g.id === groupId ? { ...g, memberIds: [...g.memberIds, `vent:${v.id}`] } : g) } : {}) });
     onSelect(`vent:${v.id}`);
@@ -644,7 +651,7 @@ export function EquipmentPanel({
   };
   if (!editor) return <ClimoptixObjects scenario={scenario} objects={report?.objects ?? []} selected={selectedObjectId ?? null}
     onSelect={onSelect} onChange={onChange} onAdd={add} onPick={() => onPick("supply")} onEditVent={onEditVent}
-    onEditSource={onEditSource} renderObject={renderObject} canAdd={!!hosts.length && scenario.vents.length < 500} checked={checked} />;
+    onEditSource={onEditSource} renderObject={renderObject} canAdd={scenario.vents.length < 500} canPlace={!!hosts.length && scenario.vents.length < 500} checked={checked} />;
   return (
     <>
       {editor && vent && (
@@ -706,6 +713,7 @@ export function EquipmentPanel({
               ))}
             </select>
           </label>
+          {!hosts.some(h => h.id === vent.host.patchId) && <p className="cfx-notice" role="status">Unassigned vent · choose a seed room in Domain and resolve preparation checks, then select a validated host face here. This draft cannot be submitted or exported as a runnable case.</p>}
           <div className="cfx-grid">
             <CFDNumber
               label="Host U (0–1)"
@@ -1031,7 +1039,7 @@ export function BoundariesPanel({
   return (
     <>
       <div className="cfx-inline-toolbar cfx-boundary-tools">{navigation}
-        <button disabled={collections.length >= 100} onClick={() => { newGroup(); setEditing("group"); }}>Add boundary group</button>
+        <button disabled={collections.length >= 100} onClick={() => newGroup()}>Add boundary group</button>
         <input type="search" aria-label="Find a CFD patch" value={search} maxLength={500} onChange={e => setSearch(e.target.value)} placeholder="Find surface · room, surface or source" />
       </div>
       <div className="cfx-boundary-tree cfx-group-tree">
@@ -1055,7 +1063,7 @@ export function BoundariesPanel({
               <button aria-label={`Duplicate boundary group ${collection.name}`} disabled={collections.length >= 100}
                 title="Copy conditions into a new empty group; physical surfaces stay unique" onClick={() => {
                   const copy = { ...structuredClone(collection), id: crypto.randomUUID(), name: uniqueGroupName(collections.map(g => g.name), collection.name.slice(0, 70) + " copy"), patchIds: [] };
-                  updateCollections([...collections, copy]); onSelectGroup(copy.id); setEditing("group");
+                  updateCollections([...collections, copy]); onSelectGroup(copy.id);
                 }}>Duplicate</button>
               <button disabled={collection.id === DEFAULT_BOUNDARY_GROUP} aria-label={`Delete boundary group ${collection.name}`} className="cfx-danger"
                 title="Return its surfaces to the default group" onClick={() => { updateCollections(collections.filter(g => g.id !== collection.id)); onSelectGroup(DEFAULT_BOUNDARY_GROUP); }}>Delete</button>
@@ -1073,7 +1081,7 @@ export function BoundariesPanel({
                   <button aria-label={`Edit surface ${p.id}`} onClick={() => { onSelectGroup(collection.id); onSelect(p.id); setEditing("surface"); }}>Edit</button>
                   <button aria-label={`Duplicate conditions for ${p.id}`} disabled={collections.length >= 100} title="Copy these conditions to a new empty group" onClick={() => {
                     const copy = { id: crypto.randomUUID(), name: uniqueGroupName(collections.map(g => g.name), "Surface conditions"), patchIds: [], boundary: structuredClone(effectiveBoundary(scenario, p)) };
-                    updateCollections([...collections, copy]); onSelectGroup(copy.id); setEditing("group");
+                    updateCollections([...collections, copy]); onSelectGroup(copy.id);
                   }}>Duplicate</button>
                   <button className="cfx-danger" aria-label={`Delete assignment for ${p.id}`} disabled={collection.id === DEFAULT_BOUNDARY_GROUP && !scenario.boundaries.patches[p.id]}
                     title="Clear the assignment and return to Default surfaces; keep the physical surface" onClick={() => {
@@ -1082,22 +1090,20 @@ export function BoundariesPanel({
                       onChange({ ...next, boundaries: { ...next.boundaries, patches } }); onSelectGroup(DEFAULT_BOUNDARY_GROUP);
                     }}>Delete</button>
                 </div>
-                <details className="cfx-row-menu" onClick={event => {
-                  if (event.target instanceof Element && event.target.closest("button")) event.currentTarget.open = false;
-                }}><summary aria-label={`Move surface ${p.id}`}>⋯</summary><div>
+                <CFDRowMenu label={`Move surface ${p.id}`}>
                   <label>Move to group<select aria-label={`Group for surface ${p.id}`} value={collection.id} onChange={e => {
                     e.currentTarget.closest("details")!.open = false;
                     onChange(moveBoundary(scenario, p.id, e.target.value, 0, allPatches)); }}>
                     {collections.map(g => <option value={g.id} key={g.id}>{g.name}</option>)}
                   </select></label><button onClick={() => newGroup(p.id)}>New group from surface</button>
-                </div></details>
+                </CFDRowMenu>
               </article>}
             </CFDReorderList>
           </section>;
         }}
         </CFDReorderList>
       </div>
-      {editing === "group" && <CFDEditorWindow title="Edit boundary group" defaultPosition={{ x: 220, y: 90 }} initialSize={{ width: 620, height: 650 }} maxHeight={850}
+      {editing === "group" && <CFDEditorWindow title="Edit boundary group" defaultPosition={{ x: 220, y: 90 }} initialSize={{ width: 620 }} maxHeight={850}
         bringToFront onClose={() => setEditing(null)} helpSteps={[{ heading: "Surface groups", text: "Each physical surface belongs to one group. Drag grips move groups or surfaces; Escape cancels. Duplicate copies conditions to a new empty group, not geometry. Delete returns surfaces to Default surfaces. Per-surface overrides take precedence over group conditions." }]}>
       <section className="cfx-card" aria-label="Boundary group conditions">
         <CFDText key={currentGroup.id} label="Group name" value={currentGroup.name} maxLength={80}
@@ -1233,6 +1239,7 @@ export function PhysicsPanel({
   const p = scenario.physics;
   return (
     <>
+      <details open><summary>Models &amp; equations</summary>
       <div className="cfx-grid cfx-physics-primary">
       <label>
         Physics preset
@@ -1275,29 +1282,16 @@ export function PhysicsPanel({
           </select>
         </label>
       </div>
-      <Parameters
-        value={p}
-        omit={[
-          "preset",
-          "mode",
-          "turbulence",
-          "time",
-          "numerics",
-          "initialVelocityMS",
-          "initialPressurePa",
-          "initialTemperatureK",
-          "initialCo2Ppm",
-          "initialK",
-          "initialEpsilon",
-          "initialOmega",
-        ]}
-        onChange={(v) =>
-          onChange({
-            ...scenario,
-            physics: { ...v, preset: "custom" } as typeof p,
-          })
-        }
-      />
+      <Parameters value={p} omit={Object.keys(p).filter(k => !["energy", "co2", "boussinesq"].includes(k))}
+        onChange={v => onChange({ ...scenario, physics: { ...v, preset: "custom" } as typeof p })} />
+      </details>
+      {([
+        ["Fluid properties", ["densityKgM3", "dynamicViscosityPaS", "heatCapacityJKgK", "conductivityWMK", "prandtl", "expansionPerK"]],
+        ["Reference & ambient conditions", ["referenceTemperatureK", "referencePressurePa", "outdoorTemperatureK", "humidityFraction", "gravityMS2", "outdoorCo2Ppm"]],
+      ] as const).map(([title, keys]) => <details open key={title}><summary>{title}</summary>
+        <Parameters value={p} omit={Object.keys(p).filter(k => !(keys as readonly string[]).includes(k))}
+          onChange={v => onChange({ ...scenario, physics: { ...v, preset: "custom" } as typeof p })} />
+      </details>)}
       <details>
         <summary>Initial fields</summary>
         <Parameters

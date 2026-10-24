@@ -80,6 +80,32 @@ body .floating-toolbar[data-window-maximized]:not([data-edge-docked]) {
 }
 .floating-toolbar[data-window-maximized] > .floating-toolbar-resize { display: none !important; }
 .floating-toolbar[data-window-maximized] > .floating-toolbar-titlebar { cursor: default; }
+/* Fullscreen is a reversible presentation mode, not a workspace/dock resize.
+   Keep other windows mounted (and their drafts/layouts intact), but not focusable.
+   Related help/editors opened by the active window remain above it. */
+body[data-window-fullscreen] { overflow: hidden; }
+body[data-window-fullscreen] .topbar { display: none !important; }
+body [data-window-focus-blocked] { visibility: hidden !important; pointer-events: none !important; }
+body[data-window-fullscreen] :is(.floating-toolbar, [role="dialog"], dialog)[data-window-focus-active][data-window-maximized] {
+  position: fixed !important;
+  left: var(--window-focus-left, 0px) !important;
+  top: var(--window-focus-top, 0px) !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: var(--window-focus-width, 100vw) !important;
+  height: var(--window-focus-height, 100dvh) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  transform: none !important;
+  border-radius: 0 !important;
+  z-index: 10000 !important;
+}
+body [data-window-focus-overlay] { z-index: calc(10010 + var(--window-focus-overlay-index, 0)) !important; }
+body :is(.popup-backdrop, .modal-backdrop):has([data-window-focus-active], [data-window-focus-overlay]) { z-index: 10010 !important; }
+body :is(.popup-backdrop, .modal-backdrop):has([data-window-focus-blocked]):not(:has([data-window-focus-active], [data-window-focus-overlay])) { visibility: hidden; pointer-events: none; }
 .window-dialog-maximize { display: none; }
 body .window-header-actions > .window-dialog-maximize,
 body .floating-toolbar .window-header-actions > .floating-toolbar-dock {

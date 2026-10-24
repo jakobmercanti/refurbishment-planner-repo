@@ -95,6 +95,7 @@ interface Props {
   showSamplingPlanes?: boolean;
   showRefinements: boolean;
   onShowRefinements: (show: boolean) => void;
+  onReturnToSetup?: () => void;
   thermalSurfaces?: ThermalSurface[];
   thermalMetric?: ThermalMetric;
   thermalSelected?: string | null;
@@ -282,6 +283,7 @@ export function ClimoptixViewer({
   showSamplingPlanes = false,
   showRefinements,
   onShowRefinements,
+  onReturnToSetup,
   thermalSurfaces = [],
   thermalMetric = "off",
   thermalSelected = null,
@@ -497,6 +499,7 @@ export function ClimoptixViewer({
   return (
     <section className="cfx-viewer" aria-label="Climoptix geometry viewer">
       <div className="cfx-view-selector">
+        {onReturnToSetup && <button type="button" autoFocus onClick={onReturnToSetup} title="Return to simulation setup (Escape)">Return to setup</button>}
         <label htmlFor="cfx-view-scope">View</label>
         <select
           id="cfx-view-scope"
@@ -879,15 +882,12 @@ export function ClimoptixViewer({
             ))}
           </ul>
         )}
-        <span>
-          <i style={{ background: COLORS.supply }} />
-          Supply <i style={{ background: COLORS.extract }} />
-          Extract <i style={{ background: COLORS.door }} />
-          Boundary cap
-          {showRefinements &&
-            refinements.length > 0 &&
-            " · Dashed/wireframe = refinement intent"}
-        </span>
+        <ul className="cfx-refinement-legend" aria-label="Flow and boundary legend">
+          <li><i style={{ background: COLORS.supply }} />Supply</li>
+          <li><i style={{ background: COLORS.extract }} />Extract</li>
+          <li><i style={{ background: COLORS.door }} />Boundary cap</li>
+        </ul>
+        {showRefinements && refinements.length > 0 && <small>Dashed/wireframe = refinement intent</small>}
         <small>Arrows: prescribed flow, not solved results</small>
       </footer>
     </section>

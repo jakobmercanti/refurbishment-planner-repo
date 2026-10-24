@@ -71,7 +71,7 @@ export function CFDReorderList<T extends { id: string; name: string }>({
   });
   const slot = (at: number) => <li aria-hidden="true" className="cfx-insertion" {...targetData(at)}
     data-active={boundary === at} onDragOver={e => hover(e, at)} onDrop={e => drop(e, at)} />;
-  return <ol className="cfx-reorder-list" aria-label={label} {...targetData(0)}
+  return <ol className="cfx-reorder-list" aria-label={label} {...targetData(items.length)}
     onDragOver={e => { if (!items.length || e.target === e.currentTarget) hover(e, items.length); }}
     onDrop={e => { if (!items.length || e.target === e.currentTarget) drop(e, items.length); }}>
     {header && <li className="cfx-list-header" {...targetData(items.length)} data-active={boundary === items.length}
@@ -81,7 +81,7 @@ export function CFDReorderList<T extends { id: string; name: string }>({
       <li className="cfx-reorder-item" data-item-id={item.id} {...targetData(index, true)}
         onDragOver={e => { const r = e.currentTarget.getBoundingClientRect(); hover(e, index + (e.clientY >= r.top + r.height / 2 ? 1 : 0)); }}
         onDrop={e => { const r = e.currentTarget.getBoundingClientRect(); drop(e, index + (e.clientY >= r.top + r.height / 2 ? 1 : 0)); }}>
-        <button type="button" className="cfx-grip" draggable aria-label={`Reorder ${item.name}`}
+        <button type="button" className="cfx-grip" draggable={false} aria-label={`Reorder ${item.name}`}
           title="Drag the grip; Arrow Up/Down reorders; Escape cancels"
           onDragStart={e => {
             e.stopPropagation(); activeDrag = { scope, id: item.id, token: crypto.randomUUID(), list: listId };
@@ -90,7 +90,7 @@ export function CFDReorderList<T extends { id: string; name: string }>({
           }}
           onDragEnd={e => { e.stopPropagation(); clearDrag(); }}
           onPointerDown={e => {
-            if (e.pointerType === "mouse") return;
+            if (e.button !== 0 || !e.isPrimary) return;
             e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId);
             touch.current = { x: e.clientX, y: e.clientY, id: item.id, started: false };
           }}
@@ -100,9 +100,19 @@ export function CFDReorderList<T extends { id: string; name: string }>({
             if (!press.started && Math.hypot(e.clientX - press.x, e.clientY - press.y) < 8) return;
             e.preventDefault(); e.stopPropagation();
             if (!press.started) { activeDrag = { scope, id: press.id, token: crypto.randomUUID(), list: listId }; press.started = true; }
+            // Native dragging a button is browser-dependent and can be cancelled
+            // by focus/reflow in nested windows. Use the same captured gesture
+            // for mouse, touch and pen, with no mutation before pointer release.
             let node = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-cfx-drop-scope]") ?? null;
             while (node && node.dataset.cfxDropScope !== scope) node = node.parentElement?.closest<HTMLElement>("[data-cfx-drop-scope]") ?? null;
             if (!node) { press.target = undefined; window.dispatchEvent(new CustomEvent(PREVIEW)); return; }
+            for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+              if (parent.scrollHeight <= parent.clientHeight || !/auto|scroll/.test(getComputedStyle(parent).overflowY)) continue;
+              const box = parent.getBoundingClientRect();
+              if (e.clientY < box.top + 28) parent.scrollTop -= 16;
+              else if (e.clientY > box.bottom - 28) parent.scrollTop += 16;
+              break;
+            }
             const r = node.getBoundingClientRect();
             press.target = node.dataset.cfxDropList;
             press.at = Number(node.dataset.cfxBoundary) + (node.dataset.cfxDropItem && e.clientY >= r.top + r.height / 2 ? 1 : 0);

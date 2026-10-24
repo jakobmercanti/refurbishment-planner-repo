@@ -125,8 +125,16 @@ export async function cfdWindow(ui, name) {
     await page.locator(".cfx-view-window").getByLabel("Move View properties", { exact: true }).click({ position: { x: 220, y: 20 } });
     return;
   }
-  await page.getByRole("button", { name: "Toolbar", exact: true }).click();
-  await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitem", { name: aliases[name] ?? name, exact: true }).click();
+  if (await page.locator(".cfx-setup-window[data-window-maximized]:visible").count()) {
+    const phases = { Simulations: ["studies", "Simulations"], Domain: ["domain", "Domain"], Equipment: ["equipment", "Objects"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], "Review & export": ["review", "Export"], "Imported results": ["results", "Results"] };
+    const [id, text] = phases[aliases[name] ?? name];
+    const select = ui.getByRole("combobox", { name: "CFD phase", exact: true });
+    if (await select.isVisible()) await select.selectOption(id);
+    else await ui.getByRole("tablist", { name: "Climoptix setup", exact: true }).getByRole("tab", { name: text, exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Toolbar", exact: true }).click();
+    await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitem", { name: aliases[name] ?? name, exact: true }).click();
+  }
   if (name === "Thermal Envelope & Solar Conditions") await ui.getByRole("tab", { name: "Thermal", exact: true }).click();
   if (name === "Convergence monitor") await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
   const title = page.getByRole("region", { name: "Climoptix CFD workspace", exact: true }).getByLabel("Move Simulation setup", { exact: true });

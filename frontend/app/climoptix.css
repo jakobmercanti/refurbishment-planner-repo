@@ -906,8 +906,7 @@
 .cfx-inline-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--density-section-gap); min-width: 0; }
 .cfx-inline-toolbar > h3 { margin: 0; flex: 1 1 auto; }
 .cfx-mesh-estimate { color: var(--muted); margin-left: auto; }
-.cfx-physics-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--density-section-gap); }
-.cfx-physics-fields > .cfx-grid { display: contents; }
+.cfx-physics-fields { display: block; }
 .cfx-physics-fields > details { grid-column: 1 / -1; }
 .cfx-physics-fields > * + * { margin-top: 0; }
 .cfx-setup .cfx-grid:not(.cfx-three) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -925,7 +924,7 @@
 .cfx-feedback > span { flex: 1 1 220px; max-height: 5em; overflow: auto; overflow-wrap: anywhere; }
 .cfx-workspace .cfx-feedback > button { min-height: 32px; padding: 4px 8px; }
 .cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item { display: block; position: relative; }
-.cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item > .cfx-grip { position: absolute; left: 8px; top: 8px; width: 32px; z-index: 2; }
+.cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item > .cfx-grip { position: absolute; left: calc(var(--density-window-padding) + 1px); top: calc(var(--density-window-padding) + 1px); width: 32px; z-index: 2; }
 .cfx-study-group { padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-panel); min-width: 0; }
 .cfx-group-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .cfx-study-group > .cfx-group-heading { padding-left: 38px; }
@@ -939,14 +938,15 @@
 .cfx-workspace .cfx-row-menu { position: relative; min-width: 0; padding: 0; margin: 0; border: 0; overflow: visible; }
 .cfx-row-menu > summary { display: grid; place-items: center; list-style: none; min-width: 32px; min-height: 36px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: pointer; font-size: 18px; }
 .cfx-row-menu > summary::-webkit-details-marker { display: none; }
-.cfx-row-menu > div { display: grid; gap: 6px; position: absolute; right: 0; top: 100%; z-index: 50; width: min(240px, calc(100vw - 80px)); padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--panel); box-shadow: 0 8px 28px #0003; }
+.cfx-workspace .cfx-row-menu-panel { gap: 6px; position: fixed; inset: auto; margin: 0; z-index: 20002; width: min(260px, calc(100vw - 32px)); max-width: calc(100vw - 16px); overflow: auto; overscroll-behavior: contain; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--panel); color: var(--ink); box-shadow: var(--ui-window-shadow); }
+.cfx-row-menu-panel:popover-open { display: grid; }
 .cfx-device-row, .cfx-surface-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 5px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-control); }
 .cfx-device-row.selected, .cfx-surface-row.selected { border-color: var(--focus-ring); }
 .cfx-device-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .cfx-workspace :is(.cfx-device-name, .cfx-surface-name) { display: grid; gap: 3px; text-align: left; min-width: 0; background: transparent; border-color: transparent; }
 :is(.cfx-device-name, .cfx-surface-name) > :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 :is(.cfx-device-name, .cfx-surface-name) > small { color: var(--muted); font-weight: 500; }
-.cfx-boundary-group { min-width: 0; border: 1px solid var(--line); border-left: 4px solid var(--boundary-colour); border-radius: var(--radius-control); padding: 8px; margin-top: 10px; }
+.cfx-boundary-group { min-width: 0; border: 1px solid var(--line); border-left: 4px solid var(--boundary-colour); border-radius: var(--radius-control); padding: var(--density-window-padding); margin: 0; }
 .cfx-boundary-group.selected { outline: 1px solid var(--boundary-colour); outline-offset: 1px; }
 .cfx-boundary-group > .cfx-reorder-list { max-height: 260px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .cfx-workspace .cfx-group-select { display: flex; align-items: center; gap: 8px; flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }

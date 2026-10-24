@@ -41,6 +41,7 @@ function RunPanel({
       <span className="cfx-provider">
         {connection?.connected ? "Worker connected" : "Solver not connected"}
       </span>
+      <details open><summary>Simulation &amp; resources</summary>
       <div className="cfx-grid">
         <label>
           Simulation type
@@ -75,8 +76,6 @@ function RunPanel({
             onChange({ ...scenario, resources: { ...scenario.resources, cpu } })
           }
         />
-      </div>
-      <div className="cfx-grid">
         <CFDNumber
           label="Memory limit (GB)"
           value={scenario.resources.memoryGb}
@@ -98,6 +97,7 @@ function RunPanel({
           }
         />
       </div>
+      </details>
       <details open>
         <summary>
           {physics.mode === "steady"
@@ -185,6 +185,7 @@ function PostPanel({
     planes = samplingPlanes(report?.domain.boundsMm ?? null, post);
   return (
     <>
+      <div className="cfx-grid cfx-post-planes" role="group" aria-label="Sampling planes & interval">
       {(["x", "y", "z"] as const).map((axis) => (
         <div className="cfx-slice-row" key={axis}>
           <label className="cfx-check">
@@ -217,6 +218,12 @@ function PostPanel({
           />
         </div>
       ))}
+      <CFDNumber
+        label="Sample every N field writes"
+        value={post.writeInterval} min={1} max={1000000}
+        onChange={writeInterval => onChange({ ...scenario, postProcessing: { ...post, writeInterval } })}
+      />
+      </div>
       <fieldset>
         <legend>Fields to sample</legend>
         <div className="cfx-grid">
@@ -254,15 +261,6 @@ function PostPanel({
           ))}
         </div>
       </fieldset>
-      <CFDNumber
-        label="Sample every N field writes"
-        value={post.writeInterval}
-        min={1}
-        max={1000000}
-        onChange={(writeInterval) =>
-          onChange({ ...scenario, postProcessing: { ...post, writeInterval } })
-        }
-      />
       <details>
         <summary>Named planes · {planes.length}</summary>
         {!report ? (

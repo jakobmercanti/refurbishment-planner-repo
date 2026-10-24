@@ -1,11 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { electricalDevicePlanSize, electricalRockerBounds, electricalDevicePlanSymbol } from '../lib/electricalPlanSymbols.ts';
+import { electricalDevicePlanSize, electricalRockerBounds, electricalDevicePlanSymbol, electricalPlanPresentation } from '../lib/electricalPlanSymbols.ts';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ElectricalLayoutOverlay } from '../components/ElectricalLayoutOverlay.tsx';
 import { DEFAULT_ELECTRICAL_CONNECTION } from '../lib/electricalLayout.ts';
 import type { Obstacle } from '../lib/types.ts';
+
+test('pendants use compact zoom-scaled schematics without resizing measured footprints', () => {
+  for (const key of ['electrical-pendant-dome', 'electrical-pendant-linear', 'electrical-ceiling-spot']) {
+    for (const zoom of [.5, 1, 1.5, 2]) {
+      const size = electricalPlanPresentation(key, 120 * zoom, 120 * zoom, true, zoom);
+      assert.equal(size.width * size.zoom, 32 * zoom);
+      assert.equal(size.depth * size.zoom, 32 * zoom);
+      assert.deepEqual(electricalDevicePlanSize(key, 120 * zoom, 120 * zoom, false), { width: 120 * zoom, depth: 120 * zoom });
+    }
+  }
+});
 
 test('multi-rocker switches keep the single-plate display height', () => {
   const variants = [

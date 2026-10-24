@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WINDOW_HEIGHT, edgeDockTarget, floatingDockLayout, maximizedFloatingWindow, resizeFloatingWindow, visibleFloatingWorkspace, type FloatingWindowBox, type FloatingWindowResizeEdge, type WindowDockSide } from "@/lib/floatingWindowGeometry";
 import { useWindowDocking } from "@/lib/windowDocking";
 import { windowViewport } from "@/lib/windowViewport";
+import { useWindowFocusMode } from "@/lib/windowFocusMode";
 import { WindowIcon } from "@/components/WindowIcon";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
@@ -43,6 +44,7 @@ interface FloatingToolbarProps {
   children: ReactNode;
   footer?: ReactNode;
   dialog?: boolean;
+  hidden?: boolean;
   className?: string;
   compact?: boolean;
   initialSize?: { width: number; height?: number | null };
@@ -180,7 +182,7 @@ function WindowDockActions({ title, docking, maximized, onMaximize, onDock, onFl
   </>;
 }
 
-function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = title, helpSteps, children, footer, dialog = false, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, focusRequest, onClose }: FloatingToolbarProps) {
+function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = title, helpSteps, children, footer, dialog = false, hidden = false, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, focusRequest, onClose }: FloatingToolbarProps) {
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);
   const edgeDock = useWindowDocking(panelRef);
@@ -197,6 +199,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
   const [heightMaximized, setHeightMaximized] = useState(false);
   const heightMaximizeRestoreRef = useRef<{ position: { x: number; y: number }; size: { width: number; height: number | null }; isDocked: boolean } | null>(null);
   const [maximized, setMaximized] = useState(false);
+  useWindowFocusMode(panelRef, maximized, false, toggleMaximized);
   const maximizeRestore = useRef<{ side?: WindowDockSide; dockWidth: number } | null>(null);
   const [freeWorkspace, setFreeWorkspace] = useState<FloatingWindowBox | null>(null);
   const [maximizeBounds, setMaximizeBounds] = useState<FloatingWindowBox | null>(null);
@@ -278,7 +281,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
       setMaximizeBounds(current => current && Object.keys(full).every(key => current[key as keyof FloatingWindowBox] === full[key as keyof FloatingWindowBox]) ? current : full);
       // Automatic reflow is a presentation constraint, not a destructive rewrite
       // of the preferred floating position or dimensions. Removing a rail restores them.
-      if (edgeDock.hasRails || maximized) return;
+      if (edgeDock.hasRails || maximized || workspacePanel.hasAttribute("data-window-focus-blocked")) return;
       setPosition((current) => {
         const x = Math.max(visible.left + 8, Math.min(visible.right - Math.min(panelBounds.width, visible.right - visible.left - 16) - 8, current.x));
         const y = Math.max(visible.top + 8, Math.min(visible.bottom - MIN_FLOATING_WINDOW_HEIGHT - 8, current.y));
@@ -538,7 +541,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
     ...(maximized && maximizeBounds ? { "--window-max-left": `${maximizeBounds.left}px`, "--window-max-top": `${maximizeBounds.top}px`, "--window-max-width": `${maximizeBounds.width}px`, "--window-max-height": `${maximizeBounds.height}px` } : {}),
     ...(edgeDock.box ? { "--edge-dock-left": `${edgeDock.box.left}px`, "--edge-dock-top": `${edgeDock.box.top}px`, "--edge-dock-width": `${edgeDock.box.width}px`, "--edge-dock-height": `${edgeDock.box.height}px` } : {}),
   } as CSSProperties;
-  return <><section ref={panelRef} role={dialog ? "dialog" : undefined} aria-label={dialog ? title : undefined} data-dock-workspace-hidden={edgeDock.inactive || undefined} data-edge-docked={edgeDock.box ? edgeDock.side : undefined} data-dock-capable={edgeDock.enabled || undefined} data-window-reflow={edgeDock.hasRails && !edgeDock.box && freeWorkspace ? true : undefined} data-window-maximized={maximized || undefined} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onFocusCapture={focusPanel} onPointerDown={event => { event.stopPropagation(); focusPanel(); }}>
+  return <><section ref={panelRef} hidden={hidden} role={dialog ? "dialog" : undefined} aria-label={dialog ? title : undefined} data-dock-workspace-hidden={edgeDock.inactive || undefined} data-edge-docked={edgeDock.box ? edgeDock.side : undefined} data-dock-capable={edgeDock.enabled || undefined} data-window-reflow={edgeDock.hasRails && !edgeDock.box && freeWorkspace ? true : undefined} data-window-maximized={maximized || undefined} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onFocusCapture={focusPanel} onPointerDown={event => { event.stopPropagation(); focusPanel(); }}>
     <header className="floating-toolbar-titlebar" tabIndex={0} aria-label={`Move ${title}`} title={`${heightMaximized || maximized ? "Double-click to restore" : "Double-click to maximise height"} · Drag to move ${title} or attach to either side`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag} onDoubleClick={toggleHeightMaximized} onKeyDown={event => {
       if (event.key !== "Escape" || !dragRef.current) return;
       event.preventDefault(); event.stopPropagation();

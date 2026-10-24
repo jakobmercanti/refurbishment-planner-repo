@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { boundarySchema, cfdScenarioSchema, simulationGroupsSchema } from "../lib/climoptixDocument";
+import { boundarySchema, cfdScenarioSchema, simulationGroupsSchema, ventSchema } from "../lib/climoptixDocument";
 import { boundaryGroups, boundaryMembers, duplicateSimulationGroup, effectiveBoundary, moveBoundary, simulationGroups, uniqueGroupName } from "../lib/climoptixGroups";
 import { insertAtBoundary, moveStudy } from "../lib/climoptixStudies";
 import { preparationInput, preparationRequestBody } from "../lib/climoptix";
 import { cfdProject, realPreparation } from "./climoptixFixtures";
 import { parseProject } from "../lib/projectDocument";
 import { ProjectHistory } from "../lib/projectHistory";
+
+test("an unassigned vent remains editable but real geometry preparation blocks worker submission", () => {
+  const project = cfdProject(), scenario = structuredClone(project.cfdScenarios![0]);
+  scenario.vents.push(ventSchema.parse({ id: "draft-supply", name: "Draft supply", role: "supply", host: { patchId: "unassigned" } }));
+  assert.ok(cfdScenarioSchema.safeParse(scenario).success);
+  const report = realPreparation({ project, scenario, clientRevision: "a".repeat(64) });
+  assert.ok(report.validation.errors > 0);
+  assert.equal(report.surface.exportable, false);
+  assert.equal(report.vents.some(v => v.id === "draft-supply"), false);
+});
 
 test("empty simulation folders and legacy labels are first-class metadata, independently ordered and duplicated", () => {
   const p = cfdProject(), s = p.cfdScenarios![0];

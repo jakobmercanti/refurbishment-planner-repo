@@ -16,6 +16,22 @@ Derive capabilities from the authenticated service, not browser preferences.
 Existing public proxy rules deliberately deny job/execution endpoints; no worker
 URL or permissive proxy route has been introduced by this UI change.
 
+### Residual monitor readiness (24 October 2026)
+
+The Monitor window and log parser/graph work with bounded, session-only imported
+OpenFOAM logs. **Live residual streaming is not implemented.** The current
+`status()` contract reports phase/progress only, not residual samples. Connecting
+a worker to that interface alone will not make the chart update live. A future
+authenticated telemetry adapter must bind samples to job ID, study ID and pinned
+setup revision, provide ordered/cursor-based recovery, enforce bounded buffers,
+and reject stale/cross-study samples. Verify reconnect, completion, cancellation
+and worker failure against a real solver before describing it as a live monitor.
+
+Supply and Extract can now be configured before host geometry is available.
+Such drafts use the explicit `unassigned` host reference. Authoritative preparation
+reports an error and refuses export/submission until a real validated host is
+assigned; workers must not invent a face or silently drop the draft vent.
+
 ### Simulation-only objects (24 October 2026)
 
 `scenario.objectGroups` stores only list organization and is excluded from the

@@ -261,6 +261,23 @@ export function ClimoptixWorkspace({
   const [preparationFailure, setPreparationFailure] = useState<{ input: string; message: string } | null>(null);
   const [simulationTab, setSimulationTab] = useState<SimulationTab>("mesh");
   const [showRefinements, setShowRefinements] = useState(true);
+  const [inspection, setInspection] = useState<{ showRefinements: boolean; selected: string | null } | null>(null);
+  const returnToSetup = () => {
+    if (!inspection) return;
+    setShowRefinements(inspection.showRefinements); setSelected(inspection.selected);
+    setInspection(null); setSetupOpen(true); setSetupFocus(v => v + 1);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(".cfx-setup-window .floating-toolbar-titlebar")?.focus());
+  };
+  useEffect(() => {
+    if (!inspection || !active) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector(":popover-open,[role=menu]")) return;
+      if (event.target instanceof Element && event.target.closest("input,select,textarea,.floating-toolbar,dialog")) return;
+      event.preventDefault(); returnToSetup();
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  });
   const [thermalOpen, setThermalOpen] = useState(false);
   const [thermalReports, setThermalReports] = useState<
     Record<string, ThermalPackage>
@@ -839,6 +856,7 @@ export function ClimoptixWorkspace({
           }
           showRefinements={showRefinements}
           onShowRefinements={setShowRefinements}
+          onReturnToSetup={inspection ? returnToSetup : undefined}
           thermalSurfaces={thermalStale ? [] : (thermalReport?.surfaces ?? [])}
           thermalMetric={thermalMetric}
           thermalSelected={thermalSelected}
@@ -850,8 +868,9 @@ export function ClimoptixWorkspace({
           }}
         />
       )}
-      {setupOpen && (
+      {(setupOpen || inspection) && (
         <FloatingToolbar
+          hidden={!setupOpen}
           title="Simulation setup"
           headerContent={<div className="cfx-header-simulation">
             <span className="cfx-header-current" title={scenario?.name}>{scenario?.name ?? "No simulations yet"}</span>
@@ -1131,6 +1150,7 @@ export function ClimoptixWorkspace({
                           setRefinementEditor({ studyId: scenario.id, id })
                         }
                         onShowRefinements={() => {
+                          setInspection({ showRefinements, selected });
                           setShowRefinements(true);
                           setSetupOpen(false);
                           setRefinementEditor(null);

@@ -119,7 +119,25 @@ body .software-dropdown .software-wall-setting > summary {
 }
 body .cfx-setup-window > .floating-toolbar-content { padding: 0; }
 body .cfx-setup-panel > .cfx-inspector { padding: 0; }
-body .cfx-physics-fields > * + * { margin-top: 0; }
+body .cfx-physics-fields > * + * { margin-top: var(--density-section-gap); }
+body .cfx-workspace .cfx-group-heading > .cfx-collapse,
+body .cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item > .cfx-grip { height: var(--density-control-min-height); min-height: var(--density-control-min-height); }
+body .cfx-workspace .cfx-row-menu-panel { margin: 0; }
+body .cfx-workspace .cfx-row-menu-panel > * + * { margin-top: 0; }
+body .cfx-workspace :is(.cfx-simulation-panel, .cfx-physics-fields) > details > summary { font-size: inherit; font-family: inherit; }
+body .cfx-setup-panel:has(.cfx-domain-seed) > .cfx-inspector > h2 { margin-bottom: calc(var(--density-section-gap) * 1.5); }
+body .cfx-workspace .cfx-domain-seed + h3 { margin-top: calc(var(--density-section-gap) * 1.5); }
+body .cfx-workspace .cfx-post-planes { align-items: stretch; }
+body .cfx-workspace .cfx-post-planes .cfx-slice-row { grid-template-columns: minmax(0, 1fr); gap: var(--density-field-gap); padding: var(--density-row-padding); }
+body .cfx-workspace .cfx-post-planes > label { align-self: end; }
+body .cfx-workspace .cfx-segments { display: flex; flex: 1 1 auto; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; overflow: visible; }
+body .cfx-workspace .cfx-segments > button { flex: 1 1 auto; white-space: nowrap; border-radius: var(--radius-control) var(--radius-control) 0 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); }
+body .cfx-workspace .cfx-segments > button[aria-selected="true"] { border-bottom-color: var(--focus-ring); background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); }
+body .cfx-viewer > footer { display: grid; height: auto; max-height: min(40%, 260px); overflow: auto; pointer-events: auto; margin: 0; padding: var(--density-row-padding) var(--density-window-padding); }
+body .cfx-viewer > footer > * { min-width: 0; margin: 0; }
+body .cfx-viewer > footer li { align-items: center; min-width: 0; overflow-wrap: anywhere; }
+body .cfx-viewer > footer i { width: 10px; height: 10px; flex: 0 0 10px; margin: 0; }
+body .floating-toolbar[hidden] { display: none !important; }
 body .cfx-workspace .cfx-refinement-row {
   display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center;
   gap: var(--density-section-gap); padding: var(--density-row-padding);

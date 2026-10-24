@@ -10,7 +10,8 @@
 .constructionSection { display:grid; gap:10px; }
 .constructionSection .wallSummary { margin-bottom:0; }
 .scenarioPanel > section { display:grid; gap:8px; padding-top:8px; }
-.scenarioPanel { display:grid; gap:8px; border:1px solid var(--line); border-radius:10px; padding:10px; background:var(--surface-muted); }
+.scenarioPanel { display:grid; gap:0; border:1px solid var(--line); border-radius:10px; padding:var(--density-row-padding) var(--density-window-padding); background:var(--surface-muted); }
+.elementPicker > select { font-weight:700; }
 .scenarioPanel > div:first-child { display:grid; gap:2px; }
 .scenarioActions { display:grid; grid-template-columns:minmax(160px,1fr) auto; gap:8px; align-items:end; }
 .scenarioActions:has(>button+button) { grid-template-columns:minmax(160px,1fr) auto auto; }
@@ -24,25 +25,25 @@
 .panel :global(.wall-layers-preview-inline ol) { padding-left: 20px; margin-bottom: 0; }
 .popup :global(.appearance-object-heading) { margin-top:0; padding-top:0; }
 .popup :global(.appearance-object-heading h2) { margin-top:0; font-size:22px; }
-.editorMetrics { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 12px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 10px; }
+.editorMetrics { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--density-section-gap); padding: var(--density-window-padding); background: var(--surface-muted); border: 1px solid var(--line); border-radius: 10px; }
 .popup.popup { width:min(1240px,calc(100vw - 32px)); min-height:0; max-height:calc(100dvh - 48px); }
-.popup :global(.popup-content) { display:flex; flex:1 1 auto; min-height:0; overflow:hidden; padding:18px; }
+.popup :global(.popup-content) { display:flex; flex:1 1 auto; min-height:0; overflow:hidden; padding:var(--density-window-padding); }
 .popup :global(.appearance-popup-grid) { width:100%; height:auto; max-height:none; grid-template-columns:minmax(0,1.05fr) minmax(280px,.95fr); grid-template-rows:minmax(0,1fr); gap:18px; }
-.popup :global(.appearance-popup-form) { overflow:auto; min-width:0; padding-right:8px; padding-bottom:16px; align-content:start; overflow-wrap:anywhere; }
+.popup :global(.appearance-popup-form) { overflow:auto; min-width:0; padding-right:8px; padding-bottom:var(--density-window-padding); align-content:start; gap:var(--density-section-gap); overflow-wrap:anywhere; }
 .popup :global(.appearance-object-heading) { display:grid; grid-template-columns:minmax(0,1fr); gap:3px; }
 .popup :global(.appearance-object-heading h2) { font-size:20px; }
 .editorPreview { align-self: stretch; }
 .startingComposition > label { margin-top:14px; }
-.startingComposition { margin-bottom:8px; }
+.startingComposition { margin-bottom:0; }
 .startingComposition > :global(div) { margin-top:14px; margin-bottom:4px; gap:10px; }
 .editorPreview :global(.wall-layers-preview-editor) { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
 .editorPreview :global(.wall-layers-preview-editor > details) { font-size: 11px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; max-height: 100px; overflow: auto; }
 .editorPreview :global(.fixture-preview) { min-height: 300px; }
-.popup .layer { padding: 10px; }
+.popup .layer { padding: var(--density-row-padding) var(--density-window-padding); }
 .layer { border:1px solid var(--line); border-radius:10px; }
 .layerList { display:grid; }
-.layerInsertion { height:14px; position:relative; }
-.layerInsertion::after { content:""; position:absolute; inset:5px 0; border-radius:3px; background:transparent; pointer-events:none; }
+.layerInsertion { height:6px; position:relative; }
+.layerInsertion::after { content:""; position:absolute; inset:2px 0; border-radius:3px; background:transparent; pointer-events:none; }
 .layerInsertion[data-active=true]::after { background:var(--deep,#075dad); box-shadow:0 0 0 1px var(--deep,#075dad); }
 .layerRow { display:flex; align-items:center; gap:8px; }
 .layerRow > strong { flex:1; min-width:0; line-height:1.4; overflow-wrap:anywhere; }

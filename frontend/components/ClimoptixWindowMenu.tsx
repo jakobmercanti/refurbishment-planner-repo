@@ -56,8 +56,8 @@ export function ClimoptixWindowMenu({
       )
         dismiss();
     };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
+    document.addEventListener("pointerdown", outside, true);
+    return () => document.removeEventListener("pointerdown", outside, true);
   });
   useLayoutEffect(() => {
     if (!shown || !menu.current) return;
