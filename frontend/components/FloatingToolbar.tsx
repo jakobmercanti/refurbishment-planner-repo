@@ -36,6 +36,7 @@ export function positionedToolbarDock(side: ToolbarDock["side"], top: string | n
 
 interface FloatingToolbarProps {
   title: string;
+  headerContent?: ReactNode;
   help?: boolean;
   helpTitle?: string;
   helpSteps?: WindowHelpStep[];
@@ -179,7 +180,7 @@ function WindowDockActions({ title, docking, maximized, onMaximize, onDock, onFl
   </>;
 }
 
-function FloatingToolbarWindow({ title, help = true, helpTitle = title, helpSteps, children, footer, dialog = false, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, focusRequest, onClose }: FloatingToolbarProps) {
+function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = title, helpSteps, children, footer, dialog = false, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, focusRequest, onClose }: FloatingToolbarProps) {
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);
   const edgeDock = useWindowDocking(panelRef);
@@ -321,7 +322,7 @@ function FloatingToolbarWindow({ title, help = true, helpTitle = title, helpStep
   }
 
   function toggleHeightMaximized(event: ReactMouseEvent<HTMLElement>) {
-    if (event.target instanceof Element && event.target.closest("button")) return;
+    if (event.target instanceof Element && event.target.closest("button,input,select,textarea,a")) return;
     if (maximized) { event.preventDefault(); event.stopPropagation(); toggleMaximized(); return; }
     if (compactWorkspace) return;
     if (edgeDock.box) return;
@@ -369,7 +370,7 @@ function FloatingToolbarWindow({ title, help = true, helpTitle = title, helpStep
   function beginDrag(event: ReactPointerEvent<HTMLElement>) {
     if (maximized) return;
     if (event.button !== 0 || (event.pointerType === "touch" && !event.isPrimary) || (compactWorkspace && !edgeDock.enabled)) return;
-    if (event.target instanceof Element && event.target.closest("button")) return;
+    if (event.target instanceof Element && event.target.closest("button,input,select,textarea,a")) return;
     const panel = panelRef.current;
     if (!panel) return;
     const parent = getToolbarWorkspace(panel);
@@ -551,6 +552,7 @@ function FloatingToolbarWindow({ title, help = true, helpTitle = title, helpStep
       <span className="floating-toolbar-drag" aria-hidden>⠿</span>
       <span className="floating-toolbar-icon"><WindowIcon title={title} /></span>
       <strong>{title}</strong>
+      {headerContent && <div className="floating-toolbar-header-content">{headerContent}</div>}
       <div className="window-header-actions"><WindowDockActions title={title} docking={edgeDock} maximized={maximized} onMaximize={toggleMaximized} onDock={dockWindow} onFloat={floatWindow} />{help && <WindowHelpButton title={helpTitle} steps={helpSteps} />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
     </header>
     <div className="floating-toolbar-content" hidden={compact}>{children}</div>

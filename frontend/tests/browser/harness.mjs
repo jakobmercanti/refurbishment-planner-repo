@@ -130,7 +130,7 @@ export async function cfdWindow(ui, name) {
   if (name === "Thermal Envelope & Solar Conditions") await ui.getByRole("tab", { name: "Thermal", exact: true }).click();
   if (name === "Convergence monitor") await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
   const title = page.getByRole("region", { name: "Climoptix CFD workspace", exact: true }).getByLabel("Move Simulation setup", { exact: true });
-  if (await title.isVisible()) await title.click({ position: { x: 65, y: 24 } });
+  if (await title.isVisible()) await title.focus();
 }
 
 export async function cfdRefresh(ui, wait = true) {

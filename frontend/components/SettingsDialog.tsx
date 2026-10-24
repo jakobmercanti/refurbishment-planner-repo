@@ -1,6 +1,6 @@
 "use client";
 
-import { CURRENCY_OPTIONS, type AppPreferences, type CurrencyCode } from "@/lib/appPreferences";
+import { CURRENCY_OPTIONS, type AppPreferences, type CurrencyCode, type NavigationPreference } from "@/lib/appPreferences";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 
 export { DEFAULT_APP_PREFERENCES } from "@/lib/appPreferences";
@@ -40,6 +40,16 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
             </div>
           </div>
         </section>
+        <div className="settings-section">
+          <label htmlFor="settings-navigation">3D navigation</label>
+          <select id="settings-navigation" aria-label="3D navigation" value={preferences.navigation ?? "STANDARD"} onChange={event => onChange({ ...preferences, navigation: event.target.value as NavigationPreference })}>
+            <option value="STANDARD">Standard</option><option value="CAD">CAD</option><option value="BLENDER">Blender-style</option>
+          </select>
+          <WindowHelpButton title="3D navigation" steps={[
+            { heading: "Mouse buttons", text: "Standard: left drag orbits, middle drag zooms and right drag pans. CAD: left drag pans, middle drag zooms and right drag orbits. Blender-style: middle drag orbits and right drag pans; left click selects. The wheel zooms in every preset. A right click without dragging opens the toolbar menu; a right drag never opens it." },
+            { heading: "Shared controls", text: "The selected preset applies immediately to Floorplan's main 3D viewer and the Climoptix building viewer and is saved on this device. Camera movement changes the view, not any measured room geometry." },
+          ]} />
+        </div>
         <div className="settings-section">
           <strong>Display units</strong>
           <div className="settings-choice unit-choice" role="group" aria-label="Display units">

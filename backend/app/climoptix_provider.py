@@ -81,10 +81,17 @@ def _prepare_objects(
     overrides = {o.objectId: o for o in scenario.assetOverrides}
     footprint_solids: list[tuple[Polygon, float, float, str]] = []
     known = set()
+    hidden = set(scenario.hiddenObjectIds or [])
     for room in domain.regions:
         if room.id not in domain.included:
             continue
-        for obj in room.raw.get("obstacles", []):
+        originals = room.raw.get("obstacles", [])
+        by_id = {obj["id"]: obj for obj in originals}
+        # CFD-only instances reuse measured source dimensions, never a display mesh.
+        # The source document is not mutated; each copy has its own override/offset.
+        copies = [{**by_id[copy.sourceObjectId], "id": copy.id, "name": copy.name}
+                  for copy in scenario.objectCopies or [] if copy.sourceObjectId in by_id]
+        for obj in [*originals, *copies]:
             oid = obj["id"]
             if oid in known:
                 _issue(
@@ -101,7 +108,7 @@ def _prepare_objects(
             key = obj.get("representation_key", "")
             spec = cfd_proxy_for("electric" if key.startswith("electrical-") else "", obj.get("fixture_kind", ""), key)
             override = overrides.get(oid)
-            mode = override.mode if override else "solidProxy" if spec else "none"
+            mode = "none" if oid in hidden else override.mode if override else "solidProxy" if spec else "none"
             record = {
                 "id": oid,
                 "name": obj.get("name", "Object"),
@@ -306,7 +313,7 @@ def _prepare_objects(
                     "name": "Imported visual model",
                     "roomId": "unresolved",
                     "floorId": floor["id"],
-                    "mode": override.mode if override else "none",
+                    "mode": "none" if oid in hidden else override.mode if override else "none",
                     "profile": None,
                     "heatW": 0,
                     "co2M3S": 0,
@@ -315,7 +322,7 @@ def _prepare_objects(
                     "triangles": [],
                 }
             )
-            if override is None or override.mode != "none":
+            if oid not in hidden and (override is None or override.mode != "none"):
                 _issue(
                     domain.diagnostics,
                     "error",
@@ -325,6 +332,11 @@ def _prepare_objects(
                     "Explicitly confirm Excluded in Equipment, or wait for the imported-model adapter.",
                     oid,
                 )
+    for copy in scenario.objectCopies or []:
+        if copy.id not in known:
+            _issue(domain.diagnostics, "error", "geometry", "missing-copy-source",
+                   "A CFD object copy has no measured source in this air domain.",
+                   "Restore its measured source, select the containing domain or delete the copy.", copy.id)
     for oid in overrides.keys() - known:
         _issue(
             domain.diagnostics,
@@ -948,7 +960,7 @@ class PreparationOnlyProvider:
         config = scenario.model_dump(
             mode="json",
             exclude={
-                "validation", "thermalSnapshots", "name", "description", "group", "archived", "createdAt", "updatedAt"
+                "validation", "thermalSnapshots", "name", "description", "group", "archived", "createdAt", "updatedAt", "objectGroups"
             },
         )
         stamp = ValidationStamp(

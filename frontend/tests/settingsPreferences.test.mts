@@ -9,6 +9,7 @@ test("comfortable density is the default preference", () => {
   assert.deepEqual(DEFAULT_APP_PREFERENCES, {
     theme: "SYSTEM",
     density: "COMFORTABLE",
+    navigation: "STANDARD",
     confirmBeforeOpen: true,
     units: "MM",
     currency: "GBP",

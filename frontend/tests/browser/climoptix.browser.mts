@@ -105,6 +105,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
     .selectOption("Draft");
   await validate(ui);
   await cfdWindow(ui, "Review & export");
+  await ui.getByRole("tab", { name: "Import / export", exact: true }).click();
   const exporting = page.waitForEvent("download");
   await ui
     .getByRole("button", { name: "Export preparation ZIP", exact: true })
@@ -209,6 +210,7 @@ test("study duplication, archive, delete confirmation, undo and portable JSON im
   await ui.getByRole("button", { name: "Undo", exact: true }).click();
   await eventually(s.saved, (p) => p.cfdScenarios.length === 2);
   await cfdWindow(ui, "Review & export");
+  await ui.getByRole("tab", { name: "Import / export", exact: true }).click();
   await ui.getByLabel("Import CFD scenario", { exact: true }).setInputFiles({
     name: "study.json",
     mimeType: "application/json",
@@ -346,7 +348,8 @@ test("CFD help, dark mode and narrow-screen controls remain accessible and align
   await cfdWindow(ui, "Studies");
   for (const button of await ui.locator(".cfx-study-tools > button").all()) {
     const box = await button.boundingBox();
-    assert.ok(box.height >= 39);
+    const minimum = await button.evaluate(el => parseFloat(getComputedStyle(el).minHeight));
+    assert.ok(minimum >= 28 && box.height >= minimum - 1);
   }
   if (process.env.BROWSER_ARTIFACTS)
     await page.screenshot({
@@ -602,6 +605,7 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   await validate(ui);
   const downloadEvent = page.waitForEvent("download");
   await cfdWindow(ui, "Review & export");
+  await ui.getByRole("tab", { name: "Import / export", exact: true }).click();
   await ui
     .getByRole("button", { name: "Download settings & preflight", exact: true })
     .click();
@@ -635,13 +639,13 @@ test("refinement regions are editable visual intent, patch isolation works, and 
     .fill("desk");
   await ui.locator(".cfx-surface-name").first().click();
   await cfdWindow(ui, "Equipment");
+  const selectedObject = ui.locator(".cfx-objects .cfx-device-row.selected");
+  await selectedObject.getByRole("button", { name: /^Edit / }).click();
   assert.ok(
-    await ui
-      .locator("details[open]")
-      .filter({ hasText: "Catalogue proxy: table" })
-      .isVisible(),
-    "Object patch selection opens the same source object's equipment inspector",
+    await ui.getByLabel("Move Edit CFD object", { exact: true }).isVisible(),
+    "The selected source object opens its independent CFD inspector",
   );
+  await ui.getByRole("button", { name: "Hide Edit CFD object", exact: true }).click();
   await ui
     .getByRole("button", { name: "Edit source building & assets", exact: true })
     .click();

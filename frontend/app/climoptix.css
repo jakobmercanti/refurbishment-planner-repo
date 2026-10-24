@@ -753,6 +753,30 @@
   overflow: hidden;
   min-height: 0;
 }
+.cfx-setup-window { container: cfx-window / inline-size; }
+.cfx-setup-window .floating-toolbar-titlebar:has(.floating-toolbar-header-content) {
+  grid-template-columns: 20px 18px minmax(120px, 1fr) minmax(120px, 2fr) auto;
+}
+.floating-toolbar-header-content { min-width: 0; touch-action: auto; }
+.cfx-header-simulation { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.cfx-header-current { display: none; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cfx-header-simulation select { flex: 1; min-width: 0; width: 100%; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.cfx-setup-heading:has(> .cfx-phase-select) { padding: 0; border: 0; }
+.cfx-phase-label { display: none; }
+.cfx-setup-heading > .cfx-phase-select { padding: 4px 8px; }
+@container cfx-window (max-width: 620px) {
+  .cfx-setup-window > .floating-toolbar-titlebar > strong { display: none; }
+  .cfx-setup-window > .floating-toolbar-titlebar:has(.floating-toolbar-header-content) { grid-template-columns: 20px 18px minmax(0, 1fr) auto; }
+  .cfx-header-simulation .cfx-state { display: none; }
+}
+@container cfx-window (max-width: 760px) {
+  .cfx-header-simulation select { display: none; }
+  .cfx-header-current { display: block; }
+}
+.compact-workspace .cfx-setup-window > .floating-toolbar-titlebar:has(.floating-toolbar-header-content) { grid-template-columns: 18px minmax(0, 1fr) auto; }
+.compact-workspace .cfx-setup-window > .floating-toolbar-titlebar > strong { display: none; }
+.compact-workspace .cfx-header-simulation select { display: none; }
+.compact-workspace .cfx-header-current { display: block; }
 .compact-workspace .floating-toolbar.cfx-setup-window,
 .compact-workspace .floating-toolbar.cfx-refinement-editor,
 .compact-workspace .floating-toolbar.cfx-equipment-editor {
@@ -873,6 +897,28 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+.cfx-list-header { list-style: none; min-width: 0; border-radius: var(--radius-control); }
+.cfx-list-header[data-active="true"] { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cfx-study-group .cfx-list-header > .cfx-group-heading { padding-left: 32px; }
+.cfx-study-group.selected-group { border-color: var(--focus-ring); background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.cfx-workspace .cfx-collapse { flex: 0 0 26px; padding-inline: 2px; }
+.cfx-inline-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--density-section-gap); min-width: 0; }
+.cfx-inline-toolbar > h3 { margin: 0; flex: 1 1 auto; }
+.cfx-mesh-estimate { color: var(--muted); margin-left: auto; }
+.cfx-physics-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--density-section-gap); }
+.cfx-physics-fields > .cfx-grid { display: contents; }
+.cfx-physics-fields > details { grid-column: 1 / -1; }
+.cfx-physics-fields > * + * { margin-top: 0; }
+.cfx-setup .cfx-grid:not(.cfx-three) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container cfx-setup (min-width: 850px) {
+  .cfx-setup .cfx-grid:not(.cfx-domain-seed, .cfx-three), .cfx-physics-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container cfx-setup (min-width: 1200px) {
+  .cfx-setup .cfx-grid:not(.cfx-domain-seed, .cfx-three), .cfx-physics-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@container cfx-setup (max-width: 460px) {
+  .cfx-setup .cfx-grid:not(.cfx-three), .cfx-physics-fields { grid-template-columns: minmax(0, 1fr); }
 }
 .cfx-bound-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
 .cfx-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 14px; color: var(--fail); border-bottom: 1px solid var(--line); }
@@ -1067,6 +1113,34 @@
   padding: 0;
   overflow: hidden;
   display: flex;
+  flex-direction: column;
+}
+.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) { display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; gap: 0; }
+.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) > button { border-radius: 0; margin: 0; box-shadow: none; border: 0; padding-inline: 12px; }
+.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) > button[aria-selected="true"] { background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); box-shadow: none; }
+.cfx-boundary-tools input { min-width: 150px; flex: 1 1 200px; }
+.cfx-objects > * + * { margin-top: var(--density-section-gap); }
+.cfx-objects .cfx-device-row { grid-template-columns: minmax(0, 1fr) auto auto; flex: 1; }
+.cfx-objects .cfx-device-row .cfx-device-name { padding-inline: 6px; }
+.cfx-objects .cfx-group-select { background: transparent; color: var(--ink); border-color: transparent; }
+.cfx-simulation-tabs { flex: 1; }
+.cfx-boundary-group .cfx-list-header > .cfx-group-heading { padding-left: 32px; }
+.cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+.cfx-thermal-navigation { padding: var(--density-window-padding); }
+.cfx-review > section > * + * { margin-top: var(--density-section-gap); }
+.cfx-review > header { margin-bottom: var(--density-section-gap); }
+.cfx-review-metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--density-section-gap); }
+.cfx-review-metadata > div { min-width: 0; padding: var(--density-window-padding); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.cfx-review-metadata dt { font-weight: 700; color: var(--muted); }
+.cfx-check-status { padding: 4px 8px; border-radius: var(--radius-control); background: var(--surface-muted); color: var(--muted); font-size: 11px; font-weight: 600; }
+.cfx-review-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.cfx-workspace .cfx-review textarea { min-height: calc(var(--density-control-min-height) * 1.7); }
+@container cfx-setup (max-width: 620px) {
+  .cfx-workspace .cfx-segments > button { padding-inline: 8px; }
+  .cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cfx-surface-row > .cfx-surface-name { grid-column: 1 / -1; }
+  .cfx-objects .cfx-device-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cfx-objects .cfx-device-row > .cfx-device-name { grid-column: 1 / -1; }
 }
 .thermal-host.thermal-embedded {
   display: flex;
@@ -1123,7 +1197,7 @@
     padding: 5px;
   }
 }
-@container cfx-setup (max-width: 600px) {
+@container cfx-setup (max-width: 540px) {
   .cfx-study-row {
     grid-template-columns: minmax(0, 1fr) 32px;
   }

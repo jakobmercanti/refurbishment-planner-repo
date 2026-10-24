@@ -16,6 +16,20 @@ Derive capabilities from the authenticated service, not browser preferences.
 Existing public proxy rules deliberately deny job/execution endpoints; no worker
 URL or permissive proxy route has been introduced by this UI change.
 
+### Simulation-only objects (24 October 2026)
+
+`scenario.objectGroups` stores only list organization and is excluded from the
+physical input/configuration fingerprints. `objectCopies` creates independently
+identified CFD instances referencing original measured objects; each instance's
+`assetOverrides` supplies its own millimetre offset and source/treatment settings.
+`hiddenObjectIds` excludes source objects only in this simulation. Neither action
+mutates the Floorplan source document. Missing sources, duplicate identifiers,
+overlaps and out-of-domain geometry must remain preflight blockers. Workers must
+honour this contract when re-preparing; do not silently omit these fields or build
+copies from Three.js meshes. Copy locations are not guaranteed valid merely
+because a copy was created. Boundary-group duplication copies condition templates,
+never physical faces.
+
 `submit(request, signal)` receives a bounded, independently copied snapshot:
 
 - `contractVersion: 1`, `dialect: "OpenCFD-v2312"`, `sourceUnits: "mm"`;

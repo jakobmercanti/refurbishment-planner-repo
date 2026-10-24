@@ -24,7 +24,7 @@ function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
 }
 
 export function ClimoptixStudies({ project, scenarios, scenario, showArchived, onShowArchived, onSelect,
-  onChange, onOrder, onAdd, onDelete, onImport, entries, worker, onSubmit, onUndo, onRedo, canUndo, canRedo,
+  onChange, onOrder, onAdd, onDelete, onClear, onImport, entries, worker, onSubmit, onUndo, onRedo, canUndo, canRedo,
 }: {
   project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
   onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
@@ -32,6 +32,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   onOrder: (s: CFDScenario[], groups?: CFDSimulationGroup[]) => void;
   onAdd: (group?: string) => void;
   onDelete: (id: string, opener: HTMLButtonElement) => void;
+  onClear: (opener: HTMLButtonElement) => void;
   onImport: (f: File) => void;
   entries: Record<string, CFDJobEntry>; worker: CFDWorkerAdapter | null;
   onSubmit: (operation: CFDOperation, studies: CFDScenario[]) => void;
@@ -41,6 +42,9 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   const groups = simulationGroups(scenarios, project.cfdSimulationGroups);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const targetGroup = groups.find(g => g.id === selectedGroup) ?? groups.find(g => sameGroup(g.name, scenario?.group ?? "")) ?? groups[0];
   const busy = (s: CFDScenario) => !!entries[s.id]?.submitting || !!(entries[s.id]?.job && !terminalJob(entries[s.id].job!));
   const renameGroup = (group: CFDSimulationGroup, name: string) => {
     if (groups.some(g => g.id !== group.id && sameGroup(g.name, name))) { setError("A group already has that name."); return false; }
@@ -57,18 +61,23 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   };
   return <div className="cfx-studies">
     <div className="cfx-study-tools">
-      <button className="cfx-primary" onClick={() => onAdd()} disabled={scenarios.length >= 100}>New simulation</button>
-      <button disabled={groups.length >= 100} onClick={() => onOrder(scenarios, [...groups, {
-        id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name)),
-      }])}>Add group</button>
+      <button className="cfx-primary" onClick={() => { if (targetGroup) setCollapsed(v => new Set([...v].filter(id => id !== targetGroup.id))); onAdd(targetGroup?.name); }} disabled={scenarios.length >= 100}>New simulation</button>
+      <button disabled={groups.length >= 100} onClick={() => {
+        const group = { id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name)) };
+        onOrder(scenarios, [...groups, group]); setSelectedGroup(group.id);
+      }}>Add group</button>
+      <button className="cfx-danger" disabled={!scenarios.length || scenarios.some(s => busy(s) || entries[s.id]?.dispatched)}
+        title={scenarios.some(s => busy(s) || entries[s.id]?.dispatched) ? "Resolve active or unknown worker submissions before clearing simulations" : undefined}
+        onClick={e => onClear(e.currentTarget)}>Clear all</button>
       <label className="cfx-check"><input type="checkbox" checked={showArchived} onChange={e => onShowArchived(e.target.checked)} />Archived</label>
       <div className="cfx-history"><button disabled={!canUndo} onClick={onUndo}>Undo</button><button disabled={!canRedo} onClick={onRedo}>Redo</button></div>
     </div>
     {error && <p className="cfx-error" role="alert">{error}</p>}
     {!scenarios.length && <div className="cfx-welcome"><h3>No simulations</h3>
-      <button onClick={() => onAdd()}>Create first simulation</button>
+      <div className="cfx-actions"><button onClick={() => onAdd(targetGroup?.name)}>Create first simulation</button>
       <label className="cfx-file">Import simulation<input aria-label="Import CFD scenario" type="file" accept=".json,application/json"
         onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onImport(file); }} /></label>
+      </div>
     </div>}
     <div className="cfx-group-tree">
       <CFDReorderList items={groups} label="Simulation groups" scope={`simulation-groups:${project.projectId}`}
@@ -76,24 +85,29 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
         {group => {
           const members = visible.filter(s => sameGroup(s.group, group.name));
           const allMembers = scenarios.filter(s => sameGroup(s.group, group.name));
-          return <section className="cfx-study-group" aria-label={`Simulation group ${group.name}`}>
-            <header className="cfx-group-heading">
+          return <section className={`cfx-study-group${targetGroup?.id === group.id ? " selected-group" : ""}`} aria-label={`Simulation group ${group.name}`}
+            onClickCapture={() => setSelectedGroup(group.id)}>
+            <CFDReorderList items={members} label={`${group.name} simulations`} scope={`simulations:${project.projectId}`}
+              collapsed={collapsed.has(group.id)}
+              header={<header className="cfx-group-heading">
+              <button className="cfx-collapse" aria-label={`${collapsed.has(group.id) ? "Expand" : "Collapse"} group ${group.name}`} aria-expanded={!collapsed.has(group.id)}
+                onClick={() => setCollapsed(previous => { const next = new Set(previous); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}>{collapsed.has(group.id) ? "▸" : "▾"}</button>
               <InlineName key={`${group.id}:${group.name}`} value={group.name} label={`Rename group ${group.name}`} maxLength={80} onCommit={name => renameGroup(group, name)} />
               <small>{allMembers.length} {allMembers.length === 1 ? "simulation" : "simulations"}</small>
               <div className="cfx-group-actions">
-                <button aria-label={`Add simulation to ${group.name}`} disabled={scenarios.length >= 100} onClick={() => onAdd(group.name)}>+ Simulation</button>
+                <button aria-label={`Add simulation to ${group.name}`} disabled={scenarios.length >= 100} onClick={() => { setCollapsed(v => new Set([...v].filter(id => id !== group.id))); onAdd(group.name); }}>+ Simulation</button>
                 <button aria-label={`Duplicate group ${group.name}`} disabled={scenarios.length + allMembers.length > 100 || groups.length >= 100}
-                  onClick={() => { const copy = duplicateSimulationGroup(scenarios, groups, group.id); if (copy) onOrder(copy.scenarios, copy.groups); }}>Duplicate</button>
+                  onClick={() => { const copy = duplicateSimulationGroup(scenarios, groups, group.id); if (copy) { onOrder(copy.scenarios, copy.groups); setSelectedGroup(copy.groups.find(g => !groups.some(old => old.id === g.id))!.id); } }}>Duplicate</button>
                 <button className="cfx-danger" aria-label={`Delete group ${group.name}`} title="Remove this folder; keep its simulations in Ungrouped"
                   onClick={() => deleteGroup(group)}>Delete</button>
               </div>
-            </header>
-            <CFDReorderList items={members} label={`${group.name} simulations`} scope={`simulations:${project.projectId}`}
+            </header>}
               onMove={(id, at) => {
                 const anchor = members[at]?.id;
                 const original = scenarios.filter(s => sameGroup(s.group, group.name));
                 const boundary = anchor ? original.findIndex(s => s.id === anchor) : original.length;
                 onOrder(moveStudy(scenarios, id, group.name, boundary), groups);
+                setSelectedGroup(group.id);
               }}>
               {s => {
                 const entry = entries[s.id], job = entry?.job;
@@ -137,7 +151,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 </article>;
               }}
             </CFDReorderList>
-            {!members.length && <p className="cfx-empty-drop">{allMembers.length ? "All simulations in this group are archived" : "Empty group"}</p>}
+            {!members.length && !collapsed.has(group.id) && <p className="cfx-empty-drop">{allMembers.length ? "Archived simulations" : "Empty group"}</p>}
           </section>;
         }}
       </CFDReorderList>

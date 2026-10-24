@@ -101,7 +101,7 @@ test("equipment is a draggable CRUD list with a separate floating editor and unc
   const editor = ui.getByRole("region", { name: "Equipment editor", exact: true });
   const rename = async value => { const name = editor.getByRole("textbox", { name: "Vent name", exact: true }); await name.fill(value); await name.press("Enter"); };
   await rename("Supply A"); await editor.getByRole("button", { name: "Done", exact: true }).click();
-  const list = ui.getByRole("list", { name: "CFD equipment", exact: true });
+  const list = ui.getByRole("list", { name: "General objects", exact: true });
   assert.equal(await list.locator("[data-item-id]").count(), 1);
   await ui.getByRole("button", { name: "+ Extract", exact: true }).click();
   await rename("Extract B");
@@ -109,8 +109,9 @@ test("equipment is a draggable CRUD list with a separate floating editor and unc
   await editor.getByRole("button", { name: "Done", exact: true }).click();
   await list.getByRole("button", { name: "Duplicate Supply A", exact: true }).click();
   await eventually(saved, p => p.cfdScenarios[0].vents.length === 3);
+  await editor.getByRole("button", { name: "Done", exact: true }).click();
   await list.getByRole("button", { name: "Reorder Supply A copy", exact: true }).press("ArrowUp");
-  await eventually(saved, p => p.cfdScenarios[0].vents[1].name === "Supply A copy");
+  await eventually(saved, p => p.cfdScenarios[0].objectGroups[0].memberIds[1] === `vent:${p.cfdScenarios[0].vents.find(v => v.name === "Supply A copy").id}`);
   await list.getByRole("button", { name: "Delete Extract B", exact: true }).click();
   await eventually(saved, p => p.cfdScenarios[0].vents.length === 2);
   await list.getByRole("button", { name: "Edit Supply A copy", exact: true }).click();
@@ -130,6 +131,7 @@ test("boundary groups colour real 3D patches, transfer surfaces and apply physic
   await ui.getByRole("list", { name: "Boundary group colours", exact: true }).waitFor();
   const first = reports.at(-1).patches.find(p => p.kind === "wall");
   await ui.getByRole("button", { name: "Add boundary group", exact: true }).click();
+  await ui.getByRole("button", { name: "Hide Edit boundary group", exact: true }).click();
   const target = ui.getByRole("region", { name: "Boundary group Group", exact: true });
   const sourceRow = original.locator(".cfx-reorder-item").filter({ has: page.getByRole("button", { name: `Select surface ${first.id}`, exact: true }) });
   await sourceRow.getByRole("button", { name: /^Reorder / }).dragTo(target.getByRole("list", { name: "Group surfaces", exact: true }), { targetPosition: { x: 60, y: 20 } });
@@ -140,11 +142,13 @@ test("boundary groups colour real 3D patches, transfer surfaces and apply physic
   await ui.getByRole("button", { name: "Redo", exact: true }).click();
   await eventually(saved, p => p.cfdScenarios[0].boundaries.collections.find(g => g.name === "Group")?.patchIds.includes(first.id));
   await cfdWindow(ui, "Boundaries");
+  await ui.getByRole("button", { name: "Edit boundary group Group", exact: true }).click();
   const form = ui.getByRole("region", { name: "Boundary group conditions", exact: true });
   await form.getByRole("checkbox", { name: "Use group conditions", exact: true }).check();
   await form.getByRole("combobox", { name: "Boundary thermal condition", exact: true }).selectOption("temperature");
   const temperature = form.getByRole("spinbutton", { name: "Boundary temperature (K)", exact: true });
   await temperature.fill("300"); await temperature.press("Enter");
+  await ui.getByRole("button", { name: "Hide Edit boundary group", exact: true }).click();
   await eventually(() => reports.at(-1), r => r.patches.find(p => p.id === first.id).boundary.thermal.value === 300);
   await ready(ui);
   const groups = JSON.parse(await ui.locator(".cfx-viewport").getAttribute("data-boundary-groups"));

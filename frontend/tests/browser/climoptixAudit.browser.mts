@@ -44,6 +44,7 @@ test("a delayed study import rechecks the project capacity after the file is rea
   }));
   const { page, ui, saved } = await open(t, project);
   await cfdWindow(ui, "Review & export");
+  await ui.getByRole("tab", { name: "Import / export", exact: true }).click();
   await page.evaluate(() => {
     const original = File.prototype.text;
     File.prototype.text = function () {
@@ -349,12 +350,7 @@ for (const style of ["DEFAULT", "MODERN"])
             name: `${phase} settings`,
             exact: true,
           });
-          await inspector
-            .getByRole("heading", {
-              name: phase === "Simulation" ? "Simulation controls" : phase,
-              exact: true,
-            })
-            .scrollIntoViewIfNeeded();
+          await inspector.scrollIntoViewIfNeeded();
           for (const summary of await inspector
             .locator("details:not(.cfx-row-menu) > summary")
             .all()) {
@@ -442,24 +438,22 @@ for (const style of ["DEFAULT", "MODERN"])
         await ui
           .getByRole("spinbutton", { name: "Residual Target", exact: true })
           .scrollIntoViewIfNeeded();
-        const convection = await ui
-          .getByRole("combobox", { name: "Convection", exact: true })
-          .boundingBox();
-        const corrections = await ui
-          .getByRole("spinbutton", {
-            name: "Non Orthogonal Corrections",
-            exact: true,
-          })
-          .boundingBox();
-        assert.ok(
-          Math.abs(
-            convection.y +
-              convection.height -
-              corrections.y -
-              corrections.height,
-          ) <= 1,
-          `${style} ${theme} ${viewport.width}: adjacent input baselines must align when labels wrap`,
+        const fields = await advanced.locator("..").locator(":scope > .cfx-grid").evaluate(grid =>
+          [...grid.querySelectorAll(":scope > label")].map(label => {
+            const control = label.querySelector("input, select")!.getBoundingClientRect();
+            return { x: control.x, top: control.top, bottom: control.bottom };
+          }),
         );
+        assert.ok(fields.length >= 7);
+        // The compact grid now has 1–4 columns: check actual neighbours,
+        // not a pair that used to share a row only in the old two-column grid.
+        for (let i = 1; i < fields.length; i++) {
+          const previous = fields[i - 1], current = fields[i];
+          const aligned = current.x > previous.x + 1
+            ? Math.abs(current.bottom - previous.bottom) <= 1
+            : current.top >= previous.bottom;
+          assert.ok(aligned, `${style} ${theme} ${viewport.width}: input rows must align without overlap: ${JSON.stringify(fields)}`);
+        }
         if (process.env.BROWSER_ARTIFACTS && viewport.width !== 1024)
           await page.screenshot({
             path: `${process.env.BROWSER_ARTIFACTS}/cfd-pass3-${style.toLowerCase()}-${theme}-${viewport.width}.png`,

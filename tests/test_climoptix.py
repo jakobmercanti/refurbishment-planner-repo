@@ -651,6 +651,64 @@ def obstruction(oid="object", key="furniture-table-rectangular", size=(1000, 700
     }
 
 
+def test_cfd_only_object_copies_use_measured_mm_geometry_and_do_not_mutate_the_source():
+    p = project()
+    p["rooms"][0]["obstacles"] = [obstruction(size=(400, 400, 600))]
+    before = deepcopy(p)
+    data = scenario(p).model_dump()
+    data["objectCopies"] = [{"id": "copy", "sourceObjectId": "object", "name": "Second table"}]
+    data["assetOverrides"] = [{"objectId": "copy", "offsetMm": [700, 0, 0]}]
+    s = Scenario.model_validate(data)
+    report = prepare(p, s)
+    assert p == before
+    assert not codes(report), report["diagnostics"]
+    original, copy = report["objects"]
+    assert copy["id"] == "copy" and copy["name"] == "Second table"
+    assert all(abs(b[0] - a[0] - 700) < 1e-7 and a[1:] == b[1:] for a, b in zip(original["verticesMm"], copy["verticesMm"], strict=True))
+    assert report["surface"]["closed"]
+    grouped = s.model_copy(update={"objectGroups": []})
+    assert prepare(p, grouped)["validation"]["configurationHash"] == report["validation"]["configurationHash"]
+
+
+def test_cfd_delete_excludes_geometry_and_emissions_but_keeps_source_assets():
+    p = project()
+    p["rooms"][0]["obstacles"] = [obstruction()]
+    before = deepcopy(p)
+    data = scenario(p).model_dump()
+    data.update(hiddenObjectIds=["object"], assetOverrides=[{"objectId": "object", "heatW": 75, "co2M3S": 0.00001}])
+    report = prepare(p, Scenario.model_validate(data))
+    assert p == before
+    obj = report["objects"][0]
+    assert obj["mode"] == "none" and obj["heatW"] == obj["co2M3S"] == 0
+    assert obj["verticesMm"] == obj["triangles"] == []
+    assert report["surface"]["closed"]
+
+
+def test_copy_overlap_missing_source_and_duplicate_ids_cannot_bypass_preflight():
+    p = project()
+    p["rooms"][0]["obstacles"] = [obstruction()]
+    data = scenario(p).model_dump()
+    data["objectCopies"] = [{"id": "copy", "sourceObjectId": "object", "name": "Copy"}]
+    assert "object-overlap" in codes(prepare(p, Scenario.model_validate(data)))
+    data["objectCopies"][0]["sourceObjectId"] = "missing"
+    assert "missing-copy-source" in codes(prepare(p, Scenario.model_validate(data)))
+    data["objectCopies"][0].update(id="object", sourceObjectId="object")
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(data)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("objectGroups", [{"id": "a", "name": "A", "memberIds": ["object:o"]}, {"id": "b", "name": "B", "memberIds": ["object:o"]}]),
+    ("objectCopies", [{"id": "copy", "sourceObjectId": "copy", "name": "Loop"}]),
+    ("hiddenObjectIds", ["same", "same"]),
+])
+def test_object_organization_contract_rejects_ambiguous_membership(field, value):
+    data = scenario(project()).model_dump()
+    data[field] = value
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(data)
+
+
 def test_excluded_objects_retain_inputs_but_emit_nothing_and_source_offsets_are_checked():
     p = project()
     p["rooms"][0]["obstacles"] = [obstruction()]

@@ -26,6 +26,7 @@ import { RoomFurniture } from "@/components/RoomFurniture";
 import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
 import { floorDesignColour, flooringSwatch, normalizeFloorDesign, TILE_MATERIALS } from "@/lib/flooring";
 import { Grid, Html, Line, OrbitControls, RoundedBox } from "@react-three/drei";
+import { useViewerContextMenu, useViewerNavigation } from "@/lib/viewerNavigation";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -1101,25 +1102,56 @@ function CameraViewSync({ restoreView, fallbackTarget, stateRef, onRestored }: {
   return null;
 }
 
-/** Keep wheel input tied to the rendered camera in every projection mode. */
+/** Keep wheel and preset middle-button zoom tied to the rendered camera in
+ * every projection mode. OrbitControls' own dolly stays disabled here so it
+ * cannot apply a second wheel zoom or diverge from projection restoration. */
 function WheelZoom({ onManualViewChange }: { onManualViewChange?: () => void }) {
   const { camera, events } = useThree();
+  const mouseButtons = useViewerNavigation();
   useEffect(() => {
     const eventSource = events.connected;
     if (!eventSource) return;
-    const zoomWithWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      if (event.deltaY === 0) return;
+    let middle: { id: number; y: number } | null = null;
+    const zoomBy = (factor: number) => {
       onManualViewChange?.();
-      const factor = event.deltaY > 0 ? 0.9 : 1.1;
       camera.zoom = camera instanceof THREE.OrthographicCamera
         ? THREE.MathUtils.clamp(camera.zoom * factor, 0.0001, 1_000_000)
         : THREE.MathUtils.clamp(camera.zoom * factor, 0.35, 3);
       camera.updateProjectionMatrix();
     };
+    const zoomWithWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      if (event.deltaY !== 0) zoomBy(event.deltaY > 0 ? 0.9 : 1.1);
+    };
+    const beginMiddle = (event: PointerEvent) => {
+      if (event.button !== 1 || mouseButtons.MIDDLE !== THREE.MOUSE.DOLLY) return;
+      event.preventDefault();
+      middle = { id: event.pointerId, y: event.clientY };
+    };
+    const moveMiddle = (event: PointerEvent) => {
+      if (!middle || middle.id !== event.pointerId) return;
+      if (!(event.buttons & 4)) { middle = null; return; }
+      const delta = event.clientY - middle.y;
+      middle.y = event.clientY;
+      if (delta) zoomBy(Math.exp(THREE.MathUtils.clamp(-delta * 0.006, -1, 1)));
+    };
+    const endMiddle = (event: PointerEvent) => { if (event.pointerId === middle?.id) middle = null; };
+    const cancelMiddle = () => { middle = null; };
     eventSource.addEventListener("wheel", zoomWithWheel, { passive: false });
-    return () => eventSource.removeEventListener("wheel", zoomWithWheel);
-  }, [camera, events, onManualViewChange]);
+    eventSource.addEventListener("pointerdown", beginMiddle);
+    window.addEventListener("pointermove", moveMiddle);
+    window.addEventListener("pointerup", endMiddle);
+    window.addEventListener("pointercancel", endMiddle);
+    window.addEventListener("blur", cancelMiddle);
+    return () => {
+      eventSource.removeEventListener("wheel", zoomWithWheel);
+      eventSource.removeEventListener("pointerdown", beginMiddle);
+      window.removeEventListener("pointermove", moveMiddle);
+      window.removeEventListener("pointerup", endMiddle);
+      window.removeEventListener("pointercancel", endMiddle);
+      window.removeEventListener("blur", cancelMiddle);
+    };
+  }, [camera, events, mouseButtons, onManualViewChange]);
   return null;
 }
 
@@ -1423,6 +1455,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   const dragCandidate = useRef<PlacementCandidate | null>(null);
   const dragCapture = useRef<{ target: { releasePointerCapture: (id: number)=>void }; pointerId: number } | null>(null);
   const orbitInteraction = useRef(false);
+  const mouseButtons = useViewerNavigation();
   const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const { events } = useThree();
   useEffect(() => {
@@ -1554,6 +1587,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   }
 
   function startPersonDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, person: PersonMockup) {
+    if (event.button !== 0) return;
     event.stopPropagation();
     onSelectionChange({ type: "PERSON", roomId: sceneRoom.id });
     const point = floorPoint(event);
@@ -1685,7 +1719,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
       {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><PassiveBuildingFloor key={f.id} floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} wallMode={wallMode} toggles={toggles}/>)}
       {showRoof&&currentFloor&&above&&<ExposedFloorCover floor={floors.find(f=>f.id===currentFloor.id)!} above={above}/>}
       {wholeView&&<mesh rotation={[-Math.PI/2,0,0]} position={[roomTarget[0],sceneBounds.minZ*SCALE-.002,roomTarget[2]]} receiveShadow raycast={DISABLED_MESH_RAYCAST} userData={{buildingPresentation:true}}><planeGeometry args={[Math.max(20,roomSpan[0]*4),Math.max(20,roomSpan[2]*4)]}/><shadowMaterial transparent opacity={.18} depthWrite={false}/></mesh>}
-      <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
+      <OrbitControls makeDefault mouseButtons={mouseButtons} enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
       <CameraViewSync restoreView={restoreView} fallbackTarget={orbitTarget} stateRef={cameraStateRef} onRestored={onCameraViewRestored} />
     </>
   );
@@ -1828,7 +1862,10 @@ export function EngineeringViewer(props: ViewerProps) {
   const [selection, setSelection] = useState<Selection>(null);
   const [panelSelection, setPanelSelection] = useState<Selection>(null);
   const [toolbarContextMenu, setToolbarContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const rightPointerRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const viewerMenu = useViewerContextMenu(target => !!target.closest(".stable-canvas-host"), point => {
+    clearSelection();
+    setToolbarContextMenu({ x: Math.max(8, Math.min(point.x, window.innerWidth - 480)), y: Math.max(8, Math.min(point.y, window.innerHeight - 330)) });
+  }, () => setToolbarContextMenu(null));
   const saveViewButton = useRef<HTMLButtonElement>(null);
   const [toggles, setToggles] = useState<Toggles>({
     elements: true,
@@ -2004,7 +2041,7 @@ export function EngineeringViewer(props: ViewerProps) {
   const livePreviewSize = cameraOutputSize ? { width: Math.round(cameraOutputSize.width * previewScale), height: Math.round(cameraOutputSize.height * previewScale) } : null;
   const cameraAngles = renderCamera ? renderCameraAnglesDegrees(renderCamera) : null;
   return (
-    <div className="viewer-shell" onPointerDownCapture={(event) => { if (event.button === 2) rightPointerRef.current = { x: event.clientX, y: event.clientY, moved: false }; }} onPointerMoveCapture={(event) => { const pointer = rightPointerRef.current; if (pointer && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) pointer.moved = true; }} onPointerUpCapture={(event) => { if (event.button === 2 && rightPointerRef.current?.moved) window.setTimeout(() => { rightPointerRef.current = null; }, 0); }} onContextMenu={(event) => { if (!(event.target instanceof Element) || !event.target.closest(".stable-canvas-host")) return; event.preventDefault(); const wasPan = rightPointerRef.current?.moved; rightPointerRef.current = null; if (wasPan) return; clearSelection(); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
+    <div className="viewer-shell" {...viewerMenu} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
       {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={props.fillToolbarLayout ? viewerLeftDock("viewer-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
         <div className="viewer-view-control-group viewer-zoom-controls" role="group" aria-label="Zoom controls">
           <button type="button" aria-label="Zoom out" onClick={() => setZoomPercent((value) => Math.max(25, value - 10))}>−</button>
@@ -2179,7 +2216,6 @@ export function EngineeringViewer(props: ViewerProps) {
         <WheelZoom onManualViewChange={clearActivePreset} />
         <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} includeAttribution={includeCaptureAttribution} onError={handleCaptureError} />
       </StableCanvas>
-      <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
       {toolbarContextMenu && <ToolbarContextMenu x={toolbarContextMenu.x} y={toolbarContextMenu.y} toolbars={VIEWER_TOOLBARS.filter((toolbar) => props.toolbarAvailability[toolbar.id])} visibility={props.toolbarVisibility} onToggle={props.onToggleToolbar} onClose={() => setToolbarContextMenu(null)} />}
       <Popup open={captureMenuOpen} title="Save view" message="" confirmLabel="Save as…" onCancel={() => { setCaptureMenuOpen(false); setCaptureError(null); }} onConfirm={() => { void saveViewAs(); }}>
         <label className="field save-view-format"><span>File format</span><select value={captureFormat} onChange={(event) => setCaptureFormat(event.target.value as CaptureFormat)}><option value="png">PNG image (.png)</option><option value="jpg">JPG image (.jpg)</option><option value="pdf">PDF document (.pdf)</option></select></label><label className="save-view-attribution"><input type="checkbox" checked={includeCaptureAttribution} onChange={(event) => setIncludeCaptureAttribution(event.target.checked)} /><span>Include “Made with FreeFloorplan3D.com”</span></label>

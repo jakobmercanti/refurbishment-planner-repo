@@ -8,13 +8,13 @@ import "./ui-theme.css";
 import "./mobile.css";
 import "./privacy.css";
 import "./commercial.css";
-import "./density.css";
 import "./appearance.css";
 import "./window-help.css";
 import "./building.css";
 import "./climoptix.css";
 import "./thermal.css";
 import "./window-docking.css";
+import "./density.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.freefloorplan3d.com"),

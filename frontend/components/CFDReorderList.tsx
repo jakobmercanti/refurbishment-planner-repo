@@ -11,13 +11,16 @@ const clearDrag = () => { activeDrag = null; window.dispatchEvent(new CustomEven
 /** Grip-only, scoped, same-session transfers. No data changes until a valid drop.
  * Mouse, captured touch/pen, and keyboard reordering share one mutation path. */
 export function CFDReorderList<T extends { id: string; name: string }>({
-  items, label, scope, onMove, children,
+  items, label, scope, onMove, children, header, collapsed = false,
 }: {
   items: T[];
   label: string;
   scope: string;
   onMove: (id: string, boundary: number) => void;
   children: (item: T, index: number) => ReactNode;
+  /** The header remains a validated transfer target even while collapsed. */
+  header?: ReactNode;
+  collapsed?: boolean;
 }) {
   const listId = useId();
   const [boundary, setBoundary] = useState<number | null>(null);
@@ -71,7 +74,9 @@ export function CFDReorderList<T extends { id: string; name: string }>({
   return <ol className="cfx-reorder-list" aria-label={label} {...targetData(0)}
     onDragOver={e => { if (!items.length || e.target === e.currentTarget) hover(e, items.length); }}
     onDrop={e => { if (!items.length || e.target === e.currentTarget) drop(e, items.length); }}>
-    {items.map((item, index) => <Fragment key={item.id}>
+    {header && <li className="cfx-list-header" {...targetData(items.length)} data-active={boundary === items.length}
+      onDragOver={e => hover(e, items.length)} onDrop={e => drop(e, items.length)}>{header}</li>}
+    {!collapsed && items.map((item, index) => <Fragment key={item.id}>
       {slot(index)}
       <li className="cfx-reorder-item" data-item-id={item.id} {...targetData(index, true)}
         onDragOver={e => { const r = e.currentTarget.getBoundingClientRect(); hover(e, index + (e.clientY >= r.top + r.height / 2 ? 1 : 0)); }}
@@ -81,6 +86,7 @@ export function CFDReorderList<T extends { id: string; name: string }>({
           onDragStart={e => {
             e.stopPropagation(); activeDrag = { scope, id: item.id, token: crypto.randomUUID(), list: listId };
             e.dataTransfer.setData(MIME, JSON.stringify(activeDrag)); e.dataTransfer.effectAllowed = "move";
+            window.dispatchEvent(new CustomEvent(PREVIEW));
           }}
           onDragEnd={e => { e.stopPropagation(); clearDrag(); }}
           onPointerDown={e => {
@@ -121,6 +127,6 @@ export function CFDReorderList<T extends { id: string; name: string }>({
         {children(item, index)}
       </li>
     </Fragment>)}
-    {slot(items.length)}
+    {!collapsed && slot(items.length)}
   </ol>;
 }

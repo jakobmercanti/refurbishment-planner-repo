@@ -94,15 +94,14 @@ test("simulation groups persist drag order and selected settings with compact pe
     assert.ok(Math.abs(nameBox.y + nameBox.height / 2 - statusBox.y - statusBox.height / 2) < 2, "Name and status share a row");
     assert.ok(Math.abs(meshBox.y + meshBox.height / 2 - nameBox.y - nameBox.height / 2) < 2, "Study actions share the row on a laptop");
   }
-  const header = ui.locator(".cfx-study-select");
-  const inlineLabel = await header.evaluate((label) => {
-    const range = document.createRange();
-    range.selectNodeContents(label.firstChild!);
-    const text = range.getBoundingClientRect(), select = label.querySelector("select")!.getBoundingClientRect();
-    return { textY: text.y + text.height / 2, selectY: select.y + select.height / 2, height: label.getBoundingClientRect().height };
+  const header = ui.locator(".cfx-setup-window > .floating-toolbar-titlebar");
+  const inlineSelector = await header.evaluate(bar => {
+    const box = bar.getBoundingClientRect(), select = bar.querySelector("select")!.getBoundingClientRect();
+    return { top: box.top, bottom: box.bottom, selectTop: select.top, selectBottom: select.bottom, height: box.height };
   });
-  assert.ok(Math.abs(inlineLabel.textY - inlineLabel.selectY) < 2, "Study label and selector share a row");
-  assert.ok(inlineLabel.height < 60);
+  assert.ok(inlineSelector.selectTop >= inlineSelector.top && inlineSelector.selectBottom <= inlineSelector.bottom, "Simulation selector belongs inside the titlebar");
+  assert.ok(inlineSelector.height < 60);
+  assert.equal(await ui.locator(".cfx-study-select").count(), 0, "No extra labelled selector row");
   if (process.env.BROWSER_ARTIFACTS)
     await page.screenshot({ path: `${process.env.BROWSER_ARTIFACTS}/cfd-studies-laptop.png` });
   assert.equal(

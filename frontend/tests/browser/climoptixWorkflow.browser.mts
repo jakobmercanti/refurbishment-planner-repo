@@ -444,8 +444,10 @@ test("simulation tabs remain usable on narrow screens and inactive navigation is
       ),
       true,
     );
-    for (const tab of await ui.getByRole("tab").all())
-      assert.ok((await tab.boundingBox()).height >= 39);
+    for (const tab of await ui.getByRole("tab").all()) {
+      const minimum = await tab.evaluate(el => parseFloat(getComputedStyle(el).minHeight));
+      assert.ok(minimum >= 28 && (await tab.boundingBox()).height >= minimum - 1);
+    }
   }
   await ui.getByRole("tab", { name: "Mesh", exact: true }).click();
   await ui

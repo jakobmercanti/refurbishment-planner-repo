@@ -44,6 +44,16 @@ test("application preferences persist theme, density and currency together", () 
   assert.deepEqual(readAppearancePreferences(storage), { theme: "SYSTEM", density: "COMPACT", currency: "USD" });
 });
 
+test("navigation presets persist independently and invalid presets fall back without corrupting appearance", () => {
+  const storage = new MemoryStorage();
+  for (const navigation of ["STANDARD", "CAD", "BLENDER"] as const) {
+    writeAppearancePreferences({ ...DEFAULT_APP_PREFERENCES, navigation }, storage);
+    assert.equal(readAppearancePreferences(storage).navigation, navigation);
+  }
+  storage.setItem(APP_APPEARANCE_STORAGE_KEY, JSON.stringify({ navigation: "unknown", theme: "dark", density: "compact" }));
+  assert.deepEqual(readAppearancePreferences(storage), { theme: "DARK", density: "COMPACT" });
+});
+
 test("settings exposes the selected default currency and explains that values are not converted", () => {
   const markup = renderToStaticMarkup(createElement(SettingsDialog, {
     open: true,

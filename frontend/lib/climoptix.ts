@@ -413,6 +413,7 @@ export function preparationInput(
       createdAt: undefined,
       updatedAt: undefined,
       archived: undefined,
+      objectGroups: undefined,
     },
   });
 }

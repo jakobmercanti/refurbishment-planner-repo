@@ -73,6 +73,7 @@ test("row Mesh/Run actions submit the correct study independently and block arch
   const { page } = await fixture(t, project);
   assert.equal(await page.getByRole("progressbar").count(), 0);
   await page.getByRole("button", { name: "Mesh Office airflow", exact: true }).click();
+  assert.ok(await page.getByRole("button", { name: "Clear all", exact: true }).isDisabled(), "Clear all must not remove active worker submissions");
   await page.getByRole("button", { name: "Run Alternative", exact: true }).click();
   const requests = await eventually(
     () => page.evaluate(() => window.cfdFixture.transport.submissions),

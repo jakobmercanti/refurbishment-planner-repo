@@ -218,8 +218,18 @@ test("dark/light compact screens suspend docks safely, restore them on resize, a
           height: element.getBoundingClientRect().height,
           width: element.clientWidth,
           contentWidth: element.scrollWidth,
+          overflow: getComputedStyle(element).textOverflow,
+          fullName: element.textContent,
+          tooltip: element.closest("button")?.title,
         }));
-        assert.ok(metrics.height < 28 && metrics.width >= metrics.contentWidth, JSON.stringify(metrics));
+        assert.ok(metrics.height < 28 && metrics.width > 0, JSON.stringify(metrics));
+        // Narrow rails deliberately ellipsise names rather than adding a row;
+        // the complete name must remain available to mouse and screen readers.
+        if (metrics.width < metrics.contentWidth) {
+          assert.equal(metrics.overflow, "ellipsis");
+          assert.ok(metrics.tooltip?.includes(metrics.fullName));
+          assert.equal(await name.locator("..").getAttribute("aria-label"), `Select ${metrics.fullName}`);
+        }
       }
       const box = await window.boundingBox();
       assert.ok(box.x >= -1 && box.x + box.width <= width + 1);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { formatUiCount } from "@/lib/uiText";
 import { ganttBarAppearance } from "@/lib/ganttAppearance";
@@ -297,15 +297,38 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
     }
     return result;
   }, [visibleActivities, grouping, rooms]);
-  const activityTop = useMemo(() => {
-    let top = 0;
+  const [activityTop, setActivityTop] = useState(() => {
+    // Deterministic server/first-render fallback; measured before browser paint.
+    let height = 0;
     const offsets = new Map<string, number>();
-    for (const entry of ganttEntries) {
-      if (entry.kind === "GROUP") top += 29;
-      else { offsets.set(entry.activity.activityId, top); top += 52; }
-    }
-    return { offsets, height: top };
-  }, [ganttEntries]);
+    ganttEntries.forEach(entry => {
+      if (entry.kind === "GROUP") height += 29;
+      else { offsets.set(entry.activity.activityId, height + 26); height += 52; }
+    });
+    return { offsets, height };
+  });
+  const entryKeys = ganttEntries.map(entry => entry.kind === "GROUP" ? `group:${entry.key}` : entry.activity.activityId).join("|");
+  useLayoutEffect(() => {
+    const body = scrollRef.current?.querySelector<HTMLElement>(".pb-gantt-body");
+    if (!body) return;
+    // Density, wrapped labels and font loading can all change row height.
+    // Dependency endpoints follow the rendered row centres, not a fixed 52 px.
+    const measure = () => {
+      if (!body.getClientRects().length) return;
+      const bounds = body.getBoundingClientRect(), offsets = new Map<string, number>();
+      body.querySelectorAll<HTMLElement>(".pb-gantt-row[data-activity-id]").forEach(row => {
+        const rect = row.getBoundingClientRect();
+        offsets.set(row.dataset.activityId!, rect.top - bounds.top + rect.height / 2);
+      });
+      const height = bounds.height;
+      setActivityTop(previous => previous.height === height && previous.offsets.size === offsets.size && [...offsets].every(([id, y]) => previous.offsets.get(id) === y) ? previous : { height, offsets });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    body.querySelectorAll(".pb-gantt-row,.pb-gantt-group-row").forEach(row => observer.observe(row));
+    measure();
+    return () => observer.disconnect();
+  }, [entryKeys, view]);
   const starts = activities.map((item) => item.startDate).sort();
   const ends = activities.map((item) => item.endDate).sort();
   const today = localDateKey();
@@ -392,7 +415,7 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
               {todayVisible && <i className="pb-today-head-marker" style={{ left: (todayOffset + 0.5) * dayWidth }} title="Today" />}
             </div>
           </div>
-          <div className="pb-gantt-body" style={{ minHeight: activityTop.height }} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}>
+          <div className="pb-gantt-body" onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}>
             {showDependencyArrows && <svg className="pb-gantt-dependencies" aria-hidden="true" width={timelineWidth} height={activityTop.height} viewBox={"0 0 " + timelineWidth + " " + activityTop.height}>
               <defs>
                 <marker id="pb-dependency-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" /></marker>
@@ -406,7 +429,7 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
                 const targetShown = previewRange?.activityId === activity.activityId ? previewRange : activity;
                 const fromX = (calendarDaysBetween(timelineStart, sourceShown.endDate) + 1) * dayWidth - 2;
                 const toX = calendarDaysBetween(timelineStart, targetShown.startDate) * dayWidth + 2;
-                const fromY = fromTop + 26, toY = toTop + 26, bend = Math.max(16, Math.abs(toX - fromX) * .4);
+                const fromY = fromTop, toY = toTop, bend = Math.max(16, Math.abs(toX - fromX) * .4);
                 const edgeId = activity.activityId + ":" + dependencyId;
                 const hasConflict = dependencyWarningIds.has(edgeId);
                 return [<path key={edgeId} className={`pb-dependency-path${hasConflict ? " conflict" : ""}`} d={"M " + fromX + " " + fromY + " C " + (fromX + bend) + " " + fromY + ", " + (toX - bend) + " " + toY + ", " + toX + " " + toY} markerEnd={hasConflict ? "url(#pb-dependency-arrow-conflict)" : "url(#pb-dependency-arrow)"} />];
@@ -421,7 +444,7 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
               const width = Math.max(14, (calendarDaysBetween(shown.startDate, shown.endDate) + 1) * dayWidth - Math.max(2, Math.min(6, dayWidth / 5)));
               const selected = selectedId === activity.activityId;
               const isEvent = activity.type !== "task" && activity.type !== "waiting";
-              return <div className={`pb-gantt-row ${selected ? "selected" : ""}`} key={activity.activityId} role="row">
+              return <div className={`pb-gantt-row ${selected ? "selected" : ""}`} key={activity.activityId} data-activity-id={activity.activityId} role="row">
                 <div className="pb-gantt-activity-cell" role="rowheader">
                   <button type="button" className="pb-activity-name" onClick={() => setSelectedId(activity.activityId)} onDoubleClick={() => openEditor(activity)} onContextMenu={(event) => openActivityContextMenu(event, activity)} aria-label={activity.name + ", " + progressLabel(activity) + ". " + activityTypeLabel(activity.type) + ". Double-click to edit."}><strong><i className={"pb-type-mark type-" + activity.type} aria-hidden="true">{activityTypeMark(activity.type, activity.currency ?? defaultCurrency)}</i>{activity.name}</strong><span>{formatDateKey(activity.startDate, { day: "2-digit", month: "short" })} – {formatDateKey(activity.endDate, { day: "2-digit", month: "short" })} · {progressLabel(activity)}</span></button>
                   <button type="button" className="pb-edit-activity" onClick={() => openEditor(activity)} aria-label={`Edit ${activity.name}`} title="Edit activity">···</button>

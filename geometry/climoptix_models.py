@@ -106,6 +106,21 @@ class BoundaryCollection(SimulationGroup):
     boundary: Boundary | None = None
 
 
+class ObjectCollection(SimulationGroup):
+    memberIds: list[Annotated[str, Field(pattern=r"^(vent|object):[\w:-]{1,150}$")]] = Field(default_factory=list, max_length=3000)
+
+
+class ObjectCopy(Contract):
+    id: Id
+    sourceObjectId: Id
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def trim_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
 class Boundaries(Contract):
     groups: dict[PatchKind, Boundary] = Field(default_factory=dict, max_length=11)
     patches: dict[PatchId, Boundary] = Field(default_factory=dict, max_length=10000)
@@ -398,6 +413,9 @@ class Scenario(Contract):
     seed: Seed | None = None
     vents: list[Vent] = Field(default_factory=list, max_length=500)
     assetOverrides: list[AssetOverride] = Field(default_factory=list, max_length=2000)
+    objectGroups: list[ObjectCollection] = Field(default_factory=list, max_length=100)
+    objectCopies: list[ObjectCopy] = Field(default_factory=list, max_length=500)
+    hiddenObjectIds: list[Id] = Field(default_factory=list, max_length=2000)
     boundaries: Boundaries = Field(default_factory=Boundaries)
     physics: Physics = Field(default_factory=Physics)
     mesh: MeshRecipe = Field(default_factory=MeshRecipe)
@@ -411,6 +429,14 @@ class Scenario(Contract):
 
     @model_validator(mode="after")
     def unique_entities(self) -> Self:
+        groups, copies, hidden = self.objectGroups or [], self.objectCopies or [], self.hiddenObjectIds or []
+        members = [mid for group in groups for mid in group.memberIds]
+        if (len({g.id for g in groups}) != len(groups) or len({g.name.lower() for g in groups}) != len(groups)
+                or len(set(members)) != len(members) or len(members) > 3000
+                or (len(groups) == 100 and not any(g.id == "objects-default" for g in groups))
+                or len({o.id for o in copies}) != len(copies) or any(o.sourceObjectId in {v.id for v in copies} for o in copies)
+                or len(set(hidden)) != len(hidden)):
+            raise ValueError("Object groups, copies and hidden IDs must have unique valid membership; copies reference original measured objects.")
         for collection, key in ((self.vents, "id"), (self.assetOverrides, "objectId")):
             if len({getattr(item, key) for item in collection}) != len(collection):
                 raise ValueError("Scenario object IDs must be unique.")

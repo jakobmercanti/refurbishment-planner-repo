@@ -339,13 +339,7 @@ export function ClimoptixSimulation({
 }) {
   return (
     <>
-      <div className="cfx-simulation-title">
-        <h3>Simulation controls</h3>
-        <WindowHelpButton
-          title="Mesh, Run & Post-processing"
-          steps={CFD_SIMULATION_HELP}
-        />
-      </div>
+      <div className="cfx-inline-toolbar">
       <div
         className="cfx-simulation-tabs"
         role="tablist"
@@ -389,6 +383,8 @@ export function ClimoptixSimulation({
             {id === "post" ? "Post" : title}
           </button>
         ))}
+      </div>
+      <WindowHelpButton title="Mesh, Run & Post-processing" steps={CFD_SIMULATION_HELP} />
       </div>
       <section
         role="tabpanel"

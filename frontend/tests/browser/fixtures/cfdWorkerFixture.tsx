@@ -105,6 +105,7 @@ function Fixture() {
   return (
     <ClimoptixStudies
       project={project}
+      onClear={() => setProject(p => ({ ...p, cfdScenarios: [] }))}
       scenarios={scenarios}
       scenario={scenarios.find((s) => s.id === selectedId)}
       showArchived={showArchived}

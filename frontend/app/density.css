@@ -1,19 +1,30 @@
 :root {
   --density-font-scale: 1;
-  --toolbar-control-gap: 8px;
-  --density-window-padding: 14px;
-  --density-section-gap: 8px;
-  --density-control-min-height: 34px;
-  --density-table-cell-padding-y: 7px;
+  --toolbar-control-gap: 6px;
+  --density-window-padding: 8px;
+  --density-section-gap: 6px;
+  --density-control-min-height: 28px;
+  --density-control-padding-y: 3px;
+  --density-control-padding-x: 8px;
+  --density-table-cell-padding-y: 4px;
+  --density-field-gap: 3px;
+  --density-row-padding: 3px;
+  --control-height-compact: var(--density-control-min-height);
+  --control-height-normal: var(--density-control-min-height);
+  --control-height-prominent: calc(var(--density-control-min-height) + 4px);
 }
 
 :root[data-density="comfortable"] {
   --density-font-scale: 1.2;
-  --toolbar-control-gap: 14px;
-  --density-window-padding: 18px;
-  --density-section-gap: 13px;
-  --density-control-min-height: 40px;
-  --density-table-cell-padding-y: 10px;
+  --toolbar-control-gap: 10px;
+  --density-window-padding: 12px;
+  --density-section-gap: 10px;
+  --density-control-min-height: 36px;
+  --density-control-padding-y: 6px;
+  --density-control-padding-x: 10px;
+  --density-table-cell-padding-y: 7px;
+  --density-field-gap: 5px;
+  --density-row-padding: 5px;
 }
 
 .planner-workspace {
@@ -24,4 +35,116 @@
 .planner-workspace svg:not(.floor-canvas) {
   --density-font-scale: 1;
   font-size: 16px;
+}
+
+/* Last in the cascade: density is a sizing contract, not a font-only theme.
+   Scope form metrics to UI windows/menus; never scale drawings or 3D geometry. */
+body :is(.floating-toolbar-content, .settings-dialog, .popup, [aria-modal="true"], .software-dropdown, .building-floor-bar, .topbar, .planner-build-screen)
+  :is(button, .cfx-file):not(.window-help-button, .window-dialog-maximize, .floating-toolbar-dock, .floating-toolbar-close, .popup-close, .modal-close, .floating-toolbar-resize, .colour-swatch, .color-swatch, .material-swatch) {
+  min-height: var(--density-control-min-height);
+  height: auto;
+  padding-block: var(--density-control-padding-y);
+  line-height: 1.25;
+}
+body :is(.floating-toolbar-content, .settings-dialog, .popup, [aria-modal="true"], .software-dropdown, .building-floor-bar, .planner-build-screen)
+  :is(select, input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="hidden"])) {
+  box-sizing: border-box;
+  height: var(--density-control-min-height) !important;
+  min-height: var(--density-control-min-height) !important;
+  padding: var(--density-control-padding-y) var(--density-control-padding-x) !important;
+  line-height: 1.25;
+}
+body :is(.floating-toolbar-content, .settings-dialog, .popup, [aria-modal="true"]) label:not(.cfx-check, .settings-toggle, .cfx-file) {
+  row-gap: var(--density-field-gap);
+}
+body :is(.floating-toolbar-content, .popup-content, .local-assets-content, .settings-content, .settings-sections, .cfx-setup-panel, .thermal-body) {
+  padding: var(--density-window-padding);
+}
+body :is(.floating-toolbar-content, .settings-dialog, .popup) :is(th, td) {
+  padding-block: var(--density-table-cell-padding-y) !important;
+}
+body :is(.floating-toolbar-content, .settings-dialog, .popup) :is(.settings-section, .toolbar-section, .custom-asset-form-grid, .local-asset-placement-fields, .thermal-grid, .cfx-grid, .cfx-metrics) {
+  gap: var(--density-section-gap);
+}
+body :is(.floating-toolbar-content, .settings-dialog, .popup) :is(.settings-section, .toolbar-section) {
+  padding-block: var(--density-window-padding);
+  margin-block: var(--density-section-gap);
+}
+body :is(.floating-toolbar, .popup) :is(.floating-toolbar-titlebar, .popup-titlebar) {
+  padding-block: var(--density-row-padding);
+}
+body .floating-toolbar-content :is(.tool-section, .building-level-item, .heating-room-row, .energy-room-row, .thermal-surface-row) {
+  padding: var(--density-window-padding);
+  gap: var(--density-section-gap);
+}
+body :is(.thermal-content, .thermal-heading, .thermal-footer) { padding: var(--density-window-padding); gap: var(--density-section-gap); }
+body .thermal-steps button { min-height: var(--density-control-min-height) !important; }
+body :is(.settings-appearance, .settings-appearance-option, .settings-choice, .local-assets-content, .building-level-list, .heating-settings-launchers) { gap: var(--density-section-gap); }
+body :is(.pb-gantt-row, .pb-gantt-lane) { min-height: calc(var(--density-control-min-height) + 10px); }
+body .pb-gantt-activity-cell { padding-block: var(--density-row-padding); }
+body .pb-gantt-bar { top: 50%; height: calc(var(--density-control-min-height) - 8px); transform: translateY(-50%); }
+body .pb-gantt-lane > .pb-gantt-bar { top: 50%; transform: translateY(-50%); }
+body .pb-gantt-lane > .pb-gantt-bar.event-type-milestone { transform: translateY(-50%) rotate(45deg) scale(.82); }
+body .pb-gantt-bar-label { height: 100%; padding-block: 0; line-height: 1.25; }
+body :is(.cfx-inspector, .cfx-studies, .cfx-simulation) > * + *,
+body .cfx-workspace details > * + * {
+  margin-top: var(--density-section-gap);
+}
+body .cfx-workspace :is(.cfx-study-row, .cfx-device-row, .cfx-surface-row) {
+  padding: var(--density-row-padding);
+  gap: var(--density-field-gap);
+}
+body .cfx-workspace :is(.cfx-reorder-list, .cfx-study-group, .cfx-boundary-collection) {
+  margin-block: 0;
+}
+body .cfx-workspace :is(.cfx-study-name, .cfx-device-name, .cfx-grip) {
+  padding-block: var(--density-control-padding-y);
+  min-height: var(--density-control-min-height);
+}
+body .cfx-workspace :is(.cfx-grid, .cfx-actions, .cfx-study-tools, .cfx-group-heading, .cfx-group-actions, .cfx-device-actions) {
+  gap: var(--density-section-gap);
+}
+body .cfx-workspace .cfx-insertion { height: var(--density-field-gap); }
+body .cfx-workspace :is(details:not(.cfx-row-menu), .cfx-boundary-collection, .cfx-study-group) { padding: var(--density-window-padding); }
+body .cfx-workspace .cfx-row-menu { padding: 0; }
+body .cfx-workspace .cfx-row-menu > summary { min-height: var(--density-control-min-height); }
+body .cfx-workspace :is(h2, h3) { margin-block: 0 var(--density-section-gap); }
+body .cfx-workspace .cfx-inline-toolbar > h3 { margin: 0; }
+body .cfx-workspace .cfx-grid > .cfx-check { min-height: var(--density-control-min-height); }
+body .cfx-workspace .cfx-phase-label { display: none; }
+body .software-dropdown .software-wall-setting > summary {
+  min-height: var(--density-control-min-height);
+  padding-block: var(--density-control-padding-y);
+  line-height: 1.25;
+}
+body .cfx-setup-window > .floating-toolbar-content { padding: 0; }
+body .cfx-setup-panel > .cfx-inspector { padding: 0; }
+body .cfx-physics-fields > * + * { margin-top: 0; }
+body .cfx-workspace .cfx-refinement-row {
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center;
+  gap: var(--density-section-gap); padding: var(--density-row-padding);
+}
+body .cfx-workspace .cfx-refinement-name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding-block: var(--density-control-padding-y); }
+body .cfx-workspace .cfx-refinement-actions { grid-column: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--density-field-gap); }
+body .cfx-workspace .cfx-study-actions { width: clamp(170px, 22cqw, 240px); }
+body .cfx-workspace .cfx-study-actions > button { padding-inline: 6px; }
+body .cfx-workspace .cfx-device-name { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@container cfx-setup (max-width: 540px) {
+  body .cfx-workspace .cfx-study-row { grid-template-columns: minmax(0, 1fr) 28px; }
+  body .cfx-workspace .cfx-study-actions { width: auto; }
+  body .cfx-workspace .cfx-study-name { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.25fr); gap: 4px 8px; }
+  body .cfx-workspace .cfx-study-name small { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body .cfx-workspace .cfx-refinement-row { grid-template-columns: 8px minmax(0, 1fr); }
+  body .cfx-workspace .cfx-refinement-actions { grid-column: 2; }
+}
+body .cfx-setup-window .cfx-header-simulation select {
+  height: var(--density-control-min-height);
+  min-height: var(--density-control-min-height);
+  padding: var(--density-control-padding-y) var(--density-control-padding-x);
+}
+
+/* Compact still needs usable hit targets on touch devices. */
+@media (pointer: coarse) {
+  :root { --density-control-min-height: 36px; }
+  :root[data-density="comfortable"] { --density-control-min-height: 42px; }
 }

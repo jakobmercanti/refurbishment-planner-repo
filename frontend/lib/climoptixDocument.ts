@@ -100,6 +100,12 @@ export const simulationGroupsSchema = z.array(z.object({
     ctx.addIssue({ code: "custom", message: "Simulation group IDs and names must be unique." });
 });
 export type CFDSimulationGroup = z.infer<typeof simulationGroupsSchema>[number];
+const objectCollectionSchema = z.object({
+  id, name: z.string().trim().min(1).max(80),
+  memberIds: z.array(z.string().regex(/^(vent|object):[\w:-]{1,150}$/)).max(3000).default([]),
+}).strict();
+const objectCopySchema = z.object({ id, sourceObjectId: id, name: z.string().trim().min(1).max(120) }).strict();
+export type CFDObjectCollection = z.infer<typeof objectCollectionSchema>;
 const ventOptimization = z
   .object({
     locked: z.boolean().default(true),
@@ -415,6 +421,9 @@ export const cfdScenarioSchema = z
       .default(null),
     vents: z.array(ventSchema).max(500).default([]),
     assetOverrides: z.array(assetOverrideSchema).max(2000).default([]),
+    objectGroups: z.array(objectCollectionSchema).max(100).optional(),
+    objectCopies: z.array(objectCopySchema).max(500).optional(),
+    hiddenObjectIds: z.array(id).max(2000).optional(),
     boundaries: z
       .object({
         groups: z
@@ -449,6 +458,14 @@ export const cfdScenarioSchema = z
   })
   .strict()
   .superRefine((s, c) => {
+    const objectGroups = s.objectGroups ?? [], copies = s.objectCopies ?? [], hidden = s.hiddenObjectIds ?? [];
+    const objectMembers = objectGroups.flatMap(g => g.memberIds);
+    if (new Set(objectGroups.map(g => g.id)).size !== objectGroups.length ||
+        new Set(objectGroups.map(g => g.name.toLowerCase())).size !== objectGroups.length || new Set(objectMembers).size !== objectMembers.length || objectMembers.length > 3000 ||
+        (objectGroups.length === 100 && !objectGroups.some(g => g.id === "objects-default")) ||
+        new Set(copies.map(o => o.id)).size !== copies.length || copies.some(o => copies.some(source => source.id === o.sourceObjectId)) ||
+        new Set(hidden).size !== hidden.length)
+      c.addIssue({ code: "custom", message: "Object groups, copies and hidden IDs must have unique valid membership; copies reference original measured objects." });
     const collections = s.boundaries.collections;
     const members = collections.flatMap(g => g.patchIds);
     if (new Set(collections.map(g => g.id)).size !== collections.length ||

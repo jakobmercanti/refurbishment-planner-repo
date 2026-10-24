@@ -5,6 +5,7 @@ type HelpStep = { heading: string; text: string };
 /** Contextual guidance lives in the native help window, not above editable data. */
 export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   studies: [
+    { heading: "Compact groups", text: "Select a group to highlight it; New simulation adds inside that group. Collapse hides its children without removing them. A collapsed header still accepts grip-only drops. Clear all asks for confirmation and removes all simulations, including archived ones, but keeps the measured building and folders. Undo restores them. Active or unresolved worker submissions block clearing." },
     {
       heading: "Simulations and folders",
       text: "Each simulation uses the shared measured building and independent settings. Add group creates an empty folder. Rename folders inline; use a simulation's actions menu to rename, duplicate, archive or move it. Only grips initiate drag/drop, with insertion previews; Escape cancels. Mouse, touch/pen and Arrow Up/Down are supported, and Move to group is the non-drag alternative. Folder duplication copies its simulations with fresh IDs and cleared validation/history. Deleting a folder keeps its simulations in Ungrouped. Undo restores organizational changes. Files include empty folders and simulation order; imported logs and VTK remain session-only.",
@@ -25,6 +26,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
     },
   ],
   equipment: [
+    { heading: "Groups and simulation-only copies", text: "Use Add object group, then drag grips or Move to group to organize devices and measured objects. Groups can collapse, reorder, duplicate or dissolve without changing the shared building. Edit opens a separate window. Duplicate creates a CFD-only measured-source instance with its own millimetre offset; edit that offset to place the copy, and review overlap/out-of-domain checks. Delete removes a CFD copy or excludes a source object only in this simulation. Removed source objects can be restored from the list. Imported visual-only meshes have no measured copy adapter." },
     {
       heading: "Vents and objects",
       text: "A checked seed room provides room-facing wall and ceiling hosts. Add Supply/Extract creates a device in the draggable equipment list and opens its floating editor. Each device has Edit, Duplicate and Delete. Use the grip or Arrow Up/Down to reorder. Place on face uses a checked 3D host; dragging a marker changes host coordinates, not measured building geometry. Supply/Extract determines flow direction; enter a positive magnitude. A recirculating unit needs separate supply and return devices. Optimization settings are metadata, not an active optimizer. Furniture, people and fixtures remain owned by the shared Floorplan building; their CFD overrides belong to this simulation.",
@@ -35,6 +37,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
     },
   ],
   boundaries: [
+    { heading: "Compact group actions", text: "Conditions, Thermal, Add boundary group and Find surface share the toolbar. Group and surface grips use protected drag/drop; groups can collapse while remaining drop targets. Edit opens the group or surface window. Duplicate copies conditions to an empty group, never duplicate physical faces. Deleting a custom group or assignment returns its surfaces to Default surfaces and preserves the building geometry." },
     {
       heading: "Surface conditions",
       text: "Default surfaces initially contains all checked patches. Add boundary group creates an empty group; drag surface grips between groups, use the Move menu, or create a new group from a surface. Group colours match the 3D viewer and legend. Select a group to inspect its members and conditions. Default-group conditions form the global base; a named group's conditions override that base, and explicit surface overrides take priority. Clear surface overrides in group restores inheritance. Surface type defaults preserve older configurations. Vents remain controlled by their Equipment settings, and object heat/temperature inputs cannot be silently over-constrained. Missing references are reported, not discarded. The Thermal sub-tab contains envelope, sun, weather and applied thermal contracts.",
@@ -53,6 +56,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
     },
   ],
   review: [
+    { heading: "Review, warnings and transfers", text: "Review contains notes and provenance. Warnings & checks contains filterable current diagnostics and Inspect links. Import / export contains editable simulation JSON, preparation ZIP and settings/preflight downloads. Import creates a separate simulation; stale preparation cannot be exported as current. Provider limitations are in this help window." },
     {
       heading: "Validation and export",
       text: "Validate the current source and setup before exporting. The preparation manifest records blocking diagnostics; boundary STL is included only when geometry checks pass. Source geometry is millimetres; exported STL is metres. Preparation and optional Foamlib settings ZIPs are configuration handoffs, not runnable solver cases. A worker must revalidate, construct a complete case, mesh and check it before solving. Review the visible diagnostics, assumptions and provenance hashes.",

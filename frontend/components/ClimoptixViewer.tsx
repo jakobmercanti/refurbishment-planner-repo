@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
+import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
   DoubleSide,
@@ -127,6 +128,7 @@ function ThermalFaceMesh({
       name={face.surfaceId}
       geometry={geometry}
       onPointerDown={(e) => {
+        if (e.button !== 0) return;
         e.stopPropagation();
         onSelect();
       }}
@@ -287,6 +289,7 @@ export function ClimoptixViewer({
   boundaryGroups = [],
   boundarySelection,
 }: Props) {
+  const mouseButtons = useViewerNavigation();
   const thermalVisible = thermalMetric !== "off" && thermalSurfaces.length > 0;
   const thermalPatchIds = useMemo(
     () => new Set(thermalSurfaces.map((f) => f.patchId)),
@@ -421,6 +424,7 @@ export function ClimoptixViewer({
   const isolated =
     isolate && Boolean(selectedPatch || selected?.startsWith("vent:"));
   const onMeshDown = (e: ThreeEvent<PointerEvent>, patch: CFDViewPatch) => {
+    if (e.button !== 0) return;
     if (
       !picking &&
       !patch.id.startsWith("vent:") &&
@@ -737,6 +741,7 @@ export function ClimoptixViewer({
                     name={`refinement:${r.id}`}
                     position={scene(r.centerMm)}
                     onPointerDown={(e) => {
+                      if (e.button !== 0) return;
                       if (
                         e.intersections.some((hit) =>
                           hit.object.name.startsWith("vent:"),
@@ -791,6 +796,7 @@ export function ClimoptixViewer({
                               0,
                             ]}
                             onPointerDown={(e) => {
+                              if (e.button !== 0) return;
                               if (
                                 e.intersections.some((hit) =>
                                   hit.object.name.startsWith("vent:"),
@@ -814,6 +820,7 @@ export function ClimoptixViewer({
             </Bounds>
             <OrbitControls
               makeDefault
+              mouseButtons={mouseButtons}
               enabled={!drag}
               minDistance={0.2}
               maxDistance={1000}

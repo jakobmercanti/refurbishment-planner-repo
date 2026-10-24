@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useViewerContextMenu } from "@/lib/viewerNavigation";
 import { ClimoptixStudies } from "./ClimoptixStudies";
+import { ClimoptixReview } from "./ClimoptixReview";
 import { useCFDJobs } from "./useCFDJobs";
 import { terminalJob } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
@@ -31,8 +33,6 @@ import {
 import {
   downloadCFD,
   preparationInput,
-  preparationPackage,
-  preparationSummary,
   preparationRevision,
   prepareCFD,
   openfoamSettings,
@@ -92,11 +92,13 @@ const HELP = [
 ];
 function DeleteStudy({
   name,
+  count,
   opener,
   onCancel,
   onDelete,
 }: {
   name: string;
+  count?: number;
   opener: HTMLButtonElement;
   onCancel: () => void;
   onDelete: () => void;
@@ -129,7 +131,7 @@ function DeleteStudy({
     <dialog
       className="popup cfx-confirm"
       ref={ref}
-      aria-label="Delete CFD scenario"
+      aria-label={count === undefined ? "Delete CFD scenario" : "Clear all simulations"}
       onCancel={(e) => {
         e.preventDefault();
         onCancel();
@@ -139,7 +141,7 @@ function DeleteStudy({
         <span className="popup-icon">
           <WindowIcon title="Delete simulation" />
         </span>
-        <strong>Delete this simulation?</strong>
+        <strong>{count === undefined ? "Delete this simulation?" : "Delete all simulations?"}</strong>
         <div className="window-header-actions">
           <WindowHelpButton
             title="Delete CFD simulation"
@@ -162,8 +164,7 @@ function DeleteStudy({
       </header>
       <div className="popup-content">
         <p>
-          “{name}” and its CFD settings will be removed. The shared building and
-          assets are kept. Undo can restore the simulation.
+          {count === undefined ? `“${name}” and its CFD settings will be removed.` : `All ${count} simulations, including archived simulations, and their CFD settings will be removed.`} The shared building, assets and groups are kept. Undo can restore the simulations.
         </p>
       </div>
       <footer className="popup-actions">
@@ -171,7 +172,7 @@ function DeleteStudy({
           Cancel
         </button>
         <button className="cfx-danger" onClick={onDelete}>
-          Delete simulation
+          {count === undefined ? "Delete simulation" : "Delete all simulations"}
         </button>
       </footer>
     </dialog>
@@ -253,9 +254,9 @@ export function ClimoptixWorkspace({
       id: string;
       opener: HTMLButtonElement;
     } | null>(null);
-  const [picking, setPicking] = useState<"supply" | "extract" | null>(null),
-    [diagnosticFilter, setDiagnosticFilter] = useState("all");
+  const [picking, setPicking] = useState<"supply" | "extract" | null>(null);
   const [editorReset, setEditorReset] = useState(0);
+  const [clearing, setClearing] = useState<HTMLButtonElement | null>(null);
   const [preparationRetry, setPreparationRetry] = useState(0);
   const [preparationFailure, setPreparationFailure] = useState<{ input: string; message: string } | null>(null);
   const [simulationTab, setSimulationTab] = useState<SimulationTab>("mesh");
@@ -360,6 +361,8 @@ export function ClimoptixWorkspace({
     const boundaryMembershipChanged =
       JSON.stringify(before?.boundaries.collections.map(g => [g.id, g.patchIds])) !==
       JSON.stringify(result.data.boundaries.collections.map(g => [g.id, g.patchIds]));
+    const objectsChanged = JSON.stringify([before?.objectGroups, before?.objectCopies, before?.hiddenObjectIds]) !==
+      JSON.stringify([result.data.objectGroups, result.data.objectCopies, result.data.hiddenObjectIds]);
     if (
       refinementEditor?.studyId === s.id &&
       !result.data.mesh.refinements.some((r) => r.id === refinementEditor.id)
@@ -367,7 +370,7 @@ export function ClimoptixWorkspace({
       setRefinementEditor(null);
     onChange(
       scenarios.map((v) => (v.id === s.id ? result.data : v)),
-      checkpoint || devicesChanged || regionsChanged || boundaryMembershipChanged,
+      checkpoint || devicesChanged || regionsChanged || boundaryMembershipChanged || objectsChanged,
     );
   };
   const thermalReport = scenario ? (thermalReports[scenario.id] ?? null) : null;
@@ -679,10 +682,6 @@ export function ClimoptixWorkspace({
       : activeReport && !stale
         ? activeReport.state
         : "Draft";
-  const diagnostics =
-    activeReport?.diagnostics.filter(
-      (d) => diagnosticFilter === "all" || d.severity === diagnosticFilter,
-    ) ?? [];
   const available = (id: CFDWindowId) =>
     id === "studies" ||
     id === "view" ||
@@ -710,7 +709,7 @@ export function ClimoptixWorkspace({
     const id = ventEditor?.id;
     setVentEditor(null);
     const target = [
-      id ? document.querySelector<HTMLButtonElement>(`.cfx-reorder-item[data-item-id="${CSS.escape(id)}"] .cfx-device-actions button`) : null,
+      id ? document.querySelector<HTMLButtonElement>(`.cfx-reorder-item[data-item-id="${CSS.escape(`vent:${id}`)}"] .cfx-device-actions button`) : null,
       document.querySelector<HTMLSelectElement>(".cfx-phase-select select"),
       document.querySelector<HTMLButtonElement>(".cfx-setup-tabs button[aria-selected=true]"),
       document.querySelector<HTMLButtonElement>(".cfx-view-selector button[aria-expanded]"),
@@ -718,6 +717,24 @@ export function ClimoptixWorkspace({
     target?.focus();
   };
   const deletingStudy = scenarios.find((s) => s.id === deleting?.id);
+  const boundsNavigation = (
+<div className="cfx-bound-tabs" role="tablist" aria-label="Boundary setup"
+              onKeyDown={event => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === "Home" ? "conditions" : event.key === "End" ? "thermal" : boundsTab === "conditions" ? "thermal" : "conditions";
+                if (next === "thermal") openThermal(); else setBoundsTab("conditions");
+                document.getElementById(`cfx-bounds-tab-${next}`)?.focus();
+              }}>
+              <button role="tab" id="cfx-bounds-tab-conditions" aria-controls="cfx-setup-panel-boundaries" aria-selected={boundsTab === "conditions"}
+                tabIndex={boundsTab === "conditions" ? 0 : -1}
+                onClick={() => setBoundsTab("conditions")}>Conditions</button>
+              <button role="tab" id="cfx-bounds-tab-thermal" aria-controls="cfx-bounds-thermal" aria-selected={boundsTab === "thermal"}
+                tabIndex={boundsTab === "thermal" ? 0 : -1}
+                onClick={openThermal}>Thermal</button>
+            </div>
+  );
+  const viewerMenu = useViewerContextMenu(target => !!target.closest(".cfx-viewport") && !target.closest(".floating-toolbar,dialog,[role=dialog],button,input,select,textarea,[role=menu]"), setContextMenu, () => setContextMenu(null));
   return (
     <section
       className="cfx-workspace"
@@ -725,7 +742,11 @@ export function ClimoptixWorkspace({
       data-preparation-state={busy ? "checking" : error || preparationError ? "error" : stale ? "stale" : "checked"}
       data-preparation-stamp={activeReport?.validation.checkedAt}
       aria-label="Climoptix CFD workspace"
+      onPointerMoveCapture={viewerMenu.onPointerMoveCapture}
+      onPointerUpCapture={viewerMenu.onPointerUpCapture}
+      onPointerCancelCapture={viewerMenu.onPointerCancelCapture}
       onPointerDownCapture={event => {
+        viewerMenu.onPointerDownCapture(event);
         const target = event.target as Node;
         event.currentTarget.querySelectorAll<HTMLDetailsElement>(".cfx-row-menu[open]").forEach(menu => {
           if (!menu.contains(target)) menu.open = false;
@@ -763,16 +784,7 @@ export function ClimoptixWorkspace({
             ?.focus();
         }
       }}
-      onContextMenu={(event) => {
-        if (
-          (event.target as Element).closest(
-            ".floating-toolbar, button, input, select, textarea",
-          )
-        )
-          return;
-        event.preventDefault();
-        setContextMenu({ x: event.clientX, y: event.clientY });
-      }}
+      onContextMenu={viewerMenu.onContextMenu}
     >
       {active && (
         <ClimoptixWindowMenu
@@ -841,24 +853,8 @@ export function ClimoptixWorkspace({
       {setupOpen && (
         <FloatingToolbar
           title="Simulation setup"
-          helpTitle="Climoptix CFD"
-          helpSteps={[...CFD_PHASE_HELP[shownTab],
-            ...(shownTab === "mesh" && simulationTab === "monitor" ? CFD_PHASE_HELP.convergence : []),
-            ...(shownTab === "boundaries" && boundsTab === "thermal" ? CFD_PHASE_HELP.thermal : []), ...HELP]}
-          className="cfx-setup-window"
-          defaultPosition={{ x: 20, y: 72 }}
-          initialSize={{ width: 1000, height: 720 }}
-          maxHeight={1000}
-          focusRequest={setupFocus}
-          onClose={() => {
-            setSetupOpen(false);
-            setPicking(null);
-          }}
-        >
-          <div className="cfx-setup">
-            <header className="cfx-setup-heading">
-              <label className="cfx-study-select">
-                Simulation
+          headerContent={<div className="cfx-header-simulation">
+            <span className="cfx-header-current" title={scenario?.name}>{scenario?.name ?? "No simulations yet"}</span>
                 <select
                   aria-label="CFD scenario"
                   value={scenario?.id ?? ""}
@@ -884,7 +880,24 @@ export function ClimoptixWorkspace({
                     </optgroup>
                   ))}
                 </select>
-              </label>
+            <span className={`cfx-state ${status.toLowerCase()}`} title={`Simulation status: ${status}`}>{status}</span>
+          </div>}
+          helpTitle="Climoptix CFD"
+          helpSteps={[...CFD_PHASE_HELP[shownTab],
+            ...(shownTab === "mesh" && simulationTab === "monitor" ? CFD_PHASE_HELP.convergence : []),
+            ...(shownTab === "boundaries" && boundsTab === "thermal" ? CFD_PHASE_HELP.thermal : []), ...HELP]}
+          className="cfx-setup-window"
+          defaultPosition={{ x: 20, y: 72 }}
+          initialSize={{ width: 1000, height: 720 }}
+          maxHeight={1000}
+          focusRequest={setupFocus}
+          onClose={() => {
+            setSetupOpen(false);
+            setPicking(null);
+          }}
+        >
+          <div className="cfx-setup">
+            <header className="cfx-setup-heading">
               <label className="cfx-phase-select">
                 <span className="cfx-phase-label">
                   <span>Phase</span>
@@ -910,9 +923,6 @@ export function ClimoptixWorkspace({
                   ))}
                 </select>
               </label>
-              <span className={`cfx-state ${status.toLowerCase()}`}>
-                {status}
-              </span>
             </header>
             {(error || preparationError) && <div className="cfx-feedback" role="alert"><span>{error || preparationError}</span>
               <button onClick={() => {
@@ -970,21 +980,6 @@ export function ClimoptixWorkspace({
                 </button>
               ))}
             </div>
-            {scenario && shownTab === "boundaries" && <div className="cfx-bound-tabs" role="tablist" aria-label="Boundary setup"
-              onKeyDown={event => {
-                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-                event.preventDefault();
-                const next = event.key === "Home" ? "conditions" : event.key === "End" ? "thermal" : boundsTab === "conditions" ? "thermal" : "conditions";
-                if (next === "thermal") openThermal(); else setBoundsTab("conditions");
-                document.getElementById(`cfx-bounds-tab-${next}`)?.focus();
-              }}>
-              <button role="tab" id="cfx-bounds-tab-conditions" aria-controls="cfx-setup-panel-boundaries" aria-selected={boundsTab === "conditions"}
-                tabIndex={boundsTab === "conditions" ? 0 : -1}
-                onClick={() => setBoundsTab("conditions")}>Conditions</button>
-              <button role="tab" id="cfx-bounds-tab-thermal" aria-controls="cfx-bounds-thermal" aria-selected={boundsTab === "thermal"}
-                tabIndex={boundsTab === "thermal" ? 0 : -1}
-                onClick={openThermal}>Thermal</button>
-            </div>}
             <section
               role="tabpanel"
               id="cfx-setup-panel-studies"
@@ -1009,6 +1004,7 @@ export function ClimoptixWorkspace({
                 onOrder={(next, groups) => onChange(next, true, groups)}
                 onAdd={add}
                 onDelete={(id, opener) => setDeleting({ id, opener })}
+                onClear={setClearing}
                 onImport={(file) => void importScenario(file)}
                 entries={jobs}
                 worker={workerAdapter}
@@ -1033,7 +1029,7 @@ export function ClimoptixWorkspace({
                     className="cfx-inspector"
                     aria-label={`${panel.label} settings`}
                   >
-                    {panel.id !== "mesh" && <h2>{panel.label}</h2>}
+                    {panel.id === "domain" && <h2>{panel.label}</h2>}
                     {panel.id === "domain" && (
                       <DomainPanel
                         project={project}
@@ -1044,6 +1040,7 @@ export function ClimoptixWorkspace({
                     )}
                     {panel.id === "equipment" && (
                       <EquipmentPanel
+                        checked={!stale}
                         scenario={scenario}
                         report={activeReport}
                         selected={selected}
@@ -1069,6 +1066,7 @@ export function ClimoptixWorkspace({
                           </p>
                         ) : null}
                         <BoundariesPanel
+                          navigation={boundsTab === "conditions" ? boundsNavigation : undefined}
                           checked={!stale}
                           scenario={scenario}
                           report={activeReport}
@@ -1156,159 +1154,9 @@ export function ClimoptixWorkspace({
                         }
                       />
                     )}
-                    {panel.id === "review" && (
-                      <>
-                        <label>
-                          Simulation notes
-                          <textarea
-                            value={scenario.description}
-                            maxLength={2000}
-                            onChange={(e) =>
-                              change({
-                                ...scenario,
-                                description: e.target.value,
-                              })
-                            }
-                          />
-                        </label>
-                        <div className="cfx-actions">
-                          <button onClick={exportScenario}>
-                            Export simulation JSON
-                          </button>
-                          <label className="cfx-file">
-                            Import simulation
-                            <input
-                              aria-label="Import CFD scenario"
-                              type="file"
-                              accept=".json,application/json"
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                e.target.value = "";
-                                if (f) void importScenario(f);
-                              }}
-                            />
-                          </label>
-                          <button
-                            className="cfx-primary"
-                            disabled={stale || !!error}
-                            onClick={() => {
-                              try {
-                                if (activeReport)
-                                  downloadCFD(
-                                    preparationPackage(
-                                      scenario,
-                                      activeReport,
-                                      revision,
-                                    ),
-                                    `${scenario.name}.climoptix.zip`,
-                                  );
-                              } catch (e) {
-                                setError(
-                                  e instanceof Error
-                                    ? e.message
-                                    : "Export failed.",
-                                );
-                              }
-                            }}
-                          >
-                            Export preparation ZIP
-                          </button>
-                          <button
-                            disabled={stale || !!error}
-                            onClick={() => {
-                              try {
-                                if (activeReport)
-                                  downloadCFD(
-                                    new Blob(
-                                      [
-                                        preparationSummary(
-                                          scenario,
-                                          activeReport,
-                                          revision,
-                                        ),
-                                      ],
-                                      { type: "text/plain;charset=utf-8" },
-                                    ),
-                                    `${scenario.name}-preflight.txt`,
-                                  );
-                              } catch (e) {
-                                setError(
-                                  e instanceof Error
-                                    ? e.message
-                                    : "Report export failed.",
-                                );
-                              }
-                            }}
-                          >
-                            Download settings &amp; preflight
-                          </button>
-                        </div>
-                        {activeReport && (
-                          <>
-                            <dl className="cfx-provenance">
-                              <dt>Geometry SHA-256</dt>
-                              <dd>{activeReport.validation.sourceHash}</dd>
-                              <dt>Configuration SHA-256</dt>
-                              <dd>
-                                {activeReport.validation.configurationHash}
-                              </dd>
-                              <dt>Checked</dt>
-                              <dd>
-                                {new Date(
-                                  activeReport.validation.checkedAt,
-                                ).toLocaleString()}
-                              </dd>
-                              <dt>Surface</dt>
-                              <dd>
-                                {activeReport.surface.exportable
-                                  ? `${activeReport.surface.triangleCount} boundary triangles · STL in metres`
-                                  : `Blocked · ${activeReport.surface.badEdges} non-manifold/open edges`}
-                              </dd>
-                            </dl>
-                            <h3>Provider limitations</h3>
-                            <ul>
-                              {activeReport.limitations.map((v) => (
-                                <li key={v}>{v}</li>
-                              ))}
-                            </ul>
-                          </>
-                        )}
-                        <h3>Preflight diagnostics</h3>
-                        <label>
-                          Severity
-                          <select
-                            aria-label="CFD diagnostic severity"
-                            value={diagnosticFilter}
-                            onChange={(e) =>
-                              setDiagnosticFilter(e.target.value)
-                            }
-                          >
-                            <option value="all">All</option>
-                            <option value="error">Blocking errors</option>
-                            <option value="warning">Warnings</option>
-                            <option value="info">Information</option>
-                          </select>
-                        </label>
-                        {diagnostics.map((d, i) => (
-                          <article
-                            className={`cfx-diagnostic ${d.severity}`}
-                            key={`${d.code}:${d.objectId}:${i}`}
-                          >
-                            <strong>
-                              {d.severity.toUpperCase()} · {d.group}
-                            </strong>
-                            <p>{d.message}</p>
-                            <small>{d.repair}</small>
-                            {d.objectId && (
-                              <button onClick={() => jump(d.objectId, d.group)}>
-                                Inspect {d.objectId}
-                              </button>
-                            )}
-                          </article>
-                        ))}
-                        {!activeReport && <p>No validation report yet.</p>}
-                      </>
-                    )}
+                    {panel.id === "review" && <ClimoptixReview scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error}
+                      onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
+                      onRefresh={() => setPreparationRetry(x => x + 1)} onInspect={jump} />}
                   </section>
                 </section>
               ))}
@@ -1322,6 +1170,8 @@ export function ClimoptixWorkspace({
                   className="cfx-setup-panel cfx-thermal-panel"
                 >
                   {thermalOpen && (
+                    <>
+                    <div className="cfx-inline-toolbar cfx-thermal-navigation">{boundsTab === "thermal" && boundsNavigation}</div>
                     <ThermalEnvelopeWindow
                       embedded
                       key={scenario.id}
@@ -1356,6 +1206,7 @@ export function ClimoptixWorkspace({
                       }}
                       onClose={() => setBoundsTab("conditions")}
                     />
+                    </>
                   )}
                 </section>
                 <section
@@ -1438,6 +1289,10 @@ export function ClimoptixWorkspace({
           opener={deleting.opener}
           onCancel={() => setDeleting(null)}
           onDelete={() => {
+            const entry = jobs[deletingStudy.id];
+            if (entry?.submitting || entry?.dispatched || (entry?.job && !terminalJob(entry.job))) {
+              setDeleting(null); setError("Resolve the active or unknown worker submission before deleting this simulation."); return;
+            }
             clearLog(deletingStudy.id);
             onChange(
               scenarios.filter((s) => s.id !== deletingStudy.id),
@@ -1455,6 +1310,20 @@ export function ClimoptixWorkspace({
           }}
         />
       )}
+      {clearing && <DeleteStudy name="" count={scenarios.length} opener={clearing} onCancel={() => setClearing(null)} onDelete={() => {
+        if (scenarios.some(s => { const entry = jobs[s.id]; return entry?.submitting || entry?.dispatched || (entry?.job && !terminalJob(entry.job)); })) {
+          setClearing(null); setError("Resolve active or unknown worker submissions before clearing simulations."); return;
+        }
+        scenarios.forEach(s => clearLog(s.id));
+        importRead.current++;
+        abort.current?.abort(); exportAbort.current?.abort(); setExporting(false);
+        thermalAbort.current?.abort();
+        onChange([], true);
+        setClearing(null); setSelectedId(""); setSelected(null); setPicking(null);
+        setRefinementEditor(null); setVentEditor(null); setReports({}); setThermalReports({});
+        setVTKFile(null); setThermalTask({ studyId: "", busy: false, error: "" });
+        setError(""); setMessage(""); openPhase("studies");
+      }} />}
     </section>
   );
 }
