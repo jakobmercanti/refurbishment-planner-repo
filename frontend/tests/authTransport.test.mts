@@ -1,6 +1,6 @@
 import test, { beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { AuthRequestError, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, updatePassword } from "../lib/commercialAuth.ts";
+import { AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, updatePassword } from "../lib/commercialAuth.ts";
 
 const sessionKey = "freefloorplan3d:commercial-session:v1";
 const storage = new Map<string, string>();
@@ -180,4 +180,76 @@ test("local verification and recovery can return to the production project's app
     globalThis.fetch = async () => assert.fail("Invalid return addresses must not be used");
     await assert.rejects(resendVerificationEmail("test@example.invalid"), /return address is not configured correctly/);
   }
+});
+
+function recoveryLocation(fragment: string) {
+  const location = new URL("http://localhost:3000/account/" + fragment);
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {
+    location, dispatchEvent() {}, history: { replaceState: (_state: unknown, _title: string, path: string) => { location.href = new URL(path, location).href; } },
+  } });
+  return location;
+}
+const recoveryHash = "#access_token=mock-recovery&refresh_token=mock-refresh&expires_in=3600&type=recovery";
+const recoveryKey = "freefloorplan3d:password-recovery:v1";
+
+test("recovery links are verified once, keep reset intent after hash removal and never persist a second copy of credentials", async () => {
+  const location = recoveryLocation(recoveryHash);
+  let requests = 0;
+  globalThis.fetch = async (url, init) => {
+    requests++; assert.equal(url, "/auth-api/user");
+    assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer mock-recovery");
+    return Response.json(session.user);
+  };
+  assert.deepEqual(await Promise.all([acceptAuthRedirect(), acceptAuthRedirect()]), ["recovery", "recovery"]);
+  assert.equal(requests, 1); assert.equal(location.hash, "");
+  assert.equal(await acceptAuthRedirect(), "recovery");
+  const marker = JSON.parse(storage.get(recoveryKey)!);
+  assert.equal(marker.userId, session.user.id); assert.ok(marker.expiresAt > Date.now() / 1000);
+  assert.doesNotMatch(storage.get(recoveryKey)!, /mock-recovery|mock-refresh/);
+  storage.set(recoveryKey, JSON.stringify({ ...marker, expiresAt: 0 }));
+  assert.equal(await acceptAuthRedirect(), null);
+});
+
+test("invalid, rejected or expired recovery links never silently become successful normal sign-in", async () => {
+  for (const fragment of ["#error=access_denied&error_code=otp_expired", "#type=recovery&access_token=incomplete"]) {
+    const location = recoveryLocation(fragment);
+    globalThis.fetch = async () => assert.fail("Malformed links must not reach the provider");
+    await assert.rejects(acceptAuthRedirect(), error => error instanceof AuthRequestError && error.code === "recovery_link_invalid");
+    assert.equal(location.hash, ""); assert.equal(storage.has(sessionKey), false);
+  }
+  recoveryLocation(recoveryHash);
+  globalThis.fetch = async () => Response.json({ msg: "expired" }, { status: 401 });
+  await assert.rejects(acceptAuthRedirect(), /expired or has already been used/);
+  assert.equal(storage.has(sessionKey), false);
+});
+
+test("a recovery marker does not authorize a password update, and normal sign-in and sign-out clear old reset intent", async () => {
+  recoveryLocation("");
+  storage.set(recoveryKey, JSON.stringify({ userId: session.user.id, expiresAt: Date.now() / 1000 + 3600 }));
+  globalThis.fetch = async () => assert.fail("A marker is not authentication");
+  assert.equal(await acceptAuthRedirect(), null);
+  await assert.rejects(updatePassword("not-a-real-password"), /reset link has expired/);
+  globalThis.fetch = async () => Response.json(session);
+  storage.set(recoveryKey, "{}");
+  await signIn("test@example.invalid", "not-a-real-password");
+  assert.equal(storage.has(recoveryKey), false);
+  storage.set(recoveryKey, "{}");
+  await signOut(); assert.equal(storage.size, 0);
+});
+
+test("a sign-out while a recovery lookup is in flight cannot be undone by the late response", async () => {
+  recoveryLocation(recoveryHash);
+  let complete: (response: Response) => void;
+  globalThis.fetch = () => new Promise(resolve => { complete = resolve; });
+  const pending = acceptAuthRedirect();
+  await signOut();
+  complete!(Response.json(session.user));
+  await assert.rejects(pending, /account session changed/);
+  assert.equal(storage.has(sessionKey), false);
+});
+
+test("password updates cannot silently change a different account after a session switch", async () => {
+  storage.set(sessionKey, JSON.stringify({ ...session, expires_at: Date.now() / 1000 + 3600 }));
+  globalThis.fetch = async () => assert.fail("No password should be sent for a different account");
+  await assert.rejects(updatePassword("not-a-real-password", "different-user"), /signed-in account changed/);
 });

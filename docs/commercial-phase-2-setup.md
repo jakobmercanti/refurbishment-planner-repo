@@ -48,6 +48,19 @@ See the root and `frontend/.env.example` for the full variable names. Leave blan
   can fall back to the site root, which is not the account/recovery page. Use a separate Supabase project for
   unrestricted development email/redirect tests.
 
+### Password recovery acceptance check
+
+Open an authorized recovery link with mocked credentials in the account browser
+tests. A recovery session must show **Set a new password**, not **Account ready**;
+it must survive a reload after the token fragment is removed. The form requires
+matching new passwords, names the affected account, and returns to sign-in after
+a successful save and sign-out. The signed-in account also offers **Change
+password** for a reset link that was already consumed by an older app version.
+Expired/used links offer a new reset request rather than a success screen. The
+tab-local recovery marker is UI state only, never authorization; password updates
+still require the provider-validated user session. Never test by changing a real
+user's password or automatically opening their reset email.
+
 ## Private R2 bucket
 
 Create a private bucket; do not enable public reads. Create an S3-compatible credential scoped to that bucket and set `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` only on the API and worker. Add browser CORS for the exact planner origin with `PUT`, `GET`, and `HEAD`, allow the `Content-Type` request header, and expose `ETag` if operational monitoring needs it. The application issues short-lived, object-specific signed URLs.

@@ -8,6 +8,7 @@ export interface AuthSession {
 }
 
 const SESSION_KEY = "freefloorplan3d:commercial-session:v1";
+const RECOVERY_KEY = "freefloorplan3d:password-recovery:v1";
 export const AUTH_SESSION_CHANGED = "freefloorplan3d:auth-session-changed";
 let refreshInFlight: Promise<AuthSession | null> | null = null;
 let sessionChannel: BroadcastChannel | null = null;
@@ -15,6 +16,7 @@ let sessionRequest: Promise<void> | null = null;
 let pendingSessionRequestId: string | null = null;
 let sessionRevision = 0;
 let canRequestSessionFromTabs = true;
+let authRedirectInFlight: Promise<"recovery" | "session" | null> | null = null;
 
 // Share only between live same-origin tabs. Tokens remain in sessionStorage,
 // never in URLs, localStorage, or an opener on the external billing page.
@@ -75,7 +77,7 @@ function saveSession(session: AuthSession | null, broadcast = true) {
   canRequestSessionFromTabs = session !== null;
   if (!session) pendingSessionRequestId = null;
   if (session) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  else sessionStorage.removeItem(SESSION_KEY);
+  else { sessionStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(RECOVERY_KEY); }
   connectSessionTabs();
   if (broadcast) sessionChannel?.postMessage({ type: "changed", session });
   window.dispatchEvent(new Event(AUTH_SESSION_CHANGED));
@@ -173,6 +175,7 @@ export async function signIn(email: string, password: string): Promise<AuthSessi
   const result = await authRequest<Record<string, unknown>>("token?grant_type=password", { email: email.trim(), password });
   const session = normalizeSession(result);
   if (!session) throw new Error("Sign-in did not return a valid session.");
+  sessionStorage.removeItem(RECOVERY_KEY);
   saveSession(session);
   return session;
 }
@@ -182,6 +185,7 @@ export async function signUp(email: string, password: string): Promise<AuthSessi
   const session = normalizeSession(result);
   const user = result.user && typeof result.user === "object" ? result.user as Record<string, unknown> : result;
   if (!session && (typeof user.id !== "string" || !user.id)) throw new Error("The account service returned an unexpected response. Please try again.");
+  sessionStorage.removeItem(RECOVERY_KEY);
   saveSession(session);
   return session;
 }
@@ -214,10 +218,19 @@ export async function sendPasswordReset(email: string): Promise<void> {
   await authRequest("recover?redirect_to=" + encodeURIComponent(accountRedirect()), { email: email.trim() });
 }
 
-export async function updatePassword(password: string): Promise<void> {
+export async function updatePassword(password: string, expectedUserId?: string): Promise<void> {
   const session = await currentSession();
-  if (!session) throw new Error("The password reset link has expired. Request a new one.");
-  await authRequest("user", { password }, session.access_token, "PUT");
+  if (!session) throw new AuthRequestError("The password reset link has expired. Request a new one.", 401, "recovery_link_invalid");
+  if (expectedUserId && session.user.id !== expectedUserId) throw new AuthRequestError("The signed-in account changed. Open a new password reset link for the intended account.", 401, "recovery_link_invalid");
+  try { await authRequest("user", { password }, session.access_token, "PUT"); }
+  catch (error) {
+    if (error instanceof AuthRequestError && [401, 403].includes(error.status)) {
+      sessionStorage.removeItem(RECOVERY_KEY);
+      throw new AuthRequestError("The password reset session has expired. Request a new password reset link below.", error.status, "recovery_link_invalid");
+    }
+    throw error;
+  }
+  sessionStorage.removeItem(RECOVERY_KEY);
 }
 
 export async function signOut(): Promise<void> {
@@ -228,18 +241,59 @@ export async function signOut(): Promise<void> {
 }
 
 export async function acceptAuthRedirect(): Promise<"recovery" | "session" | null> {
-  if (typeof window === "undefined" || !window.location.hash) return null;
+  // Strict Mode can initialize twice while the first lookup is pending. Consume
+  // the link once and retain reset intent locally after its URL is cleaned.
+  if (!authRedirectInFlight) authRedirectInFlight = consumeAuthRedirect().finally(() => { authRedirectInFlight = null; });
+  return authRedirectInFlight;
+}
+
+async function consumeAuthRedirect(): Promise<"recovery" | "session" | null> {
+  if (typeof window === "undefined") return null;
+  if (!window.location.hash) {
+    try {
+      const marker = JSON.parse(sessionStorage.getItem(RECOVERY_KEY) ?? "null") as { userId?: string; expiresAt?: number } | null;
+      const session = readStoredSession();
+      if (marker && session && marker.userId === session.user.id && typeof marker.expiresAt === "number" && marker.expiresAt > Date.now() / 1000) return "recovery";
+      sessionStorage.removeItem(RECOVERY_KEY);
+    } catch { sessionStorage.removeItem(RECOVERY_KEY); }
+    return null;
+  }
   const values = new URLSearchParams(window.location.hash.slice(1));
+  const clearHash = () => window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  if (values.has("error") || values.has("error_code")) {
+    clearHash(); sessionStorage.removeItem(RECOVERY_KEY);
+    throw new AuthRequestError("This email link has expired or has already been used. Request a new password reset link below.", 400, "recovery_link_invalid");
+  }
   const type = values.get("type");
   const accessToken = values.get("access_token");
   const refreshToken = values.get("refresh_token");
-  if (!accessToken || !refreshToken) return null;
+  if (!accessToken || !refreshToken) {
+    if (type === "recovery") {
+      clearHash(); sessionStorage.removeItem(RECOVERY_KEY);
+      throw new AuthRequestError("This reset link is incomplete. Request a new password reset link below.", 400, "recovery_link_invalid");
+    }
+    return null;
+  }
   let user: AuthSession["user"];
+  const revision = sessionRevision;
   try { user = await authRequest<AuthSession["user"]>("user", undefined, accessToken); }
-  catch { return null; }
-  const session = normalizeSession({ access_token: accessToken, refresh_token: refreshToken, expires_in: Number(values.get("expires_in") ?? 3600), user });
-  if (!session) return null;
+  catch (error) {
+    if (error instanceof AuthRequestError && [400, 401, 403].includes(error.status)) {
+      clearHash(); sessionStorage.removeItem(RECOVERY_KEY);
+      throw new AuthRequestError("This email link has expired or has already been used. Request a new password reset link below.", error.status, "recovery_link_invalid");
+    }
+    throw error;
+  }
+  const expiresIn = Number(values.get("expires_in") ?? 3600);
+  if (!Number.isFinite(expiresIn) || expiresIn <= 0 || expiresIn > 86400 || revision !== sessionRevision) {
+    clearHash(); sessionStorage.removeItem(RECOVERY_KEY);
+    throw new AuthRequestError("This reset link is invalid or the account session changed. Request a new password reset link below.", 400, "recovery_link_invalid");
+  }
+  const session = normalizeSession({ access_token: accessToken, refresh_token: refreshToken, expires_in: expiresIn, user });
+  if (!session) throw new AuthRequestError("This email link could not be verified. Request a new password reset link below.", 400, "recovery_link_invalid");
+  if (type === "recovery") sessionStorage.setItem(RECOVERY_KEY, JSON.stringify({ userId: session.user.id, expiresAt: session.expires_at }));
+  else sessionStorage.removeItem(RECOVERY_KEY);
   saveSession(session);
-  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  clearHash();
   return type === "recovery" ? "recovery" : "session";
 }
