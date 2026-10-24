@@ -1,6 +1,7 @@
 import { plansTestPage, PLANS_TEST_VERSION } from './plans-test-page.mjs';
 import { plansPage, PLANS_PAGE_VERSION } from './plans-page.mjs';
 import { cfdWorkerProxy } from './cfd-worker-proxy.mjs';
+import { authProxy } from './auth-proxy.mjs';
 
 const BASE = '/planner';
 const googleDomainSources = 'com ad ae com.af com.ag al am co.ao com.ar as at com.au az ba com.bd be bf bg com.bh bi bj co.bw by com.bz ca cd cf cg ci co.ck cl cm cn com.co co.cr com.cy cz de dj dk dm com.do dz com.ec ee com.eg es com.et fi com.fj fm fr ga ge gg com.gh com.gi gl gm gr com.gt gy com.hk hn hr ht hu co.id ie co.il im co.in iq is it je com.jm jo co.jp co.ke com.kh ki kg co.kr com.kw kz la com.lb li lk co.ls lt lu lv com.ly co.ma md me mg mk ml com.mm mn com.mt mu mv mw com.mx com.my co.mz com.na com.ng ni ne nl no com.np nr nu co.nz com.om com.pa com.pe com.pg com.ph com.pk pl pn com.pr ps pt com.py com.qa ro ru rw com.sa com.sb sc se com.sg sh si sk com.sl sn so sm sr st com.sv td tg co.th com.tj tl tm tn to com.tr tt com.tw co.tz com.ua co.ug co.uk com.uy com.uz com.vc com.ve co.vi com.vn vu ws rs co.za co.zm co.zw cat'.split(' ').map(suffix => `https://www.google.${suffix}`).join(' ');
@@ -35,6 +36,7 @@ export default {
     if (url.pathname === BASE + '/index.html') { url.pathname = BASE + '/'; return Response.redirect(url, 308); }
     if (!url.pathname.startsWith(`${BASE}/`)) return new Response('Not found', { status: 404 });
     const path = url.pathname.slice(BASE.length);
+    if (path.startsWith('/auth-api/')) return secureRespond(await authProxy(request, path.slice('/auth-api'.length), env));
     if (['GET', 'HEAD'].includes(request.method) && ((path === '/account/' || path === '/account') && url.searchParams.get('tab') === 'plans' || path === '/billing/' || path === '/billing')) {
       url.pathname = BASE + '/plans/';
       url.searchParams.delete('tab');

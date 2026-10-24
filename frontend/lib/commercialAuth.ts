@@ -94,20 +94,42 @@ function readStoredSession(): AuthSession | null {
   }
 }
 
-async function authRequest<T>(path: string, body?: unknown, accessToken?: string): Promise<T> {
-  const { url, key } = configuration();
-  const response = await fetch(`${url}/auth/v1/${path}`, {
-    signal: AbortSignal.timeout(20_000),
-    method: body === undefined ? "GET" : "POST",
-    headers: { apikey: key, ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const result = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (!response.ok) {
-    const known = typeof result.msg === "string" ? result.msg : typeof result.message === "string" ? result.message : "Account request failed.";
-    throw new AuthRequestError(known.slice(0, 240), response.status);
+async function authRequest<T>(path: string, body?: unknown, accessToken?: string, method = body === undefined ? "GET" : "POST"): Promise<T> {
+  const { key } = configuration();
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  if (typeof window !== "undefined" && window.location?.origin) {
+    const origin = new URL(window.location.origin);
+    const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname);
+    if (origin.protocol !== "https:" && !(origin.protocol === "http:" && loopback)) {
+      throw new Error("For secure account access, use HTTPS or open this app at http://localhost:3000 on this computer.");
+    }
   }
-  return result as T;
+  try {
+    // Never retry password/sign-up/refresh requests automatically: the provider
+    // may have accepted a request even when its response could not be read.
+    const response = await fetch(`${base}/auth-api/${path}`, {
+      signal: AbortSignal.timeout(20_000), method,
+      cache: "no-store", credentials: "omit", redirect: "error", referrerPolicy: "no-referrer",
+      headers: { apikey: key, ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const value: unknown = response.status === 204 ? {} : await response.json().catch(() => null);
+    const result = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+    if (!response.ok) {
+      const known = result && [result.msg, result.message, result.error_description].find(value => typeof value === "string");
+      const message = response.status === 429 ? "Too many account requests. Please wait a little before trying again."
+        : response.status >= 500 ? "Account services are temporarily unavailable. Please try again in a moment."
+        : typeof known === "string" ? known.slice(0, 240) : "The account request could not be completed. Please try again.";
+      throw new AuthRequestError(message, response.status);
+    }
+    if (!result) throw new AuthRequestError("The account service returned an unexpected response. Please try again.", 502);
+    return result as T;
+  } catch (error) {
+    if (error instanceof AuthRequestError) throw error;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new Error("You are offline. Reconnect to the internet, then try again.");
+    if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new Error("The account request timed out. Please try again. If you were creating an account, check your email first.");
+    throw new Error("Cannot reach account services. Check your connection and try again. If you were creating an account, check your email first.");
+  }
 }
 
 function normalizeSession(value: Record<string, unknown>): AuthSession | null {
@@ -174,12 +196,7 @@ export async function sendPasswordReset(email: string): Promise<void> {
 export async function updatePassword(password: string): Promise<void> {
   const session = await currentSession();
   if (!session) throw new Error("The password reset link has expired. Request a new one.");
-  const { url, key } = configuration();
-  const response = await fetch(`${url}/auth/v1/user`, {
-    method: "PUT", headers: { apikey: key, Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
-  });
-  if (!response.ok) throw new Error("The password could not be updated. Request a fresh reset link and try again.");
+  await authRequest("user", { password }, session.access_token, "PUT");
 }
 
 export async function signOut(): Promise<void> {
