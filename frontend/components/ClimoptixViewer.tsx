@@ -5,7 +5,6 @@ import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
 import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
-  Box3,
   Mesh,
   DoubleSide,
   Float32BufferAttribute,
@@ -70,7 +69,7 @@ function hostLocation(patch: CFDPatch, p: Vec3): [number, number] | null {
     Math.max(0, Math.min(1, dot(delta, h.vAxis) / h.heightMm)),
   ];
 }
-function Frame({ request, focus, target }: { request: string; focus: string; target: string }) {
+function Frame({ request }: { request: string }) {
   const bounds = useBounds();
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -78,15 +77,6 @@ function Frame({ request, focus, target }: { request: string; focus: string; tar
     });
     return () => cancelAnimationFrame(id);
   }, [bounds, request]);
-  useEffect(() => {
-    if (!target) return;
-    const [low, high] = JSON.parse(target) as [Vec3, Vec3];
-    const box = new Box3(new Vector3(...scene(low)), new Vector3(...scene(high)));
-    // Z changes handedness at the renderer boundary; normalize after conversion.
-    const min = box.min.clone().min(box.max), max = box.min.clone().max(box.max);
-    const id = requestAnimationFrame(() => bounds.refresh(new Box3(min, max).expandByScalar(.25)).clip().fit());
-    return () => cancelAnimationFrame(id);
-  }, [bounds, focus, target]);
   return null;
 }
 interface Props {
@@ -100,8 +90,7 @@ interface Props {
   onViewSettings: (open: boolean) => void;
   stale: boolean;
   selected: string | null;
-  selectionFocus?: number;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   picking: CFDVent | boolean;
   onHostPick: (patchId: string, u: number, v: number) => void;
   onMoveVent: (id: string, u: number, v: number) => void;
@@ -288,7 +277,6 @@ export function ClimoptixViewer({
   onViewSettings,
   stale,
   selected,
-  selectionFocus = 0,
   onSelect,
   picking,
   onHostPick,
@@ -440,31 +428,6 @@ export function ClimoptixViewer({
   );
   const isolated =
     isolate && Boolean(selectedPatch || selected?.startsWith("vent:"));
-  const selectedRegion = refinements.find(r => `refinement:${r.id}` === selected);
-  const selectedVent = scenario.vents.find(v => `vent:${v.id}` === selected);
-  const selectedHost = patches.find(p => p.id === selectedVent?.host.patchId)?.host;
-  const selectedRoom = selectedVent ? patches.find(p => p.id === selectedVent.host.patchId)?.roomId : selectedPatch?.roomId;
-  const scopeIncludesSelection = !selectedRoom || visibleRooms.has(selectedRoom);
-  const previousSelection = useRef({ selected, selectionFocus });
-  useEffect(() => {
-    const explicit = previousSelection.current.selected !== selected || previousSelection.current.selectionFocus !== selectionFocus;
-    previousSelection.current = { selected, selectionFocus };
-    if (!explicit || scopeIncludesSelection) return;
-    const frame = requestAnimationFrame(() => setScope("building"));
-    return () => cancelAnimationFrame(frame);
-  }, [selectionFocus, selected, scopeIncludesSelection]);
-  const focusPoints = selectedRegion ? [
-    selectedRegion.centerMm.map((v, i) => v - selectedRegion.sizeMm[i] / 2) as Vec3,
-    selectedRegion.centerMm.map((v, i) => v + selectedRegion.sizeMm[i] / 2) as Vec3,
-  ] : selectedVent && selectedHost ? ventFootprint(selectedVent, selectedHost) :
-    selectedPatch ? (positions.get(selectedPatch.id) ?? basePositions.get(selectedPatch.id) ?? []).reduce<Vec3[]>((points, _, i, values) => {
-      if (i % 3 === 0) points.push([values[i] * 1000, -values[i + 2] * 1000, values[i + 1] * 1000]);
-      return points;
-    }, []) : [];
-  const focusTarget = focusPoints.length ? JSON.stringify(focusPoints.reduce(
-    ([low, high], point) => [low.map((v, i) => Math.min(v, point[i])), high.map((v, i) => Math.max(v, point[i]))],
-    [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]],
-  )) : "";
   const onMeshDown = (e: ThreeEvent<PointerEvent>, patch: CFDViewPatch) => {
     if (e.button !== 0) return;
     if (picking && patch.id.startsWith("vent:")) return;
@@ -659,6 +622,7 @@ export function ClimoptixViewer({
             frameloop="demand"
             dpr={[1, 1.5]}
             camera={{ position: [10, 8, 11], fov: 42 }}
+            onPointerMissed={event => { if (event.button === 0) onSelect(null); }}
           >
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
@@ -673,8 +637,6 @@ export function ClimoptixViewer({
               )}
               <Frame
                 request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit}`}
-                focus={`${selected}:${selectionFocus}:${viewScope.id}`}
-                target={drag || !scopeIncludesSelection ? "" : focusTarget}
               />
               {displayPatches
                 .filter(

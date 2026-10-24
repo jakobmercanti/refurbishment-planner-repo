@@ -7,6 +7,7 @@ import { samplingPlanes } from "@/lib/climoptixWorkflow";
 import { CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
 import { CFDNumber, Parameters, MeshPanel } from "./ClimoptixPanels";
 import { WindowHelpButton } from "./WindowHelpButton";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 
 export type SimulationTab = "mesh" | "run" | "monitor" | "post";
 
@@ -26,6 +27,7 @@ function RunPanel({
   exportDisabled,
   onConvergence,
   connection,
+  workerControls,
 }: {
   scenario: CFDScenario;
   onChange: (s: CFDScenario) => void;
@@ -34,13 +36,21 @@ function RunPanel({
   exportDisabled: boolean;
   onConvergence: () => void;
   connection?: RunConnection;
+  workerControls?: ReactNode;
 }) {
   const physics = scenario.physics;
   return (
-    <>
-      <p className="cfx-connection-status" role="status">
-        {connection?.connected ? "Worker connected" : "Solver not connected"}
-      </p>
+    <div data-cfx-collapse-root className="cfx-run-panel">
+      <div className="cfx-panel-actions">
+        <button className="cfx-primary" aria-label="Run solver"
+          disabled={!connection?.canRun || connection.busy || scenario.archived}
+          title={connection?.blockedReason || (!connection?.connected ? "Sign in and connect the OpenFOAM worker" : undefined)}
+          onClick={() => connection?.onRun()}>▶ Play</button>
+        <button disabled={exportDisabled || exporting} onClick={onExport}>{exporting ? "Exporting…" : "Export OpenFOAM settings"}</button>
+        <button onClick={onConvergence}>Open monitor</button>
+        <CFDCollapseAll />
+      </div>
+      {workerControls}
       <details open><summary>Simulation &amp; resources</summary>
       <div className="cfx-grid">
         <label>
@@ -144,29 +154,7 @@ function RunPanel({
           }
         />
       </details>
-      <div className="cfx-actions">
-        <button
-          className="cfx-primary"
-          disabled={!connection?.canRun || connection.busy || scenario.archived}
-          onClick={() => connection?.onRun()}
-          title={
-            connection?.blockedReason ||
-            (connection?.canRun
-              ? "Validate and submit this simulation"
-              : connection?.connected
-                ? "The worker does not support Run"
-                : "No OpenFOAM worker is connected")
-          }
-          aria-label="Run solver"
-        >
-          ▶ Play
-        </button>
-        <button disabled={exportDisabled || exporting} onClick={onExport}>
-          {exporting ? "Exporting…" : "Export OpenFOAM settings"}
-        </button>
-      </div>
-      <button onClick={onConvergence}>Open monitor</button>
-    </>
+    </div>
   );
 }
 
@@ -326,6 +314,7 @@ export function ClimoptixSimulation({
   onShowRefinements,
   onEditRefinement,
   connection,
+  workerControls,
 }: {
   tab: SimulationTab;
   onTab: (t: SimulationTab) => void;
@@ -342,6 +331,7 @@ export function ClimoptixSimulation({
   onShowRefinements: () => void;
   onEditRefinement: (id: string) => void;
   connection?: RunConnection;
+  workerControls?: ReactNode;
   onVTK: (f: File) => void;
 }) {
   return (
@@ -426,6 +416,7 @@ export function ClimoptixSimulation({
           exportDisabled={exportDisabled}
           onConvergence={onConvergence}
           connection={connection}
+          workerControls={workerControls}
         />
       </section>
       <section role="tabpanel" id="cfx-panel-monitor" aria-labelledby="cfx-tab-monitor"

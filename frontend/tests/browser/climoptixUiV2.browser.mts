@@ -171,7 +171,7 @@ test("phase navigation integrates Thermal in Bounds and residual monitoring in S
   const fields = ui.locator(".cfx-physics-primary select");
   const positions = await fields.evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().y));
   assert.ok(Math.max(...positions) - Math.min(...positions) < 1);
-  const columns = await ui.locator(".cfx-physics-fields > details").filter({ has: page.locator("summary").getByText("Fluid properties", { exact: true }) }).locator(":scope > .cfx-grid").evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length);
+  const columns = await ui.locator(".cfx-physics-panel > details").filter({ has: page.locator("summary").getByText("Fluid properties", { exact: true }) }).locator(":scope > .cfx-grid").evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length);
   assert.equal(columns, 3);
   await cfdWindow(ui, "Boundaries");
   await ui.getByRole("tab", { name: "Thermal", exact: true }).click();

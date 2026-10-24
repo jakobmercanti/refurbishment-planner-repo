@@ -94,7 +94,6 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
               <button className="cfx-collapse" aria-label={`${collapsed.has(group.id) ? "Expand" : "Collapse"} group ${group.name}`} aria-expanded={!collapsed.has(group.id)}
                 onClick={() => setCollapsed(previous => { const next = new Set(previous); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}>{collapsed.has(group.id) ? "▸" : "▾"}</button>
               <InlineName key={`${group.id}:${group.name}`} value={group.name} label={`Rename group ${group.name}`} maxLength={80} onCommit={name => renameGroup(group, name)} />
-              <small>{allMembers.length} {allMembers.length === 1 ? "simulation" : "simulations"}</small>
               <div className="cfx-group-actions">
                 <button aria-label={`Add simulation to ${group.name}`} disabled={scenarios.length >= 100} onClick={() => { setCollapsed(v => new Set([...v].filter(id => id !== group.id))); onAdd(group.name); }}>+ Simulation</button>
                 <button aria-label={`Duplicate group ${group.name}`} disabled={scenarios.length + allMembers.length > 100 || groups.length >= 100}

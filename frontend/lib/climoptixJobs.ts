@@ -52,6 +52,7 @@ export interface CFDSubmission {
 
 /** The only worker integration point. No HTTP endpoint or solver is assumed. */
 export interface CFDWorkerAdapter {
+  readonly namespace?: string;
   readonly capabilities: {
     connected: boolean;
     mesh: boolean;
@@ -60,6 +61,7 @@ export interface CFDWorkerAdapter {
   };
   submit(request: CFDSubmission, signal: AbortSignal): Promise<unknown>;
   status(jobId: string, signal: AbortSignal): Promise<unknown>;
+  list?(projectId: string, signal: AbortSignal): Promise<CFDWorkerJob[]>;
 }
 
 /** Job freshness also includes Apply intent, without invalidating geometry preparation. */

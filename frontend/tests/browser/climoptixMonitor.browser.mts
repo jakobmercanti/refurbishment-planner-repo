@@ -134,7 +134,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
   await editNumber("Refinement centre X (mm)", 3200);
   await ui
     .getByRole("combobox", { name: "Refinement level", exact: true })
-    .selectOption("5");
+    .selectOption("7");
   await ui.getByRole("button", { name: "Done", exact: true }).click();
   await ui
     .getByRole("button", { name: "View refinements in 3D", exact: true })
@@ -152,7 +152,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     exact: true,
   });
   assert.match(await legend.innerText(), /Level 2 · 50 mm/);
-  assert.match(await legend.innerText(), /Level 5 · 6.25 mm/);
+  assert.match(await legend.innerText(), /Level 7 · 1.563 mm/);
   const names = await legend
     .locator("i")
     .evaluateAll((elements) =>
@@ -191,7 +191,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
       ),
       [
         "-c",
-        "import io,sys,json; from PIL import Image; im=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert('RGB'); masks=json.loads(sys.argv[1]); p=[im.getpixel((x,y)) for y in range(im.height) for x in range(im.width) if not any(a<=x<=a+w and b<=y<=b+h for a,b,w,h in masks)]; print(json.dumps([sum(g>120 and abs(g-b)<15 and r<g*.5 for r,g,b in p),sum(r>180 and 70<g<165 and b<80 for r,g,b in p)]))",
+        "import io,sys,json; from PIL import Image; im=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert('RGB'); masks=json.loads(sys.argv[1]); p=[im.getpixel((x,y)) for y in range(im.height) for x in range(im.width) if not any(a<=x<=a+w and b<=y<=b+h for a,b,w,h in masks)]; print(json.dumps([sum(g>120 and abs(g-b)<15 and g-r>24 for r,g,b in p),sum(r-g>6 and b-r>6 for r,g,b in p)]))",
         JSON.stringify(obscured),
       ],
       { input: await canvas.screenshot(), encoding: "utf8", timeout: 15000 },
@@ -200,7 +200,7 @@ test("3D refinements use distinct level colours, a matching legend and a working
     return JSON.parse(result.stdout);
   };
   // A full-size canvas lies under the tools. Clear the centre before inspecting
-  // wireframe pixels, then keep only the right-hand view controls open.
+  // translucent volume colours, then keep only the right-hand view controls open.
   await page.getByRole("button", { name: "Toolbar", exact: true }).click();
   await page
     .getByRole("menuitem", { name: "Hide setup window", exact: true })

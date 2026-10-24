@@ -28,9 +28,11 @@ interface View {
 export function ClimoptixVTKViewer({
   file,
   onClose,
+  provenance,
 }: {
   file: File;
   onClose: () => void;
+  provenance?: string;
 }) {
   const host = useRef<HTMLDivElement>(null),
     view = useRef<View | null>(null);
@@ -293,7 +295,7 @@ export function ClimoptixVTKViewer({
         <button onClick={onClose}>Back to geometry</button>
       </header>
       <p className="cfx-stale">
-        External file · simulation provenance and physical units unverified
+        {provenance || "External file · simulation provenance and physical units unverified"}
       </p>
       <div className="cfx-inline cfx-vtk-toolbar">
         <label>

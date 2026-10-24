@@ -7,6 +7,7 @@ import { assignBoundarySurfaces, boundaryGroups, boundaryMembers, BOUNDARY_COLOU
 import { useState, type ReactNode } from "react";
 import { CFDEditorWindow } from "./CFDEditorWindow";
 import { ClimoptixObjects } from "./ClimoptixObjects";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { objectGroups } from "@/lib/climoptixObjectGroups";
 import {
@@ -989,6 +990,7 @@ function BoundaryEditor({
   );
 }
 export function BoundariesPanel({
+  project,
   scenario,
   report,
   selected,
@@ -999,6 +1001,7 @@ export function BoundariesPanel({
   checked,
   navigation,
 }: {
+  project: ProjectDocument;
   scenario: CFDScenario;
   report: CFDReport | null;
   selected: string | null;
@@ -1013,7 +1016,8 @@ export function BoundariesPanel({
     [group, setGroup] = useState<PatchKind>("wall");
   const [groupNameError, setGroupNameError] = useState<{ id: string; text: string } | null>(null);
   const [editing, setEditing] = useState<"group" | "surface" | null>(null);
-  const [assignment, setAssignment] = useState<{ groupId: string; ids: string[] } | null>(null);
+  const [assignment, setAssignment] = useState<{ groupId: string; ids: string[]; editConditions?: boolean } | null>(null);
+  const [surfaceKind, setSurfaceKind] = useState("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const patch = report?.patches.find(
     (p) =>
@@ -1050,6 +1054,7 @@ export function BoundariesPanel({
       boundary: patch && patch.kind !== "supply" && patch.kind !== "extract" ? effectiveBoundary(scenario, patch) : null };
     updateCollections([...collections.map(g => ({ ...g, patchIds: g.patchIds.filter(id => id !== patchId) })), added]);
     onSelectGroup(added.id);
+    return added;
   };
   return (
     <>
@@ -1057,6 +1062,13 @@ export function BoundariesPanel({
         <button disabled={collections.length >= 100} onClick={() => newGroup()}>Add boundary group</button>
         <input type="search" aria-label="Find a CFD patch" value={search} maxLength={500} onChange={e => setSearch(e.target.value)} placeholder="Find surface · room, surface or source" />
       </div>
+      {!scenario.seed && <label>Choose the room whose connected surfaces you want to configure
+        <select aria-label="Boundary seed room" value="" onChange={event => {
+          const [floorId, roomId] = JSON.parse(event.target.value) as [string, string];
+          onChange({ ...scenario, seed: { floorId, roomId } });
+        }}><option value="">Choose a room…</option>{projectFloors(project).flatMap(floor => floor.content.rooms.map(room =>
+          <option key={`${floor.id}:${room.id}`} value={JSON.stringify([floor.id, room.id])}>{floor.name} · {room.name}</option>))}</select>
+      </label>}
       <div className="cfx-boundary-tree cfx-group-tree">
         <CFDReorderList items={collections} label="Boundary groups" scope={`boundary-groups:${scenario.id}`}
           onMove={(id, at) => updateCollections(insertAtBoundary(collections, id, at))}>
@@ -1074,6 +1086,12 @@ export function BoundariesPanel({
               onClick={() => onSelectGroup(collection.id)}><span className="cfx-level-swatch" aria-hidden="true" style={{ background: "var(--boundary-colour)" }} />{collection.name}</button>
               <small>{allMembers.length} {allMembers.length === 1 ? "surface" : "surfaces"}</small>
               <div className="cfx-group-actions">
+              <button aria-label={`Add boundary conditions to ${collection.name}`} onClick={() => {
+                const destination = collection.id === DEFAULT_BOUNDARY_GROUP ? newGroup() : collection;
+                if (!destination) return;
+                onSelectGroup(destination.id); setSurfaceKind("all");
+                setAssignment({ groupId: destination.id, ids: destination.patchIds, editConditions: true });
+              }}>Add boundary conditions…</button>
               <button aria-label={`Conditions for boundary group ${collection.name}`} onClick={() => {
                 onSelectGroup(collection.id);
                 if (!collection.boundary) updateCollections(collections.map(g => g.id === collection.id ? { ...g, boundary: boundarySchema.parse({}) } : g));
@@ -1133,8 +1151,11 @@ export function BoundariesPanel({
         <section className="cfx-card">
           <h3>{collections.find(g => g.id === assignment.groupId)?.name ?? "Unavailable group"}</h3>
           <p className="cfx-caption">Checked surfaces move into this group. Unchecked members return to Default surfaces. Physical surfaces stay unique; per-surface overrides remain authoritative.</p>
+          <label>Surface type<select aria-label="Boundary assignment surface type" value={surfaceKind} onChange={event => setSurfaceKind(event.target.value)}>
+            <option value="all">All surfaces</option><option value="wall">Walls</option><option value="ceiling">Roofs / ceilings</option><option value="floor">Floors</option><option value="other">Openings &amp; other surfaces</option>
+          </select></label>
           <div className="cfx-surface-assignment" role="group" aria-label="Surfaces to assign">
-            {allPatches.map(p => {
+            {allPatches.filter(p => surfaceKind === "all" || p.kind === surfaceKind || surfaceKind === "other" && !["wall", "ceiling", "floor"].includes(p.kind)).map(p => {
               const device = p.kind === "supply" || p.kind === "extract";
               return <label className="cfx-check" key={p.id}>
                 <input type="checkbox" aria-label={`Assign surface ${p.id}`} disabled={device || !checked} checked={assignment.ids.includes(p.id)}
@@ -1150,8 +1171,11 @@ export function BoundariesPanel({
           <div className="cfx-actions">
             <button onClick={() => setAssignment(null)}>Cancel</button>
             <button className="cfx-primary" disabled={!checked || !allPatches.length || !collections.some(g => g.id === assignment.groupId)} onClick={() => {
-              onChange(assignBoundarySurfaces(scenario, assignment.groupId, assignment.ids, allPatches)); setAssignment(null);
-            }}>Apply assignment</button>
+              const assigned = assignBoundarySurfaces(scenario, assignment.groupId, assignment.ids, allPatches);
+              onChange(assignment.editConditions ? { ...assigned, boundaries: { ...assigned.boundaries, collections: boundaryGroups(assigned).map(g => g.id === assignment.groupId ? { ...g, boundary: g.boundary ?? boundarySchema.parse({}) } : g) } } : assigned);
+              if (assignment.editConditions) setEditing("group");
+              setAssignment(null);
+            }}>{assignment.editConditions ? "Apply and edit conditions" : "Apply assignment"}</button>
           </div>
         </section>
       </CFDEditorWindow>}
@@ -1290,7 +1314,8 @@ export function PhysicsPanel({
 }) {
   const p = scenario.physics;
   return (
-    <>
+    <section data-cfx-collapse-root className="cfx-physics-panel">
+      <div className="cfx-panel-actions"><CFDCollapseAll /></div>
       <details open><summary>Models &amp; equations</summary>
       <div className="cfx-grid cfx-physics-primary">
       <label>
@@ -1390,7 +1415,7 @@ export function PhysicsPanel({
           metrics.
         </p>
       </details>
-    </>
+    </section>
   );
 }
 function MeshSettings({
@@ -1473,7 +1498,7 @@ export function MeshPanel({
 }) {
   const regions = scenario.mesh.refinements,
     region =
-      regions.find((r) => `refinement:${r.id}` === selected) ?? regions[0];
+      regions.find((r) => `refinement:${r.id}` === selected);
   return (
     <>
       <header className="cfx-inline-toolbar cfx-refinement-toolbar">

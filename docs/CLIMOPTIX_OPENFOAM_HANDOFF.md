@@ -1,9 +1,10 @@
 # Climoptix → OpenFOAM worker handoff
 
-Status: 23 October 2026. The preparation workflow and typed integration boundary
-are implemented. **A real OpenFOAM worker is not implemented or connected.**
-Foamlib dictionary round-trips are not OpenFOAM execution/semantic validation.
-No meshing or solver executable was found on this development machine's PATH.
+Status: 24 October 2026. A separate authenticated serial worker is implemented
+and deployed to Railway. See [OPENFOAM_WORKER.md](OPENFOAM_WORKER.md) for the
+verified scope and limits. The preparation-only provider and diagnostic settings
+ZIP are still not solver execution. The requirements below remain the contract
+for extending the worker, especially thermal or parallel adapters.
 
 ## Integration point
 
@@ -13,19 +14,16 @@ adapter instance stable across ordinary renders; replace it when connection or
 capabilities change while retaining the same authenticated job namespace for
 recovery.
 Derive capabilities from the authenticated service, not browser preferences.
-Existing public proxy rules deliberately deny job/execution endpoints; no worker
-URL or permissive proxy route has been introduced by this UI change.
+The public preparation routes still deny execution. Only the separate, narrowly
+allowlisted authenticated worker proxy forwards protected job operations.
 
 ### Residual monitor readiness (24 October 2026)
 
-The Monitor window and log parser/graph work with bounded, session-only imported
-OpenFOAM logs. **Live residual streaming is not implemented.** The current
-`status()` contract reports phase/progress only, not residual samples. Connecting
-a worker to that interface alone will not make the chart update live. A future
-authenticated telemetry adapter must bind samples to job ID, study ID and pinned
-setup revision, provide ordered/cursor-based recovery, enforce bounded buffers,
-and reject stale/cross-study samples. Verify reconnect, completion, cancellation
-and worker failure against a real solver before describing it as a live monitor.
+The Monitor now supports protected worker logs through a separate bounded cursor
+feed, bound to job ID, study ID and pinned revision. The `status()` contract alone
+still does not supply residuals. Imported logs remain external, session-only and
+unverified. The HTTP adapter's live graph, cancellation and reload recovery are
+browser tested; worker execution is acceptance gated against real OpenFOAM.
 
 Supply and Extract can now be configured before host geometry is available.
 Such drafts use the explicit `unassigned` host reference. Authoritative preparation
@@ -93,7 +91,7 @@ Changing setup labels an existing job as older setup; it must not silently becom
 the result of the new revision. Honor AbortSignal and enforce network deadlines.
 Aborting a request is **not** proof that an accepted remote job was cancelled.
 
-## Required worker pipeline — not yet implemented
+## Worker pipeline requirements
 
 1. Authenticate and isolate each case. Enforce server-side CPU, memory, wall-time,
    storage, concurrency and retention limits. Accept no shell commands, user

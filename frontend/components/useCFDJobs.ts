@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDScenario } from "@/lib/climoptixDocument";
+import { preparationInput, preparationRevision } from "@/lib/climoptix";
 import {
   checkedWorkerJob,
   prepareWorkerSubmission,
@@ -46,12 +47,14 @@ export function useCFDJobs(
     setEntries(next);
   }, []);
   const projectId = useRef(project.projectId);
+  const namespace = useRef(adapter?.namespace);
   useEffect(() => {
     const controller = new AbortController();
     submitAbort.current = controller;
     const submitting = pending.current;
-    if (projectId.current !== project.projectId) {
+    if (projectId.current !== project.projectId || namespace.current !== adapter?.namespace) {
       projectId.current = project.projectId;
+      namespace.current = adapter?.namespace;
       entriesRef.current = {};
       unresolved.current.clear();
       setEntries({});
@@ -71,6 +74,24 @@ export function useCFDJobs(
       submitting.clear();
     };
   }, [project.projectId, adapter, update]);
+  useEffect(() => {
+    if (!adapter?.list || !adapter.capabilities.connected) return;
+    const controller = new AbortController();
+    void adapter.list(project.projectId, controller.signal).then(async jobs => {
+      const recovered = new Set<string>();
+      for (const job of jobs) {
+        if (controller.signal.aborted || recovered.has(job.studyId)) continue;
+        recovered.add(job.studyId);
+        const study = latest.current.project.cfdScenarios?.find(s => s.id === job.studyId);
+        if (!study) continue;
+        const revision = await preparationRevision(preparationInput(latest.current.project, study));
+        if (controller.signal.aborted || entriesRef.current[study.id] || pending.current.has(study.id)) continue;
+        update(study.id, {job: checkedWorkerJob(job, {studyId: study.id, clientRevision: job.clientRevision}),
+          input: revision === job.clientRevision ? workerInput(latest.current.project, study) : `recovered-older:${job.clientRevision}`});
+      }
+    }).catch(() => { /* Existing submissions/status remain recoverable on a later connection. */ });
+    return () => controller.abort();
+  }, [adapter, project.projectId, update]);
   const submit = async (operation: CFDOperation, studies: CFDScenario[]) => {
     if (!adapter?.capabilities.connected || !adapter.capabilities[operation])
       return;

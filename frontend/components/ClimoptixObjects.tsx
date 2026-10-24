@@ -57,7 +57,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
                 <button className="cfx-collapse" aria-label={`${collapsed.has(group.id) ? "Expand" : "Collapse"} object group ${group.name}`} aria-expanded={!collapsed.has(group.id)} onClick={() => setCollapsed(previous => {
                   const next = new Set(previous); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next;
                 })}>{collapsed.has(group.id) ? "▸" : "▾"}</button>
-                <button className="cfx-group-select" aria-pressed={currentGroup.id === group.id} onClick={() => setSelectedGroup(group.id)}>{group.name}</button><small>{members.length} objects</small>
+                <button className="cfx-group-select" aria-pressed={currentGroup.id === group.id} onClick={() => setSelectedGroup(group.id)}>{group.name}</button>
                 <div className="cfx-group-actions">
                   <button aria-label={`Edit object group ${group.name}`} onClick={() => setEditing({ type: "group", id: group.id })}>Edit</button>
                   <button disabled={groups.length >= 100 || members.some(e => e.type === "object" && objects.find(o => o.id === e.sourceId)?.roomId === "unresolved")}

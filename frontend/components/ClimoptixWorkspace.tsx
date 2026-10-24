@@ -5,7 +5,9 @@ import { useViewerContextMenu } from "@/lib/viewerNavigation";
 import { ClimoptixStudies } from "./ClimoptixStudies";
 import { ClimoptixReview } from "./ClimoptixReview";
 import { useCFDJobs } from "./useCFDJobs";
-import { terminalJob } from "@/lib/climoptixJobs";
+import { useRailwayCFDWorker } from "./useRailwayCFDWorker";
+import { ClimoptixWorkerMonitor } from "./ClimoptixWorkerMonitor";
+import { terminalJob, workerInput } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP } from "@/lib/climoptixHelp";
 import { FloatingToolbar } from "./FloatingToolbar";
@@ -207,8 +209,10 @@ export function ClimoptixWorkspace({
   canRedo,
   onEditBuilding,
   onEditInsulation,
-  workerAdapter = null,
+  workerAdapter: providedWorker,
 }: Props) {
+  const remoteWorker = useRailwayCFDWorker(active && providedWorker === undefined, apiUrl);
+  const workerAdapter = providedWorker === undefined ? remoteWorker.adapter : providedWorker;
   const [selectedId, setSelectedId] = useState(""),
     [showArchived, setShowArchived] = useState(false);
   const [setupOpen, setSetupOpen] = useState(true);
@@ -246,8 +250,7 @@ export function ClimoptixWorkspace({
   };
   const [selected, setSelected] = useState<string | null>(null),
     [reports, setReports] = useState<Record<string, CFDReport>>({});
-  const [selectionFocus, setSelectionFocus] = useState(0);
-  const selectObject = (id: string | null) => { setSelected(id); setSelectionFocus(v => v + 1); if (id?.startsWith("refinement:")) setShowRefinements(true); };
+  const selectObject = (id: string | null) => { setSelected(id); if (id?.startsWith("refinement:")) setShowRefinements(true); };
   const [hash, setHash] = useState({ input: "", revision: "" }),
     [preparing, setPreparing] = useState(""),
     [message, setMessage] = useState(""),
@@ -266,7 +269,7 @@ export function ClimoptixWorkspace({
   const [inspection, setInspection] = useState<{ showRefinements: boolean; selected: string | null } | null>(null);
   const returnToSetup = () => {
     if (!inspection) return;
-    setShowRefinements(inspection.showRefinements); setSelected(inspection.selected);
+    setShowRefinements(inspection.showRefinements);
     setInspection(null); setSetupOpen(true); setSetupFocus(v => v + 1);
     requestAnimationFrame(() => document.querySelector<HTMLElement>(".cfx-setup-window .floating-toolbar-titlebar")?.focus());
   };
@@ -299,6 +302,7 @@ export function ClimoptixWorkspace({
     studyId: string;
     token: string;
     file: File;
+    provenance?: string;
   } | null>(null);
   const { scenarios, visible, scenario, input } = useMemo(() => {
     const scenarios = project.cfdScenarios ?? EMPTY_SCENARIOS;
@@ -768,6 +772,9 @@ export function ClimoptixWorkspace({
       onPointerCancelCapture={viewerMenu.onPointerCancelCapture}
       onPointerDownCapture={event => {
         viewerMenu.onPointerDownCapture(event);
+        if (event.button === 0 && selected?.startsWith("refinement:") && event.target instanceof Element &&
+            event.target.closest(".cfx-setup-window") && !event.target.closest(".cfx-refinement-row,input,select,textarea"))
+          setSelected(null);
         const target = event.target as Node;
         event.currentTarget.querySelectorAll<HTMLDetailsElement>(".cfx-row-menu[open]").forEach(menu => {
           if (!menu.contains(target)) menu.open = false;
@@ -838,9 +845,9 @@ export function ClimoptixWorkspace({
           onViewSettings={setViewOpen}
           stale={stale}
           selected={selected}
-          selectionFocus={selectionFocus}
           onSelect={(id) => {
             selectObject(id);
+            if (!id) return;
             if (setupOpen && id.startsWith("refinement:")) {
               openPhase("mesh");
               setSimulationTab("mesh");
@@ -1091,6 +1098,7 @@ export function ClimoptixWorkspace({
                           </p>
                         ) : null}
                         <BoundariesPanel
+                          project={project}
                           navigation={boundsTab === "conditions" ? boundsNavigation : undefined}
                           checked={!stale}
                           scenario={scenario}
@@ -1108,6 +1116,17 @@ export function ClimoptixWorkspace({
                     )}
                     {panel.id === "mesh" && (
                       <ClimoptixSimulation
+                        workerControls={providedWorker === undefined && <section className="cfx-worker-controls" aria-label="OpenFOAM connection">
+                          <p>{remoteWorker.reason}</p><div className="cfx-inline-toolbar">
+                            <button onClick={remoteWorker.refresh}>Refresh connection</button>
+                            {remoteWorker.adapter && <button onClick={() => {
+                              const limits = remoteWorker.adapter!.capabilities.limits;
+                              change({...scenario, resources:{...scenario.resources, cpu:Math.min(scenario.resources.cpu,limits.cpu), memoryGb:Math.min(scenario.resources.memoryGb,limits.memoryGb),
+                                wallTimeMinutes:Math.min(scenario.resources.wallTimeMinutes,limits.wallTimeMinutes), storageGb:Math.min(scenario.resources.storageGb,limits.storageGb), retentionDays:Math.min(scenario.resources.retentionDays,limits.retentionDays)},
+                                mesh:{...scenario.mesh,maxCells:Math.min(scenario.mesh.maxCells,limits.maxCells),targetCells:Math.min(scenario.mesh.targetCells,limits.maxCells)}});
+                            }}>Use worker resource limits</button>}
+                          </div>
+                        </section>}
                         connection={{
                           connected:
                             workerAdapter?.capabilities.connected ?? false,
@@ -1168,7 +1187,11 @@ export function ClimoptixWorkspace({
                         convergence={
                           shownTab === "mesh" &&
                           simulationTab === "monitor" && (
-                            <ClimoptixConvergence
+                            remoteWorker.adapter && jobs[scenario.id]?.job ? <ClimoptixWorkerMonitor
+                              key={`${remoteWorker.adapter.namespace}:${jobs[scenario.id].job!.id}`} adapter={remoteWorker.adapter} job={jobs[scenario.id].job!}
+                              name={scenario.name} older={jobs[scenario.id].input !== workerInput(project, scenario)}
+                              onVTK={file => {openPhase("results"); setVTKFile({studyId:scenario.id,file,token:crypto.randomUUID(),
+                                provenance:`Authenticated worker job ${jobs[scenario.id].job!.id} · pinned revision ${jobs[scenario.id].job!.clientRevision.slice(0,12)} · p in m²/s², not Pa${jobs[scenario.id].input !== workerInput(project,scenario) ? " · older setup" : ""}`});}} /> : <ClimoptixConvergence
                               name={scenario.name}
                               state={logs.get(scenario.id)}
                               onImport={(file) =>
@@ -1247,6 +1270,7 @@ export function ClimoptixWorkspace({
                     <ClimoptixVTKViewer
                       key={vtkFile.token}
                       file={vtkFile.file}
+                      provenance={vtkFile.provenance}
                       onClose={() => {
                         setVTKFile(null);
                         openPhase("mesh");

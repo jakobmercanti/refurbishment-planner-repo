@@ -47,16 +47,28 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
     <section role="tabpanel" id={`${prefix}-panel-review`} aria-labelledby={`${prefix}-review`} hidden={tab !== "review"}>
       <div className="cfx-inline-toolbar">
         <strong>{scenario.name}</strong>
-        <span className="cfx-check-status">{stale ? "Checks out of date" : report ? "Checks current" : "Not checked"}</span>
+        <span className="cfx-check-status">{blocked || failure ? "Checks blocked · resolve pending input" : stale ? "Checks out of date" : report
+          ? report.validation.errors ? `Blocked · ${report.validation.errors} errors`
+            : !report.surface.exportable ? "Boundary geometry unavailable"
+            : `Geometry ready${report.validation.warnings ? ` · ${report.validation.warnings} warnings` : ""}`
+          : "Not checked"}</span>
         <button onClick={onRefresh}>Refresh checks</button>
       </div>
       <label>Simulation notes<textarea rows={2} value={scenario.description} maxLength={2000} onChange={e => onChange({ ...scenario, description: e.target.value })} /></label>
-      {report && <dl className="cfx-review-metadata">
+      {report && !stale && <div className="cfx-review-outcome" role="status">
+        {!scenario.seed ? <p>Choose a seed room in Domain to define the simulation&apos;s connected air volume.</p> :
+          !report.surface.exportable && !report.validation.errors ? <p>No exportable boundary is available. Refresh checks and review the geometry diagnostics.</p> : null}
+        {report.diagnostics.filter(d => d.severity === "error").map((d, i) => <p key={`${d.code}:${i}`}>
+          {d.message} {d.repair} {d.objectId && <button onClick={() => onInspect(d.objectId!, d.group)}>Inspect</button>}
+        </p>)}
+        {report.surface.exportable && !report.validation.errors && <p>Preparation passed for {report.domain.includedRoomIds.length} connected rooms and {report.surface.triangleCount} boundary triangles. This is not a completed mesh or solver result.</p>}
+      </div>}
+      {report && <details><summary>Validation provenance</summary><dl className="cfx-review-metadata">
         <div><dt>Geometry SHA-256</dt><dd>{report.validation.sourceHash}</dd></div>
         <div><dt>Configuration SHA-256</dt><dd>{report.validation.configurationHash}</dd></div>
         <div><dt>Checked</dt><dd>{new Date(report.validation.checkedAt).toLocaleString()}</dd></div>
-        <div><dt>Surface</dt><dd>{report.surface.exportable ? `${report.surface.triangleCount} boundary triangles · STL in metres` : `Blocked · ${report.surface.badEdges} non-manifold/open edges`}</dd></div>
-      </dl>}
+        <div><dt>Surface</dt><dd>{report.surface.exportable ? `${report.surface.triangleCount} boundary triangles · STL in metres` : report.surface.triangleCount ? `Unavailable · ${report.surface.badEdges} non-manifold/open edges` : "No boundary generated · select a valid seed room"}</dd></div>
+      </dl></details>}
     </section>
     <section role="tabpanel" id={`${prefix}-panel-warnings`} aria-labelledby={`${prefix}-warnings`} hidden={tab !== "warnings"}>
       <div className="cfx-inline-toolbar"><strong>Preflight diagnostics</strong>

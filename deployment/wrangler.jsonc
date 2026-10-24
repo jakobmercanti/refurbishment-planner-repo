@@ -7,6 +7,7 @@
   "workers_dev": true,
   "vars": {
     "ENGINEERING_API_ORIGIN": "https://freefloorplan3d-api-production.up.railway.app",
+    "CFD_WORKER_ORIGIN": "https://climoptix-openfoam-production.up.railway.app",
     "SUPABASE_URL": "https://rlpofstbysqtmntfmnjf.supabase.co"
   },
   "ratelimits": [{ "name": "ANALYTICS_RATE_LIMIT", "namespace_id": "9052602", "simple": { "limit": 30, "period": 60 } }],

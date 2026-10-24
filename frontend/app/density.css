@@ -141,13 +141,37 @@ body .cfx-viewer > footer > * { min-width: 0; margin: 0; }
 body .cfx-viewer > footer li { align-items: center; min-width: 0; overflow-wrap: anywhere; }
 body .cfx-viewer > footer i { width: 10px; height: 10px; flex: 0 0 10px; margin: 0; }
 body .floating-toolbar[hidden] { display: none !important; }
+/* Hierarchical rows share action columns; reserve the child menu gutter above. */
+body .cfx-workspace .cfx-study-group > .cfx-reorder-list > .cfx-reorder-item,
+body .cfx-workspace .cfx-object-group > .cfx-reorder-list > .cfx-reorder-item { margin-left: 12px; }
+body .cfx-workspace :is(.cfx-study-group, .cfx-object-group) .cfx-list-header { margin-bottom: 5px; }
+body .cfx-workspace :is(.cfx-study-group, .cfx-object-group) .cfx-group-actions {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: clamp(210px, 25cqw, 270px); margin-right: 36px;
+}
+body .cfx-workspace :is(.cfx-study-actions, .cfx-device-actions) { width: clamp(210px, 25cqw, 270px); }
+body .cfx-workspace :is(.cfx-group-actions, .cfx-study-actions, .cfx-device-actions) > button { width: 100%; min-width: 0; }
+body .cfx-workspace .cfx-metrics > div { padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+body .cfx-workspace .cfx-metrics strong { font-size: 16px; line-height: 1.25; }
+body .cfx-workspace .cfx-metrics small { font-size: 11px; }
+body .cfx-workspace .cfx-panel-actions {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 180px);
+  justify-content: end; gap: var(--density-section-gap); margin-bottom: var(--density-section-gap);
+}
+body .cfx-workspace .cfx-panel-actions > button { width: 100%; min-width: 0; white-space: normal; text-align: center; }
+body .cfx-workspace :is(.cfx-run-panel, .cfx-physics-panel) > details + details { margin-top: var(--density-section-gap); }
+body .cfx-workspace .cfx-transfer-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-right: calc(var(--density-control-min-height) + var(--density-section-gap)); }
+body .cfx-workspace .cfx-review-outcome p { margin-block: var(--density-section-gap); }
+body .cfx-workspace .cfx-worker-controls { padding: var(--density-window-padding); border: 1px solid var(--line); border-radius: var(--radius-control); }
+body .cfx-workspace .cfx-worker-controls p { margin: 0 0 var(--density-section-gap); color: var(--muted); }
+body .cfx-workspace .cfx-native-log { max-height: 280px; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 body .cfx-workspace .cfx-refinement-row {
   display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center;
   gap: var(--density-section-gap); padding: var(--density-row-padding);
 }
 body .cfx-workspace .cfx-refinement-name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding-block: var(--density-control-padding-y); }
 body .cfx-workspace .cfx-refinement-actions { grid-column: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--density-field-gap); }
-body .cfx-workspace .cfx-study-actions { width: clamp(170px, 22cqw, 240px); }
+body .cfx-workspace .cfx-study-actions { width: clamp(210px, 25cqw, 270px); }
 body .cfx-workspace .cfx-study-actions > button { padding-inline: 6px; }
 body .cfx-workspace .cfx-device-name { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 @container cfx-setup (max-width: 540px) {

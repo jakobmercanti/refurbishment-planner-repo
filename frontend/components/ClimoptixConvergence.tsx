@@ -105,11 +105,13 @@ export function ClimoptixConvergence({
   onImport,
   onClear,
   name,
+  workerSource,
 }: {
   state?: ConvergenceLog;
   onImport: (file: File) => void;
   onClear: () => void;
   name?: string;
+  workerSource?: string;
 }) {
   const { series, maxIteration } = useMemo(() => {
     const grouped = new Map<string, ResidualSample[]>();
@@ -125,12 +127,12 @@ export function ClimoptixConvergence({
   return (
     <section
       className="cfx-convergence"
-      aria-label="Imported convergence history"
+      aria-label={workerSource ? "Worker convergence history" : "Imported convergence history"}
     >
       <h3>Convergence{name ? ` · ${name}` : ""} · initial residuals</h3>
-      <p className="cfx-caption">External log · unverified · session only</p>
-      <p className="cfx-caption">Live residual streaming is not connected. Import an OpenFOAM log to inspect residuals; worker job status is not a residual feed.</p>
-      <label className="cfx-file">
+      <p className="cfx-caption">{workerSource || "External log · unverified · session only"}</p>
+      {!workerSource && <p className="cfx-caption">Import an OpenFOAM log to inspect external residuals; imported logs are not verified worker results.</p>}
+      {!workerSource && <label className="cfx-file">
         {state.reading ? "Reading solver log…" : "Import solver log"}
         <input
           type="file"
@@ -142,7 +144,7 @@ export function ClimoptixConvergence({
             if (file) onImport(file);
           }}
         />
-      </label>
+      </label>}
       {state.reading && <p role="status">Reading solver log…</p>}
       {state.error && (
         <p role="alert" className="cfx-error">
