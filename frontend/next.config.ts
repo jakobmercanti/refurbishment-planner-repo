@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
   ...(process.env.PLANNER_STATIC_EXPORT === "true" ? {} : { async rewrites() {
     return [
       ...(authOrigin ? [{
-        source: "/auth-api/:endpoint(token|signup|otp|recover|user|logout|settings)",
+        source: "/auth-api/:endpoint(token|signup|resend|otp|recover|user|logout|settings)",
         destination: `${authOrigin}/auth/v1/:endpoint`,
       }] : []),
       {

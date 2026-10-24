@@ -87,3 +87,22 @@ test('provider outages and redirects return safe uncached errors; rate limits re
     assert.equal(limited.status, 429); assert.equal(limited.headers.get('Retry-After'), '60');
   } finally { globalThis.fetch = previous; }
 });
+
+test('verification resend allows only signup email and preserves the safe account return URL', async () => {
+  const previous = globalThis.fetch;
+  try {
+    const path = '/resend?redirect_to=' + encodeURIComponent(origin + '/planner/account/');
+    globalThis.fetch = async (url, init) => {
+      assert.equal(String(url), env.SUPABASE_URL + '/auth/v1' + path);
+      assert.deepEqual(JSON.parse(new TextDecoder().decode(init.body)), { type: 'signup', email: 'test@example.invalid' });
+      return Response.json({});
+    };
+    assert.equal((await authProxy(request(path, { body: JSON.stringify({ type: 'signup', email: 'test@example.invalid' }) }), '/resend', env)).status, 200);
+    globalThis.fetch = async () => assert.fail('Invalid resend requests must not reach the provider');
+    for (const body of ['{}', '{', JSON.stringify({ type: 'email_change', email: 'test@example.invalid' }), JSON.stringify({ type: 'signup', email: 'test@example.invalid', password: 'not-forwarded' })]) {
+      assert.equal((await authProxy(request(path, { body }), '/resend', env)).status, 400);
+    }
+    const foreign = '/resend?redirect_to=https://evil.example/planner/account/';
+    assert.equal((await authProxy(request(foreign), '/resend', env)).status, 400);
+  } finally { globalThis.fetch = previous; }
+});

@@ -20,6 +20,34 @@ See the root and `frontend/.env.example` for the full variable names. Leave blan
 3. Set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY` on the API and worker. Prefer the modern `sb_secret_` key; the existing `SUPABASE_SERVICE_ROLE_KEY` remains a compatibility fallback. Keep both privileged key types server-only: both bypass RLS. Keep `REQUIRE_VERIFIED_EMAIL=true` for paid features.
 4. Confirm the new tables have RLS enabled, public clients can read only active plan/pack catalogue rows, and all account-owned records remain inaccessible to other users. The API uses the service key only after it verifies the caller’s bearer token against Supabase Auth.
 
+### Verification email delivery
+
+- Existing verified users should sign in, not create the account again. Supabase may
+  return an obfuscated successful signup response for an existing account without
+  sending any email. The planner therefore never treats signup/resend acceptance
+  as proof that a message was sent or delivered, and never reveals account existence.
+- New and unverified users can explicitly **Resend verification email** without
+  supplying a password. Requests use the same-origin `/auth-api/resend` transport,
+  allow only signup verification, preserve the account return URL, and have a
+  60-second UI cooldown. Provider and production edge limits remain authoritative;
+  there are no automatic email retries.
+- Production needs custom SMTP (or a configured Send Email Auth Hook) with a
+  verified sender/domain. Supabase's default mail service is for testing, restricts
+  recipients and has low project-wide limits. Check the **Authentication → Emails →
+  SMTP Settings** and Auth logs rather than assuming a successful API response
+  proves delivery. Never disable email verification to work around missing mail.
+- Configure the provider's sender authentication and delivery/bounce monitoring.
+  Verify receipt in an actual controlled inbox with a genuinely unverified test
+  account and verify the newest link reaches the intended account page. Do not
+  mark a real user confirmed through the admin API as a delivery test.
+- Local development sharing production accounts should return confirmation and
+  reset links to the production account URL unless its exact loopback URL has
+  deliberately been allowed in Supabase. Set `NEXT_PUBLIC_AUTH_REDIRECT_URL` in
+  `frontend/.env.development.local` to the exact approved HTTPS account URL (for
+  example `https://www.freefloorplan3d.com/planner/account/`). Otherwise Supabase
+  can fall back to the site root, which is not the account/recovery page. Use a separate Supabase project for
+  unrestricted development email/redirect tests.
+
 ## Private R2 bucket
 
 Create a private bucket; do not enable public reads. Create an S3-compatible credential scoped to that bucket and set `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` only on the API and worker. Add browser CORS for the exact planner origin with `PUT`, `GET`, and `HEAD`, allow the `Content-Type` request header, and expose `ETag` if operational monitoring needs it. The application issues short-lived, object-specific signed URLs.

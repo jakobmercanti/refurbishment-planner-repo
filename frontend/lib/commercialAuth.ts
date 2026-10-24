@@ -52,8 +52,8 @@ async function requestSessionFromOpenTabs() {
   await sessionRequest;
 }
 
-class AuthRequestError extends Error {
-  constructor(message: string, readonly status: number) {
+export class AuthRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
     super(message);
   }
 }
@@ -117,10 +117,14 @@ async function authRequest<T>(path: string, body?: unknown, accessToken?: string
     const result = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
     if (!response.ok) {
       const known = result && [result.msg, result.message, result.error_description].find(value => typeof value === "string");
-      const message = response.status === 429 ? "Too many account requests. Please wait a little before trying again."
+      const code = typeof result?.error_code === "string" ? result.error_code : undefined;
+      const message = code === "email_not_confirmed" ? "This account needs email verification. Use Resend verification email below, then open the newest link."
+        : code === "email_address_not_authorized" ? "Email delivery is not configured for this address. Please contact support; repeated requests will not help."
+        : code === "over_email_send_rate_limit" ? "The email sending limit has been reached. Please wait before requesting another verification or reset email."
+        : response.status === 429 ? "Too many account requests. Please wait a little before trying again."
         : response.status >= 500 ? "Account services are temporarily unavailable. Please try again in a moment."
         : typeof known === "string" ? known.slice(0, 240) : "The account request could not be completed. Please try again.";
-      throw new AuthRequestError(message, response.status);
+      throw new AuthRequestError(message, response.status, code);
     }
     if (!result) throw new AuthRequestError("The account service returned an unexpected response. Please try again.", 502);
     return result as T;
@@ -176,11 +180,28 @@ export async function signIn(email: string, password: string): Promise<AuthSessi
 export async function signUp(email: string, password: string): Promise<AuthSession | null> {
   const result = await authRequest<Record<string, unknown>>("signup?redirect_to=" + encodeURIComponent(accountRedirect()), { email: email.trim(), password });
   const session = normalizeSession(result);
+  const user = result.user && typeof result.user === "object" ? result.user as Record<string, unknown> : result;
+  if (!session && (typeof user.id !== "string" || !user.id)) throw new Error("The account service returned an unexpected response. Please try again.");
   saveSession(session);
   return session;
 }
 
+export async function resendVerificationEmail(email: string): Promise<void> {
+  await authRequest("resend?redirect_to=" + encodeURIComponent(accountRedirect()), { type: "signup", email: email.trim() });
+}
+
 function accountRedirect() {
+  // Local development may share production accounts without allowing loopback
+  // redirects on the production project. Email links then return to its approved
+  // HTTPS account page; the user can sign in locally after verifying there.
+  const configured = process.env.NEXT_PUBLIC_AUTH_REDIRECT_URL?.trim();
+  if (configured) {
+    const url = new URL(configured);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !url.pathname.endsWith("/account/")) {
+      throw new Error("The account email return address is not configured correctly.");
+    }
+    return url.href;
+  }
   const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   return `${window.location.origin}${base}/account/`;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { AUTH_SESSION_CHANGED, acceptAuthRedirect, currentSession, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
+import { AUTH_SESSION_CHANGED, AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
 import { PlansRedirect } from "@/components/PlansRedirect";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import type { PlanKey } from "@/lib/commercialCatalogue";
@@ -23,7 +23,16 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
   const [ready, setReady] = useState(false);
   const [section, setSection] = useState<AccountSection>("account");
   const [pendingPlanKey, setPendingPlanKey] = useState<PlanKey | null>(null);
+  const [verificationNeeded, setVerificationNeeded] = useState(false);
+  const [resendReadyAt, setResendReadyAt] = useState(0);
   const authForm = useRef<HTMLFormElement>(null);
+  const emailInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!resendReadyAt) return;
+    const timer = setTimeout(() => setResendReadyAt(0), Math.max(0, resendReadyAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [resendReadyAt]);
 
   useEffect(() => {
     let mounted = true;
@@ -86,14 +95,32 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
         const registered = await signUp(email, password);
         setSession(registered);
         if (registered) selectSection("plans");
-        setNotice(registered ? "Account created." : "Check your email to verify your account, then sign in.");
+        setPassword("");
+        setVerificationNeeded(!registered);
+        if (!registered) setResendReadyAt(Date.now() + 60_000);
+        setNotice(registered ? "Account created." : "Account request accepted. If this is a new account, check your inbox and spam for a verification link. If you already registered, use Sign in or Forgot your password. This response does not confirm that an email was sent.");
       } else {
         await sendPasswordReset(email);
         setNotice("If the address can receive account email, a password-reset link is on its way.");
       }
     } catch (cause) {
+      if (cause instanceof AuthRequestError && cause.code === "email_not_confirmed") setVerificationNeeded(true);
       setError(cause instanceof Error ? cause.message : "The account request could not be completed.");
     } finally { setBusy(false); setShowPassword(false); }
+  }
+
+  async function resendVerification() {
+    if (busy || resendReadyAt || !emailInput.current?.reportValidity()) return;
+    setBusy(true); setError(""); setNotice("");
+    // An interrupted response may still have sent mail. Do not permit rapid
+    // repeated sends, and never resend automatically after a network failure.
+    setResendReadyAt(Date.now() + 60_000);
+    try {
+      await resendVerificationEmail(email);
+      setNotice("Verification requested. If this address has an unverified account, check your inbox and spam and use the newest link. An already verified account should use Sign in. Delivery is not guaranteed by this response.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The verification email could not be requested. Please try again later.");
+    } finally { setBusy(false); }
   }
 
   async function leaveAccount() {
@@ -120,22 +147,27 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
     ) : !ready ? <p role="status">Checking account…</p> : (
       <>
         {!recovery && <div className="commercial-tabs account-auth-tabs" role="tablist" aria-label="Account options">
-          {(["signin", "signup"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} className={mode === value ? "selected" : ""} onClick={() => { setMode(value); setError(""); setNotice(""); }}>
+          {(["signin", "signup"] as const).map((value) => <button key={value} type="button" role="tab" disabled={busy} aria-selected={mode === value} className={mode === value ? "selected" : ""} onClick={() => { setMode(value); setVerificationNeeded(false); setError(""); setNotice(""); }}>
             {value === "signin" ? "Sign in" : "Create account"}
           </button>)}
         </div>}
         <form ref={authForm} className="commercial-stack" onSubmit={submit}>
           {recovery ? <label>New password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label> : <>
-            <label>Email<input autoComplete="email" type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+            <label>Email<input ref={emailInput} autoComplete="email" type="email" required disabled={busy} maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
             {(mode === "signin" || mode === "signup") && <label>Password<input autoComplete={mode === "signup" ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
           </>}
           {(recovery || mode === "signin" || mode === "signup") && <button className="commercial-secondary account-password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide password" : "Show password"}</button>}
           {error && <p className="commercial-error" role="alert">{error}</p>}
           {notice && <p className="commercial-status" role="status">{notice}</p>}
-          <button className="commercial-primary" type="submit" disabled={busy}>{busy ? "Please wait…" : recovery ? "Update password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
+          <button className="commercial-primary" type="submit" disabled={busy || (mode === "signup" && verificationNeeded && !!resendReadyAt)}>{busy ? "Please wait…" : recovery ? "Update password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
+          {!recovery && (mode === "signup" || verificationNeeded) && <div className="commercial-stack">
+            <p className="commercial-footnote">Already registered? Choose Sign in or reset your password; creating the account again does not resend verification. New or unverified accounts can request another link below. Allow at least 60 seconds between requests.</p>
+            <button className="commercial-secondary" type="button" disabled={busy || !!resendReadyAt} onClick={() => void resendVerification()}>{resendReadyAt ? "Resend available after 60 seconds" : "Resend verification email"}</button>
+            {mode === "signup" && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => { setMode("signin"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Use existing account · Sign in</button>}
+          </div>}
         </form>
-        {!recovery && mode === "signin" && <button className="commercial-secondary account-recovery-button" type="button" onClick={() => { setMode("reset"); setError(""); setNotice(""); }}>Forgot your password?</button>}
-        {mode === "reset" && !recovery && <button className="commercial-secondary account-recovery-button" type="button" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}>Back to sign in</button>}
+        {!recovery && mode === "signin" && <button className="commercial-secondary account-recovery-button" type="button" disabled={busy} onClick={() => { setMode("reset"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Forgot your password?</button>}
+        {mode === "reset" && !recovery && <button className="commercial-secondary account-recovery-button" type="button" disabled={busy} onClick={() => { setMode("signin"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Back to sign in</button>}
       </>
     )}
     <p className="commercial-footnote">Email verification is required before paid workspace features are available. Sign-in and sign-out are shared between open tabs on this site; your planner stays open.</p>

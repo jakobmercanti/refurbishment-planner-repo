@@ -4,14 +4,14 @@ const json = (message, status) => Response.json({ message }, { status, headers: 
 /** Same-origin, public-key-only auth transport. Never log credentials or tokens. */
 export async function authProxy(request, endpoint, env) {
   const url = new URL(request.url);
-  const allowed = { GET: ['/settings', '/user'], POST: ['/token', '/signup', '/otp', '/recover', '/logout'], PUT: ['/user'] };
+  const allowed = { GET: ['/settings', '/user'], POST: ['/token', '/signup', '/resend', '/otp', '/recover', '/logout'], PUT: ['/user'] };
   if (!allowed[request.method]?.includes(endpoint)) return json('This account operation is unavailable.', 403);
   const origin = request.headers.get('Origin');
   if ((origin && origin !== url.origin) || request.headers.get('Sec-Fetch-Site') === 'cross-site' || (request.method !== 'GET' && origin !== url.origin)) return json('Same-origin account request required.', 403);
   const keys = [...url.searchParams.keys()];
   if (endpoint === '/token') {
     if (keys.length !== 1 || keys[0] !== 'grant_type' || !['password', 'refresh_token'].includes(url.searchParams.get('grant_type'))) return json('Invalid account request.', 400);
-  } else if (['/signup', '/otp', '/recover'].includes(endpoint)) {
+  } else if (['/signup', '/resend', '/otp', '/recover'].includes(endpoint)) {
     if (keys.length > 1 || keys.some(key => key !== 'redirect_to')) return json('Invalid account request.', 400);
     if (keys.length) {
       try {
@@ -45,6 +45,12 @@ export async function authProxy(request, endpoint, env) {
       }
       body = new Uint8Array(size); let offset = 0;
       for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+      if (endpoint === '/resend') {
+        try {
+          const value = JSON.parse(new TextDecoder().decode(body));
+          if (!value || value.type !== 'signup' || typeof value.email !== 'string' || !value.email.trim() || value.email.length > 320 || Object.keys(value).some(key => !['type', 'email'].includes(key))) return json('Invalid verification request.', 400);
+        } catch { return json('Invalid verification request.', 400); }
+      }
     }
     const forwarded = { apikey: key, 'Content-Type': 'application/json' };
     if (authorization) forwarded.Authorization = authorization;
