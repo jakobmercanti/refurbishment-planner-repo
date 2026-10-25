@@ -2,25 +2,42 @@ from __future__ import annotations
 
 import base64
 import binascii
-from datetime import datetime
 import re
-from xml.etree import ElementTree
+from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
+from xml.etree import ElementTree
 
 from pydantic import BaseModel, Field, field_validator
 
-from geometry.models import FitResult, Placement, Point2D, ProductDefinition, RoomDefinition
+from geometry.cfd import CfdProxySpec
 from geometry.heating import HeatingElementSpec
-
+from geometry.models import FitResult, Placement, Point2D, ProductDefinition, RoomDefinition
 
 _PLAN_SVG_PREFIX = "data:image/svg+xml;base64,"
 _PLAN_SVG_TAGS = {"svg", "g", "rect", "circle", "path", "text"}
 _PLAN_SVG_ATTRIBUTES = {
-    "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "stroke-dasharray",
-    "cx", "cy", "r", "x", "y", "d", "width", "height", "rx", "ry", "text-anchor",
-    "font-family", "font-size",
+    "viewBox",
+    "fill",
+    "stroke",
+    "stroke-width",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-dasharray",
+    "cx",
+    "cy",
+    "r",
+    "x",
+    "y",
+    "d",
+    "width",
+    "height",
+    "rx",
+    "ry",
+    "text-anchor",
+    "font-family",
+    "font-size",
 }
 _PLAN_SVG_COLOUR = re.compile(r"^(?:none|#[0-9a-fA-F]{3,8}|black|white)$")
 _PLAN_SVG_NUMBERS = re.compile(r"^[\d.\s,+-]+$")
@@ -32,7 +49,7 @@ def validate_svg_plan_symbol(data_url: str) -> None:
     if not data_url.startswith(_PLAN_SVG_PREFIX):
         raise ValueError("plan symbol must be a supported image data URL")
     try:
-        encoded = data_url[len(_PLAN_SVG_PREFIX):]
+        encoded = data_url[len(_PLAN_SVG_PREFIX) :]
         source = base64.b64decode(encoded, validate=True)
     except (binascii.Error, ValueError) as error:
         raise ValueError("plan symbol SVG must contain valid base64 data") from error
@@ -45,14 +62,18 @@ def validate_svg_plan_symbol(data_url: str) -> None:
     except ElementTree.ParseError as error:
         raise ValueError("plan symbol SVG is malformed") from error
     namespace, separator, root_name = root.tag.rpartition("}")
-    if (separator and namespace.lstrip("{") != "http://www.w3.org/2000/svg") or (root_name if separator else root.tag) != "svg":
+    if (separator and namespace.lstrip("{") != "http://www.w3.org/2000/svg") or (
+        root_name if separator else root.tag
+    ) != "svg":
         raise ValueError("plan symbol must have an SVG root element")
     view_box = root.attrib.get("viewBox", "")
     if not re.fullmatch(r"[\d.\s,+-]+", view_box) or len(view_box.replace(",", " ").split()) != 4:
         raise ValueError("plan symbol SVG must define a numeric viewBox")
     for element in root.iter():
         namespace, separator, name = element.tag.rpartition("}")
-        if (separator and namespace.lstrip("{") != "http://www.w3.org/2000/svg") or (name if separator else element.tag) not in _PLAN_SVG_TAGS:
+        if (separator and namespace.lstrip("{") != "http://www.w3.org/2000/svg") or (
+            name if separator else element.tag
+        ) not in _PLAN_SVG_TAGS:
             raise ValueError("plan symbol SVG contains an unsupported element")
         for attribute, value in element.attrib.items():
             if attribute not in _PLAN_SVG_ATTRIBUTES:
@@ -61,7 +82,20 @@ def validate_svg_plan_symbol(data_url: str) -> None:
                 raise ValueError("plan symbol SVG contains an unsupported colour")
             if attribute == "d" and not _PLAN_SVG_PATH.fullmatch(value):
                 raise ValueError("plan symbol SVG contains an unsupported path")
-            if attribute == "viewBox" or attribute in {"stroke-width", "stroke-dasharray", "cx", "cy", "r", "x", "y", "width", "height", "rx", "ry", "font-size"}:
+            if attribute == "viewBox" or attribute in {
+                "stroke-width",
+                "stroke-dasharray",
+                "cx",
+                "cy",
+                "r",
+                "x",
+                "y",
+                "width",
+                "height",
+                "rx",
+                "ry",
+                "font-size",
+            }:
                 if not _PLAN_SVG_NUMBERS.fullmatch(value):
                     raise ValueError("plan symbol SVG contains an invalid numeric value")
             if attribute == "stroke-linecap" and value not in {"butt", "round", "square"}:
@@ -143,7 +177,7 @@ class SoftwareToolbarSettingsUpdate(BaseModel):
 class SoftwareSettingsResponse(BaseModel):
     schema_version: Literal[1] = 1
     toolbars: SoftwareToolbarSettings
-    ui: dict
+    ui: dict[str, Any]
 
 
 class SoftwareUiUpdate(BaseModel):
@@ -188,7 +222,7 @@ class CatalogueImage(BaseModel):
 
 
 class CatalogueItemInput(BaseModel):
-    heating_spec: "HeatingElementSpec | None" = None
+    heating_spec: HeatingElementSpec | None = None
     category_id: str = Field(min_length=1, max_length=50)
     fixture_kind: Literal["SHOWER", "BASIN", "TOILET", "FURNITURE", "DOOR", "WINDOW"]
     name: str = Field(min_length=1, max_length=200)
@@ -238,6 +272,7 @@ class ColourPartResponse(BaseModel):
 
 
 class CatalogueItemResponse(CatalogueItemInput):
+    cfd_proxy: CfdProxySpec | None = None
     colour_parts: list[ColourPartResponse] = Field(default_factory=list)
     id: str
     category_name: str

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
+import { formatUiCount } from "@/lib/uiText";
+import { ganttBarAppearance } from "@/lib/ganttAppearance";
 import { calendarWeeks, visibleCalendarDays } from "@/lib/ganttCalendar";
 import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { ProjectDocument } from "@/lib/projectDocument";
@@ -295,15 +297,38 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
     }
     return result;
   }, [visibleActivities, grouping, rooms]);
-  const activityTop = useMemo(() => {
-    let top = 0;
+  const [activityTop, setActivityTop] = useState(() => {
+    // Deterministic server/first-render fallback; measured before browser paint.
+    let height = 0;
     const offsets = new Map<string, number>();
-    for (const entry of ganttEntries) {
-      if (entry.kind === "GROUP") top += 29;
-      else { offsets.set(entry.activity.activityId, top); top += 52; }
-    }
-    return { offsets, height: top };
-  }, [ganttEntries]);
+    ganttEntries.forEach(entry => {
+      if (entry.kind === "GROUP") height += 29;
+      else { offsets.set(entry.activity.activityId, height + 26); height += 52; }
+    });
+    return { offsets, height };
+  });
+  const entryKeys = ganttEntries.map(entry => entry.kind === "GROUP" ? `group:${entry.key}` : entry.activity.activityId).join("|");
+  useLayoutEffect(() => {
+    const body = scrollRef.current?.querySelector<HTMLElement>(".pb-gantt-body");
+    if (!body) return;
+    // Density, wrapped labels and font loading can all change row height.
+    // Dependency endpoints follow the rendered row centres, not a fixed 52 px.
+    const measure = () => {
+      if (!body.getClientRects().length) return;
+      const bounds = body.getBoundingClientRect(), offsets = new Map<string, number>();
+      body.querySelectorAll<HTMLElement>(".pb-gantt-row[data-activity-id]").forEach(row => {
+        const rect = row.getBoundingClientRect();
+        offsets.set(row.dataset.activityId!, rect.top - bounds.top + rect.height / 2);
+      });
+      const height = bounds.height;
+      setActivityTop(previous => previous.height === height && previous.offsets.size === offsets.size && [...offsets].every(([id, y]) => previous.offsets.get(id) === y) ? previous : { height, offsets });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    body.querySelectorAll(".pb-gantt-row,.pb-gantt-group-row").forEach(row => observer.observe(row));
+    measure();
+    return () => observer.disconnect();
+  }, [entryKeys, view]);
   const starts = activities.map((item) => item.startDate).sort();
   const ends = activities.map((item) => item.endDate).sort();
   const today = localDateKey();
@@ -390,7 +415,7 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
               {todayVisible && <i className="pb-today-head-marker" style={{ left: (todayOffset + 0.5) * dayWidth }} title="Today" />}
             </div>
           </div>
-          <div className="pb-gantt-body" style={{ minHeight: activityTop.height }} onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}>
+          <div className="pb-gantt-body" onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}>
             {showDependencyArrows && <svg className="pb-gantt-dependencies" aria-hidden="true" width={timelineWidth} height={activityTop.height} viewBox={"0 0 " + timelineWidth + " " + activityTop.height}>
               <defs>
                 <marker id="pb-dependency-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" /></marker>
@@ -404,7 +429,7 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
                 const targetShown = previewRange?.activityId === activity.activityId ? previewRange : activity;
                 const fromX = (calendarDaysBetween(timelineStart, sourceShown.endDate) + 1) * dayWidth - 2;
                 const toX = calendarDaysBetween(timelineStart, targetShown.startDate) * dayWidth + 2;
-                const fromY = fromTop + 26, toY = toTop + 26, bend = Math.max(16, Math.abs(toX - fromX) * .4);
+                const fromY = fromTop, toY = toTop, bend = Math.max(16, Math.abs(toX - fromX) * .4);
                 const edgeId = activity.activityId + ":" + dependencyId;
                 const hasConflict = dependencyWarningIds.has(edgeId);
                 return [<path key={edgeId} className={`pb-dependency-path${hasConflict ? " conflict" : ""}`} d={"M " + fromX + " " + fromY + " C " + (fromX + bend) + " " + fromY + ", " + (toX - bend) + " " + toY + ", " + toX + " " + toY} markerEnd={hasConflict ? "url(#pb-dependency-arrow-conflict)" : "url(#pb-dependency-arrow)"} />];
@@ -413,18 +438,19 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
             {ganttEntries.map((entry) => {
               if (entry.kind === "GROUP") return <div className="pb-gantt-group-row" key={"group:" + entry.key} style={{ gridColumn: "1 / -1" }}><strong>{entry.label}</strong></div>;
               const activity = entry.activity;
+              const barAppearance = ganttBarAppearance(activity.colour);
               const shown = previewRange?.activityId === activity.activityId ? previewRange : activity;
               const left = calendarDaysBetween(timelineStart, shown.startDate) * dayWidth;
               const width = Math.max(14, (calendarDaysBetween(shown.startDate, shown.endDate) + 1) * dayWidth - Math.max(2, Math.min(6, dayWidth / 5)));
               const selected = selectedId === activity.activityId;
               const isEvent = activity.type !== "task" && activity.type !== "waiting";
-              return <div className={`pb-gantt-row ${selected ? "selected" : ""}`} key={activity.activityId} role="row">
+              return <div className={`pb-gantt-row ${selected ? "selected" : ""}`} key={activity.activityId} data-activity-id={activity.activityId} role="row">
                 <div className="pb-gantt-activity-cell" role="rowheader">
                   <button type="button" className="pb-activity-name" onClick={() => setSelectedId(activity.activityId)} onDoubleClick={() => openEditor(activity)} onContextMenu={(event) => openActivityContextMenu(event, activity)} aria-label={activity.name + ", " + progressLabel(activity) + ". " + activityTypeLabel(activity.type) + ". Double-click to edit."}><strong><i className={"pb-type-mark type-" + activity.type} aria-hidden="true">{activityTypeMark(activity.type, activity.currency ?? defaultCurrency)}</i>{activity.name}</strong><span>{formatDateKey(activity.startDate, { day: "2-digit", month: "short" })} – {formatDateKey(activity.endDate, { day: "2-digit", month: "short" })} · {progressLabel(activity)}</span></button>
                   <button type="button" className="pb-edit-activity" onClick={() => openEditor(activity)} aria-label={`Edit ${activity.name}`} title="Edit activity">···</button>
                 </div>
                 <div className="pb-gantt-lane" role="cell" style={{ width: timelineWidth, backgroundSize: `${dayWidth}px 100%` }}>
-                  <div className={`pb-gantt-bar status-${activity.status} ${isEvent ? "event-type-" + activity.type : ""} ${selected ? "selected" : ""} ${drag?.activityId === activity.activityId ? "dragging" : ""}`} style={{ left, width, backgroundColor: activity.colour }} role="group" aria-label={activity.name + ": " + formatDateKey(shown.startDate) + " to " + formatDateKey(shown.endDate) + ", " + activityTypeLabel(activity.type) + ", " + activity.progress + "% complete, " + progressLabel(activity)} tabIndex={0} onPointerDown={(event) => beginDrag(event, activity, "MOVE")} onClick={() => setSelectedId(activity.activityId)} onDoubleClick={() => openEditor(activity)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openEditor(activity); } }} title={activity.name + " - " + activity.progress + "% · drag to move · double-click to edit"}>
+                  <div className={`pb-gantt-bar status-${activity.status} ${isEvent ? "event-type-" + activity.type : ""} ${selected ? "selected" : ""} ${drag?.activityId === activity.activityId ? "dragging" : ""}`} style={{ left, width, backgroundColor: activity.colour, "--pb-bar-ink": barAppearance.foreground, "--pb-progress-fill": barAppearance.progressOverlay, "--pb-bar-text-shadow": barAppearance.textShadow } as CSSProperties} role="group" aria-label={activity.name + ": " + formatDateKey(shown.startDate) + " to " + formatDateKey(shown.endDate) + ", " + activityTypeLabel(activity.type) + ", " + activity.progress + "% complete, " + progressLabel(activity)} tabIndex={0} onPointerDown={(event) => beginDrag(event, activity, "MOVE")} onClick={() => setSelectedId(activity.activityId)} onDoubleClick={() => openEditor(activity)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openEditor(activity); } }} title={activity.name + " - " + activity.progress + "% · drag to move · double-click to edit"}>
                     <span className="pb-gantt-progress" style={{ width: activity.progress + "%" }} />{isEvent ? <span className="pb-gantt-event-mark" aria-hidden="true">{activityTypeMark(activity.type, activity.currency ?? defaultCurrency)}</span> : width > 76 && <span className="pb-gantt-bar-label" aria-hidden="true"><span className="pb-gantt-bar-name">{activity.name}</span><span className="pb-gantt-bar-progress-label">- {activity.progress}%</span></span>}
                     {!isEvent && <><button type="button" className="pb-gantt-resize pb-gantt-resize-start" aria-label={"Change start date for " + activity.name} onPointerDown={(event) => beginDrag(event, activity, "START")} /><button type="button" className="pb-gantt-resize pb-gantt-resize-end" aria-label={"Change end date for " + activity.name} onPointerDown={(event) => beginDrag(event, activity, "END")} /></>}
                   </div>
@@ -574,7 +600,7 @@ function PlannerBuildQuantityTables({ project, metrics }: { project: ProjectDocu
     </details>
 
     <details className="pb-data-section" open>
-      <summary><span><span className="pb-eyebrow">Construction</span><strong>Walls &amp; openings</strong></span><small>{summary.uniqueWallCount} walls · {summary.doorCount + summary.windowCount} openings</small></summary>
+      <summary><span><span className="pb-eyebrow">Construction</span><strong>Walls &amp; openings</strong></span><small>{formatUiCount(summary.uniqueWallCount,"wall")} · {summary.doorCount + summary.windowCount} openings</small></summary>
       <div className="pb-quantity-facts pb-section-facts">
         <div><span>Unique wall length</span><strong>{length(summary.totalWallLengthMm)}</strong></div>
         <div><span>Gross wall area</span><strong>{wallArea(summary.grossWallAreaMm2)}</strong></div>
@@ -604,7 +630,7 @@ function PlannerBuildQuantityTables({ project, metrics }: { project: ProjectDocu
     </details>
 
     <details className="pb-data-section">
-      <summary><span><span className="pb-eyebrow">Services</span><strong>Electrical</strong></span><small>{summary.electricalCount} items · {metrics.electricalConnections} connections · {metrics.electricalCircuits} circuits</small></summary>
+      <summary><span><span className="pb-eyebrow">Services</span><strong>Electrical</strong></span><small>{summary.electricalCount} items · {metrics.electricalConnections} connections · {formatUiCount(metrics.electricalCircuits,"circuit")}</small></summary>
       {metrics.electricalByType.length ? <QuantityTable><thead><tr><th>Catalogue type</th><th>Count</th></tr></thead><tbody>{metrics.electricalByType.map((item) => <tr key={item.name}><th scope="row">{item.name}</th><td>{item.count}</td></tr>)}</tbody></QuantityTable> : <p className="pb-table-note">No electrical fittings are placed.</p>}
     </details>
 
@@ -801,9 +827,9 @@ function PlannerBuildTable({ project, metrics, defaultCurrency, onEditActivity, 
   return <section className="planner-build-table-view pb-dashboard-view" aria-label="PlannerBuild project dashboard">
     <header className="pb-dashboard-heading"><div><span className="pb-eyebrow">PlannerBuild · {project.name}</span><h1>Project dashboard</h1><p>Track spending, programme progress and materials. Updated from your saved project.</p></div><div className="pb-dashboard-actions">{historyActions}<button type="button" className="pb-primary-button" onClick={onAddActivity}>＋ Activity</button>{openButton("Activity register", "ACTIVITIES")}{openButton("Full quantity tables", "QUANTITIES")}</div></header>
     <PlannerBuildDashboard activities={activities} metrics={metrics} today={today} defaultCurrency={defaultCurrency} onEdit={editActivity} onOpen={openPanel} onAddDelivery={onAddDelivery} />
-    <div className="pb-dashboard-detail-heading"><div><span className="pb-eyebrow">Explore the project</span><h2>Detailed quantities & registers</h2></div><span>{summary.roomCount} rooms · {area(summary.totalFloorAreaMm2)} floor area · {summary.uniqueWallCount} walls</span></div>
+    <div className="pb-dashboard-detail-heading"><div><span className="pb-eyebrow">Explore the project</span><h2>Detailed quantities & registers</h2></div><span>{formatUiCount(summary.roomCount,"room")} · {area(summary.totalFloorAreaMm2)} floor area · {formatUiCount(summary.uniqueWallCount,"wall")}</span></div>
     <div className="pb-dashboard-detail-grid">
-    {section("rooms", "Floorplan", "Rooms", metrics.rooms.length + " rooms · " + area(summary.totalFloorAreaMm2) + " total floor area", <>
+    {section("rooms", "Floorplan", "Rooms", formatUiCount(metrics.rooms.length,"room") + " · " + area(summary.totalFloorAreaMm2) + " total floor area", <>
       {roomRows.length ? <QuantityTable><thead><tr><th>Room</th><th>Floor area</th><th>Perimeter</th><th>Net wall area</th><th>Services</th><th></th></tr></thead><tbody>{roomRows.map((room) => <tr key={room.roomId}><th scope="row">{room.name}</th><td>{area(room.areaMm2)}</td><td>{length(room.perimeterMm)}</td><td>{wallArea(room.netWallAreaMm2)}</td><td>{count(room.electrical)} electrical · {count(room.plumbing)} plumbing</td><td>{openButton("Details", "ROOM", room.roomId)}</td></tr>)}</tbody></QuantityTable> : <p className="pb-table-note">No rooms have been added to this project.</p>}
       {metrics.rooms.length > roomRows.length && <p className="pb-table-note">Showing {roomRows.length} of {metrics.rooms.length} rooms. Open full quantity tables for every room.</p>}
     </>)}
@@ -815,10 +841,10 @@ function PlannerBuildTable({ project, metrics, defaultCurrency, onEditActivity, 
     {section("finishes", "Materials", "Finishes & paint", paintedWalls.length + " finished wall surfaces · " + metrics.floorFinishCount + " floor finishes", <>
       <div className="pb-service-summary"><span>Painted wall area: <strong>{paintedWalls.length ? metrics.paintedWallAreaMm2 === null ? "Height not set" : area(metrics.paintedWallAreaMm2) : "Not set"}</strong></span><span>Floor finish area: <strong>{formatPlannerBuildArea(metrics.rooms.filter((room) => room.floorFinish).reduce((sum, room) => sum + room.areaMm2, 0))}</strong></span><span>Required paint: <strong>Coverage / coats not set</strong></span></div>{openButton("Open finishes detail", "FINISHES")}
     </>)}
-    {section("electrical", "Services", "Electrical", summary.electricalCount + " assets · " + metrics.electricalConnections + " connections · " + metrics.electricalCircuits + " circuits", <>
+    {section("electrical", "Services", "Electrical", summary.electricalCount + " assets · " + metrics.electricalConnections + " connections · " + formatUiCount(metrics.electricalCircuits,"circuit"), <>
       <div className="pb-service-summary"><span>Placed items: <strong>{summary.electricalCount}</strong></span><span>Connections: <strong>{metrics.electricalConnections}</strong></span><span>Circuits: <strong>{metrics.electricalCircuits}</strong></span></div>{metrics.electricalByType.length > 0 && <div className="pb-breakdown-items">{metrics.electricalByType.slice(0, 8).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div>}{openButton("Open electrical detail", "ELECTRICAL")}
     </>)}
-    {section("plumbing", "Services", "Plumbing", count(summary.plumbingCount) + " classified assets", <>{metrics.plumbingClassificationAvailable ? <div className="pb-breakdown-items">{metrics.plumbingByType.slice(0, 8).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div> : <p className="pb-table-note">Structured plumbing categories are unavailable; counts are not guessed from asset names.</p>}{openButton("Open plumbing detail", "PLUMBING")}</>)}
+    {section("plumbing", "Services", "Plumbing", formatUiCount(summary.plumbingCount,"classified asset","classified assets","Not classified"), <>{metrics.plumbingClassificationAvailable ? <div className="pb-breakdown-items">{metrics.plumbingByType.slice(0, 8).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div> : <p className="pb-table-note">Structured plumbing categories are unavailable; counts are not guessed from asset names.</p>}{openButton("Open plumbing detail", "PLUMBING")}</>)}
     {section("assets", "Catalogue", "Fittings & assets", summary.fittingCount + " ordinary fittings · " + metrics.importedAssetCount + " imported assets", <><div className="pb-service-summary"><span>Ordinary fittings: <strong>{summary.fittingCount}</strong></span><span>Imported assets: <strong>{metrics.importedAssetCount}</strong></span><span>Categories: <strong>{importedByCategory.size}</strong></span></div>{openButton("Open assets detail", "ASSETS")}</>)}
     {section("programme", "Programme", "Schedule & activity register", activities.length + " activities · " + (summary.scheduledDays === null ? "no date range" : summary.scheduledDays + " calendar days"), <>
       <div className="pb-programme-stats"><div><span>Complete</span><strong>{completedCount}</strong></div><div><span>In progress</span><strong>{inProgressCount}</strong></div><div><span>Not started</span><strong>{notStartedCount}</strong></div><div><span>Blocked</span><strong>{blockedCount}</strong></div><div><span>Delayed</span><strong>{delayedCount}</strong></div></div>

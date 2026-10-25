@@ -7,7 +7,14 @@ def test_public_catalogue_mutations_are_blocked_even_with_flag(monkeypatch):
     monkeypatch.setenv("RENOVATION_FIT_PUBLIC", "true")
     monkeypatch.setenv("ENABLE_PROGRAMMER_TOOLS", "true")
     client = TestClient(app)
-    for method, path in [("put", "/settings"), ("post", "/catalog/items"), ("put", "/catalog/items/example"), ("delete", "/catalog/items/example"), ("patch", "/catalog/categories/example"), ("post", "/catalog/import-website")]:
+    for method, path in [
+        ("put", "/settings"),
+        ("post", "/catalog/items"),
+        ("put", "/catalog/items/example"),
+        ("delete", "/catalog/items/example"),
+        ("patch", "/catalog/categories/example"),
+        ("post", "/catalog/import-website"),
+    ]:
         assert client.request(method, path, json={}).status_code == 403
     assert client.get("/health").status_code == 200
     assert client.get("/catalog/categories").status_code == 200

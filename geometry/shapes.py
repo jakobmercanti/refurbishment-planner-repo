@@ -94,6 +94,8 @@ def _door_leaf_sweep(
 def door_swing_envelope(room: RoomDefinition, door: GenericOpening) -> BaseGeometry:
     if door.kind is not OpeningKind.DOOR:
         raise ValueError("door_swing_envelope requires a door opening")
+    if door.passage_profile is not None:
+        return Polygon()
     wall = wall_by_id(room, door.parent_wall_id)
     start, end = opening_endpoints(door, wall)
     swing_angle = door.swing_angle_deg or 90.0

@@ -10,6 +10,11 @@ import { migrateHeatingElements, isHeatingElement } from "./heatingElements";
 import { energySchema, parseEnergyProject, type EnergyProject } from "./energyDocument";
 import { constrainObstacleToRoom, requiresElectricalWall } from "./elementPlacement";
 import { isLocalPlanSymbol } from "./localPlanSymbol";
+import { buildingSchema, defaultBuilding, floorContent, projectFloors, validateFloorStack, type BuildingDocument } from "./buildingDocument";
+import { validateFloorOpening, validateRoofGuardClearance } from "./buildingGeometry";
+import { PASSAGE_PROFILES, passageProfileForKey } from "./passageOpenings";
+import { personSpecSchema, supportsPerson, PERSON_MODELS } from "./people";
+import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -55,6 +60,9 @@ const documentSchema = z.object({
   energyLayout: energySchema.optional(),
   plannerBuild: z.unknown().optional(),
   quotes: z.array(quoteSchema).max(100).optional().default([]),
+  building: buildingSchema.optional(),
+  cfdScenarios: cfdScenariosSchema.optional(),
+  cfdSimulationGroups: simulationGroupsSchema.optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
@@ -65,6 +73,9 @@ export interface ProjectDocument {
   energyLayout?: EnergyProject;
   plannerBuild: PlannerBuildData;
   quotes?: QuoteDocument[];
+  building?: BuildingDocument;
+  cfdScenarios?: CFDScenario[];
+  cfdSimulationGroups?: CFDSimulationGroup[];
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -92,7 +103,12 @@ export function parseProject(input: unknown): ProjectDocument {
     electricalLayout: normalizeElectricalLayout(rawElectricalLayout, electricalObstacleIds(parsed.rooms)),
     plannerBuild: normalizePlannerBuild(rawPlannerBuild),
   };
+  if(p.heatingLayout===undefined)delete p.heatingLayout;
+  if(p.energyLayout===undefined)delete p.energyLayout;
   unique(p.rooms.map(r => r.id)); unique(p.assets.map(a => a.assetId)); unique(p.assetInstances.map(a => a.instanceId));
+  if (p.cfdScenarios?.some(s => s.sourceBuildingId !== p.projectId)) throw new Error("A Climoptix scenario belongs to another project.");
+  if (new Set([...(p.cfdSimulationGroups ?? []).map(g => g.name.toLowerCase()), ...(p.cfdScenarios ?? []).map(s => s.group.toLowerCase())]).size > 100)
+    throw new Error("A project supports up to 100 simulation groups, including empty folders.");
   if (p.heatingLayout) p.heatingLayout = parseHeatingProject(p.heatingLayout);
   if (p.heatingLayout || p.rooms.some(room => room.obstacles.some(isHeatingElement))) Object.assign(p, migrateHeatingElements(p.rooms, p.heatingLayout));
   if (p.energyLayout) p.energyLayout = parseEnergyProject(p.energyLayout);
@@ -103,8 +119,23 @@ export function parseProject(input: unknown): ProjectDocument {
   unique(p.plannerBuild.activities.map(activity => activity.activityId));
   for (const room of p.rooms) {
     unique(room.obstacles.map(o => o.id)); unique(room.openings.map(o => o.id));
-    for (const opening of room.openings) z.object({ id, kind: z.enum(["DOOR", "WINDOW", "GENERIC"]), parent_wall_id: id, offset_mm: number.nonnegative(), width: measurement, height: measurement, sill_height_mm: number.nonnegative() }).parse(opening);
+    for (const opening of room.openings) {
+      z.object({ id, kind: z.enum(["DOOR", "WINDOW", "GENERIC"]), parent_wall_id: id, offset_mm: number.nonnegative(), width: measurement, height: measurement, sill_height_mm: number.nonnegative(), passage_profile:z.enum(PASSAGE_PROFILES).nullish() }).parse(opening);
+      if(opening.passage_profile==null)delete opening.passage_profile;
+      const knownProfile=passageProfileForKey(typeof opening.metadata?.representation_key==="string"?opening.metadata.representation_key:undefined);
+      if((opening.passage_profile||knownProfile)&&opening.kind!=="DOOR")throw new Error("Doorless passage profiles require a doorway.");
+      if(knownProfile&&opening.passage_profile&&knownProfile!==opening.passage_profile)throw new Error("The passage profile does not match its catalogue model.");
+      if(knownProfile)opening.passage_profile=knownProfile;
+    }
     for (const obstacle of room.obstacles) {
+      if (obstacle.person_spec) {
+        personSpecSchema.parse(obstacle.person_spec);
+        if (!PERSON_MODELS.some(model => model.key === obstacle.representation_key && model.posture === obstacle.person_spec!.posture)) throw new Error("Person posture does not match its model.");
+        if (obstacle.person_spec.support) {
+          const host = room.obstacles.find(item => item.id === obstacle.person_spec!.support!.obstacle_id);
+          if (!host || host.id === obstacle.id || !supportsPerson(host, obstacle.person_spec.posture)) throw new Error("Person support must reference suitable furniture in the same room.");
+        }
+      }
       if (obstacle.heating_spec) heatingElementSpecSchema.parse(obstacle.heating_spec);
       if (obstacle.color_hex !== undefined) colour.parse(obstacle.color_hex);
       if (obstacle.component_colors !== undefined) z.record(z.string(), colour).parse(obstacle.component_colors);
@@ -132,12 +163,27 @@ export function parseProject(input: unknown): ProjectDocument {
     for (const opening of p.floorplan.openings) { const wall = p.floorplan.walls.find(w => w.id === opening.wallId); if (!wall || opening.segmentIndex >= wall.points.length - 1) throw new Error("Opening references a missing wall."); }
   }
   if (p.assetInstances.some(i => !p.assets.some(a => a.assetId === i.assetId && a.assetVersion === i.assetVersion))) throw new Error("A placed model is missing its asset definition.");
+  if (p.building) {
+    validateFloorStack(p.building);
+    p.building.floors = p.building.floors.map(f => {if(f.id===p.building!.activeFloorId){delete f.content;return f;}return { ...f, content: floorContent(parseProject({ ...p, ...floorContent(f.content!),electricalLayout:f.content?.electricalLayout,heatingLayout:f.content?.heatingLayout,energyLayout:f.content?.energyLayout, cfdScenarios:undefined, building: undefined })) };});
+    for (const f of projectFloors(p)) for (const opening of f.openings) validateFloorOpening(f.content, opening, f.openings);
+    const seen = new Set<string>();
+    for (const f of projectFloors(p)) {
+      const ids = new Set([...f.content.rooms.map(r=>r.id),...f.content.rooms.flatMap(r=>r.obstacles.map(o=>o.id)),...f.content.assetInstances.map(i=>i.instanceId)]);
+      if ([...ids].some(id=>seen.has(id))) throw new Error("Different floors cannot share room or placed-object IDs.");
+      ids.forEach(id=>seen.add(id));
+    }
+    const roomIds=new Set(projectFloors(p).flatMap(f=>f.content.rooms.map(room=>room.id)));
+    if(p.building.roof.roomOverrides?.some(item=>!roomIds.has(item.roomId)))throw new Error("Room roof references a missing room.");
+    const top=projectFloors(p).at(-1)!;validateRoofGuardClearance(top.content,top.openings,p.building.roof);
+  } else p.building = defaultBuilding(p);
   return p;
 }
 // New versions must add explicit sequential migrations here, never shape guessing.
 export const migrateProject = parseProject;
 export function newProject(): ProjectDocument {
   const now = new Date().toISOString();
-  return { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT, plannerBuild: DEFAULT_PLANNER_BUILD, quotes: [] };
+  const p: ProjectDocument = { schemaVersion: 1, projectId: crypto.randomUUID(), name: "My floorplan", units: "mm", createdAt: now, updatedAt: now, generated: false, rooms: [], floorplan: null, assets: [], assetInstances: [], electricalLayout: DEFAULT_ELECTRICAL_LAYOUT, plannerBuild: DEFAULT_PLANNER_BUILD, quotes: [] };
+  return { ...p, building: defaultBuilding(p) };
 }
 export const capabilities = Object.freeze({ canSaveCloudProjects: false, canUploadCloudAssets: false, canUseAiRendering: false, canExport4K: false, cloudStorageBytes: 0, aiRenderCreditsRemaining: 0 });

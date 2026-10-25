@@ -124,7 +124,12 @@ class R2Storage:
         try:
             with self.opener.open(request, timeout=20) as response:
                 response_headers = {k.lower(): v for k, v in response.headers.items()}
-                content_length = int(response_headers.get("content-length", "0") or 0)
+                try:
+                    content_length = int(response_headers.get("content-length", "0") or 0)
+                except ValueError:
+                    raise R2Unavailable("Object storage returned an invalid object size.") from None
+                if content_length < 0:
+                    raise R2Unavailable("Object storage returned an invalid object size.")
                 if max_bytes and content_length > max_bytes:
                     raise R2Unavailable("Stored object exceeds its allowed size.")
                 payload = response.read(max_bytes + 1 if max_bytes else 1)

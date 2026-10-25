@@ -1,11 +1,19 @@
 .window-header-actions { display: flex; gap: 3px; align-items: center; }
 .account-dialog .local-assets-header > .window-header-actions { grid-column: -2 / -1; grid-row: 1; justify-self: end; }
-.window-help-button { flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control, 6px); background: var(--panel); color: var(--deep); font: 700 16px/1 var(--font-sans); cursor: pointer; touch-action: manipulation; }
+:root { --window-icon-size:28px; }
+:root[data-density="comfortable"] { --window-icon-size:32px; }
+.compact-workspace { --window-icon-size:36px; }
+/* Window chrome has one size contract, independent of form-button minimums. */
+button.window-help-button { flex:0 0 auto; box-sizing:border-box; width:var(--window-icon-size)!important; height:var(--window-icon-size)!important; min-width:var(--window-icon-size)!important; min-height:var(--window-icon-size)!important; padding:0!important; border:1px solid var(--line); border-radius:var(--ui-button-radius,6px); background:var(--panel); color:var(--deep); font:700 16px/1 var(--font-sans); cursor:pointer; touch-action:manipulation; display:inline-grid; place-items:center; vertical-align:middle; }
+.window-header-actions>button:not(.window-help-button) { box-sizing:border-box; display:inline-grid; place-items:center; width:var(--window-icon-size); height:var(--window-icon-size); min-width:var(--window-icon-size); min-height:var(--window-icon-size); padding:0; line-height:1; flex:0 0 auto; }
 .window-help-button:hover, .window-help-button:focus-visible { background: var(--surface-muted); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.floating-toolbar summary:has(>.service-menu-help):not(.full-plan-overall-toggle) { display:flex; align-items:center; gap:8px; list-style:none; }
+.floating-toolbar summary:has(>.service-menu-help):not(.full-plan-overall-toggle)::before { content:"▸"; flex:0 0 auto; }
+.floating-toolbar details[open]>summary:has(>.service-menu-help):not(.full-plan-overall-toggle)::before { content:"▾"; }
+.floating-toolbar summary>.service-menu-help { margin-left:auto; }
 .floating-toolbar-titlebar:has(.window-header-actions), .popup-titlebar:has(.window-header-actions) { grid-template-columns: 20px 18px minmax(0, 1fr) auto; }
 .compact-workspace .floating-toolbar-titlebar:has(.window-header-actions) { grid-template-columns: 18px minmax(0, 1fr) auto; }
-.compact-workspace .window-help-button { width: 36px; height: 36px; }
-.window-help-host { position: fixed; inset: 0; z-index: 10000; pointer-events: none; }
+.window-help-host { display: contents; }
 .window-help-host > .floating-toolbar { pointer-events: auto; }
 .window-help-content { padding: 10px 14px; color: var(--ink); line-height: 1.55; }
 .window-help-content h3 { margin: 12px 0 5px; font-size: 15px; }

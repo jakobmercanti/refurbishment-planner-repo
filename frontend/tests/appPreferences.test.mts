@@ -3,6 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SettingsDialog } from "../components/SettingsDialog.tsx";
+import { windowHelpSteps } from "../lib/windowHelp";
 import {
   APP_APPEARANCE_STORAGE_KEY,
   DEFAULT_APP_PREFERENCES,
@@ -43,6 +44,16 @@ test("application preferences persist theme, density and currency together", () 
   assert.deepEqual(readAppearancePreferences(storage), { theme: "SYSTEM", density: "COMPACT", currency: "USD" });
 });
 
+test("navigation presets persist independently and invalid presets fall back without corrupting appearance", () => {
+  const storage = new MemoryStorage();
+  for (const navigation of ["STANDARD", "CAD", "BLENDER"] as const) {
+    writeAppearancePreferences({ ...DEFAULT_APP_PREFERENCES, navigation }, storage);
+    assert.equal(readAppearancePreferences(storage).navigation, navigation);
+  }
+  storage.setItem(APP_APPEARANCE_STORAGE_KEY, JSON.stringify({ navigation: "unknown", theme: "dark", density: "compact" }));
+  assert.deepEqual(readAppearancePreferences(storage), { theme: "DARK", density: "COMPACT" });
+});
+
 test("settings exposes the selected default currency and explains that values are not converted", () => {
   const markup = renderToStaticMarkup(createElement(SettingsDialog, {
     open: true,
@@ -53,7 +64,8 @@ test("settings exposes the selected default currency and explains that values ar
   assert.match(markup, /Default currency/);
   assert.match(markup, /id="settings-default-currency"/);
   assert.match(markup, /value="USD" selected/);
-  assert.match(markup, /never converts existing amounts/);
+  assert.doesNotMatch(markup, /never converts existing amounts/);
+  assert.match(windowHelpSteps("Preferences").map(step => step.text).join(" "), /never converts existing amounts/);
 });
 
 test("malformed or unsupported stored appearance values fall back independently", () => {

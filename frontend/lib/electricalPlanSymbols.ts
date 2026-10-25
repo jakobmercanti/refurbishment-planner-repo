@@ -54,6 +54,10 @@ export function electricalDevicePlanSymbol(key: string | null | undefined, elect
 
 /** Display units only: preserve the device-face aspect ratio instead of its shallow wall depth. */
 export function electricalDevicePlanSize(key: string | null | undefined, width: number, depth: number, electricalLayout = false) {
+  // Lighting plans use a compact schematic, not the shade's physical footprint.
+  // Existing fittings, previews and route envelopes share this display-only
+  // size; electricalPlanPresentation applies the current zoom afterwards.
+  if (electricalLayout && /^electrical-(pendant-|ceiling-)/.test(key ?? "")) return { width: 32, depth: 32 };
   const symbol = electricalDevicePlanSymbol(key, electricalLayout);
   if (!symbol) return { width, depth };
   const minimumHeight = electricalLayout ? 32 : 13;
@@ -62,6 +66,14 @@ export function electricalDevicePlanSize(key: string | null | undefined, width: 
   const nominalWidth = key === "electrical-switch-quadruple" ? 146 : 86;
   const height = rockerPlate ? Math.max(minimumHeight, Math.abs(width) * 86 / nominalWidth, Math.abs(depth)) : Math.max(minimumHeight, Math.abs(width) / symbol.aspectRatio, Math.abs(depth));
   return { width: height * symbol.aspectRatio, depth: height };
+}
+
+/** Shared by placed fittings and placement previews. Screen minima are applied at
+ * 100% zoom, then the complete schematic face scales with the plan. Never mm. */
+export function electricalPlanPresentation(key: string | null | undefined, screenWidth: number, screenDepth: number, electricalLayout: boolean, zoom = 1) {
+  const symbolZoom = electricalLayout ? zoom : 1;
+  const size = electricalDevicePlanSize(key, screenWidth / symbolZoom, screenDepth / symbolZoom, electricalLayout);
+  return { width: Math.max(size.width, electricalLayout ? 26 : 0), depth: Math.max(size.depth, electricalLayout ? 26 : 0), zoom: symbolZoom };
 }
 
 /** Normalised rocker rectangles shared by the symbol and its interactive state overlay. */

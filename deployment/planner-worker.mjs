@@ -1,5 +1,7 @@
 import { plansTestPage, PLANS_TEST_VERSION } from './plans-test-page.mjs';
 import { plansPage, PLANS_PAGE_VERSION } from './plans-page.mjs';
+import { cfdWorkerProxy } from './cfd-worker-proxy.mjs';
+import { authProxy } from './auth-proxy.mjs';
 
 const BASE = '/planner';
 const googleDomainSources = 'com ad ae com.af com.ag al am co.ao com.ar as at com.au az ba com.bd be bf bg com.bh bi bj co.bw by com.bz ca cd cf cg ci co.ck cl cm cn com.co co.cr com.cy cz de dj dk dm com.do dz com.ec ee com.eg es com.et fi com.fj fm fr ga ge gg com.gh com.gi gl gm gr com.gt gy com.hk hn hr ht hu co.id ie co.il im co.in iq is it je com.jm jo co.jp co.ke com.kh ki kg co.kr com.kw kz la com.lb li lk co.ls lt lu lv com.ly co.ma md me mg mk ml com.mm mn com.mt mu mv mw com.mx com.my co.mz com.na com.ng ni ne nl no com.np nr nu co.nz com.om com.pa com.pe com.pg com.ph com.pk pl pn com.pr ps pt com.py com.qa ro ru rw com.sa com.sb sc se com.sg sh si sk com.sl sn so sm sr st com.sv td tg co.th com.tj tl tm tn to com.tr tt com.tw co.tz com.ua co.ug co.uk com.uy com.uz com.vc com.ve co.vi com.vn vu ws rs co.za co.zm co.zw cat'.split(' ').map(suffix => `https://www.google.${suffix}`).join(' ');
@@ -34,6 +36,7 @@ export default {
     if (url.pathname === BASE + '/index.html') { url.pathname = BASE + '/'; return Response.redirect(url, 308); }
     if (!url.pathname.startsWith(`${BASE}/`)) return new Response('Not found', { status: 404 });
     const path = url.pathname.slice(BASE.length);
+    if (path.startsWith('/auth-api/')) return secureRespond(await authProxy(request, path.slice('/auth-api'.length), env));
     if (['GET', 'HEAD'].includes(request.method) && ((path === '/account/' || path === '/account') && url.searchParams.get('tab') === 'plans' || path === '/billing/' || path === '/billing')) {
       url.pathname = BASE + '/plans/';
       url.searchParams.delete('tab');
@@ -55,6 +58,7 @@ export default {
     }
     if (path.startsWith('/engineering-api/')) {
       const endpoint = path.slice('/engineering-api'.length);
+      if (endpoint.startsWith('/climoptix/worker/')) return secureRespond(await cfdWorkerProxy(request, endpoint, env.CFD_WORKER_ORIGIN));
       if (endpoint.startsWith('/commercial/')) {
         const resource = endpoint.slice('/commercial'.length);
         const id = '[A-Za-z0-9_-]+';
@@ -147,8 +151,13 @@ export default {
           return respond(new Response('Unavailable', { status: 502, headers: { 'Cache-Control': 'no-store' } }));
         }
       }
-      const readable = request.method === 'GET' && (/^\/(health|demo|settings|products)(\/[^/]+)?$/.test(endpoint) || /^\/catalog\/(categories|items|materials)(\/[^/]+)?(\/images\/\d+)?$/.test(endpoint));
-      const calculable = request.method === 'POST' && ['/rooms/validate', '/layout-checks', '/fit-checks', '/placements'].includes(endpoint);
+      const readable = request.method === 'GET' && (
+        /^\/(health|demo|settings|products)(\/[^/]+)?$/.test(endpoint)
+        || /^\/catalog\/(categories|items|materials)(\/[^/]+)?(\/images\/\d+)?$/.test(endpoint)
+        || /^\/catalog\/items\/[^/]+\/cfd(?:\.stl)?$/.test(endpoint)
+        || endpoint === '/climoptix/capabilities'
+      );
+      const calculable = request.method === 'POST' && ['/rooms/validate', '/layout-checks', '/fit-checks', '/placements', '/climoptix/geometry', '/climoptix/prepare', '/climoptix/openfoam-settings', '/climoptix/thermal-envelope', '/climoptix/thermal-preview', '/climoptix/thermal-epw'].includes(endpoint);
       if (!readable && !calculable) return respond(Response.json({ detail: 'This operation is unavailable publicly.' }, { status: 403 }));
       if (calculable && request.headers.get('Origin') !== url.origin) return respond(new Response('Forbidden', { status: 403 }));
       if (!env.ENGINEERING_API_ORIGIN) return respond(Response.json({ detail: 'Engineering service is not configured.' }, { status: 503 }));
@@ -156,8 +165,19 @@ export default {
       if (origin.protocol !== 'https:') return respond(new Response('Invalid API configuration', { status: 503 }));
       const target = new URL(endpoint + url.search, origin);
       try {
-        const body = calculable ? await request.arrayBuffer() : undefined;
-        if (body && body.byteLength > 4 * 1024 * 1024) return respond(new Response('Request too large', { status: 413 }));
+        let body;
+        if (calculable && request.body) {
+          const reader=request.body.getReader(),chunks=[];
+          let length=0;
+          while(true){
+            const part=await reader.read();if(part.done)break;
+            length+=part.value.byteLength;
+            if(length>4*1024*1024){await reader.cancel();return respond(new Response('Request too large',{status:413}));}
+            chunks.push(part.value);
+          }
+          body=new Uint8Array(length);let offset=0;
+          for(const chunk of chunks){body.set(chunk,offset);offset+=chunk.byteLength;}
+        }
         const result = await fetch(target, { method: request.method, headers: { 'Content-Type': 'application/json' }, body, redirect: 'manual', signal: AbortSignal.timeout(25000) });
         if (result.status >= 300 && result.status < 400) throw new Error('Unexpected upstream redirect');
         const out = respond(result); out.headers.set('Cache-Control', 'no-store'); return out;

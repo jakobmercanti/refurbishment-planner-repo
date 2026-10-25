@@ -1,7 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PersistedFloorplan } from "../components/FullFloorplanEditor";
-import { newProject, type AssetDefinition, type AssetInstance, type ProjectDocument } from "./projectDocument";
+import { newProject, parseProject, type AssetDefinition, type AssetInstance, type ProjectDocument } from "./projectDocument";
+import { activeFloor, floorContent, projectFloors } from "./buildingDocument";
+import { validateFloorOpening, validateFloorSupports } from "./buildingGeometry";
 import type { RenderCameraState } from "./renderCamera";
 import { projectRepository } from "./projectRepository";
 import { exportProject, importProject } from "./projectPackage";
@@ -13,15 +15,24 @@ import type { QuoteDocument } from "./quoteDocument";
 import type { HeatingProject } from "./heatingDocument";
 import type { EnergyProject } from "./energyDocument";
 import { commitHeatingElements } from "./heatingElements";
+import { ProjectHistory } from "./projectHistory";
+import { matchesProjectScope } from "./projectScope";
+import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
   const [status, setStatus] = useState("Opening local project…");
   const [revision, setRevision] = useState(0);
   const [restore, setRestore] = useState<ProjectDocument | null>(null);
+  const [documentSession,setDocumentSession]=useState(0);
+  const sessionRef=useRef(0);
+  const resetSession=useCallback(()=>setDocumentSession(++sessionRef.current),[]);
   const current = useRef<ProjectDocument | null>(null);
   const lastSaved = useRef<string>("");
-  const replace = useCallback((p: ProjectDocument) => { current.current = p; lastSaved.current = JSON.stringify(p); setProject(p); setRestore(p); setRevision(r => r + 1); }, []);
+  const history = useRef(new ProjectHistory());
+  const [historyStatus,setHistoryStatus]=useState({canUndo:false,canRedo:false});
+  const refreshHistory=useCallback(()=>{const canUndo=history.current.past.length>0,canRedo=history.current.future.length>0;setHistoryStatus(s=>s.canUndo===canUndo&&s.canRedo===canRedo?s:{canUndo,canRedo});},[]);
+  const replace = useCallback((p: ProjectDocument) => { resetSession();history.current.clear();refreshHistory(); current.current = p; lastSaved.current = JSON.stringify(p); setProject(p); setRestore(p); setRevision(r => r + 1); }, [refreshHistory,resetSession]);
   useEffect(() => {
     let cancelled = false;
     void projectRepository.currentProject().then(p => { if (!cancelled && p) { replace(p); setStatus("Saved locally"); } }).catch(() => {
@@ -29,12 +40,25 @@ export function useLocalProject() {
     });
     return () => { cancelled = true; };
   }, [replace]);
-  const update = useCallback((changes: Partial<ProjectDocument>) => {
+  const update = useCallback((changes: Partial<ProjectDocument>, forceHistory = false) => {
     const p = current.current; if (!p) return;
-    const next = { ...p, ...changes, updatedAt: new Date().toISOString() };
+    // An empty floor publishes a fresh [] when the editor is restored. Avoid
+    // feeding an unchanged snapshot back into the editor and starving autosave.
+    if (Object.entries(changes).every(([key,value]) => JSON.stringify(p[key as keyof ProjectDocument]) === JSON.stringify(value))) return;
+    let next = { ...p, ...changes, updatedAt: new Date().toISOString() };
+    if(changes.rooms&&next.building?.roof.roomOverrides){const ids=new Set(projectFloors(next).flatMap(f=>f.content.rooms.map(room=>room.id)));next={...next,building:{...next.building,roof:{...next.building.roof,roomOverrides:next.building.roof.roomOverrides.filter(item=>ids.has(item.roomId))}}};}
+    history.current.record(p,next,forceHistory);
+    refreshHistory();
     current.current = next; setProject(next);
-  }, []);
-  const changeFloorplan = useCallback((floorplan: PersistedFloorplan, rooms: Room[]) => update({ floorplan, rooms }), [update]);
+  }, [refreshHistory]);
+  const isScopeCurrent = useCallback((scope:string|undefined)=>matchesProjectScope(current.current,scope,sessionRef.current),[]);
+  const changeFloorplan = useCallback((floorplan: PersistedFloorplan, rooms: Room[], scope?:string) => {
+    const p=current.current;if(!p||scope!==undefined&&!matchesProjectScope(p,scope,sessionRef.current))return;
+    const geometry=(plan:PersistedFloorplan|null,items:Room[])=>JSON.stringify([plan?.walls.map(w=>w.points)??[],items.map(r=>r.vertices)]);
+    try{const floor=activeFloor(p);for(const opening of floor.openings)validateFloorOpening({...floorContent(p),floorplan,rooms},opening,floor.openings);if(geometry(p.floorplan,p.rooms)!==geometry(floorplan,rooms))validateFloorSupports(projectFloors({...p,floorplan,rooms}));}
+    catch(error){const message=error instanceof Error?error.message:"Invalid slab geometry.";setStatus("Wall edit not saved. Previous geometry kept.");setRestore(p);setRevision(r=>r+1);return message;}
+    update({ floorplan, rooms });
+  }, [update]);
   useEffect(() => {
     if (!project || JSON.stringify(project) === lastSaved.current) return;
     const timer = setTimeout(() => {
@@ -97,5 +121,16 @@ export function useLocalProject() {
     const next = commitHeatingElements(heatingLayout, p.rooms); update(next); return next.rooms;
   }, [update]);
   const setEnergyLayout = useCallback((energyLayout: EnergyProject) => update({ energyLayout }), [update]);
-  return { project, restore, revision, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout };
+  const setCFDScenarios = useCallback((scenarios: CFDScenario[],scope?:string,checkpoint=false,groups?:CFDSimulationGroup[]) => {
+    const p=current.current;
+    if(!p||!matchesProjectScope(p,scope,sessionRef.current))return;
+    const next=cfdScenariosSchema.parse(scenarios);
+    if(next.some(s=>s.sourceBuildingId!==p.projectId))throw new Error("Scenario source does not match this project.");
+    update({cfdScenarios:next,...(groups ? {cfdSimulationGroups:simulationGroupsSchema.parse(groups)} : {})},checkpoint);
+  },[update]);
+  const restoreEdit = useCallback((p: ProjectDocument | null) => { if(!p)return null;refreshHistory(); const next={...p,updatedAt:new Date().toISOString()};current.current=next;setProject(next);setRestore(next);setRevision(r=>r+1);return next; },[refreshHistory]);
+  const editBuilding = useCallback((operation:(p:ProjectDocument)=>ProjectDocument,resetDocument=false) => { const before=current.current;if(!before)return null;const result=operation(before);if(result===before)return before;const next=parseProject(result);if(JSON.stringify(before.building?.floors.map(f=>f.id))!==JSON.stringify(next.building?.floors.map(f=>f.id)))validateFloorSupports(projectFloors(next));history.current.record(before,next,true);if(resetDocument)resetSession();return restoreEdit(next); },[restoreEdit,resetSession]);
+  const undo = useCallback(()=>current.current ? restoreEdit(history.current.undo(current.current)) : null,[restoreEdit]);
+  const redo = useCallback(()=>current.current ? restoreEdit(history.current.redo(current.current)) : null,[restoreEdit]);
+  return { project, restore, revision, documentSession, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, setCFDScenarios, editBuilding, undo, redo, isScopeCurrent, ...historyStatus };
 }

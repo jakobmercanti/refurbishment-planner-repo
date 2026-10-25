@@ -1,9 +1,15 @@
 "use client";
+import { BuildingPlanOverlay, type BuildingPlanHandle } from "./BuildingPlanOverlay";
+import type { FloorOpeningTool } from "./BuildingControls";
+import type { FloorContent, FloorOpening, RoofConfiguration } from "@/lib/buildingDocument";
+import { snapToFloorReference, validateWallRunsOnFloor } from "@/lib/buildingGeometry";
+import { roomMeasurement } from "@/lib/roomMeasurement";
 import { exported } from "@/lib/analytics";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { RoomOpeningEditor } from "@/components/RoomOpeningEditor";
 import { createPortal } from "react-dom";
 import { doorModel } from "@/lib/doorModels";
+import { passageProfileForKey } from "@/lib/passageOpenings";
 
 import { type CSSProperties, type ReactNode, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CatalogueFixtureEditor } from "@/components/CatalogueFixtureEditor";
@@ -130,6 +136,13 @@ export type PersistedFloorplan = Snapshot & { canvasSize: { width: number; heigh
 interface Props extends PlacementProps { annotateRequest?: number; viewerOpeningRoom?: Room; onStandaloneRoomChange?: (room: Room) => void; openingEditRequest?: { id: string; roomId: string; requestId: number } | null; externalOpeningSyncRequest?: { room: Room; requestId: number } | null; elementEditRequest?: { id: string; roomId: string; requestId: number } | null; onElementSelected?: (selection: { id: string; roomId: string } | null) => void; openingEditorTarget?: HTMLElement | null; projectRooms?: Room[]; onPlanRoomChange?: (room: Room) => void; onPlanRoomsChange?: (rooms: Room[]) => void; apiUrl: string; displayUnits: DisplayUnits; defaultCurrency?: CurrencyCode; floorplanStyle: FloorplanStyle; exportRequest: number; importFile?: File | null; activeSourceRoomId?: string; fixtures?: Obstacle[]; onFixturesChange?: (fixtures: Obstacle[]) => void; toolbarVisibility: ToolbarVisibility; onToggleToolbar: (id: ToolbarId) => void; toolbarLayoutResetKey: number; fillToolbarLayout: boolean; electricalLayoutWindowRequest?: number; electricalLayout?: ElectricalLayoutData; onElectricalLayoutChange?: (layout: ElectricalLayoutData) => void; electricalLimitStatus?: string | null; onElectricalLimitStatusChange?: (status: string | null) => void; projectName?: string; electricalAssets?: AssetDefinition[]; electricalAssetInstances?: AssetInstance[]; onElectricalAssetInstancesChange?: (instances: AssetInstance[]) => void; onApplyElectricalImport?: (plan: ElectricalLayoutImportPlan) => void; }
 
 interface Props { initialFloorplan?: PersistedFloorplan | null; onPersistFloorplan?: (floorplan: PersistedFloorplan, rooms: Room[]) => void; }
+interface Props {
+  referenceFloor?: FloorContent; supportFloor?: FloorContent; snapReference?: boolean; floorOpenings?: FloorOpening[]; floorOpeningTool?: FloorOpeningTool; keepFloorOpeningsSquare?:boolean;
+  onFloorOpeningTool?: (tool:FloorOpeningTool)=>void; selectedFloorOpening?: string|null; onSelectFloorOpening?: (id:string|null)=>void;
+  onFloorOpeningsChange?: (openings:FloorOpening[])=>void; onBuildingError?: (message:string)=>void; finishFloorOpeningRequest?:number;
+  roofProfile?:RoofConfiguration; onProjectUndo?:()=>void; onProjectRedo?:()=>void; canProjectUndo?:boolean; canProjectRedo?:boolean;
+  onNewOutline?:(points:readonly Point2D[]|null)=>void;
+}
 const DEFAULT_SIZE = { width: 1100, height: 700 };
 const isPdfFile = (file: File) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 function safeElectricalFileName(value: string) { return (value.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 100) || "electrical-layout"); }
@@ -870,7 +883,7 @@ function roomOpenings(room: NamedOutline, openings: FullOpening[], walls: Wall[]
     const offset = startProjection.along * edgeLength - (edgeDx * segmentDx + edgeDy * segmentDy >= 0 ? 0 : opening.width);
     const catalogueItem = catalogue.find(item => item.id === opening.catalogueItemId);
     const metadata = { component_colors: opening.componentColors ?? {}, representation_key: opening.representationKey ?? catalogueItem?.representation_key, window_depth_mm: opening.windowDepthMm ?? catalogueItem?.depth_mm, ...(opening.catalogueItemId ? { catalogue_item_id: opening.catalogueItemId } : {}), ...(opening.colorHex ? { color_hex: opening.colorHex } : {}) };
-    return [{ id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(edge.index + 1).padStart(3, "0")}`, offset_mm: Math.max(0, offset), width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0, ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}), ...(Object.keys(metadata).length ? { metadata } : {}) }];
+    return [{ id: opening.id, kind: opening.kind, parent_wall_id: `wall-${String(edge.index + 1).padStart(3, "0")}`, offset_mm: Math.max(0, offset), width: measurement(opening.width), height: measurement(opening.height), sill_height_mm: opening.kind === "WINDOW" ? opening.sill : 0, ...(opening.kind === "DOOR" ? { hinge_side: opening.hingeSide, door_type: opening.doorType, swing_angle_deg: 90, opens_inward: opening.opensInward } : {}), ...(passageProfileForKey(metadata.representation_key) ? {passage_profile:passageProfileForKey(metadata.representation_key)} : {}), ...(Object.keys(metadata).length ? { metadata } : {}) }];
   });
 }
 
@@ -937,7 +950,8 @@ function roomWallThicknessOverrides(room: Pick<NamedOutline, "vertices">, walls:
   return overrides;
 }
 
-export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, externalOpeningSyncRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, defaultCurrency = "GBP", floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout, electricalLayoutWindowRequest = 0, electricalLayout = DEFAULT_ELECTRICAL_LAYOUT, onElectricalLayoutChange, electricalLimitStatus, onElectricalLimitStatusChange, projectName = "My project", electricalAssets = [], electricalAssetInstances = [], onElectricalAssetInstancesChange, onApplyElectricalImport }: Props) {
+export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNewOutline, annotateRequest = 0, onPlacementWallsChange, placement, onBeginPlacement, onCancelPlacement, onCommitPlacement, onTransferObstacle, viewerOpeningRoom, onStandaloneRoomChange, openingEditRequest, externalOpeningSyncRequest, elementEditRequest, onElementSelected, openingEditorTarget, projectRooms = [], onPlanRoomChange, onPlanRoomsChange, apiUrl, displayUnits, defaultCurrency = "GBP", floorplanStyle, exportRequest, importFile, activeSourceRoomId, fixtures: currentFixtures = [], onFixturesChange: currentOnFixturesChange, toolbarVisibility, onToggleToolbar, toolbarLayoutResetKey, fillToolbarLayout, electricalLayoutWindowRequest = 0, electricalLayout = DEFAULT_ELECTRICAL_LAYOUT, onElectricalLayoutChange, electricalLimitStatus, onElectricalLimitStatusChange, projectName = "My project", electricalAssets = [], electricalAssetInstances = [], onElectricalAssetInstancesChange, onApplyElectricalImport , referenceFloor, supportFloor, snapReference, floorOpenings = [], floorOpeningTool = null, keepFloorOpeningsSquare=true, onFloorOpeningTool, selectedFloorOpening = null, onSelectFloorOpening, onFloorOpeningsChange, onBuildingError, finishFloorOpeningRequest = 0, roofProfile, onProjectUndo, onProjectRedo, canProjectUndo, canProjectRedo }: Props) {
+  const buildingOverlay = useRef<BuildingPlanHandle>(null);
   const [walls, setWalls] = useState<Wall[]>([]);
   const [restoredFinishes, setRestoredFinishes] = useState<Record<string, RoomFinishes>>({});
   const heating = useHeatingLayout();
@@ -945,6 +959,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const lastThermalAction = useRef<"ENERGY" | "HEATING" | "FLOORPLAN">("ENERGY");
   const energyUndo = useRef<Array<{ data: EnergyProject; walls: Wall[]; thickness: number }>>([]), energyRedo = useRef<Array<{ data: EnergyProject; walls: Wall[]; thickness: number }>>([]);
   const [energySelection, setEnergySelection] = useState<string[]>([]);
+  const energyBackgroundPress = useRef<{ id: number; x: number; y: number } | null>(null);
+  const [handledInsulationRequest, setHandledInsulationRequest] = useState<string>();
   function selectEnergyWall(ids: string[]) {
     const allowed = new Set(energyElements(planRooms, heating.data, energy.data).filter(e => isInsulationSelectable(e, planRooms)).map(e => e.elementId));
     ids = ids.filter(id => allowed.has(id));
@@ -952,7 +968,24 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const e = energyElements(planRooms, heating.data, energy.data).find(e => e.elementId === ids[0]);
     const segment = e && matchingEnergySegments(e)[0];
     if (segment) { setSelectedSegment({ wallId: segment.wallId, segmentIndex: segment.segmentIndex });setWallThicknessInput(null); }
+    else if (!ids.length) { setSelectedSegment(null); setWallThicknessInput(null); }
     if (!energy.windowOpen) energy.open();
+  }
+  function beginEnergyBackgroundPress(event: ReactPointerEvent<HTMLDivElement>) {
+    const previous = energyBackgroundPress.current;
+    energyBackgroundPress.current = null;
+    if (!energy.windowOpen || previous || event.button !== 0 || !event.isPrimary) return;
+    if (!(event.target instanceof SVGElement) || event.target.closest("[data-energy-interactive]")) return;
+    energyBackgroundPress.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  }
+  function moveEnergyBackgroundPress(event: ReactPointerEvent<HTMLDivElement>) {
+    const press = energyBackgroundPress.current;
+    if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 5) energyBackgroundPress.current = null;
+  }
+  function endEnergyBackgroundPress(event: ReactPointerEvent<HTMLDivElement>) {
+    const press = energyBackgroundPress.current;
+    energyBackgroundPress.current = null;
+    if (energy.windowOpen && event.type === "pointerup" && press?.id === event.pointerId && Math.hypot(event.clientX - press.x, event.clientY - press.y) <= 5) selectEnergyWall([]);
   }
   function energySnapshot(): { data: EnergyProject; walls: Wall[]; thickness: number } { return { data: structuredClone(energy.data), walls: cloneWalls(walls), thickness: wallThickness }; }
   function matchingEnergySegments(element: { startMm?: Point2D; endMm?: Point2D }, source = walls) {
@@ -1056,6 +1089,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   const [repeatCommand, setRepeatCommand] = useState<RepeatCommand>(null);
   const [lShapePickerOpen, setLShapePickerOpen] = useState(false);
   const [outlineMenuOpen, setOutlineMenuOpen] = useState(false);
+  const [outlineResetConfirm,setOutlineResetConfirm]=useState(false);
   const [pendingOutlineAction, setPendingOutlineAction] = useState<PendingOutlineAction | null>(null);
   const [outlineOrientation, setOutlineOrientation] = useState(L_SHAPE_TEMPLATES[0].id);
   const [pendingRoomRemovalId, setPendingRoomRemovalId] = useState<string | null>(null);
@@ -1415,16 +1449,28 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       name: normalized.name,
       version: stored?.version ?? 1,
       vertices: normalized.vertices,
-      wall_height: { value: wallHeight, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" },
-      wall_thickness: { value: wallThickness, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" },
+      wall_height: roomMeasurement(stored?.wall_height,wallHeight),
+      wall_thickness: roomMeasurement(stored?.wall_thickness,wallThickness,wallThickness!==(initialFloorplan?.wallThickness??DEFAULT_WALL_THICKNESS_MM)),
       wall_thickness_overrides_mm: roomWallThicknessOverrides(normalized, walls, wallThickness),
       openings: roomOpenings(normalized, openings, walls, openingCatalogueItems),
       obstacles: stored?.obstacles ?? (outline.id === activeSourceRoomId ? currentFixtures : []),
       person_mockup: stored?.person_mockup ?? null,
       finishes: stored?.finishes ?? restoredFinishes[outline.id],
     };
-  }, [activeSourceRoomId, currentFixtures, openingCatalogueItems, openings, projectRooms, restoredFinishes, wallHeight, wallThickness, walls]);
+  }, [activeSourceRoomId, currentFixtures, initialFloorplan?.wallThickness, openingCatalogueItems, openings, projectRooms, restoredFinishes, wallHeight, wallThickness, walls]);
   const planRooms = useMemo(() => rooms.map(roomDraftForOutline), [roomDraftForOutline, rooms]);
+  if (energy.editRequest && handledInsulationRequest !== energy.editRequest.id && planRooms.length) {
+    const request = energy.editRequest;
+    const elements = energyElements(planRooms, heating.data, energy.data);
+    const candidates = elements.filter(e => e.elementId === request.elementId || e.elementId.startsWith(request.elementId + ":"));
+    const target = candidates.find(e => {
+      if (!request.pointMm || !e.startMm || !e.endMm) return true;
+      const dx=e.endMm.x-e.startMm.x, dy=e.endMm.y-e.startMm.y;
+      const along=((request.pointMm[0]-e.startMm.x)*dx+(request.pointMm[1]-e.startMm.y)*dy)/(dx*dx+dy*dy);
+      return along >= -1e-6 && along <= 1+1e-6;
+    });
+    if (target) { setHandledInsulationRequest(request.id);setEnergySelection([target.elementId]); }
+  }
   const electricalDocumentRooms = useMemo(() => {
     const byId = new Map<string, Room>();
     projectRooms.forEach((room) => byId.set(room.id, room));
@@ -1544,12 +1590,12 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     coordinateRowRefs.current.get(`${selectedPoint.wallId}:${selectedPoint.pointIndex}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [coordinatesToolbarOpen, selectedPoint]);
   const viewport = useMemo(() => {
-    const geometry = [...walls.flatMap((wall) => wall.points), ...draft];
+    const geometry = [...walls.flatMap((wall) => wall.points), ...draft, ...(referenceFloor?.floorplan?.walls.flatMap(w=>w.points) ?? referenceFloor?.rooms.flatMap(r=>r.vertices) ?? [])];
     const points = sourceUrl ? [...(calibrating ? [] : geometry), { x: 0, y: 0 }, { x: canvasSize.width, y: canvasSize.height }] : geometry;
     const xs = points.map((point) => point.x); const ys = points.map((point) => point.y);
     const span = points.length > 1 ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) : 1000;
     return createFloorPlanViewport(points, Math.max(120, span * .17));
-  }, [canvasSize.height, canvasSize.width, draft, sourceUrl, walls, calibrating]);
+  }, [canvasSize.height, canvasSize.width, draft, sourceUrl, walls, calibrating, referenceFloor]);
   const activeViewport = useMemo(() => { const zoomed = scaleFloorPlanViewport(lockedViewport ?? viewport, zoom); return { ...zoomed, offsetX: zoomed.offsetX + pan.x, offsetY: zoomed.offsetY + pan.y }; }, [lockedViewport, viewport, zoom, pan.x, pan.y]);
   const toScreen = useCallback((point: Point2D) => floorPlanToScreen(point, activeViewport), [activeViewport]);
   const planTerminal = useCallback((connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => electricalPlanEndpoint(connection, side, fixture, toScreen, electricalMode && electricalDisplay.symbols, zoom), [toScreen, electricalMode, electricalDisplay.symbols, zoom]);
@@ -1654,6 +1700,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   useEffect(() => {
     const finishActiveTool = (event: KeyboardEvent) => {
       if (!editorRoot.current || editorRoot.current.closest("[hidden]")) return;
+      if(outlineResetConfirm)return;
       if (energy.windowOpen && !event.ctrlKey && !event.metaKey) return;
       if (calibrating) {
         if (event.key === "Escape") { event.preventDefault(); cancelActiveEditorInteractionEvent(); }
@@ -1708,7 +1755,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     };
     window.addEventListener("keydown", finishActiveTool);
     return () => window.removeEventListener("keydown", finishActiveTool);
-  }, [addRoomPanelOpen, annotationPanelOpen, annotationTextDialog, annotationTool, calibrating, electricalConnecting, electricalMode, energy.windowOpen, lShapePickerOpen, markerDialog, outlineMenuOpen, placement, selectedAnnotationId, selectedElectricalConnectionId, selectedFixtureId, tool]);
+  }, [addRoomPanelOpen, annotationPanelOpen, annotationTextDialog, annotationTool, calibrating, electricalConnecting, electricalMode, energy.windowOpen, lShapePickerOpen, markerDialog, outlineMenuOpen, outlineResetConfirm, placement, selectedAnnotationId, selectedElectricalConnectionId, selectedFixtureId, tool]);
 
   useEffect(() => {
     if (!contextMenu && !measurementContextMenu && !openingContextMenu && !openingMeasurementContextMenu && !fixtureContextMenu && !fixtureMeasurementContextMenu && !annotationContextMenu && !electricalWaypointContextMenu && !electricalConnectionContextMenu && !toolbarContextMenu) return;
@@ -2113,6 +2160,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       onElectricalAssetInstancesChange?.(previous.assetInstances);
       return;
     }
+    if(onProjectUndo){onProjectUndo();return;}
     const previous = history.at(-1); if (!previous) return; setFuture((current) => [snapshot(), ...current].slice(0, 30)); setHistory((current) => current.slice(0, -1)); restore(previous);
   }
   function redo() {
@@ -2128,6 +2176,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       onElectricalAssetInstancesChange?.(next.assetInstances);
       return;
     }
+    if(onProjectRedo){onProjectRedo();return;}
     const next = future[0]; if (!next) return; setHistory((current) => [...current.slice(-29), snapshot()]); setFuture((current) => current.slice(1)); restore(next);
   }
 
@@ -2544,6 +2593,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     return { x: (clientX - rect.left) * FLOOR_PLAN_CANVAS_WIDTH / rect.width, y: (clientY - rect.top) * FLOOR_PLAN_CANVAS_HEIGHT / rect.height };
   }
   function selectAddToPlanMode(mode: AddToPlanMode) {
+    onCancelPlacement?.();
     if (mode === "DOOR" || mode === "WINDOW") {
       selectOpeningKind(mode);
       return;
@@ -2936,7 +2986,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   function selectFixtureForEdit(fixture: Obstacle, owner = projectRooms.find(room => room.obstacles.some(item => item.id === fixture.id))) {
     const roomId = owner?.id ?? selectedRoomDraft()?.id;
     setTool("SELECT");
-    setElementTab(fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
+    setElementTab(fixture.representation_key?.startsWith("balustrade-")?"BALUSTRADES":fixture.representation_key?.startsWith("people-") ? "PEOPLE" : fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
     setSelectedAnnotationId(null);
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
@@ -3018,8 +3068,15 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
 
   function canvasPointFromClient(clientX: number, clientY: number, svg: SVGSVGElement, attachToWalls = true): Point2D {
     const mapped = floorPlanFromClient(clientX, clientY, svg, activeViewport);
+    if(snapReference&&referenceFloor){const clientScale=svg.getScreenCTM()?.a??1,reference=snapToFloorReference(mapped,referenceFloor,12/(Math.abs(clientScale)*activeViewport.scale));if(reference!==mapped)return reference;}
     const gridPoint = snapEnabled ? { x: Math.round(mapped.x / snapSize) * snapSize, y: Math.round(mapped.y / snapSize) * snapSize } : mapped;
-    return attachToWalls ? snapPoint(gridPoint, walls, snapEnabled, snapSize) : gridPoint;
+    const point = attachToWalls ? snapPoint(gridPoint, walls, snapEnabled, snapSize) : gridPoint;
+    return point;
+  }
+
+  function supportedDraft(points:Point2D[]) {
+    if(!supportFloor)return true;
+    try{validateWallRunsOnFloor([{points}],supportFloor);onBuildingError?.("");return true;}catch(error){onBuildingError?.(error instanceof Error?error.message:"Invalid floor outline.");return false;}
   }
 
   function commitDraft(points = draft, endAttachment?: WallAttachment, preservedPrefix?: Point2D[]) {
@@ -3031,6 +3088,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     }, []);
     const shapedPoints = shapeDraftPoints(points);
     const shapedPrefix = preservedPrefix ? shapeDraftPoints(preservedPrefix) : [];
+    if(!supportedDraft(shapedPoints)||!supportedDraft(shapedPrefix))return;
     if (shapedPoints.length >= 2) {
       record();
       const attachments: Record<number, WallAttachment> = {};
@@ -3611,7 +3669,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   });
   useEffect(() => {
     // External viewer request, not state derived for rendering.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (openingEditRequest) editOpeningFromViewer();
   }, [openingEditRequest]);
 
@@ -3623,7 +3680,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     const fixture = owner?.obstacles.find(item => item.id === elementEditRequest.id) ?? fixtures.find(item => item.id === elementEditRequest.id);
     if (!fixture) return;
     if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id);
-    setElementTab(fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
+    setElementTab(fixture.representation_key?.startsWith("balustrade-")?"BALUSTRADES":fixture.representation_key?.startsWith("people-") ? "PEOPLE" : fixture.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(fixture) ? "HEATING" : "FURNITURE");
     setSelectedFixtureId(fixture.id);
     setSelectedOpeningId(null);
     setSelectedSegment(null);
@@ -3752,11 +3809,21 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
 
   function confirmOutlineAction() {
+    setOutlineMenuOpen(false);
+    setOutlineResetConfirm(true);
+  }
+
+  function applyConfirmedOutline() {
     const action = pendingOutlineAction;
     if (!action) return;
+    setOutlineResetConfirm(false);
     setOutlineMenuOpen(false);
     setLShapePickerOpen(false);
     setPendingOutlineAction(null);
+    if(onNewOutline){
+      const points=action==="EMPTY"?null:action==="RECTANGLE"?RECTANGLE_TEMPLATE:action==="L_SHAPE"?(L_SHAPE_TEMPLATES.find(t=>t.id===outlineOrientation)??L_SHAPE_TEMPLATES[0]).points:(NOTCHED_RECTANGLE_TEMPLATES.find(t=>t.id===outlineOrientation)??NOTCHED_RECTANGLE_TEMPLATES[0]).points;
+      onNewOutline(points);return;
+    }
     if (action === "EMPTY") newOutline();
     else if (action === "RECTANGLE") applyTemplate(RECTANGLE_TEMPLATE);
     else if (action === "L_SHAPE") applyTemplate((L_SHAPE_TEMPLATES.find(template => template.id === outlineOrientation) ?? L_SHAPE_TEMPLATES[0]).points);
@@ -4112,7 +4179,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
           if (!placement.opening && isElectricalObstacle(candidate.obstacle)) recordElectricalUndo();
           onCommitPlacement?.(candidate);
           if (!placement.opening && candidate.roomId) {
-            setElementTab(candidate.obstacle.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(candidate.obstacle) ? "HEATING" : "FURNITURE");
+            setElementTab(candidate.obstacle.representation_key?.startsWith("balustrade-")?"BALUSTRADES":candidate.obstacle.representation_key?.startsWith("people-") ? "PEOPLE" : candidate.obstacle.representation_key?.startsWith("electrical-") ? "ELECTRICAL" : isHeatingElement(candidate.obstacle) ? "HEATING" : "FURNITURE");
             setSelectedFixtureId(candidate.obstacle.id);
             const target = planRooms.find(room => room.id === candidate.roomId);
             if (target?.source_floorplan_room_id) setSelectedRoomId(target.source_floorplan_room_id);
@@ -4256,7 +4323,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
           const room=current.viewerOpeningRoom;
           if (room.openings.some(item=>item.id===id)) return true;
           const opening: Opening={id,kind:settings.kind,parent_wall_id:target.wallId,offset_mm:target.offset,width:measured(settings.width),height:measured(settings.height),sill_height_mm:settings.sill,
-            hinge_side:settings.hingeSide,door_type:settings.doorType,opens_inward:settings.opensInward,swing_angle_deg:90,metadata:{catalogue_item_id:settings.catalogueItemId,representation_key:settings.representationKey,window_depth_mm:settings.windowDepthMm,color_hex:settings.colorHex,component_colors:settings.componentColors}};
+            passage_profile:passageProfileForKey(settings.representationKey),hinge_side:settings.hingeSide,door_type:settings.doorType,opens_inward:settings.opensInward,swing_angle_deg:90,metadata:{catalogue_item_id:settings.catalogueItemId,representation_key:settings.representationKey,window_depth_mm:settings.windowDepthMm,color_hex:settings.colorHex,component_colors:settings.componentColors}};
           onStandaloneRoomChange({...room,version:room.version+1,openings:[...room.openings,opening]});
           return true;
         }
@@ -4378,13 +4445,12 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   }
   const selectedAnnotation = annotations.find((annotation) => annotation.id === selectedAnnotationId) ?? null;
   const annotationPanelSelection: AnnotationPanelSelection = selectedAnnotation ? { type: selectedAnnotation.type, text: selectedAnnotation.text } : null;
-  const selectedAddToPlanMode: AddToPlanMode = heating.data.enabled ? "HEATING" : openingEditorTarget && (elementTab === "FURNITURE" || elementTab === "ELECTRICAL" || elementTab === "HEATING") ? openingKind : elementTab;
+  const selectedAddToPlanMode: AddToPlanMode = heating.data.enabled ? "HEATING" : openingEditorTarget && ["FURNITURE", "PEOPLE", "BALUSTRADES", "ELECTRICAL", "HEATING"].includes(elementTab) ? openingKind : elementTab;
   const openingPanel = <section className="tool-section full-plan-openings-panel" aria-label="Add to plan">
     {!electricalMode && !heating.data.enabled && <select className="add-to-plan-mode" aria-label="Add to plan" value={selectedAddToPlanMode} onChange={event => selectAddToPlanMode(event.target.value as AddToPlanMode)}>
-      {ADD_TO_PLAN_MODES.map(option => <option key={option.value} value={option.value} disabled={Boolean(openingEditorTarget && (option.value === "FURNITURE" || option.value === "ELECTRICAL" || option.value === "HEATING"))}>{option.label}</option>)}
+      {ADD_TO_PLAN_MODES.map(option => <option key={option.value} value={option.value} disabled={Boolean(openingEditorTarget && ["FURNITURE", "PEOPLE", "BALUSTRADES", "ELECTRICAL", "HEATING"].includes(option.value))}>{option.label}</option>)}
     </select>}
-    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add items.</p> : (selectedAddToPlanMode === "FURNITURE" || selectedAddToPlanMode === "ELECTRICAL" || selectedAddToPlanMode === "HEATING") && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedAddToPlanMode}-${selectedRoom!.id}`} categoryFilter={selectedAddToPlanMode === "ELECTRICAL" ? "electric" : selectedAddToPlanMode === "HEATING" ? "heating" : undefined} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={selectedAddToPlanMode === "HEATING" ? heatingElementEditRequest ?? elementEditRequest : elementEditRequest} onEditEnd={() => { if (selectedAddToPlanMode === "HEATING") setHeatingSelection(null);onElementSelected?.(null); }} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
-    <p className="tool-note">Choose a variant and click Add. Select a wall first to use its offset, or place the preview on a wall with the cursor.</p>
+    {!selectedRoom && !openingEditorTarget ? <p>Select or draw a closed room to add items.</p> : ["FURNITURE", "PEOPLE", "BALUSTRADES", "ELECTRICAL", "HEATING"].includes(selectedAddToPlanMode) && !openingEditorTarget ? <CatalogueFixtureEditor key={`${selectedAddToPlanMode}-${selectedRoom!.id}`} categoryFilter={selectedAddToPlanMode === "BALUSTRADES"?"balustrades":selectedAddToPlanMode === "PEOPLE" ? "people" : selectedAddToPlanMode === "ELECTRICAL" ? "electric" : selectedAddToPlanMode === "HEATING" ? "heating" : undefined} apiUrl={apiUrl} room={selectedRoomDraft()!} displayUnits={displayUnits} onChange={onFixturesChange} elementEditRequest={selectedAddToPlanMode === "HEATING" ? heatingElementEditRequest ?? elementEditRequest : elementEditRequest} onEditEnd={() => { if (selectedAddToPlanMode === "HEATING") setHeatingSelection(null);onElementSelected?.(null); }} onElementSelected={onElementSelected} placementWalls={planPlacementWalls} onBeginPlacement={(request) => { cancelAnnotationMode(); onBeginPlacement?.(request); }} /> : <>
     <div className="fixture-cascading-menu opening-cascading-menu" ref={openingSelectorRef}>
       {!openingSelectorExpanded ? <div className="fixture-cascading-collapsed">
         <strong>{activeOpeningCatalogueItem?.name?.replace(/^Default /i, "") || "Select object"}</strong>
@@ -4420,13 +4486,13 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       {openingPositionExpanded && <div className="fixture-section-content">
         <div className="coordinate-fields opening-fields"><label className="field"><span>Parent wall</span><select value={openingParent} onChange={(event) => setOpeningParent(event.target.value)}><option value="">Select a wall…</option>{segmentOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
         <label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label></div>
-        {openingKind === "DOOR" && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
+        {openingKind === "DOOR" && !passageProfileForKey(activeOpeningCatalogueItem?.representation_key) && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
       </div>}
     </section>
-    {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={saveOpening}>{selectedOpeningId ? `Update ${openingKind.toLowerCase()}` : `Add ${openingKind.toLowerCase()}`}</button></div>
+    {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={saveOpening}>{selectedOpeningId ? `Update ${passageProfileForKey(activeOpeningCatalogueItem?.representation_key) ? "opening" : openingKind.toLowerCase()}` : `Add ${passageProfileForKey(activeOpeningCatalogueItem?.representation_key) ? "opening" : openingKind.toLowerCase()}`}</button></div>
     {openings.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={openingListExpanded} onClick={() => setOpeningListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{openingListExpanded ? "−" : "›"}</span></button>
-      {openingListExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">{openings.map((opening, index) => { const item = catalogueItemForOpening(opening); return <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small title={item?.name}>{item?.name ?? `${opening.kind === "DOOR" ? "Door" : "Window"} ${String(index + 1).padStart(3, "0")}`} · {formatLength(opening.width, displayUnits)}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>; })}</div></div>}
+      {openingListExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">{openings.map((opening, index) => { const item = catalogueItemForOpening(opening), passage = passageProfileForKey(opening.representationKey ?? item?.representation_key); return <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{passage ? "Opening" : opening.kind}</span><small title={item?.name}>{item?.name ?? `${passage ? "Opening" : opening.kind === "DOOR" ? "Door" : "Window"} ${String(index + 1).padStart(3, "0")}`} · {formatLength(opening.width, displayUnits)}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${passage ? "opening" : opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>; })}</div></div>}
     </section>}
     </>}
   </section>;
@@ -4457,7 +4523,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       // Remove only the background image, preserving any sibling plan elements.
       if (sourceUrl && (image.getAttribute("href") === sourceUrl || image.getAttributeNS("http://www.w3.org/1999/xlink", "href") === sourceUrl)) image.remove();
     });
-    clone.querySelectorAll(".corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit,.annotation-hit,.annotation-handle").forEach((element) => element.remove());
+    clone.querySelectorAll(".corner-connect-hit,.measurement-hit,.opening-hit,.opening-hit-area,.opening-swing-hit,.annotation-hit,.annotation-handle,.floor-opening-handle,.floor-opening-draft").forEach((element) => element.remove());
     clone.querySelectorAll(".electrical-connection-preview,.electrical-route-waypoint,.electrical-source-highlight,.electrical-fixture-hit-area,.electrical-fixture-backplate,.electrical-test-state").forEach((element) => element.remove());
     clone.querySelectorAll(".electrical-connection [data-electrical-interactive]").forEach((element) => element.remove());
     clone.querySelectorAll(".electrical-connection.selected > polyline:first-child").forEach((element) => element.remove());
@@ -4960,9 +5026,10 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
   return <section ref={editorRoot} onClickCapture={clearRepeatCommandFromButton} className={`editor-page full-plan-page ${floorplanStyleClass(floorplanStyle)} ${electricalWindowOpen ? "electrical-layout-open" : ""} ${electricalAddElementsOpen ? "electrical-add-elements-open" : ""}`.trim()}>
     {liveStyleCss && <style data-floorplan-style={floorplanStyle} dangerouslySetInnerHTML={{ __html: liveStyleCss }} />}
     <PlanHoverHelp />
-    <Popup open={outlineMenuOpen} title="New outline" message="" confirmLabel="Ok" confirmDisabled={!pendingOutlineAction} onConfirm={confirmOutlineAction} onCancel={() => setOutlineMenuOpen(false)}>
+    <Popup open={outlineResetConfirm} title="Replace current building?" message="" className="building-reset-warning" confirmLabel="Delete contents & start" onConfirm={applyConfirmedOutline} onCancel={()=>{setOutlineResetConfirm(false);setOutlineMenuOpen(true);}}><div className="building-reset-message"><span className="building-reset-icon" aria-hidden="true">!</span><div><p className="building-reset-summary">All floors, rooms, placed items and service layouts will be cleared. Roof settings will reset.</p><p className="building-reset-note">Undo can restore them. Save a backup to keep a copy.</p></div></div></Popup>
+    <Popup open={outlineMenuOpen} title="New outline" message="" confirmLabel="OK" confirmDisabled={!pendingOutlineAction} onConfirm={confirmOutlineAction} onCancel={() => setOutlineMenuOpen(false)}>
       <div className="outline-menu-content">
-        <p>Choose a starting point. Clicking Ok will overwrite the current floorplan.</p>
+        <p>Choose a starting shape. OK opens a separate warning. Your current building is kept until you confirm Delete contents &amp; start. Cancel keeps everything unchanged.</p>
         <div className="outline-menu-options" role="group" aria-label="Outline starting points">
           <button type="button" className="outline-menu-option" aria-pressed={pendingOutlineAction === "EMPTY"} onClick={() => requestOutlineAction("EMPTY") }>
             <strong>Empty floorplan</strong>
@@ -4987,9 +5054,9 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
     </Popup>
 
     <Popup open={pendingRoomRemovalId !== null} title="Remove room?" message={`${rooms.find((room) => room.id === pendingRoomRemovalId)?.name ?? "This room"} will be removed. Shared walls belonging to neighbouring rooms will be kept.`} confirmLabel="Remove room" onConfirm={removeSelectedRoom} onCancel={() => setPendingRoomRemovalId(null)} />
-    <Popup open={defaultWallThicknessConfirmOpen} title="Define default wall thickness?" message="Do you want to define a new default wall thickness? Walls with a custom wall thickness will not be affected." confirmLabel="Ok" onConfirm={confirmDefaultWallThickness} onCancel={cancelDefaultWallThickness} />
-    <Popup open={fixtureDeleteConfirmation !== null} title="Delete object?" message={fixtureDeleteConfirmation ? `Are you sure you want to delete the object "${fixtureDeleteConfirmation.name}"?` : ""} confirmLabel="Ok" onConfirm={confirmFixtureDeletion} onCancel={() => setFixtureDeleteConfirmation(null)} />
-    <Popup open={annotationTextDialog !== null} title={annotationTextDialog && ((annotationTextDialog.mode === "CREATE_CALLOUT") || (annotationTextDialog.mode === "EDIT" && annotationTextDialog.annotationType === "CALLOUT")) ? "Callout text" : "Text"} message="" className="annotation-text-popup" autoFocusTarget="content" confirmLabel="Ok" confirmDisabled={!annotationTextDialog?.value.trim()} onConfirm={confirmAnnotationTextDialog} onCancel={cancelAnnotationTextDialog}>
+    <Popup open={defaultWallThicknessConfirmOpen} title="Define default wall thickness?" message="Do you want to define a new default wall thickness? Walls with a custom wall thickness will not be affected." confirmLabel="OK" onConfirm={confirmDefaultWallThickness} onCancel={cancelDefaultWallThickness} />
+    <Popup open={fixtureDeleteConfirmation !== null} title="Delete object?" message={fixtureDeleteConfirmation ? `Are you sure you want to delete the object "${fixtureDeleteConfirmation.name}"?` : ""} confirmLabel="OK" onConfirm={confirmFixtureDeletion} onCancel={() => setFixtureDeleteConfirmation(null)} />
+    <Popup open={annotationTextDialog !== null} title={annotationTextDialog && ((annotationTextDialog.mode === "CREATE_CALLOUT") || (annotationTextDialog.mode === "EDIT" && annotationTextDialog.annotationType === "CALLOUT")) ? "Callout text" : "Text"} message="" className="annotation-text-popup" autoFocusTarget="content" confirmLabel="OK" confirmDisabled={!annotationTextDialog?.value.trim()} onConfirm={confirmAnnotationTextDialog} onCancel={cancelAnnotationTextDialog}>
       <label className="annotation-text-popup-field"><span>Text</span><input autoFocus value={annotationTextDialog?.value ?? ""} onChange={(event) => setAnnotationTextDialog((current) => current ? { ...current, value: event.target.value } : current)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); confirmAnnotationTextDialog(); } }} /></label>
     </Popup>
     <MarkerSettingsPopup open={markerDialog !== null} settings={markerSettings} editing={markerDialog?.mode === "EDIT"} onChange={updateMarkerSettings} onConfirm={confirmMarkerSettings} onCancel={cancelMarkerDialog} />
@@ -5060,12 +5127,11 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
           <div className="button-grid full-plan-action-row" role="group" aria-label="Room tools"><button className={addRoomPanelOpen ? "active" : ""} aria-pressed={addRoomPanelOpen} onClick={() => { cancelAnnotationMode(); onElementSelected?.(null); setAddRoomPanelOpen((current) => !current); setTool("SELECT"); setRoomActionError(null); }}>Add room</button><button className={annotationPanelOpen ? "active" : ""} type="button" aria-pressed={annotationPanelOpen} onClick={() => { cancelAnnotationMode(); onElementSelected?.(null); setAnnotationPanelOpen(true); }}>Annotate</button></div>
           {addRoomPanelOpen && <div className="room-action-panel"><p>Select a boundary wall to create a new room on the outside of it</p><label className="field"><span>Room depth ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={200} valueMm={roomDepthInput} units={displayUnits} onMmChange={setRoomDepthInput} /></label><button className="review-style-button" aria-label="Apply Add room" onClick={addSelectedRoom}>Add room</button></div>}
           {roomActionError && <p className="inline-error" role="alert">{roomActionError}</p>}
-          <div className="button-grid editor-history-row"><button title="Undo last operation (Ctrl+Z)" onClick={undo} disabled={!energyUndo.current.length && !heatingUndo.current.length && !history.length && !((electricalMode || electricalScheduleOpen) && electricalUndo.current.length)}>↶ Undo</button><button title="Redo last operation (Ctrl+Y)" onClick={redo} disabled={!energyRedo.current.length && !heatingRedo.current.length && !future.length && !((electricalMode || electricalScheduleOpen) && electricalRedo.current.length)}>↷ Redo</button></div>
+<div className="button-grid editor-history-row"><button title="Undo last operation (Ctrl+Z)" onClick={undo} disabled={canProjectUndo !== undefined ? !canProjectUndo&&!energyUndo.current.length&&!heatingUndo.current.length&&!((electricalMode || electricalScheduleOpen)&&electricalUndo.current.length) : (!energyUndo.current.length && !heatingUndo.current.length && !history.length && !((electricalMode || electricalScheduleOpen) && electricalUndo.current.length))}>↶ Undo</button><button title="Redo last operation (Ctrl+Y)" onClick={redo} disabled={canProjectRedo !== undefined ? !canProjectRedo&&!energyRedo.current.length&&!heatingRedo.current.length&&!((electricalMode || electricalScheduleOpen)&&electricalRedo.current.length) : (!energyRedo.current.length && !heatingRedo.current.length && !future.length && !((electricalMode || electricalScheduleOpen) && electricalRedo.current.length))}>↷ Redo</button></div>
           <div className={`full-plan-overall-properties${overallPropertiesExpanded ? " expanded" : ""}`}>
             <button type="button" className="full-plan-overall-toggle" aria-expanded={overallPropertiesExpanded} onClick={() => setOverallPropertiesExpanded((current) => !current)}><strong>Overall properties</strong><span aria-hidden>{overallPropertiesExpanded ? "−" : "+"}</span></button>
             {overallPropertiesExpanded && <div className="full-plan-overall-content">
               <div className="coordinate-fields room-measurements">
-                <label className="field"><span>Wall height ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={100000} valueMm={wallHeight} units={displayUnits} onMmChange={setWallHeight} /></label>
                 <label className="field"><span>Default thickness ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={defaultWallThicknessInput ?? wallThickness} units={displayUnits} onMmChange={setDefaultWallThicknessInput} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); requestDefaultWallThickness(); } }} /></label>
               </div>
               <div className="plan-constraint-controls">
@@ -5089,8 +5155,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
       <main className="drawing-column full-plan-drawing">
         <div className="resizable-floorplan-window">
          {toolbarVisibility["floorplan-view"] && <FloatingToolbar title="View properties" defaultPosition={{ x: 364, y: 16 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={320} onClose={() => onToggleToolbar("floorplan-view")}><div className="drawing-toolbar floating-canvas-navigation"><div className="drawing-navigation-row" role="group" aria-label="Zoom and fit controls"><div className="drawing-zoom"><button type="button" aria-label="Zoom out" onClick={() => setZoom((current) => Math.max(.5, current - .2))}>−</button><button type="button" aria-label="Reset zoom to 100%" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button><button type="button" aria-label="Zoom in" onClick={() => setZoom((current) => Math.min(3, current + .2))}>+</button></div><button type="button" className="fit-view-button" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); setLockedViewport(null); }}>Fit</button></div>{sourceUrl && !importing && <div className="floorplan-background-actions drawing-navigation-row" role="group" aria-label="Drawing actions"><button type="button" className="fit-view-button floorplan-background-action" onClick={() => { setTool("SELECT"); setCalibrationPoints([]); setCalibrationHover(null); setCalibrationLength(""); setCalibrationError(""); setCalibrating(true); }}>Calibrate drawing…</button><button type="button" className="fit-view-button floorplan-background-action" onClick={clearImportedDrawing}>Remove drawing</button></div>}<div className="view-property-toggle-row" role="group" aria-label="Floorplan display options"><ViewToggle label="Room names" active={showRoomNames} onToggle={() => setShowRoomNames((current) => !current)} /><ViewToggle label="Measurements" active={showMeasurements} onToggle={() => { const enabled = !showMeasurements; setShowMeasurements(enabled); if (enabled) setHiddenDimensions([]); }} /><ViewToggle label="Wall thickness" active={showWallThickness} onToggle={() => setShowWallThickness((current) => !current)} /><ViewToggle label="Annotations" active={showAnnotations} onToggle={() => setShowAnnotations((current) => !current)} /><ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} /><ViewToggle label="Coordinates table" active={coordinatesToolbarOpen} onToggle={() => onToggleToolbar("floorplan-coordinates")} /></div></div></FloatingToolbar>}
-<div className="full-plan-canvas">{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}
-          <FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={"mode-" + tool.toLowerCase() + (electricalMode ? " electrical-layout-active" : "") + (heating.windowOpen ? " heating-layout-active" : "") + (energy.windowOpen ? " insulation-layout-active" : "")} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onKeyDownCapture={event => { if ((energy.windowOpen || heating.windowOpen) && !(event.target instanceof Element && event.target.closest(energy.windowOpen ? "[data-energy-interactive]" : "[data-heating-interactive]"))) { event.preventDefault(); event.stopPropagation(); } }} onContextMenuCapture={event => { if (energy.windowOpen) { event.preventDefault(); event.stopPropagation(); return; } if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if (energy.windowOpen) { if (event.target instanceof Element && event.target.closest("[data-energy-interactive]")) return; if (beginTouchNavigation(event)) return; event.preventDefault(); event.stopPropagation(); if (event.button === 1) beginPan(event); return; } if (heating.data.enabled) { if (beginTouchNavigation(event)) return; heatingCanvasPointerDown(event); return; } if (electricalMode) { const electricalTarget = event.target instanceof Element && event.target.closest("[data-electrical-interactive]"); if (!electricalTarget) { if (beginTouchNavigation(event)) return; if (placement && isElectricalObstacle(placement.obstacle)) { beginPan(event); return; } if (event.button === 1) { beginPan(event); return; } event.preventDefault(); event.stopPropagation(); if (electricalConnecting && electricalSourceId) onElectricalLimitStatusChange?.("Connection selection cancelled. Select a source fitting to start again."); setElectricalSourceId(null); setElectricalPointer(null); setSelectedElectricalConnectionId(null); setSelectedFixtureId(null); onElementSelected?.(null); return; } if (beginTouchNavigation(event)) return; return; } if (beginTouchNavigation(event)) return; if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMoveCapture={(event) => { moveTouchNavigation(event); }} onPointerUpCapture={(event) => { endTouchNavigation(event); }} onPointerCancelCapture={(event) => { endTouchNavigation(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
+<div className="full-plan-canvas" onPointerDownCapture={beginEnergyBackgroundPress} onPointerMoveCapture={moveEnergyBackgroundPress} onPointerUpCapture={endEnergyBackgroundPress} onPointerCancelCapture={endEnergyBackgroundPress}>{(importing || importError) && <div className={`floorplan-import-status ${importError ? "error" : ""}`} role={importError ? "alert" : "status"}>{importing ? "Importing drawing…" : importError}</div>}
+<FloorPlanCanvas style={placement ? {cursor:"crosshair"} : undefined} className={"mode-" + tool.toLowerCase() + (electricalMode ? " electrical-layout-active" : "") + (heating.windowOpen ? " heating-layout-active" : "") + (energy.windowOpen ? " insulation-layout-active" : "")} showGrid={showGrid} gridSpacing={gridSpacing} gridOrigin={gridOrigin} underlay={Boolean(sourceUrl)} role="img" aria-label="Interactive complete building floorplan" onWheel={zoomWithWheel} onKeyDownCapture={event => { if ((energy.windowOpen || heating.windowOpen) && !(event.target instanceof Element && event.target.closest(energy.windowOpen ? "[data-energy-interactive]" : "[data-heating-interactive]"))) { event.preventDefault(); event.stopPropagation(); } }} onContextMenuCapture={event => { if (floorOpeningTool || energy.windowOpen) { event.preventDefault(); event.stopPropagation(); return; } if (placement) { event.preventDefault(); event.stopPropagation(); onCancelPlacement?.(); } }} onPointerDownCapture={(event) => { if(floorOpeningTool && event.button!==1){buildingOverlay.current?.down(event);return;} if(event.target instanceof Element && event.target.closest('[data-floor-opening-interactive]'))return; if (energy.windowOpen) { if (event.target instanceof Element && event.target.closest("[data-energy-interactive]")) return; if (beginTouchNavigation(event)) return; event.preventDefault(); event.stopPropagation(); if (event.button === 1) beginPan(event); return; } if (heating.data.enabled) { if (beginTouchNavigation(event)) return; heatingCanvasPointerDown(event); return; } if (electricalMode) { const electricalTarget = event.target instanceof Element && event.target.closest("[data-electrical-interactive]"); if (!electricalTarget) { if (beginTouchNavigation(event)) return; if (placement && isElectricalObstacle(placement.obstacle)) { beginPan(event); return; } if (event.button === 1) { beginPan(event); return; } event.preventDefault(); event.stopPropagation(); if (electricalConnecting && electricalSourceId) onElectricalLimitStatusChange?.("Connection selection cancelled. Select a source fitting to start again."); setElectricalSourceId(null); setElectricalPointer(null); setSelectedElectricalConnectionId(null); setSelectedFixtureId(null); onElementSelected?.(null); return; } if (beginTouchNavigation(event)) return; return; } if (beginTouchNavigation(event)) return; if (annotationTool && annotationTool !== "MEASUREMENT") { handleAnnotationPointerDown(event); return; } beginPan(event); }} onPointerMoveCapture={(event) => { if(floorOpeningTool){event.preventDefault();event.stopPropagation();buildingOverlay.current?.move(event);return;} moveTouchNavigation(event); }} onPointerUpCapture={(event) => { endTouchNavigation(event); }} onPointerCancelCapture={(event) => { endTouchNavigation(event); }} onPointerMove={movePoint} onPointerLeave={() => { if (!placementPress.current) setPlacementPoint(null); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onPointerDown={(event) => {
             if (tool === "ADD_CORNERS" && event.button === 0 && event.detail <= 1) { if (selectedSegment) insertPointAt(selectedSegment.wallId, selectedSegment.segmentIndex, canvasPoint(event, false)); return; }
             if (tool !== "DRAW" || event.button !== 0 || event.detail > 1) { const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && (target.classList.contains("canvas-background") || target.classList.contains("plan-grid"))); if (background && tool === "SELECT") clearActiveDrawingSelection(); return; }
             const rawRequested = canvasPoint(event, false);
@@ -5104,9 +5170,10 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
             const wallHit = findWallSegmentNear(canvasPoint(event, false));
             if (wallHit) { connectDraftToWall(wallHit.wallId, wallHit.segmentIndex, canvasPoint(event, false)); return; }
             if (!draft.length) setLockedViewport(viewport);
-            setDraft((current) => current.length && squaredWalls ? [...current, squareDrawPoint(current.at(-1)!, requested)] : [...current, requested]);
+            const nextDraft=draft.length&&squaredWalls?[...draft,squareDrawPoint(draft.at(-1)!,requested)]:[...draft,requested];if(supportedDraft(nextDraft))setDraft(nextDraft);
           }} onDoubleClick={(event) => { if (annotationTool === "POLYLINE") { event.preventDefault(); event.stopPropagation(); finishAnnotationPolyline(); return; } if (tool !== "DRAW") return; event.preventDefault(); commitDraft(); }} onContextMenu={(event) => { if (placement) { event.preventDefault(); onCancelPlacement?.(); return; } const target = event.target; const background = target === event.currentTarget || (target instanceof SVGElement && target.classList.contains("canvas-background")); if (!background) return; event.preventDefault(); if (tool === "DRAW") { commitDraft(); return; } setSelectedSegment(null); setSelectedPoint(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); setSelectedMeasurement(null); setSelectedAnnotationId(null); setContextMenu(null); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }}>
-             <g className="electrical-architecture-layer" opacity={electricalMode ? 0.42 : 1} pointerEvents={electricalMode || heating.windowOpen || energy.windowOpen ? "none" : "auto"}>
+             {referenceFloor&&<g className="building-reference-floor" pointerEvents="none" aria-label="Reference floor below">{(referenceFloor.floorplan?.walls ?? referenceFloor.rooms.map(r=>({id:r.id,points:[...r.vertices,r.vertices[0]]}))).map(w=><polyline key={w.id} points={w.points.map(toScreen).map(p=>`${p.x},${p.y}`).join(' ')}/>)}</g>}
+             <g className="electrical-architecture-layer" opacity={electricalMode ? 0.42 : 1} pointerEvents={floorOpeningTool || electricalMode || heating.windowOpen || energy.windowOpen ? "none" : "auto"}>
              {sourceUrl && !importing && <image href={sourceUrl} x={sourceTopLeft.x} y={sourceTopLeft.y} width={sourceBottomRight.x - sourceTopLeft.x} height={sourceBottomRight.y - sourceTopLeft.y} preserveAspectRatio="none" className="full-plan-source-image" />}
             {walls.length === 0 && draft.length === 0 && <g className="full-plan-empty"><text x="410" y="270">Start with Add wall or import a drawing as a background reference</text><text x="410" y="292">The editor uses consistent scale, dimensions, and draggable handles.</text></g>}
             {detectedRooms.map((room) => { const outline = room.vertices.map(toScreen); return <polygon key={`room-background-${room.id}`} points={outline.map((point) => `${point.x},${point.y}`).join(" ")} className="room-polygon" onPointerDown={(event) => { if (tool === "ADD_MEASURE") { addRoomPointMeasurement(event); return; } if (tool === "SELECT") { event.stopPropagation(); clearActiveDrawingSelection(); } }} />; })}
@@ -5263,9 +5330,10 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
             </g>}
             </g>
             {!energy.windowOpen && <ElectricalLayoutOverlay routes={electricalMode ? electricalPlanRoutes : undefined} zoom={zoom} testing={lightingTestOpen} switchGangs={switchGangs} junctions={electricalLayout.junctions} onFixtureGangActivate={(fixture, gang) => { if (lightingTestOpen) testFixtureSwitch(fixture, gang); else if (electricalConnecting) chooseElectricalEndpoint(fixture.id, gang); }} lightStates={lightingTest.lights} switchLabels={lightingTest.switchLabels} fixtures={electricalFixtures} connections={electricalMode ? electricalLayout.connections : []} circuits={electricalLayout.circuits} toScreen={toScreen} showSymbols={!electricalMode || electricalDisplay.symbols} showConnections={electricalMode && electricalDisplay.connections} showLabels={electricalMode && electricalDisplay.circuitLabels} active={electricalMode} selectedFixtureId={selectedFixtureId} sourceId={electricalSourceId} sourceGang={electricalSourceGang} selectedConnectionId={selectedElectricalConnectionId} activeCircuitId={selectedElectricalCircuitId ?? DEFAULT_ELECTRICAL_CIRCUIT.id} connecting={electricalMode && electricalConnecting} forceOrthogonalRouting={electricalLayout.forceOrthogonalRouting} cursor={electricalPointer} defaults={electricalDefaults} onFixturePointerDown={(event, fixture) => { if (lightingTestOpen) { event.preventDefault(); event.stopPropagation(); testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { event.preventDefault(); event.stopPropagation(); chooseElectricalEndpoint(fixture.id); return; } beginFixtureDrag(event, fixture); }} onFixtureActivate={(fixture) => { if (lightingTestOpen) { testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { chooseElectricalEndpoint(fixture.id); return; } const owner = projectRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)); selectFixtureForEdit(fixture, owner); if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id); }} onFixtureContextMenu={openFixtureContextMenu} onConnectionPointerDown={beginElectricalConnectionDrag} onConnectionContextMenu={openElectricalConnectionContextMenu} onWaypointPointerDown={beginElectricalWaypointDrag} onWaypointContextMenu={openElectricalWaypointContextMenu} onLabelPointerDown={beginElectricalLabelDrag} />}
-            {!energy.windowOpen && placement && placementPoint && <PlacementPreview2D request={placement} point={placementPoint} candidate={placementCandidate} toScreen={toScreen} units={displayUnits} electricalMode={electricalMode} />}
+            {!energy.windowOpen && placement && placementPoint && <PlacementPreview2D request={placement} point={placementPoint} candidate={placementCandidate} toScreen={toScreen} units={displayUnits} electricalMode={electricalMode} heatingMode={heating.windowOpen} zoom={zoom} />}
             {!energy.windowOpen && heating.data.enabled && <HeatingLayoutOverlay zoom={zoom} connecting={heatingTool === "CONNECT"} onConnect={connectHeatingEndpoint} pipeDraft={heatingPipeDraft} data={heating.data} rooms={planRooms} selection={heatingSelection} onSelect={selectHeatingElement} onChange={applyHeatingLayout} toScreen={toScreen} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} highlightedRoomId={highlightedHeatingRoomId} draft={heatingExclusionDraft} />}
             {energy.data.enabled && <EnergyLayoutOverlay data={energy.data} heating={heating.data} rooms={planRooms} roomTitleBox={r => { const outline = rooms.find(v => v.id === r.source_floorplan_room_id); return outline ? { ...toScreen(roomLabelPosition(outline)), width: roomNameEditorWidth(outline.name) + 12, height: 30 } : undefined; }} selectedIds={energySelection} onSelect={selectEnergyWall} toScreen={toScreen} onChange={applyEnergyLayout} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} />}
+            <BuildingPlanOverlay ref={buildingOverlay} keepSquare={keepFloorOpeningsSquare} interactive={!electricalMode&&!heating.windowOpen&&!energy.windowOpen} content={{rooms:planRooms,floorplan:{walls,rooms,openings,measurements,annotations,dimensionOffsets,hiddenDimensions,canvasSize,selectedRoomId,wallThickness,wallHeight},assetInstances:[]}} openings={floorOpenings} tool={floorOpeningTool} onTool={onFloorOpeningTool??(()=>{})} selected={selectedFloorOpening} onSelect={onSelectFloorOpening??(()=>{})} onChange={onFloorOpeningsChange??(()=>{})} onError={onBuildingError??(()=>{})} finishRequest={finishFloorOpeningRequest} toScreen={toScreen} fromClient={(x,y,svg)=>canvasPointFromClient(x,y,svg)} units={displayUnits} roof={roofProfile}/>
           </FloorPlanCanvas>
           {sourceUrl && !importing && calibrating && <div className="drawing-calibration-panel" role="dialog" aria-modal="false" aria-labelledby="drawing-calibration-title" onKeyDown={(event) => {
             event.stopPropagation(); if (event.key === "Escape") { setCalibrating(false); setCalibrationPoints([]); }
@@ -5276,7 +5344,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
               if (!size) { setCalibrationError("Choose two different points and enter a positive length."); return; }
               setCanvasSize(size); setCalibrating(false); setCalibrationPoints([]); setCalibrationHover(null); setLockedViewport(null);
             }} className="popup drawing-calibration-popup">
-              <header className="popup-titlebar"><span className="popup-drag" aria-hidden>⠿</span><strong id="drawing-calibration-title">Calibrate imported drawing</strong><WindowHelpButton title="Calibrate imported drawing" /></header>
+              <header className="popup-titlebar"><span className="popup-drag" aria-hidden>⠿</span><strong id="drawing-calibration-title">Calibrate imported drawing</strong><div className="window-header-actions"><WindowHelpButton title="Calibrate imported drawing" /></div></header>
               <div className="popup-content"><p>{calibrationPoints.length < 2 ? "Click two ends of a known distance on the drawing." : "Enter the real length of the light-blue line."}{sourceIsPdf ? " PDF page 1." : ""}</p><p className="drawing-calibration-hint">Hold Shift while choosing the second point to keep the reference line horizontal or vertical.</p>
               <label>Reference length (mm)<input aria-label="Reference length (mm)" type="number" min="0.001" step="any" value={calibrationLength} onChange={(event) => setCalibrationLength(event.target.value)} /></label>
               {calibrationError && <p className="inline-error" role="alert">{calibrationError}</p>}</div>
@@ -5291,7 +5359,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, anno
 
       <aside className="coordinate-panel full-plan-side-column">
         {toolbarVisibility["floorplan-coordinates"] && <FloatingToolbar title="Coordinates" defaultPosition={{ x: 662, y: 58 }} dock={fillToolbarLayout ? floorplanDock("LEFT", floorplanLeftDockIds, "floorplan-coordinates") : { side: "LEFT", slot: 1, slots: 2 }} layoutResetKey={toolbarLayoutResetKey} maxHeight={450} onClose={() => onToggleToolbar("floorplan-coordinates")}>
-        <section className="tool-section"><p className="tool-note">Modify any X, Y corner coordinates here to update the drawing</p><div className="coordinate-input-list" aria-label={`Floorplan coordinates in ${UNIT_LABEL[displayUnits]}`}><div className="coordinate-table-heading"><span>Corner ID</span><span>X</span><span>Y</span></div>{coordinateEntries.map(({ wall, point, pointIndex, cornerNumber }) => { const rowKey = `${wall.id}:${pointIndex}`; const selected = selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex; return <div key={`${wall.id}-coordinate-${pointIndex}`} ref={(element) => { if (element) coordinateRowRefs.current.set(rowKey, element); else coordinateRowRefs.current.delete(rowKey); }} className={`coordinate-row ${selected ? "selected" : ""}`} onClick={() => { setSelectedPoint({ wallId: wall.id, pointIndex }); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); }}><span className="coordinate-prefix">{cornerNumber}</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, x: value })} /><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, y: value })} /></div>; })}</div></section>
+        <section className="tool-section"><div className="coordinate-input-list" aria-label={`Floorplan coordinates in ${UNIT_LABEL[displayUnits]}`}><div className="coordinate-table-heading"><span>Corner ID</span><span>X</span><span>Y</span></div>{coordinateEntries.map(({ wall, point, pointIndex, cornerNumber }) => { const rowKey = `${wall.id}:${pointIndex}`; const selected = selectedPoint?.wallId === wall.id && selectedPoint.pointIndex === pointIndex; return <div key={`${wall.id}-coordinate-${pointIndex}`} ref={(element) => { if (element) coordinateRowRefs.current.set(rowKey, element); else coordinateRowRefs.current.delete(rowKey); }} className={`coordinate-row ${selected ? "selected" : ""}`} onClick={() => { setSelectedPoint({ wallId: wall.id, pointIndex }); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null); }}><span className="coordinate-prefix">{cornerNumber}</span><DisplayNumberInput aria-label={`Corner ${cornerNumber} X coordinate`} valueMm={point.x} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, x: value })} /><DisplayNumberInput aria-label={`Corner ${cornerNumber} Y coordinate`} valueMm={point.y} units={displayUnits} onMmChange={(value) => updateCoordinatePoint(wall.id, pointIndex, { ...point, y: value })} /></div>; })}</div></section>
         </FloatingToolbar>}
         {openingEditorTarget && createPortal(!openingEditRequest || openings.some(item => item.id === openingEditRequest.id) ? openingPanel : (() => {
           const opening = viewerOpeningRoom?.openings.find(item => item.id === openingEditRequest.id);

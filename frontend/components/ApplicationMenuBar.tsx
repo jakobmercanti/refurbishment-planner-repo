@@ -7,11 +7,14 @@ import { ProjectDownloadDialog } from "@/components/ProjectDownloadDialog";
 import { useHeatingLayout } from "@/components/HeatingLayoutContext";
 import { useEnergyLayout } from "@/components/EnergyLayoutContext";
 import type { Room, WallViewMode } from "@/lib/types";
+import type { BuildingView } from "./BuildingControls";
 import type { DisplayUnits } from "@/lib/units";
 import { FLOORPLAN_STYLE_OPTIONS, type FloorplanStyle } from "@/lib/floorplanStyles";
 import type { ToolbarDefinition, ToolbarId, ToolbarVisibility } from "@/lib/toolbars";
 
 interface ApplicationMenuBarProps {
+  onClimoptixMenuTarget?: (node: HTMLDivElement | null) => void;
+  buildingView?:BuildingView; onBuildingViewChange?:(v:BuildingView)=>void; roofAvailable?:boolean;
   room: Room;
   onPrepareProject: (filename?: string) => Promise<File>;
   onSaveProject: (filename?: string) => Promise<void>;
@@ -19,7 +22,7 @@ interface ApplicationMenuBarProps {
   onOpenAssets: () => void;
   onOpenPrivacy: () => void;
   mode: "EDITOR" | "ANALYSIS";
-  workspaceMode?: "FLOORPLAN" | "PLANNERBUILD";
+  workspaceMode?: "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX";
   wallMode: WallViewMode;
   floorplanStyle: FloorplanStyle;
   displayUnits: DisplayUnits;
@@ -44,9 +47,16 @@ interface ApplicationMenuBarProps {
   onHideAllToolbars: () => void;
 }
 
-type MenuName = "FILE" | "TOOLS" | "LIBRARY" | "TOOLBAR" | "SETTINGS" | null;
+type MenuName = "FILE" | "TOOLS" | "LIBRARY" | "TOOLBAR" | "SHOW" | "SETTINGS" | null;
+const WALL_DISPLAY_OPTIONS: {value:WallViewMode;label:string}[] = [
+  {value:"SOLID",label:"Solid walls"},
+  {value:"TRANSPARENT",label:"Transparent walls"},
+  {value:"CUTAWAY_2D",label:"2D cutaway walls"},
+  {value:"CUTAWAY_3D",label:"3D cutaway walls"},
+  {value:"INVISIBLE",label:"Invisible walls"},
+];
 
-export function ApplicationMenuBar({ onPrepareProject, onSaveProject, onOpenProject, onOpenAssets, onOpenPrivacy, mode, workspaceMode = "FLOORPLAN", wallMode, floorplanStyle, displayUnits, onDisplayUnitsChange, onOpenRoom, onOpenCatalogue, onOpenElectricalLayout, onOpenCatalogueManager, catalogueManagerAvailable, onWallModeChange, onFloorplanStyleChange, onExportFloorplan, onSaveView, onAnnotate, onImportDrawing, onOpenSettings, toolbars, toolbarVisibility, toolbarAvailability, onToggleToolbar, onShowAllToolbars, onHideAllToolbars }: ApplicationMenuBarProps) {
+export function ApplicationMenuBar({ onClimoptixMenuTarget, buildingView, onBuildingViewChange, roofAvailable=true, onPrepareProject, onSaveProject, onOpenProject, onOpenAssets, onOpenPrivacy, mode, workspaceMode = "FLOORPLAN", wallMode, floorplanStyle, displayUnits, onDisplayUnitsChange, onOpenRoom, onOpenCatalogue, onOpenElectricalLayout, onOpenCatalogueManager, catalogueManagerAvailable, onWallModeChange, onFloorplanStyleChange, onExportFloorplan, onSaveView, onAnnotate, onImportDrawing, onOpenSettings, toolbars, toolbarVisibility, toolbarAvailability, onToggleToolbar, onShowAllToolbars, onHideAllToolbars }: ApplicationMenuBarProps) {
   const compact = useCompactWorkspace();
   const heating = useHeatingLayout();
   const energy = useEnergyLayout();
@@ -66,7 +76,7 @@ export function ApplicationMenuBar({ onPrepareProject, onSaveProject, onOpenProj
       if (event.target instanceof Element && !event.target.closest(".software-menu")) setMenu(null);
     }
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setMenu(null);
+      if (event.key === "Escape" && !event.defaultPrevented) setMenu(null);
     }
     document.addEventListener("pointerdown", closeOnBackgroundPointer, true);
     document.addEventListener("keydown", closeOnEscape);
@@ -114,18 +124,21 @@ export function ApplicationMenuBar({ onPrepareProject, onSaveProject, onOpenProj
   return <>
   <nav className="software-menu" aria-label="Application menu">
     <div className="software-menu-item"><button className={menu === "FILE" ? "active" : ""} onClick={() => toggle("FILE")}>File</button>{menu === "FILE" && <div className="software-dropdown"><button onClick={() => fileInput.current?.click()}><span>Open project…</span><kbd>Ctrl+O</kbd></button><button disabled={preparing} onClick={() => { void saveProject(); setMenu(null); }}><span>Save</span><kbd>Ctrl+S</kbd></button><button onClick={() => { setSaveName("bathroom-plan"); setSaveAsOpen(true); setMenu(null); }}><span>Save as…</span></button>{error && <p>{error}</p>}</div>}</div>
-    <div className="software-menu-item"><button disabled={workspaceMode === "PLANNERBUILD"} title={workspaceMode === "PLANNERBUILD" ? "Switch to Floorplan to use design tools" : undefined} className={menu === "TOOLS" ? "active" : ""} onClick={() => toggle("TOOLS")}>Tools</button>{menu === "TOOLS" && workspaceMode === "FLOORPLAN" && <div className="software-dropdown">{mode === "EDITOR" ? <><button onClick={() => { drawingInput.current?.click(); setMenu(null); }}><span>Import drawing…</span></button><button onClick={() => { onExportFloorplan(); setMenu(null); }}><span>Export floorplan…</span></button><button onClick={() => { onAnnotate?.(); setMenu(null); }}><span>Annotate</span></button></> : <button onClick={() => { onSaveView?.(); setMenu(null); }}><span>Save view…</span></button>}{onOpenElectricalLayout && <button onClick={() => { if (heating.data.enabled || heating.windowOpen) heating.close(); onOpenElectricalLayout(); setMenu(null); }}><span>Full Electrical Layout module…</span></button>}<button onClick={() => { heating.open();setMenu(null); }}><span>Heating Layout</span></button><button onClick={() => { energy.open();setMenu(null); }}><span>Energy &amp; Insulation</span></button></div>}</div>
-    <div className="software-menu-item"><button ref={libraryButton} disabled={workspaceMode === "PLANNERBUILD"} title={workspaceMode === "PLANNERBUILD" ? "Switch to Floorplan to open the library" : undefined} className={menu === "LIBRARY" ? "active" : ""} onClick={() => toggle("LIBRARY")}>Library</button>{menu === "LIBRARY" && workspaceMode === "FLOORPLAN" && <div className="software-dropdown"><button onClick={() => { onOpenCatalogue(); setMenu(null); }}><span>Object catalogue…</span></button><button onClick={() => { onOpenAssets(); setMenu(null); }}><span>My 3D models…</span></button>{catalogueManagerAvailable && <button onClick={(event) => { onOpenCatalogueManager(libraryButton.current ?? event.currentTarget); setMenu(null); }}><span>Object catalogue manager…</span></button>}</div>}</div>
-    <div className="software-menu-item"><button disabled={workspaceMode === "PLANNERBUILD"} title={workspaceMode === "PLANNERBUILD" ? "Switch to Floorplan to manage toolbars" : undefined} className={menu === "TOOLBAR" ? "active" : ""} onClick={() => toggle("TOOLBAR")}>Toolbar</button>{menu === "TOOLBAR" && workspaceMode === "FLOORPLAN" && <div className="software-dropdown toolbar-menu" role="menu" aria-label={`${mode === "EDITOR" ? "Floorplan" : "3D viewer"} toolbars`}><div className="toolbar-menu-actions"><button type="button" onClick={() => { onShowAllToolbars(); setMenu(null); }}>Show all</button><button type="button" onClick={() => { onHideAllToolbars(); setMenu(null); }}>Hide all</button></div>{toolbars.filter((toolbar) => toolbarAvailability[toolbar.id]).map((toolbar) => <button key={toolbar.id} type="button" role="menuitemcheckbox" aria-checked={toolbarVisibility[toolbar.id]} onClick={() => onToggleToolbar(toolbar.id)}><span className="menu-check">{toolbarVisibility[toolbar.id] ? "✓" : ""}</span><span>{toolbar.name}</span></button>)}</div>}</div>
+    <div className="software-menu-item"><button disabled={workspaceMode !== "FLOORPLAN"} title={workspaceMode !== "FLOORPLAN" ? "Switch to Floorplan to use design tools" : undefined} className={menu === "TOOLS" ? "active" : ""} onClick={() => toggle("TOOLS")}>Tools</button>{menu === "TOOLS" && workspaceMode === "FLOORPLAN" && <div className="software-dropdown">{mode === "EDITOR" ? <><button onClick={() => { drawingInput.current?.click(); setMenu(null); }}><span>Import drawing…</span></button><button onClick={() => { onExportFloorplan(); setMenu(null); }}><span>Export floorplan…</span></button><button onClick={() => { onAnnotate?.(); setMenu(null); }}><span>Annotate</span></button></> : <button onClick={() => { onSaveView?.(); setMenu(null); }}><span>Save view…</span></button>}{mode === "EDITOR" && <>{onOpenElectricalLayout && <button onClick={() => { if (heating.data.enabled || heating.windowOpen) heating.close(); onOpenElectricalLayout(); setMenu(null); }}><span>Full Electrical Layout module…</span></button>}<button onClick={() => { heating.open();setMenu(null); }}><span>Heating Layout</span></button><button onClick={() => { energy.open();setMenu(null); }}><span>Energy &amp; Insulation</span></button></>}</div>}</div>
+    <div className="software-menu-item"><button ref={libraryButton} disabled={workspaceMode !== "FLOORPLAN"} title={workspaceMode !== "FLOORPLAN" ? "Switch to Floorplan to open the library" : undefined} className={menu === "LIBRARY" ? "active" : ""} onClick={() => toggle("LIBRARY")}>Library</button>{menu === "LIBRARY" && workspaceMode === "FLOORPLAN" && <div className="software-dropdown"><button onClick={() => { onOpenCatalogue(); setMenu(null); }}><span>Object catalogue…</span></button><button onClick={() => { onOpenAssets(); setMenu(null); }}><span>My 3D models…</span></button>{catalogueManagerAvailable && <button onClick={(event) => { onOpenCatalogueManager(libraryButton.current ?? event.currentTarget); setMenu(null); }}><span>Object catalogue manager…</span></button>}</div>}</div>
+    {workspaceMode === "CLIMOPTIX" ? <div className="cfx-menu-slot" ref={onClimoptixMenuTarget} /> : <><div className="software-menu-item"><button disabled={workspaceMode === "PLANNERBUILD"} title={workspaceMode === "PLANNERBUILD" ? "Switch to Floorplan to manage toolbars" : undefined} className={menu === "TOOLBAR" ? "active" : ""} onClick={() => toggle("TOOLBAR")}>Toolbar</button>{menu === "TOOLBAR" && workspaceMode === "FLOORPLAN" && <div className="software-dropdown toolbar-menu" role="menu" aria-label={`${mode === "EDITOR" ? "Floorplan" : "3D viewer"} toolbars`}><div className="toolbar-menu-actions"><button type="button" onClick={() => { onShowAllToolbars(); setMenu(null); }}>Show all</button><button type="button" onClick={() => { onHideAllToolbars(); setMenu(null); }}>Hide all</button></div>{toolbars.filter((toolbar) => toolbarAvailability[toolbar.id]).map((toolbar) => <button key={toolbar.id} type="button" role="menuitemcheckbox" aria-checked={toolbarVisibility[toolbar.id]} onClick={() => onToggleToolbar(toolbar.id)}><span className="menu-check">{toolbarVisibility[toolbar.id] ? "✓" : ""}</span><span>{toolbar.name}</span></button>)}</div>}</div></>}
+    {workspaceMode === "FLOORPLAN" && mode === "ANALYSIS" && <div className="software-menu-item"><button aria-expanded={menu === "SHOW"} className={menu === "SHOW" ? "active" : ""} onClick={() => toggle("SHOW")}>Show</button>{menu === "SHOW" && <div className="software-dropdown software-show-menu" role="group" aria-label="3D display">
+          <details className="software-wall-setting" onKeyDown={event=>{
+            if(event.key==="Escape"&&event.currentTarget.open){event.preventDefault();event.stopPropagation();event.currentTarget.open=false;event.currentTarget.querySelector("summary")?.focus();return;}
+            const buttons=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')),index=buttons.indexOf(event.target as HTMLButtonElement);
+            if(index<0||!["ArrowDown","ArrowUp","Home","End"].includes(event.key))return;
+            event.preventDefault();const next=event.key==="Home"?0:event.key==="End"?buttons.length-1:(index+(event.key==="ArrowDown"?1:-1)+buttons.length)%buttons.length;buttons[next].focus();
+          }}><summary>Wall display</summary><div role="menu" aria-label="Wall display">{WALL_DISPLAY_OPTIONS.map(option=><button key={option.value} type="button" role="menuitemradio" aria-label={option.label} aria-checked={wallMode===option.value} onClick={()=>setWallMode(option.value)}><span className="menu-check" aria-hidden="true">{wallMode===option.value?"✓":""}</span><span>{option.label}</span></button>)}</div></details>
+          {buildingView&&onBuildingViewChange&&<><button aria-pressed={buildingView.whole} onClick={()=>{onBuildingViewChange({...buildingView,whole:!buildingView.whole});setMenu(null);}}><span>{buildingView.whole?"✓ ":""}Show all floors</span></button><button aria-pressed={buildingView.roof&&roofAvailable} disabled={!roofAvailable} onClick={()=>{onBuildingViewChange({...buildingView,roof:!buildingView.roof});setMenu(null);}}><span>{buildingView.roof&&roofAvailable?"✓ ":""}Show roof</span></button></>}
+    </div>}</div>}
     <div className="software-menu-item"><button className={menu === "SETTINGS" ? "active" : ""} onClick={() => toggle("SETTINGS")}>Settings</button>{menu === "SETTINGS" && <div className="software-dropdown"><button onClick={() => { onOpenSettings(); setMenu(null); }}><span>Preferences…</span></button><button onClick={() => { onOpenPrivacy(); setMenu(null); }}><span>Privacy and local saving…</span></button><label className="software-unit-setting"><span>Display units</span><select aria-label="Display units" value={displayUnits} onChange={(event) => { onDisplayUnitsChange(event.target.value as DisplayUnits); setMenu(null); }}><option value="MM">mm</option><option value="CM">cm</option><option value="INCHES">in</option><option value="FEET">ft</option><option value="METERS">m</option></select></label>
-      {workspaceMode === "FLOORPLAN" && <details className="software-view-setting"><summary>View</summary><div role="group" aria-label={mode === "EDITOR" ? "Floorplan display" : "Wall display"}>
-        {mode === "EDITOR" ? FLOORPLAN_STYLE_OPTIONS.map((option) => <button key={option.value} aria-pressed={floorplanStyle === option.value} onClick={() => { onFloorplanStyleChange(option.value); setMenu(null); }}><span>{floorplanStyle === option.value ? "✓ " : ""}{option.label}</span></button>) : <>
-          <button aria-pressed={wallMode === "SOLID"} onClick={() => setWallMode("SOLID")}><span>{wallMode === "SOLID" ? "✓ " : ""}Solid walls</span></button>
-          <button aria-pressed={wallMode === "TRANSPARENT"} onClick={() => setWallMode("TRANSPARENT")}><span>{wallMode === "TRANSPARENT" ? "✓ " : ""}Transparent walls</span></button>
-          <button aria-pressed={wallMode === "CUTAWAY_2D"} onClick={() => setWallMode("CUTAWAY_2D")}><span>{wallMode === "CUTAWAY_2D" ? "✓ " : ""}2D cutaway walls</span></button>
-          <button aria-pressed={wallMode === "CUTAWAY_3D"} onClick={() => setWallMode("CUTAWAY_3D")}><span>{wallMode === "CUTAWAY_3D" ? "✓ " : ""}3D cutaway walls</span></button>
-          <button aria-pressed={wallMode === "INVISIBLE"} onClick={() => setWallMode("INVISIBLE")}><span>{wallMode === "INVISIBLE" ? "✓ " : ""}Invisible walls</span></button>
-        </>}
+      {workspaceMode === "FLOORPLAN" && mode === "EDITOR" && <details className="software-view-setting"><summary>View</summary><div role="group" aria-label="Floorplan display">
+        {FLOORPLAN_STYLE_OPTIONS.map((option) => <button key={option.value} aria-pressed={floorplanStyle === option.value} onClick={() => { onFloorplanStyleChange(option.value); setMenu(null); }}><span>{floorplanStyle === option.value ? "✓ " : ""}{option.label}</span></button>)}
       </div></details>}
     </div>}</div>
     <input ref={fileInput} hidden type="file" aria-label="Open project file" accept={compact ? undefined : ".floorplan3d,.zip,application/zip,application/json,.json,application/octet-stream"} onChange={(event) => { void openFile(event.target.files?.[0]); event.target.value = ""; }} />

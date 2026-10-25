@@ -32,6 +32,21 @@ origins to permit authentication and signed storage requests in its CSP.
 Build the frontend with `NEXT_PUBLIC_COMMERCIAL_API_URL=/planner/engineering-api`,
 `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; never use
 the service-role key in a browser build. Rebuild after changing public auth values.
+Browser authentication uses `/planner/auth-api/*` on the planner origin, not a
+direct cross-origin Supabase request. The Worker allows only the account endpoints,
+checks write origins and email return URLs, strips cookies, bounds request sizes,
+and uses a 15-second provider timeout. Configure `AUTH_RATE_LIMIT` using the binding
+in `wrangler.jsonc`; authentication fails closed if it is missing. Only the browser's
+publishable key and optional user bearer token are forwarded, never a secret key.
+Supabase's own provider/email/IP limits still apply (proxy traffic shares edge IPs);
+do not bypass those limits with a service-role key. No credential request is retried
+automatically, and auth responses are never cached. Email verification and recovery
+return URLs must still be allowed in the Supabase dashboard, including
+`https://www.freefloorplan3d.com/planner/account/` and local account URLs as needed.
+Local Next.js development rewrites the same `/auth-api/*` route to the configured
+public Supabase origin, so it does not require Cloudflare or a local secret key.
+The browser refuses account requests over plain HTTP except on loopback addresses;
+local Wi-Fi access to the free planner remains available without signing in.
 On the API set `AI_RENDERING_ENABLED=true` only after the dedicated worker has
 its OpenAI key, storage access and queue migrations. The API does not need that key.
 

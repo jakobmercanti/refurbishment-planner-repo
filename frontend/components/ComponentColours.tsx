@@ -113,7 +113,7 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
       <span aria-hidden>{compact ? "›" : expanded ? "−" : "+"}</span>
     </button>
     {!compact && expanded && <>{editorFields}{resetAppearanceButton}{resetFabricButton}</>}
-    {compact && editorOpen && typeof document !== "undefined" && createPortal(<Popup open className={"appearance-popup" + (appearanceObjectName ? " appearance-popup-has-object" : "")} title="Appearance & dimensions" message="" confirmLabel="Done" onCancel={() => closeEditor(false)} onConfirm={() => closeEditor(true)}>
+    {compact && editorOpen && typeof document !== "undefined" && createPortal(<Popup open dockable className={"appearance-popup" + (appearanceObjectName ? " appearance-popup-has-object" : "")} title="Appearance & dimensions" message="" confirmLabel="Done" onCancel={() => closeEditor(false)} onConfirm={() => closeEditor(true)}>
       <div className={`appearance-popup-grid${previewObstacle ? "" : " appearance-popup-grid-without-preview"}`}>
         <div className="appearance-popup-form">{appearanceObjectName && <div className="appearance-object-heading"><h2>{appearanceObjectName}</h2></div>}{editorFields}{dimensionsContent && <div className="appearance-section-divider" aria-hidden="true" />}{dimensionsContent}{(resetDimensionsButton || resetAppearanceButton) && <><div className="appearance-section-divider" aria-hidden="true" /><div className="appearance-actions-row">{resetAppearanceButton}{resetDimensionsButton}</div></>}</div>
         {previewObstacle && <div className="appearance-popup-preview"><div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div><FixturePreview obstacle={previewObstacle} appearanceControls /></div>}

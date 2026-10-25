@@ -1,6 +1,7 @@
 "use client";
 
 import { doorRepresentation } from "@/lib/doorModels";
+import { passageProfileForKey } from "@/lib/passageOpenings";
 import { FixturePreview } from "@/components/FixturePreview";
 import type { CatalogueItem, Obstacle } from "@/lib/types";
 
@@ -33,5 +34,6 @@ export function openingPreviewObstacle({ item, kind, doorType = "SINGLE", width,
 
 export function OpeningPreview({ item, kind, doorType = "SINGLE", width, height, colorHex, componentColors }: OpeningPreviewProps) {
   const obstacle = openingPreviewObstacle({ item, kind, doorType, width, height, colorHex, componentColors });
-  return <FixturePreview obstacle={obstacle} compact />;
+  const passage=passageProfileForKey(obstacle.representation_key);
+  return <><FixturePreview obstacle={obstacle} compact />{passage&&<small data-passage-profile={passage}>Doorless opening · no leaf or swing. {passage!=="RECTANGULAR"?"Height is measured to the crown; the sides are lower. ":""}Confirm structural support and usable headroom on site.</small>}</>;
 }

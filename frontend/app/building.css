@@ -1,0 +1,117 @@
+.building-plan-stage { position:relative; flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; --building-selector-height:36px; --floating-toolbar-top-inset:calc(var(--building-selector-height) + 12px); }
+.building-plan-stage[hidden] { display:none; }
+/* Keep canvas-window shadows below the pinned selector; menus/dialogs stay above. */
+.building-floor-bar { position:absolute; top:8px; right:8px; display:flex; align-items:center; gap:6px; padding:4px; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--panel); color:var(--ink); font:500 calc(12px * var(--density-font-scale,1))/1.4 var(--font-sans),sans-serif; box-shadow:0 3px 12px rgba(20,39,31,.12); z-index:1950; max-width:calc(100% - 16px); }
+.building-floor-bar label { min-width:0; }
+.building-floor-bar .workspace-mode-control { gap:14px; }
+.building-floor-bar button { min-height:var(--control-height-normal); border:1px solid var(--line); border-radius:var(--ui-button-radius,7px); padding:7px 10px; background:var(--ui-button-background); color:var(--ui-button-text); font-family:var(--font-sans),sans-serif; font-size:calc(12px * var(--density-font-scale,1)); font-weight:650; line-height:1.3; cursor:pointer; }
+.building-floor-bar select { max-width:190px; }
+.building-floor-bar button:hover { background:var(--ui-button-hoverBackground); }
+.building-floor-bar button:disabled { opacity:.5; cursor:default; }
+.building-floor-bar .building-tools-button { width:var(--building-selector-height); height:var(--building-selector-height); min-height:var(--building-selector-height); padding:0; font-size:23px; line-height:1; }
+.building-window-host .floating-toolbar-content { --building-action-height:calc(34px * var(--density-font-scale,1)); }
+.building-window-host .floating-toolbar-content button:not(.window-help-button):not(.primary) { border-color:var(--line); border-radius:var(--ui-button-radius); background:var(--ui-button-background); color:var(--ui-button-text); }
+.building-window-host .floating-toolbar-content button:not(.window-help-button):not(.primary):hover:not(:disabled) { background:var(--ui-button-hoverBackground); }
+.building-manager-toolbar { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.building-manager-toolbar>button { height:var(--building-action-height); min-width:0; padding:3px 8px; }
+.building-properties-window .floating-toolbar-content { container-type:inline-size; container-name:building-manager; }
+.building-level-list { display:grid; gap:10px; margin:0; padding:0; list-style:none; }
+.building-level-item { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:8px; padding:9px; border:1px solid var(--line); border-radius:var(--ui-button-radius); background:var(--panel); }
+.building-level-item[data-active=true] { border-color:var(--accent); background:var(--surface-accent); }
+.building-level-item[data-dragging=true] { opacity:.55; }
+.building-level-item[data-drop=before] { box-shadow:inset 0 3px var(--accent); }
+.building-level-item[data-drop=after] { box-shadow:inset 0 -3px var(--accent); }
+.building-level-description { display:grid; min-width:0; gap:4px; text-align:left; overflow-wrap:anywhere; }
+.building-level-description small { color:var(--ink); opacity:1; }
+.building-level-actions { display:flex; justify-content:flex-end; gap:6px; }
+.building-level-actions>button { min-height:32px; padding:4px 8px; }
+.building-level-icon { display:grid; place-items:center; color:var(--deep); }
+.building-properties-window .floating-toolbar-content .building-level-item button.building-level-select { --control-bg:transparent; --control-text:var(--ink); --control-hover-bg:var(--surface-muted); --control-hover-text:var(--ink); border:0; background:transparent; color:var(--ink); padding:3px 0; min-height:32px; }
+.building-properties-window .building-level-item .building-drag-handle { width:28px; min-width:28px; min-height:32px; padding:0; cursor:grab; font-size:19px; touch-action:none; }
+.building-window-host .building-section { padding:0; border:0; border-radius:8px; }
+.building-window-host .building-section>.full-plan-overall-toggle { margin:0; gap:8px; padding:3px 9px; list-style:none; }
+.building-section>summary::-webkit-details-marker { display:none; }
+.building-section>summary>strong { flex:1; }
+.building-section-toggle::before { content:"+"; }
+.building-section[open]>.full-plan-overall-toggle { border-radius:8px 8px 0 0; }
+.building-section[open] .building-section-toggle::before { content:"−"; }
+.building-section .building-options { padding:0; }
+.building-section>.full-plan-overall-content { font-family:var(--font-mono); }
+body[data-ui-style="modern"] .building-section>.full-plan-overall-toggle { background:var(--ui-button-background); color:var(--ui-button-text); border-color:var(--line); border-radius:var(--ui-button-radius); font-family:var(--font-sans); }
+body[data-ui-style="modern"] .building-section>.full-plan-overall-toggle:hover { background:var(--ui-button-hoverBackground); }
+.building-window-host .floating-toolbar-content select.workspace-mode-select { min-height:var(--control-height-normal); padding:0 28px 0 11px; border:1px solid var(--line); border-radius:var(--ui-button-radius); background-color:var(--panel); color:var(--ink); font-weight:650; }
+.building-level-heading { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.building-level-heading span { color:var(--muted); font-size:12px; }
+.building-roof-window .building-level-heading { margin-bottom:10px; }
+.floating-toolbar.building-roof-window { max-width:calc(100% - 64px); }
+.building-roof-window .floating-toolbar-content { container-type:inline-size; container-name:roof-editor; padding:10px 12px 4px; }
+.building-roof-editor-grid { display:grid; grid-template-columns:minmax(300px,1fr) minmax(0,1.15fr); gap:20px; align-items:start; }
+.building-roof-form { min-width:0; max-height:min(700px,max(150px,calc(var(--floating-available-height,800px) - 100px))); grid-template-rows:minmax(0,1fr) auto; }
+.building-roof-fields { min-height:0; overflow:auto; padding-right:4px; scrollbar-gutter:stable; }
+.building-roof-form fieldset.building-roof-profile-fields { display:grid; gap:14px; min-width:0; margin:0; padding:14px 0 0; border:0; border-top:1px solid var(--line); }
+.building-roof-profile-fields>legend { padding:0 8px 0 0; font-weight:750; color:var(--deep); }
+.building-roof-profile-fields:disabled { opacity:.65; }
+.building-roof-fields .building-checkbox, .building-opening-properties .building-checkbox { display:flex; flex-direction:row; align-items:center; gap:8px; margin:0; }
+.building-roof-fields .building-checkbox input, .building-opening-properties .building-checkbox input { width:18px; height:18px; min-height:0; flex:none; }
+.building-opening-properties .building-roof-finish { display:grid; gap:12px; padding:12px; border:1px solid var(--line); border-radius:12px; }
+.building-opening-properties small, .building-roof-fields small { color:var(--muted); line-height:1.5; }
+.floor-opening-balustrade { fill:var(--surface-muted); stroke:var(--accent); stroke-width:1.5px; vector-effect:non-scaling-stroke; }
+.building-roof-dimensions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.building-roof-dimensions>label { grid-template-rows:1fr auto; align-items:end; }
+.building-roof-dimensions[data-profile=FLAT] { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.building-roof-form label.building-roof-select { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px 8px; }
+.building-roof-select>select { grid-column:1/-1; }
+.building-roof-select>.window-help-button { justify-self:end; }
+.building-roof-preview { position:sticky; top:0; min-width:0; display:grid; gap:10px; padding:14px; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--surface-muted); color:var(--ink); font:500 calc(12px * var(--density-font-scale,1))/1.5 var(--font-sans),sans-serif; }
+.building-roof-preview .appearance-preview-heading { position:static; gap:12px; flex-wrap:wrap; }
+.building-roof-preview .appearance-preview-heading> :is(strong,span) { text-shadow:none; }
+.building-roof-preview-canvas { position:relative; min-height:330px; height:clamp(330px,49vh,560px); overflow:hidden; border-radius:var(--ui-button-radius); background:var(--canvas-background,#eaf0eb); }
+.building-roof-preview-canvas>p { padding:18px; }
+.building-roof-preview small { color:var(--muted); }
+.building-roof-preview .fixture-preview-zoom-controls { top:8px; bottom:8px; transform:none; justify-content:center; gap:6px; }
+.building-roof-preview .fixture-preview-zoom-slider { flex:1; width:18px; min-width:0; max-width:18px; min-height:0; height:auto; max-height:205px; padding:0; }
+.building-roof-preview .fixture-preview-fit-button { flex:none; text-shadow:none; }
+.building-opening-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; width:100%; }
+.building-opening-actions>button { width:100%; min-width:0; height:100%; }
+.building-square-option { display:flex; align-items:center; gap:7px; font:inherit; }
+.building-square-option input { width:auto; accent-color:var(--deep); }
+@container roof-editor (max-width:760px) { .building-roof-editor-grid { grid-template-columns:minmax(0,1fr); }.building-roof-form { max-height:none; grid-template-rows:auto auto; }.building-roof-fields { overflow:visible; padding-right:0; scrollbar-gutter:auto; }.building-roof-preview { position:relative; padding:8px; gap:6px; }.building-roof-preview-canvas { min-height:140px; height:clamp(140px,calc(100dvh - 390px),330px); }.building-roof-preview small { font-size:10px; line-height:1.3; } }
+@media(max-height:650px) { .building-roof-preview small { display:none; } }
+.building-options { display:grid; gap:12px; padding:12px 2px 2px; }
+.building-options>label:has(input[type=checkbox]) { display:flex; align-items:center; gap:8px; }
+.building-options input[type=checkbox] { width:auto; min-height:0; accent-color:var(--deep); }
+.building-floor-feedback { position:absolute; top:56px; right:8px; z-index:1901; display:flex; align-items:flex-start; gap:12px; max-width:min(420px,calc(100% - 16px)); padding:14px; border:1px solid var(--fail); border-radius:var(--radius-panel); background:var(--panel); color:var(--fail); box-shadow:var(--ui-window-shadow); font-size:13px; line-height:1.5; }
+.building-floor-feedback p { margin:0; }
+.building-floor-feedback button { flex:none; border:0; color:var(--muted); background:transparent; font-size:20px; cursor:pointer; }
+.building-drawing-status { position:absolute; bottom:38px; left:50%; transform:translateX(-50%); z-index:2001; display:flex; align-items:center; flex-wrap:wrap; justify-content:center; gap:8px; max-width:calc(100% - 16px); width:max-content; padding:10px 14px; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--panel); box-shadow:var(--ui-window-shadow); font-size:12px; }
+.building-drawing-status button { min-height:32px; padding:5px 10px; border:1px solid var(--line); border-radius:var(--ui-button-radius); background:var(--ui-button-background); color:var(--ui-button-text); font:inherit; cursor:pointer; }
+.building-window-layer { position:absolute; inset:0; pointer-events:none; }
+.building-window-host { display:contents; pointer-events:none; }
+.building-window-host>.floating-toolbar { pointer-events:auto; }
+.building-checkbox { display:flex; align-items:center; gap:7px; padding:12px 0; }
+.building-reference-floor { opacity:.35; stroke:var(--muted); stroke-width:2; stroke-dasharray:6 4; fill:none; }
+.floor-opening-contour { stroke:var(--accent); stroke-width:1.6; stroke-dasharray:7 3; fill:var(--surface-accent,#eaf4ff); fill-opacity:.72; cursor:move; touch-action:none; }
+.floor-opening-contour.selected { stroke-width:2.5; stroke-dasharray:none; }
+.floor-opening-draft { stroke:var(--accent); stroke-width:1.6; stroke-dasharray:5 3; fill:var(--surface-accent,#eaf4ff); fill-opacity:.35; }
+.floor-opening-name { fill:var(--deep); stroke:var(--panel); stroke-width:2px; paint-order:stroke; font:600 9px var(--font-sans); }
+.floor-opening-handle { fill:var(--panel); stroke:var(--accent); stroke-width:2; cursor:crosshair; touch-action:none; }
+.building-opening-properties { display:grid; gap:10px; border-top:1px solid var(--line); padding-top:10px; }
+.building-clear-height { display:grid; align-content:start; gap:10px; }
+.building-editor-footer { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding-top:8px; }
+.building-roof-finish { display:grid; gap:10px; margin-block:6px; padding-block:10px; border-block:1px solid var(--line); }
+.building-roof-section-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.building-roof-section-heading>h3 { margin:0; font:700 1em var(--font-sans),sans-serif; }
+.building-roof-form .window-help-button { margin:0; background:var(--panel); color:var(--deep); }
+.building-roof-finish input[type=color] { height:38px; padding:4px; }
+.building-reset-message { display:flex; align-items:flex-start; gap:12px; }
+.building-reset-icon { flex:none; display:grid; place-items:center; width:34px; height:34px; border:1px solid var(--fail); border-radius:50%; background:var(--fail-soft); color:var(--fail); font:750 20px/1 var(--font-sans),sans-serif; }
+.building-reset-warning .popup-content p { font-family:var(--font-sans),sans-serif; }
+.building-reset-warning .popup-content .building-reset-summary { font-weight:650; line-height:1.5; }
+.building-reset-warning .popup-content .building-reset-note { margin-top:9px; color:var(--muted); font-size:.9em; }
+.building-reset-warning .popup-actions button.primary { --control-bg:var(--fail); --control-text:var(--paper); --control-border:var(--fail); --control-hover-bg:color-mix(in srgb,var(--fail) 85%,var(--ink)); --control-hover-text:var(--paper); --control-hover-border:var(--control-hover-bg); background:var(--fail); border-color:var(--fail); color:var(--paper); }
+@container building-manager (max-width:430px) { .building-level-actions { grid-column:2/-1; display:grid; grid-auto-flow:column; grid-auto-columns:1fr; }.building-level-item { grid-template-columns:28px minmax(0,1fr); }.building-roof-entry .building-level-actions { grid-template-columns:1fr 1fr; } }
+.building-vertices { display:grid; gap:10px; max-height:280px; overflow:auto; }
+.roof-plan-indicator { stroke:var(--accent); stroke-width:1.5; stroke-dasharray:7 4; opacity:.8; }
+.roof-plan-indicator text { stroke:none; fill:var(--accent); font:600 9px var(--font-sans); }
+.compact-workspace .building-plan-stage { --building-selector-height:44px; }
+@media(max-width:600px) { .building-floor-bar select { max-width:min(190px,calc(100vw - 80px)); } }

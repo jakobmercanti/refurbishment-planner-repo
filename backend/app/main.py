@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from itertools import pairwise
 import base64
 import http.client
 import ipaddress
 import json
+import math
 import os
-from pathlib import Path
 import socket
 import ssl
-from typing import Annotated, Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from itertools import pairwise
+from pathlib import Path
+from typing import Annotated, Any
 from urllib.parse import urljoin, urlparse
 from uuid import UUID, uuid4
 
@@ -24,17 +26,24 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.app.aggregate_analytics import router as aggregate_analytics_router
+from backend.app.climoptix_api import router as climoptix_router
+from backend.app.commercial_api import router as commercial_api_router
+from backend.app.deployment import DeploymentBoundary
 from backend.app.schemas import (
     CADResponse,
     CatalogueCategoryResponse,
     CatalogueCategoryUpdate,
-    CatalogueWebsiteImport,
-    CatalogueWebsiteImportResponse,
     CatalogueItemInput,
     CatalogueItemResponse,
+    CatalogueWebsiteImport,
+    CatalogueWebsiteImportResponse,
     DemoResponse,
     FitRequest,
     GeometryInvalidation,
+    MaterialCollectionResponse,
+    MaterialFamilyResponse,
+    MaterialItemResponse,
     PolygonUpdate,
     ProjectCreate,
     ProjectResponse,
@@ -42,16 +51,9 @@ from backend.app.schemas import (
     SoftwareSettingsResponse,
     SoftwareSettingsUpdate,
     WallSummary,
-    MaterialCollectionResponse,
-    MaterialFamilyResponse,
-    MaterialItemResponse,
 )
 from cad.generator import generate_cad
-from backend.app.deployment import DeploymentBoundary
-from backend.app.aggregate_analytics import router as aggregate_analytics_router
-from backend.app.commercial_api import router as commercial_api_router
 from database.catalog import catalogue_session, initialise_catalogue
-from database.software_settings import load_software_settings, update_software_settings
 from database.catalogue_assets import (
     PictureReplacement,
     asset_root,
@@ -59,13 +61,29 @@ from database.catalogue_assets import (
     remove_item_pictures,
     stage_item_picture_replacement,
 )
-from database.models import FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
+from database.cfd_proxies import cfd_proxy_for
+from database.fixture_defaults import FIXTURE_DEFAULTS
+from database.models import (
+    FurnitureCategoryRecord,
+    FurnitureItemRecord,
+    MaterialCollectionRecord,
+    MaterialFamilyRecord,
+    MaterialItemRecord,
+)
+from database.software_settings import load_software_settings, update_software_settings
+from geometry.cfd import CfdMesh, CfdProxySpec, build_cfd_mesh, cfd_stl
 from geometry.engine import check_fit
 from geometry.fixtures import build_l_shaped_fixture
 from geometry.layout_engine import analyse_layout
 from geometry.models import FitResult, GenericOpening, LayoutResult, ObstacleDefinition, Placement, RoomDefinition
 from geometry.shapes import obstacle_footprint
 from geometry.walls import PolygonValidationError, derive_walls, room_polygon
+
+CFD_JSON_ENDPOINTS = {
+    "/climoptix/geometry", "/climoptix/prepare", "/climoptix/openfoam-settings",
+    "/climoptix/thermal-envelope", "/climoptix/thermal-preview", "/climoptix/thermal-epw",
+}
+
 
 class RequestBodyLimitMiddleware:
     """Reject oversized streamed request bodies before route parsing."""
@@ -74,7 +92,12 @@ class RequestBodyLimitMiddleware:
         self.app = app
         self.default_limit = default_limit
 
-    async def __call__(self, scope: dict[str, Any], receive: Callable[..., Awaitable[dict[str, Any]]], send: Callable[..., Awaitable[None]]) -> None:
+    async def __call__(
+        self,
+        scope: dict[str, Any],
+        receive: Callable[..., Awaitable[dict[str, Any]]],
+        send: Callable[..., Awaitable[None]],
+    ) -> None:
         if scope.get("type") != "http" or scope.get("method") not in {"POST", "PUT", "PATCH"}:
             await self.app(scope, receive, send)
             return
@@ -83,6 +106,8 @@ class RequestBodyLimitMiddleware:
             limit = 256
         elif path == "/commercial/stripe/webhook":
             limit = 1_000_000
+        elif path in CFD_JSON_ENDPOINTS:
+            limit = 4 * 1024 * 1024
         else:
             limit = self.default_limit
         messages: list[dict[str, Any]] = []
@@ -93,7 +118,13 @@ class RequestBodyLimitMiddleware:
             if message.get("type") == "http.request":
                 total += len(message.get("body", b""))
                 if total > limit:
-                    await send({"type": "http.response.start", "status": 413, "headers": [(b"content-type", b"application/json")]})
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 413,
+                            "headers": [(b"content-type", b"application/json")],
+                        }
+                    )
                     await send({"type": "http.response.body", "body": b'{"detail":"Request body is too large."}'})
                     return
                 if not message.get("more_body", False):
@@ -101,6 +132,26 @@ class RequestBodyLimitMiddleware:
             elif message.get("type") == "http.disconnect":
                 return
         index = 0
+        if path in CFD_JSON_ENDPOINTS:
+
+            def finite_json_number(value: str) -> float:
+                number = float(value)
+                if not math.isfinite(number):
+                    raise ValueError("Non-finite JSON number")
+                return number
+
+            try:
+                json.loads(
+                    b"".join(message.get("body", b"") for message in messages),
+                    parse_float=finite_json_number,
+                    parse_constant=finite_json_number,
+                )
+            except (ValueError, RecursionError):
+                await JSONResponse(
+                    status_code=422,
+                    content={"detail": "Climoptix requires valid JSON with finite numbers and bounded nesting."},
+                )(scope, receive, send)
+                return
 
         async def replay() -> dict[str, Any]:
             nonlocal index
@@ -134,6 +185,7 @@ app.add_middleware(
 )
 app.include_router(aggregate_analytics_router)
 app.include_router(commercial_api_router)
+app.include_router(climoptix_router)
 initialise_catalogue()
 # Keep the human-readable administrator configuration available from the
 # moment the API starts, including before the first browser request.
@@ -144,6 +196,7 @@ rooms: dict[UUID, RoomDefinition] = {}
 fit_results: dict[UUID, FitResult] = {}
 
 CATEGORY_KINDS = {
+    **{category: kind for category, (kind, _models) in FIXTURE_DEFAULTS.items()},
     "electric": "FURNITURE",
     "showers": "SHOWER",
     "basins": "BASIN",
@@ -187,6 +240,7 @@ def catalogue_item_response(item: FurnitureItemRecord) -> CatalogueItemResponse:
         plan_shape=item.plan_shape,
         representation_key=item.representation_key,
         heating_spec=item.heating_spec,
+        cfd_proxy=item.cfd_proxy,
         representation_version=item.representation_version,
         plan_symbol_url=item.plan_symbol_url,
         plan_symbol_data_url=item.plan_symbol_data_url,
@@ -210,10 +264,19 @@ def validate_catalogue_category(session: Session, payload: CatalogueItemInput) -
 
 def catalogue_item_values(payload: CatalogueItemInput) -> dict[str, object]:
     from database.colour_parts import colour_parts_for
-    return {**payload.model_dump(exclude={"images"}), "colour_parts": colour_parts_for(payload.representation_key, payload.color_hex, imported_mesh=bool(payload.stl_base64))}
+
+    return {
+        **payload.model_dump(exclude={"images"}),
+        "cfd_proxy": cfd_proxy_for(payload.category_id, payload.fixture_kind, payload.representation_key),
+        "colour_parts": colour_parts_for(
+            payload.representation_key, payload.color_hex, imported_mesh=bool(payload.stl_base64)
+        ),
+    }
 
 
-def resolved_catalogue_pictures(item_id: str, payload: CatalogueItemInput, existing_json: str | None = None) -> list[tuple[bytes, str, str, str]]:
+def resolved_catalogue_pictures(
+    item_id: str, payload: CatalogueItemInput, existing_json: str | None = None
+) -> list[tuple[bytes, str, str, str]]:
     try:
         existing = json.loads(existing_json or "[]")
     except json.JSONDecodeError:
@@ -232,7 +295,9 @@ def resolved_catalogue_pictures(item_id: str, payload: CatalogueItemInput, exist
                     raise ValueError("existing catalogue picture is unavailable")
                 data = path.read_bytes()
                 content_type = str(record.get("content_type"))
-                data, content_type, extension = decode_picture(f"data:{content_type};base64,{base64.b64encode(data).decode()}")
+                data, content_type, extension = decode_picture(
+                    f"data:{content_type};base64,{base64.b64encode(data).decode()}"
+                )
             else:
                 raise ValueError("catalogue picture must contain uploaded data or an existing item URL")
         except (OSError, ValueError) as error:
@@ -247,7 +312,7 @@ def resolve_public_catalogue_url(url: str) -> tuple[str, str, int, str]:
         raise HTTPException(status_code=422, detail="source must be a public HTTP(S) URL")
     try:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        addresses = {record[4][0] for record in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)}
+        addresses = {str(record[4][0]) for record in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)}
     except ValueError as error:
         raise HTTPException(status_code=422, detail="source URL contains an invalid port") from error
     except socket.gaierror as error:
@@ -258,19 +323,28 @@ def resolve_public_catalogue_url(url: str) -> tuple[str, str, int, str]:
 
 
 def safe_catalogue_url(payload: CatalogueWebsiteImport) -> str:
-    url = urljoin(payload.source_url.rstrip("/") + "/", payload.page.strip()) if payload.page.strip() else payload.source_url
+    url = (
+        urljoin(payload.source_url.rstrip("/") + "/", payload.page.strip())
+        if payload.page.strip()
+        else payload.source_url
+    )
     resolve_public_catalogue_url(url)
     return url
 
 
 class PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(self, pinned_ip: str, server_hostname: str, port: int, timeout: float) -> None:
-        super().__init__(server_hostname, port=port, timeout=timeout, context=ssl.create_default_context())
+        self.tls_context = ssl.create_default_context()
+        super().__init__(server_hostname, port=port, timeout=timeout, context=self.tls_context)
         self.pinned_ip = pinned_ip
 
     def connect(self) -> None:
-        raw_socket = socket.create_connection((self.pinned_ip, self.port), self.timeout, self.source_address)
-        self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
+        raw_socket = socket.create_connection((self.pinned_ip, self.port), self.timeout)
+        try:
+            self.sock = self.tls_context.wrap_socket(raw_socket, server_hostname=self.host)
+        except Exception:
+            raw_socket.close()
+            raise
 
 
 def open_pinned_catalogue_response(url: str) -> http.client.HTTPResponse:
@@ -285,7 +359,15 @@ def open_pinned_catalogue_response(url: str) -> http.client.HTTPResponse:
     if parsed.query:
         path += f"?{parsed.query}"
     host_header = hostname if parsed.port is None else f"{hostname}:{port}"
-    connection.request("GET", path, headers={"Host": host_header, "User-Agent": "RenovationFitCatalogueImporter/1.0", "Accept": "text/html,application/json"})
+    connection.request(
+        "GET",
+        path,
+        headers={
+            "Host": host_header,
+            "User-Agent": "RenovationFitCatalogueImporter/1.0",
+            "Accept": "text/html,application/json",
+        },
+    )
     return connection.getresponse()
 
 
@@ -322,7 +404,9 @@ def json_ld_products(document: str) -> list[dict[str, object]]:
     import re
 
     products: list[dict[str, object]] = []
-    for raw in re.findall(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', document, re.I | re.S):
+    for raw in re.findall(
+        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', document, re.I | re.S
+    ):
         try:
             value = json.loads(raw)
         except json.JSONDecodeError:
@@ -336,7 +420,7 @@ def json_ld_products(document: str) -> list[dict[str, object]]:
             if isinstance(graph, list):
                 stack.extend(graph)
             kind = candidate.get("@type")
-            if kind == "Product" or isinstance(kind, list) and "Product" in kind:
+            if kind == "Product" or (isinstance(kind, list) and "Product" in kind):
                 products.append(candidate)
     return products
 
@@ -527,8 +611,24 @@ def run_layout_check(room: RoomDefinition, session: CatalogueSession) -> LayoutR
     for obstacle in room.obstacles:
         item = session.get(FurnitureItemRecord, obstacle.model_id) if obstacle.model_id else None
         category = item.category if item is not None else None
-        side = obstacle.side_clearance_mm if obstacle.side_clearance_mm is not None else (item.side_clearance_mm if item and item.side_clearance_mm is not None else (category.default_side_clearance_mm if category else 0.0))
-        front = obstacle.front_clearance_mm if obstacle.front_clearance_mm is not None else (item.front_clearance_mm if item and item.front_clearance_mm is not None else (category.default_front_clearance_mm if category else 0.0))
+        side = (
+            obstacle.side_clearance_mm
+            if obstacle.side_clearance_mm is not None
+            else (
+                item.side_clearance_mm
+                if item and item.side_clearance_mm is not None
+                else (category.default_side_clearance_mm if category else 0.0)
+            )
+        )
+        front = (
+            obstacle.front_clearance_mm
+            if obstacle.front_clearance_mm is not None
+            else (
+                item.front_clearance_mm
+                if item and item.front_clearance_mm is not None
+                else (category.default_front_clearance_mm if category else 0.0)
+            )
+        )
         resolved.append(obstacle.model_copy(update={"side_clearance_mm": side, "front_clearance_mm": front}))
     return analyse_layout(room.model_copy(update={"obstacles": resolved}))
 
@@ -577,9 +677,19 @@ def update_catalogue_category(
     category.default_side_clearance_mm = payload.default_side_clearance_mm
     category.default_front_clearance_mm = payload.default_front_clearance_mm
     session.commit()
-    count = session.scalar(select(func.count(FurnitureItemRecord.id)).where(FurnitureItemRecord.category_id == category.id, FurnitureItemRecord.active)) or 0
+    count = (
+        session.scalar(
+            select(func.count(FurnitureItemRecord.id)).where(
+                FurnitureItemRecord.category_id == category.id, FurnitureItemRecord.active
+            )
+        )
+        or 0
+    )
     return CatalogueCategoryResponse(
-        id=category.id, name=category.name, description=category.description, item_count=count,
+        id=category.id,
+        name=category.name,
+        description=category.description,
+        item_count=count,
         default_side_clearance_mm=category.default_side_clearance_mm,
         default_front_clearance_mm=category.default_front_clearance_mm,
     )
@@ -587,14 +697,47 @@ def update_catalogue_category(
 
 @app.get("/catalog/materials", response_model=list[MaterialCollectionResponse])
 def list_catalogue_materials(session: CatalogueSession, kind: str | None = None) -> list[MaterialCollectionResponse]:
-    collections = session.scalars(select(MaterialCollectionRecord).where(MaterialCollectionRecord.kind == kind) if kind else select(MaterialCollectionRecord)).all()
+    collections = session.scalars(
+        select(MaterialCollectionRecord).where(MaterialCollectionRecord.kind == kind)
+        if kind
+        else select(MaterialCollectionRecord)
+    ).all()
     response: list[MaterialCollectionResponse] = []
     for collection in sorted(collections, key=lambda item: (item.sort_order, item.name)):
-        families = session.scalars(select(MaterialFamilyRecord).where(MaterialFamilyRecord.collection_id == collection.id).order_by(MaterialFamilyRecord.sort_order)).all()
-        response.append(MaterialCollectionResponse(
-            id=collection.id, kind=collection.kind, name=collection.name, source_url=collection.source_url,
-            families=[MaterialFamilyResponse(id=family.id, name=family.name, items=[MaterialItemResponse(id=item.id, name=item.name, code=item.code, color_hex=item.color_hex.upper(), metadata=item.metadata_json) for item in session.scalars(select(MaterialItemRecord).where(MaterialItemRecord.family_id == family.id).order_by(MaterialItemRecord.name)).all()]) for family in families],
-        ))
+        families = session.scalars(
+            select(MaterialFamilyRecord)
+            .where(MaterialFamilyRecord.collection_id == collection.id)
+            .order_by(MaterialFamilyRecord.sort_order)
+        ).all()
+        response.append(
+            MaterialCollectionResponse(
+                id=collection.id,
+                kind=collection.kind,
+                name=collection.name,
+                source_url=collection.source_url,
+                families=[
+                    MaterialFamilyResponse(
+                        id=family.id,
+                        name=family.name,
+                        items=[
+                            MaterialItemResponse(
+                                id=item.id,
+                                name=item.name,
+                                code=item.code,
+                                color_hex=item.color_hex.upper(),
+                                metadata=item.metadata_json,
+                            )
+                            for item in session.scalars(
+                                select(MaterialItemRecord)
+                                .where(MaterialItemRecord.family_id == family.id)
+                                .order_by(MaterialItemRecord.name)
+                            ).all()
+                        ],
+                    )
+                    for family in families
+                ],
+            )
+        )
     return response
 
 
@@ -612,11 +755,13 @@ def list_catalogue_items(
         statement = statement.where(FurnitureItemRecord.subcategory == subcategory)
     if search:
         term = f"%{search.strip()}%"
-        statement = statement.where(or_(
-            FurnitureItemRecord.name.ilike(term),
-            FurnitureItemRecord.supplier.ilike(term),
-            FurnitureItemRecord.sku.ilike(term),
-        ))
+        statement = statement.where(
+            or_(
+                FurnitureItemRecord.name.ilike(term),
+                FurnitureItemRecord.supplier.ilike(term),
+                FurnitureItemRecord.sku.ilike(term),
+            )
+        )
     return [catalogue_item_response(item) for item in session.scalars(statement).all()]
 
 
@@ -628,6 +773,31 @@ def get_catalogue_item(item_id: str, session: CatalogueSession) -> CatalogueItem
     return catalogue_item_response(item)
 
 
+@app.get("/catalog/items/{item_id}/cfd", response_model=CfdMesh)
+def get_catalogue_cfd_mesh(item_id: str, session: CatalogueSession) -> CfdMesh:
+    item = session.get(FurnitureItemRecord, item_id)
+    if item is None or not item.active:
+        raise HTTPException(status_code=404, detail="catalogue item not found")
+    eligible = cfd_proxy_for(item.category_id, item.fixture_kind, item.representation_key)
+    if eligible is None or item.cfd_proxy is None:
+        raise HTTPException(status_code=404, detail="This entry has no CFD obstruction representation")
+    try:
+        spec = CfdProxySpec.model_validate(item.cfd_proxy)
+        return build_cfd_mesh(spec.profile, item.width_mm, item.depth_mm, item.height_mm)
+    except (ValidationError, ValueError) as error:
+        raise HTTPException(status_code=422, detail="CFD profile or dimensions need review") from error
+
+
+@app.get("/catalog/items/{item_id}/cfd.stl")
+def download_catalogue_cfd_stl(item_id: str, session: CatalogueSession) -> Response:
+    mesh = get_catalogue_cfd_mesh(item_id, session)
+    return Response(
+        content=cfd_stl(mesh),
+        media_type="model/stl",
+        headers={"Content-Disposition": 'attachment; filename="catalogue-cfd-mm.stl"'},
+    )
+
+
 @app.post("/catalog/items", response_model=CatalogueItemResponse, status_code=201)
 def create_catalogue_item(
     payload: CatalogueItemInput,
@@ -636,7 +806,9 @@ def create_catalogue_item(
     validate_catalogue_category(session, payload)
     item_id = str(uuid4())
     pictures = resolved_catalogue_pictures(item_id, payload)
-    item = FurnitureItemRecord(id=item_id, **catalogue_item_values(payload), image_data_json="[]", supplier_editable=True)
+    item = FurnitureItemRecord(
+        id=item_id, **catalogue_item_values(payload), image_data_json="[]", supplier_editable=True
+    )
     session.add(item)
     replacement: PictureReplacement | None = None
     try:
@@ -757,21 +929,38 @@ def import_catalogue_website(
     for index, product in enumerate(candidates[:50]):
         name_value = product.get("name")
         sku_value = product.get("sku")
-        if not isinstance(name_value, str) or not name_value.strip() or not isinstance(sku_value, (str, int)) or not str(sku_value).strip():
+        if (
+            not isinstance(name_value, str)
+            or not name_value.strip()
+            or not isinstance(sku_value, (str, int))
+            or not str(sku_value).strip()
+        ):
             skipped.append(f"candidate {index + 1}: missing valid product name or SKU")
             continue
         try:
-            validated.append(CatalogueItemInput(
-                category_id=payload.category_id, fixture_kind=payload.fixture_kind, name=name_value.strip(),
-                supplier=payload.supplier, sku=str(sku_value).strip(), width_mm=payload.width_mm, depth_mm=payload.depth_mm,
-                height_mm=payload.height_mm, color_hex=payload.color_hex,
-                description=f"Imported from {url}", subcategory=payload.subcategory, plan_shape=payload.plan_shape,
-            ))
+            validated.append(
+                CatalogueItemInput(
+                    category_id=payload.category_id,
+                    fixture_kind=payload.fixture_kind,
+                    name=name_value.strip(),
+                    supplier=payload.supplier,
+                    sku=str(sku_value).strip(),
+                    width_mm=payload.width_mm,
+                    depth_mm=payload.depth_mm,
+                    height_mm=payload.height_mm,
+                    color_hex=payload.color_hex,
+                    description=f"Imported from {url}",
+                    subcategory=payload.subcategory,
+                    plan_shape=payload.plan_shape,
+                )
+            )
         except ValidationError as error:
             skipped.append(f"candidate {index + 1}: {error.errors()[0]['msg']}")
     inserted: list[FurnitureItemRecord] = []
     for item_payload in validated:
-        item = FurnitureItemRecord(id=str(uuid4()), **catalogue_item_values(item_payload), image_data_json="[]", supplier_editable=True)
+        item = FurnitureItemRecord(
+            id=str(uuid4()), **catalogue_item_values(item_payload), image_data_json="[]", supplier_editable=True
+        )
         try:
             with session.begin_nested():
                 session.add(item)

@@ -3,17 +3,18 @@ import { assetRepository, contentHash, validateGlb, MAX_GLB_BYTES } from "./asse
 import { completed, localDatabase } from "./localDatabase";
 import { parseProject, type ProjectDocument } from "./projectDocument";
 import { getElectricalImage, validateElectricalImageBytes } from "./electricalAttachments";
+import { projectElectricalAttachments, projectFloors } from "./buildingDocument";
 
 const MAX_PACKAGE = 200 * 1024 * 1024;
 const MAX_MANIFEST = 8 * 1024 * 1024;
 export async function exportProject(project: ProjectDocument): Promise<Blob> {
-  const referenced = new Set(project.assetInstances.map(i => i.assetId));
+  const referenced = new Set(projectFloors(project).flatMap(f=>f.content.assetInstances.map(i => i.assetId)));
   const p = parseProject({ ...project, assets: project.assets.filter(a => referenced.has(a.assetId)) });
   const manifest = strToU8(JSON.stringify({ packageVersion: 1, builtinCatalogueVersion: 1, project: p }));
   if (manifest.length > MAX_MANIFEST) throw new Error("Project metadata exceeds 8 MB.");
   const entries: Record<string, Uint8Array> = { "manifest.json": manifest }; let total = manifest.length;
   for (const asset of p.assets) { const blob = await assetRepository.getAssetBlob(asset.assetId); total += blob.size; if (total > MAX_PACKAGE) throw new Error("Project exceeds the 200 MB package limit."); const bytes = new Uint8Array(await blob.arrayBuffer()); if (await contentHash(bytes) !== asset.contentHash) throw new Error("Local model is damaged."); entries[`assets/${asset.assetId}/model.glb`] = bytes; }
-  for (const attachment of p.electricalLayout?.documentation.attachments ?? []) {
+  for (const attachment of projectElectricalAttachments(p)) {
     const blob = await getElectricalImage(attachment.attachmentId);
     if (blob.size !== attachment.sizeBytes || blob.type !== attachment.mediaType) throw new Error("An electrical reference picture is damaged.");
     total += blob.size;
@@ -27,7 +28,7 @@ export function inspectPackage(bytes: Uint8Array) {
   if (bytes.length > MAX_PACKAGE) throw new Error("Project package exceeds 200 MB.");
   let total = 0, count = 0; const seen = new Set<string>();
   const entries = unzipSync(bytes, { filter(entry) {
-    if (++count > 131 || seen.has(entry.name)) throw new Error("Too many or duplicate archive entries.");
+    if (++count > 701 || seen.has(entry.name)) throw new Error("Too many or duplicate archive entries.");
     seen.add(entry.name);
     const isAttachment = /^electrical-attachments\/[\w:-]+\.(jpg|png|webp)$/.test(entry.name);
     if (entry.name !== "manifest.json" && !/^assets\/[\w:-]+\/model\.glb$/.test(entry.name) && !isAttachment) throw new Error("Unsafe or unsupported package path.");
@@ -40,7 +41,7 @@ export function inspectPackage(bytes: Uint8Array) {
   if (manifest.packageVersion !== 1 || manifest.builtinCatalogueVersion !== 1) throw new Error("Unsupported package or built-in catalogue version.");
   const project = parseProject(manifest.project);
   const expectedEntries = new Set(["manifest.json", ...project.assets.map((asset) => `assets/${asset.assetId}/model.glb`)]);
-  for (const attachment of project.electricalLayout?.documentation.attachments ?? []) {
+  for (const attachment of projectElectricalAttachments(project)) {
     const extension = attachment.mediaType === "image/jpeg" ? "jpg" : attachment.mediaType === "image/png" ? "png" : "webp";
     const name = `electrical-attachments/${attachment.attachmentId}.${extension}`;
     if (!entries[name] || entries[name].length !== attachment.sizeBytes || !validateElectricalImageBytes(entries[name].slice(0, 12), attachment.mediaType)) throw new Error("A packaged electrical picture is missing or damaged.");
@@ -60,7 +61,7 @@ export async function importProject(file: File): Promise<ProjectDocument> {
     if (["x", "y", "z"].some(axis => Math.abs(bounds[axis as keyof typeof bounds] - a.computedBoundsMm[axis as keyof typeof bounds]) > .01)) throw new Error("Packaged model bounds do not match its metadata.");
     assets.push({ metadata: a, blob: new Blob([new Uint8Array(bytes)], { type: "model/gltf-binary" }) });
   }
-  const electricalAttachments = (project.electricalLayout?.documentation.attachments ?? []).map((attachment) => {
+  const electricalAttachments = projectElectricalAttachments(project).map((attachment) => {
     const extension = attachment.mediaType === "image/jpeg" ? "jpg" : attachment.mediaType === "image/png" ? "png" : "webp";
     const bytes = entries[`electrical-attachments/${attachment.attachmentId}.${extension}`];
     return { id: attachment.attachmentId, record: { blob: new Blob([new Uint8Array(bytes)], { type: attachment.mediaType }), mediaType: attachment.mediaType, sizeBytes: bytes.length, fileName: attachment.fileName } };

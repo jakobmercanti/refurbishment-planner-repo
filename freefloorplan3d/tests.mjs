@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {pages,origin} from './site.mjs';
-import worker from './worker.generated.mjs';
+import './build.mjs';
+// Build before resolving this ignored artifact, including in a fresh checkout.
+const {default:worker}=await import('./worker.generated.mjs');
 const site=pages();
 test('all public pages have unique metadata, one heading and valid structured data',async()=>{
  const titles=new Set();
@@ -35,7 +37,9 @@ test('canonical redirects, real 404s, HEAD and unsupported methods',async()=>{
 });
 test('sitemap, robots, downloaded checklist, branded icons and caching',async()=>{
  const sitemap=await (await worker.fetch(new Request(origin+'/sitemap.xml'))).text();
- assert(!sitemap.includes('404.html'));assert.equal((sitemap.match(/<loc>/g)||[]).length,7);
+ const locations=[...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match=>match[1]);
+ const indexable=Object.keys(site).filter(path=>path!=='/404.html').map(path=>origin+path);
+ assert.deepEqual(locations.slice().sort(),indexable.sort());assert.equal(new Set(locations).size,locations.length);
  const robots=await (await worker.fetch(new Request(origin+'/robots.txt'))).text();assert(robots.includes(origin+'/sitemap.xml'));
  const download=await worker.fetch(new Request(origin+'/downloads/measurement-checklist.txt'));assert(download.headers.get('content-disposition').startsWith('attachment;'));assert((await download.text()).includes('MEASUREMENT CHECKLIST'));
  for(const path of ['/favicon-48.png','/favicon-192.png','/apple-touch-icon.png','/assets/brand-icon.png']){const r=await worker.fetch(new Request(origin+path));assert.equal(r.headers.get('content-type'),'image/png');assert((await r.arrayBuffer()).byteLength>500);}

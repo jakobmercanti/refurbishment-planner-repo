@@ -1,0 +1,1259 @@
+.climoptix-screen {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.climoptix-screen[hidden] {
+  display: none;
+}
+.cfx-workspace {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+  background: var(--paper);
+  font-size: 13px;
+}
+.cfx-eyebrow {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+}
+.cfx-provider {
+  margin-left: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  border-radius: 20px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+.cfx-workspace
+  button:not(
+    :where(
+      .floating-toolbar-resize,
+      .floating-toolbar-close,
+      .window-help-button
+    )
+  ),
+.cfx-file {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--ui-button-radius);
+  background: var(--ui-button-background);
+  color: var(--ui-button-text);
+  font: 650 12px var(--font-sans);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.cfx-workspace
+  button:hover:not(:disabled):not(
+    :where(
+      .floating-toolbar-resize,
+      .floating-toolbar-close,
+      .window-help-button
+    )
+  ),
+.cfx-file:hover {
+  background: var(--ui-button-hoverBackground);
+}
+.cfx-workspace button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.cfx-workspace button.active,
+.cfx-workspace .cfx-primary {
+  background: var(--ui-button-activeBackground);
+  color: var(--ui-button-activeText);
+  border-color: var(--ui-button-activeBackground);
+}
+.cfx-workspace button:focus-visible,
+.cfx-workspace input:focus-visible,
+.cfx-workspace select:focus-visible,
+.cfx-workspace textarea:focus-visible,
+.cfx-workspace summary:focus-visible,
+.cfx-workspace svg [tabindex]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.cfx-workspace label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 650;
+}
+.cfx-workspace input:not([type="checkbox"]):not([type="file"]),
+.cfx-workspace select,
+.cfx-workspace textarea {
+  min-width: 0;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  background: var(--panel);
+  font: 500 13px var(--font-sans);
+}
+.cfx-workspace textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+.cfx-workspace .cfx-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  font-weight: 550;
+}
+.cfx-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+}
+.cfx-history {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.cfx-inspector {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  scrollbar-gutter: stable;
+}
+.cfx-inspector > * + * {
+  margin-top: 14px;
+}
+.cfx-inspector h2 {
+  margin: 0;
+  font-size: 19px;
+  letter-spacing: -0.025em;
+}
+.cfx-inspector h3 {
+  font-size: 14px;
+  margin-bottom: 9px;
+}
+.cfx-inspector-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.cfx-state {
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.cfx-state.validated {
+  background: var(--fit-soft);
+  color: var(--fit);
+}
+.cfx-state.stale {
+  background: var(--verify-soft);
+  color: var(--verify);
+}
+.cfx-caption {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.cfx-caption {
+  font-size: 11px;
+}
+.cfx-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.cfx-actions > button,
+.cfx-actions > .cfx-file {
+  flex: 1 1 110px;
+  text-align: center;
+}
+.cfx-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.cfx-grid > .cfx-check {
+  min-height: 40px;
+}
+.cfx-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.cfx-wide {
+  grid-column: 1 / -1;
+}
+.cfx-card,
+.cfx-inspector details,
+.cfx-inspector fieldset {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+.cfx-card > * + *,
+.cfx-inspector details > * + * {
+  margin-top: 12px;
+}
+.cfx-inspector fieldset {
+  margin: 0;
+}
+.cfx-inspector legend {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.cfx-inspector summary {
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.cfx-notice {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.cfx-notice small {
+  color: var(--muted);
+}
+.cfx-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.cfx-metrics > div {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.cfx-metrics small {
+  color: var(--muted);
+}
+.cfx-metrics strong {
+  font-size: 23px;
+  font-weight: 700;
+}
+.cfx-inspector-list {
+  list-style: none;
+  padding: 0;
+}
+.cfx-inspector-list li {
+  display: grid;
+  gap: 5px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cfx-inspector-list span,
+.cfx-inspector-list small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.cfx-patch-list {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.cfx-patch-list button {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+}
+.cfx-patch-list small {
+  opacity: 0.8;
+  font-weight: 450;
+}
+.cfx-workspace .cfx-danger,
+.cfx-confirm .cfx-danger {
+  color: var(--fail);
+  background: var(--fail-soft);
+  border-color: color-mix(in srgb, var(--fail), transparent 70%);
+}
+.cfx-workspace .cfx-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.cfx-file input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.cfx-file:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.cfx-provenance {
+  font-size: 11px;
+}
+.cfx-provenance dt {
+  color: var(--muted);
+  font-weight: 650;
+  margin-top: 10px;
+}
+.cfx-provenance dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+}
+.cfx-diagnostic {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  margin-top: 9px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+}
+.cfx-diagnostic p {
+  margin: 0;
+  line-height: 1.55;
+}
+.cfx-diagnostic small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+.cfx-diagnostic.error {
+  border-left-color: var(--fail);
+}
+.cfx-diagnostic.warning {
+  border-left-color: var(--verify);
+}
+.cfx-viewer {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface-muted);
+}
+.cfx-viewer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.cfx-viewer > header > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cfx-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+.cfx-inline label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.cfx-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 250px;
+  overflow: hidden;
+}
+.cfx-viewer .stable-canvas-host {
+  position: absolute;
+  inset: 0;
+}
+.cfx-viewer > footer {
+  display: grid;
+  gap: 8px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.cfx-viewer > footer > span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.cfx-viewer footer i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+.cfx-stale {
+  margin: 0;
+  padding: 9px 14px;
+  color: var(--verify);
+  background: var(--verify-soft);
+  font-size: 11px;
+}
+.cfx-error {
+  color: var(--fail);
+}
+.cfx-welcome {
+  width: min(640px, 92%);
+  margin: auto;
+  padding: 35px 20px;
+}
+.cfx-welcome h2 {
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+  margin: 16px 0;
+}
+.cfx-welcome p {
+  color: var(--muted);
+  line-height: 1.7;
+  margin-bottom: 24px;
+}
+.cfx-empty {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 10px;
+  padding: 24px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.cfx-empty p {
+  margin: 0;
+}
+.cfx-confirm {
+  width: min(460px, 94vw);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--ui-window-radius);
+  color: var(--ink);
+  background: var(--panel);
+  box-shadow: var(--ui-window-shadow);
+}
+.cfx-confirm::backdrop {
+  background: var(--ui-window-backdrop);
+}
+.cfx-confirm .popup-titlebar {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+.cfx-list-row {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cfx-simulation-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cfx-simulation-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+.cfx-simulation-tabs button {
+  padding: 8px 5px;
+}
+.cfx-simulation-panel > * + * {
+  margin-top: 14px;
+}
+.cfx-refinement-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+.cfx-refinement-row.selected {
+  border-color: var(--focus-ring);
+  background: var(--surface-muted);
+}
+.cfx-level-swatch {
+  width: 9px;
+  height: 24px;
+  border-radius: 4px;
+}
+.cfx-workspace .cfx-refinement-name {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  padding: 3px 7px;
+  overflow-wrap: anywhere;
+}
+.cfx-refinement-name small {
+  color: var(--muted);
+  font-weight: 500;
+}
+.cfx-refinement-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.cfx-refinement-actions button {
+  flex: 1 1 auto;
+  padding: 7px;
+}
+.cfx-slice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+.cfx-convergence {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 12px;
+}
+.cfx-convergence p {
+  line-height: 1.6;
+  color: var(--muted);
+}
+.cfx-convergence > * + * {
+  margin-top: 12px;
+}
+.cfx-convergence .cfx-file {
+  display: grid;
+}
+.cfx-log-name {
+  overflow-wrap: anywhere;
+}
+.cfx-convergence svg {
+  width: 100%;
+  max-height: 320px;
+  height: auto;
+}
+.cfx-residual-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  list-style: none;
+  padding: 0;
+  font-size: 11px;
+}
+.cfx-refinement-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.cfx-refinement-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cfx-refinement-legend i {
+  flex: 0 0 9px;
+}
+.cfx-residual-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cfx-residual-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.cfx-vtk-toolbar {
+  padding: 10px;
+  background: var(--panel);
+}
+.cfx-vtk-toolbar label {
+  flex: 1 1 180px;
+}
+.cfx-vtk-canvas {
+  flex: 1;
+  min-height: 220px;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--panel);
+}
+.cfx-vtk-canvas > div {
+  position: absolute !important;
+  inset: 0;
+}
+.cfx-vtk-viewer .cfx-error {
+  padding: 12px;
+}
+.cfx-viewer footer .cfx-colour-scale {
+  width: 80px;
+  height: 9px;
+  background: linear-gradient(90deg, #264dbf, #1acca6, #e6401a);
+}
+
+/* The measured building remains full-size beneath independent native windows. */
+.cfx-workspace {
+  overflow: hidden;
+}
+.cfx-menu-slot {
+  display: contents;
+}
+.cfx-workspace > .cfx-viewer {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.cfx-viewer > .cfx-viewport {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+}
+.cfx-view-selector {
+  position: absolute;
+  z-index: 10;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 24px);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--panel);
+  box-shadow: var(--ui-window-shadow);
+}
+.cfx-view-selector select {
+  width: min(310px, 32vw);
+}
+.cfx-view-selector label {
+  color: var(--muted);
+  padding-left: 5px;
+}
+.cfx-viewer > .cfx-stale {
+  position: absolute;
+  z-index: 9;
+  top: 74px;
+  right: 12px;
+  max-width: min(440px, calc(100% - 24px));
+  border-radius: var(--radius-control);
+  pointer-events: none;
+}
+.cfx-viewer > footer {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 8;
+  max-width: min(450px, calc(100% - 24px));
+  padding: 8px 10px;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  pointer-events: none;
+}
+.cfx-viewer > footer p {
+  margin: 0;
+}
+.cfx-inspector {
+  overflow: visible;
+  padding: 14px;
+  border: 0;
+}
+.cfx-provider {
+  margin-left: 0;
+  padding: 7px 9px;
+}
+.cfx-welcome {
+  width: auto;
+  margin: 0;
+  padding: 8px 0;
+}
+.cfx-welcome h2 {
+  font-size: 22px;
+}
+.cfx-welcome p {
+  margin-bottom: 16px;
+}
+.cfx-viewport > .cfx-empty {
+  position: absolute;
+  inset: 0;
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+  max-width: 580px;
+  margin: auto;
+}
+.cfx-vtk-viewer {
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.cfx-vtk-viewer > .cfx-stale {
+  position: static;
+  pointer-events: auto;
+  max-width: none;
+}
+.cfx-vtk-viewer > footer {
+  position: static;
+  max-width: none;
+  pointer-events: auto;
+}
+.cfx-vtk-viewer > header {
+  flex-shrink: 0;
+}
+.cfx-window-menu {
+  width: 310px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+}
+.cfx-context-menu {
+  z-index: 2000;
+  max-height: calc(100dvh - 16px);
+}
+.cfx-setup-window .floating-toolbar-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+.cfx-setup-window { container: cfx-window / inline-size; }
+.cfx-setup-window .floating-toolbar-titlebar:has(.floating-toolbar-header-content) {
+  grid-template-columns: 20px 18px minmax(120px, 1fr) minmax(120px, 2fr) auto;
+}
+.floating-toolbar-header-content { min-width: 0; touch-action: auto; }
+.cfx-header-simulation { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.cfx-header-current { display: none; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cfx-header-simulation select { flex: 1; min-width: 0; width: 100%; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.cfx-setup-heading:has(> .cfx-phase-select) { padding: 0; border: 0; }
+.cfx-phase-label { display: none; }
+.cfx-setup-heading > .cfx-phase-select { padding: 4px 8px; }
+@container cfx-window (max-width: 620px) {
+  .cfx-setup-window > .floating-toolbar-titlebar > strong { display: none; }
+  .cfx-setup-window > .floating-toolbar-titlebar:has(.floating-toolbar-header-content) { grid-template-columns: 20px 18px minmax(0, 1fr) auto; }
+  .cfx-header-simulation .cfx-state { display: none; }
+}
+@container cfx-window (max-width: 760px) {
+  .cfx-header-simulation select { display: none; }
+  .cfx-header-current { display: block; }
+}
+.compact-workspace .cfx-setup-window > .floating-toolbar-titlebar:has(.floating-toolbar-header-content) { grid-template-columns: 18px minmax(0, 1fr) auto; }
+.compact-workspace .cfx-setup-window > .floating-toolbar-titlebar > strong { display: none; }
+.compact-workspace .cfx-header-simulation select { display: none; }
+.compact-workspace .cfx-header-current { display: block; }
+.compact-workspace .floating-toolbar.cfx-setup-window,
+.compact-workspace .floating-toolbar.cfx-refinement-editor,
+.compact-workspace .floating-toolbar.cfx-equipment-editor {
+  top: var(--floating-visible-top, 8px) !important;
+  bottom: auto !important;
+  left: 8px !important;
+  right: 8px !important;
+  width: auto !important;
+  height: var(--floating-available-height, calc(100dvh - 16px)) !important;
+  max-height: var(--floating-available-height, calc(100dvh - 16px)) !important;
+}
+.cfx-setup {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  container: cfx-setup / inline-size;
+}
+.cfx-setup-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.cfx-setup-heading > label {
+  flex: 1;
+  min-width: 0;
+}
+.cfx-setup-heading > .cfx-study-select {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.cfx-setup-heading select {
+  max-width: 100%;
+}
+.cfx-phase-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.cfx-active-study {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-weight: 500;
+}
+.cfx-setup-tabs {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+.cfx-workspace .cfx-setup-tabs > button {
+  padding: 8px 3px;
+  font-size: 11px;
+}
+/* Navigation shares a baseline, not the rounded styling of action buttons.
+   Control variables also preserve this distinction in the Modern theme. */
+.cfx-workspace
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .thermal-steps)
+  > button {
+  --control-bg: transparent;
+  --control-text: var(--muted);
+  --control-border: transparent;
+  --control-hover-bg: var(--surface-muted);
+  --control-hover-text: var(--ink);
+  --control-hover-border: transparent;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0 !important;
+  background: var(--control-bg);
+  color: var(--control-text);
+  box-shadow: none;
+}
+.cfx-workspace
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .thermal-steps)
+  > button:hover:not(:disabled) {
+  background: var(--control-hover-bg);
+  color: var(--control-hover-text);
+}
+.cfx-workspace
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .thermal-steps)
+  > button:is([aria-selected="true"], [aria-current="step"]) {
+  --control-bg: var(--panel);
+  --control-text: var(--ink);
+  --control-border: transparent;
+  --control-hover-bg: var(--surface-muted);
+  --control-hover-text: var(--ink);
+  --control-hover-border: transparent;
+  background: var(--control-bg);
+  color: var(--control-text);
+  box-shadow: inset 0 -3px var(--accent);
+}
+.cfx-setup-panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding: 16px;
+}
+.cfx-setup-panel[hidden] {
+  display: none;
+}
+.cfx-setup-panel > .cfx-inspector {
+  padding: 0;
+}
+.cfx-study-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cfx-list-header { list-style: none; min-width: 0; border-radius: var(--radius-control); }
+.cfx-list-header[data-active="true"] { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cfx-study-group .cfx-list-header > .cfx-group-heading { padding-left: 32px; }
+.cfx-study-group.selected-group { border-color: var(--focus-ring); background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
+.cfx-workspace .cfx-collapse { flex: 0 0 26px; padding-inline: 2px; }
+.cfx-inline-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--density-section-gap); min-width: 0; }
+.cfx-inline-toolbar > h3 { margin: 0; flex: 1 1 auto; }
+.cfx-mesh-estimate { color: var(--muted); margin-left: auto; }
+.cfx-physics-fields { display: block; }
+.cfx-physics-fields > details { grid-column: 1 / -1; }
+.cfx-physics-fields > * + * { margin-top: 0; }
+.cfx-setup .cfx-grid:not(.cfx-three) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container cfx-setup (min-width: 700px) {
+  .cfx-setup .cfx-grid:not(.cfx-domain-seed, .cfx-three), .cfx-physics-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container cfx-setup (min-width: 1100px) {
+  .cfx-setup .cfx-grid:not(.cfx-domain-seed, .cfx-three), .cfx-physics-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@container cfx-setup (max-width: 460px) {
+  .cfx-setup .cfx-grid:not(.cfx-three), .cfx-physics-fields { grid-template-columns: minmax(0, 1fr); }
+}
+.cfx-bound-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.cfx-review-failure { padding: var(--density-window-padding); border: 1px solid var(--fail); border-radius: var(--radius-control); }
+.cfx-review-failure > p { color: var(--fail); overflow-wrap: anywhere; }
+.cfx-input-failure { color: var(--fail); overflow-wrap: anywhere; margin-bottom: var(--density-section-gap); }
+.cfx-connection-status { margin-block: var(--density-section-gap); color: var(--muted); font-size: inherit; }
+.cfx-probe-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: var(--density-field-gap); padding-block: var(--density-row-padding); }
+.cfx-probe-row + .cfx-probe-row { border-top: 1px solid var(--line); }
+.cfx-surface-assignment { max-height: 360px; overflow: auto; overscroll-behavior: contain; margin-block: var(--density-section-gap); }
+.cfx-surface-assignment > label { display: flex; align-items: center; gap: var(--density-section-gap); padding: var(--density-row-padding); }
+.cfx-surface-assignment span { min-width: 0; overflow-wrap: anywhere; }
+.cfx-surface-assignment small { display: block; color: var(--muted); }
+.cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item { display: block; position: relative; }
+.cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item > .cfx-grip { position: absolute; left: calc(var(--density-window-padding) + 1px); top: calc(var(--density-window-padding) + 1px); width: 32px; z-index: 2; }
+.cfx-study-group { padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-panel); min-width: 0; }
+.cfx-group-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.cfx-study-group > .cfx-group-heading { padding-left: 38px; }
+.cfx-group-heading > small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.cfx-workspace .cfx-inline-name { flex: 1 1 130px; min-width: 0; width: 100%; min-height: 36px; padding: 6px 8px; border-color: transparent; background: transparent; font-weight: 700; }
+.cfx-workspace .cfx-inline-name:focus { border-color: var(--focus-ring); background: var(--panel); }
+.cfx-group-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.cfx-workspace .cfx-group-actions > button { min-height: 32px; padding: 4px 8px; }
+.cfx-reorder-list:has(> .cfx-insertion:only-child) { min-height: 36px; border: 1px dashed var(--line); border-radius: var(--radius-control); margin-top: 8px; }
+.cfx-empty-drop { margin: 4px 8px; color: var(--muted); font-size: 11px; }
+.cfx-workspace .cfx-row-menu { position: relative; min-width: 0; padding: 0; margin: 0; border: 0; overflow: visible; }
+.cfx-row-menu > summary { display: grid; place-items: center; list-style: none; min-width: 32px; min-height: 36px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); cursor: pointer; font-size: 18px; }
+.cfx-row-menu > summary::-webkit-details-marker { display: none; }
+.cfx-workspace .cfx-row-menu-panel { gap: 6px; position: fixed; inset: auto; margin: 0; z-index: 20002; width: min(260px, calc(100vw - 32px)); max-width: calc(100vw - 16px); overflow: auto; overscroll-behavior: contain; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--panel); color: var(--ink); box-shadow: var(--ui-window-shadow); }
+.cfx-row-menu-panel:popover-open { display: grid; }
+.cfx-device-row, .cfx-surface-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 5px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-control); }
+.cfx-device-row.selected, .cfx-surface-row.selected { border-color: var(--focus-ring); }
+.cfx-device-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.cfx-workspace :is(.cfx-device-name, .cfx-surface-name) { display: grid; gap: 3px; text-align: left; min-width: 0; background: transparent; border-color: transparent; }
+:is(.cfx-device-name, .cfx-surface-name) > :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+:is(.cfx-device-name, .cfx-surface-name) > small { color: var(--muted); font-weight: 500; }
+.cfx-boundary-group { min-width: 0; border: 1px solid var(--line); border-left: 4px solid var(--boundary-colour); border-radius: var(--radius-control); padding: var(--density-window-padding); margin: 0; }
+.cfx-boundary-group.selected { outline: 1px solid var(--boundary-colour); outline-offset: 1px; }
+.cfx-boundary-group > .cfx-reorder-list { max-height: 260px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.cfx-workspace .cfx-group-select { display: flex; align-items: center; gap: 8px; flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.cfx-physics-fields > * + * { margin-top: 10px; }
+@container cfx-setup (min-width: 900px) {
+  .cfx-physics-fields > .cfx-grid:not(.cfx-physics-primary) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container cfx-setup (max-width: 520px) {
+  .cfx-domain-seed, .cfx-physics-primary { grid-template-columns: minmax(0, 1fr); }
+  .cfx-device-row { grid-template-columns: minmax(0, 1fr); }
+  .cfx-device-actions > button { min-width: 0; padding: 6px; }
+  .cfx-group-actions { flex: 1 1 100%; }
+  .cfx-group-actions > button { flex: 1; }
+}
+.cfx-studies > * + * {
+  margin-top: 10px;
+}
+.cfx-study-group > h3 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.cfx-study-group > h3 small {
+  color: var(--muted);
+  font-weight: 500;
+}
+.cfx-reorder-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.cfx-reorder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.cfx-reorder-item > article,
+.cfx-reorder-item > .cfx-study-group,
+.cfx-reorder-item > .cfx-boundary-group,
+.cfx-reorder-item > .cfx-refinement-row {
+  flex: 1;
+  min-width: 0;
+}
+.cfx-workspace .cfx-grip {
+  cursor: grab;
+  flex: 0 0 32px;
+  padding: 7px;
+  touch-action: none;
+}
+.cfx-workspace .cfx-grip:active {
+  cursor: grabbing;
+}
+.cfx-insertion {
+  height: 8px;
+  border-radius: 4px;
+}
+.cfx-insertion[data-active="true"] {
+  background: var(--focus-ring);
+}
+.cfx-study-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 5px;
+}
+.cfx-study-row.selected {
+  border-color: var(--focus-ring);
+  background: var(--surface-muted);
+}
+.cfx-workspace .cfx-study-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+  min-width: 0;
+}
+.cfx-study-name strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cfx-study-name small {
+  flex: 0 0 auto;
+  max-width: 55%;
+  color: inherit;
+  opacity: 0.8;
+  font-weight: 500;
+}
+.cfx-study-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 240px;
+  align-items: center;
+  gap: 6px;
+}
+.cfx-workspace :is(.cfx-study-name, .cfx-study-actions > button) {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+.cfx-job-progress {
+  grid-column: 1 / -1;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  height: 7px;
+  overflow: hidden;
+  border-radius: 6px;
+}
+.cfx-job-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--focus-ring);
+}
+.cfx-job-detail,
+.cfx-study-row > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.cfx-menu-caption {
+  margin: 8px 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cfx-geometry-notice {
+  position: absolute;
+  top: 78px;
+  right: 12px;
+  z-index: 9;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  max-width: min(410px, calc(100% - 24px));
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font-size: 11px;
+}
+.cfx-placement {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  z-index: 15;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: calc(100% - 28px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.cfx-thermal-panel {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) { display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; gap: 0; }
+.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) > button { border-radius: 0; margin: 0; box-shadow: none; border: 0; padding-inline: 12px; }
+.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) > button[aria-selected="true"] { background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); box-shadow: none; }
+.cfx-boundary-tools input { min-width: 150px; flex: 1 1 200px; }
+.cfx-objects > * + * { margin-top: var(--density-section-gap); }
+.cfx-objects .cfx-device-row { grid-template-columns: minmax(0, 1fr) auto auto; flex: 1; }
+.cfx-objects .cfx-device-row .cfx-device-name { padding-inline: 6px; }
+.cfx-objects .cfx-group-select { background: transparent; color: var(--ink); border-color: transparent; }
+.cfx-simulation-tabs { flex: 1; }
+.cfx-boundary-group .cfx-list-header > .cfx-group-heading { padding-left: 32px; }
+.cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+.cfx-thermal-navigation { padding: var(--density-window-padding); }
+.cfx-review > section > * + * { margin-top: var(--density-section-gap); }
+.cfx-review > header { margin-bottom: var(--density-section-gap); }
+.cfx-review-metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--density-section-gap); }
+.cfx-review-metadata > div { min-width: 0; padding: var(--density-window-padding); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.cfx-review-metadata dt { font-weight: 700; color: var(--muted); }
+.cfx-check-status { padding: 4px 8px; border-radius: var(--radius-control); background: var(--surface-muted); color: var(--muted); font-size: 11px; font-weight: 600; }
+.cfx-review-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.cfx-workspace .cfx-review textarea { min-height: calc(var(--density-control-min-height) * 1.7); }
+@container cfx-setup (max-width: 620px) {
+  .cfx-workspace .cfx-segments > button { padding-inline: 8px; }
+  .cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cfx-surface-row > .cfx-surface-name { grid-column: 1 / -1; }
+  .cfx-objects .cfx-device-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cfx-objects .cfx-device-row > .cfx-device-name { grid-column: 1 / -1; }
+}
+.thermal-host.thermal-embedded {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.cfx-setup-heading > .cfx-phase-select,
+.cfx-workspace .thermal-step-select {
+  display: none;
+}
+@container cfx-setup (max-width: 760px) {
+  .cfx-setup-heading > .cfx-phase-select {
+    display: grid;
+  }
+  .cfx-setup-tabs,
+  .cfx-setup-heading > .cfx-study-select,
+  .cfx-setup-heading > .cfx-state,
+  .thermal-embedded .thermal-steps {
+    display: none;
+  }
+  .thermal-embedded .thermal-step-select {
+    display: grid;
+    margin: 0 16px 10px;
+  }
+}
+@media (max-width: 1024px), (max-width: 1366px) and (pointer: coarse) {
+  .cfx-setup-heading > .cfx-phase-select {
+    display: grid;
+  }
+  .cfx-setup-tabs,
+  .cfx-setup-heading > .cfx-study-select,
+  .cfx-setup-heading > .cfx-state,
+  .thermal-steps {
+    display: none;
+  }
+  .cfx-workspace .thermal-step-select {
+    display: grid;
+    margin: 0 16px 10px;
+  }
+}
+@container cfx-setup (max-width: 450px) {
+  .cfx-study-tools > button {
+    flex: 1 1 100px;
+  }
+  .cfx-setup-panel {
+    padding: 10px;
+  }
+  .cfx-setup-heading {
+    padding: 10px;
+  }
+  .cfx-study-row {
+    gap: 4px;
+    padding: 5px;
+  }
+}
+@container cfx-setup (max-width: 540px) {
+  .cfx-study-row {
+    grid-template-columns: minmax(0, 1fr) 32px;
+  }
+  .cfx-study-row > :is(.cfx-study-name, .cfx-inline-name) { grid-column: 1 / -1; }
+  .cfx-study-actions { width: auto; }
+  .cfx-workspace .cfx-study-name {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 8px;
+    padding: 6px 8px;
+  }
+  .cfx-study-name small {
+    max-width: none;
+    overflow-wrap: anywhere;
+  }
+  .cfx-study-actions > button {
+    flex: 1;
+  }
+  .cfx-workspace :is(.cfx-study-name, .cfx-study-actions > button) {
+    min-height: 40px;
+  }
+}
+@media (max-width: 700px) {
+  .cfx-view-selector {
+    top: 8px;
+    right: 8px;
+    gap: 4px;
+    max-width: calc(100% - 16px);
+  }
+  .cfx-view-selector select {
+    width: 100%;
+    flex: 1;
+  }
+  .cfx-view-selector button {
+    padding-inline: 8px;
+  }
+  .cfx-view-selector label {
+    display: none;
+  }
+  .cfx-viewer > footer {
+    display: none;
+  }
+  .cfx-window-menu {
+    max-height: calc(100dvh - 150px);
+  }
+  .cfx-context-menu {
+    max-height: calc(100dvh - 16px);
+  }
+}

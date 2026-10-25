@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import base64
 import binascii
-from dataclasses import dataclass
-from io import BytesIO
 import json
 import os
 import re
 import shutil
+import time
 import warnings
+from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
@@ -61,7 +62,9 @@ def decode_picture(data_url: str) -> tuple[bytes, str, str]:
                 if image.format != expected_format:
                     raise ValueError("picture bytes do not match the declared image type")
                 if width <= 0 or height <= 0 or width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
-                    raise ValueError(f"picture dimensions must not exceed {MAX_IMAGE_DIMENSION} by {MAX_IMAGE_DIMENSION} pixels")
+                    raise ValueError(
+                        f"picture dimensions must not exceed {MAX_IMAGE_DIMENSION} by {MAX_IMAGE_DIMENSION} pixels"
+                    )
                 if width * height > MAX_IMAGE_PIXELS:
                     raise ValueError(f"picture must contain no more than {MAX_IMAGE_PIXELS:,} pixels")
                 image.verify()
@@ -69,12 +72,20 @@ def decode_picture(data_url: str) -> tuple[bytes, str, str]:
                 image.load()
     except ValueError:
         raise
-    except (Image.DecompressionBombError, Image.DecompressionBombWarning, OSError, SyntaxError, UnidentifiedImageError) as error:
+    except (
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+        OSError,
+        SyntaxError,
+        UnidentifiedImageError,
+    ) as error:
         raise ValueError("picture is corrupt or incomplete") from error
     return data, content_type, _EXTENSIONS[content_type]
 
 
-def picture_metadata(item_id: str, index: int, filename: str, alt: str, content_type: str, size_bytes: int) -> dict[str, object]:
+def picture_metadata(
+    item_id: str, index: int, filename: str, alt: str, content_type: str, size_bytes: int
+) -> dict[str, object]:
     return {
         "url": f"/catalog/items/{item_id}/images/{index}",
         "filename": filename,
@@ -82,6 +93,19 @@ def picture_metadata(item_id: str, index: int, filename: str, alt: str, content_
         "content_type": content_type,
         "size_bytes": size_bytes,
     }
+
+
+def _replace_with_retry(source: Path, target: Path) -> None:
+    """Retry brief Windows sharing locks without hiding permanent IO errors."""
+    delays = (0.02, 0.05, 0.1)
+    for attempt in range(len(delays) + 1):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError as error:
+            if getattr(error, "winerror", None) not in {5, 32, 33} or attempt == len(delays):
+                raise
+            time.sleep(delays[attempt])
 
 
 @dataclass
@@ -95,7 +119,7 @@ class PictureReplacement:
         if self.target.exists():
             shutil.rmtree(self.target)
         if self.backup is not None and self.backup.exists():
-            os.replace(self.backup, self.target)
+            _replace_with_retry(self.backup, self.target)
 
     def finalize(self) -> None:
         """Discard the recoverable backup only after the database commit."""
@@ -126,18 +150,18 @@ def stage_item_picture_replacement(item_id: str, pictures: list[tuple[bytes, str
             filename = f"{index}.{extension}"
             temporary = staging / f"{filename}.tmp"
             temporary.write_bytes(data)
-            os.replace(temporary, staging / filename)
+            _replace_with_retry(temporary, staging / filename)
             metadata.append(picture_metadata(item_id, index, filename, alt, content_type, len(data)))
         if target.exists():
-            os.replace(target, backup)
+            _replace_with_retry(target, backup)
         if pictures:
-            os.replace(staging, target)
+            _replace_with_retry(staging, target)
         return PictureReplacement(metadata=metadata, target=target, backup=backup if backup.exists() else None)
     except Exception:
         if staging.exists():
             shutil.rmtree(staging)
         if backup.exists() and not target.exists():
-            os.replace(backup, target)
+            _replace_with_retry(backup, target)
         raise
 
 

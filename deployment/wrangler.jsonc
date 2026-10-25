@@ -7,9 +7,13 @@
   "workers_dev": true,
   "vars": {
     "ENGINEERING_API_ORIGIN": "https://freefloorplan3d-api-production.up.railway.app",
+    "CFD_WORKER_ORIGIN": "https://climoptix-openfoam-production.up.railway.app",
     "SUPABASE_URL": "https://rlpofstbysqtmntfmnjf.supabase.co"
   },
-  "ratelimits": [{ "name": "ANALYTICS_RATE_LIMIT", "namespace_id": "9052602", "simple": { "limit": 30, "period": 60 } }],
+  "ratelimits": [
+    { "name": "ANALYTICS_RATE_LIMIT", "namespace_id": "9052602", "simple": { "limit": 30, "period": 60 } },
+    { "name": "AUTH_RATE_LIMIT", "namespace_id": "9052603", "simple": { "limit": 30, "period": 60 } }
+  ],
   "assets": { "directory": "../frontend/out", "binding": "ASSETS", "run_worker_first": true, "html_handling": "none" },
   "routes": [
     { "pattern": "www.freefloorplan3d.com/planner", "zone_id": "b70e9c7623bf478b6d7d7ef776d83936" },

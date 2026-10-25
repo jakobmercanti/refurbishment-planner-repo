@@ -78,6 +78,29 @@ Get-NetTCPConnection -LocalPort 3000,8000 -ErrorAction SilentlyContinue | Select
 
 Then use `./start-local.cmd` again to restart it.
 
+### Sign in locally
+
+Local development does not load `frontend/.env.production.local`. To use the same accounts
+as the deployed planner, create the ignored file `frontend/.env.development.local` with the
+project's public Supabase settings:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLIC_PUBLISHABLE_KEY
+```
+
+Use only the public URL and publishable key, never a service-role or secret key. Keep the
+production `/planner` base path and API paths out of this local file. Restart the frontend
+after changing these settings, then reload the account page. Without both settings, the
+account form reports “Account access is not configured yet.” This configures browser
+sign-in only; cloud API features also need their own backend configuration.
+The local Next.js server proxies the allowlisted `/auth-api/*` account requests to
+Supabase, keeping authentication same-origin like the deployed planner. Network
+failures and timeouts are shown with retry guidance; account submissions are never
+automatically repeated.
+For account access use `http://localhost:3000` on the computer or an HTTPS URL;
+sign-in is blocked on plain-HTTP Wi-Fi/LAN addresses to protect passwords.
+
 ## Manual local development
 
 ```powershell
@@ -110,5 +133,9 @@ Current milestone boundaries and known limitations are recorded in `docs/LIMITAT
 The Full Electrical Layout module lets you save the electrical overlay independently as a versioned `.electricallayout` ZIP package.
 Version 1 contains `electrical-layout.json` plus only the referenced electrical custom models and
 electrical reference pictures; it does not contain or replace room geometry or the rest of the
-project. Loading supports replace and merge modes, while normal project saves continue to include
-the electrical layout and its schedule documentation.
+project. The Load window validates the package before replacing the current electrical layout,
+and Cancel keeps it unchanged. The package library also supports merge operations for integrations;
+the current Load window is replace-only. Normal project saves include the electrical layout and its
+schedule documentation.
+
+Developer checks and compatibility boundaries are documented in [Code maintenance](docs/CODE_MAINTENANCE.md).

@@ -59,13 +59,12 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
   const chosenLambda = insulationLambda ?? material?.lambda ?? null;
   const suggested = targetU ? minimumInsulationThickness(assembly, data, chosenLambda, targetU) : null;
   if (typeof document === "undefined") return null;
-  return createPortal(<div onKeyDown={event => { event.stopPropagation();if (event.key === "Escape") { event.preventDefault();onCancel(); } }}><Popup open className={"appearance-popup wall-layers-popup " + ui.popup}
+  return createPortal(<div onKeyDown={event => { event.stopPropagation();if (event.key === "Escape") { event.preventDefault();onCancel(); } }}><Popup open dockable className={"appearance-popup wall-layers-popup " + ui.popup}
     title={`Define ${category} layers`} message="" confirmLabel="Done" autoFocusTarget="content"
     confirmDisabled={stale || !!error} onCancel={onCancel} onConfirm={() => { if (!stale && !error) onCommit(setWallAssembly(data, first, assembly)); }}>
     <div className="appearance-popup-grid">
       <div className={"appearance-popup-form " + styles.panel}>
-        <div className="appearance-object-heading"><h2>{first.label}</h2><small>Editing construction in: {scenarioName}</small></div>
-        <div className={ui.editorMetrics}><strong>{Number(assemblyThickness(assembly).toFixed(2))} mm total</strong><span>{construction.estimated ? "Estimated U" : "U"} {construction.uValue?.toFixed(3) ?? "Not set"} W/m²K</span><small>{label} heat loss: {construction.uValue === null ? "Not set" : `${Math.round(construction.uValue * thermal.areaM2 * thermal.deltaTK)} W`} · ΔT {thermal.deltaTK.toFixed(1)} K</small></div>
+        <div className={ui.editorMetrics} role="group" aria-label={`${first.label} · ${scenarioName}`} title={`${first.label} · ${scenarioName}`}><strong>{Number(assemblyThickness(assembly).toFixed(2))} mm total</strong><span>{construction.estimated ? "Estimated U" : "U"} {construction.uValue?.toFixed(3) ?? "Not set"} W/m²K</span><small>{label} heat loss: {construction.uValue === null ? "Not set" : `${Math.round(construction.uValue * thermal.areaM2 * thermal.deltaTK)} W`} · ΔT {thermal.deltaTK.toFixed(1)} K</small></div>
         {stale && <p role="alert" className={styles.warning}>The construction or project changed while editing. Cancel and reopen to use the latest model.</p>}
         {error && <p role="alert" className={styles.warning}>{error}</p>}
         <details className={ui.startingComposition}><summary>Starting composition</summary><label>Construction preset<select value={template} onChange={e => setTemplate(Number(e.target.value))}>{CONSTRUCTION_TEMPLATES.filter(t => t.category === category).map((t, i) => <option key={t.name} value={i}>{t.name}</option>)}</select></label>

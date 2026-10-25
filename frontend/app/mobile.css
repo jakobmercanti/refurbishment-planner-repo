@@ -18,7 +18,7 @@
 .compact-tool-switcher button { flex: 1 0 auto; min-height: 40px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--deep); font: 650 calc(12px * var(--density-font-scale, 1)) var(--font-sans); touch-action: manipulation; }
 .compact-tool-switcher button[aria-pressed=true] { background: var(--deep); color: white; border-color: var(--deep); }
 .compact-workspace .software-dropdown { position: fixed; top: calc(env(safe-area-inset-top) + 49px); left: auto; right: calc(env(safe-area-inset-right) + 8px); width: min(300px, calc(100vw - 16px)); max-height: calc(100dvh - 100px); overflow-y: auto; }
-.compact-workspace .software-dropdown button { min-height: 44px; font: 600 calc(13px * var(--density-font-scale, 1)) var(--font-sans); padding: 9px 10px; }
+.compact-workspace :is(.software-dropdown button, .software-wall-setting > summary) { min-height: 44px; font: 600 calc(13px * var(--density-font-scale, 1)) var(--font-sans); padding: 9px 10px; }
 .compact-workspace .software-view-setting > summary { min-height: 44px; padding: 12px 10px; font: 600 calc(13px * var(--density-font-scale, 1)) var(--font-sans); }
 .compact-workspace .software-dropdown kbd { display: none; }
 .compact-workspace .toolbar-menu-actions > button:first-child { display: none; }
@@ -27,7 +27,7 @@
 .compact-workspace .floating-toolbar-drag, .compact-workspace .floating-toolbar-resize { display: none; }
 .compact-workspace .floating-toolbar-close { width: 36px; height: 36px; }
 .compact-workspace .floating-toolbar-content { margin: 0 3px 6px; overscroll-behavior: contain; }
-.compact-workspace .floating-toolbar .floating-toolbar-content :where(button, p, label, small) { font-size: calc((11px) * var(--density-font-scale, 1)); }
+.compact-workspace .floating-toolbar .floating-toolbar-content :where(button, p, label, small, summary.full-plan-overall-toggle) { font-size: calc((11px) * var(--density-font-scale, 1)); }
 .compact-workspace .floating-toolbar-content .tool-section { padding: 8px; }
 .compact-workspace .button-grid { gap: 6px; }
 .compact-workspace .button-grid button, .compact-workspace .review-style-button { min-height: 36px; padding: 6px 8px; }
@@ -97,3 +97,4 @@
 .compact-workspace .viewer-camera-section { padding: 8px; }
 .compact-workspace .viewer-camera-vectors input, .compact-workspace .viewer-camera-output-fields select { min-height: 38px; }
 .compact-workspace .viewer-camera-capture-button { min-height: 42px; font-size: calc((12px) * var(--density-font-scale, 1)) !important; }
+.compact-workspace .floating-toolbar.building-roof-window { left:8px !important; right:8px !important; top:var(--floating-visible-top,8px) !important; bottom:auto !important; width:auto !important; max-width:none; max-height:var(--floating-available-height,calc(100dvh - 16px)) !important; }

@@ -5,6 +5,8 @@ import { ComponentColours } from "@/components/ComponentColours";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { EditableNumberInput } from "@/components/EditableNumberInput";
 import { FixturePreview } from "@/components/FixturePreview";
+import { PeoplePlacementControls } from "@/components/PeoplePlacementControls";
+import { defaultPersonSpec, isCataloguePerson } from "@/lib/people";
 import { ELECTRICAL_SUBCATEGORIES, electricalPlacement } from "@/lib/electricalAssets";
 import { isElectricalObstacle } from "@/lib/electricalLayout";
 import { isHeatingElement, emptyHeatingSpec } from "@/lib/heatingElements";
@@ -54,7 +56,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
   const heatingLayout = useHeatingLayout();
   const electrical = categoryFilter === "electric";
   const heating = categoryFilter === "heating";
-  const listedRoomObstacles = electrical ? room.obstacles.filter(isElectricalObstacle) : heating ? room.obstacles.filter(isHeatingElement) : room.obstacles.filter(item => !isHeatingElement(item));
+  const listedRoomObstacles = electrical ? room.obstacles.filter(isElectricalObstacle) : heating ? room.obstacles.filter(isHeatingElement) : categoryFilter === "people" ? room.obstacles.filter(isCataloguePerson) : categoryFilter==="balustrades"?room.obstacles.filter(item=>item.representation_key?.startsWith("balustrade-")):room.obstacles.filter(item => !isHeatingElement(item));
   const [mountingGap, setMountingGap] = useState(550);
   const [baseUnitId, setBaseUnitId] = useState("");
   const [mountingError, setMountingError] = useState("");
@@ -157,13 +159,14 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
     }
     return a.subcategory.localeCompare(b.subcategory) || Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name);
   });
-  const selected = objectId === null ? undefined : objects.find(item => item.id === objectId) ?? objects[0];
+  const selected = objectId === null ? undefined : objects.find(item => item.id === objectId) ?? (activeCategory === "people" ? objects.find(item => item.representation_key === "people-standing" && item.height_mm === 1800) : undefined) ?? objects[0];
   const selectedObjectLabel = selected ? `${selected.name.replace(/^Default /i, "")}${!selected.is_default ? ` / ${selected.supplier}` : ""}` : "";
   const existing = room.obstacles.find(item => item.id === editingId);
   function fromCatalogue(item: RoomCatalogueItem, wallLock = wallLockPreference): Obstacle {
     const measured = (value: number) => ({ value, uncertainty_mm: 5, verified: false, source_type: "USER_MEASURED" });
     return {
       id: "draft", name: item.name,
+      person_spec: defaultPersonSpec(item.representation_key, item.height_mm),
       kind: item.plan_shape === "ELLIPSE" ? "CYLINDER" : "BOX", fixture_kind: item.fixture_kind,
       model_id: item.id, plan_symbol_data_url: item.plan_symbol_data_url, representation_key: item.representation_key, subcategory: item.subcategory, plan_symbol_url: item.plan_symbol_url,
       heating_spec: item.heating_spec ?? (heating ? emptyHeatingSpec(item.name) : undefined),
@@ -258,17 +261,17 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       },
     });
   }
-  const dimensionsContent = value ? <PositiveDimensionFields value={value} displayUnits={displayUnits} onChange={(axis, nextValue) => change({ ...value, verified: false, dimensions: { ...value.dimensions, [axis]: { ...value.dimensions[axis], value: nextValue, verified: false, source_type: "USER_MEASURED" } } })} /> : null;
+  const dimensionsContent = value ? isCataloguePerson(value) ? <p>Use People &amp; furniture to change stature and posture. The posed envelope updates together.</p> : <PositiveDimensionFields value={value} displayUnits={displayUnits} onChange={(axis, nextValue) => change({ ...value, verified: false, dimensions: { ...value.dimensions, [axis]: { ...value.dimensions[axis], value: nextValue, verified: false, source_type: "USER_MEASURED" } } })} /> : null;
 
   return <section className="fixture-editor element-add-editor" aria-label="Add fittings">
     {error && <p role="alert">{error}</p>}{!items.length && !error && <p>Loading Object catalogue…</p>}
     <div className="fixture-cascading-menu" ref={selectorRef}>
       {!selectorExpanded ? <div className="fixture-cascading-collapsed">
-        <strong>{selectedObjectLabel || "Select object"}</strong>
+        <strong>{value?.person_spec ? value.name : selectedObjectLabel || "Select object"}</strong>
         <button type="button" aria-label="Expand fittings selector" aria-expanded={false} onClick={() => setSelectorExpanded(true)}>▾</button>
       </div> : <div className="fixture-cascading-selector" aria-label="Fittings catalogue selector">
         <div className="fixture-cascading-menu-header">
-          <strong>{selectedObjectLabel || "Select object"}</strong>
+          <strong>{value?.person_spec ? value.name : selectedObjectLabel || "Select object"}</strong>
           <button type="button" aria-label="Collapse fittings selector" aria-expanded={true} onClick={() => { setSelectorOpen(null); setHoveredObjectId(null); setSelectorExpanded(false); }}>▴</button>
         </div>
       {!electrical && <div className="fixture-cascading-level">
@@ -298,8 +301,9 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
         </div>}
     </div>
     {value && <>
+      {isCataloguePerson(value) && <PeoplePlacementControls key={value.id} value={value} room={room} walls={roomWalls} displayUnits={displayUnits} onChange={change} />}
       {previewValue && !previewValue.stl_base64 && <FixturePreview obstacle={previewValue} compact />}
-      <ComponentColours compact previewObstacle={value} dimensionsContent={dimensionsContent} onResetDimensions={resetDimensions} source={{ ...value, colour_parts: items.find(item => item.id === value.model_id)?.colour_parts }} onChange={component_colors => {
+      <ComponentColours compact previewObstacle={value} dimensionsContent={dimensionsContent} onResetDimensions={isCataloguePerson(value) ? undefined : resetDimensions} source={{ ...value, colour_parts: items.find(item => item.id === value.model_id)?.colour_parts }} onChange={component_colors => {
         const next = { ...value, component_colors };
         if (existing) onChange(room.obstacles.map(item => item.id === existing.id ? next : item));
         else setDraft(next);
@@ -342,6 +346,9 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       <button className="fixture-save" disabled={!!error} onClick={() => {
         if (existing) { setEditingId(null); setDraft(null); onEditEnd?.(); return; }
         const next = { ...value, id: `fixture-${crypto.randomUUID()}` };
+        if (next.person_spec?.support) {
+          onChange([...room.obstacles, next]); setEditingId(null); return;
+        }
         if (onBeginPlacement) {
           onBeginPlacement({ id: next.id, obstacle: next });
           // Keep the configured draft as the template for the next placement.
@@ -351,7 +358,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
           if (!positioned) { setMountingError("This element is too large for the room."); return; }
           onChange([...room.obstacles, positioned]); setEditingId(null);
         }
-      }}>{existing ? "Done" : "Add element"}</button>
+      }}>{existing ? "Done" : value.person_spec?.support ? "Add person on furniture" : "Add element"}</button>
     </>}
     {listedRoomObstacles.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={elementsListExpanded} onClick={() => setElementsListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{elementsListExpanded ? "−" : "›"}</span></button>

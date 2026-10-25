@@ -12,8 +12,9 @@ import { BATH_KEYS, CABINET_KEYS } from "@/lib/roomFixtureOptions";
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
-import { FixturePreview } from "@/components/FixturePreview";
+import { CatalogueAssetPreview } from "@/components/CatalogueAssetPreview";
 import { ElectricalCataloguePreview } from "@/components/ElectricalCataloguePreview";
 import { HeatingSpecsEditor } from "@/components/HeatingSpecsEditor";
 import { ThermalMaterialsLibrary } from "./ThermalMaterialsLibrary";
@@ -32,13 +33,15 @@ interface CatalogueBrowserProps {
   onInsert: (item: CatalogueItem) => void;
 }
 
-type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "living" | "bedroom" | "kitchen" | "staircases" | "radiators" | "electrical";
+type CatalogueObjectGroup = "bathroom" | "doors" | "windows" | "people" | "balustrades" | "living" | "bedroom" | "kitchen" | "staircases" | "radiators" | "electrical";
 type CatalogueDetailSelection =
   | { type: "object"; item: CatalogueItem }
   | { type: "material"; item: MaterialItem; family: MaterialFamily; collection: MaterialCollection };
 type CatalogueContextMenu = { x: number; y: number };
 
 const CATEGORY_KINDS: Record<string, CatalogueItemInput["fixture_kind"]> = {
+  people: "FURNITURE",
+  balustrades: "FURNITURE",
   electric: "FURNITURE",
   ...Object.fromEntries(DOOR_MODELS.map(model => [model.family, "DOOR" as const])),
   "living-chairs": "FURNITURE", "living-sofas": "FURNITURE", "living-armchairs": "FURNITURE", "living-tables": "FURNITURE",
@@ -275,6 +278,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     radiators: categories.filter((category) => category.id.startsWith("radiators-")),
     staircases: categories.filter((category) => category.id.startsWith("staircases-")),
     bathroom: bathroomFixtureCategories,
+    people: categories.filter(category => category.id === "people"),
+    balustrades: categories.filter(category => category.id === "balustrades"),
     doors: categories.filter((category) => category.id === "doors" || category.id.startsWith("doors-")),
     windows: categories.filter((category) => category.id === "windows"),
     kitchen: categories.filter((category) => category.id.startsWith("kitchen-")),
@@ -289,6 +294,8 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     // newly added catalogue sections are included in the bulk actions by default.
     const branchKeys = [
       "fixtures",
+      "people",
+      "balustrades",
       "doors",
       "windows",
       "kitchen",
@@ -527,16 +534,12 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
     if (detailEntry.type === "object") {
       const { item } = detailEntry;
       const category = categories.find((candidate) => candidate.id === item.category_id);
-      const preview = (/^furniture-(chair|armchair)-/.test(item.representation_key ?? "") && !item.images?.length ? `/fixture-previews/${item.representation_key}.svg` : undefined) || item.images?.[0]?.data_url || (item.representation_key ? `/fixture-previews/${item.representation_key}.${(/^(living|bedroom)-/.test(item.category_id) || BATH_KEYS.includes(item.representation_key) || CABINET_KEYS.includes(item.representation_key)) ? "png" : /^(living|bedroom|kitchen|radiators|staircases)-/.test(item.category_id) ? "svg" : "png"}` : undefined);
-      const hasLiveRepresentation = /^(electrical-|furniture-|window-|door-|shower-|basin-|toilet-)/.test(item.representation_key ?? "");
-      const previewFixtureKind: "SHOWER" | "BASIN" | "TOILET" | "FURNITURE" = ["SHOWER", "BASIN", "TOILET"].includes(item.fixture_kind) ? item.fixture_kind as "SHOWER" | "BASIN" | "TOILET" : "FURNITURE";
-      const previewObstacle = { id: item.id, name: item.name, kind: "BOX" as const, fixture_kind: previewFixtureKind, representation_key: item.representation_key ?? undefined, center: { x: 0, y: 0 }, dimensions: { width: { value: item.width_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, depth: { value: item.depth_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const }, height: { value: item.height_mm, uncertainty_mm: 0, verified: false, source_type: "USER_MEASURED" as const } }, rotation_deg: 0, base_z_mm: 0, color_hex: item.color_hex, verified: false, source_type: "USER_MEASURED" as const };
       const sideClearance = item.side_clearance_mm == null ? `${category?.default_side_clearance_mm ?? 0} mm (category default)` : `${item.side_clearance_mm} mm (entry override)`;
       const frontClearance = item.front_clearance_mm == null ? `${category?.default_front_clearance_mm ?? 0} mm (category default)` : `${item.front_clearance_mm} mm (entry override)`;
-      return <div className="catalogue-form-backdrop catalogue-detail-backdrop"><section ref={detailDialog} className="catalogue-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="catalogue-detail-title" onKeyDown={trapFocus}>
+      return createPortal(<div className="catalogue-form-backdrop catalogue-detail-backdrop catalogue-object-backdrop"><section ref={detailDialog} className="catalogue-detail-dialog catalogue-object-dialog" role="dialog" aria-modal="true" aria-labelledby="catalogue-detail-title" onKeyDown={trapFocus}>
         <div className="catalogue-form-heading"><div><span className="eyebrow">Catalogue entry</span><h3 id="catalogue-detail-title">{item.name}</h3><p>{item.category_name} · {item.subcategory}</p></div><div className="window-header-actions"><WindowHelpButton title="Catalogue entry details" /><button ref={detailCloseButton} type="button" aria-label="Close catalogue entry details" onClick={() => setDetailEntry(null)}>×</button></div></div>
-        <div className="catalogue-detail-hero">{!item.representation_key?.startsWith("electrical-") && <div className={`catalogue-detail-preview ${item.plan_shape === "ELLIPSE" ? "ellipse" : ""}`} style={{ "--object-colour": item.color_hex, backgroundImage: preview ? `url(${assetUrl(preview)})` : undefined } as React.CSSProperties}>{!preview && <span />}{item.stl_filename && <b>STL</b>}</div>}<div><strong>{item.fixture_kind}</strong><p>{item.description || "No description provided."}</p></div></div>
-        {hasLiveRepresentation && <section className="catalogue-detail-section"><h4>3D representation</h4><FixturePreview obstacle={previewObstacle} /><h4>2D plan representation</h4>{(item.plan_symbol_data_url || item.plan_symbol_url) && <img src={assetUrl(item.plan_symbol_data_url || item.plan_symbol_url)} alt={`${item.name} architectural plan`} style={{ width: "100%", maxHeight: 240, objectFit: "contain" }} />}</section>}
+        <div className="catalogue-object-layout"><div className="catalogue-object-properties" aria-label="Asset details">
+        <div className="catalogue-detail-summary"><strong>{item.category_id === "people" ? "Person" : item.fixture_kind.charAt(0) + item.fixture_kind.slice(1).toLowerCase()}</strong><p>{item.description || "No description provided."}</p></div>
         <dl className="catalogue-detail-grid">
           <div><dt>Database ID</dt><dd><code>{item.id}</code></dd></div>
           <div><dt>Category</dt><dd>{item.category_name}</dd></div>
@@ -555,9 +558,11 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
           <div><dt>Updated</dt><dd>{new Date(item.updated_at).toLocaleString()}</dd></div>
         </dl>
         {(item.plan_symbol_data_url || item.plan_symbol_url) && <p className="catalogue-detail-link"><a href={assetUrl(item.plan_symbol_data_url || item.plan_symbol_url)} download={item.plan_symbol_data_url ? `${item.sku}-plan` : undefined} target="_blank" rel="noreferrer">Open architectural plan symbol ↗</a>{item.plan_symbol_data_url && " · embedded in this entry"}</p>}
+        {(item.plan_symbol_data_url || item.plan_symbol_url) && <section className="catalogue-detail-section catalogue-detail-plan"><h4>2D plan representation</h4><img src={assetUrl(item.plan_symbol_data_url || item.plan_symbol_url)} alt={`${item.name} architectural plan`} /></section>}
         {item.images.length > 0 && <section className="catalogue-detail-section"><h4>Pictures</h4><div className="catalogue-detail-pictures">{item.images.map((image, index) => <img key={`${image.data_url}-${index}`} src={assetUrl(image.data_url)} alt={image.alt} />)}</div></section>}
+        </div><CatalogueAssetPreview key={item.id} item={item} apiUrl={apiUrl} /></div>
         <div className="catalogue-form-actions">{PROGRAMMER_TOOLS && <button type="button" onClick={(event) => { const current = detailEntry; if (current?.type !== "object") return; setDetailEntry(null); beginEdit(current.item, event.currentTarget); }}>Edit entry</button>}<button type="button" className="catalogue-insert" onClick={() => setDetailEntry(null)}>Close</button></div>
-      </section></div>;
+      </section></div>, document.body);
     }
 
     const { item, family, collection } = detailEntry;
@@ -595,6 +600,10 @@ export function CatalogueBrowser({ apiUrl, open, displayUnits, onClose, onInsert
               {bathroomFixtureCategories.map((category) => renderCategoryTree(category, "bathroom"))}
             </div>}
             {topLevelOpeningCategories.map((category) => renderOpeningCategory(category, category.id as "doors" | "windows"))}
+            <button className="catalogue-disclosure" aria-expanded={expanded.people ?? false} aria-controls="catalogue-people" onClick={() => { setExpanded(current => ({ ...current, people: !current.people })); selectObjectGroup("people", "people"); }}><strong>People</strong><span aria-hidden>{expanded.people ? "−" : "+"}</span></button>
+            {expanded.people && <div id="catalogue-people" className="catalogue-branch">{renderGroupAll("people")}{["Standing", "Seated", "Lying down"].map(posture => <button key={posture} className={activeObjectGroup === "people" && activeSubcategory === posture ? "active" : ""} onClick={() => selectObjectGroup("people", "people", posture)}><span>{posture}</span><small>{navigationItems.filter(item => item.category_id === "people" && item.subcategory === posture).length}</small></button>)}</div>}
+            <button className="catalogue-disclosure" aria-expanded={expanded.balustrades??false} aria-controls="catalogue-balustrades" onClick={()=>{setExpanded(current=>({...current,balustrades:!current.balustrades}));selectObjectGroup("balustrades","balustrades");}}><strong>Balustrades</strong><span aria-hidden>{expanded.balustrades?"−":"+"}</span></button>
+            {expanded.balustrades&&<div id="catalogue-balustrades" className="catalogue-branch">{renderGroupAll("balustrades")}{objectGroupCategories.balustrades.map(category=>renderCategoryTree(category,"balustrades"))}</div>}
             <button className="catalogue-disclosure" aria-expanded={expanded.electrical ?? false} aria-controls="catalogue-electrical" onClick={() => { setExpanded(current => ({ ...current, electrical: !current.electrical })); selectObjectGroup("electrical", "electric"); }}><strong>Electrical</strong><span aria-hidden>{expanded.electrical ? "−" : "+"}</span></button>
             {expanded.electrical && <div id="catalogue-electrical" className="catalogue-branch">
               {renderGroupAll("electrical")}

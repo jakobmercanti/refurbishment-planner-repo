@@ -5,6 +5,7 @@ import { OpeningPreview, openingPreviewObstacle } from "@/components/OpeningPrev
 import { ComponentColours } from "@/components/ComponentColours";
 import { componentColoursFromMetadata } from "@/lib/assetColours";
 import { doorModel } from "@/lib/doorModels";
+import { passageProfileForKey, passageProfileForOpening } from "@/lib/passageOpenings";
 import { cornerOffsetsOnWallSegment, isOpeningPlacementValid } from "@/lib/openingPlacement";
 import { openingCatalogueDefaultDimensions } from "@/lib/openingCatalogue";
 import type { CatalogueItem, Opening, Room } from "@/lib/types";
@@ -46,12 +47,12 @@ export function RoomOpeningEditor({ room, opening, items, units, onChange }: { r
     <label className="field"><span>{draft.kind === "DOOR" ? "Door" : "Window"} type</span><select value={item?.id ?? ""} onChange={event => {
       const next = variants.find(item => item.id === event.target.value); if (!next) return;
       const dimensions = openingCatalogueDefaultDimensions(next);
-      setDraft({ ...draft, width: { ...draft.width, value: next.width_mm, verified: false }, height: { ...draft.height, value: dimensions.height, verified: false }, sill_height_mm: draft.kind === "WINDOW" ? dimensions.sill : draft.sill_height_mm, door_type: (doorModel(next.representation_key)?.leaves ?? 1) > 1 ? "DOUBLE" : "SINGLE", metadata: { ...draft.metadata, representation_key: next.representation_key, catalogue_item_id: next.id, window_depth_mm: next.depth_mm, color_hex: next.color_hex, component_colors: {} } });
+      setDraft({ ...draft, passage_profile: passageProfileForKey(next.representation_key), width: { ...draft.width, value: next.width_mm, verified: false }, height: { ...draft.height, value: dimensions.height, verified: false }, sill_height_mm: draft.kind === "WINDOW" ? dimensions.sill : draft.sill_height_mm, door_type: (doorModel(next.representation_key)?.leaves ?? 1) > 1 ? "DOUBLE" : "SINGLE", metadata: { ...draft.metadata, representation_key: next.representation_key, catalogue_item_id: next.id, window_depth_mm: next.depth_mm, color_hex: next.color_hex, component_colors: {} } });
     }}><option value="" disabled>Current model</option>{variants.map(item => <option key={item.id} value={item.id}>{item.category_name} · {item.name}</option>)}</select></label>
     <OpeningPreview item={item} kind={draft.kind === "WINDOW" ? "WINDOW" : "DOOR"} doorType={draft.door_type} width={draft.width.value} height={draft.height.value} colorHex={colour} componentColors={componentColoursFromMetadata(draft.metadata)} />
     <label className="field"><span>Parent wall</span><select value={draft.parent_wall_id} onChange={event => setDraft({ ...draft, parent_wall_id: event.target.value })}>{room.vertices.map((_, index) => <option key={index} value={`wall-${String(index + 1).padStart(3, "0")}`}>Wall {index + 1}</option>)}</select></label>
     <label className="field"><span>Offset {UNIT_LABEL[units]}</span><DisplayNumberInput units={units} minMm={0} valueMm={draft.offset_mm} onMmChange={offset_mm => setDraft({ ...draft, offset_mm })} /></label>
-    {draft.kind === "WINDOW" ? null : <>
+    {draft.kind === "WINDOW" || passageProfileForOpening(draft) ? null : <>
       <label className="field"><span>Hinge side</span><select disabled={draft.door_type === "DOUBLE"} value={draft.hinge_side ?? "START"} onChange={event => setDraft({ ...draft, hinge_side: event.target.value as "START" | "END" })}><option value="START">Wall start</option><option value="END">Wall end</option></select></label>
       <label className="field"><span>Direction</span><select value={draft.opens_inward === false ? "OUT" : "IN"} onChange={event => setDraft({ ...draft, opens_inward: event.target.value === "IN" })}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label>
     </>}

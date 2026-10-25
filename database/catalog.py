@@ -2,22 +2,34 @@
 
 from __future__ import annotations
 
-import os
 import json
+import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from database.models import Base, FurnitureCategoryRecord, FurnitureItemRecord, MaterialCollectionRecord, MaterialFamilyRecord, MaterialItemRecord
+from database.balustrade_defaults import seed_balustrade_defaults
 from database.catalogue_assets import migrate_legacy_pictures
-from database.colour_parts import colour_parts_for, MANIFEST as COLOUR_PART_MANIFEST
+from database.cfd_proxies import seed_cfd_proxies
+from database.colour_parts import MANIFEST as COLOUR_PART_MANIFEST
+from database.colour_parts import colour_parts_for
 from database.electrical_defaults import seed_electrical_defaults
+from database.fixture_defaults import DOOR_FAMILIES, LEGACY_DEFAULT_KEYS, STAIRCASE_FAMILIES, seed_fixture_defaults
 from database.heating_defaults import seed_heating_defaults
-from database.fixture_defaults import LEGACY_DEFAULT_KEYS, seed_fixture_defaults, DOOR_FAMILIES, STAIRCASE_FAMILIES
+from database.models import (
+    Base,
+    FurnitureCategoryRecord,
+    FurnitureItemRecord,
+    MaterialCollectionRecord,
+    MaterialFamilyRecord,
+    MaterialItemRecord,
+)
+from database.people_defaults import seed_people_defaults
 
 
 def database_path() -> Path:
@@ -44,10 +56,22 @@ def configure_sqlite(connection: object, _record: object) -> None:
 
 
 CATEGORIES = [
+    ("balustrades", "Balustrades", "Opening guards and railing sections with coarse CFD proxies.", 66, 0.0, 0.0),
+    (
+        "people",
+        "People",
+        "Standing, seated and lying occupants for display and CFD obstruction geometry.",
+        65,
+        0.0,
+        0.0,
+    ),
     ("radiators-horizontal", "Horizontal", "Horizontal radiators in one and two rows.", 110, 0.0, 0.0),
     ("radiators-vertical", "Vertical", "Tall vertical radiators in one and two rows.", 111, 0.0, 0.0),
     ("radiators-bathroom", "Bathroom radiators", "Ladder towel radiators in one and two rows.", 112, 0.0, 0.0),
-    *[(f"staircases-{family}", name, "Parametric staircases with architectural plan symbols.", 100 + index, 0.0, 0.0) for index, (family, name) in enumerate(STAIRCASE_FAMILIES.items())],
+    *[
+        (f"staircases-{family}", name, "Parametric staircases with architectural plan symbols.", 100 + index, 0.0, 0.0)
+        for index, (family, name) in enumerate(STAIRCASE_FAMILIES.items())
+    ],
     ("baths", "Baths", "Freestanding, slipper, inset and corner baths.", 35, 0.0, 0.0),
     ("kitchen-cabinets", "Cabinets", "Upper wall cabinets in matching base-unit widths.", 98, 0.0, 0.0),
     ("kitchen-sinks", "Sinks", "Sinks for room planning.", 90, 0.0, 0.0),
@@ -74,10 +98,27 @@ CATEGORIES = [
     ("electric", "Electrical", "Hardwired electrical fittings, lighting and ventilation.", 120, 0.0, 0.0),
 ]
 
-CATEGORIES.extend((family, name, f"{name} with parametric leaves and matching plan symbols.", 51 + index, 0.0, 0.0)
-                  for index, (family, name) in enumerate(DOOR_FAMILIES.items()) if family != "doors")
+CATEGORIES.extend(
+    (
+        family,
+        name,
+        "Doorless passages with rectangular, curved and chamfered profiles."
+        if family == "doors-openings"
+        else f"{name} with parametric leaves and matching plan symbols.",
+        51 + index,
+        0.0,
+        0.0,
+    )
+    for index, (family, name) in enumerate(DOOR_FAMILIES.items())
+    if family != "doors"
+)
 
-def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tuple[str, str, str, int]], list[tuple[str, str, str, str, dict[str, object]]]]:
+
+def _material_sources() -> tuple[
+    list[tuple[str, str, str, str, int]],
+    list[tuple[str, str, str, int]],
+    list[tuple[str, str, str, str, dict[str, object]]],
+]:
     root = Path(__file__).resolve().parents[1]
     collections = [
         ("paints-default", "PAINT", "Default colours", "https://www.ralcolorchart.com/", 10),
@@ -87,66 +128,132 @@ def _material_sources() -> tuple[list[tuple[str, str, str, str, int]], list[tupl
     items: list[tuple[str, str, str, str, dict[str, object]]] = []
     ral_path = root / "database" / "ral-classic.js"
     pattern = re.compile(r"RAL(\d{4}):\s*\{\s*description:\s*'([^']+)'[^}]*HEX:\s*'?(#[0-9A-Fa-f]{6})'?")
-    for index, match in enumerate(pattern.finditer(ral_path.read_text(encoding="utf8"))):
+    for match in pattern.finditer(ral_path.read_text(encoding="utf8")):
         family_id = f"ral-{match.group(1)[0]}xxx"
         if not any(item[0] == family_id for item in families):
             families.append((family_id, "paints-default", f"RAL {match.group(1)[0]}000 range", len(families)))
         code = f"RAL {match.group(1)}"
-        items.append((f"ral-{match.group(1)}", family_id, f"{code} · {match.group(2)}", match.group(3).upper(), {"code": code, "description": match.group(2), "source": "RAL Classic"}))
+        items.append(
+            (
+                f"ral-{match.group(1)}",
+                family_id,
+                f"{code} · {match.group(2)}",
+                match.group(3).upper(),
+                {"code": code, "description": match.group(2), "source": "RAL Classic"},
+            )
+        )
     dulux = json.loads((root / "frontend" / "lib" / "duluxColours.generated.json").read_text(encoding="utf8"))
     for index, family in enumerate(dulux["families"]):
         family_id = f"dulux-{family['id'].lower()}"
         families.append((family_id, "paints-dulux", family["name"], index))
         for shade in family["shades"]:
-            items.append((f"dulux-{family['id'].lower()}-{shade['id']}", family_id, shade["name"], shade["colour"], {"code": shade["name"], "ral_code": shade["ralCode"], "ral_name": shade["ralName"]}))
+            items.append(
+                (
+                    f"dulux-{family['id'].lower()}-{shade['id']}",
+                    family_id,
+                    shade["name"],
+                    shade["colour"],
+                    {"code": shade["name"], "ral_code": shade["ralCode"], "ral_name": shade["ralName"]},
+                )
+            )
     collections.append(("metals", "PAINT", "Metals", "", 32))
     families.append(("metal-finishes", "metals", "Metal finishes", 0))
     for finish in json.loads((root / "frontend/lib/metalFinishes.json").read_text(encoding="utf8")):
-        items.append((f"metal-{finish['id']}", "metal-finishes", finish["name"], finish["colour"],
-                      {**finish, "metal_finish_id": finish["id"]}))
+        items.append(
+            (
+                f"metal-{finish['id']}",
+                "metal-finishes",
+                finish["name"],
+                finish["colour"],
+                {**finish, "metal_finish_id": finish["id"]},
+            )
+        )
     collections.append(("fabric", "PAINT", "Fabric", "", 35))
     families.append(("fabric-types", "fabric", "Fabric types", 0))
     for fabric in json.loads((root / "frontend/lib/fabrics.json").read_text(encoding="utf8")):
-        items.append((f"fabric-{fabric['id']}", "fabric-types", fabric["name"], "#C4B8A7",
-                      {**fabric, "fabric_id": fabric["id"], "custom_colour": True}))
+        items.append(
+            (
+                f"fabric-{fabric['id']}",
+                "fabric-types",
+                fabric["name"],
+                "#C4B8A7",
+                {**fabric, "fabric_id": fabric["id"], "custom_colour": True},
+            )
+        )
     collections.append(("tile-materials", "PAINT", "Tiles materials", "", 30))
     families.append(("tile-material-types", "tile-materials", "Tiles materials", 0))
     for tile in json.loads((root / "frontend/lib/tileMaterials.json").read_text(encoding="utf8")):
-        items.append((f"tile-material-{tile['id']}", "tile-material-types", tile["name"], tile["colour"],
-                      {"tile_material_id": tile["id"], "finish": tile["finish"], "pattern": tile["pattern"]}))
+        items.append(
+            (
+                f"tile-material-{tile['id']}",
+                "tile-material-types",
+                tile["name"],
+                tile["colour"],
+                {"tile_material_id": tile["id"], "finish": tile["finish"], "pattern": tile["pattern"]},
+            )
+        )
     for material, title in (("tile", "Tiles"), ("wood", "Wooden flooring")):
         collection_id = f"flooring-{material}"
         collections.append((collection_id, "TILE", title, "", 40 if material == "tile" else 50))
         patterns = json.loads((root / "frontend/lib/flooringPatterns.json").read_text(encoding="utf8"))
         for index, entry in enumerate(p for p in patterns if p["material"] == material):
             families.append((entry["id"], collection_id, entry["name"], index))
-            items.append((entry["id"], entry["id"], entry["name"], "#b89a70" if material == "wood" else "#d8d4c9",
-                          {"flooring_pattern": entry["id"], "width_mm": entry["width"], "length_mm": entry["length"]}))
+            items.append(
+                (
+                    entry["id"],
+                    entry["id"],
+                    entry["name"],
+                    "#b89a70" if material == "wood" else "#d8d4c9",
+                    {"flooring_pattern": entry["id"], "width_mm": entry["width"], "length_mm": entry["length"]},
+                )
+            )
     return collections, families, items
 
 
 def _seed_materials(session: Session) -> None:
     collections, families, items = _material_sources()
-    for row in collections:
-        record = session.get(MaterialCollectionRecord, row[0])
-        if record is None:
-            session.add(MaterialCollectionRecord(id=row[0], kind=row[1], name=row[2], source_url=row[3], sort_order=row[4]))
+    for collection_id, kind, name, source_url, sort_order in collections:
+        collection = session.get(MaterialCollectionRecord, collection_id)
+        if collection is None:
+            session.add(
+                MaterialCollectionRecord(
+                    id=collection_id, kind=kind, name=name, source_url=source_url, sort_order=sort_order
+                )
+            )
         else:
-            record.kind, record.name, record.source_url, record.sort_order = row[1:]
+            collection.kind, collection.name, collection.source_url, collection.sort_order = (
+                kind,
+                name,
+                source_url,
+                sort_order,
+            )
     session.flush()
-    for row in families:
-        record = session.get(MaterialFamilyRecord, row[0])
-        if record is None:
-            session.add(MaterialFamilyRecord(id=row[0], collection_id=row[1], name=row[2], sort_order=row[3]))
+    for family_id, collection_id, name, sort_order in families:
+        family = session.get(MaterialFamilyRecord, family_id)
+        if family is None:
+            session.add(
+                MaterialFamilyRecord(id=family_id, collection_id=collection_id, name=name, sort_order=sort_order)
+            )
         else:
-            record.collection_id, record.name, record.sort_order = row[1:]
+            family.collection_id, family.name, family.sort_order = collection_id, name, sort_order
     session.flush()
-    for row in items:
-        record = session.get(MaterialItemRecord, row[0])
-        if record is None:
-            session.add(MaterialItemRecord(id=row[0], family_id=row[1], name=row[2], code=row[4].get("code"), color_hex=row[3], metadata_json=row[4]))
+    for item_id, family_id, name, colour, metadata in items:
+        item = session.get(MaterialItemRecord, item_id)
+        code = cast(str | None, metadata.get("code"))
+        if item is None:
+            session.add(
+                MaterialItemRecord(
+                    id=item_id, family_id=family_id, name=name, code=code, color_hex=colour, metadata_json=metadata
+                )
+            )
         else:
-            record.family_id, record.name, record.code, record.color_hex, record.metadata_json = row[1], row[2], row[4].get("code"), row[3], row[4]
+            item.family_id, item.name, item.code, item.color_hex, item.metadata_json = (
+                family_id,
+                name,
+                code,
+                colour,
+                metadata,
+            )
 
 
 def _remove_legacy_default_tile_collection(session: Session) -> None:
@@ -177,10 +284,16 @@ def seed_catalogue_categories(session: Session) -> None:
         if category is not None and category_id == "living-armchairs" and category.name == "Arm chair":
             category.name = "Armchairs"
         if category is None:
-            session.add(FurnitureCategoryRecord(
-                id=category_id, name=name, description=description, sort_order=sort_order,
-                default_side_clearance_mm=side, default_front_clearance_mm=front,
-            ))
+            session.add(
+                FurnitureCategoryRecord(
+                    id=category_id,
+                    name=name,
+                    description=description,
+                    sort_order=sort_order,
+                    default_side_clearance_mm=side,
+                    default_front_clearance_mm=front,
+                )
+            )
 
 
 def _archive_obsolete_default_items(session: Session) -> None:
@@ -205,7 +318,9 @@ def initialise_catalogue() -> None:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT 0")
         if "default_key" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN default_key VARCHAR(120)")
-            connection.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_furniture_items_default_key ON furniture_items (default_key)")
+            connection.exec_driver_sql(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_furniture_items_default_key ON furniture_items (default_key)"
+            )
         if "stl_filename" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN stl_filename VARCHAR(255)")
         if "stl_base64" not in existing_columns:
@@ -215,27 +330,47 @@ def initialise_catalogue() -> None:
         if "front_clearance_mm" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN front_clearance_mm FLOAT")
         if "subcategory" not in existing_columns:
-            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN subcategory VARCHAR(120) NOT NULL DEFAULT 'General'")
+            connection.exec_driver_sql(
+                "ALTER TABLE furniture_items ADD COLUMN subcategory VARCHAR(120) NOT NULL DEFAULT 'General'"
+            )
         if "representation_key" not in existing_columns:
-            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN representation_key VARCHAR(80) NOT NULL DEFAULT ''")
+            connection.exec_driver_sql(
+                "ALTER TABLE furniture_items ADD COLUMN representation_key VARCHAR(80) NOT NULL DEFAULT ''"
+            )
         if "heating_spec" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN heating_spec JSON")
+        if "cfd_proxy" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN cfd_proxy JSON")
         if "representation_version" not in existing_columns:
-            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN representation_version INTEGER NOT NULL DEFAULT 1")
+            connection.exec_driver_sql(
+                "ALTER TABLE furniture_items ADD COLUMN representation_version INTEGER NOT NULL DEFAULT 1"
+            )
         if "plan_symbol_url" not in existing_columns:
-            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_symbol_url VARCHAR(255) NOT NULL DEFAULT ''")
+            connection.exec_driver_sql(
+                "ALTER TABLE furniture_items ADD COLUMN plan_symbol_url VARCHAR(255) NOT NULL DEFAULT ''"
+            )
         if "plan_symbol_data_url" not in existing_columns:
             connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_symbol_data_url TEXT")
         if "plan_shape" not in existing_columns:
-            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN plan_shape VARCHAR(12) NOT NULL DEFAULT 'RECTANGLE'")
+            connection.exec_driver_sql(
+                "ALTER TABLE furniture_items ADD COLUMN plan_shape VARCHAR(12) NOT NULL DEFAULT 'RECTANGLE'"
+            )
         if "image_data_json" not in existing_columns:
-            connection.exec_driver_sql("ALTER TABLE furniture_items ADD COLUMN image_data_json TEXT NOT NULL DEFAULT '[]'")
-        category_columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(furniture_categories)").fetchall()}
+            connection.exec_driver_sql(
+                "ALTER TABLE furniture_items ADD COLUMN image_data_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        category_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(furniture_categories)").fetchall()
+        }
         if "default_side_clearance_mm" not in category_columns:
-            connection.exec_driver_sql("ALTER TABLE furniture_categories ADD COLUMN default_side_clearance_mm FLOAT NOT NULL DEFAULT 0")
+            connection.exec_driver_sql(
+                "ALTER TABLE furniture_categories ADD COLUMN default_side_clearance_mm FLOAT NOT NULL DEFAULT 0"
+            )
             added_side_clearance = True
         if "default_front_clearance_mm" not in category_columns:
-            connection.exec_driver_sql("ALTER TABLE furniture_categories ADD COLUMN default_front_clearance_mm FLOAT NOT NULL DEFAULT 0")
+            connection.exec_driver_sql(
+                "ALTER TABLE furniture_categories ADD COLUMN default_front_clearance_mm FLOAT NOT NULL DEFAULT 0"
+            )
             added_front_clearance = True
         for obsolete_index in (
             "ix_furniture_items_category_id",
@@ -256,19 +391,32 @@ def initialise_catalogue() -> None:
         seed_fixture_defaults(session)
         seed_electrical_defaults(session)
         seed_heating_defaults(session)
+        seed_people_defaults(session)
+        seed_balustrade_defaults(session)
         session.flush()
+        seed_cfd_proxies(session)
         obsolete_stair_category = session.get(FurnitureCategoryRecord, "staircases-main")
-        if obsolete_stair_category and not session.scalar(select(FurnitureItemRecord.id).where(FurnitureItemRecord.category_id == "staircases-main").limit(1)):
+        if obsolete_stair_category and not session.scalar(
+            select(FurnitureItemRecord.id).where(FurnitureItemRecord.category_id == "staircases-main").limit(1)
+        ):
             session.delete(obsolete_stair_category)
         _remove_legacy_default_tile_collection(session)
         _seed_materials(session)
         for catalogue_item in session.scalars(select(FurnitureItemRecord)).all():
             # Definitions are application-owned; refresh finish eligibility on upgrades.
-            if not catalogue_item.colour_parts or (not catalogue_item.stl_base64 and catalogue_item.representation_key in COLOUR_PART_MANIFEST["representations"]):
-                catalogue_item.colour_parts = colour_parts_for(catalogue_item.representation_key, catalogue_item.color_hex, imported_mesh=bool(catalogue_item.stl_base64))
+            if not catalogue_item.colour_parts or (
+                not catalogue_item.stl_base64
+                and catalogue_item.representation_key in COLOUR_PART_MANIFEST["representations"]
+            ):
+                catalogue_item.colour_parts = colour_parts_for(
+                    catalogue_item.representation_key,
+                    catalogue_item.color_hex,
+                    imported_mesh=bool(catalogue_item.stl_base64),
+                )
             catalogue_item.image_data_json = migrate_legacy_pictures(catalogue_item.id, catalogue_item.image_data_json)
         session.commit()
         from database.fixture_previews import install_fixture_previews
+
         install_fixture_previews(session)
         session.execute(select(FurnitureItemRecord.id).limit(1)).all()
         session.connection().exec_driver_sql("PRAGMA optimize")

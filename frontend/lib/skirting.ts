@@ -1,4 +1,5 @@
 import { WOOD_COLOURS } from "./flooring";
+import { passageProfileForOpening } from "./passageOpenings";
 import type { RenderedWall } from "./wallRendering";
 
 export interface SkirtingBoardSettings {
@@ -30,7 +31,7 @@ export function skirtingRuns(wall: RenderedWall): [number, number][] {
     // Match DoorFixture's stepped architrave (including its bevel).
     const unit = opening.height.value / 2040;
     const jamb = Math.min(38 * unit, opening.width.value * .08);
-    const casing = opening.kind === "DOOR" ? 65.8 * unit - jamb * .3 : 0;
+    const casing = opening.kind === "DOOR" && !passageProfileForOpening(opening) ? 65.8 * unit - jamb * .3 : 0;
     return [Math.max(0, opening.offset_mm - wall.sourceOffsetMm - casing), Math.min(length, opening.offset_mm - wall.sourceOffsetMm + opening.width.value + casing)];
   }).filter(([from, to]) => to > from).sort((a, b) => a[0] - b[0]);
   const runs: [number, number][] = [];

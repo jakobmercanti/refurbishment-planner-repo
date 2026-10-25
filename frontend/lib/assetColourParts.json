@@ -1,5 +1,12 @@
 {
   "profiles": {
+    "people": [
+      { "id": "skin", "label": "Skin", "default_color_hex": "#B98260" },
+      { "id": "hair", "label": "Hair", "default_color_hex": "#302925" },
+      { "id": "top", "label": "Top", "default_color_hex": "$catalogue", "legacy_field": "color_hex" },
+      { "id": "trousers", "label": "Trousers", "default_color_hex": "#334F65" },
+      { "id": "shoes", "label": "Shoes", "default_color_hex": "#30383D" }
+    ],
     "electrical-switch": [
       {
         "id": "body",
@@ -1165,6 +1172,15 @@
         "material_type": "metal"
       }
     ],
+    "passage": [
+      {
+        "id": "reveal",
+        "label": "Opening reveal",
+        "default_color_hex": "$catalogue",
+        "legacy_field": "color_hex",
+        "material_type": "paint"
+      }
+    ],
     "door": [
       {
         "id": "leaf",
@@ -1669,6 +1685,9 @@
     ]
   },
   "representations": {
+    "people-standing": "people",
+    "people-seated": "people",
+    "people-lying": "people",
     "electrical-switch-single": "electrical-switch",
     "electrical-switch-double": "electrical-switch",
     "electrical-switch-triple": "electrical-switch",
@@ -1721,6 +1740,12 @@
     "door-french-modern": "door-glass",
     "door-internal-flush": "door",
     "door-internal-shaker": "door-panel",
+    "door-opening-single": "passage",
+    "door-opening-double": "passage",
+    "door-opening-arch": "passage",
+    "door-opening-wide": "passage",
+    "door-opening-shallow-arch": "passage",
+    "door-opening-chamfered": "passage",
     "door-single": "door-panel",
     "door-sliding-patio": "door-sliding-glass",
     "door-sliding-pocket": "door-sliding-panel",

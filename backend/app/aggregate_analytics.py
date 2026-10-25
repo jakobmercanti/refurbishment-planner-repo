@@ -6,7 +6,8 @@ import asyncio
 import json
 import os
 from typing import Literal
-from urllib.request import ProxyHandler, Request as URLRequest, build_opener
+from urllib.request import ProxyHandler, build_opener
+from urllib.request import Request as URLRequest
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -21,7 +22,7 @@ class AggregateEvent(BaseModel):
     format: Literal["floorplan3d", "pdf", "png", "jpg", "svg", "json"] | None = None
 
     @model_validator(mode="after")
-    def format_matches_event(self) -> "AggregateEvent":
+    def format_matches_event(self) -> AggregateEvent:
         if (self.event == "floorplan_downloaded") != (self.format is not None):
             raise ValueError("Format is required only for a download.")
         return self

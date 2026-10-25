@@ -1,4 +1,5 @@
 import type { WindowHelpStep } from "./windowHelp";
+export const QUOTE_TEXT_LABELS={introduction:"Introduction",scope:"Scope notes",exclusions:"Exclusions",paymentTerms:"Payment terms",notes:"Additional notes",footer:"Footer"} as const;
 
 export function quoteHelpSteps(title: string): WindowHelpStep[] {
   const section = title.replace(/^Quote(?: Generator)?\s*[—:-]?\s*/i, "");
@@ -23,7 +24,7 @@ export function quoteHelpSteps(title: string): WindowHelpStep[] {
   ];
   if (/customer/i.test(section)) return [{heading:"Customer details",text:"Enter the customer's name, contact, address and reference. These belong to this quote and can be included or omitted using Customer PDF content. Check the customer and delivery address before sharing."}];
   if (/business|contractor|project/i.test(section)) return [{heading:"Business and project",text:"Enter your business identity, contact details, optional logo and project location or description. Save business profile keeps reusable details on this device for new quotes; it does not overwrite existing quotations. Project information is an editable customer-document snapshot."}];
-  if (/introduction|scope|exclusions|payment|notes|footer/i.test(section)) return [{heading:section,text:"Introduction explains the proposal; scope defines included work; exclusions state what is not included; payment terms describe the agreed payment arrangement. Additional notes and footer hold your optional customer text. Edit only what applies and review Customer PDF content before export."}];
+  if (/introduction|scope|exclusions|payment|notes|footer/i.test(section)) return [{heading:QUOTE_TEXT_LABELS[section as keyof typeof QUOTE_TEXT_LABELS]??section,text:"Introduction explains the proposal; scope defines included work; exclusions state what is not included; payment terms describe the agreed payment arrangement. Additional notes and footer hold your optional customer text. Edit only what applies and review Customer PDF content before export."}];
   return [
     {heading:"Create and edit",text:"Start blank or generate from project. Quote details hold the quote number/name, date, currency and status. Work sections group the items. Edit each quantity and customer unit price; expand rows for descriptions and private costs. Changing currency does not convert prices."},
     {heading:"Save and Save as",text:"Edits are autosaved in this browser. Save immediately persists the current quotation. Save as creates a separately named editable copy and keeps the original unchanged. Duplicate as revision retains the quote number with a new revision. Use File → Save for a portable .floorplan3d backup; browser storage alone is not a backup."},

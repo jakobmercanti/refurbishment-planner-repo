@@ -80,7 +80,7 @@ export function ElectricalLayoutPanel(p: Props) {
         <p className="electrical-layout-hint">Right-click a route leg to add a corner, or right-click a corner to remove it. Drag a corner to reshape the route.</p>
         {(p.crossings ?? []).some(crossing => crossing.connectionIds.includes(selected.id) && crossing.canJoin) && <details className="electrical-layout-section"><summary>Wire crossings</summary><p className="electrical-layout-hint">A bridge means not connected. Join explicitly to show a dot and share control. Moving wires away removes the active junction.</p>{(p.crossings ?? []).filter(crossing => crossing.connectionIds.includes(selected.id) && crossing.canJoin).map((crossing, index) => <button key={crossing.key} type="button" className="review-style-button" onClick={() => p.onToggleJunction?.(crossing)}>{crossing.connected ? "Separate" : "Join"} crossing {index + 1}</button>)}</details>}
         <button type="button" className="danger-button" onClick={() => p.onDeleteConnection(selected.id)}>Delete connection</button>
-        <button type="button" className="review-style-button primary" onClick={p.onFinishConnection}>Ok</button>
+        <button type="button" className="review-style-button primary" onClick={p.onFinishConnection}>OK</button>
       </div>}
     </details>;
   };

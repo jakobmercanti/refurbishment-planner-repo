@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { assetUrl } from "@/lib/assetUrl";
 import type { Obstacle } from "@/lib/types";
 import { isHeatingElement } from "@/lib/heatingElements";
+import { heatingPlanSize } from "@/lib/heatingPresentation";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { resolvedPartColours } from "@/lib/assetColours";
 import { colouredFixtureSymbol } from "@/lib/fixtureSymbolAppearance";
@@ -24,7 +25,7 @@ export function FixturePlanSymbol({ obstacle, x, y, width: footprintWidth, depth
   const deviceSymbol = electricalDevicePlanSymbol(key, electricalMode);
   const { width, depth } = symbolSize ?? electricalDevicePlanSize(key, footprintWidth, footprintDepth, electricalMode);
   // Symbol and hit-target minima are screen pixels only; stored millimetre geometry is unchanged.
-  const heatingWidth = Math.max(24, width), heatingDepth = Math.max(8, depth);
+  const { width: heatingWidth, depth: heatingDepth } = heatingPlanSize(width, depth);
   const url = deviceSymbol?.dataUrl ?? assetUrl(obstacle.plan_symbol_data_url || obstacle.plan_symbol_url || `/fixture-symbols/${key}.svg`);
   const componentColoursSignature = JSON.stringify(obstacle.component_colors ?? {});
   const partColours = useMemo(() => resolvedPartColours({

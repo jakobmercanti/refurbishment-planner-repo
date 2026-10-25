@@ -8,11 +8,14 @@ import pytest
 from backend.app.supabase_rest import SupabaseREST
 
 
-@pytest.mark.parametrize("modern_name,legacy,expected,has_bearer", [
-    ("sb_secret_modern", "legacy.jwt.value", "sb_secret_modern", False),
-    ("", "legacy.jwt.value", "legacy.jwt.value", True),
-    ("", "sb_secret_compat", "sb_secret_compat", False),
-])
+@pytest.mark.parametrize(
+    "modern_name,legacy,expected,has_bearer",
+    [
+        ("sb_secret_modern", "legacy.jwt.value", "sb_secret_modern", False),
+        ("", "legacy.jwt.value", "legacy.jwt.value", True),
+        ("", "sb_secret_compat", "sb_secret_compat", False),
+    ],
+)
 def test_service_headers_and_key_precedence(monkeypatch, modern_name, legacy, expected, has_bearer):
     monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
     monkeypatch.setenv("SUPABASE_SECRET_KEY", modern_name)

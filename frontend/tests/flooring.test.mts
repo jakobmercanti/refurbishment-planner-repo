@@ -19,8 +19,8 @@ test("all twenty tile materials survive saving and produce distinct deterministi
 test("catalogue supplies fifteen distinct woods and all requested flooring shapes", () => {
   assert.equal(WOOD_COLOURS.length, 15);
   assert.equal(new Set(WOOD_COLOURS.map((wood) => wood.base)).size, 15);
-  assert.equal(FLOORING_PATTERNS.filter((p) => p.material === "tile").length, 3);
-  assert.equal(FLOORING_PATTERNS.filter((p) => p.material === "wood").length, 6);
+  assert.equal(FLOORING_PATTERNS.filter((p) => p.material === "tile").length, 10);
+  assert.equal(FLOORING_PATTERNS.filter((p) => p.material === "wood").length, 10);
   assert.deepEqual(FLOORING_COLLECTIONS.map((c) => c.name), ["Wood colours", "Tiles", "Wooden flooring"]);
 });
 

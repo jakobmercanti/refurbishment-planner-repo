@@ -1,5 +1,6 @@
 import type { Room, Point2D, Obstacle } from "./types";
 import { thermalElementId } from "./buildingThermalModel";
+import { openingClearAreaMm2, passageProfileForOpening } from "./passageOpenings";
 import { containsPoint, obstacleFootprint, constrainObstacleToRoom } from "./elementPlacement";
 import { type HeatingProject, type RoomThermalData, type HeatingRadiator, type HybridPerformancePoint, type UFHZone, type UFHCircuit, ROOM_TEMPERATURES } from "./heatingDocument";
 
@@ -69,7 +70,7 @@ export function calculateRoomHeatLoss(room: Room, rooms: readonly Room[], projec
       let glazing = 0, doors = 0;
       for (const o of openingList) {
         const width = Math.max(0, Math.min(end, o.offset_mm + o.width.value) - Math.max(start, o.offset_mm));
-        const openingArea = width * Math.min(heightMm, o.height.value) / 1e6;
+        const openingArea = passageProfileForOpening(o) ? openingClearAreaMm2(o,Math.max(start,o.offset_mm)-o.offset_mm,Math.min(end,o.offset_mm+o.width.value)-o.offset_mm)/1e6 : width * Math.min(heightMm, o.height.value) / 1e6;
         if (o.kind === "WINDOW") glazing += openingArea; else doors += openingArea;
       }
       const gross = (end - start) * heightMm / 1e6;
@@ -82,7 +83,11 @@ export function calculateRoomHeatLoss(room: Room, rooms: readonly Room[], projec
       if (length) { segmentSurface.startMm = { x: a.x + (b.x - a.x) * start / length, y: a.y + (b.y - a.y) * start / length };segmentSurface.endMm = { x: a.x + (b.x - a.x) * end / length, y: a.y + (b.y - a.y) * end / length }; }
       for (const o of openingList) {
         const width = Math.max(0, Math.min(end, o.offset_mm + o.width.value) - Math.max(start, o.offset_mm));
-        const openingArea = width * Math.min(heightMm, o.height.value) / 1e6;
+        const openingArea = passageProfileForOpening(o) ? openingClearAreaMm2(o,Math.max(start,o.offset_mm)-o.offset_mm,Math.min(end,o.offset_mm+o.width.value)-o.offset_mm)/1e6 : width * Math.min(heightMm, o.height.value) / 1e6;
+        if(passageProfileForOpening(o)) {
+          if(openingArea&&targetC>adjacentC&&boundary!=="Adiabatic")warnings.push(`Open passage ${o.id}: air transfer to a colder space is not modelled. Obtain a verified heat-loss assessment.`);
+          continue;
+        }
         if (openingArea) add(`opening:${o.id}`, `${o.kind === "WINDOW" ? "Window" : "Door"} ${o.id}`, openingArea, o.kind === "WINDOW" ? u.window : u.door, adjacentC, boundary, index);
       }
     }

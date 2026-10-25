@@ -1,4 +1,10 @@
 "use client";
+import type { ProjectDocument } from "@/lib/projectDocument";
+import { minimumRoofHeight, roofForRoom, activeFloor, buildingOf, projectFloors, type FloorOpening, type RoofConfiguration } from "@/lib/buildingDocument";
+import { exposedCover, structuralFloorFootprint, polygonOf, subtractVoids } from "@/lib/buildingGeometry";
+import { CombinedBuildingRoof, BuildingSlab, shapesFromPolygons, TerraceCover } from "./BuildingSurfaces";
+import { wallEnvelope, wallThicknessMm as wallThickness } from "@/lib/wallEnvelope";
+import type { BuildingView } from "./BuildingControls";
 import { MetalReflections } from "@/components/MetalReflections";
 
 import { LocalAssetScene } from "@/components/LocalAssetScene";
@@ -6,6 +12,8 @@ import RenderCameraRig, { type RenderCameraRigHandle } from "./RenderCameraRig";
 import type { AssetInstance } from "@/lib/projectDocument";
 import { exported } from "@/lib/analytics";
 import { doorRepresentation } from "@/lib/doorModels";
+import { passageProfileForOpening, passageTopPoints } from "@/lib/passageOpenings";
+import { PassageHitArea, PassageReveal, PassageSpandrel } from "./PassageOpening";
 import { componentColoursFromMetadata, resolvedPartColours } from "@/lib/assetColours";
 import { DoorFixture } from "@/components/DoorFixture";
 import { WindowFixture } from "@/components/ArchitecturalFixtures";
@@ -18,10 +26,11 @@ import { RoomFurniture } from "@/components/RoomFurniture";
 import { ProceduralFloorMaterial } from "@/components/ProceduralFloorMaterial";
 import { floorDesignColour, flooringSwatch, normalizeFloorDesign, TILE_MATERIALS } from "@/lib/flooring";
 import { Grid, Html, Line, OrbitControls, RoundedBox } from "@react-three/drei";
+import { useViewerContextMenu, useViewerNavigation } from "@/lib/viewerNavigation";
 import { type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { StlFixture } from "./StlFixture";
 import { fixtureKindForObstacle } from "@/lib/fixtureCatalog";
 import { constrainPersonToRoom } from "@/lib/layoutInteraction";
 import { StableCanvas } from "@/components/StableCanvas";
@@ -92,6 +101,7 @@ interface SaveFilePickerOptions {
 type SaveFilePicker = (options?: SaveFilePickerOptions) => Promise<SaveFileHandle>;
 
 interface ViewerProps extends PlacementProps {
+  buildingProject?:ProjectDocument; buildingView?:BuildingView; onBuildingViewChange?:(view:BuildingView)=>void; onExteriorView?:()=>void; roofPreview?:RoofConfiguration;
   assetInstances?: AssetInstance[];
   apiUrl: string;
   room: Room;
@@ -252,38 +262,6 @@ function wallSegmentKey(start: Point2D, end: Point2D): string {
   return [pointKey(start), pointKey(end)].sort().join("|");
 }
 
-function cross(a: Point2D, b: Point2D) {
-  return a.x * b.y - a.y * b.x;
-}
-
-function wallThickness(room: Room, index: number): number {
-  return room.wall_thickness_overrides_mm?.[wallId(index)] ?? room.wall_thickness.value;
-}
-
-function exteriorCorner(vertices: Point2D[], index: number, incomingThickness: number, outgoingThickness: number): Point2D {
-  const vertex = vertices[index];
-  const previous = vertices[(index - 1 + vertices.length) % vertices.length];
-  const next = vertices[(index + 1) % vertices.length];
-  const incoming = wallVector(previous, vertex);
-  const outgoing = wallVector(vertex, next);
-  const previousOffset = { x: vertex.x + incoming.dy * incomingThickness, y: vertex.y - incoming.dx * incomingThickness };
-  const nextOffset = { x: vertex.x + outgoing.dy * outgoingThickness, y: vertex.y - outgoing.dx * outgoingThickness };
-  const denominator = cross({ x: incoming.dx, y: incoming.dy }, { x: outgoing.dx, y: outgoing.dy });
-  if (Math.abs(denominator) < 1e-9) {
-    return { x: (previousOffset.x + nextOffset.x) / 2, y: (previousOffset.y + nextOffset.y) / 2 };
-  }
-  const between = { x: nextOffset.x - previousOffset.x, y: nextOffset.y - previousOffset.y };
-  const distance = cross(between, { x: outgoing.dx, y: outgoing.dy }) / denominator;
-  const corner = {
-    x: previousOffset.x + incoming.dx * distance,
-    y: previousOffset.y + incoming.dy * distance,
-  };
-  if (Math.hypot(corner.x - vertex.x, corner.y - vertex.y) > Math.max(incomingThickness, outgoingThickness) * 4) {
-    return { x: (previousOffset.x + nextOffset.x) / 2, y: (previousOffset.y + nextOffset.y) / 2 };
-  }
-  return corner;
-}
-
 function WallPiece({
   start,
   end,
@@ -300,6 +278,7 @@ function WallPiece({
   selected,
   paintOnly = false,
   onSelect,
+  children,
 }: {
   start: Point2D;
   end: Point2D;
@@ -316,10 +295,9 @@ function WallPiece({
   selected: boolean;
   paintOnly?: boolean;
   onSelect?: (additive: boolean) => void;
+  children?: React.ReactNode;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const solidMeshRef = useRef<THREE.Mesh>(null);
-  const paintMeshRef = useRef<THREE.Mesh>(null);
   const fullLength = Math.hypot(end.x - start.x, end.y - start.y);
   const vector = fullLength > 0 ? wallVector(start, end) : { dx: 1, dy: 0, length: 0, angle: 0 };
   useFrame(({ camera }) => {
@@ -338,10 +316,9 @@ function WallPiece({
     }
     groupRef.current.visible = isVisible;
     const raycast = isVisible ? THREE.Mesh.prototype.raycast : DISABLED_MESH_RAYCAST;
-    if (solidMeshRef.current) solidMeshRef.current.raycast = raycast;
-    if (paintMeshRef.current) paintMeshRef.current.raycast = raycast;
+    groupRef.current.traverse(object => { if (object instanceof THREE.Mesh) object.raycast = raycast; });
   });
-  if (length <= 0 || height <= 0) return null;
+  if (length <= 0 || (height <= 0 && !children)) return null;
   const exteriorX = vector.dy;
   const exteriorY = -vector.dx;
   const to = from + length;
@@ -366,8 +343,9 @@ function WallPiece({
   const paintOffset = 0.0015;
   return (
     <group ref={groupRef}>
+      {children}
+      {height > 0 && <>
       {!paintOnly && wallMode !== "CUTAWAY_2D" && <mesh
-        ref={solidMeshRef}
         castShadow={wallMode !== "TRANSPARENT"}
         receiveShadow
         position={[0, base * SCALE, 0]}
@@ -380,7 +358,6 @@ function WallPiece({
       {/* Paint is a thin overlay on the solid wall; shadow mapping it causes
           perspective self-shadow acne along the coplanar wall surfaces. */}
       <mesh
-        ref={paintMeshRef}
         position={[
           innerCentre.x * SCALE - vector.dy * paintOffset,
           (base + height / 2) * SCALE,
@@ -394,6 +371,7 @@ function WallPiece({
         <planeGeometry args={[length * SCALE, height * SCALE]} />
         <meshStandardMaterial color={colour} roughness={0.88} metalness={0} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} userData={{ editorSelectionHighlight: selected }} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>
+      </>}
     </group>
   );
 }
@@ -427,13 +405,7 @@ function WallWithOpenings({
 }) {
   const vector = wallVector(start, end);
   const thickness = wallThickness(room, index);
-  const offsetPoint = (point: Point2D) => ({ x: point.x + vector.dy * thickness, y: point.y - vector.dx * thickness });
-  const outerStart = capStart
-    ? offsetPoint(start)
-    : exteriorCorner(room.vertices, index, wallThickness(room, (index - 1 + room.vertices.length) % room.vertices.length), thickness);
-  const outerEnd = capEnd
-    ? offsetPoint(end)
-    : exteriorCorner(room.vertices, (index + 1) % room.vertices.length, thickness, wallThickness(room, (index + 1) % room.vertices.length));
+  const [, , outerEnd, outerStart] = wallEnvelope({room,index,start,end,capStart,capEnd});
   const currentWallId = wallId(index);
   const colour = room.finishes?.wall_colors?.[currentWallId] ?? DEFAULT_WALL_COLOUR;
   const openings = room.openings
@@ -444,13 +416,18 @@ function WallWithOpenings({
       const clippedStart = Math.max(0, openingStart);
       const clippedEnd = Math.min(vector.length, openingEnd);
       if (clippedEnd - clippedStart <= 1e-6 || openingStart >= sourceLengthMm || openingEnd <= 0) return null;
-      return { ...opening, offset_mm: clippedStart, width: { ...opening.width, value: clippedEnd - clippedStart } };
+      return { ...opening, profileSourceOffsetMm:openingStart, profileSourceWidthMm:opening.width.value, offset_mm: clippedStart, width: { ...opening.width, value: clippedEnd - clippedStart } };
     })
-    .filter((opening): opening is Opening => Boolean(opening))
+    .filter(opening => opening !== null)
     .sort((a, b) => a.offset_mm - b.offset_mm);
   const pieces: React.ReactNode[] = [];
   let cursor = 0;
   openings.forEach((opening) => {
+    const passage=passageProfileForOpening(opening);
+    const shoulder=passage?<group position={[(start.x+vector.dx*opening.profileSourceOffsetMm)*SCALE,opening.sill_height_mm*SCALE,-(start.y+vector.dy*opening.profileSourceOffsetMm)*SCALE]} rotation={[0,vector.angle,0]}>
+      <PassageSpandrel profile={passage} widthMm={opening.profileSourceWidthMm} heightMm={opening.height.value} fromMm={opening.offset_mm-opening.profileSourceOffsetMm} toMm={opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm} depthMm={thickness} colour={colour} solidColour={DEFAULT_WALL_COLOUR} wallMode={wallMode} paintOnly={paintOnly} selected={selected} onSelect={onSelect}/>
+      {!paintOnly&&<group position={[opening.profileSourceWidthMm*SCALE/2,0,0]}><PassageReveal profile={passage} width={opening.profileSourceWidthMm*SCALE} height={opening.height.value*SCALE} depth={thickness*SCALE} from={(opening.offset_mm-opening.profileSourceOffsetMm)*SCALE} to={(opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm)*SCALE} colour={resolvedPartColours({representation_key:typeof opening.metadata?.representation_key==="string"?opening.metadata.representation_key:undefined,color_hex:typeof opening.metadata?.color_hex==="string"?opening.metadata.color_hex:colour,component_colors:componentColoursFromMetadata(opening.metadata)}).reveal??colour} transparent={wallMode==="TRANSPARENT"}/></group>}
+    </group>:null;
     pieces.push(
       <WallPiece
         key={`${opening.id}-before`}
@@ -512,7 +489,7 @@ function WallWithOpenings({
         selected={selected}
         paintOnly={paintOnly}
         onSelect={onSelect}
-      />,
+      >{shoulder}</WallPiece>,
     );
     cursor = opening.offset_mm + opening.width.value;
   });
@@ -539,9 +516,46 @@ function WallWithOpenings({
   return <>{pieces}</>;
 }
 
-function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; onSelect?: () => void }) {
+type SceneFloor = ReturnType<typeof projectFloors>[number];
+function ExposedFloorCover({floor,above}:{floor:SceneFloor;above:SceneFloor}) {
+  const footprint=useMemo(()=>exposedCover(structuralFloorFootprint(floor.content),structuralFloorFootprint(above.content)),[floor.content,above.content]);
+  return <group position={[0,above.elevationMm*SCALE,0]}><TerraceCover footprint={footprint} thickness={above.slabThicknessMm}/></group>;
+}
+function PassiveBuildingFloor({floor,above,roof,showRoof,wallMode,toggles}:{floor:SceneFloor;above?:SceneFloor;roof?:RoofConfiguration;showRoof:boolean;wallMode:WallViewMode;toggles:Toggles}) {
+  const clear=above?above.elevationMm-above.slabThicknessMm-floor.elevationMm:roof?(roof.type==="STEPPED"?Math.min(roof.lowHeightMm,roof.highHeightMm):roof.lowHeightMm):floor.heightMm-floor.slabThicknessMm;
+  const rooms=useMemo(()=>floor.content.rooms.map(r=>({...r,wall_height:{...r.wall_height,value:roof&&roof.enabled!==false?minimumRoofHeight(roofForRoom(roof,r.id)):clear}})),[floor.content.rooms,clear,roof]);
+  const walls=useMemo(()=>{const solids=rooms.length===1?buildIsolatedRoomWalls(rooms[0]):buildRenderedWalls(rooms);return [...solids,...buildSharedWallFinishFaces(rooms,solids)];},[rooms]);
+  const footprint=useMemo(()=>structuralFloorFootprint(floor.content),[floor.content]);
+  return <><group name={floor.name} position={[0,floor.elevationMm*SCALE,0]}>
+    <BuildingSlab footprint={footprint} openings={floor.openings} thicknessMm={floor.slabThicknessMm}/>
+    {wallMode!=="INVISIBLE"&&walls.map((w,i)=><WallWithOpenings key={i} {...w} wallMode={wallMode} selected={false}/>)}
+    <SkirtingBoards walls={walls} wallMode={wallMode} defaultWallColour={DEFAULT_WALL_COLOUR}/>
+    {rooms.map(r=><group key={r.id}><Floor room={r} selected={false} openings={floor.openings} includeSlab={false}/>{r.openings.map(o=><OpeningFixture key={o.id} room={r} opening={o} selected={false}/>)}{toggles.elements&&r.obstacles.map(o=><FixtureMesh key={o.id} obstacle={o} selected={false}/>)}{toggles.person&&r.person_mockup?.enabled&&<PersonMesh person={r.person_mockup} showClearance={false} collision={false} selected={false}/>}</group>)}
+    <LocalAssetScene instances={floor.content.assetInstances}/>
+    {showRoof&&roof&&<CombinedBuildingRoof content={floor.content} roof={roof}/>}
+  </group>{showRoof&&above&&<ExposedFloorCover floor={floor} above={above}/>}</>;
+}
+/** Display-only building reuse. CFD validity and air connectivity still come from the kernel. */
+export function ReadOnlyBuildingScene({ project, roomIds, showRoof = false, assets = true }: {
+  project: ProjectDocument; roomIds: string[]; showRoof?: boolean; assets?: boolean;
+}) {
+  const floors = projectFloors(project), roof = buildingOf(project).roof;
+  const visible = new Set(roomIds);
+  return <>{floors.map((floor, index) => {
+    const rooms = floor.content.rooms.filter(room => visible.has(room.id));
+    if (!rooms.length) return null;
+    const shown = rooms.length === floor.content.rooms.length ? floor : {
+      ...floor, content: { ...floor.content, rooms, floorplan: null, assetInstances: [] },
+    };
+    return <PassiveBuildingFloor key={floor.id} floor={shown} above={floors[index + 1]}
+      roof={index === floors.length - 1 ? roof : undefined} showRoof={showRoof}
+      wallMode="TRANSPARENT" toggles={{ elements: assets, person: assets, openingImprints: false, collisions: false, clearance: false }}/>;
+  })}</>;
+}
+function Floor({ room, selected, onSelect, openings, slabThicknessMm = 10, includeSlab=true }: { room: Room; selected: boolean; onSelect?: () => void; openings?:FloorOpening[]; slabThicknessMm?:number; includeSlab?:boolean }) {
   const vertices = room.vertices;
   const shape = useMemo(() => {
+    if(openings?.length)return shapesFromPolygons(subtractVoids([polygonOf(vertices)],openings));
     const next = new THREE.Shape();
     vertices.forEach((vertex, index) => {
       const x = vertex.x * SCALE;
@@ -552,7 +566,7 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
     });
     next.closePath();
     return next;
-  }, [vertices]);
+  }, [vertices,openings]);
   const colour = room.finishes?.floor_color ?? "#ece9e1";
   const pattern = room.finishes?.floor_pattern ?? "NONE";
   const selectedTile = useMemo(() => TILE_COLLECTION.find((item) => item.id === room.finishes?.floor_tile_id), [room.finishes?.floor_tile_id]);
@@ -590,10 +604,7 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   }), [colour, renderedTile, selected]);
   return (
     <group>
-      <mesh position={[0, -0.011, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <extrudeGeometry args={[shape, { depth: 0.01, bevelEnabled: false }]} />
-        <meshStandardMaterial color="#b9b3a8" roughness={0.84} side={THREE.DoubleSide} />
-      </mesh>
+      {includeSlab&&<BuildingSlab footprint={structuralFloorFootprint({rooms:[room],floorplan:null,assetInstances:[]})} openings={openings??[]} thicknessMm={slabThicknessMm}/>}
       <mesh geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={onSelect ? (event) => { event.stopPropagation(); onSelect(); } : undefined}>
         {swatch ? <ProceduralFloorMaterial url={swatch.url} selected={selected} roughness={design && !design.pattern.startsWith("wood-") ? ({ polished: .18, gloss: .12, satin: .4, honed: .6, matt: .8, textured: .95, rustic: .9, tumbled: .9 }[TILE_MATERIALS.find((tile) => tile.id === design.tile_material_id)?.finish ?? "matt"] ?? .78) : .78} /> : renderedTile ? (
           <shaderMaterial
@@ -614,44 +625,6 @@ function Floor({ room, selected, onSelect }: { room: Room; selected: boolean; on
   );
 }
 
-function StlFixture({ obstacle, width, depth, height, colour, fallback }: { obstacle: Obstacle; width: number; depth: number; height: number; colour: string; fallback: ReactNode }) {
-  const geometry = useMemo(() => {
-    if (!obstacle.stl_base64) return null;
-    try {
-      const source = obstacle.stl_base64.trim();
-      const encoded = source.includes(",") ? source.slice(source.indexOf(",") + 1) : source;
-      const normalized = encoded.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
-      const padded = normalized.padEnd(normalized.length + (4 - normalized.length % 4) % 4, "=");
-      const binary = window.atob(padded);
-      const bytes = new Uint8Array(binary.length);
-      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-      const parsed = new STLLoader().parse(bytes.buffer);
-      parsed.computeVertexNormals();
-      parsed.computeBoundingBox();
-      let box = parsed.boundingBox;
-      if (!box) return null;
-      const originalSize = box.getSize(new THREE.Vector3());
-      if (originalSize.z > originalSize.y * 1.15 && height > Math.max(width, depth) * 1.1) {
-        parsed.rotateX(-Math.PI / 2);
-        parsed.computeBoundingBox();
-        box = parsed.boundingBox;
-        if (!box) return null;
-      }
-      const size = box.getSize(new THREE.Vector3());
-      if (![size.x, size.y, size.z].every((value) => Number.isFinite(value) && value > 1e-6)) return null;
-      const centre = box.getCenter(new THREE.Vector3());
-      parsed.translate(-centre.x, -box.min.y, -centre.z);
-      parsed.scale(width / size.x, height / size.y, depth / size.z);
-      parsed.computeBoundingSphere();
-      return parsed;
-    } catch {
-      return null;
-    }
-  }, [depth, height, obstacle.stl_base64, width]);
-  useEffect(() => () => geometry?.dispose(), [geometry]);
-  if (!geometry) return fallback;
-  return <mesh geometry={geometry} castShadow receiveShadow><meshStandardMaterial color={colour} roughness={0.56} metalness={0.04} /></mesh>;
-}
 
 function safeRenderDimension(value: number, fallback: number) {
   const numeric = Number(value);
@@ -659,6 +632,7 @@ function safeRenderDimension(value: number, fallback: number) {
 }
 
 function ProceduralFixture({ obstacle, width, depth, height }: { obstacle: Obstacle; width: number; depth: number; height: number }) {
+  if (obstacle.representation_key?.startsWith("people-")||obstacle.representation_key?.startsWith("balustrade-")) return <ParametricFixture obstacle={obstacle} width={width} depth={depth} height={height} />;
   const fixtureKind = fixtureKindForObstacle(obstacle);
   const customColour = obstacle.color_hex;
   if (obstacle.representation_key?.startsWith("electrical-") || ["SHOWER", "BASIN", "TOILET"].includes(fixtureKind) || (obstacle.representation_key === "furniture-storage-unit" || obstacle.representation_key?.startsWith("furniture-stair-") || obstacle.representation_key?.startsWith("furniture-radiator-") || /^furniture-(bath-|kitchen-|wardrobe-)/.test(obstacle.representation_key ?? ""))) {
@@ -760,6 +734,7 @@ function DoorSwingLeaf({
 }
 
 function DoorSwing({ room, door }: { room: Room; door: Opening }) {
+  if(passageProfileForOpening(door))return null;
   const wallIndex = Number(door.parent_wall_id.split("-")[1]) - 1;
   const start = room.vertices[wallIndex];
   const end = room.vertices[(wallIndex + 1) % room.vertices.length];
@@ -802,6 +777,7 @@ function OpeningFixture({ room, opening, selected, onSelect }: { room: Room; ope
     y: start.y + vector.dy * (opening.offset_mm + opening.width.value / 2),
   };
   const windowKey = typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : "window-single-pane";
+  const passage=passageProfileForOpening(opening);
   const windowDepth = typeof opening.metadata?.window_depth_mm === "number" && Number.isFinite(opening.metadata.window_depth_mm) && opening.metadata.window_depth_mm > 0 ? opening.metadata.window_depth_mm * SCALE : depth;
   const windowProjection = windowKey === "window-bay" || windowKey === "window-bow";
   const doorColour = typeof opening.metadata?.color_hex === "string" && /^#[\da-f]{6}$/i.test(opening.metadata.color_hex) ? opening.metadata.color_hex : "#5b4330";
@@ -809,9 +785,10 @@ function OpeningFixture({ room, opening, selected, onSelect }: { room: Room; ope
   // winding used by the 2D plan, local -Z points inward after the wall
   // rotation, so turn projected windows around to keep the bow outside.
   const openingRotation = windowProjection && signedPolygonArea(room.vertices) >= 0 ? vector.angle + Math.PI : vector.angle;
+  const selectionPoints:VectorTuple[]=passage?[[-width/2,sill,depth/2],...passageTopPoints(passage,width,height).map(p=>[p.x-width/2,sill+p.y,depth/2] as VectorTuple),[width/2,sill,depth/2]]:[[-width/2,sill,depth/2],[-width/2,sill+height,depth/2],[width/2,sill+height,depth/2],[width/2,sill,depth/2]];
   return <group position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, openingRotation, 0]} onPointerDown={onSelect ? event => { event.stopPropagation(); onSelect(); } : undefined}>
-    {selected && <group userData={{ editorOnly: true }}><Line points={[[-width / 2, sill, depth / 2], [-width / 2, sill + height, depth / 2], [width / 2, sill + height, depth / 2], [width / 2, sill, depth / 2]]} color="#1685dd" lineWidth={3} /></group>}
-    {opening.kind === "DOOR" ? (
+    {selected && <group userData={{ editorOnly: true }}><Line points={selectionPoints} color="#1685dd" lineWidth={3} /></group>}
+    {passage ? <group position={[0,sill,wallThickness(room,wallIndex)*SCALE/2]}><PassageHitArea profile={passage} width={width} height={height}/></group> : opening.kind === "DOOR" ? (
       <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture colours={resolvedPartColours({ representation_key: doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type), color_hex: doorColour, component_colors: componentColoursFromMetadata(opening.metadata) })} representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
     ) : <group position={[0, sill, windowProjection ? -windowDepth * .44 : 0]}>
       <WindowFixture colours={resolvedPartColours({ representation_key: windowKey, color_hex: typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE", component_colors: componentColoursFromMetadata(opening.metadata) })} representation={windowKey} width={width} height={height} depth={windowDepth} colour={typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE"} />
@@ -1125,25 +1102,56 @@ function CameraViewSync({ restoreView, fallbackTarget, stateRef, onRestored }: {
   return null;
 }
 
-/** Keep wheel input tied to the rendered camera in every projection mode. */
+/** Keep wheel and preset middle-button zoom tied to the rendered camera in
+ * every projection mode. OrbitControls' own dolly stays disabled here so it
+ * cannot apply a second wheel zoom or diverge from projection restoration. */
 function WheelZoom({ onManualViewChange }: { onManualViewChange?: () => void }) {
   const { camera, events } = useThree();
+  const mouseButtons = useViewerNavigation();
   useEffect(() => {
     const eventSource = events.connected;
     if (!eventSource) return;
-    const zoomWithWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      if (event.deltaY === 0) return;
+    let middle: { id: number; y: number } | null = null;
+    const zoomBy = (factor: number) => {
       onManualViewChange?.();
-      const factor = event.deltaY > 0 ? 0.9 : 1.1;
       camera.zoom = camera instanceof THREE.OrthographicCamera
         ? THREE.MathUtils.clamp(camera.zoom * factor, 0.0001, 1_000_000)
         : THREE.MathUtils.clamp(camera.zoom * factor, 0.35, 3);
       camera.updateProjectionMatrix();
     };
+    const zoomWithWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      if (event.deltaY !== 0) zoomBy(event.deltaY > 0 ? 0.9 : 1.1);
+    };
+    const beginMiddle = (event: PointerEvent) => {
+      if (event.button !== 1 || mouseButtons.MIDDLE !== THREE.MOUSE.DOLLY) return;
+      event.preventDefault();
+      middle = { id: event.pointerId, y: event.clientY };
+    };
+    const moveMiddle = (event: PointerEvent) => {
+      if (!middle || middle.id !== event.pointerId) return;
+      if (!(event.buttons & 4)) { middle = null; return; }
+      const delta = event.clientY - middle.y;
+      middle.y = event.clientY;
+      if (delta) zoomBy(Math.exp(THREE.MathUtils.clamp(-delta * 0.006, -1, 1)));
+    };
+    const endMiddle = (event: PointerEvent) => { if (event.pointerId === middle?.id) middle = null; };
+    const cancelMiddle = () => { middle = null; };
     eventSource.addEventListener("wheel", zoomWithWheel, { passive: false });
-    return () => eventSource.removeEventListener("wheel", zoomWithWheel);
-  }, [camera, events, onManualViewChange]);
+    eventSource.addEventListener("pointerdown", beginMiddle);
+    window.addEventListener("pointermove", moveMiddle);
+    window.addEventListener("pointerup", endMiddle);
+    window.addEventListener("pointercancel", endMiddle);
+    window.addEventListener("blur", cancelMiddle);
+    return () => {
+      eventSource.removeEventListener("wheel", zoomWithWheel);
+      eventSource.removeEventListener("pointerdown", beginMiddle);
+      window.removeEventListener("pointermove", moveMiddle);
+      window.removeEventListener("pointerup", endMiddle);
+      window.removeEventListener("pointercancel", endMiddle);
+      window.removeEventListener("blur", cancelMiddle);
+    };
+  }, [camera, events, mouseButtons, onManualViewChange]);
   return null;
 }
 
@@ -1331,7 +1339,7 @@ const ReferenceCameraPreview = forwardRef<ReferenceCameraPreviewHandle, Referenc
 });
 
 
-function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewCandidate }: { request: PlacementRequest; rooms: Room[]; walls: PlacementWall[]; onCommit?: (candidate: PlacementCandidate)=>void; onCancel?: ()=>void; onPreviewCandidate?: (candidate: PlacementCandidate | null) => void }) {
+function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewCandidate, elevationMm=0 }: { request: PlacementRequest; rooms: Room[]; walls: PlacementWall[]; onCommit?: (candidate: PlacementCandidate)=>void; onCancel?: ()=>void; onPreviewCandidate?: (candidate: PlacementCandidate | null) => void; elevationMm?:number }) {
   const { events, camera }=useThree();
   const [point,setPoint]=useState<Point2D | null>(null);
   const client=useRef<{x:number;y:number}|null>(null);
@@ -1350,16 +1358,16 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewC
         const normal=new THREE.Vector3((b.y-a.y)/length,0,(b.x-a.x)/length);
         const plane=new THREE.Plane().setFromNormalAndCoplanarPoint(normal,new THREE.Vector3(a.x*SCALE,0,-a.y*SCALE));
         const hit=raycaster.ray.intersectPlane(plane,new THREE.Vector3());
-        if (!hit || hit.y<0 || hit.y>room.wall_height.value*SCALE) return [];
+        if (!hit || hit.y<elevationMm*SCALE || hit.y>(elevationMm+room.wall_height.value)*SCALE) return [];
         const p={x:hit.x/SCALE,y:-hit.z/SCALE},t=((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/(length*length);
         return t>=0 && t<=1 ? [{point:p,distance:raycaster.ray.origin.distanceTo(hit)}] : [];
       }));
       const first=hits.sort((a,b)=>a.distance-b.distance)[0];
       if (first) return first.point;
     }
-    const hit=raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),0),new THREE.Vector3());
+    const hit=raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),-elevationMm*SCALE),new THREE.Vector3());
     return hit ? {x:hit.x/SCALE,y:-hit.z/SCALE} : null;
-  },[camera,events,raycaster,request.opening,rooms]);
+  },[camera,events,raycaster,request.opening,rooms,elevationMm]);
   const candidate=useMemo(()=>{
     const next=point?resolvePlacement(request,point,rooms,walls):null;
     return next?.roomId && !rooms.some(room=>room.id===next.roomId) ? null : next;
@@ -1422,7 +1430,7 @@ function PlacementCursor({ request, rooms, walls, onCommit, onCancel, onPreviewC
   </group>;
 }
 
-function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, onRenderCameraChange, renderCamera, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete, cameraRigVisible, selectedCameraRigHandle, onCameraRigHandleSelect, onOpenCameraProperties }: ViewerProps & {
+function Scene({ buildingProject, buildingView, roofPreview, assetInstances, placementWalls = [], placement, onCommitPlacement, onCancelPlacement, onTransferObstacle, room, sceneRooms, collisionIds, onObstaclesChange, onPersonChange, onRenderCameraChange, renderCamera, wallMode, toggles, preset, projection, selection, onSelectionChange, showGrid, cameraResetKey, fitRequest, fitViewRequest, zoomPercent, lighting, onManualViewChange, restoreView, cameraStateRef, onCameraViewRestored, onFitComplete, cameraRigVisible, selectedCameraRigHandle, onCameraRigHandleSelect, onOpenCameraProperties }: ViewerProps & {
   lighting: LightingSettings;
   toggles: Toggles;
   preset: CameraView;
@@ -1447,6 +1455,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   const dragCandidate = useRef<PlacementCandidate | null>(null);
   const dragCapture = useRef<{ target: { releasePointerCapture: (id: number)=>void }; pointerId: number } | null>(null);
   const orbitInteraction = useRef(false);
+  const mouseButtons = useViewerNavigation();
   const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const { events } = useThree();
   useEffect(() => {
@@ -1473,22 +1482,33 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
     setPreviewPlacementId(placement?.id);
     setPreviewPlacementCandidate(null);
   }
-  const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const floors=useMemo(()=>buildingProject?projectFloors(buildingProject):[],[buildingProject]);
+  const currentFloor=buildingProject?activeFloor(buildingProject):undefined, elevationMm=currentFloor?.elevationMm??0;
+  const wholeView=Boolean(buildingView?.whole),floorId=currentFloor?.id;
+  const visibleFloors=useMemo(()=>wholeView?floors:floors.filter(f=>f.id===floorId),[floors,wholeView,floorId]);
+  const buildingRoof=roofPreview??(buildingProject?buildingOf(buildingProject).roof:undefined),topFloor=floors.at(-1);
+  const showRoof=Boolean(buildingView?.roof&&buildingRoof?.enabled!==false);
+  const above=floors[floors.findIndex(f=>f.id===currentFloor?.id)+1];
+  const clearHeight=above?above.elevationMm-above.slabThicknessMm-elevationMm:buildingRoof?minimumRoofHeight(buildingRoof):currentFloor?currentFloor.heightMm-currentFloor.slabThicknessMm:undefined;
+  const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevationMm*SCALE), [elevationMm]);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
-  const renderedRooms = useMemo(() => sceneRooms?.length ? sceneRooms : [room], [room, sceneRooms]);
+  const renderedRooms = useMemo(() => (wholeView?floors.find(f=>f.id===floorId)?.content.rooms??[]:sceneRooms?.length ? sceneRooms : room.vertices.length?[room]:[]).map(r=>clearHeight?{...r,wall_height:{...r.wall_height,value:!above&&buildingRoof&&buildingRoof.enabled!==false?minimumRoofHeight(roofForRoom(buildingRoof,r.id)):clearHeight}}:r), [room, sceneRooms,clearHeight,wholeView,floors,floorId,above,buildingRoof]);
+  const activeFootprint=useMemo(()=>structuralFloorFootprint({rooms:renderedRooms,floorplan:null,assetInstances:[]}),[renderedRooms]);
   const multiRoom = renderedRooms.length > 1;
   const sceneBounds = useMemo(() => {
-    const points = renderedRooms.flatMap((sceneRoom) => sceneRoom.vertices);
+    const points = (visibleFloors.length?visibleFloors.flatMap(f=>structuralFloorFootprint(f.content).flatMap(p=>p[0])):activeFootprint.flatMap(p=>p[0])).map(([x,y])=>({x,y}));
+    if(!points.length)return {minX:0,maxX:5000,minY:0,maxY:5000,wallHeight:2500,minZ:0};
     const minX = Math.min(...points.map((point) => point.x));
     const maxX = Math.max(...points.map((point) => point.x));
     const minY = Math.min(...points.map((point) => point.y));
     const maxY = Math.max(...points.map((point) => point.y));
-    const wallHeight = Math.max(...renderedRooms.map((sceneRoom) => sceneRoom.wall_height.value));
-    return { minX, maxX, minY, maxY, wallHeight };
-  }, [renderedRooms]);
+    const minZ=visibleFloors.length?Math.min(...visibleFloors.map(f=>f.elevationMm-f.slabThicknessMm)):elevationMm;
+    const maxZ=visibleFloors.length?Math.max(...visibleFloors.map(f=>{const above=floors[floors.findIndex(x=>x.id===f.id)+1],wallHeight=above?above.elevationMm-above.slabThicknessMm-f.elevationMm:buildingRoof?minimumRoofHeight(buildingRoof):f.heightMm-f.slabThicknessMm;const profiles=buildingRoof?[buildingRoof,...(buildingRoof.roomRoofsEnabled?(buildingRoof.roomOverrides??[]).filter(item=>f.content.rooms.some(room=>room.id===item.roomId)).map(item=>item.roof):[])]:[];return f.elevationMm+(f.id===topFloor?.id&&showRoof&&buildingRoof?Math.max(...profiles.map(profile=>Math.max(profile.lowHeightMm,profile.type==="FLAT"?0:profile.highHeightMm)+profile.thicknessMm)):wallHeight);})):elevationMm+Math.max(2400,...renderedRooms.map(r=>r.wall_height.value));
+    return { minX, maxX, minY, maxY, wallHeight:maxZ-minZ,minZ };
+  }, [activeFootprint,renderedRooms,visibleFloors,floors,elevationMm,buildingRoof,showRoof,topFloor?.id]);
   const roomTarget = useMemo<VectorTuple>(() => {
-    return [(sceneBounds.minX + sceneBounds.maxX) * SCALE / 2, sceneBounds.wallHeight * SCALE / 2, -(sceneBounds.minY + sceneBounds.maxY) * SCALE / 2];
+    return [(sceneBounds.minX + sceneBounds.maxX) * SCALE / 2, (sceneBounds.minZ+sceneBounds.wallHeight/2) * SCALE, -(sceneBounds.minY + sceneBounds.maxY) * SCALE / 2];
   }, [sceneBounds]);
   const renderedWalls = useMemo<RenderedWall[]>(
     () => {
@@ -1515,8 +1535,9 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   const lightElevation = THREE.MathUtils.degToRad(lighting.elevation);
   const lightDistance = shadowExtent * 2;
   const lightPower = lighting.intensity / 100;
-  const orbitTarget: [number, number, number] = preset === "eye" && !multiRoom && room.person_mockup?.enabled
-    ? eyeTarget(room.person_mockup).toArray()
+  const cameraPerson=room.person_mockup?{...room.person_mockup,eye_height_mm:room.person_mockup.eye_height_mm+elevationMm}:null;
+  const orbitTarget: [number, number, number] = preset === "eye" && !multiRoom && cameraPerson?.enabled
+    ? eyeTarget(cameraPerson).toArray()
     : roomTarget;
 
   function floorPoint(event: ThreeEvent<PointerEvent>) {
@@ -1566,6 +1587,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
   }
 
   function startPersonDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, person: PersonMockup) {
+    if (event.button !== 0) return;
     event.stopPropagation();
     onSelectionChange({ type: "PERSON", roomId: sceneRoom.id });
     const point = floorPoint(event);
@@ -1605,7 +1627,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
 
   return (
     <>
-      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : room.person_mockup} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} restoreView={restoreView} />
+      <CameraPreset preset={preset} projection={projection} person={multiRoom ? null : cameraPerson} target={roomTarget} span={roomSpan} resetKey={cameraResetKey + fitRequest} zoomPercent={zoomPercent} restoreView={restoreView} />
       <CameraFit request={fitViewRequest} projection={projection} center={roomTarget} span={roomSpan} onFit={onFitComplete} />
       <MetalReflections intensity={.3 * lightPower} />
       <ambientLight intensity={0.3 * lightPower} />
@@ -1628,6 +1650,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
       />
       <directionalLight target={lightTarget} position={[roomTarget[0] - shadowExtent, roomTarget[1] + shadowExtent * 0.7, roomTarget[2] - shadowExtent]} color="#DFE9FF" intensity={0.35 * lightPower} />
       {cameraRigVisible && renderCamera && <RenderCameraRig cameraState={renderCamera} selectedHandle={selectedCameraRigHandle} onSelectHandle={onCameraRigHandleSelect} onCameraChange={onRenderCameraChange} onOpenProperties={onOpenCameraProperties} />}
+      <group position={[0,elevationMm*SCALE,0]} name="Selected building floor">
       {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd, paintOnly }) => {
         if (wallMode === "INVISIBLE") return null;
         const sceneInteractive = selectedCameraRigHandle === null && (multiRoom || wallRoom.id === room.id);
@@ -1661,7 +1684,7 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
         const scenePerson = sceneRoom.id === room.id ? displayedPerson : sceneRoom.person_mockup;
         return (
           <group key={`room-${sceneRoom.id}`}>
-            <Floor room={sceneRoom} selected={sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id }) : undefined} />
+            <Floor room={sceneRoom} openings={currentFloor?.openings} includeSlab={!currentFloor} selected={sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id }) : undefined} />
             {sceneRoom.openings.map((opening) => <OpeningFixture key={`fixture-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} selected={selection?.type === "OPENING" && selection.id === opening.id && selection.roomId === sceneRoom.id} onSelect={sceneInteractive ? () => onSelectionChange({ type: "OPENING", id: opening.id, roomId: sceneRoom.id }) : undefined} />)}
             {toggles.elements && sceneObstacles.map((obstacle) => (
               <FixtureMesh
@@ -1687,9 +1710,16 @@ function Scene({ placementWalls = [], placement, onCommitPlacement, onCancelPlac
           </group>
         );
       })}
+      {currentFloor&&<BuildingSlab footprint={activeFootprint} openings={currentFloor.openings} thicknessMm={currentFloor.slabThicknessMm}/>}
+      <LocalAssetScene instances={assetInstances??[]}/>
+      {showRoof&&currentFloor&&currentFloor.id===topFloor?.id&&buildingRoof&&<CombinedBuildingRoof content={floors.find(f=>f.id===currentFloor.id)!.content} roof={buildingRoof}/>}
       {showGrid && <group userData={{ editorOnly: true }}><Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} /></group>}
-      {placement && <group userData={{ editorOnly: true }}><PlacementCursor key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} onPreviewCandidate={setPreviewPlacementCandidate} /></group>}
-      <OrbitControls makeDefault enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
+      {placement && <group userData={{ editorOnly: true }}><PlacementCursor elevationMm={elevationMm} key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} onPreviewCandidate={setPreviewPlacementCandidate} /></group>}
+      </group>
+      {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><PassiveBuildingFloor key={f.id} floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} wallMode={wallMode} toggles={toggles}/>)}
+      {showRoof&&currentFloor&&above&&<ExposedFloorCover floor={floors.find(f=>f.id===currentFloor.id)!} above={above}/>}
+      {wholeView&&<mesh rotation={[-Math.PI/2,0,0]} position={[roomTarget[0],sceneBounds.minZ*SCALE-.002,roomTarget[2]]} receiveShadow raycast={DISABLED_MESH_RAYCAST} userData={{buildingPresentation:true}}><planeGeometry args={[Math.max(20,roomSpan[0]*4),Math.max(20,roomSpan[2]*4)]}/><shadowMaterial transparent opacity={.18} depthWrite={false}/></mesh>}
+      <OrbitControls makeDefault mouseButtons={mouseButtons} enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
       <CameraViewSync restoreView={restoreView} fallbackTarget={orbitTarget} stateRef={cameraStateRef} onRestored={onCameraViewRestored} />
     </>
   );
@@ -1749,13 +1779,13 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
       {selection.type === "ELEMENT" && selectedElement && <>
         <span className="eyebrow">Selected element</span>
         <strong>{selectedElement.name}</strong>
-        <p>Drag the selected element across the floor to reposition it.</p>
+
         <label className="viewer-lock-choice"><input type="checkbox" checked={selectedElement.wall_lock ?? false} onChange={(event) => setWallLock(event.target.checked)} /><span>Keep adjacent to nearest wall</span></label>
       </>}
       {selection.type === "PERSON" && <>
         <span className="eyebrow">Selected human mock-up</span>
         <strong>Person usability model</strong>
-        <p>Drag the body across the floor to reposition it. Use the Human mock-up toolbar for rotation, posture and clearance settings.</p>
+
       </>}
       {selection.type === "WALL" && <>
         <div className="selected-wall-heading"><span className="eyebrow">Selected internal {selection.ids.length === 1 ? "wall" : "walls"}</span><strong>{selection.ids.length === 1 ? selection.id.replace("wall-", "Wall ") : `${selection.ids.length} walls selected`}</strong></div>
@@ -1771,7 +1801,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
             return <button key={shade.id} type="button" title={shade.name} aria-label={`Paint selected walls ${shade.name}`} className={active ? "selected" : ""} onClick={() => setWallColour(shade)}><span className="paint-shade-swatch" style={{ background: shade.colour }} /><strong>{shade.name}</strong></button>;
           })}</div>
           {!visiblePaintShades.length && <p className="paint-empty">No shades match this search.</p>}
-          <p className="paint-code-note">Screen colours come from the selected catalogue collection. Confirm with a physical sample before ordering.</p>
+
         </div>
         <button className="review-style-button colour-reset-button" type="button" onClick={() => setWallColour()}>Reset to default</button>
       </>}
@@ -1832,7 +1862,10 @@ export function EngineeringViewer(props: ViewerProps) {
   const [selection, setSelection] = useState<Selection>(null);
   const [panelSelection, setPanelSelection] = useState<Selection>(null);
   const [toolbarContextMenu, setToolbarContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const rightPointerRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const viewerMenu = useViewerContextMenu(target => !!target.closest(".stable-canvas-host"), point => {
+    clearSelection();
+    setToolbarContextMenu({ x: Math.max(8, Math.min(point.x, window.innerWidth - 480)), y: Math.max(8, Math.min(point.y, window.innerHeight - 330)) });
+  }, () => setToolbarContextMenu(null));
   const saveViewButton = useRef<HTMLButtonElement>(null);
   const [toggles, setToggles] = useState<Toggles>({
     elements: true,
@@ -2008,7 +2041,7 @@ export function EngineeringViewer(props: ViewerProps) {
   const livePreviewSize = cameraOutputSize ? { width: Math.round(cameraOutputSize.width * previewScale), height: Math.round(cameraOutputSize.height * previewScale) } : null;
   const cameraAngles = renderCamera ? renderCameraAnglesDegrees(renderCamera) : null;
   return (
-    <div className="viewer-shell" onPointerDownCapture={(event) => { if (event.button === 2) rightPointerRef.current = { x: event.clientX, y: event.clientY, moved: false }; }} onPointerMoveCapture={(event) => { const pointer = rightPointerRef.current; if (pointer && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 5) pointer.moved = true; }} onPointerUpCapture={(event) => { if (event.button === 2 && rightPointerRef.current?.moved) window.setTimeout(() => { rightPointerRef.current = null; }, 0); }} onContextMenu={(event) => { if (!(event.target instanceof Element) || !event.target.closest(".stable-canvas-host")) return; event.preventDefault(); const wasPan = rightPointerRef.current?.moved; rightPointerRef.current = null; if (wasPan) return; clearSelection(); setToolbarContextMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 480)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 330)) }); }} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
+    <div className="viewer-shell" {...viewerMenu} onPointerDown={(event) => { if (toolbarContextMenu && event.target instanceof Element && !event.target.closest(".toolbar-context-menu")) setToolbarContextMenu(null); }}>
       {props.toolbarVisibility["viewer-view"] && <FloatingToolbar className="viewer-view-toolbar" title="View properties" defaultPosition={{ x: 790, y: 18 }} dock={props.fillToolbarLayout ? viewerLeftDock("viewer-view") : { side: "RIGHT", slot: 0, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} maxHeight={340} onClose={() => props.onToggleToolbar("viewer-view")}><div className="viewer-toolbar floating-view-controls" aria-label="3D view properties">
         <div className="viewer-view-control-group viewer-zoom-controls" role="group" aria-label="Zoom controls">
           <button type="button" aria-label="Zoom out" onClick={() => setZoomPercent((value) => Math.max(25, value - 10))}>−</button>
@@ -2025,6 +2058,7 @@ export function EngineeringViewer(props: ViewerProps) {
           {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={activePreset === view ? "active" : ""} aria-pressed={activePreset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
         </div>
         <div className="toggle-row" role="group" aria-label="3D visibility">
+          {props.buildingView&&props.onBuildingViewChange&&<><ViewToggle label="All floors" active={props.buildingView.whole} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,whole:!props.buildingView!.whole});setFitViewRequest(v=>v+1);}}/><ViewToggle label="Roof" active={props.buildingView.roof&&(props.roofPreview??props.buildingProject?.building?.roof)?.enabled!==false} disabled={(props.roofPreview??props.buildingProject?.building?.roof)?.enabled===false} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,roof:!props.buildingView!.roof});setFitViewRequest(v=>v+1);}}/><button type="button" onClick={()=>{props.onExteriorView?.();setShowGrid(false);applyPreset("perspective");setFitViewRequest(v=>v+1);}}>Exterior view</button></>}
           <ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} />
           {(["elements", "openingImprints", "clearance"] as const).map((key) => (
             <ViewToggle key={key} label={key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearance envelope" : "Elements"} active={toggles[key]} onToggle={() => flip(key)} />
@@ -2046,7 +2080,7 @@ export function EngineeringViewer(props: ViewerProps) {
               if (Number.isFinite(value)) setLighting((current) => ({ ...current, [key]: Math.min(max, Math.max(min, value)) }));
             }} />
           </label>)}
-          <small>Direction is measured clockwise from the top of the floorplan (0°). Lower elevation creates longer shadows.</small>
+
           <button type="button" className="review-style-button" onClick={() => setLighting({ ...DEFAULT_LIGHTING })}>Reset lighting</button>
           </>}
         </div>
@@ -2149,7 +2183,7 @@ export function EngineeringViewer(props: ViewerProps) {
       </FloatingToolbar>}
       {cameraPropertiesOpen && renderCamera && cameraAngles && <FloatingToolbar className="viewer-camera-properties-window" title="Camera properties" defaultPosition={cameraPropertiesPosition} initialSize={{ width: 380 }} maxHeight={360} bringToFront onClose={() => setCameraPropertiesOpen(false)}>
         <div className="viewer-camera-properties">
-          <p>Set the camera position and orientation precisely. Updates appear in the camera preview immediately.</p>
+
           <fieldset className="viewer-camera-property-fields">
             <legend>Position <small>millimetres</small></legend>
             {(["X", "Y", "Z"] as const).map((axis, index) => <label key={axis}><span>{axis}</span><input type="number" step={10} value={Math.round(renderCamera.positionMm[index] * 10) / 10} aria-label={`Camera position ${axis} in millimetres`} onChange={(event) => {
@@ -2171,19 +2205,17 @@ export function EngineeringViewer(props: ViewerProps) {
             }} /></label>)}
           </fieldset>
           {cameraMessage && <p className="viewer-camera-error" role="status">{cameraMessage}</p>}
-          <small className="viewer-camera-properties-note">Angles use Three.js XYZ Euler order. Position is stored in millimetres.</small>
+
           <button className="review-style-button" type="button" onClick={() => setCameraPropertiesOpen(false)}>Done</button>
         </div>
       </FloatingToolbar>}
       {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
       <StableCanvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={() => { clearSelection(); setSelectedCameraRigHandle(null); }}>
         <Scene {...props} renderCamera={renderCamera ?? undefined} onRenderCameraChange={commitRenderCamera} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} cameraRigVisible={cameraWindowOpen && cameraRigVisible} selectedCameraRigHandle={selectedCameraRigHandle} onCameraRigHandleSelect={selectCameraRigHandle} onOpenCameraProperties={openCameraProperties} />
-        <LocalAssetScene instances={props.assetInstances ?? []} />
         {cameraWindowOpen && renderCamera && <ReferenceCameraPreview ref={cameraPreviewRef} cameraState={renderCamera} canvasRef={cameraPreviewCanvasRef} active={cameraWindowOpen} onError={setCameraPreviewError} />}
         <WheelZoom onManualViewChange={clearActivePreset} />
         <CaptureController request={captureRequest} format={captureFormat} fileHandle={captureFileHandle} includeAttribution={includeCaptureAttribution} onError={handleCaptureError} />
       </StableCanvas>
-      <div className="viewer-legend"><span>Click a surface to edit · drag elements to move</span><span>Drag orbit · wheel zoom · right-drag pan</span></div>
       {toolbarContextMenu && <ToolbarContextMenu x={toolbarContextMenu.x} y={toolbarContextMenu.y} toolbars={VIEWER_TOOLBARS.filter((toolbar) => props.toolbarAvailability[toolbar.id])} visibility={props.toolbarVisibility} onToggle={props.onToggleToolbar} onClose={() => setToolbarContextMenu(null)} />}
       <Popup open={captureMenuOpen} title="Save view" message="" confirmLabel="Save as…" onCancel={() => { setCaptureMenuOpen(false); setCaptureError(null); }} onConfirm={() => { void saveViewAs(); }}>
         <label className="field save-view-format"><span>File format</span><select value={captureFormat} onChange={(event) => setCaptureFormat(event.target.value as CaptureFormat)}><option value="png">PNG image (.png)</option><option value="jpg">JPG image (.jpg)</option><option value="pdf">PDF document (.pdf)</option></select></label><label className="save-view-attribution"><input type="checkbox" checked={includeCaptureAttribution} onChange={(event) => setIncludeCaptureAttribution(event.target.checked)} /><span>Include “Made with FreeFloorplan3D.com”</span></label>

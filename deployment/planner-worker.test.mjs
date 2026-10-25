@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from './planner-worker.mjs';
+import { PLANS_PAGE_VERSION } from './plans-page.mjs';
 
 const origin = 'https://www.freefloorplan3d.com';
 test('normal Plans uses the proven plain navigation without app assets or framework scripts', async () => {
   const response = await worker.fetch(new Request(origin + '/planner/plans/?plan=studio'), { ASSETS: { fetch: async () => { throw new Error('Must bypass planner assets'); } } });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Cache-Control'), 'no-store, max-age=0');
-  assert.equal(response.headers.get('X-Plans-Page-Version'), 'plans-20261009-v2');
+  assert.equal(response.headers.get('X-Plans-Page-Version'), PLANS_PAGE_VERSION);
+  assert.match(PLANS_PAGE_VERSION, /^plans-\d{8}-v\d+$/);
   const html = await response.text();
   assert.ok(!html.includes('/_next/'));
   assert.ok(html.includes('Continue with Studio'));
@@ -139,6 +141,32 @@ test('the canonical planner path serves assets, legacy paths redirect, and admin
     assert.equal((await worker.fetch(new Request(origin + '/planner/engineering-api' + path, { method: 'POST', body: '{}' }), env)).status, 403);
   }
 });
+test('catalogue CFD mesh and STL reads pass through without opening catalogue writes', async () => {
+  const previous = globalThis.fetch, forwarded = [];
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  try {
+    globalThis.fetch = async (url, options) => {
+      forwarded.push({ url: String(url), options });
+      return String(url).endsWith('.stl')
+        ? new Response('solid catalogue_cfd_mm', { headers: { 'Content-Type': 'model/stl', 'Content-Disposition': 'attachment; filename="catalogue-cfd-mm.stl"' } })
+        : Response.json({ units: 'mm', profile: 'table' });
+    };
+    const base = origin + '/planner/engineering-api/catalog/items/example/cfd';
+    const json = await worker.fetch(new Request(base), env);
+    assert.equal(json.status, 200);
+    assert.deepEqual(await json.json(), { units: 'mm', profile: 'table' });
+    const stl = await worker.fetch(new Request(base + '.stl'), env);
+    assert.equal(stl.status, 200);
+    assert.match(stl.headers.get('Content-Type'), /model\/stl/);
+    assert.match(stl.headers.get('Content-Disposition'), /attachment/);
+    assert.equal(forwarded[0].url, 'https://example.up.railway.app/catalog/items/example/cfd');
+    for (const method of ['POST', 'PUT', 'DELETE'])
+      assert.equal((await worker.fetch(new Request(base, { method }), env)).status, 403);
+    assert.equal((await worker.fetch(new Request(base + '/delete'), env)).status, 403);
+    assert.equal(forwarded.length, 2);
+  } finally { globalThis.fetch = previous; }
+});
+
 test('engineering proxy rejects foreign origins and strips credentials', async () => {
   const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
   const endpoint = origin + '/planner/engineering-api/rooms/validate';
@@ -153,5 +181,93 @@ test('engineering proxy rejects foreign origins and strips credentials', async (
     const response = await worker.fetch(new Request(endpoint, { method: 'POST', headers: { Origin: origin, Cookie: 'private=value', Authorization: 'Bearer private' }, body: '{}' }), env);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Climoptix proxy exposes only preparation and capabilities, never run/job operations', async () => {
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  const base = origin + '/planner/engineering-api/climoptix';
+  const originalFetch = globalThis.fetch, forwarded = [];
+  try {
+    globalThis.fetch = async (url, options) => {
+      forwarded.push(String(url));
+      assert.deepEqual(options.headers, { 'Content-Type': 'application/json' });
+      return Response.json({ preparationOnly: true });
+    };
+    assert.equal((await worker.fetch(new Request(base + '/capabilities'), env)).status, 200);
+    for (const unsafe of ['/run', '/jobs', '/prepare/run', '/optimize', '/capabilities/delete']) {
+      for (const method of ['GET', 'POST', 'DELETE'])
+        assert.equal((await worker.fetch(new Request(base + unsafe, { method }), env)).status, 403);
+    }
+    assert.equal((await worker.fetch(new Request(base + '/prepare', { method: 'POST', body: '{}' }), env)).status, 403);
+    assert.equal((await worker.fetch(new Request(base + '/prepare', {
+      method: 'POST', body: '{}', headers: { Origin: 'https://foreign.example' },
+    }), env)).status, 403);
+    const response = await worker.fetch(new Request(base + '/prepare', {
+      method: 'POST', body: '{}', headers: { Origin: origin, Cookie: 'private=x', Authorization: 'Bearer private' },
+    }), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.deepEqual(forwarded, [env.ENGINEERING_API_ORIGIN + '/climoptix/capabilities', env.ENGINEERING_API_ORIGIN + '/climoptix/prepare']);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+for (const operation of ['geometry', 'thermal-envelope', 'thermal-preview', 'thermal-epw']) test('Climoptix ' + operation + ' is same-origin POST-only, strips credentials and bypasses caching', async () => {
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  const endpoint = origin + '/planner/engineering-api/climoptix/' + operation;
+  for (const method of ['GET', 'PUT', 'DELETE']) assert.equal((await worker.fetch(new Request(endpoint, { method }), env)).status, 403);
+  for (const source of [undefined, 'https://foreign.example']) assert.equal((await worker.fetch(new Request(endpoint, { method: 'POST', headers: source ? { Origin: source } : {}, body: '{}' }), env)).status, 403);
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (target, options) => {
+      assert.equal(String(target), env.ENGINEERING_API_ORIGIN + '/climoptix/' + operation);
+      assert.deepEqual(options.headers, { 'Content-Type': 'application/json' });
+      assert.equal(new TextDecoder().decode(options.body), '{"project":{}}');
+      return Response.json({ kind: 'ClimoptixBuildingView' });
+    };
+    const response = await worker.fetch(new Request(endpoint, { method: 'POST', headers: { Origin: origin, Cookie: 'private=x', Authorization: 'Bearer private' }, body: '{"project":{}}' }), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.deepEqual(await response.json(), { kind: 'ClimoptixBuildingView' });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+for (const operation of ['prepare', 'geometry']) test('Climoptix ' + operation + ' streamed bodies are bounded without relying on Content-Length', async () => {
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  const endpoint = origin + '/planner/engineering-api/climoptix/' + operation;
+  const originalFetch = globalThis.fetch;
+  let cancelled = false, reads = 0;
+  try {
+    globalThis.fetch = async () => { throw new Error('Oversized body must not reach the backend'); };
+    const stream = new ReadableStream({
+      pull(controller) { reads++; controller.enqueue(new Uint8Array(1024 * 1024)); },
+      cancel() { cancelled = true; },
+    });
+    const response = await worker.fetch(new Request(endpoint, {
+      method: 'POST', headers: { Origin: origin }, body: stream, duplex: 'half',
+    }), env);
+    assert.equal(response.status, 413);
+    assert.equal(cancelled, true);
+    assert.ok(reads <= 7, 'Abort the stream as soon as it exceeds 4 MiB');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Foamlib settings export is same-origin POST-only, strips credentials and preserves ZIP data', async () => {
+  const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
+  const endpoint = origin + '/planner/engineering-api/climoptix/openfoam-settings';
+  for (const method of ['GET', 'PUT', 'DELETE']) assert.equal((await worker.fetch(new Request(endpoint, { method }), env)).status, 403);
+  assert.equal((await worker.fetch(new Request(endpoint, { method: 'POST', body: '{}' }), env)).status, 403);
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (target, options) => {
+      assert.equal(String(target), env.ENGINEERING_API_ORIGIN + '/climoptix/openfoam-settings');
+      assert.deepEqual(options.headers, { 'Content-Type': 'application/json' });
+      return new Response(new Uint8Array([80,75,3,4]), {headers:{'Content-Type':'application/zip'}});
+    };
+    const response = await worker.fetch(new Request(endpoint, { method:'POST', headers:{Origin:origin,Authorization:'Bearer private',Cookie:'private=value'}, body:'{}' }), env);
+    assert.equal(response.status,200);
+    assert.equal(response.headers.get('Content-Type'),'application/zip');
+    assert.deepEqual([...new Uint8Array(await response.arrayBuffer())],[80,75,3,4]);
+    assert.equal(response.headers.get('Cache-Control'),'no-store');
   } finally { globalThis.fetch = originalFetch; }
 });

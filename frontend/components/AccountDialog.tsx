@@ -13,6 +13,7 @@ export function AccountDialog({ onClose, initialSection = "account" }: { onClose
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const closeOnEscape = (event: KeyboardEvent) => {
+      if (dialog.current?.hasAttribute("data-window-maximized") || dialog.current?.querySelector(".window-help-host")) return;
       if (event.key === "Escape") { event.preventDefault(); onClose(); }
     };
     window.addEventListener("keydown", closeOnEscape, true);

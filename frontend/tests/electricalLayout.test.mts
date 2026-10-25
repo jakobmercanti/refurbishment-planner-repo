@@ -108,7 +108,7 @@ test("electrical panel omits manual mode but preserves routing and display contr
   assert.match(markup, /Circuit labels/);
   assert.doesNotMatch(markup, /<summary>Electrical layout help/);
   assert.match(markup, /Check layout/);
-  assert.match(markup, />Ok<\/button>/);
+  assert.match(markup, />OK<\/button>/);
   assert.match(markup, /Double-click/);
   assert.match(markup, /Right-click a route leg to add a corner/);
   assert.match(markup, /Circuits \(1\)/);

@@ -2,6 +2,7 @@ import type { DisplayUnits } from "@/lib/units";
 
 export type ThemePreference = "SYSTEM" | "LIGHT" | "DARK";
 export type WorkspaceDensity = "COMFORTABLE" | "COMPACT";
+export type NavigationPreference = "STANDARD" | "CAD" | "BLENDER";
 export const CURRENCY_OPTIONS = [
   { code: "GBP", name: "Pound sterling", symbol: "£" },
   { code: "USD", name: "US dollar", symbol: "$" },
@@ -30,12 +31,14 @@ export interface AppPreferences {
   confirmBeforeOpen: boolean;
   units: DisplayUnits;
   currency: CurrencyCode;
+  navigation?: NavigationPreference;
 }
 
 export interface PersistedAppearancePreferences {
   theme: ThemePreference;
   density: WorkspaceDensity;
   currency: CurrencyCode;
+  navigation?: NavigationPreference;
 }
 
 export const APP_APPEARANCE_STORAGE_KEY = "freefloorplan3d:appearance-preferences:v1";
@@ -46,11 +49,18 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   confirmBeforeOpen: true,
   units: "MM",
   currency: "GBP",
+  navigation: "STANDARD",
 };
 
 type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
 let currencyPreferenceSnapshot: CurrencyCode = DEFAULT_APP_PREFERENCES.currency;
 const currencyPreferenceSubscribers = new Set<() => void>();
+let navigationSnapshot: NavigationPreference | undefined;
+const navigationSubscribers = new Set<() => void>();
+
+function parseNavigation(value: unknown): NavigationPreference | undefined {
+  return value === "STANDARD" || value === "CAD" || value === "BLENDER" ? value : undefined;
+}
 
 function parseTheme(value: unknown): ThemePreference | undefined {
   if (typeof value !== "string") return undefined;
@@ -81,6 +91,7 @@ export function readAppearancePreferences(storage: PreferenceStorage): Partial<P
       ...(parseTheme(record.theme) ? { theme: parseTheme(record.theme) } : {}),
       ...(parseDensity(record.density) ? { density: parseDensity(record.density) } : {}),
       ...(parseCurrency(record.currency) ? { currency: parseCurrency(record.currency) } : {}),
+      ...(parseNavigation(record.navigation) ? { navigation: parseNavigation(record.navigation) } : {}),
     };
   } catch {
     return {};
@@ -96,21 +107,44 @@ function readBrowserCurrency(): CurrencyCode | undefined {
 }
 
 export function writeAppearancePreferences(
-  preferences: Pick<AppPreferences, "theme" | "density" | "currency">,
+  preferences: Pick<AppPreferences, "theme" | "density" | "currency" | "navigation">,
   storage: PreferenceStorage,
 ): void {
   currencyPreferenceSnapshot = preferences.currency;
+  navigationSnapshot = preferences.navigation ?? "STANDARD";
   try {
     storage.setItem(APP_APPEARANCE_STORAGE_KEY, JSON.stringify({
       theme: preferences.theme.toLowerCase(),
       density: preferences.density.toLowerCase(),
       currency: preferences.currency,
+      ...(preferences.navigation ? { navigation: preferences.navigation } : {}),
     }));
   } catch {
     // Private browsing and storage quotas may make persistence unavailable;
     // the in-memory preference still applies for the current session.
   }
   currencyPreferenceSubscribers.forEach((subscriber) => subscriber());
+  navigationSubscribers.forEach(subscriber => subscriber());
+}
+
+export function getNavigationSnapshot(): NavigationPreference {
+  if (typeof window === "undefined") return "STANDARD";
+  if (!navigationSnapshot) {
+    try { navigationSnapshot = readAppearancePreferences(window.localStorage).navigation ?? "STANDARD"; }
+    catch { navigationSnapshot = "STANDARD"; }
+  }
+  return navigationSnapshot;
+}
+
+export function subscribeNavigation(subscriber: () => void) {
+  navigationSubscribers.add(subscriber);
+  const update = (event: StorageEvent) => {
+    if (event.key !== APP_APPEARANCE_STORAGE_KEY && event.key !== null) return;
+    navigationSnapshot = undefined;
+    subscriber();
+  };
+  window.addEventListener("storage", update);
+  return () => { navigationSubscribers.delete(subscriber); window.removeEventListener("storage", update); };
 }
 
 export function subscribeCurrencyPreference(subscriber: () => void): () => void {

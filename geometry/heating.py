@@ -1,6 +1,9 @@
 """Portable catalogue emitter specifications; no geometry or derived output here."""
-from pydantic import BaseModel, Field
+
 from typing import Literal
+
+from pydantic import BaseModel, Field
+
 
 class HeatingPerformancePoint(BaseModel):
     flowC: float = Field(ge=5, le=95)
@@ -10,6 +13,7 @@ class HeatingPerformancePoint(BaseModel):
     fanMode: Literal["Silent", "Normal", "Boost"] = "Normal"
     electricalW: float = Field(ge=0, le=100_000)
     soundDb: float | None = Field(default=None, ge=0, le=150)
+
 
 class HeatingElementSpec(BaseModel):
     category: Literal["Type 10", "Type 11", "Type 21", "Type 22", "Type 33", "Towel", "Custom", "Boiler"] = "Custom"

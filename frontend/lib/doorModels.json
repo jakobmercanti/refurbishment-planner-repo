@@ -12,5 +12,11 @@
   {"key":"door-external-panelled","family":"doors-external","familyName":"External entrance doors","name":"Traditional panelled entrance","style":"entrance","operation":"HINGED","leaves":1,"width":950,"depth":160,"height":2100},
   {"key":"door-external-glazed","family":"doors-external","familyName":"External entrance doors","name":"Glazed entrance with lower panel","style":"entrance-glazed","operation":"HINGED","leaves":1,"width":1000,"depth":160,"height":2100},
   {"key":"door-barn-single","family":"doors-barn","familyName":"Barn doors","name":"Single braced plank door","style":"barn","operation":"SLIDING","leaves":1,"width":1000,"depth":140,"height":2100},
-  {"key":"door-barn-double","family":"doors-barn","familyName":"Barn doors","name":"Double braced plank doors","style":"barn","operation":"SLIDING","leaves":2,"width":2000,"depth":140,"height":2100}
+  {"key":"door-barn-double","family":"doors-barn","familyName":"Barn doors","name":"Double braced plank doors","style":"barn","operation":"SLIDING","leaves":2,"width":2000,"depth":140,"height":2100},
+  {"key":"door-opening-single","family":"doors-openings","familyName":"Openings","name":"Single opening","style":"opening","operation":"OPENING","profile":"RECTANGULAR","leaves":0,"width":900,"depth":150,"height":2100},
+  {"key":"door-opening-double","family":"doors-openings","familyName":"Openings","name":"Double opening","style":"opening","operation":"OPENING","profile":"RECTANGULAR","leaves":0,"width":1800,"depth":150,"height":2100},
+  {"key":"door-opening-arch","family":"doors-openings","familyName":"Openings","name":"Round arch","style":"opening","operation":"OPENING","profile":"ROUND_ARCH","leaves":0,"width":1000,"depth":150,"height":2300},
+  {"key":"door-opening-wide","family":"doors-openings","familyName":"Openings","name":"Wide rectangular opening","style":"opening","operation":"OPENING","profile":"RECTANGULAR","leaves":0,"width":2400,"depth":200,"height":2200},
+  {"key":"door-opening-shallow-arch","family":"doors-openings","familyName":"Openings","name":"Shallow arch","style":"opening","operation":"OPENING","profile":"SEGMENTAL_ARCH","leaves":0,"width":1600,"depth":150,"height":2200},
+  {"key":"door-opening-chamfered","family":"doors-openings","familyName":"Openings","name":"Chamfered opening","style":"opening","operation":"OPENING","profile":"CHAMFERED","leaves":0,"width":1200,"depth":150,"height":2200}
 ]

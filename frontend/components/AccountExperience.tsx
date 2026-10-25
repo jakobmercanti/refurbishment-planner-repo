@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { AUTH_SESSION_CHANGED, acceptAuthRedirect, currentSession, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
+import { AUTH_SESSION_CHANGED, AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
 import { PlansRedirect } from "@/components/PlansRedirect";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import type { PlanKey } from "@/lib/commercialCatalogue";
@@ -15,6 +15,7 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
   const [session, setSession] = useState<AuthSession | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [recovery, setRecovery] = useState(false);
   const [notice, setNotice] = useState("");
@@ -23,7 +24,16 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
   const [ready, setReady] = useState(false);
   const [section, setSection] = useState<AccountSection>("account");
   const [pendingPlanKey, setPendingPlanKey] = useState<PlanKey | null>(null);
+  const [verificationNeeded, setVerificationNeeded] = useState(false);
+  const [resendReadyAt, setResendReadyAt] = useState(0);
   const authForm = useRef<HTMLFormElement>(null);
+  const emailInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!resendReadyAt) return;
+    const timer = setTimeout(() => setResendReadyAt(0), Math.max(0, resendReadyAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [resendReadyAt]);
 
   useEffect(() => {
     let mounted = true;
@@ -53,21 +63,30 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
     let mounted = true;
     void (async () => {
       const redirect = await acceptAuthRedirect();
+      if (!mounted) return;
+      if (redirect === "recovery") { setRecovery(true); selectSection("account"); }
       const current = await currentSession();
+      if (redirect === "recovery" && !current) throw new AuthRequestError("The password reset session has expired. Request a new password reset link below.", 401, "recovery_link_invalid");
       if (!mounted) return;
       const requestedSection = embedded ? null : new URLSearchParams(window.location.search).get("tab");
       const requestedPlan = embedded ? null : new URLSearchParams(window.location.search).get("plan");
       if (requestedPlan === "starter" || requestedPlan === "pro" || requestedPlan === "studio") {
         setPendingPlanKey(requestedPlan);
       }
-      setSection(requestedSection === "plans" ? "plans" : "account");
+      if (redirect === "recovery") selectSection("account");
+      else setSection(requestedSection === "plans" ? "plans" : "account");
       if (redirect !== "recovery" && (redirect === "session" || (current && requestedPlan))) selectSection("plans");
       setSession(current);
       setRecovery(redirect === "recovery");
-      if (redirect === "recovery") setNotice("Choose a new password for your account.");
+      if (redirect === "recovery") setNotice("Reset link verified.");
       else if (redirect === "session") setNotice("Your email link is confirmed. You are signed in.");
       setReady(true);
-    })().catch((cause) => { if (mounted) { setError(cause instanceof Error ? cause.message : "Account access is temporarily unavailable."); setReady(true); } });
+    })().catch((cause) => {
+      if (mounted) {
+        if ((cause instanceof AuthRequestError && cause.code === "recovery_link_invalid") || new URLSearchParams(window.location.hash.slice(1)).get("type") === "recovery") { setRecovery(false); setMode("reset"); selectSection("account"); }
+        setError(cause instanceof Error ? cause.message : "Account access is temporarily unavailable."); setReady(true);
+      }
+    });
     return () => { mounted = false; };
   }, [embedded, selectSection]);
 
@@ -76,8 +95,13 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
     setBusy(true); setError(""); setNotice("");
     try {
       if (recovery) {
-        await updatePassword(password);
-        setRecovery(false); setPassword(""); setNotice("Password updated. You can continue to your workspace.");
+        if (password.length < 10) { setError("Use at least 10 characters for your new password."); return; }
+        if (password !== confirmPassword) { setError("The passwords do not match. Enter the same new password twice."); return; }
+        await updatePassword(password, session?.user.id);
+        if (session?.user.email) setEmail(session.user.email);
+        await signOut();
+        setSession(null); setRecovery(false); setMode("signin"); selectSection("account");
+        setPassword(""); setConfirmPassword(""); setNotice("Password changed. Sign in below with your new password.");
       } else if (mode === "signin") {
         const signedIn = await signIn(email, password);
         setSession(signedIn);
@@ -86,59 +110,98 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
         const registered = await signUp(email, password);
         setSession(registered);
         if (registered) selectSection("plans");
-        setNotice(registered ? "Account created." : "Check your email to verify your account, then sign in.");
+        setPassword("");
+        setVerificationNeeded(!registered);
+        if (!registered) setResendReadyAt(Date.now() + 60_000);
+        setNotice(registered ? "Account created." : "Account request accepted. If this is a new account, check your inbox and spam for a verification link. If you already registered, use Sign in or Forgot your password. This response does not confirm that an email was sent.");
       } else {
         await sendPasswordReset(email);
-        setNotice("If the address can receive account email, a password-reset link is on its way.");
+        setNotice("Password reset requested. If this address has an account and can receive email, open the newest reset link in your inbox or spam folder, then choose a new password.");
       }
     } catch (cause) {
+      if (recovery && cause instanceof AuthRequestError && [401, 403].includes(cause.status)) {
+        setRecovery(false); setMode("reset"); setPassword(""); setConfirmPassword("");
+      }
+      if (cause instanceof AuthRequestError && cause.code === "email_not_confirmed") setVerificationNeeded(true);
       setError(cause instanceof Error ? cause.message : "The account request could not be completed.");
     } finally { setBusy(false); setShowPassword(false); }
   }
 
+  async function resendVerification() {
+    if (busy || resendReadyAt || !emailInput.current?.reportValidity()) return;
+    setBusy(true); setError(""); setNotice("");
+    // An interrupted response may still have sent mail. Do not permit rapid
+    // repeated sends, and never resend automatically after a network failure.
+    setResendReadyAt(Date.now() + 60_000);
+    try {
+      await resendVerificationEmail(email);
+      setNotice("Verification requested. If this address has an unverified account, check your inbox and spam and use the newest link. An already verified account should use Sign in. Delivery is not guaranteed by this response.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The verification email could not be requested. Please try again later.");
+    } finally { setBusy(false); }
+  }
+
   async function leaveAccount() {
-    await signOut(); setSession(null); setNotice("You are signed out.");
+    await signOut(); setSession(null); setRecovery(false); setMode("signin"); setPassword(""); setConfirmPassword(""); setNotice("You are signed out.");
+  }
+
+  function startPasswordChange() {
+    selectSection("account"); setRecovery(true); setPassword(""); setConfirmPassword(""); setError(""); setNotice("");
   }
 
   const sectionTabs = <nav className="commercial-tabs account-section-tabs" role="tablist" aria-label="Account sections">
-    <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>{session ? "Account" : "Sign in"}</button>
-    <a id="plans-section-tab" href={`${base}/plans/`} target="_blank" rel="noopener noreferrer">Plans ↗</a>
+    <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>{recovery || mode === "reset" ? "Reset password" : session ? "Account" : "Sign in"}</button>
+    {!recovery && <a id="plans-section-tab" href={`${base}/plans/`} target="_blank" rel="noopener noreferrer">Plans ↗</a>}
   </nav>;
 
   const accountContent = <section className="commercial-card account-card">
-    <p className="commercial-eyebrow">YOUR WORKSPACE</p>
-    <h1>{session ? "Account ready" : recovery ? "Set a new password" : pendingPlanKey ? "Sign in to continue" : "Sign in when you want cloud features"}</h1>
-    <p className="commercial-lede">{pendingPlanKey && !session && !recovery
+    <p className="commercial-eyebrow">{recovery || mode === "reset" ? "PASSWORD RESET" : "YOUR WORKSPACE"}</p>
+    <h1>{recovery ? "Set a new password" : mode === "reset" ? "Reset your password" : session ? "Account ready" : pendingPlanKey ? "Sign in to continue" : "Sign in when you want cloud features"}</h1>
+    <p className="commercial-lede">{recovery ? "Enter your new password twice. Use at least 10 characters. After saving, you will be signed out so you can sign in with your new password."
+      : mode === "reset" ? "Enter your account email to request a reset link. Open that link to set a new password; you do not need to know your old password."
+      : pendingPlanKey && !session
       ? `Sign in to continue with ${pendingPlanKey.charAt(0).toUpperCase() + pendingPlanKey.slice(1)}. Your selection is kept; no payment has been taken.`
       : "Floorplanning, Electrical Layout, Heating Layout and Energy & Insulation / EPC retrofit planning are free without an account. Create an account only for cloud backups or paid plans. Energy tools are for preliminary planning, not an official EPC."}</p>
-    {session ? (
+    {!ready ? <p role="status">Checking account…</p> : session && !recovery && mode !== "reset" ? (
       <div className="commercial-stack">
         <p className="commercial-status">Signed in{session.user.email ? " as " + session.user.email : ""}.</p>
         <a className="commercial-primary" href={base + "/workspace/"} target={embedded ? "_blank" : undefined} rel={embedded ? "noopener noreferrer" : undefined}>Open cloud workspace</a>
+        <button className="commercial-secondary" type="button" onClick={startPasswordChange}>Change password</button>
         <button className="commercial-secondary" type="button" onClick={() => void leaveAccount()}>Sign out</button>
       </div>
-    ) : !ready ? <p role="status">Checking account…</p> : (
+    ) : (
       <>
-        {!recovery && <div className="commercial-tabs account-auth-tabs" role="tablist" aria-label="Account options">
-          {(["signin", "signup"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={mode === value} className={mode === value ? "selected" : ""} onClick={() => { setMode(value); setError(""); setNotice(""); }}>
+        {!recovery && mode !== "reset" && <div className="commercial-tabs account-auth-tabs" role="tablist" aria-label="Account options">
+          {(["signin", "signup"] as const).map((value) => <button key={value} type="button" role="tab" disabled={busy} aria-selected={mode === value} className={mode === value ? "selected" : ""} onClick={() => { setMode(value); setVerificationNeeded(false); setError(""); setNotice(""); }}>
             {value === "signin" ? "Sign in" : "Create account"}
           </button>)}
         </div>}
         <form ref={authForm} className="commercial-stack" onSubmit={submit}>
-          {recovery ? <label>New password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label> : <>
-            <label>Email<input autoComplete="email" type="email" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+          {recovery ? <>
+            {session?.user.email && <p className="commercial-footnote">Changing the password for {session.user.email}.</p>}
+            <label>New password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+            <label>Confirm new password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+          </> : <>
+            <label>Email<input ref={emailInput} autoComplete="email" type="email" required disabled={busy} maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
             {(mode === "signin" || mode === "signup") && <label>Password<input autoComplete={mode === "signup" ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
           </>}
           {(recovery || mode === "signin" || mode === "signup") && <button className="commercial-secondary account-password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide password" : "Show password"}</button>}
           {error && <p className="commercial-error" role="alert">{error}</p>}
           {notice && <p className="commercial-status" role="status">{notice}</p>}
-          <button className="commercial-primary" type="submit" disabled={busy}>{busy ? "Please wait…" : recovery ? "Update password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
+          <button className="commercial-primary" type="submit" disabled={busy || (mode === "signup" && verificationNeeded && !!resendReadyAt)}>{busy ? "Please wait…" : recovery ? "Save new password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
+          {!recovery && (mode === "signup" || verificationNeeded) && <div className="commercial-stack">
+            <p className="commercial-footnote">Already registered? Choose Sign in or reset your password; creating the account again does not resend verification. New or unverified accounts can request another link below. Allow at least 60 seconds between requests.</p>
+            <button className="commercial-secondary" type="button" disabled={busy || !!resendReadyAt} onClick={() => void resendVerification()}>{resendReadyAt ? "Resend available after 60 seconds" : "Resend verification email"}</button>
+            {mode === "signup" && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => { setMode("signin"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Use existing account · Sign in</button>}
+          </div>}
         </form>
-        {!recovery && mode === "signin" && <button className="commercial-secondary account-recovery-button" type="button" onClick={() => { setMode("reset"); setError(""); setNotice(""); }}>Forgot your password?</button>}
-        {mode === "reset" && !recovery && <button className="commercial-secondary account-recovery-button" type="button" onClick={() => { setMode("signin"); setError(""); setNotice(""); }}>Back to sign in</button>}
+        {recovery && <button className="commercial-secondary account-recovery-button" type="button" disabled={busy} onClick={() => void leaveAccount()}>Cancel and return to sign in</button>}
+        {!recovery && mode === "signin" && <button className="commercial-secondary account-recovery-button" type="button" disabled={busy} onClick={() => { setMode("reset"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Forgot your password?</button>}
+        {mode === "reset" && !recovery && <button className="commercial-secondary account-recovery-button" type="button" disabled={busy} onClick={() => { setMode("signin"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Back to sign in</button>}
       </>
     )}
-    <p className="commercial-footnote">Email verification is required before paid workspace features are available. Sign-in and sign-out are shared between open tabs on this site; your planner stays open.</p>
+    <p className="commercial-footnote">{recovery || mode === "reset" ? "Use only the newest reset email. If a link has expired or was already used, request a new one. Your saved floorplans are not changed by resetting your password."
+      : "Email verification is required before paid workspace features are available. Sign-in and sign-out are shared between open tabs on this site; your planner stays open."}</p>
   </section>;
 
   const content = <>

@@ -1,0 +1,5 @@
+[
+  { "key": "people-standing", "posture": "STANDING", "label": "Standing", "widthFactor": 0.29, "depthFactor": 0.20, "heightFactor": 1.0 },
+  { "key": "people-seated", "posture": "SEATED", "label": "Seated", "widthFactor": 0.31, "depthFactor": 0.50, "heightFactor": 0.765 },
+  { "key": "people-lying", "posture": "LYING", "label": "Lying down", "widthFactor": 0.30, "depthFactor": 1.0, "heightFactor": 0.18 }
+]

@@ -37,8 +37,7 @@ class SupabaseREST:
         self.url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
         self.publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
         self.service_key = (
-            os.getenv("SUPABASE_SECRET_KEY", "").strip()
-            or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+            os.getenv("SUPABASE_SECRET_KEY", "").strip() or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         )
         self.opener = build_opener(ProxyHandler({}))
 
@@ -72,13 +71,13 @@ class SupabaseREST:
                     code = provider_message[:80]
                 elif isinstance(provider_code, str) and provider_code.isalnum():
                     code = provider_code[:20]
-            except (json.JSONDecodeError, AttributeError):
+            except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
                 pass
             raise SupabaseUnavailable(message, status_code=error.code, code=code) from None
         except (URLError, TimeoutError, OSError) as error:
             raise SupabaseUnavailable("Supabase could not be reached.") from error
 
-    def verify_user(self, access_token: str) -> VerifiedUser:
+    def verify_user(self, access_token: str, *, require_confirmed_email: bool = False) -> VerifiedUser:
         if not self.auth_configured:
             raise SupabaseUnavailable("Account services are not configured yet.")
         if len(access_token) > 8192 or not access_token.strip():
@@ -98,7 +97,7 @@ class SupabaseREST:
             user_id = UUID(str(user["id"]))
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             raise InvalidAccessToken("Sign in again to continue.") from None
-        confirmed = bool(user.get("email_confirmed_at") or user.get("confirmed_at"))
+        confirmed = bool(user.get("email_confirmed_at") or (not require_confirmed_email and user.get("confirmed_at")))
         if os.getenv("REQUIRE_VERIFIED_EMAIL", "true").lower() == "true" and not confirmed:
             raise PermissionError("Verify your email address before using the paid workspace.")
         email = user.get("email")
@@ -140,7 +139,7 @@ class SupabaseREST:
             return None
         try:
             return json.loads(payload)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             raise SupabaseUnavailable("Supabase returned an invalid response.") from None
 
     def rpc(self, function: str, parameters: dict[str, Any], *, max_bytes: int = 2_000_000) -> Any:

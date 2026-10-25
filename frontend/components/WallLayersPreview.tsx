@@ -21,7 +21,7 @@ export function WallLayersPreview({ assembly, materials, appearanceControls = fa
         </mesh>;
       })}
     </FixturePreview>
-    <details><summary>Layer key & preview guidance</summary><small>Outside → inside. Drag to rotate. Illustrative wall sample, not a fit calculation.</small>
+    <details><summary>Layer key · outside → inside</summary>
     <ol>{assembly.layers.map((layer, index) => <li key={layer.layerId}><span style={{ display: "inline-block", width: 10, height: 10, marginRight: 6, background: layer.colorHex ?? LAYER_COLOURS[index % LAYER_COLOURS.length] }} />{materials.find(m => m.materialId === layer.materialId)?.name ?? "Wall — layers not defined"} · {Number(layer.thicknessMm.toFixed(2))} mm</li>)}</ol></details>
   </section>;
 }
