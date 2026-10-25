@@ -4,7 +4,7 @@ import { cfdProject } from "../climoptixFixtures";
 import { cfdWindow, eventually, menu, startBrowserHarness } from "./harness.mjs";
 
 let harness;
-before(async () => { harness = await startBrowserHarness(); });
+before(async () => { harness = await startBrowserHarness({ climoptixEnabled: true }); });
 after(async () => { await harness?.close(); });
 
 const panel = (page, title) => page.locator(".floating-toolbar").filter({ has: page.getByLabel(`Move ${title}`, { exact: true }) }).filter({ visible: true });

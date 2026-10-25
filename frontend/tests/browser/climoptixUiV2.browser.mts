@@ -6,7 +6,7 @@ import { duplicateCFDScenario } from "../../lib/climoptixDocument";
 import { cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
 
 let harness;
-before(async () => { harness = await startBrowserHarness(); });
+before(async () => { harness = await startBrowserHarness({ climoptixEnabled: true }); });
 after(async () => { await harness?.close(); });
 async function open(t, project = cfdProject(), options = {}) {
   const session = await harness.session(project, options);

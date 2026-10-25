@@ -10,7 +10,7 @@ import { eventually, menu, startBrowserHarness } from "./harness.mjs";
 
 let harness;
 before(async () => {
-  harness = await startBrowserHarness();
+  harness = await startBrowserHarness({ climoptixEnabled: true });
 });
 after(async () => {
   await harness?.close();
@@ -143,13 +143,15 @@ async function layoutMatrix(ui, page, theme, style = "default") {
         contrast >= 4.5,
         `Active step contrast ${contrast} at ${width}px`,
       );
-      const footer = await ui.locator(".thermal-footer").boundingBox();
-      assert.ok(
-        footer &&
+      // Viewport changes schedule floating-window clamping on the next frame.
+      // Wait for that reflow; still reject any persistent offscreen footer.
+      await eventually(
+        () => ui.locator(".thermal-footer").boundingBox(),
+        footer => footer &&
           footer.x >= -1 &&
           footer.x + footer.width <= width + 1 &&
           footer.y + footer.height <= height + 1,
-        JSON.stringify({ width, name, footer }),
+        JSON.stringify({ width, name, theme, style }),
       );
       assert.equal(
         await ui.evaluate((e) => e.scrollWidth <= e.clientWidth + 2),

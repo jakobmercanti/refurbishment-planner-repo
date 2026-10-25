@@ -6,7 +6,7 @@ import { eventually, startBrowserHarness } from "./harness.mjs";
 
 let harness;
 before(async () => {
-  harness = await startBrowserHarness();
+  harness = await startBrowserHarness({ climoptixEnabled: true });
 });
 after(async () => {
   await harness?.close();

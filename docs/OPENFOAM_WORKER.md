@@ -12,6 +12,18 @@ verifies the token with Supabase and restricts execution to its server-configure
 verified `CFD_ALLOWED_EMAIL`. Account tokens never enter URLs or localStorage.
 No service-role key, billing secret or browser-supplied executable is required.
 
+Climoptix is a private enabled-account preview, not a free/paid plan entitlement.
+The workspace option, its content and the source-editor return link are hidden
+until authenticated worker capabilities verify the current account namespace.
+Sign-out/account changes immediately remove access and return to Floorplan;
+saved local simulations are preserved. Focus and periodic checks revalidate
+access, failing closed on errors. Runtime acceptance is separate from access:
+an enabled account may open setup while execution is temporarily unavailable.
+Local Next.js uses the same worker through a scoped same-origin rewrite, with
+an optional server-only `CFD_WORKER_ORIGIN` override. No browser email allowlist
+or plan-preview setting grants access; the worker's verified allowlist remains
+authoritative on every compute request.
+
 Railway project: `45ec36d9-5b66-437c-a1b3-d85bdfb5a97f`.
 Production: `e1e7e064-a93e-4c5d-8f96-fa21dcc00e2b`.
 Worker service: `535fa69d-bd31-4595-bec3-b2a00c1f66b1`.

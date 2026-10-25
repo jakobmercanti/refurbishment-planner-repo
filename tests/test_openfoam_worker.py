@@ -111,6 +111,31 @@ def test_auth_and_finite_body_are_fail_closed(tmp_path, monkeypatch):
     assert rejected.value.status_code == 403
 
 
+@pytest.mark.parametrize('allowed,email,confirmed,status', [
+    ('allowed@example.com', 'allowed@example.com', True, 200),
+    (' ALLOWED@example.com ', 'allowed@example.com', True, 200),
+    ('allowed@example.com', 'other@example.com', True, 403),
+    ('allowed@example.com', 'allowed@example.com', False, 403),
+    ('', 'allowed@example.com', True, 403),
+])
+def test_private_workspace_capabilities_require_verified_enabled_account(tmp_path, monkeypatch, allowed, email, confirmed, status):
+    monkeypatch.setenv('CFD_ALLOWED_EMAIL', allowed)
+    owner = VerifiedUser(uuid4(), email, confirmed)
+    def verify(self, token, **kwargs):
+        assert token == 'test-token'
+        assert kwargs['require_confirmed_email'] is True
+        return owner
+    monkeypatch.setattr('backend.app.openfoam_service.SupabaseREST.verify_user', verify)
+    with TestClient(create_app(tmp_path, start_runner=False)) as client:
+        response = client.get('/climoptix/worker/capabilities', headers={'Authorization': 'Bearer test-token'})
+        assert response.status_code == status
+        assert response.headers['cache-control'] == 'no-store'
+        if status == 200:
+            assert response.json()['namespace'] == str(owner.id)
+            # Access does not require a ready/running solver.
+            assert response.json()['run'] is False
+
+
 def test_quality_and_convergence_require_actual_measured_evidence(tmp_path):
     request = fixture()
     text = ('cells: 100\nMesh non-orthogonality Max: 3 average: 1\nMax skewness = 0.2\n'

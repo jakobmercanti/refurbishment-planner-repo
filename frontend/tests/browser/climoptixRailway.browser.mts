@@ -4,7 +4,7 @@ import {cfdProject} from "../climoptixFixtures";
 import {cfdWindow, eventually, startBrowserHarness} from "./harness.mjs";
 
 let harness;
-before(async () => {harness = await startBrowserHarness();});
+before(async () => {harness = await startBrowserHarness({ climoptixEnabled: true });});
 after(async () => {await harness?.close();});
 async function open(t, project = cfdProject()) {
   const session = await harness.session(project); t.after(() => session.close());
@@ -103,6 +103,9 @@ test("authenticated HTTP worker feeds real log samples, cancels jobs and recover
     await route.fulfill({contentType:'application/json',body:JSON.stringify(result)});
   });
   await page.evaluate(owner=>{sessionStorage.setItem('freefloorplan3d:commercial-session:v1',JSON.stringify({access_token:'test-access',refresh_token:'test-refresh',expires_at:Math.floor(Date.now()/1000)+3600,user:{id:owner}}));window.dispatchEvent(new Event('freefloorplan3d:auth-session-changed'));},owner);
+  // Account changes close the private workspace until server reauthorization.
+  await eventually(()=>page.locator('.workspace-mode-select option[value="CLIMOPTIX"]').count(), n=>n===1);
+  await page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');
   await eventually(()=>ui.getByRole('button',{name:'Run Office airflow',exact:true}).isEnabled(),Boolean);
   await ui.getByRole('button',{name:'Run Office airflow',exact:true}).click();
   await eventually(()=>job,Boolean);

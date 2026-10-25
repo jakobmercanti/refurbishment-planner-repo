@@ -4,7 +4,7 @@ import { cfdProject } from "../climoptixFixtures";
 import { cfdWindow, eventually, menu, startBrowserHarness } from "./harness.mjs";
 
 let harness;
-before(async () => { harness = await startBrowserHarness(); });
+before(async () => { harness = await startBrowserHarness({ climoptixEnabled: true }); });
 after(async () => { await harness?.close(); });
 const panel = (page, title) => page.locator(".floating-toolbar").filter({ has: page.getByLabel(`Move ${title}`, { exact: true }) }).filter({ visible: true });
 const roomGeometry = rooms => rooms.map(room => ({ id: room.id, vertices: room.vertices, height: room.wall_height, thickness: room.wall_thickness, obstacles: room.obstacles, openings: room.openings.map(opening => ({ id: opening.id, wall: opening.parent_wall_id, kind: opening.kind, offset: opening.offset_mm, width: opening.width, height: opening.height, sill: opening.sill_height_mm })) }));

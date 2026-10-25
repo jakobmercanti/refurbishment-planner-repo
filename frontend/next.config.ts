@@ -26,6 +26,12 @@ const nextConfig: NextConfig = {
         source: "/auth-api/:endpoint(token|signup|resend|otp|recover|user|logout|settings)",
         destination: `${authOrigin}/auth/v1/:endpoint`,
       }] : []),
+      // The private worker is a separate Railway service; it validates every
+      // bearer token and enabled account itself, including in local development.
+      {
+        source: "/engineering-api/climoptix/worker/:path*",
+        destination: `${process.env.CFD_WORKER_ORIGIN ?? "https://climoptix-openfoam-production.up.railway.app"}/climoptix/worker/:path*`,
+      },
       {
         source: "/engineering-api/:path*",
         destination: `${process.env.ENGINEERING_API_ORIGIN ?? "http://127.0.0.1:8000"}/:path*`,

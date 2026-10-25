@@ -28,6 +28,7 @@ import { FloatingToolbar, positionedToolbarDock } from "@/components/FloatingToo
 import { PersonEditor } from "@/components/PersonEditor";
 import { PlannerBuildWorkspace } from "@/components/PlannerBuildWorkspace";
 import { ClimoptixWorkspace } from "@/components/ClimoptixWorkspace";
+import { useClimoptixAccess } from "@/components/useClimoptixAccess";
 import { usePlannerBuildView } from "@/lib/plannerBuildView";
 import { constrainObstacleToRoom, requiresWallMount, DEFAULT_OBSTACLE_WALL_LOCK, obstacleFitsInRoom, transferObstacle, type PlacementCandidate, type PlacementRequest, type PlacementWall } from "@/lib/elementPlacement";
 import { normalizeRoomPerson } from "@/lib/person";
@@ -105,8 +106,13 @@ export default function Home() {
   const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
   const [workspaceMode, setWorkspaceModeState] = useState<"FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX">("FLOORPLAN");
   const workspaceRequest = useRef(0);
+  const closePrivateWorkspace = useCallback(() => {
+    setWorkspaceModeState(current => current === "CLIMOPTIX" ? "FLOORPLAN" : current);
+  }, []);
+  const climoptixEnabled = useClimoptixAccess(API_URL, closePrivateWorkspace);
   function setWorkspaceMode(nextMode: typeof workspaceMode) {
     workspaceRequest.current++;
+    if (nextMode === "CLIMOPTIX" && !climoptixEnabled) return;
     setWorkspaceModeState(nextMode);
   }
   const [cfdMenuTarget,setCFDMenuTarget]=useState<HTMLDivElement|null>(null);
@@ -299,6 +305,7 @@ export default function Home() {
   }
 
   async function changeWorkspaceMode(nextMode: "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX") {
+    if (nextMode === "CLIMOPTIX" && !climoptixEnabled) return;
     const request = ++workspaceRequest.current;
     let demoMode = false;
     if (nextMode === "PLANNERBUILD") {
@@ -623,7 +630,7 @@ export default function Home() {
       <header className="topbar">
         <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar onClimoptixMenuTarget={setCFDMenuTarget} buildingView={buildingView} onBuildingViewChange={changeBuildingView} roofAvailable={(roofPreview??building.roof).enabled!==false} onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} workspaceMode={workspaceMode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onDisplayUnitsChange={(units) => setPreferences((current) => ({ ...current, units }))} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenElectricalLayout={openElectricalLayout} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
-          <label className="workspace-mode-control"><span className="workspace-mode-label">Workspace</span><select className="workspace-mode-select" aria-label="Workspace" value={workspaceMode} onChange={(event) => void changeWorkspaceMode(event.target.value as "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX")}><option value="FLOORPLAN">Floorplan</option><option value="PLANNERBUILD">PlannerBuild</option><option value="CLIMOPTIX">Climoptix CFD</option></select></label>
+          <label className="workspace-mode-control"><span className="workspace-mode-label">Workspace</span><select className="workspace-mode-select" aria-label="Workspace" value={workspaceMode} onChange={(event) => void changeWorkspaceMode(event.target.value as "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX")}><option value="FLOORPLAN">Floorplan</option><option value="PLANNERBUILD">PlannerBuild</option>{climoptixEnabled && <option value="CLIMOPTIX">Climoptix CFD</option>}</select></label>
           {workspaceMode !== "CLIMOPTIX" && <div className="app-nav-modes" role="group" aria-label={workspaceMode === "FLOORPLAN" ? "Floorplan view" : "PlannerBuild view"}>
             {workspaceMode === "FLOORPLAN" ? <>
               <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => { setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("EDITOR"); }}>2D</button>
@@ -635,7 +642,7 @@ export default function Home() {
       </header>
 
       <div className="local-save-status" role="status" title="Projects are saved in this browser. Download a .floorplan3d backup before clearing browser data.">{local.status}</div>
-      {insulationEditRequest && workspaceMode === "FLOORPLAN" && <div className="thermal-return-bar" role="region" aria-label="Return to thermal study"><span>Editing source insulation · {insulationEditRequest.elementId.split("|")[1]} · finish or cancel the layer editor before returning.</span><button onClick={() => { setInsulationEditRequest(undefined);setWorkspaceMode("CLIMOPTIX"); }}>Return to Climoptix</button></div>}
+      {climoptixEnabled && insulationEditRequest && workspaceMode === "FLOORPLAN" && <div className="thermal-return-bar" role="region" aria-label="Return to thermal study"><span>Editing source insulation · {insulationEditRequest.elementId.split("|")[1]} · finish or cancel the layer editor before returning.</span><button onClick={() => { setInsulationEditRequest(undefined);setWorkspaceMode("CLIMOPTIX"); }}>Return to Climoptix</button></div>}
       {compactWorkspace && workspaceMode === "FLOORPLAN" && <nav className="compact-tool-switcher" aria-label="Workspace tools">
         {(mode === "EDITOR" ? [...FLOORPLAN_TOOLBARS, { id: "floorplan-coordinates" as const, name: "Coordinates" }] : VIEWER_TOOLBARS).filter(tool => toolbarAvailability[tool.id]).map(tool =>
           <button key={tool.id} type="button" aria-pressed={compactActiveTool === tool.id} onClick={() => selectCompactTool(tool.id)}>{({ "floorplan-build": "Build", "floorplan-openings": "Elements", "floorplan-view": "View", "floorplan-coordinates": "Coordinates", "viewer-analysis": "Elements", "viewer-layout-analysis": "Analysis", "viewer-person": "Person", "viewer-view": "View" })[tool.id]}</button>)}
@@ -719,7 +726,7 @@ export default function Home() {
         </section>
       ) : null}
       </div>
-      <section className="climoptix-screen" hidden={workspaceMode!=="CLIMOPTIX"} aria-hidden={workspaceMode!=="CLIMOPTIX"}><ClimoptixWorkspace active={workspaceMode==="CLIMOPTIX"} key={`${local.project.projectId}|${local.documentSession}`} project={local.project} apiUrl={API_URL} menuTarget={cfdMenuTarget} onChange={(next,checkpoint,groups)=>local.setCFDScenarios(next,scopeToken,checkpoint,groups)} onUndo={undoProject} onRedo={redoProject} canUndo={local.canUndo} canRedo={local.canRedo} onEditBuilding={()=>{setPlacement(null);setMode("EDITOR");void changeWorkspaceMode("FLOORPLAN");}} onEditInsulation={(face, constructionScenario) => { editBuilding(p => { const next=selectFloor(p,face.floorId);return {...next,energyLayout:{...(next.energyLayout??newEnergyProject()),activeScenarioId:constructionScenario}}; });setInsulationEditRequest({id:crypto.randomUUID(),elementId:face.elementId,pointMm:[face.centroidMm[0],face.centroidMm[1]]});setPlacement(null);setMode("EDITOR");setWorkspaceMode("FLOORPLAN"); }}/></section>
+      {climoptixEnabled && <section className="climoptix-screen" hidden={workspaceMode!=="CLIMOPTIX"} aria-hidden={workspaceMode!=="CLIMOPTIX"}><ClimoptixWorkspace active={workspaceMode==="CLIMOPTIX"} key={`${local.project.projectId}|${local.documentSession}`} project={local.project} apiUrl={API_URL} menuTarget={cfdMenuTarget} onChange={(next,checkpoint,groups)=>local.setCFDScenarios(next,scopeToken,checkpoint,groups)} onUndo={undoProject} onRedo={redoProject} canUndo={local.canUndo} canRedo={local.canRedo} onEditBuilding={()=>{setPlacement(null);setMode("EDITOR");void changeWorkspaceMode("FLOORPLAN");}} onEditInsulation={(face, constructionScenario) => { editBuilding(p => { const next=selectFloor(p,face.floorId);return {...next,energyLayout:{...(next.energyLayout??newEnergyProject()),activeScenarioId:constructionScenario}}; });setInsulationEditRequest({id:crypto.randomUUID(),elementId:face.elementId,pointMm:[face.centroidMm[0],face.centroidMm[1]]});setPlacement(null);setMode("EDITOR");setWorkspaceMode("FLOORPLAN"); }}/></section>}
       <section className="planner-build-screen" hidden={workspaceMode !== "PLANNERBUILD"} aria-hidden={workspaceMode !== "PLANNERBUILD"}>{local.project ? <PlannerBuildWorkspace project={local.project} view={plannerBuildView} displayUnits={preferences.units} defaultCurrency={defaultCurrency} onQuotesChange={local.setQuotes} onSaveQuotes={local.saveQuotes} onActivitiesChange={(activities) => local.setPlannerBuild({ ...(local.project?.plannerBuild ?? { activities: [] }), activities })} demoMode={plannerBuildDemoMode} onDemoLimitReached={openPlansDialog} /> : <p className="pb-loading-state" role="status">Loading project data…</p>}</section>
 {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && (requiresWallMount(placement.obstacle) ? " · Snaps and aligns to a wall" : " · R to rotate")}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
       {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={asset=>{if(local.isScopeCurrent(scopeToken))local.addAsset(asset);}} onChange={next=>{if(local.isScopeCurrent(scopeToken))local.setInstances(next);}} onClose={() => setAssetsOpen(false)} />}

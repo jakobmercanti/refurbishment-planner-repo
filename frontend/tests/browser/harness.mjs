@@ -34,7 +34,7 @@ export async function readProject(page) {
   });
 }
 
-export async function startBrowserHarness() {
+export async function startBrowserHarness({ climoptixEnabled = false } = {}) {
   const require = createRequire(import.meta.url);
   const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
   const output = fileURLToPath(new URL("../../out/", import.meta.url));
@@ -86,6 +86,15 @@ export async function startBrowserHarness() {
         }
       });
       await context.addInitScript("window.__name = value => value; window.showSaveFilePicker = undefined; window.showOpenFilePicker = undefined;");
+      // CFD regression fixtures explicitly opt into a mocked enabled account.
+      // Other browser tests remain signed out; production has no test bypass.
+      if (climoptixEnabled) {
+        await context.addInitScript(`sessionStorage.setItem('freefloorplan3d:commercial-session:v1', JSON.stringify({access_token:'test-access',refresh_token:'test-refresh',expires_at:Math.floor(Date.now()/1000)+3600,user:{id:'11111111-1111-4111-8111-111111111111'}}));`);
+        await context.route("**/climoptix/worker/capabilities", route => route.fulfill({contentType:"application/json", body:JSON.stringify({
+          connected:true, mesh:false, run:false, reason:"Test fixture: execution unavailable", namespace:"11111111-1111-4111-8111-111111111111",
+          limits:{cpu:2,memoryGb:4,wallTimeMinutes:15,storageGb:1,retentionDays:3,maxCells:500000,concurrentJobs:1},
+        })}));
+      }
       const page = await context.newPage(), errors = [];
       page.setDefaultTimeout(12000); page.on("pageerror", error => errors.push(error.message));
       if (project) {

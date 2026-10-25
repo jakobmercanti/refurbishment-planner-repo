@@ -6,7 +6,7 @@ import { refinementColour } from "../../lib/climoptixWorkflow";
 import { cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
 
 let harness;
-before(async () => { harness = await startBrowserHarness(); });
+before(async () => { harness = await startBrowserHarness({ climoptixEnabled: true }); });
 after(async () => { await harness?.close(); });
 const button = (scope, name) => scope.getByRole("button", { name, exact: true });
 const frame = page => page.locator(".cfx-setup-window");

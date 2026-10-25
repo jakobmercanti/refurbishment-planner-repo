@@ -6,7 +6,7 @@ import { cfdSettings, cfdWindow, eventually, startBrowserHarness } from "./harne
 
 let harness;
 before(async () => {
-  harness = await startBrowserHarness();
+  harness = await startBrowserHarness({ climoptixEnabled: true });
 });
 after(async () => {
   await harness?.close();
