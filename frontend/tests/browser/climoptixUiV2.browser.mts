@@ -142,6 +142,7 @@ test("boundary groups colour real 3D patches, transfer surfaces and apply physic
   await ui.getByRole("button", { name: "Redo", exact: true }).click();
   await eventually(saved, p => p.cfdScenarios[0].boundaries.collections.find(g => g.name === "Group")?.patchIds.includes(first.id));
   await cfdWindow(ui, "Boundaries");
+  await ui.getByRole("button", { name: "Actions for boundary group Group", exact: true }).click();
   await ui.getByRole("button", { name: "Edit boundary group Group", exact: true }).click();
   const form = ui.getByRole("region", { name: "Boundary group conditions", exact: true });
   await form.getByRole("checkbox", { name: "Use group conditions", exact: true }).check();

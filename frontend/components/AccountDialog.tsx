@@ -31,7 +31,7 @@ export function AccountDialog({ onClose, initialSection = "account" }: { onClose
         <div><span className="eyebrow">YOUR WORKSPACE</span><h2 id="account-dialog-title">Account &amp; plans</h2></div>
         <nav className="commercial-tabs account-dialog-tabs" role="tablist" aria-label="Account sections">
           <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={section === "account"} className={section === "account" ? "selected" : ""} onClick={() => setSection("account")}>Account</button>
-          <a id="plans-section-tab" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/plans/`} target="_blank" rel="noopener noreferrer">Plans ↗</a>
+          <a id="plans-section-tab" href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/plans/`} target="_blank" rel="noopener noreferrer">Open plans and billing <span aria-hidden="true">↗</span></a>
         </nav>
         <div className="window-header-actions"><WindowHelpButton title="Account & plans" /><button type="button" className="modal-close" onClick={onClose} aria-label="Close account window">×</button></div>
       </header>

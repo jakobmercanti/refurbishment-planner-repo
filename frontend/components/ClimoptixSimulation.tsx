@@ -5,7 +5,8 @@ import type { CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { samplingPlanes } from "@/lib/climoptixWorkflow";
 import { CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
-import { CFDNumber, Parameters, MeshPanel } from "./ClimoptixPanels";
+import { CFDNumber, Parameters } from "./CFDFields";
+import { MeshPanel } from "./ClimoptixMesh";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 

@@ -11,7 +11,7 @@ import {
   Plane,
   Vector3,
 } from "three";
-import type { ThreeEvent } from "@react-three/fiber";
+import { useThree, type ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
 import { createPortal } from "react-dom";
 import { ReadOnlyBuildingScene } from "./EngineeringViewer";
@@ -71,12 +71,19 @@ function hostLocation(patch: CFDPatch, p: Vec3): [number, number] | null {
 }
 function Frame({ request }: { request: string }) {
   const bounds = useBounds();
+  const controls = useThree(state => state.controls);
+  const framed = useRef<string | null>(null);
   useEffect(() => {
+    if (!controls) return;
     const id = requestAnimationFrame(() => {
+      // Bounds' API can change when controls mount or the viewer rerenders.
+      // Only an explicit fit, scene replacement or scope change may reframe.
+      if (framed.current === request) return;
+      framed.current = request;
       bounds.refresh().clip().fit();
     });
     return () => cancelAnimationFrame(id);
-  }, [bounds, request]);
+  }, [bounds, controls, request]);
   return null;
 }
 interface Props {
@@ -626,7 +633,7 @@ export function ClimoptixViewer({
           >
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
-            <Bounds fit clip observe margin={1.15} maxDuration={0.25}>
+            <Bounds margin={1.15} maxDuration={0.25}>
               {!buildingScene && (
                 <ReadOnlyBuildingScene
                   project={project}

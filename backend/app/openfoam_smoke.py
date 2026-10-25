@@ -14,6 +14,7 @@ from uuid import uuid4
 from backend.app.climoptix_provider import PreparationOnlyProvider
 from backend.app.openfoam_case import Submission, validate_submission
 from backend.app.openfoam_runtime import execute
+from backend.app.openfoam_telemetry import telemetry
 from geometry.climoptix_models import Scenario, Vent
 
 
@@ -82,6 +83,7 @@ def fixture(cpu: int = 1, turbulence: str = "laminar") -> Submission:
             "numerics": {"maxIterations": 1500, "residualTarget": 1e-4, "writeEveryIterations": 50},
         },
         postProcessing={"z": {"enabled": True, "count": 1}},
+        outputs={"probesMm": [(1000, 500, 500)]},
     )
     report = PreparationOnlyProvider().validate_scenario(project, scenario, "a" * 64)
     # Opposed, wall-hosted devices exercise the canonical vent-hole adapter.
@@ -154,6 +156,12 @@ def acceptance(root: Path, cancelled=lambda: False):
                 f"Runtime acceptance failed for {cpu} CPU / {turbulence}: "
                 f"{result.get('convergence')} {result.get('conservation')}; artifacts={result['artifacts']}"
             )
+        measured = telemetry(case)
+        if not measured["balance"] or len(measured["probes"]) != 1 or not any(
+            sample["velocityMS"] is not None and sample["pressureM2S2"] is not None
+            for sample in measured["probes"][0]["samples"]
+        ):
+            raise ValueError(f"Native probe/flux telemetry acceptance failed for {turbulence}.")
         results.append(
             {
                 "cpu": cpu,
@@ -161,6 +169,7 @@ def acceptance(root: Path, cancelled=lambda: False):
                 "mesh": result["mesh"],
                 "convergence": result["convergence"],
                 "conservation": result["conservation"],
+                "telemetry": measured,
             }
         )
     (root / "acceptance.json").write_text(json.dumps(results, indent=2))

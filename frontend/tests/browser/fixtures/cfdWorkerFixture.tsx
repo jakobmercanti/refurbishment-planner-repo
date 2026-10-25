@@ -111,6 +111,7 @@ function Fixture() {
       showArchived={showArchived}
       onShowArchived={setShowArchived}
       onSelect={setSelectedId}
+      onIssues={setSelectedId}
       onChange={(next) =>
         setProject((p) => ({
           ...p,

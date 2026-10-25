@@ -8,6 +8,26 @@ import { cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
 let harness;
 before(async () => { harness = await startBrowserHarness({ climoptixEnabled: true }); });
 after(async () => { await harness?.close(); });
+test("boundary conditions can be added through an explicit room and real surface picker", async t => {
+  const project = cfdProject(); project.cfdScenarios[0].seed = null;
+  const {page,ui,saved} = await open(t,project);
+  await cfdWindow(ui,'Boundaries');
+  const picker = ui.getByRole('combobox',{name:'Boundary seed room',exact:true});
+  await picker.selectOption({index:1});
+  await eventually(saved,p=>!!p.cfdScenarios[0].seed);
+  await eventually(()=>ui.getAttribute('data-preparation-state'),s=>s==='checked');
+  await ui.getByRole('button',{name:'Actions for boundary group Default surfaces',exact:true}).click();
+  const actions = ui.getByRole('dialog', {name:'Actions — Default surfaces', exact:true});
+  await actions.getByRole('button',{name:'Add boundary conditions to Default surfaces',exact:true}).click();
+  const dialog = ui.locator('.floating-toolbar').filter({has:page.getByText('Assign boundary surfaces',{exact:true})});
+  await dialog.getByRole('combobox',{name:'Boundary assignment surface type',exact:true}).selectOption('wall');
+  const available = dialog.getByRole('checkbox',{name:/Assign surface/});
+  assert.ok(await available.count()>0);
+  await available.first().check();
+  await dialog.getByRole('button',{name:'Apply and edit conditions',exact:true}).click();
+  await ui.getByRole('region',{name:'Boundary group conditions',exact:true}).waitFor();
+  await eventually(saved,p=>p.cfdScenarios[0].boundaries.collections.some(g=>g.id!=='all-surfaces'&&g.patchIds.length===1&&g.boundary));
+});
 const button = (scope, name) => scope.getByRole("button", { name, exact: true });
 const frame = page => page.locator(".cfx-setup-window");
 async function open(t, project = cfdProject(), width = 1440, inspect = false) {
@@ -53,8 +73,17 @@ async function renderState(page, name) {
       target: s.controls?.target.toArray(), position: mesh.position.toArray() };
   }, name);
 }
+async function cameraState(page) {
+  return page.evaluate(() => { const s = window.__cfdState(); return { position: s.camera.position.toArray(), quaternion: s.camera.quaternion.toArray(), target: s.controls.target.toArray() }; });
+}
+async function assertCameraUnchanged(page, before) {
+  // Wait past Bounds' animation duration; a single-frame assertion misses fits.
+  await page.waitForTimeout(400);
+  const after = await cameraState(page);
+  for (const key of ["position", "quaternion", "target"]) after[key].forEach((v, i) => assert.ok(Math.abs(v - before[key][i]) < 1e-6, `${key}[${i}] changed on selection`));
+}
 
-test("real 3D meshes use filled translucent refinement cuboids, opaque host-plane vents and orange camera-centred selection; face placement reuses the vent", async t => {
+test("real 3D selection only highlights orange without moving the camera; face placement reuses the vent", async t => {
   const project = cfdProject(), scenario = project.cfdScenarios![0];
   const report = realPreparation({ project, scenario, clientRevision: "a".repeat(64) });
   scenario.mesh.refinements = [
@@ -82,19 +111,55 @@ test("real 3D meshes use filled translucent refinement cuboids, opaque host-plan
     }
   }
   assert.doesNotMatch(await ui.locator(".cfx-viewer > footer").innerText(), /Dashed|wireframe|prescribed flow|solved results/);
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    const s = window.__cfdState(); s.camera.position.set(12, 7, 9); s.controls.target.set(3, 1, -3); s.controls.update(); s.invalidate();
+  });
+  await page.waitForTimeout(200);
+  const beforeSelection = await cameraState(page);
   await ui.locator(".cfx-refinement-name").filter({ hasText: "Occupied zone" }).click();
-  await eventually(() => renderState(page, "refinement:colour-five"), s => s?.colour === "#ff7900" && s.target.every((v, i) => Math.abs(v - [2, 1.1, -2.5][i]) < .03));
+  await eventually(() => renderState(page, "refinement:colour-five"), s => s?.colour === "#ff7900");
+  await assertCameraUnchanged(page, beforeSelection);
+  const viewport = ui.locator('.cfx-viewport'), scope = await viewport.getAttribute('data-scope');
+  await ui.locator('#cfx-setup-panel-mesh').click({position:{x:10,y:400}});
+  assert.equal(await ui.locator('.cfx-refinement-row.selected').count(),0);
+  assert.equal(await viewport.getAttribute('data-scope'),scope);
+  await ui.locator('.cfx-refinement-name').filter({hasText:'Occupied zone'}).click();
+  const canvasBox = await viewport.locator('canvas').boundingBox();
+  await viewport.locator('.stable-canvas-host').click({position:{x:canvasBox.width-10,y:canvasBox.height-20}});
+  assert.equal(await ui.locator('.cfx-refinement-row.selected').count(),0,'3D background removes selection');
+  await assertCameraUnchanged(page, beforeSelection);
+  await ui.locator(".cfx-refinement-name").filter({hasText:"Other zone"}).click();
+  await page.evaluate(() => {
+    const s = window.__cfdState(); s.camera.position.set(2, 1.1, -.5); s.controls.target.set(2, 1.1, -2.5); s.controls.update(); s.invalidate();
+  });
+  await page.waitForTimeout(250);
+  const beforePointerSelection = await cameraState(page);
+  const point = await page.evaluate(() => {
+    const s = window.__cfdState(), mesh = s.scene.getObjectByName("refinement:colour-five"), box = s.gl.domElement.getBoundingClientRect();
+    const p = mesh.position.clone().project(s.camera);
+    return {x:box.x+(p.x+1)*box.width/2,y:box.y+(1-p.y)*box.height/2};
+  });
+  await page.mouse.click(point.x, point.y);
+  await eventually(() => renderState(page,"refinement:colour-five"), s => s?.colour === "#ff7900");
+  await assertCameraUnchanged(page, beforePointerSelection);
+  await button(ui.locator(".cfx-view-selector"), "Fit").click();
+  await page.waitForTimeout(400);
+  assert.notDeepEqual(await cameraState(page), beforePointerSelection, "Explicit Fit remains available");
   await capture(page, "refinement-selected");
   await cfdWindow(ui, "Equipment");
+  const beforeVent = await cameraState(page);
   await ui.locator(".cfx-device-name").filter({ hasText: "floor device" }).click();
-  const vent = scenario.vents[1], h = report.patches.find(p => p.id === vent.host.patchId)!.host!;
-  const center = h.originMm.map((v, i) => v + h.uAxis[i] * h.widthMm * .4 + h.vAxis[i] * h.heightMm * .5);
-  await eventually(() => renderState(page, `vent:${vent.id}`), s => s?.colour === "#ff7900" && s.target.every((v, i) => Math.abs(v - [center[0]/1000, center[2]/1000, -center[1]/1000][i]) < .03));
+  const vent = scenario.vents[1];
+  await eventually(() => renderState(page, `vent:${vent.id}`), s => s?.colour === "#ff7900");
+  await assertCameraUnchanged(page, beforeVent);
   await ui.getByRole("combobox", { name: "CFD view scope", exact: true }).selectOption("room:room-1");
   await eventually(() => ui.locator(".cfx-viewport").getAttribute("data-scope"), v => v === "room:room-1");
+  await page.waitForTimeout(400);
+  const beforeScopedSelection = await cameraState(page);
   await ui.locator(".cfx-device-name").filter({ hasText: "floor device" }).click();
-  await eventually(() => ui.locator(".cfx-viewport").getAttribute("data-scope"), v => v === "building");
-  await eventually(() => renderState(page, `vent:${vent.id}`), s => s.target.every((v, i) => Math.abs(v - [center[0]/1000, center[2]/1000, -center[1]/1000][i]) < .03));
+  assert.equal(await ui.locator(".cfx-viewport").getAttribute("data-scope"), "room:room-1");
+  await assertCameraUnchanged(page, beforeScopedSelection);
   await capture(page, "vent-selected");
   await button(ui, "Edit floor device").click();
   const editor = page.locator(".cfx-equipment-editor");
@@ -126,13 +191,15 @@ test("boundary groups offer conditions and explicit unique surface assignment wi
   await cfdWindow(ui, "Boundaries"); await layout(page, "Maximise window");
   await button(ui, "Add boundary group").click();
   const group = ui.getByRole("region", { name: "Boundary group Group", exact: true });
-  await button(group, "Conditions for boundary group Group").click();
+  await button(group, "Actions for boundary group Group").click();
+  await button(ui.getByRole("dialog", {name:"Actions — Group", exact:true}), "Conditions for boundary group Group").click();
   const editor = page.locator(".floating-toolbar").filter({ has: page.getByLabel("Move Edit boundary group", { exact: true }) });
   assert.ok(await editor.getByRole("checkbox", { name: "Use group conditions", exact: true }).isChecked());
   await editor.getByRole("combobox", { name: "Boundary flow condition", exact: true }).selectOption("slip");
   await button(editor, "Hide Edit boundary group").click();
   await eventually(() => ui.getAttribute("data-preparation-state"), v => v === "checked");
-  await button(group, "Assign surfaces to Group").click();
+  await button(group, "Actions for boundary group Group").click();
+  await button(ui.getByRole("dialog", {name:"Actions — Group", exact:true}), "Assign surfaces to Group").click();
   const assign = page.locator(".floating-toolbar").filter({ has: page.getByLabel("Move Assign boundary surfaces", { exact: true }) });
   const checks = assign.getByRole("checkbox");
   const ids = await checks.evaluateAll(els => els.slice(0, 2).map(el => el.getAttribute("aria-label").replace("Assign surface ", "")));
@@ -143,7 +210,8 @@ test("boundary groups offer conditions and explicit unique surface assignment wi
   assert.equal(await group.locator(".cfx-surface-row").count(), 2);
   await capture(page, "boundary-assigned");
   await eventually(() => ui.getAttribute("data-preparation-state"), v => v === "checked");
-  await button(group, "Assign surfaces to Group").click();
+  await button(group, "Actions for boundary group Group").click();
+  await button(ui.getByRole("dialog", {name:"Actions — Group", exact:true}), "Assign surfaces to Group").click();
   await assign.getByRole("checkbox", { name: `Assign surface ${ids[0]}`, exact: true }).uncheck();
   await button(assign, "Apply assignment").click();
   await eventually(saved, p => p.cfdScenarios[0].boundaries.collections.find(g => g.id === id)?.patchIds.length === 1);
@@ -157,8 +225,8 @@ test("Run uses three/four columns, probes label XYZ in a single action row, plan
   await ui.getByRole("tab", { name: "Run", exact: true }).click();
   const grid = ui.locator("#cfx-panel-run .cfx-grid").first();
   assert.equal(await grid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 3);
-  const status = ui.getByRole("status").filter({ hasText: "Solver not connected" });
-  assert.equal(await status.evaluate(el => getComputedStyle(el).borderTopWidth), "0px");
+  assert.equal(await ui.getByText("Solver not connected", {exact:true}).count(), 0);
+  assert.ok(await ui.getByRole("region", {name:"OpenFOAM connection", exact:true}).isVisible());
   assert.equal(await ui.getByRole("button", { name: "Retry check", exact: true }).count(), 0);
   await capture(page, "run-960");
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -207,10 +275,12 @@ test("missing domain does not fabricate surfaces or zero named planes; group con
   assert.ok(await ui.getByText("Choose a seed room in Domain and resolve preparation checks to calculate plane positions.", { exact: true }).isVisible());
   await cfdWindow(ui, "Boundaries");
   await button(ui, "Add boundary group").click();
+  await button(ui, "Actions for boundary group Group").click();
   await button(ui, "Conditions for boundary group Group").click();
   const editor = page.locator(".floating-toolbar").filter({ has: page.getByLabel("Move Edit boundary group", { exact: true }) });
   assert.ok(await editor.getByRole("combobox", { name: "Boundary flow condition", exact: true }).isEnabled());
   await button(editor, "Hide Edit boundary group").click();
+  await button(ui, "Actions for boundary group Group").click();
   await button(ui, "Assign surfaces to Group").click();
   const assign = page.locator(".floating-toolbar").filter({ has: page.getByLabel("Move Assign boundary surfaces", { exact: true }) });
   assert.equal(await assign.getByRole("checkbox").count(), 0);

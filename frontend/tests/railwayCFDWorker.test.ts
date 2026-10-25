@@ -29,11 +29,21 @@ test("HTTP adapter keeps bearer credentials out of URLs and rejects wrong job/lo
   await assert.rejects(adapter.logs(job,0,new AbortController().signal),/different study/);
   response={...job,cursor:9,nextCursor:18,text:"Time = 2\n"};
   await assert.rejects(adapter.logs(job,0,new AbortController().signal),/Out-of-order/);
-  response={...job,jobId:id,sourceHash:"a".repeat(64),configurationHash:"b".repeat(64),pressureUnit:"Pa",accepted:true,artifacts:[]};
+  const result={...job,jobId:id,sourceHash:"a".repeat(64),configurationHash:"b".repeat(64),pressureUnit:"m2/s2",accepted:false,artifacts:[],
+    mesh:{cells:100,maxNonOrthogonality:3},convergence:{converged:false,target:1e-5,finalInitialResiduals:{p:.1}},
+    conservation:{passed:false,relativeImbalance:.1,tolerance:.05,fluxM3S:{p_a:-.005,p_b:.0045}}};
+  response=result;
+  const measured=await adapter.result(job,new AbortController().signal);
+  assert.equal(measured.mesh?.cells,100);
+  assert.equal(measured.conservation?.relativeImbalance,.1);
+  assert.equal(measured.convergence?.finalInitialResiduals?.p,.1);
+  response={...result,pressureUnit:"Pa"};
   await assert.rejects(adapter.result(job,new AbortController().signal));
 });
 
 test("worker capabilities cannot advertise limits above the approved deployment",()=>{
   assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,limits:{...capabilities.limits,cpu:8}}).success,false);
   assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,limits:{...capabilities.limits,memoryGb:8}}).success,false);
+  for (const limits of [{cpu:0}, {cpu:1.5}, {cpu:-1}, {memoryGb:0}, {wallTimeMinutes:0}])
+    assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,limits:{...capabilities.limits,...limits}}).success,false);
 });

@@ -49,6 +49,11 @@ export async function startBrowserHarness({ climoptixEnabled = false } = {}) {
         events.push(JSON.parse(body)); response.writeHead(204); response.end(); return;
       }
       const filePath = url.pathname.replace(/^\/planner(?=\/|$)/, "") || "/";
+      // Static GET route handlers export extensionless bodies, not index.html.
+      if (filePath === "/plans/" || filePath === "/plans") {
+        const html = await readFile(path.join(output, "plans"));
+        response.writeHead(200, {"content-type":"text/html; charset=utf-8"}); response.end(html); return;
+      }
       if (filePath.startsWith("/engineering-api/")) {
         const catalogue = filePath === "/engineering-api/catalog/items";
         response.writeHead(catalogue ? 200 : 401, { "content-type": "application/json" });

@@ -233,6 +233,7 @@ test("study rows show only the worker's current-phase progress, never a syntheti
     onDelete() {},
     onImport() {},
     onSubmit() {},
+    onIssues() {},
     onUndo() {},
     onRedo() {},
     canUndo: false,

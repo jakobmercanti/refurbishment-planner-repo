@@ -100,6 +100,46 @@ Live anonymous and invalid-token requests were rejected. An end-to-end run using
 the user's actual signed-in account still requires that user's authenticated
 browser session; administrator acceptance does not impersonate it.
 
+## Reliability updates, 25 October 2026
+
+The API Dockerfile now installs the pinned `cfd` extra, which is required by the
+diagnostic settings-ZIP endpoint as well as the separate solver worker. Exported
+settings remain a diagnostic handoff, not a runnable case.
+
+Definite HTTP 422 validation rejections release their immutable payload so a
+corrected study can be prepared again. Ambiguous dispatches instead retain the
+original payload/ID in a per-tab session journal scoped by authenticated worker
+namespace and project. It survives workspace closure, account checks and reload;
+no bearer credentials are stored. If retry storage cannot be saved, dispatch
+fails before creating a job. Backend owner/submission deduplication stays the
+authority; browser recovery does not bypass it.
+
+The Monitor retries result retrieval with bounded backoff and an explicit retry
+button. These are read-only GETs, never a new solve. Failed/cancelled jobs with
+no native manifest are explained separately from a failed result download.
+
+Protected log responses can now include bounded native probe/patch-flux telemetry.
+The worker reads recent `postProcessing/probes/*/{U,p}` and
+`postProcessing/flux_*/*/surfaceFieldValue.dat` rows, omitting incomplete/non-finite
+samples and aligning all expected boundary patches on common iteration times.
+The compiler records probe coordinates in mm and the requested balance tolerance;
+the native case still converts probe coordinates once to metres. The UI shows
+probe XYZ velocity (m/s), kinematic pressure (m²/s²), histories, measured flow
+imbalance, final mesh/convergence metrics, and an explicit-unit CSV export.
+No missing sample is interpolated or reported as zero. Live views retain at most
+100 probes × 32 recent samples, 120 balance samples and 128 flow patches; full
+native files remain in the archive. Legacy workers without telemetry remain
+usable and explicitly say live probe/flux data is not supplied.
+
+These changes require the updated API, worker and frontend when deployment is
+authorized. Git publication is not a fresh real-OpenFOAM cloud solve. The previously
+recorded native runtime acceptance remains evidence for the unchanged supported
+serial solver profile; no new cloud job or manual worker/frontend deployment was
+made for these fixes. See `CFD_WORKBENCH_ASSESSMENT.md` for final source/test counts
+and Git publication status.
+The updated startup fixture also requires actual readable probe U/p samples and
+aligned native flux output for all three supported models before enabling runs.
+
 ## Deploying changes
 
 Use `deployment/package-openfoam.ps1 -Deploy` from the repository root. It uploads

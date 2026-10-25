@@ -512,6 +512,12 @@ def compile_case(root: Path, request: Submission, report: dict[str, Any]) -> dic
         "samplingPlanes": planes,
         "resources": s.resources.model_dump(),
         "solver": "simpleFoam",
+        "operation": request.operation,
+        "probePositionsMm": s.outputs.probesMm,
+        "balanceTolerance": n.balanceTolerance,
+        "flowPatchNames": [names[pid] for pid, patch in patches.items()
+                           if patch["kind"] in ("supply", "extract")
+                           or patch["boundary"]["flow"]["type"] in ("pressure", "opening")],
         "turbulence": physics.turbulence,
         "meshIntentNotes": [
             "targetCells is advisory; maxCells is checked against the actual mesh.",

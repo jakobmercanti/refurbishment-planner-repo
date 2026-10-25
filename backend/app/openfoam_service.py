@@ -22,6 +22,7 @@ from starlette.requests import Request
 
 from backend.app.openfoam_case import LIMITS, Submission, validate_submission
 from backend.app.openfoam_runtime import JobCancelled, execute, runtime_available
+from backend.app.openfoam_telemetry import telemetry
 from backend.app.supabase_rest import InvalidAccessToken, SupabaseREST, SupabaseUnavailable, VerifiedUser
 
 TERMINAL = ("Completed", "Failed", "Cancelled", "Stale")
@@ -370,6 +371,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
             "cursor": cursor,
             "nextCursor": cursor + len(data),
             "text": data.decode("utf-8", errors="replace"),
+            "telemetry": telemetry(store.path(str(job_id))),
         }
 
     @app.get(prefix + "/jobs/{job_id}/result")

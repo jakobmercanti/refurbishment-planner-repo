@@ -70,6 +70,7 @@ test("boundary folders edit only on request, drafts remain grouped, responsive s
   await layout(page, frame(page), "Maximise window");
   await button(ui, "Add boundary group").click();
   assert.equal(await button(ui, "Hide Edit boundary group").count(), 0);
+  await button(ui, "Actions for boundary group Group").click();
   await button(ui, "Edit boundary group Group").click();
   const editor = page.locator(".floating-toolbar").filter({ has: page.getByLabel("Move Edit boundary group", { exact: true }) });
   assert.ok((await editor.boundingBox()).height < 390);

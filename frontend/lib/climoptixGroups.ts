@@ -48,12 +48,18 @@ export function boundaryGroups(scenario: CFDScenario): CFDBoundaryCollection[] {
   ];
 }
 export function boundaryMembers(group: CFDBoundaryCollection, groups: CFDBoundaryCollection[], patches: CFDPatch[]) {
+  return boundaryMembership(groups, patches).get(group.id) ?? [];
+}
+/** Build ownership once per surface snapshot, preserving explicit/default ordering. */
+export function boundaryMembership(groups: CFDBoundaryCollection[], patches: CFDPatch[]) {
   const assigned = new Set(groups.filter(g => g.id !== DEFAULT_BOUNDARY_GROUP).flatMap(g => g.patchIds));
   const byId = new Map(patches.map(p => [p.id, p]));
-  const orderedIds = new Set(group.patchIds);
-  const ordered = group.patchIds.flatMap(id => { const patch = byId.get(id); return patch && !assigned.has(id) ? [patch] : []; });
-  return group.id === DEFAULT_BOUNDARY_GROUP ? [...ordered, ...patches.filter(p => !assigned.has(p.id) && !orderedIds.has(p.id))] :
-    group.patchIds.flatMap(id => { const patch = byId.get(id); return patch ? [patch] : []; });
+  return new Map(groups.map(group => {
+    const orderedIds = new Set(group.patchIds);
+    const ordered = group.patchIds.flatMap(id => { const patch = byId.get(id); return patch && (group.id !== DEFAULT_BOUNDARY_GROUP || !assigned.has(id)) ? [patch] : []; });
+    return [group.id, group.id === DEFAULT_BOUNDARY_GROUP
+      ? [...ordered, ...patches.filter(p => !assigned.has(p.id) && !orderedIds.has(p.id))] : ordered];
+  }));
 }
 export type BoundaryDisplayGroup = { id: string; name: string; colour: string; patchIds: string[] };
 /** One physical surface belongs to one folder; explicit patch overrides are retained. */

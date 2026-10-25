@@ -37,7 +37,7 @@ body[data-ui-style="modern"] .software-wall-setting > summary {
     color: var(--control-hover-text) !important;
     border-color: var(--control-hover-border) !important;
   }
-  &:is(.active, .selected, .primary, .primary-small, .cfx-primary, .pb-primary-button, .fixture-save, .person-update, .validate-button, .save-button, .settings-done, .catalogue-insert, .catalogue-toolbar > button, .full-floorplan-rooms button, [aria-selected="true"], [aria-pressed="true"], [role="menuitemradio"][aria-checked="true"]) {
+  &:is(.active, .selected, .primary, .primary-small, .commercial-primary, .cfx-primary, .pb-primary-button, .fixture-save, .person-update, .validate-button, .save-button, .settings-done, .catalogue-insert, .catalogue-toolbar > button, .full-floorplan-rooms button, [aria-selected="true"], [aria-pressed="true"], [role="menuitemradio"][aria-checked="true"]) {
     --control-bg: var(--ui-button-activeBackground);
     --control-text: var(--ui-button-activeText);
     --control-border: var(--ui-button-activeBackground);

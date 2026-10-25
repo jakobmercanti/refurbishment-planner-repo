@@ -150,6 +150,7 @@ test("objects, boundary groups, refinements and review tabs use compact independ
   assert.ok(Math.abs(nav.y - add.y) < 3 && Math.abs(add.y - find.y) < 3);
   await button(ui, "Add boundary group").click();
   assert.equal(await button(ui, "Hide Edit boundary group").count(), 0);
+  await button(ui, "Actions for boundary group Group").click();
   await button(ui, "Duplicate boundary group Group").click();
   assert.equal(await button(ui, "Hide Edit boundary group").count(), 0);
   await eventually(saved, p => p.cfdScenarios[0].boundaries.collections.length === 3);

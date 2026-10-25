@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import { preparationInput, preparationRevision } from "@/lib/climoptix";
+import { readPendingCFD, savePendingCFD, removePendingCFD } from "@/lib/cfdSubmissionJournal";
+import { CFDWorkerError } from "@/lib/railwayCFDWorker";
 import {
   checkedWorkerJob,
   prepareWorkerSubmission,
@@ -48,6 +50,15 @@ export function useCFDJobs(
   }, []);
   const projectId = useRef(project.projectId);
   const namespace = useRef(adapter?.namespace);
+  const restorePending = useCallback(() => {
+    for (const record of readPendingCFD(adapter?.namespace, project.projectId)) {
+      const {request, input} = record;
+      if (entriesRef.current[request.studyId]?.job || unresolved.current.has(request.studyId)) continue;
+      unresolved.current.set(request.studyId, request);
+      update(request.studyId, {input, submissionId:request.submissionId, operation:request.operation, dispatched:true,
+        error:"A previous submission needs recovery. Retry the original operation to check its accepted job; no new job ID will be created."});
+    }
+  }, [adapter?.namespace, project.projectId, update]);
   useEffect(() => {
     const controller = new AbortController();
     submitAbort.current = controller;
@@ -69,11 +80,16 @@ export function useCFDJobs(
           });
       }
     }
+    try { restorePending(); } catch (error) {
+      for (const study of latest.current.project.cfdScenarios ?? [])
+        update(study.id, {...entriesRef.current[study.id], input:entriesRef.current[study.id]?.input ?? "",
+          error:error instanceof Error ? error.message : "Submission recovery unavailable."});
+    }
     return () => {
       controller.abort();
       submitting.clear();
     };
-  }, [project.projectId, adapter, update]);
+  }, [project.projectId, adapter, update, restorePending]);
   useEffect(() => {
     if (!adapter?.list || !adapter.capabilities.connected) return;
     const controller = new AbortController();
@@ -95,6 +111,11 @@ export function useCFDJobs(
   const submit = async (operation: CFDOperation, studies: CFDScenario[]) => {
     if (!adapter?.capabilities.connected || !adapter.capabilities[operation])
       return;
+    try { restorePending(); } catch (error) {
+      for (const study of studies) update(study.id, {...entriesRef.current[study.id], input:entriesRef.current[study.id]?.input ?? "",
+        error:error instanceof Error ? error.message : "Submission recovery unavailable."});
+      return;
+    }
     const controller = submitAbort.current;
     // Reserve the whole batch before awaiting preflight: rapid clicks cannot queue duplicates.
     const queue: {
@@ -171,6 +192,9 @@ export function useCFDJobs(
           throw new Error(
             "Setup changed before submission. Select the updated study and submit again.",
           );
+        // Persist BEFORE sending: access checks can unmount the entire workspace
+        // during an outage, and a reload must not create a second paid job.
+        savePendingCFD(adapter.namespace, project.projectId, {input, request});
         unresolved.current.set(study.id, request);
         update(study.id, {
           input,
@@ -185,13 +209,21 @@ export function useCFDJobs(
         );
         if (!controller.signal.aborted) {
           unresolved.current.delete(study.id);
+          removePendingCFD(adapter.namespace, project.projectId, study.id, submissionId);
           update(study.id, { input, operation, submissionId, job });
         }
       } catch (error) {
+        // 422 is a definite non-enqueueing validation rejection, not a lost
+        // acceptance response. The next attempt must prepare corrected inputs.
+        const rejected = error instanceof CFDWorkerError && error.status === 422;
+        if (rejected) {
+          if (unresolved.current.get(study.id)?.submissionId === submissionId) unresolved.current.delete(study.id);
+          removePendingCFD(adapter.namespace, project.projectId, study.id, submissionId);
+        }
         if (!controller.signal.aborted)
           update(study.id, {
             input,
-            submissionId,
+            submissionId: rejected ? undefined : submissionId,
             operation,
             dispatched: unresolved.current.has(study.id),
             error:

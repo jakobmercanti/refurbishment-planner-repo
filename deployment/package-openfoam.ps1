@@ -12,6 +12,7 @@ try {
         'pyproject.toml', 'uv.lock', '.dockerignore',
         'backend/app/openfoam_case.py', 'backend/app/openfoam_runtime.py',
         'backend/app/openfoam_service.py', 'backend/app/openfoam_smoke.py',
+        'backend/app/openfoam_telemetry.py',
         'deployment/Dockerfile.openfoam', 'deployment/openfoam-entrypoint.sh'
     )
     foreach ($file in ($runtimeFiles | Sort-Object -Unique)) {

@@ -7,6 +7,8 @@ import { ClimoptixReview } from "./ClimoptixReview";
 import { useCFDJobs } from "./useCFDJobs";
 import { useRailwayCFDWorker } from "./useRailwayCFDWorker";
 import { ClimoptixWorkerMonitor } from "./ClimoptixWorkerMonitor";
+import { CFDWorkerConnection } from "./CFDWorkerConnection";
+import { CFDWorkbenchStatus } from "./CFDWorkbenchStatus";
 import { terminalJob, workerInput } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP } from "@/lib/climoptixHelp";
@@ -42,17 +44,15 @@ import {
   type CFDReport,
 } from "@/lib/climoptix";
 import type { ProjectDocument } from "@/lib/projectDocument";
-import { boundaryGroups, boundaryMembers, BOUNDARY_COLOURS, sameGroup, simulationGroups } from "@/lib/climoptixGroups";
+import { boundaryGroups, boundaryMembership, BOUNDARY_COLOURS, sameGroup, simulationGroups } from "@/lib/climoptixGroups";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { WindowIcon } from "./WindowIcon";
 import { ClimoptixViewer } from "./ClimoptixViewer";
-import {
-  BoundariesPanel,
-  RefinementEditor,
-  DomainPanel,
-  EquipmentPanel,
-  PhysicsPanel,
-} from "./ClimoptixPanels";
+import { BoundariesPanel } from "./ClimoptixBoundaries";
+import { RefinementEditor } from "./ClimoptixMesh";
+import { DomainPanel } from "./ClimoptixDomain";
+import { EquipmentPanel } from "./ClimoptixEquipment";
+import { PhysicsPanel } from "./ClimoptixPhysics";
 import { ClimoptixSimulation, type SimulationTab } from "./ClimoptixSimulation";
 import { ClimoptixVTKViewer } from "./ClimoptixVTKViewer";
 import {
@@ -221,6 +221,7 @@ export function ClimoptixWorkspace({
   const [viewTarget, setViewTarget] = useState<HTMLDivElement | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [boundsTab, setBoundsTab] = useState<"conditions" | "thermal">("conditions");
+  const [issuesRequest, setIssuesRequest] = useState(0);
   const [boundaryGroup, setBoundaryGroup] = useState("all-surfaces");
   const [refinementEditor, setRefinementEditor] = useState<{
     studyId: string;
@@ -315,6 +316,7 @@ export function ClimoptixWorkspace({
       input: scenario ? preparationInput(project, scenario) : "",
     };
   }, [project, selectedId, showArchived]);
+  const currentWorkerInput = useMemo(() => scenario ? workerInput(project, scenario) : "", [project, scenario]);
   const revision = hash.input === input ? hash.revision : "";
   const preparationError = preparationFailure?.input === input ? preparationFailure.message : "";
   const busy = preparing !== "" && preparing === input;
@@ -322,8 +324,9 @@ export function ClimoptixWorkspace({
   const boundaryDisplay = useMemo(() => {
     if (!scenario || !activeReport) return [];
     const groups = boundaryGroups(scenario);
+    const membership = boundaryMembership(groups, activeReport.patches);
     return groups.map((g, i) => ({ id: g.id, name: g.name, colour: BOUNDARY_COLOURS[i % BOUNDARY_COLOURS.length],
-      patchIds: boundaryMembers(g, groups, activeReport.patches).map(p => p.id) }));
+      patchIds: (membership.get(g.id) ?? []).map(p => p.id) }));
   }, [scenario, activeReport]);
   const stale =
     !activeReport ||
@@ -707,6 +710,14 @@ export function ClimoptixWorkspace({
       : activeReport && !stale
         ? activeReport.state
         : "Draft";
+  const reviewIssues = (id = scenario?.id) => {
+    if (!id) return;
+    if (id !== scenario?.id) { setError(""); setMessage(""); }
+    setSelectedId(id); setSelected(null); setPicking(null);
+    setIssuesRequest(value => value + 1);
+    setPreparationRetry(value => value + 1);
+    openPhase("review");
+  };
   const available = (id: CFDWindowId) =>
     id === "studies" ||
     id === "view" ||
@@ -1006,6 +1017,9 @@ export function ClimoptixWorkspace({
                 </button>
               ))}
             </div>
+            {scenario && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
+              showFailure={shownTab !== "review"} onIssues={() => reviewIssues()}
+              onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} />}
             <section
               role="tabpanel"
               id="cfx-setup-panel-studies"
@@ -1013,7 +1027,6 @@ export function ClimoptixWorkspace({
               hidden={shownTab !== "studies"}
               className="cfx-setup-panel"
             >
-              {error && shownTab === "studies" && <p className="cfx-input-failure" role="alert">{error}</p>}
               <ClimoptixStudies
                 project={project}
                 scenarios={scenarios}
@@ -1036,6 +1049,7 @@ export function ClimoptixWorkspace({
                 entries={jobs}
                 worker={workerAdapter}
                 onSubmit={(op, studies) => void submitJobs(op, studies)}
+                onIssues={reviewIssues}
                 onUndo={onUndo}
                 onRedo={onRedo}
                 canUndo={canUndo}
@@ -1057,10 +1071,6 @@ export function ClimoptixWorkspace({
                     aria-label={`${panel.label} settings`}
                   >
                     {panel.id === "domain" && <h2>{panel.label}</h2>}
-                    {error && panel.id === shownTab && panel.id !== "review" && <div className="cfx-input-failure" role="alert">
-                      <p>{error}</p>
-                      {error.startsWith("Changes not applied") && <button onClick={() => { setError(""); setEditorReset(v => v + 1); }}>Keep saved values</button>}
-                    </div>}
                     {panel.id === "domain" && (
                       <DomainPanel
                         project={project}
@@ -1116,17 +1126,8 @@ export function ClimoptixWorkspace({
                     )}
                     {panel.id === "mesh" && (
                       <ClimoptixSimulation
-                        workerControls={providedWorker === undefined && <section className="cfx-worker-controls" aria-label="OpenFOAM connection">
-                          <p>{remoteWorker.reason}</p><div className="cfx-inline-toolbar">
-                            <button onClick={remoteWorker.refresh}>Refresh connection</button>
-                            {remoteWorker.adapter && <button onClick={() => {
-                              const limits = remoteWorker.adapter!.capabilities.limits;
-                              change({...scenario, resources:{...scenario.resources, cpu:Math.min(scenario.resources.cpu,limits.cpu), memoryGb:Math.min(scenario.resources.memoryGb,limits.memoryGb),
-                                wallTimeMinutes:Math.min(scenario.resources.wallTimeMinutes,limits.wallTimeMinutes), storageGb:Math.min(scenario.resources.storageGb,limits.storageGb), retentionDays:Math.min(scenario.resources.retentionDays,limits.retentionDays)},
-                                mesh:{...scenario.mesh,maxCells:Math.min(scenario.mesh.maxCells,limits.maxCells),targetCells:Math.min(scenario.mesh.targetCells,limits.maxCells)}});
-                            }}>Use worker resource limits</button>}
-                          </div>
-                        </section>}
+                        workerControls={providedWorker === undefined && <CFDWorkerConnection adapter={remoteWorker.adapter} reason={remoteWorker.reason}
+                          onRefresh={remoteWorker.refresh} scenario={scenario} onChange={change} />}
                         connection={{
                           connected:
                             workerAdapter?.capabilities.connected ?? false,
@@ -1189,9 +1190,9 @@ export function ClimoptixWorkspace({
                           simulationTab === "monitor" && (
                             remoteWorker.adapter && jobs[scenario.id]?.job ? <ClimoptixWorkerMonitor
                               key={`${remoteWorker.adapter.namespace}:${jobs[scenario.id].job!.id}`} adapter={remoteWorker.adapter} job={jobs[scenario.id].job!}
-                              name={scenario.name} older={jobs[scenario.id].input !== workerInput(project, scenario)}
+                              name={scenario.name} older={jobs[scenario.id].input !== currentWorkerInput}
                               onVTK={file => {openPhase("results"); setVTKFile({studyId:scenario.id,file,token:crypto.randomUUID(),
-                                provenance:`Authenticated worker job ${jobs[scenario.id].job!.id} · pinned revision ${jobs[scenario.id].job!.clientRevision.slice(0,12)} · p in m²/s², not Pa${jobs[scenario.id].input !== workerInput(project,scenario) ? " · older setup" : ""}`});}} /> : <ClimoptixConvergence
+                                provenance:`Authenticated worker job ${jobs[scenario.id].job!.id} · pinned revision ${jobs[scenario.id].job!.clientRevision.slice(0,12)} · p in m²/s², not Pa${jobs[scenario.id].input !== currentWorkerInput ? " · older setup" : ""}`});}} /> : <ClimoptixConvergence
                               name={scenario.name}
                               state={logs.get(scenario.id)}
                               onImport={(file) =>
@@ -1203,7 +1204,7 @@ export function ClimoptixWorkspace({
                         }
                       />
                     )}
-                    {panel.id === "review" && <ClimoptixReview scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError}
+                    {panel.id === "review" && <ClimoptixReview key={`${scenario.id}:${issuesRequest}`} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "review" ? jobs[scenario.id]?.error : undefined}
                       onDismissFailure={() => { setError(""); if (error.startsWith("Changes not applied")) setEditorReset(x => x + 1); }}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
                       onRefresh={() => setPreparationRetry(x => x + 1)} onInspect={jump} />}
@@ -1230,10 +1231,7 @@ export function ClimoptixWorkspace({
                       apiUrl={apiUrl}
                       report={thermalReport}
                       busy={thermalBusy}
-                      error={
-                        thermalError ||
-                        (error.startsWith("Changes not applied") ? error : "")
-                      }
+                      error={thermalError}
                       stale={thermalStale}
                       metric={thermalMetric}
                       onMetric={setThermalMetric}

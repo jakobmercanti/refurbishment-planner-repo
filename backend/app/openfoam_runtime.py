@@ -17,6 +17,7 @@ from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from backend.app.openfoam_case import Submission, compile_case
+from backend.app.openfoam_telemetry import latest_time_file, read_complete_lines
 
 MAX_LOG = 8 * 1024 * 1024
 MAX_ARTIFACT = 128 * 1024 * 1024
@@ -83,6 +84,12 @@ def convergence(text: str, target: float, turbulent: str) -> dict[str, Any]:
     # residual of a single linear equation solve or an earlier converged time.
     iterations = re.split(r"(?m)^Time = ", text)
     tail = iterations[-1]
+    try:
+        final_iteration = float(tail.splitlines()[0]) if len(iterations) > 1 else None
+    except (ValueError, IndexError):
+        final_iteration = None
+    if final_iteration is not None and (not math.isfinite(final_iteration) or final_iteration < 0):
+        final_iteration = None
     residuals = {}
     for field, value in re.findall(r"Solving for (\w+), Initial residual = ([\deE+.-]+)", tail):
         residuals.setdefault(field, float(value))
@@ -91,21 +98,22 @@ def convergence(text: str, target: float, turbulent: str) -> dict[str, Any]:
         required.update(("k", "epsilon" if turbulent == "kEpsilon" else "omega"))
     # OpenFOAM may omit identically zero vector components; never infer convergence
     # for absent components without a reported vector solve.
-    passed = required.issubset(residuals) and all(
+    passed = final_iteration is not None and required.issubset(residuals) and all(
         math.isfinite(residuals[f]) and residuals[f] <= target for f in required
     )
-    return {"converged": passed, "finalInitialResiduals": residuals, "target": target}
+    return {"converged": passed, "finalInitialResiduals": residuals, "target": target, "finalIteration": final_iteration}
 
 
-def flow_balance(root: Path, names: list[str], tolerance: float) -> dict[str, Any]:
+def flow_balance(root: Path, names: list[str], tolerance: float, *, expected_iteration: float | None = None) -> dict[str, Any]:
     values = []
     times = []
     for name in names:
-        files = sorted((root / "postProcessing" / f"flux_{name}").glob("*/surfaceFieldValue.dat"))
-        if not files:
+        path = latest_time_file((root / "postProcessing" / f"flux_{name}").glob("*/surfaceFieldValue.dat"))
+        if path is None:
             raise ValueError("No measured boundary flux was written.")
+        lines, _ = read_complete_lines(path, root, 16384, require_complete=True)
         rows = [
-            line.split() for line in files[-1].read_text().splitlines() if line.strip() and not line.startswith("#")
+            line.split() for line in lines if line.strip() and not line.lstrip().startswith("#")
         ]
         if not rows or len(rows[-1]) != 2:
             raise ValueError("Invalid boundary flux telemetry.")
@@ -116,6 +124,8 @@ def flow_balance(root: Path, names: list[str], tolerance: float) -> dict[str, An
         values.append(q)
     if times and len(set(times)) != 1:
         raise ValueError("Boundary flux samples have different iteration timestamps.")
+    if expected_iteration is not None and (not times or any(t != expected_iteration for t in times)):
+        raise ValueError("Boundary flux does not match the final solver iteration.")
     denominator = max(sum(abs(q) for q in values) / 2, 1e-12)
     error = abs(sum(values)) / denominator
     return {
@@ -217,7 +227,11 @@ def execute(
             if patch["id"] in manifest["patches"]
             and (patch["kind"] in ("supply", "extract") or patch["boundary"]["flow"]["type"] in ("pressure", "opening"))
         ]
-        manifest["conservation"] = flow_balance(root, flow_names, request.scenario.physics.numerics.balanceTolerance)
+        final_iteration = manifest["convergence"]["finalIteration"]
+        if final_iteration is None:
+            raise ValueError("No finite final solver iteration was reported.")
+        manifest["conservation"] = flow_balance(root, flow_names, request.scenario.physics.numerics.balanceTolerance,
+                                              expected_iteration=final_iteration)
     update("Postprocess", "Packaging provenance-bound native fields and ASCII slices")
     manifest["accepted"] = request.operation == "mesh" or (
         manifest["convergence"]["converged"] and manifest["conservation"]["passed"]

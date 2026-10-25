@@ -7,7 +7,8 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1 \
     ALLOWED_ORIGINS=https://www.freefloorplan3d.com \
     POSTHOG_PROJECT_TOKEN=phc_m6QdNetEwxnbfresRz6V84gvjiJLWRyEKD2LRbPWcWmM
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+# The public API also serves the diagnostic OpenFOAM settings ZIP.
+RUN uv sync --frozen --no-dev --extra cfd
 COPY backend ./backend
 COPY geometry ./geometry
 COPY cad ./cad

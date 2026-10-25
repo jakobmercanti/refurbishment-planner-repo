@@ -81,7 +81,7 @@ test("exported sign-in distinguishes rate limiting and permits explicit retry ov
   await eventually(() => page.locator(".commercial-error").innerText(), text => text.includes("Too many account requests"));
   assert.equal(requests, 1); assert.equal(await submit.isEnabled(), true);
   await submit.click();
-  await page.getByRole("button", { name: "Open plans and billing", exact: true }).waitFor();
+  await page.waitForURL(harness.origin + "/planner/");
   assert.equal(requests, 2);
   assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("freefloorplan3d:commercial-session:v1")!).user.id), "test-user");
 });

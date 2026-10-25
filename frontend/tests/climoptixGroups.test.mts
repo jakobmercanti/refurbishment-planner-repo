@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { boundarySchema, cfdScenarioSchema, simulationGroupsSchema, ventSchema } from "../lib/climoptixDocument";
-import { assignBoundarySurfaces, boundaryGroups, boundaryMembers, duplicateSimulationGroup, effectiveBoundary, moveBoundary, simulationGroups, uniqueGroupName } from "../lib/climoptixGroups";
+import { assignBoundarySurfaces, boundaryGroups, boundaryMembers, boundaryMembership, duplicateSimulationGroup, effectiveBoundary, moveBoundary, simulationGroups, uniqueGroupName } from "../lib/climoptixGroups";
 import { insertAtBoundary, moveStudy } from "../lib/climoptixStudies";
 import { preparationInput, preparationRequestBody } from "../lib/climoptix";
 import { cfdProject, realPreparation } from "./climoptixFixtures";
@@ -58,6 +58,12 @@ test("surface groups move and reorder by stable ID, never duplicate membership, 
   const s = structuredClone(original);
   s.boundaries.collections = [...boundaryGroups(s), { id: "heated", name: "Heated", patchIds: [], boundary: null }];
   const ids = report.patches.slice(0, 3).map(p => p.id);
+  const groups = [{ ...s.boundaries.collections[0], patchIds: [ids[2], 'stale', ids[0]] },
+    { ...s.boundaries.collections[1], patchIds: [ids[0]] }];
+  const indexed = boundaryMembership(groups, report.patches);
+  assert.equal(indexed.get('all-surfaces')![0].id, ids[2]);
+  assert.ok(!indexed.get('all-surfaces')!.some(p => p.id === ids[0]));
+  assert.deepEqual(indexed.get('heated')!.map(p => p.id), [ids[0]]);
   let moved = moveBoundary(s, ids[0], "heated", 0, report.patches);
   moved = moveBoundary(moved, ids[1], "heated", 1, report.patches);
   moved = moveBoundary(moved, ids[2], "heated", 2, report.patches);

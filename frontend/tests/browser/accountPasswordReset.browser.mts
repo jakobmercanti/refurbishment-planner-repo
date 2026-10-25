@@ -48,7 +48,7 @@ test("recovery email shows the new-password form instead of the signed-in accoun
   assert.equal(await page.getByLabel("Password", { exact: true }).inputValue(), "");
   await page.getByLabel("Password", { exact: true }).fill("Mock-New-Password-2026");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.getByRole("button", { name: "Open plans and billing", exact: true }).waitFor();
+  await page.waitForURL(harness.origin + "/planner/");
 });
 
 test("expired reset links explain how to request a new link rather than showing account ready", async t => {

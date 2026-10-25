@@ -1,21 +1,27 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { downloadCFD, preparationPackage, preparationSummary, type CFDReport } from "@/lib/climoptix";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import { WindowHelpButton } from "./WindowHelpButton";
 
 const TABS = [["review", "Simulation review"], ["warnings", "Warnings & checks"], ["transfer", "Import / export"]] as const;
 
-export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onDismissFailure, onChange, onImport, onExport, onError, onRefresh, onInspect }: {
+export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onDismissFailure, onChange, onImport, onExport, onError, onRefresh, onInspect, issuesRequest = 0, submissionError }: {
   scenario: CFDScenario; report: CFDReport | null; revision: string; stale: boolean; blocked: boolean;
   onChange: (scenario: CFDScenario) => void; onImport: (file: File) => void; onExport: () => void;
   onError: (message: string) => void; onRefresh: () => void; onInspect: (id: string, group: string) => void;
   failure?: string; onDismissFailure?: () => void;
+  issuesRequest?: number;
+  submissionError?: string;
 }) {
-  const [tab, setTab] = useState<(typeof TABS)[number][0]>("review");
+  const [tab, setTab] = useState<(typeof TABS)[number][0]>(issuesRequest ? "warnings" : "review");
   const [severity, setSeverity] = useState("all");
   const prefix = useId();
+  useEffect(() => {
+    if (!issuesRequest) return;
+    document.getElementById(`${prefix}-warnings`)?.focus({ preventScroll: true });
+  }, [issuesRequest, prefix]);
   const diagnostics = report?.diagnostics.filter(d => severity === "all" || d.severity === severity) ?? [];
   const save = (kind: "zip" | "summary") => {
     if (!report || stale || blocked) return;
@@ -71,6 +77,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
       </dl></details>}
     </section>
     <section role="tabpanel" id={`${prefix}-panel-warnings`} aria-labelledby={`${prefix}-warnings`} hidden={tab !== "warnings"}>
+      {submissionError && <p className="cfx-error" role="alert">Worker submission or status: {submissionError}</p>}
       <div className="cfx-inline-toolbar"><strong>Preflight diagnostics</strong>
         <select aria-label="CFD diagnostic severity" value={severity} onChange={e => setSeverity(e.target.value)}>
           <option value="all">All severities</option><option value="error">Blocking errors</option><option value="warning">Warnings</option><option value="info">Information</option>

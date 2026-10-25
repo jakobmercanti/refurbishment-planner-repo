@@ -1,6 +1,18 @@
+import re
+import tomllib
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+
+
+def test_api_image_installs_pinned_openfoam_settings_writer():
+    root = Path(__file__).resolve().parents[1]
+    dockerfile = (root / 'Dockerfile').read_text()
+    assert re.search(r'RUN\s+uv\s+sync\b[^\n]*--extra\s+cfd\b', dockerfile)
+    config = tomllib.loads((root / 'pyproject.toml').read_text())
+    assert any(requirement.startswith('foamlib==') for requirement in config['project']['optional-dependencies']['cfd'])
 
 
 def test_public_catalogue_mutations_are_blocked_even_with_flag(monkeypatch):

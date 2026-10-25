@@ -3,14 +3,14 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { AUTH_SESSION_CHANGED, AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
 import { PlansRedirect } from "@/components/PlansRedirect";
-import { WindowHelpButton } from "@/components/WindowHelpButton";
+import { UiTheme, type SoftwareUi } from "@/components/UiTheme";
 import type { PlanKey } from "@/lib/commercialCatalogue";
 
 type Mode = "signin" | "signup" | "reset";
 type AccountSection = "account" | "plans";
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-export function AccountExperience({ embedded = false, embeddedSection, onEmbeddedSectionChange }: { embedded?: boolean; onClose?: () => void; embeddedSection?: AccountSection; onEmbeddedSectionChange?: (section: AccountSection) => void }) {
+export function AccountExperience({ embedded = false, onClose, embeddedSection, onEmbeddedSectionChange }: { embedded?: boolean; onClose?: () => void; embeddedSection?: AccountSection; onEmbeddedSectionChange?: (section: AccountSection) => void }) {
   const [mode, setMode] = useState<Mode>("signin");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [email, setEmail] = useState("");
@@ -28,6 +28,21 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
   const [resendReadyAt, setResendReadyAt] = useState(0);
   const authForm = useRef<HTMLFormElement>(null);
   const emailInput = useRef<HTMLInputElement>(null);
+  const [uiSettings, setUiSettings] = useState<SoftwareUi | null>(null);
+  const returnToPlanner = useCallback(() => {
+    if (embedded) onClose?.();
+    else window.location.assign(base + "/");
+  }, [embedded, onClose]);
+
+  useEffect(() => {
+    if (embedded) return; // The planner already owns the theme in a dialog.
+    const controller = new AbortController();
+    void fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "/engineering-api"}/settings`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : null)
+      .then(settings => { if (settings?.ui?.themes?.[settings.ui.style]) setUiSettings(settings.ui); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [embedded]);
 
   useEffect(() => {
     if (!resendReadyAt) return;
@@ -75,7 +90,8 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
       }
       if (redirect === "recovery") selectSection("account");
       else setSection(requestedSection === "plans" ? "plans" : "account");
-      if (redirect !== "recovery" && (redirect === "session" || (current && requestedPlan))) selectSection("plans");
+      if (redirect === "session" && !requestedPlan) { returnToPlanner(); return; }
+      if (redirect !== "recovery" && current && requestedPlan) selectSection("plans");
       setSession(current);
       setRecovery(redirect === "recovery");
       if (redirect === "recovery") setNotice("Reset link verified.");
@@ -88,7 +104,7 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
       }
     });
     return () => { mounted = false; };
-  }, [embedded, selectSection]);
+  }, [embedded, selectSection, returnToPlanner]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -105,11 +121,12 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
       } else if (mode === "signin") {
         const signedIn = await signIn(email, password);
         setSession(signedIn);
-        selectSection("plans");
+        if (pendingPlanKey) selectSection("plans");
+        else returnToPlanner();
       } else if (mode === "signup") {
         const registered = await signUp(email, password);
         setSession(registered);
-        if (registered) selectSection("plans");
+        if (registered) { if (pendingPlanKey) selectSection("plans"); else returnToPlanner(); }
         setPassword("");
         setVerificationNeeded(!registered);
         if (!registered) setResendReadyAt(Date.now() + 60_000);
@@ -151,12 +168,12 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
 
   const sectionTabs = <nav className="commercial-tabs account-section-tabs" role="tablist" aria-label="Account sections">
     <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>{recovery || mode === "reset" ? "Reset password" : session ? "Account" : "Sign in"}</button>
-    {!recovery && <a id="plans-section-tab" href={`${base}/plans/`} target="_blank" rel="noopener noreferrer">Plans ↗</a>}
+    <a id="plans-section-tab" href={`${base}/plans/`} target="_blank" rel="noopener noreferrer">Open plans and billing <span aria-hidden="true">↗</span></a>
   </nav>;
 
   const accountContent = <section className="commercial-card account-card">
     <p className="commercial-eyebrow">{recovery || mode === "reset" ? "PASSWORD RESET" : "YOUR WORKSPACE"}</p>
-    <h1>{recovery ? "Set a new password" : mode === "reset" ? "Reset your password" : session ? "Account ready" : pendingPlanKey ? "Sign in to continue" : "Sign in when you want cloud features"}</h1>
+    <h1>{recovery ? "Set a new password" : mode === "reset" ? "Reset your password" : session ? "Account ready" : pendingPlanKey ? "Sign in to continue" : "Sign in"}</h1>
     <p className="commercial-lede">{recovery ? "Enter your new password twice. Use at least 10 characters. After saving, you will be signed out so you can sign in with your new password."
       : mode === "reset" ? "Enter your account email to request a reset link. Open that link to set a new password; you do not need to know your old password."
       : pendingPlanKey && !session
@@ -188,16 +205,18 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
           {(recovery || mode === "signin" || mode === "signup") && <button className="commercial-secondary account-password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide password" : "Show password"}</button>}
           {error && <p className="commercial-error" role="alert">{error}</p>}
           {notice && <p className="commercial-status" role="status">{notice}</p>}
-          <button className="commercial-primary" type="submit" disabled={busy || (mode === "signup" && verificationNeeded && !!resendReadyAt)}>{busy ? "Please wait…" : recovery ? "Save new password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
+          <div className="account-form-actions">
+            <button className="commercial-primary" type="submit" disabled={busy || (mode === "signup" && verificationNeeded && !!resendReadyAt)}>{busy ? "Please wait…" : recovery ? "Save new password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
+            {recovery && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => void leaveAccount()}>Cancel and return to sign in</button>}
+            {!recovery && mode === "signin" && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => { setMode("reset"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Forgot your password?</button>}
+            {mode === "reset" && !recovery && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => { setMode("signin"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Back to sign in</button>}
+          </div>
           {!recovery && (mode === "signup" || verificationNeeded) && <div className="commercial-stack">
             <p className="commercial-footnote">Already registered? Choose Sign in or reset your password; creating the account again does not resend verification. New or unverified accounts can request another link below. Allow at least 60 seconds between requests.</p>
             <button className="commercial-secondary" type="button" disabled={busy || !!resendReadyAt} onClick={() => void resendVerification()}>{resendReadyAt ? "Resend available after 60 seconds" : "Resend verification email"}</button>
             {mode === "signup" && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => { setMode("signin"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Use existing account · Sign in</button>}
           </div>}
         </form>
-        {recovery && <button className="commercial-secondary account-recovery-button" type="button" disabled={busy} onClick={() => void leaveAccount()}>Cancel and return to sign in</button>}
-        {!recovery && mode === "signin" && <button className="commercial-secondary account-recovery-button" type="button" disabled={busy} onClick={() => { setMode("reset"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Forgot your password?</button>}
-        {mode === "reset" && !recovery && <button className="commercial-secondary account-recovery-button" type="button" disabled={busy} onClick={() => { setMode("signin"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Back to sign in</button>}
       </>
     )}
     <p className="commercial-footnote">{recovery || mode === "reset" ? "Use only the newest reset email. If a link has expired or was already used, request a new one. Your saved floorplans are not changed by resetting your password."
@@ -216,8 +235,9 @@ export function AccountExperience({ embedded = false, embeddedSection, onEmbedde
     {!embedded && <footer className="commercial-footer"><a href={base + "/"}>Back to your floorplan</a></footer>}
   </>;
 
-  return embedded ? <div className="account-dialog-content">{content}</div> : <main className="commercial-page">
-    <header className="commercial-header"><a href={base + "/"} className="commercial-brand">FreeFloorplan3D</a><nav><a href={base + "/"}>Planner</a><div className="window-header-actions"><WindowHelpButton title="Account & plans" /><button type="button" aria-label="Close account tab" onClick={() => window.close()}>×</button></div></nav></header>
+  return embedded ? <div className="account-dialog-content">{content}</div> : <main className="commercial-page account-page">
+    <UiTheme settings={uiSettings} />
+    <header className="commercial-header"><a href={base + "/"} className="commercial-brand">FreeFloorplan3D</a><nav aria-label="Account navigation"><a className="commercial-secondary" href={base + "/"}>Back to floorplan</a></nav></header>
     {content}
   </main>;
 }

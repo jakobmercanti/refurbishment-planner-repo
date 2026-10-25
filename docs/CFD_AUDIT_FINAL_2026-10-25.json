@@ -1,0 +1,4008 @@
+{
+  "capturedAt": "2026-10-25T12:54:50.070Z",
+  "head": "a8898d738a90d7997f06eba719c310bd3c64c140",
+  "method": "Physical source lines including comments and blanks; nonblank reported separately. Git indexed and nonignored untracked source files. Excludes vendor/public assets, data, declarations, nested website gitlink, attachments and generated/ignored output. Extensions: py, JS/TS variants, css, html, sql, sh, ps1, Dockerfiles.",
+  "total": {
+    "files": 568,
+    "lines": 95004,
+    "nonblank": 89866
+  },
+  "production": {
+    "files": 405,
+    "lines": 70952,
+    "nonblank": 67502
+  },
+  "tests": {
+    "files": 163,
+    "lines": 24052,
+    "nonblank": 22364
+  },
+  "cfdProduction": {
+    "files": 64,
+    "lines": 16429,
+    "nonblank": 15855
+  },
+  "cfdTests": {
+    "files": 33,
+    "lines": 8370,
+    "nonblank": 7974
+  },
+  "files": [
+    {
+      "file": ".recognition-port/backend/app/floorplan_recognition.py",
+      "lines": 201,
+      "nonblank": 171,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "Dockerfile",
+      "lines": 20,
+      "nonblank": 20,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/__init__.py",
+      "lines": 1,
+      "nonblank": 1,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/__init__.py",
+      "lines": 1,
+      "nonblank": 1,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/aggregate_analytics.py",
+      "lines": 71,
+      "nonblank": 59,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/building_document.py",
+      "lines": 260,
+      "nonblank": 251,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/building_roof.py",
+      "lines": 75,
+      "nonblank": 62,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/climoptix_api.py",
+      "lines": 122,
+      "nonblank": 92,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "backend/app/climoptix_foamlib.py",
+      "lines": 209,
+      "nonblank": 203,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "backend/app/climoptix_provider.py",
+      "lines": 1058,
+      "nonblank": 1029,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "backend/app/commercial_api.py",
+      "lines": 1559,
+      "nonblank": 1442,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/commercial_entitlements.py",
+      "lines": 19,
+      "nonblank": 14,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/deployment.py",
+      "lines": 36,
+      "nonblank": 31,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/main.py",
+      "lines": 1013,
+      "nonblank": 905,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/model_processing.py",
+      "lines": 319,
+      "nonblank": 302,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/openai_render.py",
+      "lines": 135,
+      "nonblank": 125,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/openfoam_case.py",
+      "lines": 529,
+      "nonblank": 504,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "backend/app/openfoam_runtime.py",
+      "lines": 326,
+      "nonblank": 302,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "backend/app/openfoam_service.py",
+      "lines": 418,
+      "nonblank": 374,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "backend/app/openfoam_smoke.py",
+      "lines": 182,
+      "nonblank": 169,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "backend/app/openfoam_telemetry.py",
+      "lines": 178,
+      "nonblank": 166,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "backend/app/r2_storage.py",
+      "lines": 171,
+      "nonblank": 149,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/schemas.py",
+      "lines": 331,
+      "nonblank": 270,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/stripe_gateway.py",
+      "lines": 165,
+      "nonblank": 146,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/supabase_rest.py",
+      "lines": 157,
+      "nonblank": 137,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/tripo_provider.py",
+      "lines": 242,
+      "nonblank": 212,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "backend/app/worker.py",
+      "lines": 529,
+      "nonblank": 491,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "cad/__init__.py",
+      "lines": 5,
+      "nonblank": 4,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "cad/freecad_worker.py",
+      "lines": 322,
+      "nonblank": 289,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "cad/generator.py",
+      "lines": 136,
+      "nonblank": 120,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/__init__.py",
+      "lines": 1,
+      "nonblank": 1,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/balustrade_defaults.py",
+      "lines": 41,
+      "nonblank": 37,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/catalog.py",
+      "lines": 427,
+      "nonblank": 397,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/catalogue_assets.py",
+      "lines": 199,
+      "nonblank": 174,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/cfd_proxies.py",
+      "lines": 88,
+      "nonblank": 82,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "database/colour_parts.py",
+      "lines": 22,
+      "nonblank": 18,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/electrical_defaults.py",
+      "lines": 158,
+      "nonblank": 149,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/fixture_defaults.py",
+      "lines": 423,
+      "nonblank": 407,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/fixture_previews.py",
+      "lines": 80,
+      "nonblank": 74,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/heating_defaults.py",
+      "lines": 102,
+      "nonblank": 97,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/migrations/202609240001_phase2_commercial.sql",
+      "lines": 744,
+      "nonblank": 711,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/migrations/202609250001_ai_3d_generation.sql",
+      "lines": 314,
+      "nonblank": 303,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/migrations/202609260001_private_asset_categories.sql",
+      "lines": 25,
+      "nonblank": 23,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/migrations/202609270001_electrical_layout_foundation.sql",
+      "lines": 22,
+      "nonblank": 20,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/migrations/202609270002_electrical_layout_paid_module.sql",
+      "lines": 8,
+      "nonblank": 7,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/models.py",
+      "lines": 164,
+      "nonblank": 127,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/people_defaults.py",
+      "lines": 46,
+      "nonblank": 42,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/ral-classic.js",
+      "lines": 217,
+      "nonblank": 217,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "database/software_settings.py",
+      "lines": 132,
+      "nonblank": 107,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "deployment/Dockerfile.openfoam",
+      "lines": 24,
+      "nonblank": 24,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "deployment/auth-proxy.mjs",
+      "lines": 67,
+      "nonblank": 66,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "deployment/auth-proxy.test.mjs",
+      "lines": 108,
+      "nonblank": 101,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "deployment/cfd-worker-proxy.mjs",
+      "lines": 38,
+      "nonblank": 38,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "deployment/cfd-worker-proxy.test.mjs",
+      "lines": 32,
+      "nonblank": 30,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "deployment/openfoam-entrypoint.sh",
+      "lines": 17,
+      "nonblank": 17,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "deployment/package-openfoam.ps1",
+      "lines": 32,
+      "nonblank": 32,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "deployment/planner-worker.mjs",
+      "lines": 202,
+      "nonblank": 201,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "deployment/planner-worker.test.mjs",
+      "lines": 273,
+      "nonblank": 264,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "deployment/plans-page.mjs",
+      "lines": 98,
+      "nonblank": 96,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "deployment/plans-test-page.mjs",
+      "lines": 22,
+      "nonblank": 21,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "deployment/preview.mjs",
+      "lines": 27,
+      "nonblank": 27,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "deployment/preview.test.mjs",
+      "lines": 28,
+      "nonblank": 27,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "freefloorplan3d/build.mjs",
+      "lines": 32,
+      "nonblank": 32,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "freefloorplan3d/prepare-assets.mjs",
+      "lines": 13,
+      "nonblank": 13,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "freefloorplan3d/public/script.js",
+      "lines": 2,
+      "nonblank": 2,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "freefloorplan3d/public/styles.css",
+      "lines": 9,
+      "nonblank": 9,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "freefloorplan3d/server.mjs",
+      "lines": 6,
+      "nonblank": 6,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "freefloorplan3d/site.mjs",
+      "lines": 62,
+      "nonblank": 61,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "freefloorplan3d/tests.mjs",
+      "lines": 47,
+      "nonblank": 47,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "freefloorplan3d/worker.mjs",
+      "lines": 37,
+      "nonblank": 37,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/account/page.tsx",
+      "lines": 7,
+      "nonblank": 5,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/appearance.css",
+      "lines": 344,
+      "nonblank": 327,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/billing/page.tsx",
+      "lines": 22,
+      "nonblank": 18,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/building.css",
+      "lines": 117,
+      "nonblank": 117,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/checkout/page.tsx",
+      "lines": 5,
+      "nonblank": 4,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/climoptix.css",
+      "lines": 1231,
+      "nonblank": 1230,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/app/commercial.css",
+      "lines": 174,
+      "nonblank": 174,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/density.css",
+      "lines": 202,
+      "nonblank": 197,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/fixture-studio/page.tsx",
+      "lines": 42,
+      "nonblank": 39,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/globals.css",
+      "lines": 2502,
+      "nonblank": 2478,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/healthz/route.ts",
+      "lines": 13,
+      "nonblank": 12,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/layout.tsx",
+      "lines": 57,
+      "nonblank": 54,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/mobile.css",
+      "lines": 100,
+      "nonblank": 100,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/page.tsx",
+      "lines": 5,
+      "nonblank": 4,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/planner-client.tsx",
+      "lines": 740,
+      "nonblank": 696,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/planner-guide.module.css",
+      "lines": 29,
+      "nonblank": 29,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/plans/route.ts",
+      "lines": 12,
+      "nonblank": 10,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/privacy.css",
+      "lines": 28,
+      "nonblank": 28,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/thermal.css",
+      "lines": 352,
+      "nonblank": 351,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/ui-theme.css",
+      "lines": 169,
+      "nonblank": 167,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/window-docking.css",
+      "lines": 209,
+      "nonblank": 209,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/window-help.css",
+      "lines": 27,
+      "nonblank": 27,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/app/workspace/page.tsx",
+      "lines": 200,
+      "nonblank": 183,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/AccountDialog.tsx",
+      "lines": 41,
+      "nonblank": 37,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/AccountExperience.tsx",
+      "lines": 243,
+      "nonblank": 226,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/AccountStatusButton.tsx",
+      "lines": 45,
+      "nonblank": 40,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/AddCustomAssetDialog.tsx",
+      "lines": 313,
+      "nonblank": 296,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/AnnotationsPanel.tsx",
+      "lines": 189,
+      "nonblank": 175,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ApplicationMenuBar.tsx",
+      "lines": 152,
+      "nonblank": 142,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ArchitecturalFixtures.tsx",
+      "lines": 127,
+      "nonblank": 123,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/BalustradeFixture.tsx",
+      "lines": 28,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/BathFixture.tsx",
+      "lines": 65,
+      "nonblank": 64,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/BuildingControls.tsx",
+      "lines": 99,
+      "nonblank": 97,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/BuildingPlanOverlay.tsx",
+      "lines": 76,
+      "nonblank": 76,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/BuildingPropertyEditors.tsx",
+      "lines": 97,
+      "nonblank": 94,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/BuildingSurfaces.tsx",
+      "lines": 49,
+      "nonblank": 48,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/CFDCollapseAll.tsx",
+      "lines": 9,
+      "nonblank": 8,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CFDEditorWindow.tsx",
+      "lines": 22,
+      "nonblank": 20,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CFDFields.tsx",
+      "lines": 219,
+      "nonblank": 213,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CFDReorderList.tsx",
+      "lines": 142,
+      "nonblank": 139,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CFDRowMenu.tsx",
+      "lines": 43,
+      "nonblank": 41,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CFDWorkbenchStatus.tsx",
+      "lines": 20,
+      "nonblank": 18,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CFDWorkerConnection.tsx",
+      "lines": 21,
+      "nonblank": 19,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CFDWorkerTelemetry.tsx",
+      "lines": 78,
+      "nonblank": 75,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CasementWindow.tsx",
+      "lines": 43,
+      "nonblank": 41,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/CatalogueAssetPreview.tsx",
+      "lines": 68,
+      "nonblank": 66,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/CatalogueBrowser.tsx",
+      "lines": 674,
+      "nonblank": 635,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/CatalogueFixtureEditor.tsx",
+      "lines": 371,
+      "nonblank": 366,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/CatalogueManager.tsx",
+      "lines": 150,
+      "nonblank": 135,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/CfdProxyMesh.tsx",
+      "lines": 33,
+      "nonblank": 31,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/CheckoutExperience.tsx",
+      "lines": 50,
+      "nonblank": 45,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ClimoptixBoundaries.tsx",
+      "lines": 457,
+      "nonblank": 455,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixConvergence.tsx",
+      "lines": 267,
+      "nonblank": 262,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixDomain.tsx",
+      "lines": 211,
+      "nonblank": 209,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixEquipment.tsx",
+      "lines": 371,
+      "nonblank": 368,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixMesh.tsx",
+      "lines": 377,
+      "nonblank": 374,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixObjects.tsx",
+      "lines": 117,
+      "nonblank": 115,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixPhysics.tsx",
+      "lines": 119,
+      "nonblank": 117,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixReview.tsx",
+      "lines": 103,
+      "nonblank": 100,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixSimulation.tsx",
+      "lines": 443,
+      "nonblank": 437,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixStudies.tsx",
+      "lines": 159,
+      "nonblank": 156,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixVTKViewer.tsx",
+      "lines": 370,
+      "nonblank": 367,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixViewer.tsx",
+      "lines": 908,
+      "nonblank": 906,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixWindowMenu.tsx",
+      "lines": 185,
+      "nonblank": 182,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixWorkerMonitor.tsx",
+      "lines": 106,
+      "nonblank": 104,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ClimoptixWorkspace.tsx",
+      "lines": 1378,
+      "nonblank": 1375,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/ComponentColours.tsx",
+      "lines": 123,
+      "nonblank": 115,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/DisplayNumberInput.tsx",
+      "lines": 19,
+      "nonblank": 16,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/DoorFixture.tsx",
+      "lines": 125,
+      "nonblank": 122,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/EditableNumberInput.tsx",
+      "lines": 45,
+      "nonblank": 40,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ElectricalCataloguePreview.tsx",
+      "lines": 16,
+      "nonblank": 15,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ElectricalExportWindow.tsx",
+      "lines": 50,
+      "nonblank": 46,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ElectricalFixture.tsx",
+      "lines": 282,
+      "nonblank": 279,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ElectricalLayoutOverlay.tsx",
+      "lines": 158,
+      "nonblank": 155,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ElectricalLayoutPanel.tsx",
+      "lines": 142,
+      "nonblank": 138,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ElectricalLightingTest.tsx",
+      "lines": 34,
+      "nonblank": 33,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ElectricalScheduleWindow.tsx",
+      "lines": 327,
+      "nonblank": 318,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/EnergyLayoutContext.tsx",
+      "lines": 15,
+      "nonblank": 15,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/EnergyLayoutOverlay.tsx",
+      "lines": 83,
+      "nonblank": 83,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/EnergyLayoutPanel.module.css",
+      "lines": 71,
+      "nonblank": 71,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/EnergyLayoutPanel.tsx",
+      "lines": 85,
+      "nonblank": 83,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/EnergyNumberField.tsx",
+      "lines": 8,
+      "nonblank": 7,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/EngineeringViewer.tsx",
+      "lines": 2226,
+      "nonblank": 2124,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FabricMaterial.tsx",
+      "lines": 68,
+      "nonblank": 65,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FixturePlanSymbol.tsx",
+      "lines": 65,
+      "nonblank": 63,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FixturePreview.tsx",
+      "lines": 77,
+      "nonblank": 71,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FloatingToolbar.tsx",
+      "lines": 565,
+      "nonblank": 525,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FloorPlanCanvas.tsx",
+      "lines": 140,
+      "nonblank": 128,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FloorPlanFixtureDimensions.tsx",
+      "lines": 356,
+      "nonblank": 335,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FloorPlanOpeningGraphics.tsx",
+      "lines": 207,
+      "nonblank": 197,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FlooringControls.tsx",
+      "lines": 101,
+      "nonblank": 91,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FloorplanAtmosphere.tsx",
+      "lines": 84,
+      "nonblank": 83,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/FullFloorplanEditor.tsx",
+      "lines": 5442,
+      "nonblank": 5238,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/HeatingLayoutContext.tsx",
+      "lines": 26,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/HeatingLayoutOverlay.tsx",
+      "lines": 105,
+      "nonblank": 104,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/HeatingLayoutPanel.module.css",
+      "lines": 109,
+      "nonblank": 109,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/HeatingLayoutPanel.tsx",
+      "lines": 188,
+      "nonblank": 186,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/HeatingSettingsWindow.tsx",
+      "lines": 10,
+      "nonblank": 10,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/HeatingSpecsEditor.tsx",
+      "lines": 26,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/KitchenFurniture.tsx",
+      "lines": 99,
+      "nonblank": 97,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/LocalAssetLibrary.tsx",
+      "lines": 162,
+      "nonblank": 154,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/LocalAssetScene.tsx",
+      "lines": 20,
+      "nonblank": 19,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/MarkerSettingsPopup.tsx",
+      "lines": 85,
+      "nonblank": 77,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/MetalReflections.tsx",
+      "lines": 12,
+      "nonblank": 11,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/OpeningFinishMaterial.tsx",
+      "lines": 24,
+      "nonblank": 23,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/OpeningPreview.tsx",
+      "lines": 39,
+      "nonblank": 35,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ParametricFixture.tsx",
+      "lines": 131,
+      "nonblank": 129,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PassageOpening.tsx",
+      "lines": 49,
+      "nonblank": 44,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PeoplePlacementControls.tsx",
+      "lines": 56,
+      "nonblank": 54,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PersonEditor.tsx",
+      "lines": 97,
+      "nonblank": 87,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PersonFixture.tsx",
+      "lines": 87,
+      "nonblank": 83,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PlacementPreview2D.tsx",
+      "lines": 26,
+      "nonblank": 25,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PlanHoverHelp.tsx",
+      "lines": 45,
+      "nonblank": 44,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PlannerBuildDashboard.module.css",
+      "lines": 94,
+      "nonblank": 94,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PlannerBuildDashboard.tsx",
+      "lines": 112,
+      "nonblank": 103,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PlannerBuildWorkspace.tsx",
+      "lines": 859,
+      "nonblank": 833,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PlannerPrivacyDialog.tsx",
+      "lines": 42,
+      "nonblank": 41,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/PlansRedirect.tsx",
+      "lines": 13,
+      "nonblank": 11,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/Popup.tsx",
+      "lines": 40,
+      "nonblank": 37,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ProceduralFloorMaterial.tsx",
+      "lines": 23,
+      "nonblank": 22,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ProjectDownloadDialog.tsx",
+      "lines": 54,
+      "nonblank": 53,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/QuoteGenerator.module.css",
+      "lines": 96,
+      "nonblank": 96,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/QuoteGenerator.tsx",
+      "lines": 188,
+      "nonblank": 186,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/RadiatorEditorWindow.tsx",
+      "lines": 32,
+      "nonblank": 32,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/RadiatorFixture.tsx",
+      "lines": 27,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/RenderCameraRig.tsx",
+      "lines": 233,
+      "nonblank": 226,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/RoofPreview.tsx",
+      "lines": 43,
+      "nonblank": 40,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/RoomFurniture.tsx",
+      "lines": 63,
+      "nonblank": 62,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/RoomOpeningEditor.tsx",
+      "lines": 64,
+      "nonblank": 62,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/SeatingFurniture.tsx",
+      "lines": 116,
+      "nonblank": 107,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/SettingsDialog.tsx",
+      "lines": 77,
+      "nonblank": 73,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/SkirtingBoards.tsx",
+      "lines": 83,
+      "nonblank": 80,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/SkirtingControls.tsx",
+      "lines": 29,
+      "nonblank": 27,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/StableCanvas.tsx",
+      "lines": 26,
+      "nonblank": 23,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/StlFixture.tsx",
+      "lines": 50,
+      "nonblank": 48,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ThermalEnvelopeWindow.tsx",
+      "lines": 1729,
+      "nonblank": 1725,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ThermalFields.tsx",
+      "lines": 338,
+      "nonblank": 336,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ThermalMaterialsLibrary.tsx",
+      "lines": 40,
+      "nonblank": 39,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ToolbarContextMenu.tsx",
+      "lines": 32,
+      "nonblank": 29,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/UiTheme.tsx",
+      "lines": 39,
+      "nonblank": 36,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ViewToggle.tsx",
+      "lines": 12,
+      "nonblank": 10,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/ViewerOpeningEditor.tsx",
+      "lines": 337,
+      "nonblank": 323,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/WallLayersEditor.tsx",
+      "lines": 117,
+      "nonblank": 116,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/WallLayersPreview.module.css",
+      "lines": 14,
+      "nonblank": 14,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/WallLayersPreview.tsx",
+      "lines": 27,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/WindowHelpButton.tsx",
+      "lines": 12,
+      "nonblank": 12,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/WindowHelpHost.tsx",
+      "lines": 50,
+      "nonblank": 49,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/WindowIcon.tsx",
+      "lines": 32,
+      "nonblank": 29,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/WindowMaximizeButton.tsx",
+      "lines": 19,
+      "nonblank": 17,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/useCFDJobs.ts",
+      "lines": 277,
+      "nonblank": 274,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/components/useClimoptixAccess.ts",
+      "lines": 42,
+      "nonblank": 40,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/components/useRailwayCFDWorker.ts",
+      "lines": 38,
+      "nonblank": 36,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/eslint.config.mjs",
+      "lines": 9,
+      "nonblank": 8,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/addToPlanModes.ts",
+      "lines": 11,
+      "nonblank": 10,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/analytics.ts",
+      "lines": 29,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/analyticsConsent.ts",
+      "lines": 19,
+      "nonblank": 17,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/appPreferences.ts",
+      "lines": 207,
+      "nonblank": 185,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/architecturalModels.ts",
+      "lines": 21,
+      "nonblank": 19,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/assetColours.ts",
+      "lines": 108,
+      "nonblank": 100,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/assetRepository.ts",
+      "lines": 72,
+      "nonblank": 71,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/assetUrl.ts",
+      "lines": 7,
+      "nonblank": 7,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/balustrades.ts",
+      "lines": 36,
+      "nonblank": 32,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/billingNavigation.ts",
+      "lines": 29,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/buildingDocument.ts",
+      "lines": 185,
+      "nonblank": 184,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/buildingGeometry.ts",
+      "lines": 209,
+      "nonblank": 206,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/buildingThermalModel.ts",
+      "lines": 4,
+      "nonblank": 4,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/cadToGlb.ts",
+      "lines": 191,
+      "nonblank": 176,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/catalogueTaxonomy.ts",
+      "lines": 33,
+      "nonblank": 30,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/cfd.ts",
+      "lines": 41,
+      "nonblank": 39,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/cfdSubmissionJournal.ts",
+      "lines": 60,
+      "nonblank": 56,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/cfdWorkerProfile.ts",
+      "lines": 30,
+      "nonblank": 27,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/cfdWorkerTelemetry.ts",
+      "lines": 30,
+      "nonblank": 28,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptix.ts",
+      "lines": 734,
+      "nonblank": 732,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixDocument.ts",
+      "lines": 549,
+      "nonblank": 548,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixGroups.ts",
+      "lines": 102,
+      "nonblank": 97,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixHelp.ts",
+      "lines": 115,
+      "nonblank": 111,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixJobs.ts",
+      "lines": 151,
+      "nonblank": 145,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixObjectGroups.ts",
+      "lines": 69,
+      "nonblank": 68,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixPreview.ts",
+      "lines": 150,
+      "nonblank": 142,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixScene.ts",
+      "lines": 113,
+      "nonblank": 108,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixStudies.ts",
+      "lines": 57,
+      "nonblank": 55,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixVTK.ts",
+      "lines": 477,
+      "nonblank": 475,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/climoptixWorkflow.ts",
+      "lines": 119,
+      "nonblank": 116,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "frontend/lib/commercialApi.ts",
+      "lines": 66,
+      "nonblank": 59,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/commercialAuth.ts",
+      "lines": 299,
+      "nonblank": 277,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/commercialCatalogue.ts",
+      "lines": 217,
+      "nonblank": 198,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/doorModels.ts",
+      "lines": 9,
+      "nonblank": 9,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/drawingCalibration.ts",
+      "lines": 24,
+      "nonblank": 23,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/duluxPalette.ts",
+      "lines": 21,
+      "nonblank": 18,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalAssets.ts",
+      "lines": 17,
+      "nonblank": 15,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalAttachments.ts",
+      "lines": 72,
+      "nonblank": 64,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalAutoRouting.ts",
+      "lines": 161,
+      "nonblank": 156,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalConnectionLabels.ts",
+      "lines": 26,
+      "nonblank": 22,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalCrossings.ts",
+      "lines": 94,
+      "nonblank": 91,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalDocumentPreview.ts",
+      "lines": 19,
+      "nonblank": 19,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalFilePicker.ts",
+      "lines": 17,
+      "nonblank": 17,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalLayout.ts",
+      "lines": 405,
+      "nonblank": 376,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalLayoutPackage.ts",
+      "lines": 400,
+      "nonblank": 386,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalPlanPorts.ts",
+      "lines": 56,
+      "nonblank": 53,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalPlanSymbols.ts",
+      "lines": 86,
+      "nonblank": 75,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalSchedule.ts",
+      "lines": 180,
+      "nonblank": 168,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/electricalSimulation.ts",
+      "lines": 101,
+      "nonblank": 98,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/elementPlacement.ts",
+      "lines": 135,
+      "nonblank": 129,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/energyCalculations.ts",
+      "lines": 150,
+      "nonblank": 149,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/energyDocument.ts",
+      "lines": 57,
+      "nonblank": 55,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/energyExport.ts",
+      "lines": 56,
+      "nonblank": 55,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/energyLabelLayout.ts",
+      "lines": 85,
+      "nonblank": 82,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/energyLayerColours.ts",
+      "lines": 8,
+      "nonblank": 6,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/energyScenarios.ts",
+      "lines": 21,
+      "nonblank": 18,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/energyWallConstruction.ts",
+      "lines": 93,
+      "nonblank": 91,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/fabrics.ts",
+      "lines": 35,
+      "nonblank": 32,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/finishOptions.ts",
+      "lines": 19,
+      "nonblank": 15,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/fixtureCatalog.ts",
+      "lines": 52,
+      "nonblank": 46,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/fixtureSymbolAppearance.ts",
+      "lines": 151,
+      "nonblank": 133,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/floatingWindowGeometry.ts",
+      "lines": 130,
+      "nonblank": 115,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/floorFinishes.ts",
+      "lines": 22,
+      "nonblank": 19,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/floorOpeningDraft.ts",
+      "lines": 28,
+      "nonblank": 25,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/flooring.ts",
+      "lines": 213,
+      "nonblank": 209,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/floorplanAppearance.ts",
+      "lines": 53,
+      "nonblank": 48,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/floorplanStyles.ts",
+      "lines": 133,
+      "nonblank": 125,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/freeModuleDemo.ts",
+      "lines": 5,
+      "nonblank": 4,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/ganttAppearance.ts",
+      "lines": 16,
+      "nonblank": 16,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/ganttCalendar.ts",
+      "lines": 25,
+      "nonblank": 22,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingCalculations.ts",
+      "lines": 225,
+      "nonblank": 224,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingCatalogue.ts",
+      "lines": 50,
+      "nonblank": 49,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingDesign.ts",
+      "lines": 131,
+      "nonblank": 130,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingDocument.ts",
+      "lines": 55,
+      "nonblank": 54,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingElements.ts",
+      "lines": 63,
+      "nonblank": 62,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingExport.ts",
+      "lines": 64,
+      "nonblank": 64,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingGeometry.ts",
+      "lines": 169,
+      "nonblank": 168,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingPipes.ts",
+      "lines": 14,
+      "nonblank": 14,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingPresentation.ts",
+      "lines": 24,
+      "nonblank": 21,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingRoomReset.ts",
+      "lines": 52,
+      "nonblank": 48,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/heatingWorker.ts",
+      "lines": 10,
+      "nonblank": 10,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/layoutInteraction.ts",
+      "lines": 90,
+      "nonblank": 83,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/localDatabase.ts",
+      "lines": 16,
+      "nonblank": 16,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/localPlanSymbol.ts",
+      "lines": 36,
+      "nonblank": 36,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/metalFinishes.ts",
+      "lines": 29,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/metalSurface.ts",
+      "lines": 29,
+      "nonblank": 27,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/openingCatalogue.ts",
+      "lines": 18,
+      "nonblank": 16,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/openingPlacement.ts",
+      "lines": 56,
+      "nonblank": 52,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/openingRendering.ts",
+      "lines": 16,
+      "nonblank": 14,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/openingWallDrag.ts",
+      "lines": 108,
+      "nonblank": 100,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/passageOpenings.ts",
+      "lines": 48,
+      "nonblank": 43,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/pdfDrawing.ts",
+      "lines": 18,
+      "nonblank": 18,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/people.ts",
+      "lines": 90,
+      "nonblank": 86,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/person.ts",
+      "lines": 20,
+      "nonblank": 17,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/plannerBuild.ts",
+      "lines": 648,
+      "nonblank": 602,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/plannerBuildActivityLibrary.ts",
+      "lines": 133,
+      "nonblank": 128,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/plannerBuildDashboard.ts",
+      "lines": 66,
+      "nonblank": 63,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/plannerBuildPresentation.ts",
+      "lines": 10,
+      "nonblank": 9,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/plannerBuildView.ts",
+      "lines": 23,
+      "nonblank": 23,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/projectDocument.ts",
+      "lines": 189,
+      "nonblank": 187,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/projectHistory.ts",
+      "lines": 37,
+      "nonblank": 37,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/projectPackage.ts",
+      "lines": 77,
+      "nonblank": 76,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/projectRepository.ts",
+      "lines": 44,
+      "nonblank": 43,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/projectScope.ts",
+      "lines": 9,
+      "nonblank": 8,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/quoteCalculations.ts",
+      "lines": 89,
+      "nonblank": 88,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/quoteDocument.ts",
+      "lines": 70,
+      "nonblank": 69,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/quoteHelp.ts",
+      "lines": 33,
+      "nonblank": 32,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/quotePdf.ts",
+      "lines": 130,
+      "nonblank": 129,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/quoteSources.ts",
+      "lines": 74,
+      "nonblank": 73,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/radiators.ts",
+      "lines": 6,
+      "nonblank": 6,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/railwayCFDWorker.ts",
+      "lines": 108,
+      "nonblank": 103,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/renderCamera.ts",
+      "lines": 383,
+      "nonblank": 357,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/roofAppearance.ts",
+      "lines": 39,
+      "nonblank": 38,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/roomDetection.ts",
+      "lines": 218,
+      "nonblank": 200,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/roomFixtureOptions.ts",
+      "lines": 2,
+      "nonblank": 2,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/roomMeasurement.ts",
+      "lines": 7,
+      "nonblank": 6,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/roomOperations.ts",
+      "lines": 115,
+      "nonblank": 112,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/serviceHelp.ts",
+      "lines": 40,
+      "nonblank": 40,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/serviceMenuHelp.ts",
+      "lines": 25,
+      "nonblank": 25,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/skirting.ts",
+      "lines": 42,
+      "nonblank": 39,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/stlToLocalAsset.ts",
+      "lines": 35,
+      "nonblank": 33,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/thermalClient.ts",
+      "lines": 105,
+      "nonblank": 104,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/thermalDocument.ts",
+      "lines": 390,
+      "nonblank": 389,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/thermalMaterialDefaults.ts",
+      "lines": 42,
+      "nonblank": 39,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/toolbars.ts",
+      "lines": 39,
+      "nonblank": 32,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/types.ts",
+      "lines": 251,
+      "nonblank": 226,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/uiText.ts",
+      "lines": 4,
+      "nonblank": 4,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/units.ts",
+      "lines": 49,
+      "nonblank": 41,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/useCompactWorkspace.ts",
+      "lines": 12,
+      "nonblank": 11,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/useLocalProject.ts",
+      "lines": 136,
+      "nonblank": 135,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/viewerCameraFraming.ts",
+      "lines": 82,
+      "nonblank": 76,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/viewerNavigation.ts",
+      "lines": 45,
+      "nonblank": 42,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/wallDragGeometry.ts",
+      "lines": 2415,
+      "nonblank": 2288,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/wallEnvelope.ts",
+      "lines": 23,
+      "nonblank": 22,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/wallFinishes.ts",
+      "lines": 53,
+      "nonblank": 48,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/wallFixtureAttachment.ts",
+      "lines": 149,
+      "nonblank": 139,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/wallRendering.ts",
+      "lines": 268,
+      "nonblank": 247,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/wallThickness.ts",
+      "lines": 4,
+      "nonblank": 4,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/windowDocking.ts",
+      "lines": 163,
+      "nonblank": 157,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/windowFocusMode.ts",
+      "lines": 117,
+      "nonblank": 113,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/windowHelp.ts",
+      "lines": 109,
+      "nonblank": 108,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/windowViewport.ts",
+      "lines": 11,
+      "nonblank": 11,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/lib/workspaceHelp.ts",
+      "lines": 102,
+      "nonblank": 101,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/next.config.ts",
+      "lines": 43,
+      "nonblank": 39,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/scripts/check-source-usage.mjs",
+      "lines": 69,
+      "nonblank": 65,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/scripts/copy-occt-assets.mjs",
+      "lines": 18,
+      "nonblank": 16,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/scripts/render-architectural-previews.mjs",
+      "lines": 37,
+      "nonblank": 37,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/scripts/render-fixture-previews.mjs",
+      "lines": 37,
+      "nonblank": 37,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/scripts/run-tests.mjs",
+      "lines": 41,
+      "nonblank": 36,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/scripts/sync-dulux-colours.mjs",
+      "lines": 102,
+      "nonblank": 91,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/accountTabs.test.mts",
+      "lines": 54,
+      "nonblank": 53,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/addToPlanModes.test.mts",
+      "lines": 9,
+      "nonblank": 7,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/appPreferences.test.mts",
+      "lines": 123,
+      "nonblank": 111,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/applicationMenuBar.test.mts",
+      "lines": 44,
+      "nonblank": 42,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/authTransport.test.mts",
+      "lines": 255,
+      "nonblank": 233,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/accountAuthentication.browser.mts",
+      "lines": 87,
+      "nonblank": 83,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/accountPasswordReset.browser.mts",
+      "lines": 89,
+      "nonblank": 84,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/buildingPolish.browser.mts",
+      "lines": 178,
+      "nonblank": 169,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/catalogueCfd.browser.mts",
+      "lines": 177,
+      "nonblank": 172,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/cfdReadiness.browser.mts",
+      "lines": 37,
+      "nonblank": 35,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/cfdSurfacePresentation.browser.mts",
+      "lines": 294,
+      "nonblank": 289,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptix.browser.mts",
+      "lines": 671,
+      "nonblank": 662,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptixAccess.browser.mts",
+      "lines": 106,
+      "nonblank": 99,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptixAudit.browser.mts",
+      "lines": 464,
+      "nonblank": 456,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptixMonitor.browser.mts",
+      "lines": 665,
+      "nonblank": 655,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptixResponsive.browser.mts",
+      "lines": 309,
+      "nonblank": 304,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptixUiV2.browser.mts",
+      "lines": 198,
+      "nonblank": 192,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptixWorker.browser.mts",
+      "lines": 389,
+      "nonblank": 382,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptixWorkflow.browser.mts",
+      "lines": 610,
+      "nonblank": 599,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/climoptixWorkspace.browser.mts",
+      "lines": 599,
+      "nonblank": 590,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/compactCFD.browser.mts",
+      "lines": 270,
+      "nonblank": 263,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/currentWorkflows.browser.mts",
+      "lines": 171,
+      "nonblank": 160,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/fixtures/cfdWorkerFixture.tsx",
+      "lines": 137,
+      "nonblank": 136,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/harness.mjs",
+      "lines": 176,
+      "nonblank": 169,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/openfoamRecovery.browser.mts",
+      "lines": 287,
+      "nonblank": 278,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/browser/passageOpenings.browser.mts",
+      "lines": 96,
+      "nonblank": 93,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/people.browser.mts",
+      "lines": 148,
+      "nonblank": 143,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/requestedUiPolish.browser.mts",
+      "lines": 139,
+      "nonblank": 136,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/roofBalustrade.browser.mts",
+      "lines": 110,
+      "nonblank": 105,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/screenshotFixes.browser.mts",
+      "lines": 225,
+      "nonblank": 218,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/thermal.browser.mts",
+      "lines": 960,
+      "nonblank": 946,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/viewerConsistency.browser.mts",
+      "lines": 170,
+      "nonblank": 164,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/windowControls.browser.mts",
+      "lines": 194,
+      "nonblank": 187,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/browser/windowDocking.browser.mts",
+      "lines": 279,
+      "nonblank": 270,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/building.test.mts",
+      "lines": 149,
+      "nonblank": 149,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/buildingAudit.test.mts",
+      "lines": 101,
+      "nonblank": 99,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/buildingInteractions.test.mts",
+      "lines": 46,
+      "nonblank": 40,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/buildingPersistence.integration.mts",
+      "lines": 66,
+      "nonblank": 64,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/buildingRevision.test.mts",
+      "lines": 105,
+      "nonblank": 105,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/buildingTestUtils.ts",
+      "lines": 5,
+      "nonblank": 4,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/cfd.test.mts",
+      "lines": 45,
+      "nonblank": 39,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/cfdSubmissionJournal.test.mts",
+      "lines": 34,
+      "nonblank": 33,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/cfdWorkerProfile.test.mts",
+      "lines": 33,
+      "nonblank": 30,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/cfdWorkerTelemetry.test.tsx",
+      "lines": 23,
+      "nonblank": 22,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptix.integration.mts",
+      "lines": 83,
+      "nonblank": 80,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptix.test.mts",
+      "lines": 291,
+      "nonblank": 288,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptixFixtures.ts",
+      "lines": 122,
+      "nonblank": 119,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptixGroups.test.mts",
+      "lines": 131,
+      "nonblank": 126,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptixObjectGroups.test.mts",
+      "lines": 50,
+      "nonblank": 46,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptixPreview.test.mts",
+      "lines": 162,
+      "nonblank": 158,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptixScene.test.mts",
+      "lines": 68,
+      "nonblank": 64,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptixSourceRequest.test.mts",
+      "lines": 60,
+      "nonblank": 58,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptixStudies.test.mts",
+      "lines": 418,
+      "nonblank": 409,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/climoptixWorkflow.test.mts",
+      "lines": 225,
+      "nonblank": 222,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "frontend/tests/commercial-checkout.test.mts",
+      "lines": 91,
+      "nonblank": 87,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/commercialCatalogue.test.tsx",
+      "lines": 92,
+      "nonblank": 87,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/css-register.cjs",
+      "lines": 2,
+      "nonblank": 2,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/drawingCalibration.test.mts",
+      "lines": 31,
+      "nonblank": 28,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalAutoRouting.test.mts",
+      "lines": 81,
+      "nonblank": 80,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalFilePicker.test.mts",
+      "lines": 21,
+      "nonblank": 19,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalInteractions.test.mts",
+      "lines": 82,
+      "nonblank": 80,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalLayout.test.mts",
+      "lines": 131,
+      "nonblank": 124,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalLayoutPackage.test.mts",
+      "lines": 46,
+      "nonblank": 41,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalPlanSymbols.test.mts",
+      "lines": 62,
+      "nonblank": 58,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalPolish.test.mts",
+      "lines": 59,
+      "nonblank": 59,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalPreview.test.mts",
+      "lines": 28,
+      "nonblank": 27,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalSchedule.test.mts",
+      "lines": 150,
+      "nonblank": 139,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/electricalSimulation.test.mts",
+      "lines": 77,
+      "nonblank": 76,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/energyBaselineRegression.test.mts",
+      "lines": 98,
+      "nonblank": 98,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/energyLabelLayout.test.mts",
+      "lines": 54,
+      "nonblank": 52,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/energyLayout.test.mts",
+      "lines": 38,
+      "nonblank": 38,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/energyPresentation.test.mts",
+      "lines": 85,
+      "nonblank": 81,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/energyScenarios.test.mts",
+      "lines": 35,
+      "nonblank": 33,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/energyWallConstruction.test.mts",
+      "lines": 23,
+      "nonblank": 23,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/fixturePositioning.test.tsx",
+      "lines": 161,
+      "nonblank": 145,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/floatingWindowGeometry.test.mts",
+      "lines": 145,
+      "nonblank": 126,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/floorFinishes.test.mts",
+      "lines": 44,
+      "nonblank": 37,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/flooring.test.mts",
+      "lines": 61,
+      "nonblank": 56,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/floorplanAppearance.test.mts",
+      "lines": 24,
+      "nonblank": 23,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/floorplanStyles.test.mts",
+      "lines": 28,
+      "nonblank": 25,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/freeModuleDemo.test.mts",
+      "lines": 11,
+      "nonblank": 10,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/ganttAppearance.test.mts",
+      "lines": 28,
+      "nonblank": 26,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/ganttCalendar.test.mts",
+      "lines": 19,
+      "nonblank": 17,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/heatingElements.test.mts",
+      "lines": 56,
+      "nonblank": 56,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/heatingFeatureReset.test.mts",
+      "lines": 54,
+      "nonblank": 54,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/heatingLayout.test.mts",
+      "lines": 162,
+      "nonblank": 162,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/heatingOutputEdits.test.mts",
+      "lines": 81,
+      "nonblank": 81,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/heatingPresentation.test.mts",
+      "lines": 99,
+      "nonblank": 96,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/heatingStandardPlan.test.mts",
+      "lines": 47,
+      "nonblank": 43,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/heatingWorkflow.test.mts",
+      "lines": 53,
+      "nonblank": 53,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/layoutWindowControls.test.mts",
+      "lines": 62,
+      "nonblank": 60,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/moduleCorrections.test.mts",
+      "lines": 116,
+      "nonblank": 115,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/moduleFollowups.test.mts",
+      "lines": 55,
+      "nonblank": 50,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/notchedWallDrag.test.mts",
+      "lines": 64,
+      "nonblank": 63,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/openingCatalogue.test.mts",
+      "lines": 13,
+      "nonblank": 11,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/openingPlacement.test.mts",
+      "lines": 58,
+      "nonblank": 50,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/openingRendering.test.mts",
+      "lines": 21,
+      "nonblank": 18,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/passageOpenings.test.mts",
+      "lines": 81,
+      "nonblank": 73,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/people.test.mts",
+      "lines": 75,
+      "nonblank": 73,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/placementPreview.test.mts",
+      "lines": 82,
+      "nonblank": 77,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/plannerBuild.test.mts",
+      "lines": 239,
+      "nonblank": 217,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/plansRoute.test.mts",
+      "lines": 25,
+      "nonblank": 24,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/projectPersistence.integration.mts",
+      "lines": 63,
+      "nonblank": 62,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/quoteGenerator.test.mts",
+      "lines": 198,
+      "nonblank": 195,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/quoteLayout.test.tsx",
+      "lines": 34,
+      "nonblank": 33,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/railwayCFDWorker.test.ts",
+      "lines": 49,
+      "nonblank": 46,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/renderCamera.test.mts",
+      "lines": 182,
+      "nonblank": 163,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/roofBalustrade.integration.mts",
+      "lines": 28,
+      "nonblank": 27,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/roofBalustrade.test.mts",
+      "lines": 107,
+      "nonblank": 99,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/roofBalustradeFixtures.ts",
+      "lines": 14,
+      "nonblank": 13,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/roomDetection.test.mts",
+      "lines": 46,
+      "nonblank": 39,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/roomOperations.test.mts",
+      "lines": 112,
+      "nonblank": 111,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/settingsPreferences.test.mts",
+      "lines": 41,
+      "nonblank": 38,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/sourceUsage.test.mts",
+      "lines": 21,
+      "nonblank": 19,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/testDiscovery.test.mts",
+      "lines": 29,
+      "nonblank": 27,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/thermal.test.ts",
+      "lines": 153,
+      "nonblank": 151,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/thermalFixtures.ts",
+      "lines": 109,
+      "nonblank": 108,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/thermalMaterials.test.mts",
+      "lines": 69,
+      "nonblank": 68,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/uiHelpAudit.test.mts",
+      "lines": 55,
+      "nonblank": 54,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/uiText.test.mts",
+      "lines": 31,
+      "nonblank": 29,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/viewerCameraFraming.test.mts",
+      "lines": 85,
+      "nonblank": 78,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/wallDragGeometry.test.mts",
+      "lines": 1510,
+      "nonblank": 1306,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/wallFinishes.test.mts",
+      "lines": 71,
+      "nonblank": 64,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/wallFixtureAttachment.test.mts",
+      "lines": 42,
+      "nonblank": 38,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/wallMountedModules.test.mts",
+      "lines": 106,
+      "nonblank": 105,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/wallRendering.test.mts",
+      "lines": 122,
+      "nonblank": 108,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/wallThickness.test.mts",
+      "lines": 15,
+      "nonblank": 13,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "frontend/tests/windowViewport.test.mts",
+      "lines": 32,
+      "nonblank": 28,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "geometry/__init__.py",
+      "lines": 6,
+      "nonblank": 4,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/balustrades.py",
+      "lines": 67,
+      "nonblank": 60,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/cfd.py",
+      "lines": 109,
+      "nonblank": 97,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "geometry/cfd_profiles.py",
+      "lines": 342,
+      "nonblank": 327,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "geometry/cfd_surface.py",
+      "lines": 148,
+      "nonblank": 129,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "geometry/climoptix_domain.py",
+      "lines": 941,
+      "nonblank": 894,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "geometry/climoptix_models.py",
+      "lines": 502,
+      "nonblank": 415,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "geometry/climoptix_scene.py",
+      "lines": 57,
+      "nonblank": 52,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "geometry/climoptix_surface.py",
+      "lines": 234,
+      "nonblank": 203,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "geometry/climoptix_workflow.py",
+      "lines": 39,
+      "nonblank": 31,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "geometry/constants.py",
+      "lines": 7,
+      "nonblank": 6,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/engine.py",
+      "lines": 519,
+      "nonblank": 490,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/fixtures.py",
+      "lines": 154,
+      "nonblank": 145,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/heating.py",
+      "lines": 32,
+      "nonblank": 26,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/layout_engine.py",
+      "lines": 381,
+      "nonblank": 356,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/models.py",
+      "lines": 473,
+      "nonblank": 388,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/opening_profiles.py",
+      "lines": 29,
+      "nonblank": 24,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/people.py",
+      "lines": 103,
+      "nonblank": 86,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/shapes.py",
+      "lines": 125,
+      "nonblank": 103,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/thermal_balance.py",
+      "lines": 501,
+      "nonblank": 491,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/thermal_envelope.py",
+      "lines": 569,
+      "nonblank": 537,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/thermal_epw.py",
+      "lines": 93,
+      "nonblank": 89,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/thermal_models.py",
+      "lines": 274,
+      "nonblank": 235,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/thermal_solar.py",
+      "lines": 116,
+      "nonblank": 104,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "geometry/walls.py",
+      "lines": 76,
+      "nonblank": 61,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "landing/index.html",
+      "lines": 154,
+      "nonblank": 148,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "landing/script.js",
+      "lines": 32,
+      "nonblank": 27,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "landing/styles.css",
+      "lines": 209,
+      "nonblank": 197,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "scripts/audit_cfd_assets.py",
+      "lines": 279,
+      "nonblank": 257,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "scripts/audit_climoptix.py",
+      "lines": 329,
+      "nonblank": 310,
+      "test": false,
+      "cfd": true
+    },
+    {
+      "file": "scripts/count_source_lines.mjs",
+      "lines": 32,
+      "nonblank": 30,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "scripts/generate_architectural_assets.py",
+      "lines": 362,
+      "nonblank": 337,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "scripts/generate_door_symbols.py",
+      "lines": 79,
+      "nonblank": 71,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "scripts/generate_room_fixture_assets.py",
+      "lines": 89,
+      "nonblank": 82,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "scripts/generate_seating_artwork.py",
+      "lines": 177,
+      "nonblank": 158,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "start-local.ps1",
+      "lines": 398,
+      "nonblank": 365,
+      "test": false,
+      "cfd": false
+    },
+    {
+      "file": "tests/conftest.py",
+      "lines": 58,
+      "nonblank": 45,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_api.py",
+      "lines": 864,
+      "nonblank": 763,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_balustrade_catalogue.py",
+      "lines": 89,
+      "nonblank": 77,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_billing_sync.py",
+      "lines": 170,
+      "nonblank": 136,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_building_document.py",
+      "lines": 259,
+      "nonblank": 235,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_cad_adapter.py",
+      "lines": 121,
+      "nonblank": 100,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_catalogue_atomic_storage.py",
+      "lines": 71,
+      "nonblank": 56,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_catalogue_transport.py",
+      "lines": 29,
+      "nonblank": 24,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_cfd_audit.py",
+      "lines": 28,
+      "nonblank": 23,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "tests/test_cfd_proxies.py",
+      "lines": 346,
+      "nonblank": 318,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "tests/test_climoptix.py",
+      "lines": 1099,
+      "nonblank": 935,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "tests/test_commercial_entitlements.py",
+      "lines": 55,
+      "nonblank": 46,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_commercial_phase2.py",
+      "lines": 442,
+      "nonblank": 368,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_deployment.py",
+      "lines": 42,
+      "nonblank": 34,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_fit_engine.py",
+      "lines": 98,
+      "nonblank": 77,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_fixture_catalogue.py",
+      "lines": 207,
+      "nonblank": 185,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_heating_catalogue.py",
+      "lines": 80,
+      "nonblank": 70,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_openfoam_telemetry.py",
+      "lines": 171,
+      "nonblank": 137,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "tests/test_openfoam_worker.py",
+      "lines": 183,
+      "nonblank": 160,
+      "test": true,
+      "cfd": true
+    },
+    {
+      "file": "tests/test_openings_and_shapes.py",
+      "lines": 56,
+      "nonblank": 44,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_passage_openings.py",
+      "lines": 100,
+      "nonblank": 88,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_people.py",
+      "lines": 174,
+      "nonblank": 150,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_polygon_and_walls.py",
+      "lines": 111,
+      "nonblank": 86,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_software_settings.py",
+      "lines": 62,
+      "nonblank": 49,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_storage_transports.py",
+      "lines": 39,
+      "nonblank": 32,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_supabase_keys.py",
+      "lines": 48,
+      "nonblank": 37,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_test_environment.py",
+      "lines": 19,
+      "nonblank": 12,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_thermal_expansion.py",
+      "lines": 638,
+      "nonblank": 563,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_tripo_provider.py",
+      "lines": 149,
+      "nonblank": 109,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_units_and_models.py",
+      "lines": 58,
+      "nonblank": 45,
+      "test": true,
+      "cfd": false
+    },
+    {
+      "file": "tests/test_worker.py",
+      "lines": 234,
+      "nonblank": 203,
+      "test": true,
+      "cfd": false
+    }
+  ]
+}

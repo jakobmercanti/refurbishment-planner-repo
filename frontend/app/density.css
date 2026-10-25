@@ -159,11 +159,17 @@ body .cfx-workspace .cfx-panel-actions {
   justify-content: end; gap: var(--density-section-gap); margin-bottom: var(--density-section-gap);
 }
 body .cfx-workspace .cfx-panel-actions > button { width: 100%; min-width: 0; white-space: normal; text-align: center; }
+body .cfx-workspace .cfx-run-panel > .cfx-panel-actions {
+  width: 100%; grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+body .cfx-workspace .cfx-group-actions > .cfx-add-sim { white-space: nowrap; }
 body .cfx-workspace :is(.cfx-run-panel, .cfx-physics-panel) > details + details { margin-top: var(--density-section-gap); }
 body .cfx-workspace .cfx-transfer-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-right: calc(var(--density-control-min-height) + var(--density-section-gap)); }
 body .cfx-workspace .cfx-review-outcome p { margin-block: var(--density-section-gap); }
-body .cfx-workspace .cfx-worker-controls { padding: var(--density-window-padding); border: 1px solid var(--line); border-radius: var(--radius-control); }
-body .cfx-workspace .cfx-worker-controls p { margin: 0 0 var(--density-section-gap); color: var(--muted); }
+body .cfx-workspace .cfx-worker-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--density-section-gap); padding: var(--density-window-padding); border: 1px solid var(--line); border-radius: var(--radius-control); }
+body .cfx-workspace .cfx-worker-controls p { flex: 1 1 320px; min-width: 0; margin: 0; color: var(--muted); }
+body .cfx-workspace .cfx-worker-controls > .cfx-inline-toolbar { flex: 0 1 auto; margin: 0; }
+body .cfx-workspace .cfx-issues-link { text-decoration: underline; }
 body .cfx-workspace .cfx-native-log { max-height: 280px; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 body .cfx-workspace .cfx-refinement-row {
   display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center;
@@ -175,6 +181,7 @@ body .cfx-workspace .cfx-study-actions { width: clamp(210px, 25cqw, 270px); }
 body .cfx-workspace .cfx-study-actions > button { padding-inline: 6px; }
 body .cfx-workspace .cfx-device-name { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 @container cfx-setup (max-width: 540px) {
+  body .cfx-workspace .cfx-run-panel > .cfx-panel-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   body .cfx-workspace .cfx-study-row { grid-template-columns: minmax(0, 1fr) 28px; }
   body .cfx-workspace .cfx-study-actions { width: auto; }
   body .cfx-workspace .cfx-study-name { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.25fr); gap: 4px 8px; }

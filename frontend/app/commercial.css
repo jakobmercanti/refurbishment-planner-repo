@@ -57,6 +57,26 @@
 html[data-theme="dark"] .commercial-status { border-color: #397454; background: #193c2c; color: #91e0b1; }
 html[data-theme="dark"] :is(.commercial-page, .account-dialog-content) p.commercial-status { color: #91e0b1; }
 .account-password-toggle { justify-self: start; min-height: 44px; }
+.account-form-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--density-section-gap, 10px); }
+.account-form-actions > button { width: 100%; min-width: 0; }
+.account-form-actions > button:only-child { grid-column: 1 / -1; }
+/* Account routes use the same semantic palette and controls as the planner. */
+.account-page { background: var(--paper); color: var(--ink); }
+.account-page .commercial-header { background: var(--ui-window-headerBackground); border-color: var(--line); padding-inline: 24px; }
+.account-page .commercial-brand { color: var(--ink); }
+:is(.account-page, .account-dialog-content) .commercial-card { border-color: var(--line); background: var(--panel); border-radius: var(--ui-window-radius); }
+:is(.account-page, .account-dialog-content) .account-card h1 { color: var(--ink); font-size: calc(22px * var(--density-font-scale, 1)); line-height: 1.25; letter-spacing: -.02em; }
+:is(.account-page, .account-dialog-content) :is(.commercial-lede, .commercial-footnote, .commercial-eyebrow) { color: var(--muted); }
+:is(.account-page, .account-dialog-content) .commercial-lede { font-size: calc(12px * var(--density-font-scale, 1)); }
+:is(.account-page, .account-dialog-content) .commercial-stack label { color: var(--ink); }
+:is(.account-page, .account-dialog-content) .commercial-stack input { min-height: var(--density-control-min-height, 36px); padding: var(--density-control-padding-y, 6px) var(--density-control-padding-x, 10px); border-color: var(--line); background: var(--panel); color: var(--ink); border-radius: var(--ui-button-radius); }
+:is(.account-page, .account-dialog-content) :is(.commercial-primary, .commercial-secondary) { border-radius: var(--ui-button-radius); min-height: var(--density-control-min-height, 36px); }
+:is(.account-page, .account-dialog-content) .commercial-primary { border-color: var(--ui-button-activeBackground); background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); }
+:is(.account-page, .account-dialog-content) .commercial-primary:hover:not(:disabled) { background: var(--primary-hover); }
+:is(.account-page, .account-dialog-content) .commercial-secondary { border-color: var(--line); background: var(--ui-button-background); color: var(--ui-button-text); }
+:is(.account-page, .account-dialog-content) .commercial-secondary:hover:not(:disabled) { background: var(--ui-button-hoverBackground); }
+.account-page .commercial-tabs button.selected { background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); }
+.account-page .commercial-footer a { color: var(--accent); }
 .commercial-retry { margin-left: 12px; }
 .conflict-panel { border-color: #e5c991; background: #fffbf2; }
 .conflict-panel p { color: #6e603e; font-size: calc((13px) * var(--density-font-scale, 1)); line-height: 1.5; }
@@ -97,7 +117,6 @@ html[data-theme="dark"] :is(.commercial-page, .account-dialog-content) p.commerc
   grid-template-areas:
     "title tabs"
     "lede form"
-    "lede forgot"
     "footnote footnote";
   align-content: start;
   column-gap: 34px;
@@ -109,10 +128,9 @@ html[data-theme="dark"] :is(.commercial-page, .account-dialog-content) p.commerc
 .account-dialog-content .account-card > .commercial-tabs { grid-area: tabs; align-self: end; margin: 0; }
 .account-dialog-content .account-card > .commercial-stack,
 .account-dialog-content .account-card > p[role="status"] { grid-area: form; align-self: start; }
-.account-dialog-content .account-card > .account-recovery-button { grid-area: forgot; justify-self: start; align-self: start; margin: 0; }
 .account-dialog-content .account-card > .commercial-footnote { grid-area: footnote; margin: 0; padding-top: 14px; border-top: 1px solid var(--line); }
 .account-dialog-content .commercial-card h1, .account-dialog-content .commercial-panel h2 { color: var(--deep); }
-.account-dialog-content .commercial-primary { border-color: var(--deep); background: var(--deep); }
+.account-dialog-content .commercial-primary { border-color: var(--ui-button-activeBackground); background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); }
 .account-dialog-content .commercial-primary:hover:not(:disabled) { background: var(--primary-hover); }
 .account-dialog-content .commercial-secondary { border-color: var(--line); background: var(--surface-muted); color: var(--deep); }
 .account-dialog-content .commercial-stack input { border-color: var(--line); color: var(--ink); }
@@ -148,7 +166,6 @@ html[data-theme="dark"] :is(.commercial-page, .account-dialog-content) p.commerc
       "lede"
       "tabs"
       "form"
-      "forgot"
       "footnote";
     row-gap: 12px;
   }

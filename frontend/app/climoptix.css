@@ -22,16 +22,6 @@
   font-weight: 750;
   letter-spacing: 0.16em;
 }
-.cfx-provider {
-  margin-left: auto;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  background: var(--surface-muted);
-  border-radius: 20px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
-}
 .cfx-workspace
   button:not(
     :where(
@@ -142,12 +132,6 @@
   font-size: 14px;
   margin-bottom: 9px;
 }
-.cfx-inspector-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
 .cfx-state {
   padding: 5px 8px;
   border-radius: 7px;
@@ -163,6 +147,30 @@
 .cfx-state.stale {
   background: var(--verify-soft);
   color: var(--verify);
+}
+.cfx-workbench-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-block: var(--density-section-gap);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+.cfx-workbench-status > div { display: grid; gap: 3px; min-width: 0; }
+.cfx-workbench-status strong { font-size: 12px; }
+.cfx-workbench-status small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.cfx-workbench-status p { margin: 0; overflow-wrap: anywhere; }
+.cfx-workbench-status > button { flex-shrink: 0; }
+.cfx-workbench-status.has-issues { border-color: color-mix(in srgb, var(--fail), var(--line) 65%); }
+.cfx-workbench-status.has-issues strong { color: var(--fail); }
+.cfx-worker-connection { margin-bottom: var(--density-section-gap); }
+.cfx-worker-compatibility { margin-top: var(--density-section-gap); }
+.cfx-worker-compatibility li + li { margin-top: 6px; }
+@container cfx-setup (max-width: 450px) {
+  .cfx-workbench-status { align-items: stretch; flex-direction: column; gap: 6px; }
 }
 .cfx-caption {
   color: var(--muted);
@@ -269,21 +277,6 @@
   color: var(--muted);
   font-size: 11px;
 }
-.cfx-patch-list {
-  display: grid;
-  gap: 6px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-.cfx-patch-list button {
-  display: grid;
-  gap: 5px;
-  text-align: left;
-}
-.cfx-patch-list small {
-  opacity: 0.8;
-  font-weight: 450;
-}
 .cfx-workspace .cfx-danger,
 .cfx-confirm .cfx-danger {
   color: var(--fail);
@@ -308,19 +301,6 @@
 .cfx-file:focus-within {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-}
-.cfx-provenance {
-  font-size: 11px;
-}
-.cfx-provenance dt {
-  color: var(--muted);
-  font-weight: 650;
-  margin-top: 10px;
-}
-.cfx-provenance dd {
-  margin: 4px 0 0;
-  overflow-wrap: anywhere;
-  font-family: var(--font-mono);
 }
 .cfx-diagnostic {
   display: grid;
@@ -471,12 +451,6 @@
   margin-bottom: 15px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
-}
-.cfx-simulation-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
 }
 .cfx-simulation-tabs {
   display: grid;
@@ -696,10 +670,6 @@
   padding: 14px;
   border: 0;
 }
-.cfx-provider {
-  margin-left: 0;
-  padding: 7px 9px;
-}
 .cfx-welcome {
   width: auto;
   margin: 0;
@@ -809,11 +779,6 @@
 .cfx-setup-heading > label {
   flex: 1;
   min-width: 0;
-}
-.cfx-setup-heading > .cfx-study-select {
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
 }
 .cfx-setup-heading select {
   max-width: 100%;
@@ -926,7 +891,6 @@
 .cfx-review-failure { padding: var(--density-window-padding); border: 1px solid var(--fail); border-radius: var(--radius-control); }
 .cfx-review-failure > p { color: var(--fail); overflow-wrap: anywhere; }
 .cfx-input-failure { color: var(--fail); overflow-wrap: anywhere; margin-bottom: var(--density-section-gap); }
-.cfx-connection-status { margin-block: var(--density-section-gap); color: var(--muted); font-size: inherit; }
 .cfx-probe-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: var(--density-field-gap); padding-block: var(--density-row-padding); }
 .cfx-probe-row + .cfx-probe-row { border-top: 1px solid var(--line); }
 .cfx-surface-assignment { max-height: 360px; overflow: auto; overscroll-behavior: contain; margin-block: var(--density-section-gap); }
@@ -958,6 +922,9 @@
 :is(.cfx-device-name, .cfx-surface-name) > small { color: var(--muted); font-weight: 500; }
 .cfx-boundary-group { min-width: 0; border: 1px solid var(--line); border-left: 4px solid var(--boundary-colour); border-radius: var(--radius-control); padding: var(--density-window-padding); margin: 0; }
 .cfx-boundary-group.selected { outline: 1px solid var(--boundary-colour); outline-offset: 1px; }
+.cfx-boundary-action-list { display: grid; gap: var(--density-section-gap); }
+.cfx-boundary-action-list > button { width: 100%; }
+.cfx-boundary-group .cfx-boundary-actions-trigger { flex: 0 0 auto; min-width: var(--density-control-min-height); }
 .cfx-boundary-group > .cfx-reorder-list { max-height: 260px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .cfx-workspace .cfx-group-select { display: flex; align-items: center; gap: 8px; flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
 .cfx-physics-fields > * + * { margin-top: 10px; }
@@ -1158,6 +1125,13 @@
   min-width: 0;
   min-height: 0;
 }
+.cfx-telemetry { margin-block: 14px; border-block-start: 1px solid var(--software-border, currentColor); padding-block-start: 10px; }
+.cfx-telemetry-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px,100%),1fr)); gap: 8px 16px; margin-block: 10px; }
+.cfx-telemetry-values dt { font-size: .85em; opacity: .8; }
+.cfx-telemetry-values dd { margin: 2px 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cfx-telemetry-chart { margin: 6px 0; min-width: 0; }
+.cfx-telemetry-chart svg { display: block; width: 100%; max-height: 190px; }
+.cfx-telemetry-chart text { fill: currentColor; font-size: 10px; }
 .cfx-setup-heading > .cfx-phase-select,
 .cfx-workspace .thermal-step-select {
   display: none;
@@ -1167,7 +1141,6 @@
     display: grid;
   }
   .cfx-setup-tabs,
-  .cfx-setup-heading > .cfx-study-select,
   .cfx-setup-heading > .cfx-state,
   .thermal-embedded .thermal-steps {
     display: none;
@@ -1182,7 +1155,6 @@
     display: grid;
   }
   .cfx-setup-tabs,
-  .cfx-setup-heading > .cfx-study-select,
   .cfx-setup-heading > .cfx-state,
   .thermal-steps {
     display: none;
