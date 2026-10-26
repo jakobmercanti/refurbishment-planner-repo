@@ -10,10 +10,12 @@ import { ClimoptixVTKViewer } from "./ClimoptixVTKViewer";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import type { ResultContext } from "./CFDResultsViewer";
 import { CFDIndependentWindow } from "./CFDIndependentWindow";
+import { CFD2DSlices } from "./CFD2DSlices";
 
-export function ClimoptixResults({adapter,job,name,older,report,initialFile,initialProvenance,onClose,onScene,active=true}:{
-  adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;name:string;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File)=>void;active?:boolean;
+export function ClimoptixResults({adapter,job,name,older,report,initialFile,initialProvenance,onClose,onScene,active=true,projectId}:{
+  adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;name:string;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File)=>void;active?:boolean;projectId:string;
 }){
+  const [subview,setSubview]=useState<"summary"|"slices">("summary");
   const {result,error,missing,retry}=useCFDResult(adapter,job,active);
   const [files,setFiles]=useState<{file:File;verified:boolean}[]>(()=>initialFile?[{file:initialFile,verified:!!initialProvenance?.startsWith("Authenticated worker job")}]:[]);
   // Downloads may finish after a layer was removed or imported. Always merge
@@ -35,7 +37,7 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
   };
   const primary=files.find(item=>item.file.name===plane)??files[0];
   useEffect(()=>{
-    if(!active||inspectorOpen||!primary)return;
+    if(!active||subview!=="summary"||inspectorOpen||!primary)return;
     const keyboard=(event:KeyboardEvent)=>{
       const root=panel.current,target=event.target instanceof Element?event.target:null;
       if(!root?.getClientRects().length||event.defaultPrevented||event.key.toLowerCase()!=="v"||event.repeat||event.altKey||event.ctrlKey||event.metaKey)return;
@@ -45,7 +47,7 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
       event.preventDefault();event.stopImmediatePropagation();setProbeRequest(value=>value+1);setInspectorOpen(true);
     };
     window.addEventListener("keydown",keyboard,true);return()=>window.removeEventListener("keydown",keyboard,true);
-  },[active,inspectorOpen,primary]);
+  },[active,inspectorOpen,primary,subview]);
   const additional=useMemo(()=>files.filter(item=>item!==primary).map(item=>item.file),[files,primary]);
   const context=useMemo(()=>{
     if(!report||!result||older||result.sourceHash!==report.validation.sourceHash||!files.length||files.some(item=>!item.verified))return undefined;
@@ -62,6 +64,9 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
     job?`Authenticated worker job ${job.id} · pinned revision ${job.clientRevision.slice(0,12)} · p in m²/s², not Pa${older?" · older setup":""}`:initialProvenance;
   return <section ref={panel} className="cfx-results" data-cfx-collapse-root aria-label="Simulation results and downloads">
     <div className="cfx-inline-toolbar"><h3>Results · {name}</h3><CFDCollapseAll/></div>
+    <div className="cfx-segment" role="tablist" aria-label="Results views"><button type="button" role="tab" aria-selected={subview==="summary"} onClick={()=>setSubview("summary")}>Summary &amp; 3D</button><button type="button" role="tab" aria-selected={subview==="slices"} onClick={()=>{closeInspector();setSubview("slices");}}>2D Slices</button></div>
+    {subview==="slices"&&<CFD2DSlices key={`${adapter?.namespace}:${projectId}`} adapter={adapter} projectId={projectId} currentJob={job} active={active}/>}
+    <div hidden={subview!=="summary"}>
     {older&&<p className="cfx-notice">This job belongs to an older setup. Its results remain pinned to the submitted geometry/configuration; current building overlays are disabled.</p>}
     {error&&<div role="alert" className="cfx-error">Native result retrieval failed: {error}<button onClick={retry}>Retry loading results</button></div>}
     {result&&adapter&&job?<CFDResultFiles key={job.id} adapter={adapter} job={job} result={result} onVTK={file=>add([file],true)}/>:
@@ -90,5 +95,6 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
     {!files[0]&&
       <p className="cfx-notice">Choose View beside an online plane, or import data to inspect fields, legends, slice positions and scalar isosurfaces. No results are invented from preparation geometry.</p>}
     <button onClick={onClose}>Back to geometry</button>
+    </div>
   </section>;
 }

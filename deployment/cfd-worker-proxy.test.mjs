@@ -43,3 +43,15 @@ test('post-processing downloads stay on the exact authenticated no-cache artifac
   const result=await cfdWorkerProxy(request,endpoint,'https://worker.example');assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'no-store');assert.equal(result.headers.get('Content-Type'),'application/zip');
   assert.equal((await cfdWorkerProxy(request,endpoint+'-other','https://worker.example')).status,403);
 });
+
+test('slice inventory and bounded numerical comparison use only exact authenticated routes',async t=>{
+  const original=globalThis.fetch;t.after(()=>{globalThis.fetch=original;});
+  const id='11111111-1111-4111-8111-111111111111',headers={Authorization:'Bearer test-token','Content-Type':'application/json',Origin:'https://planner.example'};
+  globalThis.fetch=async(url,options)=>{assert.equal(options.headers.Authorization,'Bearer test-token');return Response.json({schemaVersion:1});};
+  const get=new Request(`https://planner.example/climoptix/worker/jobs/${id}/slices?projectId=${id}`,{headers});
+  assert.equal((await cfdWorkerProxy(get,`/climoptix/worker/jobs/${id}/slices`,'https://worker.example')).status,200);
+  const post=new Request('https://planner.example/climoptix/worker/slice-data',{method:'POST',headers,body:'{}'});
+  assert.equal((await cfdWorkerProxy(post,'/climoptix/worker/slice-data','https://worker.example')).status,200);
+  assert.equal((await cfdWorkerProxy(get,'/climoptix/worker/slice-data','https://worker.example')).status,403);
+  assert.equal((await cfdWorkerProxy(post,'/climoptix/worker/slice-data/execute','https://worker.example')).status,403);
+});

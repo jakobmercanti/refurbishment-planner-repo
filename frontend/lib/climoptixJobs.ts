@@ -28,6 +28,9 @@ export const workerJobSchema = z.object({
   operation: z.enum(["mesh", "run"]).optional(),
   progressBasis: z.enum(["steps", "iterationBudget"]).optional(),
   message: z.string().max(2000).default(""),
+  createdAt: z.number().finite().optional(),
+  name: z.string().max(200).optional(),
+  projectId: z.string().optional(),
 });
 export type CFDWorkerJob = z.infer<typeof workerJobSchema>;
 export type CFDOperation = "mesh" | "run";

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { currentSession } from "./commercialAuth";
 import { workerTelemetrySchema } from "./cfdWorkerTelemetry";
+import { sliceDataSchema, sliceManifestSchema, type SliceRequest } from "./cfdSlices";
 import { checkedWorkerJob, workerJobSchema, type CFDSubmission, type CFDWorkerAdapter, type CFDWorkerJob } from "./climoptixJobs";
 
 export const workerCapabilitiesSchema = z.object({
@@ -79,6 +80,17 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
     async status(id: string, signal: AbortSignal) { return workerJobSchema.parse(await workerJSON(base, jobPath(id), signal)); },
     async list(projectId: string, signal: AbortSignal) {
       return z.array(workerJobSchema).max(100).parse(await workerJSON(base, `/jobs?projectId=${z.uuid().parse(projectId)}`, signal));
+    },
+    async slices(jobId:string,projectId:string,signal:AbortSignal) {
+      const data=sliceManifestSchema.parse(await workerJSON(base,`${jobPath(jobId)}/slices?projectId=${z.uuid().parse(projectId)}`,signal));
+      if(data.runId!==jobId||data.projectId!==projectId)throw new Error("Slice inventory belongs to a different run/project.");
+      return data;
+    },
+    async sliceData(request:SliceRequest,signal:AbortSignal) {
+      const data=sliceDataSchema.parse(JSON.parse(new TextDecoder().decode(await workerRequest(base,"/slice-data",signal,request,48*1024**2))));
+      if(data.baseline.run!==request.baseline.runId||data.baseline.asset!==request.baseline.assetId||data.option?.run!==request.option?.runId||data.option?.asset!==request.option?.assetId||data.field!==request.field||data.component!==request.component)throw new Error("Slice data does not match the current selection.");
+      if(data.deltaMode!==request.deltaMode||data.epsilon!==request.epsilon||(request.point?(!data.point||data.point.some((value,i)=>value!==request.point![i])):data.point!==undefined))throw new Error("Slice sampling settings or picked coordinates do not match this request.");
+      return data;
     },
     async cancel(job: CFDWorkerJob, signal: AbortSignal) {
       return checkedWorkerJob(await workerJSON(base, `${jobPath(job.id)}/cancel`, signal, {}), job);

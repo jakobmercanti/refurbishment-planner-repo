@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { probeNumber, type ResultPointValue } from "@/lib/cfdPointProbe";
 
-export function useCFDPointProbe(enabled: boolean, key: readonly unknown[], request = 0) {
+export function useCFDPointProbe(enabled: boolean, key: readonly unknown[]|string, request = 0) {
   const control = useRef<HTMLDivElement>(null);
   const registerControl=useCallback((node:HTMLDivElement|null)=>{control.current=node;},[]);
   const [choice, setChoice] = useState({on:false,request:0});
-  const [reading, setReading] = useState<{ key: readonly unknown[]; request:number; sample: ResultPointValue | null; message: string } | null>(null);
+  const [reading, setReading] = useState<{ key: readonly unknown[]|string; request:number; sample: ResultPointValue | null; message: string } | null>(null);
   // An explicit Results-window request enters the mode, even if its inspector
   // was already open. Escape/toggle acknowledges it without a remount or effect.
   const mode = enabled&&(choice.on||choice.request!==request);
@@ -31,19 +31,19 @@ export function useCFDPointProbe(enabled: boolean, key: readonly unknown[], requ
     window.addEventListener("keydown", keyboard, true);
     return () => window.removeEventListener("keydown", keyboard, true);
   }, [enabled, mode,request]);
-  const current=reading?.request===request&&reading.key.length===key.length&&reading.key.every((value,index)=>value===key[index]);
+  const current=reading?.request===request&&(reading.key===key||typeof reading.key!=="string"&&typeof key!=="string"&&reading.key.length===key.length&&reading.key.every((value,index)=>value===key[index]));
   return { registerControl, enabled, mode, toggle, pick, reading: mode&&current ? reading : null };
 }
 
 export type CFDPointProbeController = ReturnType<typeof useCFDPointProbe>;
-export function CFDPointProbeControls({ probe, native = false }: { probe: CFDPointProbeController; native?: boolean }) {
+export function CFDPointProbeControls({ probe, native = false,coordinateUnit="mm",unit:explicitUnit }: { probe: CFDPointProbeController; native?: boolean;coordinateUnit?:"m"|"mm";unit?:string }) {
   const {registerControl}=probe;
-  const sample = probe.reading?.sample, unit = native && sample ? ({ U: "m/s", p: "m²/s²", T: "K" } as Record<string, string>)[sample.field] ?? "file units" : "file units (unverified)";
+  const sample = probe.reading?.sample, unit = explicitUnit??(native && sample ? ({ U: "m/s", p: "m²/s²", T: "K" } as Record<string, string>)[sample.field] ?? "file units" : "file units (unverified)");
   return <div ref={registerControl} className="cfx-point-probe" data-probe-mode={probe.mode || undefined}>
     <button type="button" aria-pressed={probe.mode} aria-keyshortcuts="V" disabled={!probe.enabled} onClick={probe.toggle} title="Pick the active plane's displayed field. V toggles; Escape exits. Geometry-only, hidden planes and isosurfaces cannot be probed.">{probe.mode ? "Exit point probe (Esc)" : "Probe point value (V)"}</button>
     {probe.mode && <output role="status" aria-label="Picked result value" data-probe-value={sample?.value}>
       {sample ? <><strong>{sample.field}{sample.component ? ` ${sample.component}` : ""} = {probeNumber(sample.value)} {unit}</strong>
-        <span>{sample.position.map((value, axis) => `${["X", "Y", "Z"][axis]} ${probeNumber(native ? value * 1000 : value)}`).join(" · ")} {native ? "mm" : "(file coordinates; units unverified)"}</span>
+        <span>{sample.position.map((value, axis) => `${["X", "Y", "Z"][axis]} ${probeNumber(native&&coordinateUnit==="mm" ? value * 1000 : value)}`).join(" · ")} {native ? coordinateUnit : "(file coordinates; units unverified)"}</span>
         <small>{sample.cell ? "Stored cell value" : "Interpolated point data"} · Click another point to replace · Esc exits</small></> : probe.reading?.message ?? "Click the active plane to read its displayed parameter. Esc exits."}
     </output>}
   </div>;

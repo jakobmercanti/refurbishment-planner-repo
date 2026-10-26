@@ -39,6 +39,17 @@ test("HTTP adapter keeps bearer credentials out of URLs and rejects wrong job/lo
   assert.equal(measured.convergence?.finalInitialResiduals?.p,.1);
   response={...result,pressureUnit:"Pa"};
   await assert.rejects(adapter.result(job,new AbortController().signal));
+  const selection={runId:id,assetId:"c".repeat(64)};
+  const request={projectId:capabilities.namespace,baseline:selection,field:"U",component:-1,size:96,deltaMode:"absolute" as const,epsilon:1e-6,temperature:"K" as const,point:[.25,.25,.5] as [number,number,number]};
+  const pointResult={schemaVersion:1,baseline:{run:id,asset:selection.assetId,time:"100"},option:null,axis:"Z",coordinate:.5,field:"U",component:-1,unit:"m/s",deltaUnit:"m/s",deltaMode:"absolute",epsilon:1e-6,definition:"Option − Baseline",compatibility:[],method:"Actual source triangles",notes:[],point:request.point,probe:{baseline:{value:10,velocity:[10,0,0],method:"Barycentric source point data",reason:""},option:null,delta:null}};
+  response=pointResult;
+  assert.equal((await adapter.sliceData(request,new AbortController().signal)).probe?.baseline.value,10);
+  response={...pointResult,point:[.75,.25,.5]};
+  await assert.rejects(adapter.sliceData(request,new AbortController().signal),/coordinates/);
+  response={...pointResult,deltaMode:"percent"};
+  await assert.rejects(adapter.sliceData(request,new AbortController().signal),/settings/);
+  response={...pointResult,baseline:{...pointResult.baseline,run:capabilities.namespace}};
+  await assert.rejects(adapter.sliceData(request,new AbortController().signal),/current selection/);
 });
 
 test("worker capabilities cannot advertise limits above the approved deployment",()=>{

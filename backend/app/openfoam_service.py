@@ -20,6 +20,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.requests import Request
 
+from backend.app.cfd_slice_service import SliceRequest, inventory, slice_data, view_root
 from backend.app.openfoam_case import LIMITS, Submission, validate_submission
 from backend.app.openfoam_runtime import JobCancelled, execute, runtime_available
 from backend.app.openfoam_telemetry import telemetry
@@ -151,6 +152,9 @@ class Store:
                 target = self.path(row["id"])
                 if target.parent == self.root and target.exists() and not target.is_symlink():
                     shutil.rmtree(target)
+                views = view_root(target)
+                if views.parent == self.root / "slice-views" and views.exists() and not views.is_symlink():
+                    shutil.rmtree(views)
                 # Keep a small idempotency tombstone; a late retry must never
                 # charge for a second execution after its artifacts expire.
                 db.execute(
@@ -167,6 +171,9 @@ def public_job(row, root: Path | None = None) -> dict:
         "studyId": row["study"],
         "clientRevision": row["revision"],
         "phase": row["phase"],
+        "projectId": row["project"],
+        "createdAt": row["created"],
+        "name": json.loads(row["payload"])["scenario"]["name"] if row["payload"] else row["study"],
         **phase_progress(root, row["phase"], row["message"], row["payload"]),
         "message": row["message"],
     }
@@ -386,6 +393,20 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
         for artifact in manifest.get("artifacts", []):
             artifact.pop("path", None)
         return {**manifest, "jobId": str(job_id), "expiresAt": row["expires"]}
+
+    @app.get(prefix + "/jobs/{job_id}/slices")
+    def slices(job_id: UUID, projectId: UUID, user: WorkerUser):
+        row = store.get(str(user.id), str(job_id))
+        if row["project"] != str(projectId):
+            raise HTTPException(404, "Run not found in this project.")
+        try:
+            return inventory(store.path(str(job_id)), row)
+        except (ValueError, OSError, KeyError) as error:
+            raise HTTPException(422, f"Cannot read retained slice inventory: {str(error)[:500]}") from None
+
+    @app.post(prefix + "/slice-data")
+    def sample_slices(body: SliceRequest, user: WorkerUser):
+        return slice_data(store, str(user.id), body)
 
     @app.get(prefix + "/jobs/{job_id}/artifacts/{artifact_id}")
     def artifact(job_id: UUID, artifact_id: str, user: WorkerUser):

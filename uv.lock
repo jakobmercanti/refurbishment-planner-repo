@@ -1176,6 +1176,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "numpy" },
     { name = "pillow" },
     { name = "pvlib" },
     { name = "pydantic" },
@@ -1204,6 +1205,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "foamlib", marker = "extra == 'cfd'", specifier = "==1.7.3" },
+    { name = "numpy", specifier = ">=2,<3" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "pvlib", specifier = "==0.16.1" },
     { name = "pydantic", specifier = ">=2.11,<3" },

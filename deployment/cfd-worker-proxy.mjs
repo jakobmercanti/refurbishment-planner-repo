@@ -3,8 +3,8 @@ export async function cfdWorkerProxy(request, endpoint, workerOrigin) {
   const url = new URL(request.url);
   const id = '[a-f0-9-]{36}';
   const allowed = request.method === 'GET'
-    ? new RegExp(`^/climoptix/worker/(capabilities|jobs(?:/${id}(?:/(?:logs|result|artifacts/(?:native-case|postprocessing|slice-\\d+)))?)?)$`).test(endpoint)
-    : request.method === 'POST' && new RegExp(`^/climoptix/worker/jobs(?:/${id}/cancel)?$`).test(endpoint);
+    ? new RegExp(`^/climoptix/worker/(capabilities|jobs(?:/${id}(?:/(?:logs|result|slices|artifacts/(?:native-case|postprocessing|slice-\\d+)))?)?)$`).test(endpoint)
+    : request.method === 'POST' && new RegExp(`^/climoptix/worker/(slice-data|jobs(?:/${id}/cancel)?)$`).test(endpoint);
   if (!allowed) return new Response('Forbidden', {status: 403});
   const authorization = request.headers.get('Authorization') || '';
   if (authorization.length > 8200 || !/^Bearer\s+\S+$/i.test(authorization)) return new Response('Authentication required', {status: 401});

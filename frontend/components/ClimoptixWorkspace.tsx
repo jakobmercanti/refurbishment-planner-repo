@@ -1329,6 +1329,7 @@ export function ClimoptixWorkspace({
                     <ClimoptixResults
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${vtkFile?.studyId===scenario.id?vtkFile.token:"none"}`}
                       adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} name={scenario.name} report={activeReport}
+                      projectId={project.projectId}
                       active={shownTab === "results" && setupOpen}
                       older={!!jobs[scenario.id]?.job && jobs[scenario.id].input !== currentWorkerInput}
                       initialFile={vtkFile?.studyId===scenario.id?vtkFile.file:undefined}
