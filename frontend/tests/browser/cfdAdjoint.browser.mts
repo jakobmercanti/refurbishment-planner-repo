@@ -44,6 +44,9 @@ test('capture, authoritative region validation, selection, accepted-step setting
   const file=await download,chunks=[];for await(const chunk of await file.createReadStream())chunks.push(chunk);const data=JSON.parse(Buffer.concat(chunks).toString('utf8'));
   assert.equal(data.execution,'unavailable');assert.deepEqual(data.iterations,[]);assert.equal(data.readiness.canRun,false);assert.equal(data.study.strategy.maxAcceptedSteps,5);
   await panel.locator('h2').scrollIntoViewIfNeeded();await screenshot(page,'desktop');
+  for(const group of await panel.locator('.cfx-adjoint-actions').all()){
+    const widths=await group.locator(':scope > button').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().width));assert.ok(Math.max(...widths)-Math.min(...widths)<=1);
+  }
   await port.scrollIntoViewIfNeeded();await screenshot(page,'regions-desktop');
   for(const [name,width,height] of [['tablet',800,1000],['mobile',390,900]]){await page.setViewportSize({width,height});await port.scrollIntoViewIfNeeded();assert.ok(await panel.evaluate(n=>n.scrollWidth<=n.clientWidth+2));await screenshot(page,`regions-${name}`);}
   await page.setViewportSize({width:1440,height:1000});
@@ -91,4 +94,16 @@ test('leaving a pending validation cancels it; reopening does not lock the tab o
   assert.ok(await button(panel,'Validate setup').isEnabled());release();
   assert.equal(await panel.getByText('Configuration checks passed · adjoint unavailable',{exact:true}).count(),0);
   await button(panel,'Validate setup').click();await eventually(()=>panel.innerText(),v=>v.includes('Configuration checks passed · adjoint unavailable'));
+});
+
+test('failed refresh clears an old readiness verdict and validation errors remain visible beside the form',async t=>{
+  const {page,context,panel}=await open(t);await capture(panel);await movable(panel);
+  await button(panel,'Validate setup').click();await eventually(()=>panel.innerText(),v=>v.includes('Configuration checks passed · adjoint unavailable'));
+  await context.route('**/climoptix/optimisation/prepare',route=>route.fulfill({status:503,json:{detail:'Worker preparation unavailable; retry later'}}));
+  await button(panel,'Validate setup').click();await eventually(()=>panel.getByRole('alert').innerText(),v=>v.includes('retry later'));
+  assert.equal(await panel.getByText('Configuration checks passed · adjoint unavailable',{exact:true}).count(),0);
+  const steps=panel.getByRole('spinbutton',{name:'Maximum accepted movement steps',exact:true});await steps.fill('0');await steps.press('Enter');
+  const alert=panel.getByRole('alert');assert.match(await alert.innerText(),/Change not saved/);assert.ok(await alert.isVisible());
+  const rect=await alert.boundingBox(),bounds=await panel.locator('..').boundingBox();assert.ok(rect.y>=bounds.y-1&&rect.y<bounds.y+bounds.height);
+  await screenshot(page,'audit-validation-feedback');
 });

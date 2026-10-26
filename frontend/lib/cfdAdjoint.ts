@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readBoundedResponse } from "./boundedResponse";
 import { adjointStudySchema, type AdjointStudy } from "./cfdAdjointDocument";
 import type { CFDScenario } from "./climoptixDocument";
 import { preparationRequestBody, type CFDReport } from "./climoptix";
@@ -18,15 +19,6 @@ const readinessSchema=z.object({version:z.literal(1),kind:z.literal("AdjointPrep
 }).strict();
 export type AdjointReadiness=z.infer<typeof readinessSchema>;
 
-async function boundedText(response:Response,max:number):Promise<string>{
-  const reader=response.body?.getReader();if(!reader)return "";
-  const chunks:Uint8Array[]=[];let size=0;
-  while(true){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;
-    if(size>max){await reader.cancel();throw new Error("Oversized optimisation readiness response.");}chunks.push(value);}
-  const bytes=new Uint8Array(size);let at=0;for(const chunk of chunks){bytes.set(chunk,at);at+=chunk.length;}
-  return new TextDecoder().decode(bytes);
-}
-
 export function newAdjointStudy(scenario:CFDScenario,report:CFDReport,runId:string|null=null):AdjointStudy{
   return adjointStudySchema.parse({id:crypto.randomUUID(),name:`Vent position study ${(scenario.adjointStudies?.length??0)+1}`,
     baseline:{sourceHash:report.validation.sourceHash,configurationHash:report.validation.configurationHash,clientRevision:report.validation.clientRevision,runId,
@@ -42,17 +34,19 @@ export function newAdjointStudy(scenario:CFDScenario,report:CFDReport,runId:stri
     })});
 }
 
-export async function validateAdjoint(apiUrl:string,project:ProjectDocument,scenario:CFDScenario,revision:string,study:AdjointStudy,signal:AbortSignal):Promise<AdjointReadiness>{
+export async function validateAdjoint(apiUrl:string,project:ProjectDocument,scenario:CFDScenario,revision:string,study:AdjointStudy,signal:AbortSignal,expected?:{sourceHash:string;configurationHash:string}):Promise<AdjointReadiness>{
+  signal.throwIfAborted();
   const source=JSON.parse(preparationRequestBody(project,scenario,revision));
   const body=JSON.stringify({...source,study:adjointStudySchema.parse(study)});
   if(new TextEncoder().encode(body).length>4*1024*1024)throw new Error("Optimisation preparation exceeds 4 MB.");
   const response=await fetch(`${apiUrl}/climoptix/optimisation/prepare`,{method:"POST",headers:{"Content-Type":"application/json"},body,
     signal:AbortSignal.any([signal,AbortSignal.timeout(25000)]),cache:"no-store",redirect:"error"});
-  const text=await boundedText(response,response.ok?2*1024*1024:16384);
+  const text=new TextDecoder().decode(await readBoundedResponse(response,response.ok?2*1024*1024:16384,"Oversized optimisation readiness response."));
   if(!response.ok){let error;try{error=JSON.parse(text);}catch{/* fixed fallback */}throw new Error(typeof error?.detail==="string"?error.detail.slice(0,2000):
     "Optimisation preparation service unavailable. The configuration is saved; release the matching API before retrying.");}
   const result=readinessSchema.parse(JSON.parse(text));
   if(result.studyId!==study.id||result.binding.clientRevision!==revision)throw new Error("Readiness belongs to a different study or setup revision.");
+  if(expected&&(result.binding.sourceHash!==expected.sourceHash||result.binding.configurationHash!==expected.configurationHash))throw new Error("Readiness source/configuration hashes do not match the current checked setup.");
   if(result.configurationReady!==(result.issues.length===0)||result.state!==(result.configurationReady?"adjointUnavailable":"configurationInvalid"))throw new Error("Inconsistent optimisation readiness response.");
   return result;
 }

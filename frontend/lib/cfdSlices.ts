@@ -14,7 +14,7 @@ export const sliceDataSchema=z.object({
   definition:z.string().max(500),compatibility:z.array(z.string().max(2000)).max(20),
   method:z.string().max(1000),notes:z.array(z.string().max(2000)).max(20),
   baseline:z.object({run:z.uuid(),asset:hash,time:z.string().max(100)}),
-  option:z.object({run:z.uuid(),asset:hash,time:z.string().max(100)}).nullable(),
+  option:z.object({run:z.uuid(),asset:hash,time:z.string().max(100),axis:z.enum(["X","Y","Z"]).optional(),coordinate:finite.optional()}).nullable(),
   key:hash.optional(),bounds:z.tuple([finite,finite,finite,finite]).optional(),
   size:z.number().int().min(16).max(512).optional(),
   a:values.optional(),b:values.nullable().optional(),delta:values.optional(),
@@ -47,7 +47,12 @@ export interface SliceState {version:1;mode:"single"|"compare";baseline:string;o
 export const defaultSliceState:SliceState={version:1,mode:"single",baseline:"",option:"",axis:"Z",coordinates:{},field:"U",component:-1,time:"",optionTime:"",size:96,deltaMode:"absolute",epsilon:1e-6,temperature:"K",legends:{},point:null,focus:"all"};
 const legendSchema=z.object({auto:z.boolean(),min:finite,max:finite,palette:z.enum(["coolwarm","viridis","grey"]),bands:z.number().int().min(0).max(20),ticks:z.number().int().min(2).max(9),precision:z.number().int().min(0).max(7)});
 const stateSchema=z.object({version:z.literal(1),mode:z.enum(["single","compare"]),baseline:z.string().max(200),option:z.string().max(200),axis:z.enum(["X","Y","Z"]),coordinates:z.object({X:finite.optional(),Y:finite.optional(),Z:finite.optional()}),field:z.string().max(200),component:z.number().int().min(-1).max(8),time:z.string().max(100),optionTime:z.string().max(100),size:z.number().int().min(16).max(512),deltaMode:z.enum(["absolute","percent","vector"]),epsilon:finite.positive().max(1e10),temperature:z.enum(["K","C"]),legends:z.record(z.string().max(200),z.object({shared:legendSchema,delta:legendSchema})),point:z.tuple([finite,finite,finite]).nullable(),focus:z.enum(["all","baseline","option","delta","inspector"])});
-export function restoreSliceState(text:string|null):SliceState {try {if(!text||text.length>64000)return defaultSliceState;const result=stateSchema.safeParse(JSON.parse(text));return result.success?result.data:defaultSliceState;}catch{return defaultSliceState;}}
+export function restoreSliceState(text:string|null):SliceState {try {
+  if(!text||text.length>64000)return structuredClone(defaultSliceState);
+  const result=stateSchema.safeParse(JSON.parse(text));
+  if(!result.success)return structuredClone(defaultSliceState);
+  return {...result.data,focus:result.data.mode==="single"&&["option","delta"].includes(result.data.focus)?"all":result.data.focus};
+}catch{return structuredClone(defaultSliceState);}}
 export function sliceCSV(data:SliceData) {
   const metadata=JSON.stringify({baseline:data.baseline,option:data.option,axis:data.axis,coordinate:data.coordinate,field:data.field,component:data.component,unit:data.unit,deltaUnit:data.deltaUnit,definition:data.definition,deltaMode:data.deltaMode,epsilon:data.epsilon,method:data.method,bounds:data.bounds,size:data.size,key:data.key,notes:data.notes});
   if(!data.size||!data.bounds||!data.a)return `# ${metadata}\nNo raster available\n`;

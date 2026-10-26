@@ -136,7 +136,7 @@ def prepare_optimisation(scenario: Scenario, study: AdjointStudy, report: dict[s
         envelopes[vent.id] = envelope
         physical = MultiPolygon([Polygon(rings[0], rings[1:]) for rings in host["polygonsMm"]])
         clearance = max(port.clearanceMm, vent.edgeClearanceMm)
-        if not physical.covers(envelope.buffer(clearance)):
+        if not physical.covers(envelope) or physical.boundary.distance(envelope) + 1e-7 < clearance:
             issue(
                 "sweptFootprint",
                 f"{vent.name}'s full swept footprint and clearance leave the support or intersect an opening.",

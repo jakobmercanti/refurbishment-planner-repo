@@ -4,7 +4,8 @@ import {adjointStudySchema} from '../lib/cfdAdjointDocument';
 import {adjointConfigurationCSV,newAdjointStudy,validateAdjoint} from '../lib/cfdAdjoint';
 import {newCFDScenario,duplicateCFDScenario} from '../lib/climoptixDocument';
 import {preparationInput,preparationRequestBody} from '../lib/climoptix';
-import {workerInput} from '../lib/climoptixJobs';
+import {completedRunReference,workerInput} from '../lib/climoptixJobs';
+import {readBoundedResponse} from '../lib/boundedResponse';
 import {parseProject} from '../lib/projectDocument';
 import {cfdProject,realDefaultSetup,realPreparation} from './climoptixFixtures';
 
@@ -46,7 +47,26 @@ test('readiness transport rejects foreign provenance, executable claims and API 
     await assert.rejects(()=>validateAdjoint('/api',p,s,'a'.repeat(64),study,new AbortController().signal));
     globalThis.fetch=async()=>new Response(JSON.stringify({...response,studyId:'foreign'}));
     await assert.rejects(()=>validateAdjoint('/api',p,s,'a'.repeat(64),study,new AbortController().signal),/different study/);
+    globalThis.fetch=async()=>new Response(JSON.stringify({...response,binding:{...response.binding,sourceHash:'b'.repeat(64)}}));
+    await assert.rejects(()=>validateAdjoint('/api',p,s,'a'.repeat(64),study,new AbortController().signal,response.binding),/hashes do not match/);
     globalThis.fetch=async()=>new Response(JSON.stringify({detail:'Release the new API'}),{status:503});
     await assert.rejects(()=>validateAdjoint('/api',p,s,'a'.repeat(64),study,new AbortController().signal),/Release the new API/);
   }finally{globalThis.fetch=original;}
+});
+
+test('baseline flow references reject completed meshes, stale cases, unknown operations and invalid IDs',()=>{
+  const job={id:crypto.randomUUID(),studyId:'s',phase:'Completed',clientRevision:'a'.repeat(64),progress:100,operation:'mesh'} as const;
+  assert.equal(completedRunReference({input:'current',job},'current'),null);
+  assert.equal(completedRunReference({input:'old',job:{...job,operation:'run'}},'current'),null);
+  assert.equal(completedRunReference({input:'current',job:{...job,operation:undefined}},'current'),null);
+  assert.equal(completedRunReference({input:'current',job:{...job,id:'not-a-native-run',operation:'run'}},'current'),null);
+  assert.equal(completedRunReference({input:'current',job:{...job,operation:'run'}},'current'),job.id);
+});
+
+test('shared response limiter cancels oversized streams and releases their locks',async()=>{
+  let cancelled=false;
+  const stream=new ReadableStream({pull(c){c.enqueue(new Uint8Array(1024));},cancel(){cancelled=true;}});
+  await assert.rejects(()=>readBoundedResponse(new Response(stream),512),/size bound/);
+  assert.equal(cancelled,true);assert.equal(stream.locked,false);
+  const response=new Response('actual data');assert.equal(new TextDecoder().decode(await readBoundedResponse(response,1024)),'actual data');assert.equal(response.body.locked,false);
 });

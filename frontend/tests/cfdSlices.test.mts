@@ -16,6 +16,8 @@ test('persisted state is bounded and validated; legends retain math-independent 
   assert.deepEqual(restoreSliceState(JSON.stringify(state)),state);
   assert.deepEqual(restoreSliceState('{invalid'),defaultSliceState);assert.deepEqual(restoreSliceState(JSON.stringify({...state,size:100000})),defaultSliceState);
   assert.deepEqual(rangeFor([null,-3,0,2,null]),[-3,2]);
+  assert.equal(restoreSliceState(JSON.stringify({...defaultSliceState,mode:'single',focus:'option'})).focus,'all');
+  const fresh=restoreSliceState(null);fresh.coordinates.X=99;assert.equal(defaultSliceState.coordinates.X,undefined);
 });
 test('diverging zero, asymmetric clipping and constant fields do not corrupt numeric data',()=>{
   assert.deepEqual(sliceColour(0,-2,4,'coolwarm'),[240,240,235]);

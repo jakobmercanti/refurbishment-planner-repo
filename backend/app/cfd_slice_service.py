@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 
 import numpy as np
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat
 
 from backend.app.cfd_slice_data import (
     AXES,
@@ -34,6 +34,10 @@ METHOD = "GEOS constrained source-cell triangles / barycentric point tuples / st
 UNITS = {"U": "m/s", "p": "m²/s²", "k": "m²/s²", "epsilon": "m²/s³", "omega": "s⁻¹"}
 _inventory_lock = threading.Lock()
 _sampling_slots = threading.BoundedSemaphore(2)
+
+
+def metadata_checksum(meta: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(meta, sort_keys=True).encode()).hexdigest()
 
 
 class SliceStore(Protocol):
@@ -58,6 +62,7 @@ def safe_path(root: Path, relative: str) -> Path:
 
 @lru_cache(maxsize=2)
 def load_snapshot(path: str, digest: str, stamp: tuple[int, int]) -> Plane:
+    # stamp intentionally participates in the LRU key so replaced files are rechecked.
     source = Path(path)
     if hashlib.sha256(source.read_bytes()).hexdigest() != digest:
         raise ValueError("Slice integrity check failed; reload its inventory.")
@@ -86,7 +91,6 @@ def inventory(root: Path, row: sqlite3.Row) -> dict[str, Any]:
         "frame": "global-XYZ-m-Z-up",
         "solver": "simpleFoam",
         "timeKind": "steady-iteration",
-        "domain": scenario.get("domain", {}),
         "planes": [],
         "warnings": [],
         "pending": 0,
@@ -102,8 +106,14 @@ def inventory(root: Path, row: sqlite3.Row) -> dict[str, Any]:
         cache.mkdir(parents=True, exist_ok=True)
         index_path = cache / "slice-index.json"
         try:
-            index = json.loads(index_path.read_text()) if index_path.is_file() else {}
+            index = (
+                json.loads(index_path.read_text())
+                if index_path.is_file() and index_path.stat().st_size <= 8 * 1024**2
+                else {}
+            )
         except (ValueError, OSError):
+            index = {}
+        if not isinstance(index, dict):
             index = {}
         case = json.loads((root / "manifest.json").read_text()) if (root / "manifest.json").is_file() else {}
         expected = {p["id"]: p for p in case.get("samplingPlanes", [])}
@@ -123,6 +133,23 @@ def inventory(root: Path, row: sqlite3.Row) -> dict[str, Any]:
         valid = [p for p in paths if re.fullmatch(r"[0-9.eE+-]+", p.parent.name)]
         times = sorted({float(p.parent.name) for p in valid if np.isfinite(float(p.parent.name))})[-10:]
         candidates = [p for p in valid if float(p.parent.name) in times][-200:]
+        retained = {p.relative_to(root).as_posix() for p in candidates}
+        index = {key: entry for key, entry in index.items() if key in retained and isinstance(entry, dict)}
+        digests = {
+            entry["meta"].get("sha256")
+            for entry in index.values()
+            if isinstance(entry.get("meta"), dict) and isinstance(entry["meta"].get("sha256"), str)
+        }
+        # Only generated cache copies are evicted; original native output is untouched.
+        # Free expired iterations before applying the global snapshot quota.
+        for snapshot in (cache / "snapshots").glob("*.vtk"):
+            if (
+                re.fullmatch(r"[a-f0-9]{64}\.vtk", snapshot.name)
+                and snapshot.stem not in digests
+                and snapshot.is_file()
+                and not snapshot.is_symlink()
+            ):
+                snapshot.unlink()
         bytes_read = 0
         for source in candidates:
             relative = source.relative_to(root).as_posix()
@@ -134,7 +161,14 @@ def inventory(root: Path, row: sqlite3.Row) -> dict[str, Any]:
             try:
                 safe_path(root, relative)
                 cached = index.get(key)
-                if cached and cached["stamp"] == stamp:
+                if (
+                    cached
+                    and cached.get("stamp") == stamp
+                    and isinstance(cached.get("meta"), dict)
+                    and cached.get("checksum") == metadata_checksum(cached["meta"])
+                    and re.fullmatch(r"[a-f0-9]{64}", str(cached["meta"].get("sha256", "")))
+                    and (cache / "snapshots" / f"{cached['meta']['sha256']}.vtk").is_file()
+                ):
                     result["planes"].append(cached["meta"])
                     continue
                 bytes_read += source.stat().st_size
@@ -187,7 +221,7 @@ def inventory(root: Path, row: sqlite3.Row) -> dict[str, Any]:
                     "fields": fields,
                     "method": METHOD,
                 }
-                index[key] = {"stamp": stamp, "meta": meta}
+                index[key] = {"stamp": stamp, "meta": meta, "checksum": metadata_checksum(meta)}
                 result["planes"].append(meta)
             except (ValueError, OSError, KeyError) as error:
                 result["warnings"].append(f"{source.name} @ {source.parent.name}: {str(error)[:200]}")
@@ -214,12 +248,12 @@ class SliceRequest(BaseModel):
     baseline: Selection
     option: Selection | None = None
     field: str = Field(min_length=1, max_length=200)
-    component: int = Field(default=-1, ge=-1, le=8)
-    size: int = Field(default=96, ge=16, le=512)
+    component: int = Field(default=-1, ge=-1, le=8, strict=True)
+    size: int = Field(default=96, ge=16, le=512, strict=True)
     deltaMode: str = Field(default="absolute", pattern=r"^(absolute|percent|vector)$")
-    epsilon: float = Field(default=1e-6, gt=0, le=1e10)
+    epsilon: float = Field(default=1e-6, gt=0, le=1e10, strict=True)
     temperature: str = Field(default="K", pattern=r"^(K|C)$")
-    point: tuple[float, float, float] | None = None
+    point: tuple[StrictFloat, StrictFloat, StrictFloat] | None = None
 
 
 def selected(
@@ -234,8 +268,9 @@ def selected(
     if not meta:
         raise HTTPException(409, "Selected slice changed or expired. Refresh the available planes.")
     path = safe_path(view_root(root), f"snapshots/{meta['sha256']}.vtk")
-    stat = path.stat()
-    return manifest, meta, load_snapshot(str(path), meta["sha256"], (stat.st_size, stat.st_mtime_ns))
+    with _inventory_lock:
+        stat = path.stat()
+        return manifest, meta, load_snapshot(str(path), meta["sha256"], (stat.st_size, stat.st_mtime_ns))
 
 
 def incompatibilities(
@@ -290,6 +325,18 @@ def slice_data(store: SliceStore, owner: str, request: SliceRequest) -> dict[str
         if request.field not in plane.fields:
             raise ValueError("The selected field is no longer available on the baseline plane.")
         reasons = incompatibilities(a, ap, b, bp, request.field) if b and bp else []
+        af = next(f for f in ap["fields"] if f["name"] == request.field)
+        bf = next((f for f in bp["fields"] if f["name"] == request.field), None) if bp else None
+        # Do not relabel incomparable option data with baseline units or axes.
+        sample_option = bool(
+            b
+            and bp
+            and bf
+            and a["frame"] == b["frame"]
+            and ap["axis"] == bp["axis"]
+            and af["unit"] == bf["unit"]
+            and af["components"] == bf["components"]
+        )
         if request.deltaMode == "vector" and (request.field != "U" or plane.fields[request.field].values.shape[1] != 3):
             reasons.append("Vector difference is only defined for three-component U.")
         if b and a["runId"] == b["runId"]:
@@ -298,7 +345,15 @@ def slice_data(store: SliceStore, owner: str, request: SliceRequest) -> dict[str
         output = {
             "schemaVersion": 1,
             "baseline": {"run": a["runId"], "asset": ap["id"], "time": ap["time"]},
-            "option": {"run": b["runId"], "asset": bp["id"], "time": bp["time"]} if b and bp else None,
+            "option": {
+                "run": b["runId"],
+                "asset": bp["id"],
+                "time": bp["time"],
+                "axis": bp["axis"],
+                "coordinate": bp["coordinate"],
+            }
+            if b and bp
+            else None,
             "axis": ap["axis"],
             "coordinate": ap["coordinate"],
             "field": request.field,
@@ -311,7 +366,11 @@ def slice_data(store: SliceStore, owner: str, request: SliceRequest) -> dict[str
             else unit,
             "deltaMode": request.deltaMode,
             "epsilon": request.epsilon,
-            "definition": "Option − Baseline" if request.deltaMode != "vector" else "|U_option − U_baseline|",
+            "definition": {
+                "absolute": "Option − Baseline",
+                "percent": "100 × (Option − Baseline) / |Baseline|",
+                "vector": "|U_option − U_baseline|",
+            }[request.deltaMode],
             "compatibility": reasons,
             "method": METHOD,
             "notes": [
@@ -327,7 +386,7 @@ def slice_data(store: SliceStore, owner: str, request: SliceRequest) -> dict[str
             pa = probe_data(plane, points, request.field, request.component, request.temperature, unit)
             pb = (
                 probe_data(other, points, request.field, request.component, request.temperature, unit)
-                if other
+                if other and sample_option
                 else None
             )
             delta = None
@@ -351,7 +410,7 @@ def slice_data(store: SliceStore, owner: str, request: SliceRequest) -> dict[str
                 },
             }
         bounds = plane.bounds.copy()
-        if other and bp and ap["axis"] == bp["axis"]:
+        if other and sample_option:
             bounds = [
                 min(bounds[0], other.bounds[0]),
                 min(bounds[1], other.bounds[1]),
@@ -365,7 +424,7 @@ def slice_data(store: SliceStore, owner: str, request: SliceRequest) -> dict[str
             option_points[:, other.axis] = other.coordinate
         # Nonmatching nearest planes can be viewed independently, but never
         # participate in delta arithmetic or coordinated cross-run numeric probes.
-        bv = other.sample(option_points, request.field) if other and request.field in other.fields else None
+        bv = other.sample(option_points, request.field) if other and sample_option else None
         aa = scalar(av, request.component)
         bb = scalar(bv, request.component) if bv is not None else None
         delta = (

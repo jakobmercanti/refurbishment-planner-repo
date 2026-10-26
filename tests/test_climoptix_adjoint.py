@@ -103,6 +103,10 @@ def test_normalisation_chain_rule_retains_total_flow_and_zero_flux_derivative():
         fp, _ = normalised_flux_derivative(m + epsilon * dm[:, k], dm, areas, 0.05)
         fm, _ = normalised_flux_derivative(m - epsilon * dm[:, k], dm, areas, 0.05)
         np.testing.assert_allclose(derivative[:, k], (fp - fm) / (2 * epsilon), rtol=1e-9, atol=1e-12)
+    for scale in (1e-200, 1e200):
+        scaled_flux, scaled_derivative = normalised_flux_derivative(m, dm, areas * scale, 0.05)
+        np.testing.assert_allclose(scaled_flux, flux, rtol=1e-14, atol=1e-15)
+        np.testing.assert_allclose(scaled_derivative, derivative, rtol=1e-14, atol=1e-15)
 
 
 def test_empty_nonfinite_or_invalid_footprints_and_masks_fail_closed():

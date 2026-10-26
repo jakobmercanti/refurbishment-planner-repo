@@ -1,6 +1,7 @@
 "use client";
 
 import { z } from "zod";
+import { readBoundedResponse } from "./boundedResponse";
 import { currentSession } from "./commercialAuth";
 import { workerTelemetrySchema } from "./cfdWorkerTelemetry";
 import { sliceDataSchema, sliceManifestSchema, type SliceRequest } from "./cfdSlices";
@@ -32,21 +33,6 @@ const resultSchema = z.object({jobId: z.uuid(), studyId: z.string(), clientRevis
 });
 export type WorkerResult = z.infer<typeof resultSchema>;
 
-async function bounded(response: Response, max: number): Promise<Uint8Array<ArrayBuffer>> {
-  const reader = response.body?.getReader();
-  if (!reader) return new Uint8Array();
-  const chunks: Uint8Array[] = []; let length = 0;
-  while (true) {
-    const { done, value } = await reader.read(); if (done) break;
-    length += value.byteLength;
-    if (length > max) { await reader.cancel(); throw new Error("Worker response exceeded its size bound."); }
-    chunks.push(value);
-  }
-  const output = new Uint8Array(length); let at = 0;
-  for (const chunk of chunks) {output.set(chunk, at); at += chunk.byteLength;}
-  return output;
-}
-
 export async function workerRequest(base: string, path: string, signal: AbortSignal, body?: unknown, max = 1024**2): Promise<Uint8Array<ArrayBuffer>> {
   signal.throwIfAborted();
   const session = await currentSession(); signal.throwIfAborted();
@@ -57,7 +43,7 @@ export async function workerRequest(base: string, path: string, signal: AbortSig
     headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  const data = await bounded(response, response.ok ? max : 16384);
+  const data = await readBoundedResponse(response, response.ok ? max : 16384, "Worker response exceeded its size bound.");
   if (!response.ok) {
     let detail = `CFD worker request failed (${response.status}).`;
     try { const parsed = JSON.parse(new TextDecoder().decode(data)); if (typeof parsed.detail === "string") detail = parsed.detail.slice(0, 2000); } catch { /* fixed fallback */ }

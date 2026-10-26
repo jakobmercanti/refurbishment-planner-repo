@@ -44,6 +44,7 @@ test('compare quadrant mapping, sign, shared ranges, manual legends, PNG/CSV exp
   await button(slices,'Zoom in baseline').click();assert.equal(await slices.locator('[data-slice-pane=baseline] canvas').getAttribute('data-slice-view'),await slices.locator('[data-slice-pane=delta] canvas').getAttribute('data-slice-view'));await button(slices,'Reset plot views').click();
   await button(slices,'Probe point value (V)').click();const c=slices.locator('[data-slice-pane=baseline] canvas');await c.scrollIntoViewIfNeeded();const box=await c.boundingBox();await page.mouse.click(box.x+box.width/2,box.y+150);
   const reading=slices.getByRole('status',{name:'Picked result value',exact:true});await eventually(()=>reading.getAttribute('data-probe-value'),v=>v==='10');assert.match(await slices.locator('[data-slice-pane=inspector]').innerText(),/Δ\|U\|.*2 m\/s/s);
+  await page.mouse.click(box.x+60,box.y+box.height-30);assert.equal(await reading.getAttribute('data-probe-value'),'10');
   await page.keyboard.press('Escape');assert.equal(await reading.count(),0);assert.ok(await slices.isVisible());
   await slices.getByText('Visual settings & delta legend',{exact:true}).click();await slices.getByRole('checkbox',{name:'Auto Delta scale',exact:true}).uncheck();await slices.getByRole('spinbutton',{name:'Delta scale minimum',exact:true}).fill('-1');await page.keyboard.press('Tab');await slices.getByRole('spinbutton',{name:'Delta scale maximum',exact:true}).fill('4');await page.keyboard.press('Tab');
   assert.equal(await slices.locator('[data-slice-pane=delta] canvas').getAttribute('data-limits'),'[-1,4]');
@@ -57,10 +58,34 @@ test('compare quadrant mapping, sign, shared ranges, manual legends, PNG/CSV exp
   await slices.getByRole('combobox',{name:'Baseline run',exact:true}).scrollIntoViewIfNeeded();await screenshot(page,'compare-desktop');
 });
 test('nearest mismatched plane never produces quantitative delta, pending/error states remain honest',async t=>{
-  const {page,context,slices}=await open(t);await button(slices,'Compare Runs').click();await slices.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.shifted);
+  const {page,context,slices}=await open(t);
+  // Older v1 workers omit these optional response fields; the manifest is authoritative.
+  await context.route('**/climoptix/worker/slice-data',async route=>{const response=await fetch(fixture.origin+'/climoptix/worker/slice-data',{method:'POST',headers:{'Content-Type':'application/json'},body:route.request().postData()});const json=await response.json();if(json.option){delete json.option.coordinate;delete json.option.axis;}await route.fulfill({status:response.status,json});});
+  await button(slices,'Compare Runs').click();await slices.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.shifted);
   await eventually(()=>slices.innerText(),v=>v.includes('No matching physical plane'));assert.match(await slices.locator('[data-slice-pane=delta]').innerText(),/No comparable numeric samples/);
+  await eventually(()=>slices.locator('[data-slice-pane=option]').getAttribute('data-coordinate'),v=>v==='0.7');
+  await button(slices,'Probe point value (V)').click();assert.equal(await slices.locator('[data-slice-pane=option] canvas').getAttribute('data-probing'),null);await button(slices,'Exit point probe (Esc)').click();
   await context.route('**/climoptix/worker/slice-data',route=>route.fulfill({status:403,json:{detail:'No permission for this retained run'}}));await button(slices,'Refresh slice data').click();await eventually(()=>slices.getByRole('alert').allTextContents(),v=>v.some(s=>s.includes('No permission')));
   await screenshot(page,'permission-error');
+});
+
+test('percent semantics, field changes, density metrics and pane/action alignment stay consistent',async t=>{
+  const {page,slices}=await open(t);await compare(slices);
+  const panes=slices.locator('[data-slice-pane]');
+  const canvases=slices.locator('[data-slice-pane=baseline] canvas, [data-slice-pane=option] canvas');
+  const tops=await canvases.evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().top));assert.ok(Math.abs(tops[0]-tops[1])<1);
+  for(const pane of ['baseline','option','delta']){
+    const sizes=await slices.locator(`[data-slice-pane=${pane}] footer > button`).evaluateAll(nodes=>nodes.map(n=>({w:n.getBoundingClientRect().width,h:n.getBoundingClientRect().height})));
+    assert.ok(Math.max(...sizes.map(s=>s.w))-Math.min(...sizes.map(s=>s.w))<=1);assert.ok(Math.max(...sizes.map(s=>s.h))-Math.min(...sizes.map(s=>s.h))<=1);
+  }
+  await slices.getByText('Visual settings & delta legend',{exact:true}).click();
+  const definition=slices.getByLabel('Delta definition',{exact:true});await definition.selectOption('percent');
+  await eventually(()=>slices.locator('[data-slice-pane=delta] header').innerText(),v=>v.includes('100 × (Option − Baseline) / |Baseline|'));
+  await eventually(()=>slices.getByLabel('Delta statistics',{exact:true}).innerText(),v=>v.includes('mean 20'));
+  await definition.selectOption('vector');await slices.getByLabel('Slice field',{exact:true}).selectOption('p');assert.equal(await definition.inputValue(),'absolute');
+  await eventually(()=>button(slices,'Download baseline PNG').isEnabled(),Boolean);
+  await page.setViewportSize({width:390,height:900});await panes.first().scrollIntoViewIfNeeded();assert.ok(await slices.evaluate(n=>n.scrollWidth<=n.clientWidth+2));
+  await screenshot(page,'audit-mobile-controls');
 });
 test('progressive inventory preserves selection and reload restores project-scoped settings with mobile/light-dark layouts',async t=>{
   const {page,ui,slices}=await open(t);await compare(slices);await slices.getByLabel('Available physical plane',{exact:true}).selectOption({label:'Plane 1 of 3 | Z = 0.2 m'});const selected=await slices.getByLabel('Available physical plane',{exact:true}).inputValue();

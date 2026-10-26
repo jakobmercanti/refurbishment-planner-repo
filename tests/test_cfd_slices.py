@@ -169,6 +169,70 @@ def test_progressive_writes_only_publish_closed_complete_planes_and_keep_history
     assert inventory(root, store.get(owner, row["id"]))["planes"][0]["id"] == first["planes"][0]["id"]
 
 
+def test_percent_label_option_coordinates_and_incompatible_axes_are_truthful(tmp_path):
+    store, owner = Store(tmp_path), str(uuid4())
+    a, _ = job_case(store, owner)
+    b, _ = job_case(store, owner, speed=12, coordinate=0.75)
+    result = slice_data(store, owner, request_for(store, owner, a, b, size=16, deltaMode="percent"))
+    assert result["definition"] == "100 × (Option − Baseline) / |Baseline|"
+    assert result["option"]["coordinate"] == 0.75 and result["option"]["axis"] == "Z"
+    c, _ = job_case(store, owner, speed=12, axis=0)
+    result = slice_data(store, owner, request_for(store, owner, a, c, size=16))
+    assert result["b"] is None and set(result["delta"]) == {None}
+    req = request_for(store, owner, a, c, point=(0.5, 0.5, 0.5))
+    assert slice_data(store, owner, req)["probe"]["option"] is None
+
+
+def test_unit_mismatch_never_relabels_option_temperature_or_samples_its_values(tmp_path):
+    store, owner = Store(tmp_path), str(uuid4())
+    a, _ = job_case(store, owner, temperature=True)
+    b, root = job_case(store, owner, speed=12, temperature=True)
+    (root / "manifest.json").write_text(json.dumps({"fieldUnits": {"T": "degF"}}))
+    req = request_for(store, owner, a, b, temperature="C", size=16)
+    req.field = "T"
+    result = slice_data(store, owner, req)
+    assert result["unit"] == "°C" and result["b"] is None
+    assert any("units/components" in reason for reason in result["compatibility"])
+    req.point = (0.25, 0.25, 0.5)
+    assert slice_data(store, owner, req)["probe"]["option"] is None
+
+
+def test_snapshot_cache_retains_only_indexed_iterations_without_removing_native_data(tmp_path):
+    store, owner = Store(tmp_path), str(uuid4())
+    row, root = job_case(store, owner)
+    first = inventory(root, row)["planes"][0]
+    for iteration in range(101, 114):
+        write_plane(root / f"postProcessing/slices/{iteration}/slice.vtk", speed=iteration)
+        current = inventory(root, row)
+    assert len(current["planes"]) == 10
+    assert len(json.loads((view_root(root) / "slice-index.json").read_text())) == 10
+    assert len(list((view_root(root) / "snapshots").glob("*.vtk"))) == 10
+    assert len(list((root / "postProcessing/slices").glob("*/*.vtk"))) == 14
+    assert first["id"] not in {p["id"] for p in current["planes"]}
+    (view_root(root) / "slice-index.json").write_text("[]")
+    assert len(inventory(root, row)["planes"]) == 10  # damaged index rebuilds
+    next((view_root(root) / "snapshots").glob("*.vtk")).unlink()
+    assert len(inventory(root, row)["planes"]) == 10  # missing copy rebuilds
+    index_path = view_root(root) / "slice-index.json"
+    index = json.loads(index_path.read_text())
+    index[next(iter(index))]["meta"]["axis"] = "corrupt"
+    index_path.write_text(json.dumps(index))
+    assert {p["axis"] for p in inventory(root, row)["planes"]} == {"Z"}
+
+
+@pytest.mark.parametrize(
+    "field,value", [("size", "96"), ("component", False), ("epsilon", True), ("point", [True, 0.5, 0.5])]
+)
+def test_sampling_contract_rejects_text_and_boolean_numeric_parameters(tmp_path, field, value):
+    from pydantic import ValidationError
+
+    store, owner = Store(tmp_path), str(uuid4())
+    row, _ = job_case(store, owner)
+    body = request_for(store, owner, row).model_dump(mode="json")
+    with pytest.raises(ValidationError):
+        SliceRequest.model_validate({**body, field: value})
+
+
 def test_slice_api_owner_project_expiry_integrity_and_payload_limits(tmp_path):
     app = create_app(tmp_path, start_runner=False)
     owner = VerifiedUser(uuid4(), "allowed@example.com", True)

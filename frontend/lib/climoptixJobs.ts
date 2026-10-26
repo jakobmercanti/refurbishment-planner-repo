@@ -137,6 +137,12 @@ export async function prepareWorkerSubmission(
 export const terminalJob = (job: CFDWorkerJob) =>
   ["Completed", "Failed", "Cancelled", "Stale"].includes(job.phase);
 
+/** A checked mesh is not a converged baseline flow run; older unknown jobs fail closed. */
+export function completedRunReference(entry:{input:string;job?:CFDWorkerJob;operation?:CFDOperation}|undefined,input:string):string|null {
+  const job=entry?.job;
+  return entry?.input===input&&job?.phase==="Completed"&&(job.operation??entry.operation)==="run"&&z.uuid().safeParse(job.id).success?job.id:null;
+}
+
 /** Reject cross-study, stale and mismatched worker responses before showing progress. */
 export function checkedWorkerJob(
   raw: unknown,

@@ -89,13 +89,16 @@ def normalised_flux_derivative(
         or np.any(mask > 1)
     ):
         raise ValueError("Finite masks in [0,1], positive areas/flow and two derivatives required.")
-    weighted = mask * areas_m2
+    # Common area scaling cancels analytically; avoid squaring tiny/large areas.
+    scaled_areas = areas_m2 / np.max(areas_m2)
+    weighted = mask * scaled_areas
     area = float(weighted.sum())
     if not math.isfinite(area) or area <= 0:
         raise ValueError("Empty effective opening.")
-    derivative = dmask * areas_m2[:, None]
-    flux = total_m3s * weighted / area
-    dflux = total_m3s * (derivative / area - weighted[:, None] * derivative.sum(axis=0) / area**2)
+    derivative = dmask * scaled_areas[:, None]
+    fraction = weighted / area
+    flux = total_m3s * fraction
+    dflux = total_m3s * (derivative - fraction[:, None] * derivative.sum(axis=0)) / area
     if not np.isfinite(flux).all() or not np.isfinite(dflux).all():
         raise ValueError("Flux normalization overflowed; repair or rescale the input.")
     return flux, dflux

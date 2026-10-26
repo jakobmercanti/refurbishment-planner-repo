@@ -1,24 +1,30 @@
 /* Deliberately scoped to the CFD Results subtree, not the building viewport. */
-body .cfx-workspace .cfx-slices { min-width:0; padding-block:12px; font:500 12px/1.5 var(--font-sans),sans-serif; color:var(--ink); }
+body .cfx-workspace .cfx-slices { min-width:0; padding-block:12px; line-height:1.5; color:var(--ink); }
 body .cfx-workspace .cfx-slices :is(h3,h4,p) { margin-block:6px 10px; }
-body .cfx-workspace .cfx-slices :is(button,select,input) { font:650 12px/1.4 var(--font-sans),sans-serif; min-height:36px; }
+body .cfx-workspace .cfx-slices :is(select,input) { font:inherit; min-height:var(--density-control-min-height); }
+body .cfx-workspace .cfx-slice-mode { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+body .cfx-workspace .cfx-slice-mode > button { width:100%; }
 body .cfx-workspace .cfx-slices select { width:100%; min-width:0; }
 body .cfx-workspace .cfx-slice-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:end; gap:10px; padding-block:8px; }
 body .cfx-workspace .cfx-slice-controls label { display:grid; gap:5px; min-width:0; font-weight:650; }
-body .cfx-workspace .cfx-slice-controls .cfx-check { display:flex; align-items:center; gap:7px; min-height:36px; }
+body .cfx-workspace .cfx-slice-controls .cfx-check { display:flex; align-items:center; gap:7px; min-height:var(--density-control-min-height); }
 body .cfx-workspace .cfx-slice-controls input[type=checkbox] { min-height:0; }
 body .cfx-workspace .cfx-slice-navigation { display:grid; grid-template-columns:minmax(100px,.5fr) minmax(0,2fr) minmax(100px,.5fr); align-items:end; gap:8px; margin-block:10px; }
 body .cfx-workspace .cfx-slice-navigation label { display:grid; gap:5px; font-weight:650; }
 body .cfx-workspace .cfx-slice-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; margin-block:12px; }
 body .cfx-workspace .cfx-slice-grid.compare { grid-template-columns:repeat(2,minmax(0,1fr)); }
 body .cfx-workspace .cfx-slice-grid.focused { grid-template-columns:minmax(0,1fr); }
-body .cfx-workspace .cfx-slice-pane { min-width:0; border:1px solid var(--line); border-radius:12px; background:var(--paper); overflow:hidden; }
+body .cfx-workspace .cfx-slice-pane { min-width:0; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--paper); overflow:hidden; }
 body .cfx-workspace .cfx-slice-pane > header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px; background:var(--surface-muted); border-bottom:1px solid var(--line); }
-body .cfx-workspace .cfx-slice-pane > header strong { overflow-wrap:anywhere; }
-body .cfx-workspace .cfx-slice-pane > header button { flex:0 0 auto; }
+body .cfx-workspace .cfx-slice-pane > header strong { overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; line-height:1.5; min-height:4.5em; }
+body .cfx-workspace .cfx-slice-pane > header button { flex:0 0 auto; width:110px; }
 body .cfx-workspace .cfx-slice-pane canvas { display:block; width:100%; height:390px; color:var(--ink); background:var(--paper); touch-action:none; }
 body .cfx-workspace .cfx-slice-pane canvas[data-probing] { cursor:crosshair; }
-body .cfx-workspace .cfx-slice-pane footer { display:flex; gap:6px; padding:8px; flex-wrap:wrap; }
+body .cfx-workspace .cfx-slice-pane footer { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; padding:8px; }
+body .cfx-workspace .cfx-slice-pane footer button { min-width:0; width:100%; white-space:normal; }
+body .cfx-workspace .cfx-slices > details { min-width:0; border:1px solid var(--line); border-radius:var(--radius-panel); padding:var(--density-window-padding); }
+body .cfx-workspace .cfx-slices fieldset { min-width:0; border:1px solid var(--line); border-radius:var(--radius-panel); }
+body .cfx-workspace .cfx-slices summary { cursor:pointer; font-weight:700; }
 body .cfx-workspace .cfx-slice-inspector { padding:10px 12px; }
 body .cfx-workspace .cfx-slice-inspector > header { margin:-10px -12px 10px; }
 body .cfx-workspace .cfx-slice-readings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }

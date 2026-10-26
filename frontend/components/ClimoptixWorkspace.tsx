@@ -14,7 +14,7 @@ import { CFDIndependentWindow } from "./CFDIndependentWindow";
 import type { SceneResultMetadata } from "./CFDSceneResult";
 import { CFDHeatingImport } from "./CFDHeatingImport";
 import { CFDPointProbeControls, useCFDPointProbe } from "./CFDPointProbeControls";
-import { terminalJob, workerInput } from "@/lib/climoptixJobs";
+import { completedRunReference, terminalJob, workerInput } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP } from "@/lib/climoptixHelp";
 import { FloatingToolbar } from "./FloatingToolbar";
@@ -1120,7 +1120,7 @@ export function ClimoptixWorkspace({
             {scenario && <section role="tabpanel" id="cfx-setup-panel-adjoint" aria-labelledby="cfx-setup-tab-adjoint" hidden={shownTab!=="adjoint"} className="cfx-setup-panel">
               <ClimoptixAdjoint key={scenario.id} project={project} scenario={scenario} report={activeReport} revision={revision} checked={!stale&&!busy&&!preparationError}
                 apiUrl={apiUrl} active={setupOpen&&shownTab==="adjoint"} selected={selected} onSelect={selectObject} onChange={change} onNavigate={openPhase}
-                workerConnected={!!workerAdapter?.capabilities.connected} baselineRunId={jobs[scenario.id]?.job?.phase==="Completed"&&jobs[scenario.id]?.input===currentWorkerInput?jobs[scenario.id]?.job?.id??null:null}/>
+                workerConnected={!!workerAdapter?.capabilities.connected} baselineRunId={completedRunReference(jobs[scenario.id],currentWorkerInput)}/>
             </section>}
             {scenario &&
               PHASES.map((panel) => (
