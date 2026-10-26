@@ -154,3 +154,28 @@ test('rapid navigation cancels a delayed prior slice instead of painting its val
   await eventually(()=>canvas.getAttribute('data-limits'),v=>{try{return JSON.parse(v).every(n=>Math.abs(n-10.8)<1e-10);}catch{return false;}});
   await finished;assert.match(await selection.locator('option:checked').innerText(),/X = 0.8 m/);assert.ok(JSON.parse(await canvas.getAttribute('data-limits')).every(n=>Math.abs(n-10.8)<1e-10));
 });
+
+test('V and Esc remain usable when the point settings are collapsed and never close Results',async t=>{
+  const {page,slices}=await open(t),canvas=slices.locator('[data-slice-pane=baseline] canvas');
+  const summary=slices.getByText('Point probing (V / Esc)',{exact:true});
+  await summary.click();assert.equal(await summary.evaluate(n=>n.parentElement.open),false);await canvas.focus();await page.keyboard.press('v');
+  assert.equal(await canvas.getAttribute('data-probing'),'true');
+  await page.keyboard.press('Escape');assert.equal(await canvas.getAttribute('data-probing'),null);assert.ok(await slices.isVisible());
+  await summary.click();await button(slices,'Probe point value (V)').click();await summary.click();await canvas.focus();
+  await page.keyboard.press('Escape');assert.equal(await canvas.getAttribute('data-probing'),null);assert.ok(await slices.isVisible());
+});
+
+test('a wrong-resolution worker response clears contours and disables export instead of mislabelling the grid',async t=>{
+  const {context,slices}=await open(t);
+  await context.route('**/climoptix/worker/slice-data',async route=>{
+    const body={...route.request().postDataJSON(),size:16};
+    const response=await fetch(fixture.origin+'/climoptix/worker/slice-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    await route.fulfill({status:response.status,contentType:'application/json',body:await response.text()});
+  });
+  await button(slices,'Refresh slice data').click();
+  await eventually(()=>slices.getByRole('alert').allTextContents(),v=>v.some(message=>message.includes('sampling resolution')));
+  assert.ok(await button(slices,'Download baseline PNG').isDisabled());
+  await slices.getByText('Export numeric data & provenance',{exact:true}).click();
+  assert.ok(await button(slices,'Download slice / delta CSV').isDisabled());
+  assert.equal(await slices.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),'[0,1]');
+});

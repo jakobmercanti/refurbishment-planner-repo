@@ -76,6 +76,7 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
       const data=sliceDataSchema.parse(JSON.parse(new TextDecoder().decode(await workerRequest(base,"/slice-data",signal,request,48*1024**2))));
       if(data.baseline.run!==request.baseline.runId||data.baseline.asset!==request.baseline.assetId||data.option?.run!==request.option?.runId||data.option?.asset!==request.option?.assetId||data.field!==request.field||data.component!==request.component)throw new Error("Slice data does not match the current selection.");
       if(data.deltaMode!==request.deltaMode||data.epsilon!==request.epsilon||(request.point?(!data.point||data.point.some((value,i)=>value!==request.point![i])):data.point!==undefined))throw new Error("Slice sampling settings or picked coordinates do not match this request.");
+      if(!request.point&&data.size!==request.size)throw new Error("Slice sampling resolution does not match this request.");
       return data;
     },
     async cancel(job: CFDWorkerJob, signal: AbortSignal) {

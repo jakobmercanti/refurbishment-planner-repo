@@ -138,3 +138,35 @@ Screenshots and actual PNG downloads are local QA evidence in
 `gradient-vector-delta.png`. They are not committed application assets.
 One pre-existing Starlette/httpx deprecation warning remains. No native CFD
 optimisation success or production deployment health is inferred from tests.
+
+## Additional failure-focused pass
+
+A further pass found a request/response validation gap in the browser worker
+adapter. A self-consistent 16×16 raster could be accepted for a 96×96 request:
+array lengths matched the response's own size, but the response size was never
+compared with the requested size. This could misrepresent sampling resolution
+in the controls, exports and probe grid-step navigation.
+
+The new regression failed against the previous source with **Missing expected
+rejection** (`.local-logs/cfd-extra-pass-grid-reproduction.log`). The adapter now
+rejects a mismatched raster resolution. Exact-point responses remain exempt
+because they are not rasters, and a correctly requested 16×16 response is
+explicitly accepted. The UI regression supplies a genuine local 16×16 service
+response to a 96×96 request, checks the error, cleared contours and disabled PNG/
+CSV exports. No arithmetic or solver change was needed.
+
+The suspected collapsed-probe-settings shortcut bug did **not** reproduce.
+An explicit closed-details precondition plus V/Esc checks passed against the old
+build; this coverage is retained without changing working keyboard code.
+
+Extra-pass validation: 643 frontend unit and 19 persistence tests passed; 64
+focused slice/adjoint preparation backend checks passed, including retained native
+output. All 19 2D/3D probe and adjoint-gate browser checks passed without skips
+(161.079 seconds), including the wrong-resolution failure and cleared exports.
+Static build, lint, types and whitespace/diff checks passed; source usage still
+reports 465 modules with no orphaned modules. Evidence is in
+`.local-logs/cfd-extra-pass-{build,unit,backend,lint,types,ui}.log`.
+
+The native adjoint blocker above is unchanged. These are defensive result/UI
+checks, not proof of a working optimisation loop. Publication of this additional
+pass is subject to the user's follow-up push choice.

@@ -50,6 +50,12 @@ test("HTTP adapter keeps bearer credentials out of URLs and rejects wrong job/lo
   await assert.rejects(adapter.sliceData(request,new AbortController().signal),/settings/);
   response={...pointResult,baseline:{...pointResult.baseline,run:capabilities.namespace}};
   await assert.rejects(adapter.sliceData(request,new AbortController().signal),/current selection/);
+  const rasterRequest={...request,point:undefined};
+  const raster={...pointResult,point:undefined,probe:undefined,size:16,bounds:[0,0,1,1],a:Array(256).fill(10),b:null,delta:Array(256).fill(null),range:[10,10],
+    statistics:{valid:0,missing:256,coverage:0,min:null,max:null,mean:null,rms:null,commonAreaM2:0,method:'Uniform grid'}};
+  response=raster;
+  await assert.rejects(adapter.sliceData(rasterRequest,new AbortController().signal),/resolution/);
+  assert.equal((await adapter.sliceData({...rasterRequest,size:16},new AbortController().signal)).size,16);
 });
 
 test("worker capabilities cannot advertise limits above the approved deployment",()=>{
