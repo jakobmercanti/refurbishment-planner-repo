@@ -212,7 +212,7 @@ test('Climoptix proxy exposes only preparation and capabilities, never run/job o
   } finally { globalThis.fetch = originalFetch; }
 });
 
-for (const operation of ['geometry', 'default-setup', 'thermal-envelope', 'thermal-preview', 'thermal-epw']) test('Climoptix ' + operation + ' is same-origin POST-only, strips credentials and bypasses caching', async () => {
+for (const operation of ['geometry', 'default-setup', 'thermal-envelope', 'thermal-preview', 'thermal-epw', 'optimisation/prepare']) test('Climoptix ' + operation + ' is same-origin POST-only, strips credentials and bypasses caching', async () => {
   const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
   const endpoint = origin + '/planner/engineering-api/climoptix/' + operation;
   for (const method of ['GET', 'PUT', 'DELETE']) assert.equal((await worker.fetch(new Request(endpoint, { method }), env)).status, 403);
@@ -232,7 +232,7 @@ for (const operation of ['geometry', 'default-setup', 'thermal-envelope', 'therm
   } finally { globalThis.fetch = originalFetch; }
 });
 
-for (const operation of ['prepare', 'geometry']) test('Climoptix ' + operation + ' streamed bodies are bounded without relying on Content-Length', async () => {
+for (const operation of ['prepare', 'geometry', 'optimisation/prepare']) test('Climoptix ' + operation + ' streamed bodies are bounded without relying on Content-Length', async () => {
   const env = { ENGINEERING_API_ORIGIN: 'https://example.up.railway.app' };
   const endpoint = origin + '/planner/engineering-api/climoptix/' + operation;
   const originalFetch = globalThis.fetch;

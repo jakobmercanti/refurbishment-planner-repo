@@ -1,0 +1,19 @@
+.cfx-adjoint { display: grid; gap: 14px; min-width: 0; }
+.cfx-adjoint h2 { margin: 0 0 6px; }
+.cfx-adjoint p { margin-block: 8px; line-height: 1.6; }
+.cfx-adjoint > details, .cfx-adjoint-port { border: 1px solid var(--line); border-radius: 14px; padding: 12px; min-width: 0; }
+.cfx-adjoint summary { font: inherit; font-weight: 700; cursor: pointer; padding-block: 4px; }
+.cfx-adjoint-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cfx-adjoint-actions > button { flex: 1 1 170px; }
+.cfx-adjoint-grid, .cfx-adjoint-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.cfx-adjoint label { display: grid; gap: 6px; font-weight: 600; min-width: 0; }
+.cfx-adjoint select, .cfx-adjoint input { min-width: 0; width: 100%; }
+.cfx-adjoint-facts dt { font-weight: 700; }
+.cfx-adjoint-facts dd { margin: 6px 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.cfx-adjoint-id { overflow-wrap: anywhere; }
+.cfx-adjoint-checks { display: grid; grid-template-columns: repeat(auto-fit,minmax(110px,1fr)); gap: 10px; margin-block: 12px; }
+.cfx-adjoint .cfx-check { display: flex; gap: 8px; align-items: center; }
+.cfx-adjoint .cfx-check input { width: auto; }
+.cfx-adjoint-port { margin-block: 10px; }
+.cfx-adjoint fieldset { min-width: 0; border: 1px solid var(--line); border-radius: 12px; }
+.cfx-adjoint li { margin-block: 10px; line-height: 1.6; }

@@ -4,6 +4,7 @@ type HelpStep = { heading: string; text: string };
 
 /** Contextual guidance lives in the native help window, not above editable data. */
 export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
+  adjoint: [{heading:"Vent-position preparation",text:"Capture the current CFD setup, choose movable existing vents, set host-local bounds in millimetres and validate full swept footprints. Configurations save with the project without moving the building or baseline vents. Execution is unavailable: the current simpleFoam adapter remeshes and has no validated boundary-mask adjoint. Geometry or physical setup changes require a new configuration. Mathematical perimeter tests are not CFD gradient verification."}],
   studies: [
     { heading: "Compact groups", text: "Select a group to highlight it; New simulation adds inside that group. Collapse hides its children without removing them. A collapsed header still accepts grip-only drops. Clear all asks for confirmation and removes all simulations, including archived ones, but keeps the measured building and folders. Undo restores them. Active or unresolved worker submissions block clearing." },
     {

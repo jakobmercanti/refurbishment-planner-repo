@@ -147,7 +147,7 @@ export async function cfdWindow(ui, name) {
     return;
   }
   if (await page.locator(".cfx-setup-window[data-window-maximized]:visible").count()) {
-    const phases = { Simulations: ["studies", "Simulations"], Domain: ["domain", "Domain"], Equipment: ["equipment", "Objects"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], "Review & export": ["review", "Export"], "Imported results": ["results", "Results"] };
+    const phases = { Simulations: ["studies", "Simulations"], Domain: ["domain", "Domain"], Equipment: ["equipment", "Objects"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], "Adjoint Optimisation": ["adjoint", "Adjoint Optimisation"], "Review & export": ["review", "Export"], "Imported results": ["results", "Results"] };
     const [id, text] = phases[aliases[name] ?? name];
     const select = ui.getByRole("combobox", { name: "CFD phase", exact: true });
     if (await select.isVisible()) await select.selectOption(id);

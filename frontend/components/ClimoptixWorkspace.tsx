@@ -62,6 +62,7 @@ import { EquipmentPanel } from "./ClimoptixEquipment";
 import { PhysicsPanel } from "./ClimoptixPhysics";
 import { ClimoptixSimulation, type SimulationTab } from "./ClimoptixSimulation";
 import { ClimoptixResults } from "./ClimoptixResults";
+import { ClimoptixAdjoint } from "./ClimoptixAdjoint";
 import {
   ClimoptixConvergence,
   useConvergenceLogs,
@@ -1075,7 +1076,7 @@ export function ClimoptixWorkspace({
                 </button>
               ))}
             </div>
-            {scenario && shownTab !== "results" && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
+            {scenario && shownTab !== "results" && shownTab !== "adjoint" && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
               showFailure={shownTab !== "review"} onIssues={() => reviewIssues()}
               onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} />}
             <section
@@ -1116,6 +1117,11 @@ export function ClimoptixWorkspace({
                 canRedo={canRedo}
               />
             </section>
+            {scenario && <section role="tabpanel" id="cfx-setup-panel-adjoint" aria-labelledby="cfx-setup-tab-adjoint" hidden={shownTab!=="adjoint"} className="cfx-setup-panel">
+              <ClimoptixAdjoint key={scenario.id} project={project} scenario={scenario} report={activeReport} revision={revision} checked={!stale&&!busy&&!preparationError}
+                apiUrl={apiUrl} active={setupOpen&&shownTab==="adjoint"} selected={selected} onSelect={selectObject} onChange={change} onNavigate={openPhase}
+                workerConnected={!!workerAdapter?.capabilities.connected} baselineRunId={jobs[scenario.id]?.job?.phase==="Completed"&&jobs[scenario.id]?.input===currentWorkerInput?jobs[scenario.id]?.job?.id??null:null}/>
+            </section>}
             {scenario &&
               PHASES.map((panel) => (
                 <section

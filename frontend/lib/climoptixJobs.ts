@@ -98,7 +98,7 @@ export async function prepareWorkerSubmission(
     : null;
   // Detach only the bounded solver source, not unrelated studies or thermal histories.
   // Do this before the first await, including when a caller mutates its objects.
-  scenario = structuredClone({ ...scenario, thermalSnapshots: undefined, boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined } });
+  scenario = structuredClone({ ...scenario, thermalSnapshots: undefined, adjointStudies: undefined, boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined } });
   project = JSON.parse(
     preparationRequestBody(project, scenario, "0".repeat(64)),
   ).project;

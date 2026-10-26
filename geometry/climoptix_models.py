@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from geometry.climoptix_adjoint import AdjointStudy
 from geometry.thermal_models import ThermalSetup, ThermalSnapshot
 
 Id = Annotated[str, Field(pattern=r"^[A-Za-z0-9_:-]+$", min_length=1, max_length=150)]
@@ -424,12 +425,15 @@ class Scenario(Contract):
     outputs: Outputs = Field(default_factory=Outputs)
     postProcessing: PostProcessing = Field(default_factory=PostProcessing)
     optimization: Optimization = Field(default_factory=Optimization)
+    adjointStudies: list[AdjointStudy] = Field(default_factory=list, max_length=20)
     validation: ValidationStamp | None = None
     thermalEnvelope: ThermalSetup | None = None
     thermalSnapshots: list[ThermalSnapshot] = Field(default_factory=list, max_length=3)
 
     @model_validator(mode="after")
     def unique_entities(self) -> Self:
+        if len({s.id for s in self.adjointStudies}) != len(self.adjointStudies):
+            raise ValueError("Adjoint preparation IDs must be unique.")
         groups, copies, hidden = self.objectGroups or [], self.objectCopies or [], self.hiddenObjectIds or []
         members = [mid for group in groups for mid in group.memberIds]
         if (len({g.id for g in groups}) != len(groups) or len({g.name.lower() for g in groups}) != len(groups)

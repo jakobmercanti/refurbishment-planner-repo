@@ -321,6 +321,8 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
 
     @app.get(prefix + "/capabilities")
     def capabilities(user: WorkerUser):
+        from backend.app.climoptix_adjoint import CAPABILITY
+
         return {
             "connected": True,
             "mesh": state["ready"],
@@ -328,6 +330,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
             "reason": state["reason"],
             "namespace": str(user.id),
             "limits": LIMITS,
+            "optimisation": CAPABILITY,
         }
 
     @app.post(prefix + "/jobs")

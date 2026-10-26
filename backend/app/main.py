@@ -80,6 +80,7 @@ from geometry.shapes import obstacle_footprint
 from geometry.walls import PolygonValidationError, derive_walls, room_polygon
 
 CFD_JSON_ENDPOINTS = {
+    "/climoptix/optimisation/prepare",
     "/climoptix/geometry", "/climoptix/prepare", "/climoptix/openfoam-settings", "/climoptix/default-setup",
     "/climoptix/thermal-envelope", "/climoptix/thermal-preview", "/climoptix/thermal-epw",
 }

@@ -406,6 +406,7 @@ export function preparationInput(
     scenario: {
       ...scenario,
       validation: undefined,
+      adjointStudies: undefined,
       thermalSnapshots: undefined,
       name: undefined,
       description: undefined,
@@ -490,7 +491,7 @@ export function preparationRequestBody(
     project: source,
     // Grouping is local presentation metadata, not part of the solver contract.
     // Omitting it also keeps existing preparation-only workers compatible.
-    scenario: { ...scenario, group: undefined, thermalSnapshots: undefined, boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined } },
+    scenario: { ...scenario, group: undefined, thermalSnapshots: undefined, adjointStudies: undefined, boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined } },
     clientRevision,
   });
   if (new TextEncoder().encode(body).byteLength > 4 * 1024 * 1024)

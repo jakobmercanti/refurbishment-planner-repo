@@ -960,7 +960,8 @@ class PreparationOnlyProvider:
         config = scenario.model_dump(
             mode="json",
             exclude={
-                "validation", "thermalSnapshots", "name", "description", "group", "archived", "createdAt", "updatedAt", "objectGroups"
+                "validation", "thermalSnapshots", "name", "description", "group", "archived",
+                "createdAt", "updatedAt", "objectGroups", "adjointStudies"
             },
         )
         stamp = ValidationStamp(

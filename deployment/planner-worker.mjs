@@ -157,7 +157,7 @@ export default {
         || /^\/catalog\/items\/[^/]+\/cfd(?:\.stl)?$/.test(endpoint)
         || endpoint === '/climoptix/capabilities'
       );
-      const calculable = request.method === 'POST' && ['/rooms/validate', '/layout-checks', '/fit-checks', '/placements', '/climoptix/geometry', '/climoptix/prepare', '/climoptix/default-setup', '/climoptix/openfoam-settings', '/climoptix/thermal-envelope', '/climoptix/thermal-preview', '/climoptix/thermal-epw'].includes(endpoint);
+      const calculable = request.method === 'POST' && ['/rooms/validate', '/layout-checks', '/fit-checks', '/placements', '/climoptix/geometry', '/climoptix/prepare', '/climoptix/optimisation/prepare', '/climoptix/default-setup', '/climoptix/openfoam-settings', '/climoptix/thermal-envelope', '/climoptix/thermal-preview', '/climoptix/thermal-epw'].includes(endpoint);
       if (!readable && !calculable) return respond(Response.json({ detail: 'This operation is unavailable publicly.' }, { status: 403 }));
       if (calculable && request.headers.get('Origin') !== url.origin) return respond(new Response('Forbidden', { status: 403 }));
       if (!env.ENGINEERING_API_ORIGIN) return respond(Response.json({ detail: 'Engineering service is not configured.' }, { status: 503 }));

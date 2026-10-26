@@ -10,6 +10,7 @@ export const CFD_WINDOWS = [
   { id: "boundaries", name: "Boundaries", tab: "Bounds" },
   { id: "physics", name: "Physics", tab: "Physics" },
   { id: "mesh", name: "Solver", tab: "Solver" },
+  { id: "adjoint", name: "Adjoint Optimisation", tab: "Adjoint Optimisation" },
   { id: "review", name: "Review & export", tab: "Export" },
   { id: "results", name: "Imported results", tab: "Results" },
 ] as const;

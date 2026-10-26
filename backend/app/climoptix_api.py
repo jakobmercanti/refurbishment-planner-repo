@@ -10,6 +10,7 @@ from shapely.errors import GEOSException
 
 from backend.app.climoptix_provider import PreparationOnlyProvider
 from backend.app.commercial_api import _validate_project
+from geometry.climoptix_adjoint import AdjointStudy
 from geometry.climoptix_models import ProviderCapabilities, Scenario
 from geometry.thermal_models import ThermalPackage
 
@@ -27,6 +28,23 @@ class PreparationRequest(BaseModel):
 class GeometryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     project: dict[str, Any]
+
+
+class AdjointPreparationRequest(PreparationRequest):
+    study: AdjointStudy
+
+
+@router.post("/optimisation/prepare")
+def adjoint_preparation(request: AdjointPreparationRequest) -> dict[str, Any]:
+    from backend.app.climoptix_adjoint import prepare_optimisation
+
+    report = prepare(
+        PreparationRequest(project=request.project, scenario=request.scenario, clientRevision=request.clientRevision)
+    )
+    try:
+        return prepare_optimisation(request.scenario, request.study, report)
+    except (KeyError, TypeError, ValueError, GEOSException) as error:
+        raise HTTPException(422, f"Cannot prepare movement regions: {str(error)[:1000]}") from None
 
 
 @router.post("/geometry")
