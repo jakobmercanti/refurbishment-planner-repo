@@ -53,10 +53,24 @@ export function restoreSliceState(text:string|null):SliceState {try {
   if(!result.success)return structuredClone(defaultSliceState);
   return {...result.data,focus:result.data.mode==="single"&&["option","delta"].includes(result.data.focus)?"all":result.data.focus};
 }catch{return structuredClone(defaultSliceState);}}
-export function sliceCSV(data:SliceData) {
-  const metadata=JSON.stringify({baseline:data.baseline,option:data.option,axis:data.axis,coordinate:data.coordinate,field:data.field,component:data.component,unit:data.unit,deltaUnit:data.deltaUnit,definition:data.definition,deltaMode:data.deltaMode,epsilon:data.epsilon,method:data.method,bounds:data.bounds,size:data.size,key:data.key,notes:data.notes});
+export function slicePlotQuantity(data:SliceData|null,kind:string) {
+  if(kind==="delta"&&data?.deltaMode==="vector")return `|ΔU| [${data.deltaUnit}]`;
+  return `${data?.field??"Field"}${data&&data.component>=0?"XYZ"[data.component]??data.component:data?.field==="U"?" magnitude":""} [${kind==="delta"?data?.deltaUnit??"—":data?.unit??"—"}]`;
+}
+export function sliceCSV(data:SliceData,optionPlane?:Pick<SlicePlane,"axis"|"coordinate">) {
+  const optionAxis=data.option?.axis??optionPlane?.axis??(data.option&&!data.compatibility.length?data.axis:undefined);
+  const optionCoordinate=data.option?.coordinate??optionPlane?.coordinate??(data.option&&!data.compatibility.length?data.coordinate:undefined);
+  const option=data.option?{...data.option,axis:optionAxis,coordinate:optionCoordinate}:null;
+  const metadata=JSON.stringify({baseline:data.baseline,option,axis:data.axis,coordinate:data.coordinate,field:data.field,component:data.component,unit:data.unit,deltaUnit:data.deltaUnit,definition:data.definition,deltaMode:data.deltaMode,epsilon:data.epsilon,method:data.method,bounds:data.bounds,size:data.size,key:data.key,notes:data.notes,sampleCoordinates:"Baseline uses X_m/Y_m/Z_m; Option uses Option_X_m/Option_Y_m/Option_Z_m. Blank coordinates mean unavailable, not colocated."});
   if(!data.size||!data.bounds||!data.a)return `# ${metadata}\nNo raster available\n`;
-  const axes=inPlaneAxes(data.axis),rows=[`# ${metadata}`,"X_m,Y_m,Z_m,Baseline,Option,Delta,Common_valid"];
-  data.a.forEach((a,i)=>{const p=[data.coordinate,data.coordinate,data.coordinate];p[axes[0]]=data.bounds![0]+((i%data.size!)+.5)/data.size!*(data.bounds![2]-data.bounds![0]);p[axes[1]]=data.bounds![1]+(Math.floor(i/data.size!)+.5)/data.size!*(data.bounds![3]-data.bounds![1]);rows.push([...p,a??"",data.b?.[i]??"",data.delta?.[i]??"",data.delta?.[i]!=null?1:0].join(","));});
+  const axes=inPlaneAxes(data.axis),rows=[`# ${metadata}`,"X_m,Y_m,Z_m,Baseline,Option,Delta,Common_valid,Option_X_m,Option_Y_m,Option_Z_m"];
+  data.a.forEach((a,i)=>{
+    const p=[data.coordinate,data.coordinate,data.coordinate];
+    p[axes[0]]=data.bounds![0]+((i%data.size!)+.5)/data.size!*(data.bounds![2]-data.bounds![0]);
+    p[axes[1]]=data.bounds![1]+(Math.floor(i/data.size!)+.5)/data.size!*(data.bounds![3]-data.bounds![1]);
+    const q:(number|string)[]=["","",""];
+    if(optionAxis&&optionCoordinate!==undefined&&data.b){q.splice(0,3,...p);q["XYZ".indexOf(optionAxis)]=optionCoordinate;}
+    rows.push([...p,a??"",data.b?.[i]??"",data.delta?.[i]??"",data.delta?.[i]!=null?1:0,...q].join(","));
+  });
   return rows.join("\n");
 }

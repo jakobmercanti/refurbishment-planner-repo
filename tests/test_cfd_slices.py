@@ -18,15 +18,29 @@ from backend.app.openfoam_smoke import fixture
 from backend.app.supabase_rest import VerifiedUser
 
 
-def write_plane(path, axis=2, coordinate=0.5, speed=10, linear=False, reverse=False, hole=False, temperature=False):
+def write_plane(
+    path,
+    axis=2,
+    coordinate=0.5,
+    speed=10,
+    linear=False,
+    reverse=False,
+    hole=False,
+    temperature=False,
+    scale=1,
+    offset=0,
+    triangulated=False,
+):
     points = [[0, 0], [1, 0], [1, 1], [0, 1]] if not hole else [[0, 0], [1, 0], [1, 0.5], [0.5, 0.5], [0.5, 1], [0, 1]]
     axes = [i for i in range(3) if i != axis]
     xyz = np.full((len(points), 3), coordinate)
     xyz[:, axes] = points
-    values = xyz[:, 0] + 2 * xyz[:, 1] + 3 * xyz[:, 2] if linear else np.full(len(points), speed)
+    values = (xyz[:, 0] + 2 * xyz[:, 1] + 3 * xyz[:, 2] if linear else np.full(len(points), speed)) * scale + offset
     text = "# vtk DataFile Version 3.0\nactual numeric fixture\nASCII\nDATASET POLYDATA\n"
     text += f"POINTS {len(points)} double\n" + " ".join(map(str, xyz.ravel()))
-    text += f"\nPOLYGONS 1 {len(points) + 1}\n{len(points)} " + " ".join(map(str, range(len(points))))
+    polygons = [[0, 1, 2], [0, 2, 3]] if triangulated else [list(range(len(points)))]
+    text += f"\nPOLYGONS {len(polygons)} {sum(len(p) + 1 for p in polygons)}\n"
+    text += "\n".join(f"{len(p)} " + " ".join(map(str, p)) for p in polygons)
     text += f"\nPOINT_DATA {len(points)}\nFIELD attributes 3\nU 3 {len(points)} double\n"
     text += " ".join(f"{(-1 if reverse else 1) * v} 0 0" for v in values)
     text += f"\np 1 {len(points)} double\n" + " ".join(map(str, values))
@@ -100,6 +114,49 @@ def test_signed_speed_vector_and_percent_semantics():
     av, bv = np.array([[2.0, 0, 0]]), np.array([[-2.0, 0, 0]])
     assert difference(scalar(av, -1), scalar(bv, -1), "absolute", 1e-6)[0] == 0
     assert difference(scalar(av, -1), scalar(bv, -1), "vector", 1e-6, av, bv)[0] == 4
+
+
+@pytest.mark.parametrize("axis", [0, 1, 2])
+@pytest.mark.parametrize("component,mode", [(0, "absolute"), (0, "percent"), (-1, "absolute"), (-1, "vector")])
+def test_nonuniform_different_mesh_rasters_and_picked_deltas_match_analytic_fields(tmp_path, axis, component, mode):
+    store, owner = Store(tmp_path), str(uuid4())
+    a, ar = job_case(store, owner)
+    b, br = job_case(store, owner)
+    for root, scale, offset in [(ar, 1, 0), (br, -2, -5)]:
+        write_plane(
+            root / "postProcessing/slices/100/slice.vtk",
+            axis,
+            1.25,
+            linear=True,
+            scale=scale,
+            offset=offset,
+            triangulated=scale < 0,
+        )
+    req = request_for(store, owner, a, b, size=32, component=component, deltaMode=mode)
+    result = slice_data(store, owner, req)
+    assert result["compatibility"] == []
+    points = grid_coordinates([0, 0, 1, 1], axis, 1.25, 32)
+    expected_a = points @ np.array([1, 2, 3])
+    expected_b = -2 * expected_a - 5
+    if component == -1:
+        expected_b = -expected_b
+    expected_delta = expected_b - expected_a
+    if mode == "percent":
+        expected_delta = 100 * expected_delta / expected_a
+    elif mode == "vector":
+        expected_delta = 3 * expected_a + 5
+    np.testing.assert_allclose(result["a"], expected_a, rtol=1e-12)
+    np.testing.assert_allclose(result["b"], expected_b, rtol=1e-12)
+    np.testing.assert_allclose(result["delta"], expected_delta, rtol=1e-12)
+    assert result["statistics"]["mean"] == pytest.approx(expected_delta.mean())
+    assert result["statistics"]["rms"] == pytest.approx(np.sqrt(np.mean(expected_delta**2)))
+    assert result["statistics"]["coverage"] == 1
+    for index in (0, 173, len(points) - 1):
+        req.point = tuple(points[index])
+        probe = slice_data(store, owner, req)["probe"]
+        assert probe["baseline"]["value"] == pytest.approx(expected_a[index])
+        assert probe["option"]["value"] == pytest.approx(expected_b[index])
+        assert probe["delta"] == pytest.approx(expected_delta[index])
 
 
 def test_retained_runs_comparison_swap_temperature_and_exact_probe(tmp_path):

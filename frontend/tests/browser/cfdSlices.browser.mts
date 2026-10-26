@@ -50,7 +50,7 @@ test('compare quadrant mapping, sign, shared ranges, manual legends, PNG/CSV exp
   assert.equal(await slices.locator('[data-slice-pane=delta] canvas').getAttribute('data-limits'),'[-1,4]');
   await slices.getByRole('spinbutton',{name:'Delta scale minimum',exact:true}).fill('5');await page.keyboard.press('Tab');assert.ok(await slices.getByRole('alert').filter({hasText:'Legend minimum'}).isVisible());await slices.getByRole('checkbox',{name:'Auto Delta scale',exact:true}).check();
   await slices.getByText('Export numeric data & provenance',{exact:true}).click();const download=page.waitForEvent('download');await button(slices,'Download slice / delta CSV').click();const file=await download;assert.match(file.suggestedFilename(),/option-minus-baseline/);
-  const csvChunks=[];for await(const chunk of await file.createReadStream())csvChunks.push(chunk);const csv=Buffer.concat(csvChunks).toString('utf8');assert.ok(csv.includes(fixture.baseline)&&csv.includes(fixture.option));assert.match(csv,/Option − Baseline/);assert.ok(csv.split('\n').some(line=>line.endsWith(',10,12,2,1')));
+  const csvChunks=[];for await(const chunk of await file.createReadStream())csvChunks.push(chunk);const csv=Buffer.concat(csvChunks).toString('utf8');assert.ok(csv.includes(fixture.baseline)&&csv.includes(fixture.option));assert.match(csv,/Option − Baseline/);assert.ok(csv.split('\n').some(line=>line.split(',').slice(3,7).join(',')==='10,12,2,1'));
   const pngDownload=page.waitForEvent('download');await button(slices,'Download baseline PNG').click();const png=await pngDownload;assert.equal(png.suggestedFilename(),'cfd-baseline.png');if(process.env.BROWSER_ARTIFACTS)await png.saveAs(`${process.env.BROWSER_ARTIFACTS}/slices-baseline-export.png`);
   const jsonDownload=page.waitForEvent('download');await button(slices,'Download comparison metadata').click();const jsonFile=await jsonDownload,jsonChunks=[];for await(const chunk of await jsonFile.createReadStream())jsonChunks.push(chunk);const exported=JSON.parse(Buffer.concat(jsonChunks).toString('utf8'));assert.equal(exported.data.definition,'Option − Baseline');assert.equal(exported.data.baseline.run,fixture.baseline);assert.equal(exported.data.option.run,fixture.option);assert.deepEqual(exported.settings.legends['U:-1:K:absolute'].delta.auto,true);
   await button(slices,'Swap runs').click();await eventually(()=>slices.locator('[data-slice-pane=delta]').innerText(),v=>v.includes('Option − Baseline'));await eventually(()=>slices.getByLabel('Delta statistics',{exact:true}).innerText(),v=>v.includes('mean -2'));
@@ -65,6 +65,9 @@ test('nearest mismatched plane never produces quantitative delta, pending/error 
   await eventually(()=>slices.innerText(),v=>v.includes('No matching physical plane'));assert.match(await slices.locator('[data-slice-pane=delta]').innerText(),/No comparable numeric samples/);
   await eventually(()=>slices.locator('[data-slice-pane=option]').getAttribute('data-coordinate'),v=>v==='0.7');
   await button(slices,'Probe point value (V)').click();assert.equal(await slices.locator('[data-slice-pane=option] canvas').getAttribute('data-probing'),null);await button(slices,'Exit point probe (Esc)').click();
+  await slices.getByText('Export numeric data & provenance',{exact:true}).click();const download=page.waitForEvent('download');await button(slices,'Download slice / delta CSV').click();
+  const chunks=[];for await(const chunk of await(await download).createReadStream())chunks.push(chunk);const row=Buffer.concat(chunks).toString('utf8').split('\n')[2].split(',');
+  assert.equal(row[2],'0.5');assert.equal(row[9],'0.7');assert.equal(row[5],'');assert.equal(row[6],'0');
   await context.route('**/climoptix/worker/slice-data',route=>route.fulfill({status:403,json:{detail:'No permission for this retained run'}}));await button(slices,'Refresh slice data').click();await eventually(()=>slices.getByRole('alert').allTextContents(),v=>v.some(s=>s.includes('No permission')));
   await screenshot(page,'permission-error');
 });
@@ -86,6 +89,45 @@ test('percent semantics, field changes, density metrics and pane/action alignmen
   await eventually(()=>button(slices,'Download baseline PNG').isEnabled(),Boolean);
   await page.setViewportSize({width:390,height:900});await panes.first().scrollIntoViewIfNeeded();assert.ok(await slices.evaluate(n=>n.scrollWidth<=n.clientWidth+2));
   await screenshot(page,'audit-mobile-controls');
+});
+
+test('nonuniform X/Y/Z planes visibly preserve orientation and signed deltas across different meshes',async t=>{
+  const {page,slices}=await open(t);
+  await slices.getByRole('combobox',{name:'Slice run',exact:true}).selectOption(fixture.gradientBaseline);
+  await button(slices,'Compare Runs').click();
+  await slices.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.gradientOption);
+  await slices.getByLabel('Vector quantity',{exact:true}).selectOption('0');
+  await slices.getByText('Visual settings & delta legend',{exact:true}).click();
+  await slices.getByLabel('Shared scale palette',{exact:true}).selectOption('grey');
+  await slices.getByLabel('Delta scale palette',{exact:true}).selectOption('grey');
+  for(const [axis,mean] of [['X',3.75],['Y',4.5],['Z',5.25]] as const){
+    await slices.getByLabel('Slice orientation',{exact:true}).selectOption(axis);
+    await eventually(()=>slices.getByLabel('Delta statistics',{exact:true}).innerText(),v=>v.includes(`mean ${-3*mean-5}`));
+    for(const [kind,direction] of [['baseline',1],['option',-1],['delta',-1]] as const){
+      const canvas=slices.locator(`[data-slice-pane=${kind}] canvas`);
+      assert.match(await canvas.getAttribute('aria-label'),new RegExp(`horizontal ${axis==='X'?'Y':'X'}, vertical ${axis==='Z'?'Y':'Z'}`));
+      await canvas.scrollIntoViewIfNeeded();
+      const [sw,ne]=await canvas.evaluate(node=>{
+        const r=node.getBoundingClientRect(),edge=Math.min(r.width-72,r.height-132),left=52+(r.width-72-edge)/2,top=42+(r.height-132-edge)/2,ctx=node.getContext('2d');
+        return [.25,.75].map(f=>Array.from(ctx.getImageData(Math.floor((left+f*edge)*node.width/r.width),Math.floor((top+(1-f)*edge)*node.height/r.height),1,1).data));
+      });
+      assert.equal(sw[3],255);assert.equal(ne[3],255);
+      assert.ok(direction*(ne[0]-sw[0])>5,`${axis}/${kind}: physical NE/SW grey values ${ne}/${sw} must preserve the analytical gradient`);
+    }
+    await screenshot(page,`gradient-${axis}`);
+  }
+  await slices.getByLabel('Delta definition',{exact:true}).selectOption('vector');
+  await eventually(()=>slices.getByLabel('Delta statistics',{exact:true}).innerText(),v=>v.includes('mean 20.75'));
+  const pngDownload=page.waitForEvent('download');await button(slices,'Download delta PNG').click();const png=await pngDownload;
+  if(process.env.BROWSER_ARTIFACTS)await png.saveAs(`${process.env.BROWSER_ARTIFACTS}/gradient-vector-delta.png`);
+  await slices.getByLabel('Delta definition',{exact:true}).selectOption('percent');
+  await eventually(()=>slices.getByLabel('Delta statistics',{exact:true}).innerText(),v=>v.includes('mean -'));
+  const download=page.waitForEvent('download');await slices.getByText('Export numeric data & provenance',{exact:true}).click();await button(slices,'Download slice / delta CSV').click();
+  const chunks=[];for await(const chunk of await(await download).createReadStream())chunks.push(chunk);
+  const rows=Buffer.concat(chunks).toString('utf8').split('\n').slice(2).filter(Boolean);
+  for(const row of rows){const [x,y,z,a,b,delta,valid,ox,oy,oz]=row.split(',').map(Number),expected=x+2*y+3*z;
+    assert.ok(Math.abs(a-expected)<1e-10);assert.ok(Math.abs(b-(-2*expected-5))<1e-10);
+    assert.ok(Math.abs(delta-100*(b-a)/Math.abs(a))<1e-10);assert.equal(valid,1);assert.deepEqual([ox,oy,oz],[x,y,z]);}
 });
 test('progressive inventory preserves selection and reload restores project-scoped settings with mobile/light-dark layouts',async t=>{
   const {page,ui,slices}=await open(t);await compare(slices);await slices.getByLabel('Available physical plane',{exact:true}).selectOption({label:'Plane 1 of 3 | Z = 0.2 m'});const selected=await slices.getByLabel('Available physical plane',{exact:true}).inputValue();

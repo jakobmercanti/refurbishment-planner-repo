@@ -107,3 +107,17 @@ test('failed refresh clears an old readiness verdict and validation errors remai
   const rect=await alert.boundingBox(),bounds=await panel.locator('..').boundingBox();assert.ok(rect.y>=bounds.y-1&&rect.y<bounds.y+bounds.height);
   await screenshot(page,'audit-validation-feedback');
 });
+
+test('ten requested steps save the chosen movement without falsely reporting solves or moving the inlet',async t=>{
+  const {page,panel,saved}=await open(t),before=await saved();await capture(panel);await movable(panel);
+  let jobs=0;page.on('request',r=>{if(r.method()==='POST'&&/\/(?:jobs|optimisation\/run)(?:\?|$)/.test(r.url()))jobs++;});
+  const steps=panel.getByRole('spinbutton',{name:'Maximum accepted movement steps',exact:true});await steps.fill('10');await steps.press('Enter');
+  const step=panel.getByRole('spinbutton',{name:'Initial translation step (mm)',exact:true});await step.fill('17');await step.press('Enter');
+  await button(panel,'Validate setup').click();await eventually(()=>panel.innerText(),v=>v.includes('Configuration checks passed · adjoint unavailable'));
+  assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
+  const download=page.waitForEvent('download');await button(panel,'Export configuration JSON').click();
+  const chunks=[];for await(const chunk of await(await download).createReadStream())chunks.push(chunk);const data=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  assert.equal(data.study.strategy.maxAcceptedSteps,10);assert.equal(data.study.strategy.initialStepMm,17);
+  assert.equal(data.readiness.canRun,false);assert.equal(data.execution,'unavailable');assert.deepEqual(data.iterations,[]);assert.equal(jobs,0);
+  const after=await saved();assert.deepEqual(after.rooms,before.rooms);assert.deepEqual(after.cfdScenarios[0].vents,before.cfdScenarios[0].vents);
+});

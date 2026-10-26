@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {autoDeltaRange,availablePlanes,nearestPlane,inPlaneAxes,restoreSliceState,defaultSliceState,rangeFor,sliceCSV,sliceDataSchema,type SliceManifest,type SlicePlane} from '../lib/cfdSlices';
+import {autoDeltaRange,availablePlanes,nearestPlane,inPlaneAxes,restoreSliceState,defaultSliceState,rangeFor,sliceCSV,slicePlotQuantity,sliceDataSchema,type SliceManifest,type SlicePlane} from '../lib/cfdSlices';
 import {sliceColour} from '../components/CFDSlicePlot';
 
 const plane=(axis,coordinate,time='100')=>({id:`${axis}:${coordinate}:${time}`,axis,coordinate,time}) as SlicePlane;
@@ -27,9 +27,22 @@ test('diverging zero, asymmetric clipping and constant fields do not corrupt num
   assert.notDeepEqual(sliceColour(1,-2,4,'coolwarm',5),sliceColour(1,-2,4,'coolwarm',0));
 });
 test('CSV uses physical area-centre coordinates, masked blanks and explicit sign/provenance',()=>{
-  const data={axis:'X',coordinate:3,field:'U',component:-1,unit:'m/s',deltaUnit:'m/s',deltaMode:'absolute',epsilon:1e-6,definition:'Option − Baseline',method:'real cell data',baseline:{run:'a',asset:'hash',time:'100'},option:{run:'b',asset:'hash2',time:'100'},bounds:[0,10,2,14],size:2,a:[10,null,10,10],b:[12,12,null,12],delta:[2,null,null,2],notes:[]};
+  const data={axis:'X',coordinate:3,field:'U',component:-1,unit:'m/s',deltaUnit:'m/s',deltaMode:'absolute',epsilon:1e-6,definition:'Option − Baseline',method:'real cell data',baseline:{run:'a',asset:'hash',time:'100'},option:{run:'b',asset:'hash2',time:'100'},bounds:[0,10,2,14],size:2,a:[10,null,10,10],b:[12,12,null,12],delta:[2,null,null,2],notes:[],compatibility:[]};
   const csv=sliceCSV(data as never);assert.match(csv,/Option − Baseline/);assert.match(csv,/3,0.5,11,10,12,2,1/);assert.match(csv,/3,1.5,11,,12,,0/);
   assert.equal(data.a[0],10);assert.equal(data.delta[0],2);
+  assert.match(csv,/3,0.5,11,10,12,2,1,3,0.5,11/);
+  const shifted={...data,option:{...data.option,axis:'X',coordinate:4},compatibility:['No matching plane'],delta:[null,null,null,null]};
+  assert.match(sliceCSV(shifted as never),/3,0.5,11,10,12,,0,4,0.5,11/);
+  const older={...shifted,option:data.option};
+  assert.match(sliceCSV(older as never),/3,0.5,11,10,12,,0,,,/);
+  assert.match(sliceCSV(older as never,{axis:'X',coordinate:4}),/3,0.5,11,10,12,,0,4,0.5,11/);
+});
+
+test('vector-difference PNG quantity never claims to be a selected velocity component',()=>{
+  const data={field:'U',component:1,unit:'m/s',deltaUnit:'m/s',deltaMode:'vector'};
+  assert.equal(slicePlotQuantity(data as never,'delta'),'|ΔU| [m/s]');
+  assert.equal(slicePlotQuantity(data as never,'baseline'),'UY [m/s]');
+  assert.equal(slicePlotQuantity({...data,deltaMode:'absolute'} as never,'delta'),'UY [m/s]');
 });
 test('network contract rejects nonfinite values, wrong shapes and oversized numeric rasters',()=>{
   assert.equal(sliceDataSchema.safeParse({a:[NaN]}).success,false);

@@ -131,6 +131,21 @@ def test_current_feasible_configuration_has_no_runner_or_fake_iterations_and_nev
     assert all(p["frame"]["normal"] for p in value["ports"])
 
 
+def test_ten_requested_steps_and_chosen_translation_are_configuration_not_ten_adjoint_solves():
+    request, report, study = setup()
+    study.strategy.maxAcceptedSteps = 10
+    study.strategy.initialStepMm = 17
+    study.strategy.minimumStepMm = 17
+    study.strategy.maximumStepMm = 17
+    before = request.model_dump_json()
+    result = prepare_optimisation(request.scenario, study, report)
+    assert result["configurationReady"]
+    assert study.strategy.maxAcceptedSteps == 10 and study.strategy.initialStepMm == 17
+    assert result["canRun"] is False and result["capability"]["adjoint"] is False
+    assert result["iterations"] == []  # No fabricated execution count/history.
+    assert request.model_dump_json() == before  # No inlet movement happened.
+
+
 @pytest.mark.parametrize(
     "change,code",
     [

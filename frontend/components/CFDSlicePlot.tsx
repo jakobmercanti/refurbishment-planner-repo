@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { downloadCFD } from "@/lib/climoptix";
 import { probeNumber } from "@/lib/cfdPointProbe";
-import { inPlaneAxes, type SliceData, type defaultLegend } from "@/lib/cfdSlices";
+import { inPlaneAxes, slicePlotQuantity, type SliceData, type defaultLegend } from "@/lib/cfdSlices";
 
 export interface SliceView {zoom:number;x:number;y:number}
 export const resetSliceView:SliceView={zoom:1,x:.5,y:.5};
@@ -37,7 +37,7 @@ export function CFDSlicePlot({title,kind,axis,physicalCoordinate,data,values,leg
     const scale=Math.min(window.devicePixelRatio||1,2);node.width=Math.round(width*scale);node.height=Math.round(height*scale);ctx.scale(scale,scale);
     const style=getComputedStyle(node),ink=style.color,background=style.getPropertyValue("--paper").trim()||"#fff";
     ctx.fillStyle=background;ctx.fillRect(0,0,width,height);ctx.fillStyle=ink;ctx.font="600 12px sans-serif";
-    const quantity=`${data?.field??"Field"}${data&&data.component>=0?"XYZ"[data.component]??data.component:data?.field==="U"?" magnitude":""} [${kind==="delta"?data?.deltaUnit??"—":data?.unit??"—"}]`;
+    const quantity=slicePlotQuantity(data,kind);
     ctx.fillText(`${kind==="delta"?data?.definition??"Option − Baseline":kind} · ${quantity}`,12,16,width-24);
     const run=kind==="option"?data?.option:data?.baseline;
     ctx.font="10px sans-serif";ctx.fillText(`${axis} = ${coordinate===undefined?"—":probeNumber(coordinate)} m · output ${run?.time??"—"} · run ${run?.run.slice(0,8)??"—"}`,12,31,width-24);
