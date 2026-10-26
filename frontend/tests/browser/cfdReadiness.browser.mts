@@ -20,6 +20,7 @@ test('shared invalid-input feedback stays singular when returning to Thermal and
   await eventually(() => ui.getAttribute('data-preparation-state'), state => state === 'checked');
   await cfdWindow(ui, 'Thermal Envelope & Solar Conditions');
   await ui.getByRole('region', { name: 'Thermal envelope setup', exact: true }).waitFor();
+  assert.ok(await ui.getByRole('tab', { name: 'Conditions', exact: true }).isVisible(), 'Boundary navigation remains available while the independent thermal editor is open');
   await eventually(() => thermalResponses, count => count > 0);
   await cfdWindow(ui, 'Physics');
   const density = ui.getByRole('spinbutton', { name: 'Air density (kg/m³)', exact: true });

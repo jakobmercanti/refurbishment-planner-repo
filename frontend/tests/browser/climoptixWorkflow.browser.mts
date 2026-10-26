@@ -385,7 +385,7 @@ test("real log records draw a graph and VTK point/cell fields render, zoom and d
     ),
   });
   await ui.getByText(/VTK geometry exceeds/).waitFor();
-  await ui
+  await result
     .getByRole("button", { name: "Back to geometry", exact: true })
     .click();
   const legacy =
@@ -415,8 +415,8 @@ test("simulation tabs remain usable on narrow screens and inactive navigation is
     () => page.locator("html").getAttribute("data-theme"),
     (v) => v === "dark",
   );
-  const ratio = await ui
-    .locator(".cfx-simulation-tabs button")
+  const readContrast = () => ui
+    .locator('.cfx-simulation-tabs button[aria-selected="false"]')
     .first()
     .evaluate((el) => {
       const light = (css) => {
@@ -430,10 +430,20 @@ test("simulation tabs remain usable on narrow screens and inactive navigation is
           );
         return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
       };
-      const a = light(getComputedStyle(el).color),
-        b = light(getComputedStyle(el.parentElement).backgroundColor);
+      // Transparent tabs inherit the visible backgrounds behind them. Compare
+      // against that composite, not transparent black or an active tab's panel.
+      let background = [255, 255, 255];
+      const ancestors = []; for (let node = el; node; node = node.parentElement) ancestors.push(node);
+      for (const node of ancestors.reverse()) {
+        const rgba = getComputedStyle(node).backgroundColor.match(/[\d.]+/g).map(Number);
+        const alpha = rgba[3] ?? 1;
+        background = background.map((value, axis) => rgba[axis] * alpha + value * (1 - alpha));
+      }
+      const a = light(getComputedStyle(el).color), b = light(`rgb(${background.join(",")})`);
       return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
     });
+  // The theme attribute updates before the shared 120ms colour transition ends.
+  const ratio = await eventually(readContrast, value => value >= 4.5, "Settled inactive navigation contrast must be at least 4.5:1");
   assert.ok(ratio >= 4.5, `Inactive navigation contrast ${ratio}`);
   await page.setViewportSize({ width: 390, height: 844 });
   for (const title of ["Mesh", "Run", "Post-processing"]) {

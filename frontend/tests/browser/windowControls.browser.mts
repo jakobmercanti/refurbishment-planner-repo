@@ -83,6 +83,7 @@ test("two minimized CFD windows have separate restore tabs and preserve their po
   await page.getByRole('button',{name:'Minimise View properties',exact:true}).click();
   await page.getByRole('button',{name:'Minimise Simulation setup',exact:true}).click();
   assert.equal(await setup.isVisible(),false);assert.equal(await view.isVisible(),false);
+  await page.waitForTimeout(250); // Let hidden-window resize observers run before restoring.
   const tasks=page.locator('.floating-window-task');assert.equal(await tasks.count(),2);
   const boxes=await tasks.evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().y));assert.ok(Math.abs(boxes[0]-boxes[1])>=34);
   await page.getByRole('button',{name:'Restore View properties',exact:true}).click();assert.equal(await setup.isVisible(),false);

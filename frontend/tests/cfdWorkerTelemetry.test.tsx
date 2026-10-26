@@ -21,3 +21,10 @@ test('probe/flow histories retain explicit native units and missing values, and 
   assert.ok(!markup.includes('NaN'));
   assert.equal(workerTelemetrySchema.safeParse({...data,probes:[{...data.probes[0],samples:[{iteration:2,velocityMS:[Infinity,0,0],pressureM2S2:0}]}]}).success,false);
 });
+
+test('empty probe guidance points to the current Solver Post editor',()=>{
+  const data=workerTelemetrySchema.parse({version:1,truncated:false,warnings:[],balance:null,probes:[]});
+  const markup=renderToStaticMarkup(createElement(CFDWorkerTelemetry,{data,result:null,jobId:'job'}));
+  assert.match(markup,/Configure probe coordinates in Solver → Post/);
+  assert.doesNotMatch(markup,/coordinates in Physics/);
+});

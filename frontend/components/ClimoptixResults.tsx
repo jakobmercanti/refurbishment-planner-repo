@@ -16,15 +16,19 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
 }){
   const {result,error,missing,retry}=useCFDResult(adapter,job,active);
   const [files,setFiles]=useState<{file:File;verified:boolean}[]>(()=>initialFile?[{file:initialFile,verified:!!initialProvenance?.startsWith("Authenticated worker job")}]:[]);
+  // Downloads may finish after a layer was removed or imported. Always merge
+  // with the latest layer collection, never the render that started the request.
+  const currentFiles=useRef(files);
+  const replaceFiles=(next:typeof files)=>{currentFiles.current=next;setFiles(next);};
   const [fileError,setFileError]=useState("");
   const [inspectorOpen,setInspectorOpen]=useState(!!initialFile),[plane,setPlane]=useState("");
   const [planeBusy,setPlaneBusy]=useState(false);
   const planeRequest=useRef<AbortController|null>(null);
   useEffect(()=>()=>planeRequest.current?.abort(),[adapter,job?.id]);
   const add=(incoming:File[],verified:boolean)=>{
-    const names=new Set(incoming.map(file=>file.name)),next=[...files.filter(item=>!names.has(item.file.name)),...incoming.map(file=>({file,verified}))];
+    const names=new Set(incoming.map(file=>file.name)),next=[...currentFiles.current.filter(item=>!names.has(item.file.name)),...incoming.map(file=>({file,verified}))];
     if(next.length>8||next.reduce((sum,item)=>sum+item.file.size,0)>64*1024**2){setFileError("Load at most eight layers totalling 64 MB. Remove a layer before adding more.");return;}
-    setFileError("");setFiles(next);setPlane(incoming[0]?.name??"");setInspectorOpen(true);
+    setFileError("");replaceFiles(next);setPlane(incoming[0]?.name??"");setInspectorOpen(true);
   };
   const primary=files.find(item=>item.file.name===plane)??files[0];
   const additional=useMemo(()=>files.filter(item=>item!==primary).map(item=>item.file),[files,primary]);
@@ -50,7 +54,7 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
     <details open={!files.length}><summary>3D result layers · {files.length} loaded</summary>
       <label className="cfx-file">Import surface, plane or scalar volume<input type="file" multiple accept=".vtk,.vtp,.vti" aria-label="Import result layers" onChange={event=>{add(Array.from(event.target.files??[]),false);event.target.value="";}}/></label>
       <p className="cfx-caption">ASCII .vtk/.vtp surfaces or planes; .vti structured scalar volumes. Up to 25 MB per file, eight layers / 64 MB total. Never changes simulation inputs.</p>
-      {files.map((item,index)=><div className="cfx-folder-file" key={item.file.name}><span>{item.file.name}{item.verified?" · verified job artifact":" · external"}</span><button onClick={()=>setFiles(current=>current.filter((_,at)=>at!==index))}>Remove layer {item.file.name}</button></div>)}
+      {files.map(item=><div className="cfx-folder-file" key={item.file.name}><span>{item.file.name}{item.verified?" · verified job artifact":" · external"}</span><button onClick={()=>replaceFiles(currentFiles.current.filter(current=>current.file!==item.file))}>Remove layer {item.file.name}</button></div>)}
       {fileError&&<p role="alert" className="cfx-error">{fileError}</p>}
     </details>
     <div className="cfx-equal-actions"><button className="cfx-primary" disabled={!files.length} onClick={()=>setInspectorOpen(true)}>Open plane inspector</button>

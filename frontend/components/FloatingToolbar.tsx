@@ -263,6 +263,9 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
     const content = panel.querySelector<HTMLElement>(".floating-toolbar-content");
     if (!content) return;
     const updateMinimumHeight = () => {
+      // Hidden/minimized windows have no measurable layout. Measuring them as
+      // zero would replace the saved intrinsic height and shrink on restore.
+      if (!panel.getClientRects().length) return;
       const nextMinimumHeight = getContentMinimumHeight(panel, maxHeight, compact);
       setMinimumHeight((current) => current === nextMinimumHeight ? current : nextMinimumHeight);
       if (!heightMaximized || maximized) return;

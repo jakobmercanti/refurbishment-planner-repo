@@ -62,7 +62,7 @@ const digest=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex'
 test('real result folder, old-worker post-processing download, selectable residuals and multi-plane display are connected',async t=>{
   let job,sourceHash,submits=0;
   const a=strToU8(vtk('xy')),b=strToU8(vtk('xz'));
-  const zip=zipSync({'system/controlDict':strToU8('endTime 2000;'),'0/U':strToU8('native field'),'postProcessing/slices/20/xy.vtk':a,'postProcessing/slices/20/xz.vtk':b,'postProcessing/probes/0/U':strToU8('probe values')});
+  const zip=zipSync({'system/controlDict':strToU8('endTime 2000;'),'0/U':strToU8('native field'),'postProcessing/slices/20/xy.vtk':a,'postProcessing/slices/20/xz.vtk':b,'postProcessing/probes/0/U':strToU8('probe values'),...Object.fromEntries(Array.from({length:101},(_,i)=>[`root-${i}.txt`,strToU8('native archive file')]))});
   const artifacts=[{id:'native-case',kind:'zip',size:zip.length,sha256:digest(zip)},{id:'slice-0',name:'xy.vtk',kind:'vtk',size:a.length,sha256:digest(a)},{id:'slice-1',name:'xz.vtk',kind:'vtk',size:b.length,sha256:digest(b)}];
   const transport=async route=>{
     const path=new URL(route.request().url()).pathname;
@@ -84,6 +84,8 @@ test('real result folder, old-worker post-processing download, selectable residu
   const graphs=ui.locator('.cfx-residual-grid svg');assert.equal(await graphs.count(),2);const rects=await graphs.evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().x));assert.ok(rects[1]>rects[0]);
   await ui.getByRole('combobox',{name:'Residuals to display',exact:true}).selectOption('Ux');assert.ok(await ui.getByRole('img',{name:'Residual graph for p',exact:true}).isVisible());assert.equal(await graphs.count(),1);
   await cfdWindow(ui,'Imported results');await button(ui,'Open online results folder').click();const folder=ui.getByRole('region',{name:'Private simulation files',exact:true});await folder.waitFor();
+  await button(folder,'Next files').click();await folder.getByText('Page 2 of 2',{exact:true}).waitFor();await button(folder,'Close folder').click();
+  await button(ui,'Open online results folder').click();await folder.getByText('Page 1 of 2',{exact:true}).waitFor();assert.ok(await button(folder,'Download root-0.txt').isVisible());
   await folder.getByRole('row',{name:'Folder system',exact:true}).dblclick();const downloaded=page.waitForEvent('download');await button(folder,'Download controlDict').click();assert.match((await downloaded).suggestedFilename(),/controlDict/);await button(folder,'Close folder').click();
   const post=page.waitForEvent('download');await ui.getByRole('combobox',{name:'Download simulation data',exact:true}).selectOption('postprocessing');const postBytes=await readFile(await (await post).path());assert.ok(Object.keys(unzipSync(postBytes)).includes('postProcessing/probes/0/U'));
   await ui.getByRole('combobox',{name:'View result in 3D',exact:true}).selectOption('slice-0');await ui.getByRole('region',{name:'VTK results viewer',exact:true}).getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
@@ -119,6 +121,35 @@ test('residual dropdown selects multiple full-history graphs with a four-field t
   await select.selectOption('Uy');assert.equal(await figures.count(),4);
   await ui.getByRole('combobox',{name:'Residual measure',exact:true}).selectOption('final');assert.equal(await ui.getByRole('img',{name:/Final residual graph/}).count(),4);
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/residuals-four-graphs.png`});
+});
+
+test('a delayed plane download preserves layers added or removed while it was loading',async t=>{
+  const project=cfdProject(false),data=strToU8(vtk()),job={id:jobId,studyId:project.cfdScenarios[0].id,clientRevision:'c'.repeat(64),phase:'Completed',progress:100,message:'Retained job'};
+  const artifacts=[0,1].map(index=>({id:`slice-${index}`,name:`plane-${index}.vtk`,kind:'vtk',size:data.length,sha256:digest(data)}));
+  let requested=false,release=()=>{};
+  const delayed=new Promise<void>(resolve=>{release=resolve;});t.after(()=>release());
+  const {page,ui}=await open(t,project,async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path.endsWith('/capabilities'))return route.fulfill({json:caps});
+    if(path.endsWith('/jobs'))return route.fulfill({json:[job]});
+    if(path.endsWith('/logs'))return route.fulfill({json:{...job,cursor:0,nextCursor:0,text:''}});
+    if(path.endsWith('/result'))return route.fulfill({json:{jobId,studyId:job.studyId,clientRevision:job.clientRevision,sourceHash:'a'.repeat(64),configurationHash:'b'.repeat(64),pressureUnit:'m2/s2',accepted:true,artifacts}});
+    if(path.endsWith('/artifacts/slice-1')){requested=true;await delayed;}
+    if(path.includes('/artifacts/'))return route.fulfill({body:Buffer.from(data)});
+    return route.fulfill({json:job});
+  });
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await cfdWindow(ui,'Imported results');
+  const menu=ui.getByRole('combobox',{name:'View result in 3D',exact:true});await eventually(()=>menu.isEnabled(),Boolean);await menu.selectOption('slice-0');
+  const viewer=ui.getByRole('region',{name:'VTK results viewer',exact:true});await viewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
+  await ui.getByRole('combobox',{name:'Plane to inspect',exact:true}).selectOption('artifact:slice-1');await eventually(()=>requested,Boolean);
+  await button(page,'Hide Result plane inspector').click();await ui.getByText('3D result layers · 1 loaded',{exact:true}).click();
+  await button(ui,'Remove layer plane-0.vtk').click();
+  await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name:'external.vtk',mimeType:'application/octet-stream',buffer:Buffer.from(data)});
+  await viewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();release();
+  await eventually(()=>viewer.getByRole('combobox',{name:'Active result layer',exact:true}).locator('option').allTextContents(),names=>names.includes('plane-1.vtk')&&names.length===2);
+  const names=await viewer.getByRole('combobox',{name:'Active result layer',exact:true}).locator('option').allTextContents();
+  assert.deepEqual([...names].sort(),['external.vtk','plane-1.vtk']);
+  assert.match(await viewer.locator('.cfx-stale').innerText(),/External file layers/);
 });
 
 test('structured scalar volumes show real movable slices and computed isosurfaces, without modifying a study',async t=>{

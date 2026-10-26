@@ -51,6 +51,43 @@ const caps={connected:true,mesh:true,run:true,reason:'Audit mock runtime',namesp
 const log='Time = 1\nsmoothSolver: Solving for Ux, Initial residual = 0.2, Final residual = 0.001, No Iterations 2\n';
 const hash=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
 
+test('Solver progress retains pending state and measured phase percentages across all subtabs',async t=>{
+  let job:CFDWorkerJob|undefined,preparing=false,release=()=>{};
+  const hold=new Promise<void>(resolve=>{release=resolve;});t.after(()=>release());
+  const s=await open(t,async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path.endsWith('/capabilities'))return route.fulfill({json:caps});
+    if(path.endsWith('/jobs')&&route.request().method()==='POST'){
+      const request=route.request().postDataJSON();job={id:'88888888-8888-4888-8888-888888888888',studyId:request.studyId,clientRevision:request.clientRevision,phase:'Meshing',progress:33.3,progressBasis:'steps',message:'Executing snappyHexMesh',operation:'run'};
+      return route.fulfill({json:job});
+    }
+    if(path.endsWith('/jobs'))return route.fulfill({json:job?[job]:[]});
+    if(path.endsWith('/logs'))return route.fulfill({json:{...job,cursor:0,nextCursor:0,text:''}});
+    if(path.endsWith('/result'))return route.fulfill({status:409,json:{detail:'No result retained'}});
+    return route.fulfill({json:job});
+  });
+  await s.context.route('**/climoptix/prepare',async route=>{preparing=true;await hold;await route.fallback();});
+  await s.ui.getByRole('button',{name:'Run Office airflow',exact:true}).click();await eventually(()=>preparing,Boolean);
+  await cfdWindow(s.ui,'Solver');await s.ui.getByRole('tab',{name:'Post-processing',exact:true}).click();
+  const bars=()=>s.ui.locator('.cfx-job-progress:visible');
+  assert.match(await bars().first().innerText(),/Checking & submitting.*progress not reported/);
+  assert.equal(await bars().first().getAttribute('aria-valuenow'),null);
+  release();await eventually(()=>!!job,Boolean);
+  for(const [phase,progress,basis,message] of [['Meshing',33.3,'steps','Executing snappyHexMesh'],['MeshCheck',75,'steps','Checking mesh'],['Running',12.5,'iterationBudget','Executing simpleFoam'],['Postprocess',66.6,'steps','Writing native outputs'],['Completed',100,undefined,'Solve checks passed']] as const){
+    job={...job!,phase,progress,progressBasis:basis,message};
+    await eventually(()=>bars().first().getAttribute('aria-valuenow'),value=>value===String(progress));
+    for(const tab of ['Mesh','Run','Monitor','Post-processing']){
+      await s.ui.getByRole('tab',{name:tab,exact:true}).click();
+      await eventually(()=>bars().first().innerText(),value=>value.includes(message)&&value.includes(`${progress}%`));
+      for(const bar of await bars().all()){
+        assert.equal(await bar.getAttribute('aria-valuenow'),String(progress));
+        assert.match(await bar.innerText(),basis==='iterationBudget'?/of iteration budget/:basis==='steps'?/of phase steps/:/Completed/);
+        assert.equal(await bar.locator('.cfx-progress-label').count(),1);
+      }
+    }
+  }
+});
+
 test('leaving a monitor aborts its artifact action and a late response cannot open results',async t=>{
   let job:CFDWorkerJob, started=false, release:()=>void;
   const hold=new Promise<void>(resolve=>{release=resolve;});t.after(()=>release());

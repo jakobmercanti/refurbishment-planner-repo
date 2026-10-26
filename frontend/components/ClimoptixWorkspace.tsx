@@ -1258,7 +1258,8 @@ export function ClimoptixWorkspace({
                             />
                           )
                         }
-                        jobProgress={<CFDJobProgress name={scenario.name} job={jobs[scenario.id]?.job}/>}
+                        jobProgress={<CFDJobProgress name={scenario.name} job={jobs[scenario.id]?.job} operation={jobs[scenario.id]?.operation}
+                          pending={jobs[scenario.id]?.submitting?"Checking & submitting…":jobs[scenario.id]?.dispatched?"Submission status unknown":undefined}/>}
                       />
                     )}
                     {panel.id === "review" && <ClimoptixReview key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "review" ? jobs[scenario.id]?.error : undefined}
@@ -1277,6 +1278,7 @@ export function ClimoptixWorkspace({
                   hidden={shownTab !== "boundaries" || boundsTab !== "thermal"}
                   className="cfx-setup-panel cfx-thermal-panel"
                 >
+                  {boundsNavigation}
                   {thermalOpen && (
                     <CFDIndependentWindow title="Insulation boundary import & thermal envelope" wide className="cfx-thermal-import" onClose={()=>{setThermalOpen(false);setBoundsTab("conditions");}}>
                     <ThermalEnvelopeWindow

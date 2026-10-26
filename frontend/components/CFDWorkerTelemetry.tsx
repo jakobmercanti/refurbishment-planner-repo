@@ -65,7 +65,7 @@ export function CFDWorkerTelemetry({data,result,jobId}: {data:WorkerTelemetry | 
       <div className="cfx-grid"><History label={`Probe ${probe.index+1} speed`} unit="m/s" samples={probe.samples.flatMap(s=>s.velocityMS?[{iteration:s.iteration,value:Math.hypot(...s.velocityMS)}]:[])}/>
         <History label={`Probe ${probe.index+1} pressure`} unit="m²/s²" samples={probe.samples.flatMap(s=>s.pressureM2S2!=null?[{iteration:s.iteration,value:s.pressureM2S2}]:[])}/></div>
     </details>}
-    {data&&!probe&&<p className="cfx-caption">No probe samples yet. Configure probe coordinates in Physics before running.</p>}
+    {data&&!probe&&<p className="cfx-caption">No probe samples yet. Configure probe coordinates in Solver → Post before running.</p>}
     {result&&(result.mesh||result.convergence||result.conservation)&&<section aria-label="Final measured acceptance metrics"><details open>
       <summary>Final measured acceptance metrics</summary><dl className="cfx-telemetry-values">
         {result.mesh&&<><div><dt>Mesh cells</dt><dd>{result.mesh.cells.toLocaleString()}</dd></div>
