@@ -13,6 +13,7 @@ import { CFDJobProgress } from "./CFDJobProgress";
 import { CFDIndependentWindow } from "./CFDIndependentWindow";
 import type { SceneResultMetadata } from "./CFDSceneResult";
 import { CFDHeatingImport } from "./CFDHeatingImport";
+import { CFDPointProbeControls, useCFDPointProbe } from "./CFDPointProbeControls";
 import { terminalJob, workerInput } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP } from "@/lib/climoptixHelp";
@@ -330,6 +331,8 @@ export function ClimoptixWorkspace({
     };
   }, [project, selectedId, showArchived]);
   const currentWorkerInput = useMemo(() => scenario ? workerInput(project, scenario) : "", [project, scenario]);
+  const mainProbeKey=[mainResult?.file,mainResultField,currentWorkerInput,mainResultVisible];
+  const mainProbe=useCFDPointProbe(active&&!setupOpen&&!!mainResult&&mainResultVisible&&mainResult.studyId===scenario?.id&&mainResult.input===currentWorkerInput&&!!mainResultMetadata.fields.length&&!mainResultMetadata.error,mainProbeKey);
   const placement = picking?.studyId === scenario?.id ? picking : null;
   const placementScenario = scenario && placement ? { ...scenario, vents: scenario.vents.some(v => v.id === placement.ventId)
     ? scenario.vents.map(v => v.id === placement.ventId ? placement.draft : v) : [...scenario.vents, placement.draft] } : scenario;
@@ -904,7 +907,7 @@ export function ClimoptixWorkspace({
           report={activeReport}
           active={active}
           apiUrl={apiUrl}
-          resultOverlay={mainResult&&mainResultVisible&&mainResult.studyId===scenario?.id&&mainResult.input===currentWorkerInput?{file:mainResult.file,field:mainResultField,onMetadata:setMainResultMetadata}:undefined}
+          resultOverlay={mainResult&&mainResultVisible&&mainResult.studyId===scenario?.id&&mainResult.input===currentWorkerInput?{file:mainResult.file,field:mainResultField,onMetadata:setMainResultMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick}:undefined}
           viewSettingsOpen={viewOpen}
           viewTarget={viewTarget}
           onViewSettings={setViewOpen}
@@ -1330,7 +1333,7 @@ export function ClimoptixWorkspace({
                       older={!!jobs[scenario.id]?.job && jobs[scenario.id].input !== currentWorkerInput}
                       initialFile={vtkFile?.studyId===scenario.id?vtkFile.file:undefined}
                       initialProvenance={vtkFile?.studyId===scenario.id?vtkFile.provenance:undefined}
-                      onScene={file=>{setMainResult({studyId:scenario.id,file,input:currentWorkerInput});setMainResultField("");setMainResultVisible(true);setSetupOpen(false);}}
+                      onScene={file=>{setMainResult({studyId:scenario.id,file,input:currentWorkerInput});setMainResultField("");setMainResultMetadata({fields:[],error:""});setMainResultVisible(true);setSetupOpen(false);}}
                       onClose={() => {
                         setVTKFile(null);
                         openPhase("mesh");
@@ -1353,6 +1356,7 @@ export function ClimoptixWorkspace({
         {mainResult.input!==currentWorkerInput?<p className="cfx-error" role="alert">Setup changed. This pinned result is hidden to avoid overlaying a different building. Inspect the original job separately.</p>:<>
         <label>Result field<select aria-label="Building result field" value={mainResultField||mainResultMetadata.fields[0]?.key||""} onChange={event=>setMainResultField(event.target.value)}>{mainResultMetadata.fields.map(field=><option key={field.key} value={field.key}>{field.name} · {field.key.startsWith("cell:")?"cell":"point"}</option>)}</select></label>
         <label className="cfx-check"><input type="checkbox" checked={mainResultVisible} onChange={event=>setMainResultVisible(event.target.checked)}/>Show result plane</label>
+        <CFDPointProbeControls probe={mainProbe} native/>
         <p className="cfx-caption">Blue → red: {(mainResultMetadata.fields.find(field=>field.key===mainResultField)??mainResultMetadata.fields[0])?.range.map(value=>value.toPrecision(5)).join(" → ")}. U in m/s; native p in m²/s², not Pa. Geometry controls remain available.</p>
         </>}
         {mainResultMetadata.error&&<p className="cfx-error" role="alert">{mainResultMetadata.error}</p>}

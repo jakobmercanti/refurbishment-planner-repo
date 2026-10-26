@@ -14,7 +14,7 @@ import {
 } from "three";
 import { useThree, type ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
-import { CFDSceneResult, type SceneResultMetadata } from "./CFDSceneResult";
+import { CFDSceneResult, type CFDSceneResultProps } from "./CFDSceneResult";
 import { createPortal } from "react-dom";
 import { ReadOnlyBuildingScene } from "./EngineeringViewer";
 import {
@@ -89,7 +89,7 @@ function Frame({ request }: { request: string }) {
   return null;
 }
 interface Props {
-  resultOverlay?:{file:File;field:string;onMetadata:(value:SceneResultMetadata)=>void};
+  resultOverlay?:CFDSceneResultProps;
   project: ProjectDocument;
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -448,6 +448,7 @@ export function ClimoptixViewer({
   const isolated =
     isolate && Boolean(selectedPatch || selected?.startsWith("vent:"));
   const onMeshDown = (e: ThreeEvent<PointerEvent>, patch: CFDViewPatch) => {
+    if(resultOverlay?.probing)return;
     if (e.button !== 0) return;
     if (
       !patch.id.startsWith("vent:") &&
@@ -648,6 +649,8 @@ export function ClimoptixViewer({
       )}
       <div
         className="cfx-viewport"
+        tabIndex={0}
+        data-point-probing={resultOverlay?.probing||undefined}
         data-view="3D"
         data-visible-rooms={viewScope.rooms.join(",")}
         data-scope={viewScope.id}
@@ -659,7 +662,7 @@ export function ClimoptixViewer({
             frameloop="demand"
             dpr={[1, 1.5]}
             camera={{ position: [10, 8, 11], fov: 42 }}
-            onPointerMissed={event => { if (event.button === 0) onSelect(null); }}
+            onPointerMissed={event => { if (event.button === 0) {if(resultOverlay?.probing)resultOverlay.onProbe?.(null);else onSelect(null);} }}
           >
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
@@ -795,7 +798,7 @@ export function ClimoptixViewer({
                   <mesh
                     key={r.id}
                     name={`refinement:${r.id}`}
-                    raycast={picking ? () => {} : Mesh.prototype.raycast}
+                    raycast={picking||resultOverlay?.probing ? () => {} : Mesh.prototype.raycast}
                     position={scene(r.centerMm)}
                     onPointerDown={(e) => {
                       if (e.button !== 0) return;

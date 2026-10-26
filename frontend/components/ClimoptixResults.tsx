@@ -22,6 +22,9 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
   const replaceFiles=(next:typeof files)=>{currentFiles.current=next;setFiles(next);};
   const [fileError,setFileError]=useState("");
   const [inspectorOpen,setInspectorOpen]=useState(!!initialFile),[plane,setPlane]=useState("");
+  const [probeRequest,setProbeRequest]=useState(0);
+  const closeInspector=()=>{setInspectorOpen(false);setProbeRequest(0);};
+  const panel=useRef<HTMLElement>(null);
   const [planeBusy,setPlaneBusy]=useState(false);
   const planeRequest=useRef<AbortController|null>(null);
   useEffect(()=>()=>planeRequest.current?.abort(),[adapter,job?.id]);
@@ -31,6 +34,18 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
     setFileError("");replaceFiles(next);setPlane(incoming[0]?.name??"");setInspectorOpen(true);
   };
   const primary=files.find(item=>item.file.name===plane)??files[0];
+  useEffect(()=>{
+    if(!active||inspectorOpen||!primary)return;
+    const keyboard=(event:KeyboardEvent)=>{
+      const root=panel.current,target=event.target instanceof Element?event.target:null;
+      if(!root?.getClientRects().length||event.defaultPrevented||event.key.toLowerCase()!=="v"||event.repeat||event.altKey||event.ctrlKey||event.metaKey)return;
+      if(target?.closest("input,select,textarea,[role=menu],dialog")||target instanceof HTMLElement&&target.isContentEditable)return;
+      const owner=root.closest(".floating-toolbar");
+      if(target?.closest(".floating-toolbar")&&target.closest(".floating-toolbar")!==owner)return;
+      event.preventDefault();event.stopImmediatePropagation();setProbeRequest(value=>value+1);setInspectorOpen(true);
+    };
+    window.addEventListener("keydown",keyboard,true);return()=>window.removeEventListener("keydown",keyboard,true);
+  },[active,inspectorOpen,primary]);
   const additional=useMemo(()=>files.filter(item=>item!==primary).map(item=>item.file),[files,primary]);
   const context=useMemo(()=>{
     if(!report||!result||older||result.sourceHash!==report.validation.sourceHash||!files.length||files.some(item=>!item.verified))return undefined;
@@ -45,7 +60,7 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
   },[report,result,older,files]);
   const provenance=files.some(item=>!item.verified)?"External file layers · simulation provenance and physical units unverified":
     job?`Authenticated worker job ${job.id} · pinned revision ${job.clientRevision.slice(0,12)} · p in m²/s², not Pa${older?" · older setup":""}`:initialProvenance;
-  return <section className="cfx-results" data-cfx-collapse-root aria-label="Simulation results and downloads">
+  return <section ref={panel} className="cfx-results" data-cfx-collapse-root aria-label="Simulation results and downloads">
     <div className="cfx-inline-toolbar"><h3>Results · {name}</h3><CFDCollapseAll/></div>
     {older&&<p className="cfx-notice">This job belongs to an older setup. Its results remain pinned to the submitted geometry/configuration; current building overlays are disabled.</p>}
     {error&&<div role="alert" className="cfx-error">Native result retrieval failed: {error}<button onClick={retry}>Retry loading results</button></div>}
@@ -57,9 +72,10 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
       {files.map(item=><div className="cfx-folder-file" key={item.file.name}><span>{item.file.name}{item.verified?" · verified job artifact":" · external"}</span><button onClick={()=>replaceFiles(currentFiles.current.filter(current=>current.file!==item.file))}>Remove layer {item.file.name}</button></div>)}
       {fileError&&<p role="alert" className="cfx-error">{fileError}</p>}
     </details>
-    <div className="cfx-equal-actions"><button className="cfx-primary" disabled={!files.length} onClick={()=>setInspectorOpen(true)}>Open plane inspector</button>
-      <button disabled={!primary?.verified||older||!context||!onScene} title={older?"Older setup: do not overlay on changed building geometry":!primary?.verified?"Import verified worker data before overlaying the measured building":undefined} onClick={()=>{if(primary){setInspectorOpen(false);onScene?.(primary.file);}}}>Load selected plane into building 3D</button></div>
-    {primary&&inspectorOpen&&<CFDIndependentWindow title="Result plane inspector" wide className="cfx-result-inspector" onClose={()=>setInspectorOpen(false)}>
+    <div className="cfx-equal-actions cfx-result-open-actions"><button className="cfx-primary" disabled={!files.length} onClick={()=>setInspectorOpen(true)}>Open plane inspector</button>
+      <button disabled={!files.length} onClick={()=>{setProbeRequest(value=>value+1);setInspectorOpen(true);}}>Probe selected plane (V)</button>
+      <button disabled={!primary?.verified||older||!context||!onScene} title={older?"Older setup: do not overlay on changed building geometry":!primary?.verified?"Import verified worker data before overlaying the measured building":undefined} onClick={()=>{if(primary){closeInspector();onScene?.(primary.file);}}}>Load selected plane into building 3D</button></div>
+    {primary&&inspectorOpen&&<CFDIndependentWindow title="Result plane inspector" wide className="cfx-result-inspector" onClose={closeInspector}>
       <label className="cfx-inspector-plane">Plane to inspect<select aria-label="Plane to inspect" disabled={planeBusy} value={primary.file.name} onChange={event=>{
         const value=event.target.value;
         if(!value.startsWith("artifact:")){setPlane(value);return;}
@@ -68,8 +84,8 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
         void adapter.download(job,artifact,AbortSignal.any([controller.signal,AbortSignal.timeout(120000)])).then(file=>{if(!controller.signal.aborted)add([file],true);}).catch(cause=>{if(!controller.signal.aborted)setFileError(cause instanceof Error?cause.message:"Plane download failed.");}).finally(()=>{if(!controller.signal.aborted)setPlaneBusy(false);});
       }}>{files.map(item=><option key={item.file.name} value={item.file.name}>{item.file.name}</option>)}{result&&<optgroup label="Verified worker planes">{result.artifacts.filter(item=>item.kind==="vtk").map(item=><option key={item.id} value={`artifact:${item.id}`}>{item.name??item.id}</option>)}</optgroup>}</select></label>
       {planeBusy&&<p role="status">Loading verified plane…</p>}{fileError&&<p role="alert" className="cfx-error">{fileError}</p>}
-      <button disabled={!primary.verified||older||!context||!onScene} onClick={()=>{setInspectorOpen(false);onScene?.(primary.file);}}>Load this plane into building 3D</button>
-      <ClimoptixVTKViewer file={primary.file} additionalFiles={additional} context={context} provenance={provenance} onClose={()=>setInspectorOpen(false)}/>
+      <button disabled={!primary.verified||older||!context||!onScene} onClick={()=>{closeInspector();onScene?.(primary.file);}}>Load this plane into building 3D</button>
+      <ClimoptixVTKViewer file={primary.file} additionalFiles={additional} context={context} provenance={provenance} probeRequest={probeRequest} onClose={closeInspector}/>
     </CFDIndependentWindow>}
     {!files[0]&&
       <p className="cfx-notice">Choose View beside an online plane, or import data to inspect fields, legends, slice positions and scalar isosurfaces. No results are invented from preparation geometry.</p>}

@@ -71,7 +71,10 @@ test('Preferences dropdowns share the density button column and smaller bold typ
 });
 
 test('View properties uses two checkbox columns and 2D walls are presentation only',async t=>{
-  const {page,ui,saved}=await open(t,cfdProject(false),true),before=await saved();
+  const {page,ui,saved}=await open(t,cfdProject(false),true);
+  // Checked DOM state can precede the IndexedDB save of its validation stamp.
+  // Compare the fully saved baseline, keeping the whole-scenario assertion below.
+  const before=await eventually(saved,project=>!!project.cfdScenarios[0].validation);
   await cfdWindow(ui,'View properties');
   const controls=ui.getByLabel('CFD view properties',{exact:true});
   const columns=await controls.locator('.cfx-view-checks > label').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().x));

@@ -9,15 +9,18 @@ import type vtkImageData from "@kitware/vtk.js/Common/DataModel/ImageData";
 import { readResultData, volumeSlice, type ResultData, type ResultField } from "@/lib/cfdResultData";
 import { downloadCFD } from "@/lib/climoptix";
 import { CFDNumber } from "./CFDFields";
+import { CFDPointProbeControls, useCFDPointProbe } from "./CFDPointProbeControls";
+import { intersectResultPlane, resultProbeMesh, sampleResultPoint, type ProbeMesh, type ProbePosition, type ResultPointValue } from "@/lib/cfdPointProbe";
 
 const EMPTY_FILES:File[]=[];
 interface Options { visible:boolean; opacity:number; wire:boolean; field:string; component:number; low:number; high:number; palette:string; mode:"slice"|"iso"; axis:number; index:number; iso:number }
 interface Layer { id:string; name:string; fields:ResultField[]; volume:boolean; dims:number[]; options:Options; status:string }
 export interface ResultContext { id:string; name:string; points:number[] }
-interface View { apply:(id:string,options:Options)=>Promise<void>; visibility:(id:string,visible:boolean)=>void; fit:()=>void; zoom:(factor:number)=>void; direction:(axis:number)=>void }
+interface View { apply:(id:string,options:Options)=>Promise<void>; visibility:(id:string,visible:boolean)=>void; fit:()=>void; zoom:(factor:number)=>void; direction:(axis:number)=>void;
+  pick:(id:string,x:number,y:number,field:string,component:number)=>ResultPointValue|null }
 const palettes:Record<string,number[][]>={coolwarm:[[.15,.3,.75],[.1,.8,.65],[.9,.25,.1]],viridis:[[.267,.005,.329],[.128,.567,.551],[.993,.906,.144]],grey:[[.1,.1,.1],[.5,.5,.5],[.95,.95,.95]]};
 
-export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,provenance,onClose}:{file:File;additionalFiles?:File[];context?:ResultContext[];provenance?:string;onClose:()=>void}){
+export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,provenance,onClose,probeRequest=0}:{file:File;additionalFiles?:File[];context?:ResultContext[];provenance?:string;onClose:()=>void;probeRequest?:number}){
   const host=useRef<HTMLDivElement>(null), view=useRef<View|null>(null);
   const [layers,setLayers]=useState<Layer[]>([]),[active,setActive]=useState("0"),[error,setError]=useState(""),[warnings,setWarnings]=useState<string[]>([]),[loading,setLoading]=useState(true);
   const [contextVisible,setContextVisible]=useState<Record<string,boolean>>({});
@@ -26,6 +29,7 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
   useEffect(()=>{
     let cancelled=false;const owned:{delete:()=>void}[]=[], cleanup:(()=>void)[]=[];
     const runtimes=new Map<string,{loaded:ResultData;actor:vtkActor;mapper:vtkMapper;colours:vtkColorTransferFunction;temporary?:vtkPolyData;generation:number}>();
+    const probeMeshes=new WeakMap<vtkPolyData,ProbeMesh>();
     const release=()=>{view.current=null;cleanup.splice(0).reverse().forEach(fn=>fn());owned.splice(0).reverse().forEach(item=>item.delete());};
     void(async()=>{
       if(files.length>8||files.reduce((size,item)=>size+item.size,0)>64*1024**2)throw new Error("Load at most 8 result layers totalling 64 MB.");
@@ -44,6 +48,7 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
       const theme=new MutationObserver(()=>{colourBackground();render();});theme.observe(document.documentElement,{attributes:true,attributeFilter:["data-theme","class","style"]});cleanup.push(()=>theme.disconnect());
       const apply:View["apply"]=async(id,options)=>{
         const runtime=runtimes.get(id);if(!runtime||cancelled)return;const generation=++runtime.generation;
+        setLayers(current=>current.map(item=>item.id===id?{...item,status:"Updating display…"}:item));
         const {loaded,actor,mapper,colours}=runtime, field=loaded.fields.find(item=>item.key===options.field);
         let data: vtkPolyData;
         if(loaded.volume){
@@ -93,7 +98,22 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
         poly.getPoints().setData(Float32Array.from(object.points),3);const cells:number[]=[];for(let i=0;i<object.points.length/3;i+=3)cells.push(3,i,i+1,i+2);poly.getPolys().setData(Uint32Array.from(cells));
         mapper.setInputData(poly);mapper.setScalarVisibility(false);actor.setMapper(mapper);actor.getProperty().setColor(.6,.67,.72);actor.getProperty().setOpacity(.15);actor.setVisibility(false);renderer.addActor(actor);contextActors.set(object.id,actor);cleanup.push(()=>renderer.removeActor(actor));
       }
-      view.current={apply,visibility:(id,visible)=>{contextActors.get(id)?.setVisibility(visible);render();},fit:()=>{renderer.resetCamera();render();},zoom:factor=>{camera.zoom(factor);render();},direction:axis=>{
+      view.current={apply,pick:(id,x,y,key,component)=>{
+        const runtime=runtimes.get(id), field=runtime?.loaded.fields.find(item=>item.key===key);
+        if(!runtime||!field||!runtime.actor.getVisibility()||!runtime.actor.getProperty().getOpacity())return null;
+        const data=(runtime.temporary??runtime.loaded.data) as vtkPolyData;
+        if(!data.isA("vtkPolyData"))return null;
+        const array=(field.cell?data.getCellData():data.getPointData()).getArrayByName(field.name);
+        if(!array)return null;
+        let mesh=probeMeshes.get(data);
+        if(!mesh){mesh=resultProbeMesh(data.getPoints().getData(),data.getPolys().getData(),data.getNumberOfVerts()+data.getNumberOfLines(),data.getStrips().getData());probeMeshes.set(data,mesh);}
+        const bounds=container.getBoundingClientRect();
+        if(!bounds.width||!bounds.height)return null;
+        const px=(x-bounds.left)/bounds.width,py=(bounds.bottom-y)/bounds.height,aspect=bounds.width/bounds.height;
+        const near=renderer.normalizedDisplayToWorld(px,py,0,aspect) as ProbePosition,far=renderer.normalizedDisplayToWorld(px,py,1,aspect) as ProbePosition;
+        const hit=intersectResultPlane(mesh,near,far);
+        return hit?sampleResultPoint(mesh,hit.triangle,hit.position,field,array.getData(),component):null;
+      },visibility:(id,visible)=>{contextActors.get(id)?.setVisibility(visible);render();},fit:()=>{renderer.resetCamera();render();},zoom:factor=>{camera.zoom(factor);render();},direction:axis=>{
         const target=camera.getFocalPoint(),position=camera.getPosition(),distance=Math.hypot(...position.map((value,i)=>value-target[i]));
         const next=[...target];next[axis]+=Math.max(distance,1);camera.setPosition(next[0],next[1],next[2]);camera.setViewUp(...(axis===2?[0,1,0]:[0,0,1]) as [number,number,number]);render();
       }};
@@ -104,14 +124,32 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
     return()=>{cancelled=true;release();};
   },[files,context,file]);
   const layer=layers.find(item=>item.id===active),field=layer?.fields.find(item=>item.key===layer.options.field);
+  const probeKey=[...files,active,layer?.options.field,layer?.options.component,layer?.options.axis,layer?.options.index,layer?.options.mode,layer?.options.visible];
+  const probe=useCFDPointProbe(!loading&&!!field&&!!layer?.options.visible&&!!layer.options.opacity&&layer.options.mode!=="iso"&&layer.options.mode==="slice"&&layer.status!=="Updating display…",probeKey,probeRequest);
+  const {mode:probing,pick:recordProbe}=probe;
+  useEffect(()=>{
+    const container=host.current;
+    if(!container||!probing||!layer)return;
+    let press:{x:number;y:number;id:number}|null=null;
+    const down=(event:PointerEvent)=>{if(event.button===0&&event.isPrimary)press={x:event.clientX,y:event.clientY,id:event.pointerId};};
+    const up=(event:PointerEvent)=>{
+      const start=press;press=null;
+      if(!start||start.id!==event.pointerId||Math.hypot(event.clientX-start.x,event.clientY-start.y)>4)return;
+      try{recordProbe(view.current?.pick(layer.id,event.clientX,event.clientY,layer.options.field,layer.options.component)??null);}
+      catch(cause){recordProbe(null,cause instanceof Error?cause.message:"This plane could not be probed.");}
+    };
+    const cancel=()=>{press=null;};
+    container.addEventListener("pointerdown",down,true);container.addEventListener("pointerup",up,true);container.addEventListener("pointercancel",cancel,true);
+    return()=>{container.removeEventListener("pointerdown",down,true);container.removeEventListener("pointerup",up,true);container.removeEventListener("pointercancel",cancel,true);};
+  },[layer,probing,recordProbe]);
   const update=(patch:Partial<Options>)=>{
     if(!layer)return;const options={...layer.options,...patch};setLayers(current=>current.map(item=>item.id===layer.id?{...item,options}:item));setError("");
     const currentView=view.current;
     void currentView?.apply(layer.id,options).catch(cause=>{if(view.current===currentView)setError(cause instanceof Error?cause.message:"Viewer update failed.");});
   };
   const selectField=(key:string)=>{const selected=layer?.fields.find(item=>item.key===key),low=selected?.range[0]??0,high=selected?.range[1]??1;update({field:key,component:-1,low,high:high>low?high:low+Math.max(1,Math.abs(low))*1e-6,iso:(low+high)/2,mode:"slice"});};
-  return <section className="cfx-viewer cfx-vtk-viewer" aria-label="VTK results viewer">
-    <header><strong>VTK · {layer?.name??file.name}</strong><button onClick={onClose}>Back to geometry</button></header>
+  return <section className={`cfx-viewer cfx-vtk-viewer${probe.mode?" cfx-point-probing":""}`} aria-label="VTK results viewer">
+    <header><strong>VTK · {layer?.name??file.name}</strong><CFDPointProbeControls probe={probe} native={!!provenance?.startsWith("Authenticated worker job")}/><button onClick={onClose}>Back to geometry</button></header>
     <p className="cfx-stale">{provenance||"External file · simulation provenance and physical units unverified"}</p>
     <div className="cfx-results-sidebar">
     <details open><summary>Result layers &amp; display controls</summary>
@@ -137,7 +175,7 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
     {error&&<p role="alert" className="cfx-error">{error}</p>}
     {!!warnings.length&&<div className="cfx-notice" role="status" aria-label="VTK field warnings">Some arrays were not displayed: {warnings.join("; ")}. The original download is unchanged.</div>}
     </div>
-    <div ref={host} className="cfx-vtk-canvas" aria-label="Interactive VTK 3D field"/>
+    <div ref={host} tabIndex={0} className={`cfx-vtk-canvas${probe.mode?" cfx-probing":""}`} aria-label="Interactive VTK 3D field"/>
     <footer><span role="status">{loading?"Loading result layers…":layer?.status??"File not loaded"}</span>{field&&<span>{layer?.volume&&layer.options.mode==="iso"?<><i style={{background:"#ff7900"}}/>{field.name} = {layer.options.iso} · file units</>:<><i className="cfx-colour-scale" style={{background:`linear-gradient(to right, ${(palettes[layer?.options.palette??"coolwarm"]??palettes.coolwarm).map(rgb=>`rgb(${rgb.map(value=>Math.round(value*255)).join(",")})`).join(", ")})`}}/>{field.name}: {layer?.options.low.toPrecision(5)} → {layer?.options.high.toPrecision(5)} · file units</>}</span>}
       <button onClick={()=>downloadCFD(files[Number(active)]??file,(files[Number(active)]??file).name)}>Download full original data</button></footer>
   </section>;
