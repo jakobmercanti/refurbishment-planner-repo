@@ -414,6 +414,7 @@ export function preparationInput(
       updatedAt: undefined,
       archived: undefined,
       objectGroups: undefined,
+      boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined },
     },
   });
 }
@@ -489,7 +490,7 @@ export function preparationRequestBody(
     project: source,
     // Grouping is local presentation metadata, not part of the solver contract.
     // Omitting it also keeps existing preparation-only workers compatible.
-    scenario: { ...scenario, group: undefined, thermalSnapshots: undefined },
+    scenario: { ...scenario, group: undefined, thermalSnapshots: undefined, boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined } },
     clientRevision,
   });
   if (new TextEncoder().encode(body).byteLength > 4 * 1024 * 1024)
@@ -577,6 +578,18 @@ export function scenarioImport(input: unknown, projectId: string): CFDScenario {
     archived: false,
     updatedAt: new Date().toISOString(),
   };
+}
+export async function defaultCFDSetup(apiUrl: string, project: ProjectDocument, scenario: CFDScenario, signal: AbortSignal): Promise<CFDScenario> {
+  const revision = await preparationRevision(preparationInput(project, scenario));
+  const response = await fetch(`${apiUrl}/climoptix/default-setup`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: preparationRequestBody(project, scenario, revision), signal: AbortSignal.any([signal, AbortSignal.timeout(25000)]) });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(typeof error?.detail === "string" ? error.detail : "Default setup is unavailable. Your existing simulation has not been changed.");
+  }
+  const result = cfdScenarioSchema.parse(await response.json());
+  if (result.id !== scenario.id || result.sourceBuildingId !== project.projectId) throw new Error("Default setup returned a different simulation. Nothing was changed.");
+  return { ...result, group: scenario.group };
 }
 export function boundarySurfaceSTL(
   report: CFDReport,

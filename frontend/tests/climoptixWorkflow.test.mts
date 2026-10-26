@@ -119,6 +119,15 @@ test("convergence parser reads real OpenFOAM solver records without fabricating 
   assert.equal(manyFields.samples.length, 32);
   assert.equal(manyFields.truncated, true);
 });
+test("full default convergence history retains all 5000 outer steps despite repeated pressure correctors",()=>{
+  const log=Array.from({length:5000},(_,i)=>`Time = ${i+1}\n${['Ux','Uy','Uz','p','p','p'].map((field,j)=>`Solving for ${field}, Initial residual = ${1/(i+j+1)}, Final residual = ${1/(i+j+2)}`).join('\n')}`).join('\n');
+  const result=parseResidualLog(log);
+  assert.equal(result.truncated,false);assert.equal(result.samples.length,20000);
+  const pressure=result.samples.filter(sample=>sample.field==='p');
+  assert.equal(pressure.length,5000);assert.equal(pressure.at(-1)?.iteration,5000);
+  assert.equal(pressure[0].initial,.25);assert.equal(pressure[0].final,1/7);
+});
+
 test("VTK preflight blocks external entities, unsupported grids and oversized allocations", () => {
   const valid =
     '<VTKFile type="PolyData"><PolyData><Piece NumberOfPoints="4" NumberOfPolys="1"><DataArray format="ascii" NumberOfComponents="3">0 0 0</DataArray></Piece></PolyData></VTKFile>';
@@ -155,7 +164,7 @@ test("VTK preflight blocks external entities, unsupported grids and oversized al
   );
   assert.throws(
     () => checkVTKText(legacy + "\nFIELD FieldData 2", false),
-    /ASCII .vtp/,
+    /Incomplete VTK array/,
   );
 });
 test("WebGL numeric checks reject finite doubles that would turn into rendering infinities", () => {

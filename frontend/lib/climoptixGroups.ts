@@ -43,6 +43,7 @@ export const DEFAULT_BOUNDARY_GROUP = "all-surfaces";
 export const BOUNDARY_COLOURS = ["#3284cd", "#c46c38", "#38957e", "#9868c8", "#cb618c", "#a18424", "#4d8d9d", "#7b8851"];
 export function boundaryGroups(scenario: CFDScenario): CFDBoundaryCollection[] {
   const saved = scenario.boundaries.collections;
+  if (scenario.boundaries.hideDefaultGroup) return saved;
   return saved.some(g => g.id === DEFAULT_BOUNDARY_GROUP) ? saved : [
     { id: DEFAULT_BOUNDARY_GROUP, name: uniqueGroupName(saved.map(g => g.name), "Default surfaces"), patchIds: [], boundary: null }, ...saved,
   ];
@@ -65,6 +66,8 @@ export type BoundaryDisplayGroup = { id: string; name: string; colour: string; p
 /** One physical surface belongs to one folder; explicit patch overrides are retained. */
 export function moveBoundary(scenario: CFDScenario, patchId: string, target: string, boundary: number, patches: CFDPatch[]): CFDScenario {
   const groups = boundaryGroups(scenario);
+  if (target === DEFAULT_BOUNDARY_GROUP && scenario.boundaries.hideDefaultGroup && patches.some(p => p.id === patchId))
+    return { ...scenario, boundaries: { ...scenario.boundaries, collections: groups.map(g => ({ ...g, patchIds: g.patchIds.filter(id => id !== patchId) })) } };
   if (!groups.some(g => g.id === target) || !patches.some(p => p.id === patchId) || !Number.isInteger(boundary) || boundary < 0) return scenario;
   const members = boundaryMembers(groups.find(g => g.id === target)!, groups, patches);
   if (boundary > members.length) return scenario;

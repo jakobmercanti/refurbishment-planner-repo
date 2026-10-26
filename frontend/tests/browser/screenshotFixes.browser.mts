@@ -34,14 +34,16 @@ test("real captured mouse gestures reorder groups and simulations, cancel safely
   const ui = page.locator(".cfx-workspace"); await cfdWindow(ui, "Simulations");
   await layout(page, frame(page), "Maximise window");
   await button(ui, "New simulation").click(); await button(ui, "New simulation").click();
+  await eventually(saved,p=>p.cfdScenarios.length===3);
   await button(ui, "Add group").click();
+  await eventually(saved,p=>p.cfdSimulationGroups?.some(group=>group.name==='Group'));
   const general = ui.getByRole("region", { name: "Simulation group General", exact: true });
   const group = ui.getByRole("region", { name: "Simulation group Group", exact: true });
   const grip = button(ui, "Reorder Group"), collapse = button(group, "Collapse group Group");
   const [g, c] = await Promise.all([grip.boundingBox(), collapse.boundingBox()]);
   assert.ok(Math.abs(g.y - c.y) < 2, JSON.stringify({ g, c }));
   await drag(page, grip, general.locator(".cfx-group-heading"), .1);
-  await eventually(saved, p => p.cfdSimulationGroups[0].name === "Group");
+  await eventually(saved, p => p.cfdSimulationGroups?.[0]?.name === "Group");
   await drag(page, button(ui, "Reorder Simulation 3"), general.locator('.cfx-reorder-item').first(), .1);
   await eventually(saved, p => p.cfdScenarios[0].name === "Simulation 3");
   await drag(page, button(ui, "Reorder Office airflow"), group.locator(".cfx-list-header"));
@@ -76,7 +78,7 @@ test("boundary folders edit only on request, drafts remain grouped, responsive s
   assert.ok((await editor.boundingBox()).height < 390);
   await button(editor, "Hide Edit boundary group").click();
   await cfdWindow(ui, "Physics");
-  for (const title of ["Models & equations", "Fluid properties", "Reference & ambient conditions", "Initial fields", "Requested outputs & monitoring points"]) assert.ok(await ui.locator("summary").getByText(title, { exact: true }).isVisible());
+  for (const title of ["Models & equations", "Fluid properties", "Reference & ambient conditions", "Initial fields"]) assert.ok(await ui.locator("summary").getByText(title, { exact: true }).isVisible());
   await capture(page, "physics-sections");
   await cfdWindow(ui, "Solver"); await ui.getByRole("tab", { name: "Post-processing", exact: true }).click();
   const planes = ui.getByRole("group", { name: "Sampling plane directions", exact: true });
@@ -100,11 +102,18 @@ test("boundary folders edit only on request, drafts remain grouped, responsive s
   await button(ui, "View refinements in 3D").click(); await button(ui, "Return to setup").click();
   assert.ok(await frame(page).isVisible());
   await cfdWindow(ui, "Simulations"); await button(ui, "New simulation").click();
+  await eventually(saved,p=>p.cfdScenarios.length===2);
+  const initialVents=(await saved()).cfdScenarios.at(-1).vents.length;
   await cfdWindow(ui, "Equipment");
   await button(ui, "+ Supply").click();
-  await eventually(saved, p => p.cfdScenarios.at(-1).vents.length === 1);
+  await eventually(saved, p => p.cfdScenarios.at(-1).vents.length === initialVents+1);
   const ventEditor = page.locator(".cfx-equipment-editor");
-  assert.ok(await ventEditor.getByText(/Unassigned vent/).isVisible());
+  // A factory-ready case already has checked hosts; a new vent should use one.
+  assert.equal(await ventEditor.getByText(/Unassigned vent/).count(),0);
+  assert.ok(await button(ventEditor,'Place this vent on face…').isVisible());
+  const stored=(await saved()).cfdScenarios.at(-1),vent=stored.vents.at(-1);
+  assert.notEqual(vent.host.patchId,'unassigned');
+  assert.ok(stored.objectGroups.some(group=>group.memberIds.includes(`vent:${vent.id}`)));
   await button(ventEditor, "Hide Edit equipment").click();
 });
 

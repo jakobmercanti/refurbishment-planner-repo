@@ -66,10 +66,8 @@ test("mobile and tablet use a single phase selector; every available phase remai
         "Bounds",
       );
       const resultOption = phase.locator('option[value="results"]');
-      assert.ok(
-        await resultOption.evaluate((option) => option.disabled),
-        await resultOption.evaluate((option) => option.outerHTML),
-      );
+      assert.equal(await resultOption.evaluate((option) => option.disabled), false,
+        "Results stays usable for online downloads/imports before a plane has been opened");
       for (const id of [
         "studies",
         "domain",
@@ -78,6 +76,7 @@ test("mobile and tablet use a single phase selector; every available phase remai
         "physics",
         "mesh",
         "review",
+        "results",
       ]) {
         await phase.selectOption(id);
         assert.equal(await phase.inputValue(), id);
@@ -96,7 +95,7 @@ test("mobile and tablet use a single phase selector; every available phase remai
         assert.equal(await ui.locator(".floating-toolbar").count(), 1);
         if (id === "studies") {
           const row = panel.locator(".cfx-study-row").first();
-          const name = await row.locator("strong").boundingBox();
+          const name = await row.locator(".cfx-study-name strong").boundingBox();
           const status = await row.locator(".cfx-study-name small").boundingBox();
           assert.ok(Math.abs(name.y + name.height / 2 - status.y - status.height / 2) < 2,
             "Name and status stay inline on compact screens");
@@ -175,11 +174,8 @@ test("mobile and tablet use a single phase selector; every available phase remai
       .isVisible(),
     false,
   );
-  assert.ok(
-    await ui
-      .getByRole("navigation", { name: "Thermal setup steps", exact: true })
-      .isVisible(),
-  );
+  assert.equal(await ui.getByRole("navigation", { name: "Thermal setup steps", exact: true }).isVisible(),true,
+    "The independent 1120px thermal window has one wide navigation mode");
 });
 
 test("a narrow resized laptop window switches navigation without losing the selected phase", async (t) => {
@@ -291,6 +287,7 @@ test("landscape touch tablets use selectors; guidance is in contextual help and 
   );
   assert.match(await thermalHelp.innerText(), /Advanced surface override/);
   await page.keyboard.press("Escape");
+  await ui.getByRole('button',{name:'Hide Insulation boundary import & thermal envelope',exact:true}).click();
   await phase.selectOption("mesh");
   await ui
     .getByRole("button", {

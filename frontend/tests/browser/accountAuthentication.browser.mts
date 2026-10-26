@@ -20,7 +20,7 @@ test("exported sign-up works with direct provider access blocked and recovers fr
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: { id: "pending-verification" } }) });
   });
   await page.goto(harness.origin + "/planner/account/");
-  await page.getByRole("tab", { name: "Create account", exact: true }).click();
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill("auth-test@example.invalid");
   await page.getByLabel("Password", { exact: true }).fill("not-a-real-password");
   const submit = page.getByRole("button", { name: "Create account", exact: true });

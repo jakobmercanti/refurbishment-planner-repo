@@ -265,8 +265,14 @@ test("study rows show only the worker's current-phase progress, never a syntheti
     createElement(ClimoptixStudies, props),
   );
   assert.match(rendering, /aria-valuenow="37"/);
-  assert.match(rendering, /Meshing · 37% of phase/);
+  assert.match(rendering, /class="cfx-progress-label">Mesh · 37% · snappyHexMesh refinement<\/strong>/);
+  assert.doesNotMatch(rendering, /cfx-job-detail/);
   const job = props.entries[scenario.id].job!;
+  job.phase = "Running";
+  job.progressBasis = "iterationBudget";
+  const running = renderToStaticMarkup(createElement(ClimoptixStudies, props));
+  assert.match(running, /Running · 37% of iteration budget/);
+  assert.doesNotMatch(running, /37% of phase/);
   job.phase = "Completed";
   job.progress = null;
   const complete = renderToStaticMarkup(createElement(ClimoptixStudies, props));
@@ -277,7 +283,10 @@ test("study rows show only the worker's current-phase progress, never a syntheti
   props.entries = {};
   props.worker = null;
   const draft = renderToStaticMarkup(createElement(ClimoptixStudies, props));
-  assert.doesNotMatch(draft, /role="progressbar"|cfx-batch|cfx-study-heading/);
+  assert.match(draft, /role="progressbar"/);
+  assert.match(draft, /aria-valuenow="0"/);
+  assert.match(draft, /Not submitted · 0%/);
+  assert.doesNotMatch(draft, /indeterminate|cfx-batch|cfx-study-heading/);
   assert.doesNotMatch(draft, /Preparation only|Select for batch/);
   assert.match(draft, /aria-label="Mesh Office airflow" disabled=""/);
   assert.match(draft, /aria-label="Run Office airflow" disabled=""/);

@@ -30,3 +30,16 @@ test('CFD proxy preserves authenticated scope and does not follow redirects', as
   globalThis.fetch = async () => new Response(null,{status:302,headers:{Location:'https://evil.example'}});
   assert.equal((await cfdWorkerProxy(new Request(request.url,{headers}),'/climoptix/worker/capabilities','https://worker.example')).status,503);
 });
+
+test('post-processing downloads stay on the exact authenticated no-cache artifact route',async t=>{
+  const original=globalThis.fetch;t.after(()=>{globalThis.fetch=original;});
+  const id='11111111-1111-4111-8111-111111111111',endpoint=`/climoptix/worker/jobs/${id}/artifacts/postprocessing`;
+  globalThis.fetch=async(url,options)=>{
+    assert.equal(new URL(url).pathname,endpoint);assert.ok(!String(url).includes('private-token'));
+    assert.equal(options.headers.Authorization,'Bearer private-token');assert.equal(options.redirect,'manual');
+    return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'application/zip','Content-Disposition':'attachment; filename=postprocessing.zip'}});
+  };
+  const request=new Request('https://planner.example/engineering-api'+endpoint,{headers:{Authorization:'Bearer private-token'}});
+  const result=await cfdWorkerProxy(request,endpoint,'https://worker.example');assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'no-store');assert.equal(result.headers.get('Content-Type'),'application/zip');
+  assert.equal((await cfdWorkerProxy(request,endpoint+'-other','https://worker.example')).status,403);
+});

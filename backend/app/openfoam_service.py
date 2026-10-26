@@ -160,13 +160,14 @@ class Store:
                 )
 
 
-def public_job(row) -> dict:
+def public_job(row, root: Path | None = None) -> dict:
+    from backend.app.openfoam_progress import phase_progress
     return {
         "id": row["id"],
         "studyId": row["study"],
         "clientRevision": row["revision"],
         "phase": row["phase"],
-        "progress": 100 if row["phase"] == "Completed" else None,
+        **phase_progress(root, row["phase"], row["message"], row["payload"]),
         "message": row["message"],
     }
 
@@ -327,7 +328,8 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
         if not state["ready"]:
             raise HTTPException(503, state["reason"])
         try:
-            return public_job(store.submit(str(user.id), body))
+            row = store.submit(str(user.id), body)
+            return public_job(row, store.path(row["id"]))
         except ValueError as error:
             raise HTTPException(422, str(error)[:2000]) from None
 
@@ -338,11 +340,11 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
                 "SELECT * FROM jobs WHERE owner=? AND project=? ORDER BY created DESC LIMIT 100",
                 (str(user.id), str(projectId)),
             ).fetchall()
-        return [public_job(row) for row in rows]
+        return [public_job(row, store.path(row["id"])) for row in rows]
 
     @app.get(prefix + "/jobs/{job_id}")
     def status(job_id: UUID, user: WorkerUser):
-        return public_job(store.get(str(user.id), str(job_id)))
+        return public_job(store.get(str(user.id), str(job_id)), store.path(str(job_id)))
 
     @app.post(prefix + "/jobs/{job_id}/cancel")
     def cancel(job_id: UUID, user: WorkerUser):
@@ -352,7 +354,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
                 db.execute("UPDATE jobs SET cancelled=1 WHERE id=? AND owner=?", (str(job_id), str(user.id)))
             if row["phase"] == "Queued":
                 store.update(str(job_id), "Cancelled", "Cancelled before execution.")
-        return public_job(store.get(str(user.id), str(job_id)))
+        return public_job(store.get(str(user.id), str(job_id)), store.path(str(job_id)))
 
     @app.get(prefix + "/jobs/{job_id}/logs")
     def logs(job_id: UUID, user: WorkerUser, cursor: int = Query(default=0, ge=0, le=8 * 1024**2)):
@@ -367,7 +369,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
                 stream.seek(cursor)
                 data = stream.read(min(128 * 1024, size - cursor))
         return {
-            **public_job(row),
+            **public_job(row, store.path(str(job_id))),
             "cursor": cursor,
             "nextCursor": cursor + len(data),
             "text": data.decode("utf-8", errors="replace"),
@@ -383,7 +385,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
         manifest = json.loads(path.read_text())
         for artifact in manifest.get("artifacts", []):
             artifact.pop("path", None)
-        return {**manifest, "jobId": str(job_id)}
+        return {**manifest, "jobId": str(job_id), "expiresAt": row["expires"]}
 
     @app.get(prefix + "/jobs/{job_id}/artifacts/{artifact_id}")
     def artifact(job_id: UUID, artifact_id: str, user: WorkerUser):

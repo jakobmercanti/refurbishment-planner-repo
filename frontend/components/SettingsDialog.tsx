@@ -2,6 +2,7 @@
 
 import { CURRENCY_OPTIONS, type AppPreferences, type CurrencyCode, type NavigationPreference } from "@/lib/appPreferences";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
+import type { TemperatureUnit, FlowUnit } from "@/lib/cfdUnits";
 
 export { DEFAULT_APP_PREFERENCES } from "@/lib/appPreferences";
 export type { AppPreferences } from "@/lib/appPreferences";
@@ -40,7 +41,7 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
             </div>
           </div>
         </section>
-        <div className="settings-section">
+        <div className="settings-section settings-navigation">
           <label htmlFor="settings-navigation">3D navigation</label>
           <select id="settings-navigation" aria-label="3D navigation" value={preferences.navigation ?? "STANDARD"} onChange={event => onChange({ ...preferences, navigation: event.target.value as NavigationPreference })}>
             <option value="STANDARD">Standard</option><option value="CAD">CAD</option><option value="BLENDER">Blender-style</option>
@@ -65,6 +66,17 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
           <select id="settings-default-currency" className="settings-currency-select" value={preferences.currency} onChange={(event) => onChange({ ...preferences, currency: event.target.value as CurrencyCode })}>
             {CURRENCY_OPTIONS.map(({ code, name, symbol }) => <option key={code} value={code}>{code} · {symbol} — {name}</option>)}
           </select>
+        </div>
+        <div className="settings-section settings-engineering-units">
+          <div><label htmlFor="settings-temperature">Temperature units</label>
+          <select id="settings-temperature" value={preferences.temperatureUnit ?? "K"} onChange={event => onChange({ ...preferences, temperatureUnit: event.target.value as TemperatureUnit })}>
+            <option value="C">Celsius (°C)</option><option value="K">Kelvin (K)</option><option value="F">Fahrenheit (°F)</option>
+          </select></div>
+          <div><label htmlFor="settings-flow">CFD volume flow units</label>
+          <select id="settings-flow" value={preferences.cfdFlowUnit ?? "m³/s"} onChange={event => onChange({ ...preferences, cfdFlowUnit: event.target.value as FlowUnit })}>
+            <option>m³/s</option><option>L/s</option><option>m³/h</option>
+          </select></div>
+          <small>Display preferences only. Geometry is saved in millimetres; CFD uses kelvin and SI internally.</small>
         </div>
         <label className="settings-check">
           <input type="checkbox" checked={preferences.confirmBeforeOpen} onChange={(event) => onChange({ ...preferences, confirmBeforeOpen: event.target.checked })} />

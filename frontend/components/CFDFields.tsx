@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot, parseEngineeringUnits, subscribeEngineeringUnits } from "@/lib/appPreferences";
+import { engineeringDisplay } from "@/lib/cfdUnits";
+import { CFDConfirmAction } from "./CFDConfirmAction";
 
-export function CFDNumber({
+function NumberInput({
   label,
   value,
   onChange,
@@ -54,6 +57,13 @@ export function CFDNumber({
       />
     </label>
   );
+}
+export function CFDNumber({ convert = true, ...props }: Parameters<typeof NumberInput>[0] & { convert?: boolean }) {
+  const raw = useSyncExternalStore(subscribeEngineeringUnits, getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot);
+  const display = engineeringDisplay(props.label, convert ? parseEngineeringUnits(raw) : {});
+  return <NumberInput {...props} key={display.label} label={display.label} value={display.to(props.value)}
+    min={props.min === undefined ? undefined : display.to(props.min)} max={props.max === undefined ? undefined : display.to(props.max)}
+    onChange={value => props.onChange(display.from(value))} />;
 }
 export function CFDText({
   label,
@@ -212,6 +222,7 @@ function ParameterArray({ name, values, onChange }: { name: string; values: unkn
         onClick={() => remove(index)}>Remove</button>
     </div>)}
     {polygon && values.length > 0 && <button onClick={() => onChange([])}>Clear movement region</button>}
+    {probes && <CFDConfirmAction title="Clear all probes?" disabled={!values.length} description="Remove all monitoring positions from this simulation. Undo can restore them." onConfirm={() => onChange([])} />}
     <button disabled={probes && values.length >= 1000} onClick={() => onChange(polygon && !values.length
       ? [[.2, .2], [.8, .2], [.8, .8], [.2, .8]] : [...values, polygon ? [.5, .1] : [0, 0, 0]])}>
       {probes ? "Add probe" : `Add ${label.toLowerCase()}`}</button>

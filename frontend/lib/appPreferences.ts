@@ -1,4 +1,5 @@
 import type { DisplayUnits } from "@/lib/units";
+import type { TemperatureUnit, FlowUnit } from "./cfdUnits";
 
 export type ThemePreference = "SYSTEM" | "LIGHT" | "DARK";
 export type WorkspaceDensity = "COMFORTABLE" | "COMPACT";
@@ -32,9 +33,14 @@ export interface AppPreferences {
   units: DisplayUnits;
   currency: CurrencyCode;
   navigation?: NavigationPreference;
+  temperatureUnit?: TemperatureUnit;
+  cfdFlowUnit?: FlowUnit;
 }
 
 export interface PersistedAppearancePreferences {
+  units?: DisplayUnits;
+  temperatureUnit?: TemperatureUnit;
+  cfdFlowUnit?: FlowUnit;
   theme: ThemePreference;
   density: WorkspaceDensity;
   currency: CurrencyCode;
@@ -57,6 +63,29 @@ let currencyPreferenceSnapshot: CurrencyCode = DEFAULT_APP_PREFERENCES.currency;
 const currencyPreferenceSubscribers = new Set<() => void>();
 let navigationSnapshot: NavigationPreference | undefined;
 const navigationSubscribers = new Set<() => void>();
+const engineeringSubscribers = new Set<() => void>();
+let engineeringSnapshot: string | undefined;
+export function getEngineeringUnitsSnapshot(): string {
+  if (engineeringSnapshot !== undefined) return engineeringSnapshot;
+  try { return window.localStorage.getItem(APP_APPEARANCE_STORAGE_KEY) ?? "{}"; } catch { return "{}"; }
+}
+export const getServerEngineeringUnitsSnapshot = () => "{}";
+export function subscribeEngineeringUnits(subscriber: () => void) {
+  engineeringSubscribers.add(subscriber);
+  const update = (event: StorageEvent) => { if (!event.key || event.key === APP_APPEARANCE_STORAGE_KEY) { engineeringSnapshot = undefined; subscriber(); } };
+  window.addEventListener("storage", update);
+  return () => { engineeringSubscribers.delete(subscriber); window.removeEventListener("storage", update); };
+}
+export function parseEngineeringUnits(raw: string): Pick<PersistedAppearancePreferences, "units" | "temperatureUnit" | "cfdFlowUnit"> {
+  try {
+    const record = JSON.parse(raw);
+    return {
+      ...(["MM", "CM", "INCHES", "FEET", "METERS"].includes(record?.units) ? { units: record.units } : {}),
+      ...(["K", "C", "F"].includes(record?.temperatureUnit) ? { temperatureUnit: record.temperatureUnit } : {}),
+      ...(["m³/s", "L/s", "m³/h"].includes(record?.cfdFlowUnit) ? { cfdFlowUnit: record.cfdFlowUnit } : {}),
+    };
+  } catch { return {}; }
+}
 
 function parseNavigation(value: unknown): NavigationPreference | undefined {
   return value === "STANDARD" || value === "CAD" || value === "BLENDER" ? value : undefined;
@@ -88,6 +117,7 @@ export function readAppearancePreferences(storage: PreferenceStorage): Partial<P
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
     const record = value as Record<string, unknown>;
     return {
+      ...parseEngineeringUnits(saved),
       ...(parseTheme(record.theme) ? { theme: parseTheme(record.theme) } : {}),
       ...(parseDensity(record.density) ? { density: parseDensity(record.density) } : {}),
       ...(parseCurrency(record.currency) ? { currency: parseCurrency(record.currency) } : {}),
@@ -107,24 +137,29 @@ function readBrowserCurrency(): CurrencyCode | undefined {
 }
 
 export function writeAppearancePreferences(
-  preferences: Pick<AppPreferences, "theme" | "density" | "currency" | "navigation">,
+  preferences: Pick<AppPreferences, "theme" | "density" | "currency" | "navigation"> & Partial<Pick<AppPreferences, "units" | "temperatureUnit" | "cfdFlowUnit">>,
   storage: PreferenceStorage,
 ): void {
   currencyPreferenceSnapshot = preferences.currency;
   navigationSnapshot = preferences.navigation ?? "STANDARD";
   try {
-    storage.setItem(APP_APPEARANCE_STORAGE_KEY, JSON.stringify({
+    engineeringSnapshot = JSON.stringify({
       theme: preferences.theme.toLowerCase(),
       density: preferences.density.toLowerCase(),
       currency: preferences.currency,
+      ...(preferences.units ? { units: preferences.units } : {}),
+      ...(preferences.temperatureUnit ? { temperatureUnit: preferences.temperatureUnit } : {}),
+      ...(preferences.cfdFlowUnit ? { cfdFlowUnit: preferences.cfdFlowUnit } : {}),
       ...(preferences.navigation ? { navigation: preferences.navigation } : {}),
-    }));
+    });
+    storage.setItem(APP_APPEARANCE_STORAGE_KEY, engineeringSnapshot);
   } catch {
     // Private browsing and storage quotas may make persistence unavailable;
     // the in-memory preference still applies for the current session.
   }
   currencyPreferenceSubscribers.forEach((subscriber) => subscriber());
   navigationSubscribers.forEach(subscriber => subscriber());
+  engineeringSubscribers.forEach(subscriber => subscriber());
 }
 
 export function getNavigationSnapshot(): NavigationPreference {

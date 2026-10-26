@@ -9,6 +9,10 @@ import { useRailwayCFDWorker } from "./useRailwayCFDWorker";
 import { ClimoptixWorkerMonitor } from "./ClimoptixWorkerMonitor";
 import { CFDWorkerConnection } from "./CFDWorkerConnection";
 import { CFDWorkbenchStatus } from "./CFDWorkbenchStatus";
+import { CFDJobProgress } from "./CFDJobProgress";
+import { CFDIndependentWindow } from "./CFDIndependentWindow";
+import type { SceneResultMetadata } from "./CFDSceneResult";
+import { CFDHeatingImport } from "./CFDHeatingImport";
 import { terminalJob, workerInput } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP } from "@/lib/climoptixHelp";
@@ -32,10 +36,12 @@ import {
   newCFDScenario,
   ventSchema,
   type CFDScenario,
+  type CFDVent,
   type CFDSimulationGroup,
 } from "@/lib/climoptixDocument";
 import {
   downloadCFD,
+  defaultCFDSetup,
   preparationInput,
   preparationRevision,
   prepareCFD,
@@ -54,7 +60,7 @@ import { DomainPanel } from "./ClimoptixDomain";
 import { EquipmentPanel } from "./ClimoptixEquipment";
 import { PhysicsPanel } from "./ClimoptixPhysics";
 import { ClimoptixSimulation, type SimulationTab } from "./ClimoptixSimulation";
-import { ClimoptixVTKViewer } from "./ClimoptixVTKViewer";
+import { ClimoptixResults } from "./ClimoptixResults";
 import {
   ClimoptixConvergence,
   useConvergenceLogs,
@@ -166,7 +172,7 @@ function DeleteStudy({
       </header>
       <div className="popup-content">
         <p>
-          {count === undefined ? `“${name}” and its CFD settings will be removed.` : `All ${count} simulations, including archived simulations, and their CFD settings will be removed.`} The shared building, assets and groups are kept. Undo can restore the simulations.
+          {count === undefined ? `“${name}” and its CFD settings will be removed. Existing groups are kept.` : `All ${count} simulations, including archived simulations, and every simulation group will be removed.`} The shared measured building and assets are kept. Undo can restore the previous workbench.
         </p>
       </div>
       <footer className="popup-actions">
@@ -260,10 +266,12 @@ export function ClimoptixWorkspace({
       id: string;
       opener: HTMLButtonElement;
     } | null>(null);
-  const [picking, setPicking] = useState<{ role: "supply" | "extract"; ventId?: string } | null>(null);
+  const [picking, setPicking] = useState<{ role: "supply" | "extract"; ventId: string; studyId: string; draft: CFDVent; returnEditor: boolean } | null>(null);
   const [editorReset, setEditorReset] = useState(0);
   const [clearing, setClearing] = useState<HTMLButtonElement | null>(null);
   const [preparationRetry, setPreparationRetry] = useState(0);
+  const [resetting, setResetting] = useState(false);
+  const defaultAbort = useRef<AbortController | null>(null);
   const [preparationFailure, setPreparationFailure] = useState<{ input: string; message: string } | null>(null);
   const [simulationTab, setSimulationTab] = useState<SimulationTab>("mesh");
   const [showRefinements, setShowRefinements] = useState(true);
@@ -285,6 +293,7 @@ export function ClimoptixWorkspace({
     return () => window.removeEventListener("keydown", escape);
   });
   const [thermalOpen, setThermalOpen] = useState(false);
+  const [heatingImportOpen,setHeatingImportOpen]=useState(false);
   const [thermalReports, setThermalReports] = useState<
     Record<string, ThermalPackage>
   >({});
@@ -305,6 +314,10 @@ export function ClimoptixWorkspace({
     file: File;
     provenance?: string;
   } | null>(null);
+  const [mainResult,setMainResult]=useState<{studyId:string;file:File;input:string}|null>(null);
+  const [mainResultField,setMainResultField]=useState("");
+  const [mainResultVisible,setMainResultVisible]=useState(true);
+  const [mainResultMetadata,setMainResultMetadata]=useState<SceneResultMetadata>({fields:[],error:""});
   const { scenarios, visible, scenario, input } = useMemo(() => {
     const scenarios = project.cfdScenarios ?? EMPTY_SCENARIOS;
     const visible = scenarios.filter((s) => showArchived || !s.archived);
@@ -317,6 +330,9 @@ export function ClimoptixWorkspace({
     };
   }, [project, selectedId, showArchived]);
   const currentWorkerInput = useMemo(() => scenario ? workerInput(project, scenario) : "", [project, scenario]);
+  const placement = picking?.studyId === scenario?.id ? picking : null;
+  const placementScenario = scenario && placement ? { ...scenario, vents: scenario.vents.some(v => v.id === placement.ventId)
+    ? scenario.vents.map(v => v.id === placement.ventId ? placement.draft : v) : [...scenario.vents, placement.draft] } : scenario;
   const revision = hash.input === input ? hash.revision : "";
   const preparationError = preparationFailure?.input === input ? preparationFailure.message : "";
   const busy = preparing !== "" && preparing === input;
@@ -332,10 +348,10 @@ export function ClimoptixWorkspace({
     !activeReport ||
     !revision ||
     activeReport.validation.clientRevision !== revision;
-  const current = useRef({ project, scenarios });
+  const current = useRef({ project, scenarios, jobs });
   useEffect(() => {
-    current.current = { project, scenarios };
-  }, [project, scenarios]);
+    current.current = { project, scenarios, jobs };
+  }, [project, scenarios, jobs]);
   const abort = useRef<AbortController | null>(null);
   const exportAbort = useRef<AbortController | null>(null);
   const importRead = useRef(0);
@@ -354,6 +370,7 @@ export function ClimoptixWorkspace({
       abort.current?.abort();
       exportAbort.current?.abort();
       thermalAbort.current?.abort();
+      defaultAbort.current?.abort();
       importRead.current++;
     },
     [],
@@ -531,6 +548,40 @@ export function ClimoptixWorkspace({
       "Thermal contract applied and saved with this simulation. Flow/scalar conditions are unchanged. No CFD run was performed.",
     );
   };
+  const applyDefaults = async (original: CFDScenario, adding = false) => {
+    if (defaultAbort.current || resetting) return;
+    const controller = new AbortController(); defaultAbort.current = controller;
+    setResetting(true); setError(""); setMessage("Checking measured geometry and preparing a starter ventilation setup…");
+    const stamp = (p: ProjectDocument) => JSON.stringify([preparationInput(p, original),
+      p.cfdScenarios?.map(s => ({ ...s, validation: undefined, updatedAt: undefined })), p.cfdSimulationGroups]);
+    const captured = adding ? preparationInput(project, original) : stamp(project);
+    try {
+      const next = await defaultCFDSetup(apiUrl, project, original, controller.signal);
+      const now = current.current;
+      if (now.project.projectId !== project.projectId || (!adding && stamp(now.project) !== captured) || (adding && preparationInput(now.project, original) !== captured))
+        throw new Error("The building or simulation changed during reset. Nothing was replaced; try again.");
+      if (now.scenarios.length >= 100 && adding) throw new Error("The project already has 100 simulations.");
+      if (!adding && now.scenarios.some(s => { const entry = now.jobs[s.id]; return entry?.submitting || entry?.dispatched || (entry?.job && !terminalJob(entry.job)); }))
+        throw new Error("Resolve the active or unknown worker submission before restoring the default workbench.");
+      if (!adding) {
+        // Fail closed unless the previous workbench is recoverable.
+        const key = `climoptix:before-restore:${project.projectId}`;
+        const backup = JSON.stringify({ projectId: project.projectId, savedAt: new Date().toISOString(), scenarios: now.scenarios, groups: now.project.cfdSimulationGroups ?? [] });
+        try {
+          window.localStorage.setItem(key, backup);
+          if (window.localStorage.getItem(key) !== backup) throw new Error("Backup mismatch");
+        } catch { throw new Error("The CFD backup could not be saved. Nothing was replaced. Free browser storage or download your project before retrying."); }
+        downloadCFD(new Blob([JSON.stringify(now.project, null, 2)], { type: "application/json" }), `${now.project.name}-before-restore.project.json`);
+        now.scenarios.forEach(s => clearLog(s.id));
+      }
+      onChange(adding ? [...now.scenarios, next] : [{ ...next, group: "General" }], true,
+        adding ? undefined : [{ id: crypto.randomUUID(), name: "General" }]);
+      setSelectedId(next.id); setSelected(null); setVentEditor(null); setRefinementEditor(null); setPicking(null);
+      setEditorReset(value => value + 1); openPhase("studies");
+      setMessage("Starter ventilation ready for fresh checks: opposing inlet/outlet, adiabatic walls and a serial laminar setup. Play starts the connected worker; it does not fabricate results.");
+    } catch (reason) { if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "Default reset failed. Nothing was replaced."); setMessage(""); } }
+    finally { if (defaultAbort.current === controller) { defaultAbort.current = null; setResetting(false); } }
+  };
   const add = (group?: string) => {
     if (scenarios.length >= 100) {
       setError(
@@ -542,13 +593,9 @@ export function ClimoptixWorkspace({
       project.projectId,
       `Simulation ${scenarios.length + 1}`,
     );
-    onChange(
-      [...scenarios, { ...s, group: group ?? scenario?.group ?? simulationGroups(scenarios, project.cfdSimulationGroups)[0]?.name ?? "General" }],
-      true,
-    );
-    setSelectedId(s.id);
-    openPhase("studies");
-    setError("");
+    s.group = group ?? scenario?.group ?? simulationGroups(scenarios, project.cfdSimulationGroups)[0]?.name ?? "General";
+    if (projectFloors(project).some(f => f.content.rooms.length)) void applyDefaults(s, true);
+    else { onChange([...scenarios, s], true); setSelectedId(s.id); openPhase("studies"); setError(""); }
   };
   const validationTarget = useRef({ project, scenario, onChange, apiUrl });
   useEffect(() => { validationTarget.current = { project, scenario, onChange, apiUrl }; }, [project, scenario, onChange, apiUrl]);
@@ -652,22 +699,27 @@ export function ClimoptixWorkspace({
     }
   };
   const hostPick = (patchId: string, u: number, v: number) => {
-    if (!scenario || !picking) return;
-    const existing = scenario.vents.find(v => v.id === picking.ventId);
-    const vent = ventSchema.parse({
-      ...(existing ?? {}),
-      id: existing?.id ?? crypto.randomUUID(),
-      name: existing?.name ?? (picking.role === "supply" ? "Supply vent" : "Extract vent"),
-      role: picking.role,
-      host: { patchId, u, v },
-    });
-    change({ ...scenario, vents: existing ? scenario.vents.map(v => v.id === existing.id ? vent : v) : [...scenario.vents, vent] });
-    selectObject(`vent:${vent.id}`);
-    setVentEditor({ studyId: scenario.id, id: vent.id });
+    if (!placement) return;
+    setPicking({ ...placement, draft: { ...placement.draft, host: { patchId, u, v } } });
+    selectObject(`vent:${placement.ventId}`);
+  };
+  const startPlacement = (role: "supply" | "extract", ventId?: string) => {
+    if (!scenario) return;
+    const existing = scenario.vents.find(v => v.id === ventId);
+    const draft = existing ? structuredClone(existing) : ventSchema.parse({ id: crypto.randomUUID(), name: role === "supply" ? "Supply vent" : "Extract vent", role, host: { patchId: "unassigned" } });
+    setPicking({ role, ventId: draft.id, studyId: scenario.id, draft, returnEditor: !!ventEditor });
+    selectObject(`vent:${draft.id}`);
+    setVentEditor(null); setSetupOpen(false); setViewOpen(false); setRefinementEditor(null); setInspection(null);
+  };
+  const finishPlacement = (commit: boolean) => {
+    if (!placement || !scenario) { setPicking(null); return; }
+    if (commit && placementScenario) change(placementScenario, true);
     setPicking(null);
+    if (placement.returnEditor) setVentEditor({ studyId: scenario.id, id: placement.ventId });
     openPhase("equipment");
   };
   const moveVent = (id: string, u: number, v: number) => {
+    if (placement?.ventId === id) { setPicking({ ...placement, draft: { ...placement.draft, host: { ...placement.draft.host, u, v } } }); return; }
     if (scenario)
       change(
         {
@@ -721,7 +773,7 @@ export function ClimoptixWorkspace({
   const available = (id: CFDWindowId) =>
     id === "studies" ||
     id === "view" ||
-    (!!scenario && (id !== "results" || vtkFile?.studyId === scenario.id));
+    !!scenario;
   const shownTab = available(activeTab) ? activeTab : "studies";
   const chooseTab = (id: CFDWindowId) => {
     setPicking(null);
@@ -806,7 +858,8 @@ export function ClimoptixWorkspace({
         if (editor) {
           event.preventDefault();
           event.stopPropagation();
-          if (editor.classList.contains("cfx-equipment-editor")) closeEquipmentEditor();
+          if (editor.classList.contains("cfx-placement-editor")) finishPlacement(false);
+          else if (editor.classList.contains("cfx-equipment-editor")) closeEquipmentEditor();
           else closeRefinementEditor();
         } else if (
           event.target instanceof Element &&
@@ -847,10 +900,11 @@ export function ClimoptixWorkspace({
         <ClimoptixViewer
           key={project.projectId}
           project={project}
-          scenario={scenario ?? previewScenario}
+          scenario={placementScenario ?? previewScenario}
           report={activeReport}
           active={active}
           apiUrl={apiUrl}
+          resultOverlay={mainResult&&mainResultVisible&&mainResult.studyId===scenario?.id&&mainResult.input===currentWorkerInput?{file:mainResult.file,field:mainResultField,onMetadata:setMainResultMetadata}:undefined}
           viewSettingsOpen={viewOpen}
           viewTarget={viewTarget}
           onViewSettings={setViewOpen}
@@ -863,6 +917,7 @@ export function ClimoptixWorkspace({
               openPhase("mesh");
               setSimulationTab("mesh");
             }
+            if(id.startsWith("probe:")){openPhase("mesh");setSimulationTab("post");}
             if (
               setupOpen &&
               (id.startsWith("vent:") ||
@@ -870,7 +925,7 @@ export function ClimoptixWorkspace({
             )
               openPhase("equipment");
           }}
-          picking={picking && scenario ? scenario.vents.find(v => v.id === picking.ventId) ?? ventSchema.parse({ id: "placement-preview", name: "Placement", role: picking.role, host: { patchId: "unassigned" } }) : false}
+          picking={placement?.draft ?? false}
           onHostPick={hostPick}
           onMoveVent={moveVent}
           canMoveVents={true}
@@ -891,9 +946,9 @@ export function ClimoptixWorkspace({
           }}
         />
       )}
-      {(setupOpen || inspection) && (
+      {(active || setupOpen || inspection) && (
         <FloatingToolbar
-          hidden={!setupOpen}
+          hidden={!active || !setupOpen}
           title="Simulation setup"
           headerContent={<div className="cfx-header-simulation">
             <span className="cfx-header-current" title={scenario?.name}>{scenario?.name ?? "No simulations yet"}</span>
@@ -1017,7 +1072,7 @@ export function ClimoptixWorkspace({
                 </button>
               ))}
             </div>
-            {scenario && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
+            {scenario && shownTab !== "results" && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
               showFailure={shownTab !== "review"} onIssues={() => reviewIssues()}
               onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} />}
             <section
@@ -1045,10 +1100,12 @@ export function ClimoptixWorkspace({
                 onAdd={add}
                 onDelete={(id, opener) => setDeleting({ id, opener })}
                 onClear={setClearing}
+                onReset={() => { const starter = newCFDScenario(project.projectId, "Simulation 1"); starter.seed = scenario?.seed ?? null; void applyDefaults(starter); }}
+                resetting={resetting}
                 onImport={(file) => void importScenario(file)}
                 entries={jobs}
                 worker={workerAdapter}
-                onSubmit={(op, studies) => void submitJobs(op, studies)}
+                onSubmit={(op, studies) => { if (!defaultAbort.current) void submitJobs(op, studies); }}
                 onIssues={reviewIssues}
                 onUndo={onUndo}
                 onRedo={onRedo}
@@ -1087,17 +1144,14 @@ export function ClimoptixWorkspace({
                         selected={selected}
                         onSelect={selectObject}
                         onChange={change}
-                        onPick={(role, ventId) => {
-                          setPicking({ role, ventId });
-                          setVentEditor(null);
-                          setSetupOpen(false);
-                        }}
+                        onPick={startPlacement}
                         onEditSource={onEditBuilding}
                         onEditVent={id => setVentEditor({ studyId: scenario.id, id })}
                       />
                     )}
                     {panel.id === "boundaries" && (
                       <>
+                        <button onClick={()=>setHeatingImportOpen(true)}>Import insulation &amp; heating conditions</button>
                         {scenario.thermalSnapshots?.length ? (
                           <p className="cfx-notice">
                             Thermal handoff stored ·{" "}
@@ -1122,7 +1176,7 @@ export function ClimoptixWorkspace({
                       </>
                     )}
                     {panel.id === "physics" && (
-                      <div className="cfx-physics-fields"><PhysicsPanel scenario={scenario} onChange={change} /></div>
+                      <div className="cfx-physics-fields"><button onClick={()=>setHeatingImportOpen(true)}>Import insulation &amp; heating conditions</button><PhysicsPanel scenario={scenario} onChange={change} /></div>
                     )}
                     {panel.id === "mesh" && (
                       <ClimoptixSimulation
@@ -1144,10 +1198,11 @@ export function ClimoptixWorkspace({
                               ? "Recover the previous Mesh submission from Simulations first"
                               : undefined,
                           busy:
-                            !!jobs[scenario.id]?.submitting ||
+                            resetting || !!jobs[scenario.id]?.submitting ||
                             (!!jobs[scenario.id]?.job &&
                               !terminalJob(jobs[scenario.id].job!)),
                           onRun: () => {
+                            if (defaultAbort.current) return;
                             void submitJobs("run", [scenario]);
                             openPhase("studies");
                           },
@@ -1172,6 +1227,7 @@ export function ClimoptixWorkspace({
                             token: crypto.randomUUID(),
                           });
                         }}
+                        onResults={() => openPhase("results")}
                         onEditRefinement={(id) =>
                           setRefinementEditor({ studyId: scenario.id, id })
                         }
@@ -1202,9 +1258,10 @@ export function ClimoptixWorkspace({
                             />
                           )
                         }
+                        jobProgress={<CFDJobProgress name={scenario.name} job={jobs[scenario.id]?.job}/>}
                       />
                     )}
-                    {panel.id === "review" && <ClimoptixReview key={`${scenario.id}:${issuesRequest}`} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "review" ? jobs[scenario.id]?.error : undefined}
+                    {panel.id === "review" && <ClimoptixReview key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "review" ? jobs[scenario.id]?.error : undefined}
                       onDismissFailure={() => { setError(""); if (error.startsWith("Changes not applied")) setEditorReset(x => x + 1); }}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
                       onRefresh={() => setPreparationRetry(x => x + 1)} onInspect={jump} />}
@@ -1221,8 +1278,7 @@ export function ClimoptixWorkspace({
                   className="cfx-setup-panel cfx-thermal-panel"
                 >
                   {thermalOpen && (
-                    <>
-                    <div className="cfx-inline-toolbar cfx-thermal-navigation">{boundsTab === "thermal" && boundsNavigation}</div>
+                    <CFDIndependentWindow title="Insulation boundary import & thermal envelope" wide className="cfx-thermal-import" onClose={()=>{setThermalOpen(false);setBoundsTab("conditions");}}>
                     <ThermalEnvelopeWindow
                       embedded
                       key={scenario.id}
@@ -1252,9 +1308,9 @@ export function ClimoptixWorkspace({
                           );
                         else onEditBuilding();
                       }}
-                      onClose={() => setBoundsTab("conditions")}
+                      onClose={() => {setThermalOpen(false);setBoundsTab("conditions");}}
                     />
-                    </>
+                    </CFDIndependentWindow>
                   )}
                 </section>
                 <section
@@ -1264,11 +1320,15 @@ export function ClimoptixWorkspace({
                   hidden={shownTab !== "results"}
                   className="cfx-setup-panel"
                 >
-                  {active && vtkFile?.studyId === scenario.id && (
-                    <ClimoptixVTKViewer
-                      key={vtkFile.token}
-                      file={vtkFile.file}
-                      provenance={vtkFile.provenance}
+                  {active && (
+                    <ClimoptixResults
+                      key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${vtkFile?.studyId===scenario.id?vtkFile.token:"none"}`}
+                      adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} name={scenario.name} report={activeReport}
+                      active={shownTab === "results" && setupOpen}
+                      older={!!jobs[scenario.id]?.job && jobs[scenario.id].input !== currentWorkerInput}
+                      initialFile={vtkFile?.studyId===scenario.id?vtkFile.file:undefined}
+                      initialProvenance={vtkFile?.studyId===scenario.id?vtkFile.provenance:undefined}
+                      onScene={file=>{setMainResult({studyId:scenario.id,file,input:currentWorkerInput});setMainResultField("");setMainResultVisible(true);setSetupOpen(false);}}
                       onClose={() => {
                         setVTKFile(null);
                         openPhase("mesh");
@@ -1285,30 +1345,38 @@ export function ClimoptixWorkspace({
         initialSize={{ width: 340, height: 320 }} onClose={() => setViewOpen(false)} helpSteps={CFD_PHASE_HELP.view}>
         <div ref={setViewTarget} />
       </FloatingToolbar>}
+      {active&&scenario&&heatingImportOpen&&<CFDHeatingImport key={scenario.id} project={project} scenario={scenario} report={activeReport} checked={!stale&&!busy&&!error} onChange={change} onClose={()=>setHeatingImportOpen(false)} onInsulation={()=>{setHeatingImportOpen(false);openThermal();}} onEditSource={onEditBuilding}/>}
+      {active&&mainResult&&mainResult.studyId===scenario?.id&&<FloatingToolbar title="Building result display" defaultPosition={{x:24,y:80}} initialSize={{width:360,height:310}} onClose={()=>setMainResult(null)}>
+        <p>{mainResult.file.name} · verified worker plane · metres → scene coordinates.</p>
+        {mainResult.input!==currentWorkerInput?<p className="cfx-error" role="alert">Setup changed. This pinned result is hidden to avoid overlaying a different building. Inspect the original job separately.</p>:<>
+        <label>Result field<select aria-label="Building result field" value={mainResultField||mainResultMetadata.fields[0]?.key||""} onChange={event=>setMainResultField(event.target.value)}>{mainResultMetadata.fields.map(field=><option key={field.key} value={field.key}>{field.name} · {field.key.startsWith("cell:")?"cell":"point"}</option>)}</select></label>
+        <label className="cfx-check"><input type="checkbox" checked={mainResultVisible} onChange={event=>setMainResultVisible(event.target.checked)}/>Show result plane</label>
+        <p className="cfx-caption">Blue → red: {(mainResultMetadata.fields.find(field=>field.key===mainResultField)??mainResultMetadata.fields[0])?.range.map(value=>value.toPrecision(5)).join(" → ")}. U in m/s; native p in m²/s², not Pa. Geometry controls remain available.</p>
+        </>}
+        {mainResultMetadata.error&&<p className="cfx-error" role="alert">{mainResultMetadata.error}</p>}
+        <button onClick={()=>{setSetupOpen(true);openPhase("results");}}>Return to results</button>
+      </FloatingToolbar>}
       {active && scenario && ventEditor?.studyId === scenario.id && scenario.vents.some(v => v.id === ventEditor.id) &&
         <FloatingToolbar title="Edit equipment" className="cfx-equipment-editor" initialSize={{ width: 620, height: 650 }}
           defaultPosition={{ x: 260, y: 88 }} bringToFront onClose={closeEquipmentEditor} helpSteps={CFD_PHASE_HELP.equipment}>
           <section className="cfx-inspector" aria-label="Equipment editor">
             <EquipmentPanel key={`${scenario.id}:${ventEditor.id}`} editor scenario={scenario} report={activeReport}
-              selected={`vent:${ventEditor.id}`} onSelect={selectObject} onChange={change} onPick={(role, ventId) => { setPicking({ role, ventId }); setVentEditor(null); setSetupOpen(false); }} onEditSource={onEditBuilding} />
+              selected={`vent:${ventEditor.id}`} onSelect={selectObject} onChange={change} onPick={startPlacement} onEditSource={onEditBuilding} />
             <button onClick={closeEquipmentEditor}>Done</button>
           </section>
         </FloatingToolbar>}
-      {picking && (
-        <div className="cfx-placement">
-          <span>
-            Click an existing wall, floor or roof/ceiling face to snap the {picking.role} vent to its surface.
-          </span>
-          <button
-            onClick={() => {
-              setPicking(null);
-              openPhase("equipment");
-            }}
-          >
-            Cancel placement
-          </button>
-        </div>
-      )}
+      {active && placement && placementScenario && <FloatingToolbar title="Place vent" className="cfx-equipment-editor cfx-placement-editor"
+        initialSize={{ width: 420, height: 600 }} defaultPosition={{ x: 24, y: 100 }} bringToFront onClose={() => finishPlacement(false)}
+        footer={<footer className="cfx-placement-actions" aria-label="Vent placement actions">
+          <button className="cfx-primary" disabled={!activeReport?.patches.some(p => p.host && p.id === placement.draft.host.patchId)} onClick={() => finishPlacement(true)}>OK</button>
+          <button onClick={() => finishPlacement(false)}>Cancel</button>
+        </footer>}>
+        <section className="cfx-inspector" aria-label="Vent placement editor">
+          <p role="status">Click another wall, floor or ceiling to move the vent there. Drag the orange vent to position it. Changes are a preview until you choose OK.</p>
+          <EquipmentPanel editor placement scenario={placementScenario} report={activeReport} selected={`vent:${placement.ventId}`} onSelect={selectObject}
+            onChange={next => { const draft = next.vents.find(v => v.id === placement.ventId); if (draft && ventSchema.safeParse(draft).success) setPicking({ ...placement, draft }); }} onPick={startPlacement} onEditSource={onEditBuilding} />
+        </section>
+      </FloatingToolbar>}
       {active && scenario && refinementEditor?.studyId === scenario.id && (
         <FloatingToolbar
           title="Edit refinement"
@@ -1367,7 +1435,8 @@ export function ClimoptixWorkspace({
         importRead.current++;
         abort.current?.abort(); exportAbort.current?.abort(); setExporting(false);
         thermalAbort.current?.abort();
-        onChange([], true);
+        defaultAbort.current?.abort();
+        onChange([], true, []);
         setClearing(null); setSelectedId(""); setSelected(null); setPicking(null);
         setRefinementEditor(null); setVentEditor(null); setReports({}); setThermalReports({});
         setVTKFile(null); setThermalTask({ studyId: "", busy: false, error: "" });

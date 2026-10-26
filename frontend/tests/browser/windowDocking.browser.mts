@@ -245,6 +245,8 @@ test("dark/light compact screens suspend docks safely, restore them on resize, a
   await window.getByRole("button", { name: "Window layout for Simulation setup", exact: true }).click();
   const options = page.getByRole("menu", { name: "Simulation setup window layout", exact: true });
   await options.getByRole("menuitem", { name: "Dock left", exact: true }).press("End");
+  assert.equal(await options.getByRole("menuitem", {name:"Minimise window",exact:true}).evaluate(node=>node===document.activeElement),true);
+  await page.keyboard.press("ArrowUp");
   await page.keyboard.press("Enter");
   await sameWidth(ui.locator(":scope > .cfx-viewer"), 1440);
   assert.equal(await window.getAttribute("data-edge-docked"), null);

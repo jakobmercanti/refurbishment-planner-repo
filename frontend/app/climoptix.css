@@ -751,6 +751,7 @@
 .compact-workspace .cfx-header-simulation select { display: none; }
 .compact-workspace .cfx-header-current { display: block; }
 .compact-workspace .floating-toolbar.cfx-setup-window,
+.compact-workspace .floating-toolbar.cfx-independent-window,
 .compact-workspace .floating-toolbar.cfx-refinement-editor,
 .compact-workspace .floating-toolbar.cfx-equipment-editor {
   top: var(--floating-visible-top, 8px) !important;

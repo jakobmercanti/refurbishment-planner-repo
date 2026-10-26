@@ -43,7 +43,7 @@ test("authenticated HTTP worker feeds real log samples, cancels jobs and recover
   await eventually(()=>job.phase,s=>s==='Cancelled');
   await page.reload();
   await page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');
-  await eventually(()=>ui.locator('.cfx-job-detail').textContent(),text=>text?.includes('Cancelled'));
+  await eventually(()=>ui.locator('.cfx-study-row .cfx-job-progress').textContent(),text=>text?.includes('Cancelled'));
 });
 const namespace='11111111-1111-4111-8111-111111111111';
 const caps={connected:true,mesh:true,run:true,reason:'Audit mock runtime',namespace,
@@ -72,14 +72,14 @@ test('leaving a monitor aborts its artifact action and a late response cannot op
   });
   await s.ui.getByRole('button',{name:'Run Office airflow',exact:true}).click();
   await eventually(()=>job,Boolean);await cfdWindow(s.ui,'Convergence monitor');
-  await s.ui.getByRole('button',{name:'View slice-0',exact:true}).click();
+  await s.ui.getByRole('combobox',{name:'View result in 3D',exact:true}).selectOption('slice-0');
   await eventually(()=>started,Boolean);await cfdWindow(s.ui,'Simulations');release();
   await s.page.waitForTimeout(300);
   assert.equal(await s.ui.getByRole('region',{name:'VTK results viewer',exact:true}).count(),0);
   assert.equal(await s.ui.getByRole('alert').count(),0);
 });
-async function open(t, transport){
-  const s=await harness.session(cfdProject());t.after(()=>s.close());
+async function open(t, transport, project=cfdProject()){
+  const s=await harness.session(project);t.after(()=>s.close());
   await s.context.route('**/climoptix/worker/**',transport);
   await s.page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await s.page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');
@@ -180,12 +180,24 @@ test('native downloads, VTK viewing, resource controls, probe/flow graphs and CS
   await eventually(()=>job,Boolean);await cfdWindow(s.ui,'Solver');
   await s.ui.getByRole('tab',{name:'Run',exact:true}).click();
   await s.ui.getByRole('button',{name:'Open monitor',exact:true}).click();
-  await s.ui.getByRole('button',{name:'Download native-case',exact:true}).waitFor();
+  await s.ui.getByRole('combobox',{name:'Download simulation data',exact:true}).waitFor();
   await s.ui.getByRole('img',{name:'Relative flow imbalance history (fraction)',exact:true}).waitFor();
   await s.ui.getByRole('img',{name:'Probe 1 speed history (m/s)',exact:true}).waitFor();
   await s.ui.getByRole('combobox',{name:'Probe to monitor',exact:true}).selectOption('1');
   await s.ui.getByRole('img',{name:'Probe 2 pressure history (m²/s²)',exact:true}).waitFor();
   await s.ui.getByRole('region',{name:'Final measured acceptance metrics',exact:true}).waitFor();
+  const metrics=s.ui.getByRole('region',{name:'Final measured acceptance metrics',exact:true});
+  assert.equal(await metrics.locator('dl').count(),1,'Final residuals share the same aligned metric grid');
+  for (const [width,columns] of [[1440,4],[900,3],[390,1]]) {
+    await s.page.setViewportSize({width,height:1000});
+    await eventually(()=>metrics.locator('dl').evaluate(n=>getComputedStyle(n).gridTemplateColumns.split(' ').length),n=>n===columns);
+    const style=await metrics.locator('dt').first().evaluate(n=>({size:parseFloat(getComputedStyle(n).fontSize),opacity:getComputedStyle(n).opacity,
+      font:getComputedStyle(n).fontFamily.split(',')[0],normal:getComputedStyle(document.body).fontFamily.split(',')[0]}));
+    assert.ok(style.size>=12);assert.equal(style.opacity,'1');assert.equal(style.font,style.normal);
+    const values=await metrics.locator('dd').evaluateAll(nodes=>nodes.slice(0,4).map(n=>n.getBoundingClientRect().y));
+    if(columns===4)assert.ok(Math.max(...values)-Math.min(...values)<2,'Metric values align across a row');
+  }
+  await s.page.setViewportSize({width:1440,height:1000});
   const csv=s.page.waitForEvent('download');await s.ui.getByRole('button',{name:'Download telemetry CSV',exact:true}).click();
   const csvText=await readFile(await (await csv).path(),'utf8');assert.match(csvText,/probe,1,2,1000,500,250,2,3,4,0.2/);
   if(process.env.BROWSER_ARTIFACTS) await s.ui.getByRole('region',{name:'Measured worker telemetry',exact:true}).screenshot({path:`${process.env.BROWSER_ARTIFACTS}/openfoam-probes-desktop.png`});
@@ -196,9 +208,9 @@ test('native downloads, VTK viewing, resource controls, probe/flow graphs and CS
   await s.page.setViewportSize({width:1440,height:1000});
   const logDownload=s.page.waitForEvent('download');await s.ui.getByRole('button',{name:'Download worker log',exact:true}).click();
   assert.match((await logDownload).suggestedFilename(),/\.log$/);
-  const download=s.page.waitForEvent('download');await s.ui.getByRole('button',{name:'Download native-case',exact:true}).click();
+  const download=s.page.waitForEvent('download');await s.ui.getByRole('combobox',{name:'Download simulation data',exact:true}).selectOption('native-case');
   assert.match((await download).suggestedFilename(),/native-case\.zip$/);
-  await s.ui.getByRole('button',{name:'View slice-0',exact:true}).click();
+  await s.ui.getByRole('combobox',{name:'View result in 3D',exact:true}).selectOption('slice-0');
   await s.ui.getByText(/Authenticated worker job 55555555/).waitFor();
   const viewer=s.ui.getByRole('region',{name:'VTK results viewer',exact:true});
   await viewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
@@ -214,6 +226,8 @@ test('native downloads, VTK viewing, resource controls, probe/flow graphs and CS
 
 test('a definite 422 rejection releases its payload so corrected settings get a fresh submission',async t=>{
   const requests:CFDSubmission[]=[];
+  const project=cfdProject();
+  project.cfdScenarios![0].resources.cpu=4;
   const s=await open(t,async route=>{
     const path=new URL(route.request().url()).pathname;
     if(path.endsWith('/capabilities'))return route.fulfill({json:caps});
@@ -223,13 +237,13 @@ test('a definite 422 rejection releases its payload so corrected settings get a 
       const request=requests[1];return route.fulfill({json:{id:'66666666-6666-4666-8666-666666666666',studyId:request.studyId,clientRevision:request.clientRevision,phase:'Completed',progress:100,message:'Accepted corrected input'}});
     }
     return route.fulfill({json:[]});
-  });
+  },project);
   await s.ui.getByRole('button',{name:'Run Office airflow',exact:true}).click();
   await s.ui.getByText(/Worker limit: cpu must be at most 1/).waitFor();
   await s.ui.getByText('Not submitted',{exact:true}).waitFor();
   assert.ok(await s.ui.getByRole('button',{name:'Delete Office airflow',exact:true}).isEnabled());
   await s.ui.getByRole('button',{name:'View issues for Office airflow',exact:true}).click();
-  await s.ui.getByRole('tabpanel',{name:'Warnings & checks',exact:true}).getByRole('alert').filter({hasText:'Worker submission or status'}).waitFor();
+  await s.ui.getByRole('tabpanel',{name:'Warnings & checks',exact:true}).getByRole('alert').filter({hasText:'Simulation was not accepted by the worker'}).waitFor();
   assert.equal(requests[0].scenario.resources.cpu,4);
   await cfdWindow(s.ui,'Solver');await s.ui.getByRole('tab',{name:'Run',exact:true}).click();
   await s.ui.getByRole('button',{name:'Use worker resource limits',exact:true}).click();

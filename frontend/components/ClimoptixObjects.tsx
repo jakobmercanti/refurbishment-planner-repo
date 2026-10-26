@@ -9,13 +9,14 @@ import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { CFDReorderList } from "./CFDReorderList";
 import { CFDRowMenu } from "./CFDRowMenu";
 import { CFDEditorWindow } from "./CFDEditorWindow";
+import { CFDConfirmAction } from "./CFDConfirmAction";
 
 export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChange, onAdd, onPick, onEditVent, onEditSource, renderObject, canAdd, canPlace, checked }: {
   scenario: CFDScenario; objects: CFDObject[]; selected: string | null; onSelect: (id: string) => void; onChange: (scenario: CFDScenario) => void;
   onAdd: (role: "supply" | "extract", group: string) => void; onPick: () => void; onEditVent?: (id: string) => void;
   onEditSource: () => void; renderObject: (id: string) => ReactNode; canAdd: boolean; canPlace: boolean; checked: boolean;
 }) {
-  const groups = objectGroups(scenario), entries = objectEntries(scenario, objects);
+  const groups = objectGroups(scenario, objects), entries = objectEntries(scenario, objects);
   const [selectedGroup, setSelectedGroup] = useState(DEFAULT_OBJECT_GROUP);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [editing, setEditing] = useState<{ type: "object" | "group"; id: string } | null>(null);
@@ -36,13 +37,20 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
   return <div className="cfx-objects">
     <header className="cfx-inline-toolbar"><h3>Objects &amp; occupants</h3><button onClick={onEditSource}>Edit source building &amp; assets</button></header>
     <div className="cfx-inline-toolbar">
-      <button disabled={!canAdd} onClick={() => onAdd("supply", currentGroup.id)}>+ Supply</button>
-      <button disabled={!canAdd} onClick={() => onAdd("extract", currentGroup.id)}>+ Extract</button>
+      <button disabled={!canAdd} onClick={() => onAdd("supply", currentGroup?.id ?? DEFAULT_OBJECT_GROUP)}>+ Supply</button>
+      <button disabled={!canAdd} onClick={() => onAdd("extract", currentGroup?.id ?? DEFAULT_OBJECT_GROUP)}>+ Extract</button>
       <button disabled={!canPlace} title={!canPlace ? "Choose a seed room in Domain and resolve preparation checks to obtain validated host faces" : undefined} onClick={onPick}>Place on face…</button>
       <button disabled={groups.length >= 100} onClick={() => {
         const group = { id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name)), memberIds: [] };
         onChange({ ...scenario, objectGroups: [...groups, group] }); setSelectedGroup(group.id);
       }}>Add object group</button>
+      <CFDConfirmAction title="Clear all CFD objects?" disabled={!entries.length && !scenario.objectGroups?.length && !scenario.assetOverrides.length && !scenario.objectCopies?.length}
+        description="Remove every vent, CFD copy and object treatment from this simulation. Source furniture and measured room geometry are kept, but excluded from this simulation. Undo can restore the previous setup."
+        onConfirm={() => {
+          const originals = objects.filter(o => !scenario.objectCopies?.some(copy => copy.id === o.id)).map(o => o.id);
+          onChange({ ...scenario, vents: [], assetOverrides: [], objectCopies: [], objectGroups: [], hiddenObjectIds: [...new Set([...scenario.hiddenObjectIds ?? [], ...originals])] });
+          setEditing(null); setSelectedGroup(DEFAULT_OBJECT_GROUP); setCollapsed(new Set());
+        }} />
     </div>
     {!canPlace && canAdd && <p className="cfx-caption" role="status">Supply / Extract can be added as drafts now. Face placement needs a seed room in Domain and validated host geometry; assign a host in Edit before running.</p>}
     {error && <p className="cfx-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></p>}

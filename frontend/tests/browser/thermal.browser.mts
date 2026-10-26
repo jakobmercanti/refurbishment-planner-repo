@@ -525,7 +525,7 @@ test("modern thermal window uses actual configured design tokens, can drag/resiz
     () => s.page.locator("body").getAttribute("data-ui-style"),
     (style) => style === "modern",
   );
-  const window = s.page.locator(".cfx-setup-window"),
+  const window = s.page.locator(".cfx-thermal-import"),
     before = await window.boundingBox(),
     header = await window.locator(".floating-toolbar-titlebar").boundingBox();
   await s.page.mouse.move(header.x + 120, header.y + header.height / 2);
@@ -905,11 +905,23 @@ test("audit: a delayed EPW import preserves newer edits on other steps", async (
   assert.equal(await bearing.inputValue(), "70");
 });
 
+test("independent thermal window has one navigation mode and an onscreen footer at every viewport",async t=>{
+  const s=await harness.session(thermalProject());t.after(()=>s.close());const ui=await open(s);
+  for(const [width,height] of [[1440,1000],[390,844]]){
+    await s.page.setViewportSize({width,height});
+    const diagnostic=()=>s.page.locator('.cfx-thermal-import').evaluate(panel=>[panel,...panel.querySelectorAll('.floating-toolbar-content,.thermal-host,.thermal-content,.thermal-heading,.thermal-step-select,.thermal-steps,.thermal-scroll,.thermal-footer')].map(node=>{const s=getComputedStyle(node),b=node.getBoundingClientRect();return {name:node.className,display:s.display,flex:s.flex,overflow:s.overflow,minHeight:s.minHeight,height:b.height,y:b.y,width:b.width};}));
+    await eventually(async()=>{
+      const selector=await ui.getByRole('combobox',{name:'Thermal step',exact:true}).isVisible(),nav=await ui.getByRole('navigation',{name:'Thermal setup steps',exact:true}).isVisible();
+      const footer=await ui.locator('.thermal-footer').boundingBox();return {oneNavigation:selector!==nav,footerBottom:footer.y+footer.height,diagnostic:await diagnostic()};
+    },state=>state.oneNavigation&&state.footerBottom<=height+1,`Thermal controls must fit ${width}px`);
+  }
+});
+
 test("audit: a narrow manually resized desktop window keeps all steps and actions usable", async (t) => {
   const s = await harness.session(thermalProject());
   t.after(() => s.close());
   const ui = await open(s);
-  const window = s.page.locator(".cfx-setup-window");
+  const window = s.page.locator(".cfx-thermal-import");
   const bounds = await window.boundingBox();
   const edge = await window
     .locator(".floating-toolbar-resize-right")

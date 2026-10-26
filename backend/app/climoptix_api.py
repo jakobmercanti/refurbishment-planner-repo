@@ -57,6 +57,17 @@ def prepare(request: PreparationRequest) -> dict[str, Any]:
         ) from None
 
 
+@router.post("/default-setup", response_model=Scenario)
+def reset_defaults(request: PreparationRequest) -> Scenario:
+    from backend.app.climoptix_defaults import default_setup
+
+    try:
+        _validate_project(request.project, UUID(request.project["projectId"]))
+        return default_setup(request.project, request.scenario, request.clientRevision)
+    except (KeyError, TypeError, ValueError, GEOSException) as error:
+        raise HTTPException(422, f"Cannot create default setup: {str(error)[:1500]}") from None
+
+
 @router.post("/thermal-envelope", response_model=ThermalPackage)
 def thermal_envelope(request: PreparationRequest) -> ThermalPackage:
     return _thermal(request, calculate=False)

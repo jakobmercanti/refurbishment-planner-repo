@@ -67,7 +67,25 @@ def validate_submission(request: Submission) -> dict[str, Any]:
         or p.numerics.coupling != "SIMPLE"
         or p.numerics.monitor != "flowBalance"
     ):
-        raise ValueError("This worker supports steady isothermal SIMPLE ventilation only.")
+        conflicts = []
+        if p.mode != "steady":
+            conflicts.append(f"simulation type is {p.mode}, not steady")
+        if p.energy:
+            conflicts.append("energy/temperature equation is enabled")
+        if p.co2:
+            conflicts.append("CO2 transport is enabled")
+        if p.boussinesq:
+            conflicts.append("Boussinesq buoyancy is enabled")
+        if p.preset not in ("isothermal", "custom"):
+            conflicts.append(f"physics preset is {p.preset}")
+        if p.numerics.coupling != "SIMPLE":
+            conflicts.append(f"coupling is {p.numerics.coupling}, not SIMPLE")
+        if p.numerics.monitor != "flowBalance":
+            conflicts.append(f"convergence monitor is {p.numerics.monitor}, not flowBalance")
+        raise ValueError("This worker supports steady isothermal SIMPLE ventilation only. "
+                         "Conflicting settings: " + "; ".join(conflicts) +
+                         ". Open Physics to review these equations and Solver > Run for steady/SIMPLE settings. "
+                         "Keep thermal studies for export or use a thermal-capable worker; no settings were changed automatically.")
     if request.thermalApplication or s.thermalSnapshots:
         raise ValueError("Applied thermal conditions are not supported by this solver adapter.")
     if s.mesh.layers.enabled or s.mesh.alignmentDeg != 0:

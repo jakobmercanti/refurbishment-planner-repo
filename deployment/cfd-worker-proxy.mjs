@@ -3,7 +3,7 @@ export async function cfdWorkerProxy(request, endpoint, workerOrigin) {
   const url = new URL(request.url);
   const id = '[a-f0-9-]{36}';
   const allowed = request.method === 'GET'
-    ? new RegExp(`^/climoptix/worker/(capabilities|jobs(?:/${id}(?:/(?:logs|result|artifacts/(?:native-case|slice-\\d+)))?)?)$`).test(endpoint)
+    ? new RegExp(`^/climoptix/worker/(capabilities|jobs(?:/${id}(?:/(?:logs|result|artifacts/(?:native-case|postprocessing|slice-\\d+)))?)?)$`).test(endpoint)
     : request.method === 'POST' && new RegExp(`^/climoptix/worker/jobs(?:/${id}/cancel)?$`).test(endpoint);
   if (!allowed) return new Response('Forbidden', {status: 403});
   const authorization = request.headers.get('Authorization') || '';
@@ -27,7 +27,7 @@ export async function cfdWorkerProxy(request, endpoint, workerOrigin) {
     }
     const result = await fetch(new URL(endpoint + url.search, upstream), {method: request.method,
       headers: {'Content-Type': 'application/json', Authorization: authorization}, body,
-      redirect: 'manual', signal: AbortSignal.timeout(25000)});
+      redirect: 'manual', signal: AbortSignal.timeout(endpoint.includes('/artifacts/') ? 120000 : 25000)});
     if (result.status >= 300 && result.status < 400) throw new Error('Unexpected worker redirect');
     const headers = new Headers({'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'});
     for (const key of ['Content-Type', 'Content-Disposition', 'Content-Length']) if (result.headers.has(key)) headers.set(key, result.headers.get(key));

@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { DEFAULT_FLOATING_WINDOW_WIDTH, FLOATING_WINDOW_MARGIN, MIN_FLOATING_WINDOW_HEIGHT, edgeDockTarget, floatingDockLayout, maximizedFloatingWindow, resizeFloatingWindow, visibleFloatingWorkspace, type FloatingWindowBox, type FloatingWindowResizeEdge, type WindowDockSide } from "@/lib/floatingWindowGeometry";
 import { useWindowDocking } from "@/lib/windowDocking";
@@ -59,6 +59,15 @@ interface FloatingToolbarProps {
 }
 
 let floatingPanelStack: HTMLElement[] = [];
+let minimizedIds: string[] = [];
+const minimizedListeners = new Set<() => void>();
+function setWindowMinimized(id: string, minimized: boolean) {
+  minimizedIds = minimizedIds.filter(value => value !== id);
+  if (minimized) minimizedIds.push(id);
+  minimizedListeners.forEach(listener => listener());
+}
+const subscribeMinimized = (listener: () => void) => { minimizedListeners.add(listener); return () => { minimizedListeners.delete(listener); }; };
+const minimizedSnapshot = () => minimizedIds.join(",");
 
 function reindexFloatingPanels() {
   floatingPanelStack = floatingPanelStack.filter((panel) => panel.isConnected);
@@ -142,7 +151,7 @@ export function FloatingToolbar(props: FloatingToolbarProps) {
   return <FloatingToolbarWindow key={props.layoutResetKey ?? 0} {...props} />;
 }
 
-function WindowDockActions({ title, docking, maximized, onMaximize, onDock, onFloat }: { title: string; docking: ReturnType<typeof useWindowDocking>; maximized: boolean; onMaximize: () => void; onDock: (side: WindowDockSide) => void; onFloat: () => void }) {
+function WindowDockActions({ title, docking, maximized, onMaximize, onMinimize, onDock, onFloat }: { title: string; docking: ReturnType<typeof useWindowDocking>; maximized: boolean; onMaximize: () => void; onMinimize: () => void; onDock: (side: WindowDockSide) => void; onFloat: () => void }) {
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
@@ -162,7 +171,7 @@ function WindowDockActions({ title, docking, maximized, onMaximize, onDock, onFl
     <button ref={button} type="button" className="floating-toolbar-dock" aria-label={`Window layout for ${title}`} aria-haspopup="menu" aria-expanded={!!anchor} title="Window layout · drag to either side to attach" onClick={() => {
       if (anchor) { setAnchor(null); return; }
       const rect = button.current?.getBoundingClientRect();
-      if (rect) setAnchor({ left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 224)) });
+      if (rect) setAnchor({ left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 280)) });
     }}><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2" /><path d="M8 3v14" /></svg></button>
     {anchor && createPortal(<div ref={menu} className="window-dock-menu" role="menu" aria-label={`${title} window layout`} style={anchor} onKeyDown={event => {
       const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
@@ -177,12 +186,19 @@ function WindowDockActions({ title, docking, maximized, onMaximize, onDock, onFl
       <button type="button" role="menuitem" onClick={() => { onMaximize(); setAnchor(null); button.current?.focus(); }}>{maximized ? "Restore window" : "Maximise window"}</button>
       {(["LEFT", "RIGHT"] as const).map(side => <button key={side} type="button" role="menuitem" disabled={!docking.enabled || docking.side === side} onClick={() => { onDock(side); setAnchor(null); button.current?.focus(); }}>Dock {side.toLowerCase()}</button>)}
       <button type="button" role="menuitem" disabled={!docking.side} onClick={() => { onFloat(); setAnchor(null); button.current?.focus(); }}>Float window</button>
+      <button type="button" role="menuitem" onClick={() => { setAnchor(null); onMinimize(); }}>Minimise window</button>
       {!docking.enabled && <small>More screen space is needed to dock.</small>}
     </div>, document.body)}
   </>;
 }
 
 function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = title, helpSteps, children, footer, dialog = false, hidden = false, className = "", compact = false, initialSize, defaultPosition, maxHeight = 560, dock, bringToFront = false, focusRequest, onClose }: FloatingToolbarProps) {
+  const windowId = useId();
+  const [minimized, setMinimized] = useState(false);
+  const minimizedOrder = useSyncExternalStore(subscribeMinimized, minimizedSnapshot, () => "");
+  const minimize = () => { setWindowMinimized(windowId, true); setMinimized(true); };
+  const restoreMinimized = () => { setWindowMinimized(windowId, false); setMinimized(false); requestAnimationFrame(() => { focusPanel(); panelRef.current?.querySelector<HTMLElement>(".floating-toolbar-titlebar")?.focus(); }); };
+  useEffect(() => () => setWindowMinimized(windowId, false), [windowId]);
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);
   const edgeDock = useWindowDocking(panelRef);
@@ -191,6 +207,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
   const resizeRef = useRef<{ edge: FloatingWindowResizeEdge; pointerX: number; pointerY: number; left: number; top: number; width: number; height: number; parentWidth: number; parentHeight: number; minimumHeight: number; side?: WindowDockSide } | null>(null);
   const previousBringToFront = useRef(bringToFront);
   const backgroundOnMount = useRef(Boolean(dock) && !bringToFront);
+  const foregroundOnMount = useRef(bringToFront);
   const [position, setPosition] = useState(defaultPosition);
   const [size, setSize] = useState<{ width: number; height: number | null }>(() => ({ width: initialSize?.width ?? DEFAULT_FLOATING_WINDOW_WIDTH, height: initialSize?.height ?? null }));
   const [minimumHeight, setMinimumHeight] = useState(compact ? 0 : MIN_FLOATING_WINDOW_HEIGHT);
@@ -211,7 +228,10 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
     // change remounts the canvas. A click can still raise any window normally.
     if (backgroundOnMount.current) registerBackgroundPanel(panel);
     else bringFloatingPanelToFront(panel);
-    return () => removeFloatingPanel(panel);
+    // A portalled editor mounts before its React parent's focus-request effect.
+    // Finish raising an explicitly opened editor after that parent has settled.
+    const frame = foregroundOnMount.current ? requestAnimationFrame(() => bringFloatingPanelToFront(panel)) : null;
+    return () => { if(frame!==null)cancelAnimationFrame(frame); removeFloatingPanel(panel); };
   }, []);
 
   useLayoutEffect(() => {
@@ -281,7 +301,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
       setMaximizeBounds(current => current && Object.keys(full).every(key => current[key as keyof FloatingWindowBox] === full[key as keyof FloatingWindowBox]) ? current : full);
       // Automatic reflow is a presentation constraint, not a destructive rewrite
       // of the preferred floating position or dimensions. Removing a rail restores them.
-      if (edgeDock.hasRails || maximized || workspacePanel.hasAttribute("data-window-focus-blocked")) return;
+      if (!workspacePanel.getClientRects().length || edgeDock.hasRails || maximized || workspacePanel.hasAttribute("data-window-focus-blocked")) return;
       setPosition((current) => {
         const x = Math.max(visible.left + 8, Math.min(visible.right - Math.min(panelBounds.width, visible.right - visible.left - 16) - 8, current.x));
         const y = Math.max(visible.top + 8, Math.min(visible.bottom - MIN_FLOATING_WINDOW_HEIGHT - 8, current.y));
@@ -383,7 +403,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
     dragRef.current = { pointerX: event.clientX, pointerY: event.clientY, left: panelBounds.left - parentBounds.left, top: panelBounds.top - parentBounds.top, width: panelBounds.width, height: panelBounds.height, moved: false, attached: edgeDock.box ? edgeDock.side : undefined, attachedWidth: panelBounds.width, grabFraction: (event.clientX - panelBounds.left) / panelBounds.width, candidate: null, restore: position, legacyDocked: isDocked };
     focusPanel();
     event.currentTarget.focus();
-    panel.dataset.windowDragging = "true";
+    panel.setAttribute("data-window-dragging", "true");
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
   }
@@ -437,7 +457,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
   function endDrag(event: ReactPointerEvent<HTMLElement>) {
     const drag = dragRef.current;
     dragRef.current = null;
-    if (panelRef.current) delete panelRef.current.dataset.windowDragging;
+    panelRef.current?.removeAttribute("data-window-dragging");
     if (drag?.moved && event.type === "pointerup" && drag.candidate) dockWindow(drag.candidate);
     else if (drag?.moved && event.type !== "pointerup") {
       setPosition(drag.restore);
@@ -541,13 +561,13 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
     ...(maximized && maximizeBounds ? { "--window-max-left": `${maximizeBounds.left}px`, "--window-max-top": `${maximizeBounds.top}px`, "--window-max-width": `${maximizeBounds.width}px`, "--window-max-height": `${maximizeBounds.height}px` } : {}),
     ...(edgeDock.box ? { "--edge-dock-left": `${edgeDock.box.left}px`, "--edge-dock-top": `${edgeDock.box.top}px`, "--edge-dock-width": `${edgeDock.box.width}px`, "--edge-dock-height": `${edgeDock.box.height}px` } : {}),
   } as CSSProperties;
-  return <><section ref={panelRef} hidden={hidden} role={dialog ? "dialog" : undefined} aria-label={dialog ? title : undefined} data-dock-workspace-hidden={edgeDock.inactive || undefined} data-edge-docked={edgeDock.box ? edgeDock.side : undefined} data-dock-capable={edgeDock.enabled || undefined} data-window-reflow={edgeDock.hasRails && !edgeDock.box && freeWorkspace ? true : undefined} data-window-maximized={maximized || undefined} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onFocusCapture={focusPanel} onPointerDown={event => { event.stopPropagation(); focusPanel(); }}>
+  return <><section ref={panelRef} hidden={hidden || minimized} role={dialog ? "dialog" : undefined} aria-label={dialog ? title : undefined} data-dock-workspace-hidden={edgeDock.inactive || undefined} data-edge-docked={edgeDock.box ? edgeDock.side : undefined} data-dock-capable={edgeDock.enabled || undefined} data-window-reflow={edgeDock.hasRails && !edgeDock.box && freeWorkspace ? true : undefined} data-window-maximized={maximized || undefined} className={`floating-toolbar ${compact ? "floating-toolbar-compact" : ""} ${className}`.trim()} style={style} onFocusCapture={event=>{if(event.currentTarget.contains(event.target as Node))focusPanel();}} onPointerDown={event => { if(!event.currentTarget.contains(event.target as Node))return; event.stopPropagation(); focusPanel(); }}>
     <header className="floating-toolbar-titlebar" tabIndex={0} aria-label={`Move ${title}`} title={`${heightMaximized || maximized ? "Double-click to restore" : "Double-click to maximise height"} · Drag to move ${title} or attach to either side`} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag} onDoubleClick={toggleHeightMaximized} onKeyDown={event => {
       if (event.key !== "Escape" || !dragRef.current) return;
       event.preventDefault(); event.stopPropagation();
       const drag = dragRef.current;
       dragRef.current = null;
-      if (panelRef.current) delete panelRef.current.dataset.windowDragging;
+      panelRef.current?.removeAttribute("data-window-dragging");
       setPosition(drag.restore); setIsDocked(drag.legacyDocked);
       if (drag.attached) edgeDock.attach(drag.attached, drag.attachedWidth);
       edgeDock.showPreview(null, size.width);
@@ -556,10 +576,10 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
       <span className="floating-toolbar-icon"><WindowIcon title={title} /></span>
       <strong>{title}</strong>
       {headerContent && <div className="floating-toolbar-header-content">{headerContent}</div>}
-      <div className="window-header-actions"><WindowDockActions title={title} docking={edgeDock} maximized={maximized} onMaximize={toggleMaximized} onDock={dockWindow} onFloat={floatWindow} />{help && <WindowHelpButton title={helpTitle} steps={helpSteps} />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
+      <div className="window-header-actions"><button type="button" className="floating-toolbar-minimize" aria-label={`Minimise ${title}`} title="Minimise window" onClick={minimize}>−</button><WindowDockActions title={title} docking={edgeDock} maximized={maximized} onMaximize={toggleMaximized} onMinimize={minimize} onDock={dockWindow} onFloat={floatWindow} />{help && <WindowHelpButton title={helpTitle} steps={helpSteps} />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
     </header>
     <div className="floating-toolbar-content" hidden={compact}>{children}</div>
     {footer}
     {(["TOP", "LEFT", "RIGHT", "BOTTOM"] as const).map((edge) => <button key={edge} type="button" tabIndex={-1} className={`floating-toolbar-resize floating-toolbar-resize-${edge.toLowerCase()}`} aria-label={`Resize ${title} from the ${edge.toLowerCase()} edge`} onPointerDown={(event) => beginResize(edge, event)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} />)}
-  </section>{edgeDock.preview && createPortal(<div className="window-dock-preview" aria-hidden="true" data-dock-side={edgeDock.preview.side} style={{ left: edgeDock.preview.box.left, top: edgeDock.preview.box.top, width: edgeDock.preview.box.width, height: edgeDock.preview.box.height }}><span>Attach {title} · {edgeDock.preview.side.toLowerCase()}</span></div>, document.body)}</>;
+  </section>{minimized && !hidden && !edgeDock.inactive && createPortal(<button className="floating-window-task" aria-label={`Restore ${title}`} style={{bottom:12 + Math.max(0,minimizedOrder.split(",").indexOf(windowId))*42}} onClick={restoreMinimized}>▣ {title}</button>,document.body)}{edgeDock.preview && createPortal(<div className="window-dock-preview" aria-hidden="true" data-dock-side={edgeDock.preview.side} style={{ left: edgeDock.preview.box.left, top: edgeDock.preview.box.top, width: edgeDock.preview.box.width, height: edgeDock.preview.box.height }}><span>Attach {title} · {edgeDock.preview.side.toLowerCase()}</span></div>, document.body)}</>;
 }

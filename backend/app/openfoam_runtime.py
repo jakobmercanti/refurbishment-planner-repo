@@ -27,6 +27,28 @@ class JobCancelled(RuntimeError):
     pass
 
 
+def postprocessing_artifact(root: Path, paths: list[Path], deadline: float, cancelled: Callable[[], bool],
+                            progress: Callable[[int], None] = lambda _count: None) -> dict:
+    """Retain the actual native probes, fluxes and slices in a separate bounded ZIP."""
+    target = root / "postprocessing.zip"
+    with ZipFile(target, "w", ZIP_DEFLATED) as archive:
+        for index, path in enumerate(paths):
+            if cancelled():
+                raise JobCancelled("Cancelled during post-processing packaging.")
+            if time.monotonic() > deadline:
+                raise TimeoutError("Job time limit reached during post-processing packaging.")
+            if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()) or not path.is_file():
+                raise ValueError("Unsafe post-processing file.")
+            archive.write(path, path.relative_to(root).as_posix())
+            progress(index + 1)
+            if target.stat().st_size > MAX_ARTIFACT:
+                raise ValueError("Post-processing archive exceeds its 128 MB bound.")
+    if target.stat().st_size > MAX_ARTIFACT:
+        raise ValueError("Post-processing archive exceeds its 128 MB bound.")
+    return {"id": "postprocessing", "path": target.name, "kind": "zip", "size": target.stat().st_size,
+            "sha256": hashlib.sha256(target.read_bytes()).hexdigest()}
+
+
 def child_limits() -> None:
     """Called in a small exec helper, not preexec_fn in a threaded Python server."""
     import resource
@@ -198,10 +220,14 @@ def execute(
                     pass
                 process.wait()
 
-    command(["blockMesh"], "Meshing")
-    command(["surfaceFeatureExtract"], "Meshing")
-    command(["snappyHexMesh", "-overwrite"], "Meshing")
+    from backend.app.openfoam_progress import write_phase_progress
+    for completed, args in enumerate((["blockMesh"], ["surfaceFeatureExtract"], ["snappyHexMesh", "-overwrite"])):
+        write_phase_progress(root, "Meshing", completed, 3)
+        command(args, "Meshing")
+        write_phase_progress(root, "Meshing", completed + 1, 3)
+    write_phase_progress(root, "MeshCheck", 0, 1)
     command(["checkMesh", "-allGeometry", "-allTopology"], "MeshCheck")
+    write_phase_progress(root, "MeshCheck", 1, 1)
     metrics = mesh_metrics(
         log.read_text(errors="replace"),
         (root / "constant/polyMesh/boundary").read_text(),
@@ -233,6 +259,7 @@ def execute(
         manifest["conservation"] = flow_balance(root, flow_names, request.scenario.physics.numerics.balanceTolerance,
                                               expected_iteration=final_iteration)
     update("Postprocess", "Packaging provenance-bound native fields and ASCII slices")
+    write_phase_progress(root, "Postprocess", 0, 1)
     manifest["accepted"] = request.operation == "mesh" or (
         manifest["convergence"]["converged"] and manifest["conservation"]["passed"]
     )
@@ -257,6 +284,7 @@ def execute(
             artifacts.append(
                 {
                     "id": f"slice-{len(artifacts)}",
+                    "name": path.name,
                     "path": str(path.relative_to(root)),
                     "size": path.stat().st_size,
                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -266,10 +294,20 @@ def execute(
             )
     (root / "result.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     archive_path = root / "native-case.zip"
+    paths = sorted(path for path in root.rglob("*") if path.is_file() and path.name not in
+                   {"native-case.zip", "postprocessing.zip", "phase-progress.json", "phase-progress.tmp"}
+                   and not any(part.startswith("processor") for part in path.parts))
+    post_paths = sorted(path for path in (root / "postProcessing").rglob("*") if path.is_file()) if request.operation == "run" else []
+    total_steps = len(paths) + len(post_paths) + 2  # file writes plus archive integrity hashes
     with ZipFile(archive_path, "w", ZIP_DEFLATED) as archive:
-        for path in sorted(root.rglob("*")):
+        for index, path in enumerate(paths):
             if path.is_file() and path != archive_path and not any(part.startswith("processor") for part in path.parts):
+                if cancelled():
+                    raise JobCancelled("Cancelled during native artifact packaging.")
+                if time.monotonic() > deadline:
+                    raise TimeoutError("Job time limit reached during native packaging.")
                 archive.write(path, path.relative_to(root).as_posix())
+                write_phase_progress(root, "Postprocess", index + 1, total_steps)
                 if archive_path.stat().st_size > MAX_ARTIFACT:
                     raise ValueError("Native case archive exceeds its 128 MB bound.")
     if archive_path.stat().st_size > MAX_ARTIFACT:
@@ -287,8 +325,14 @@ def execute(
             "kind": "zip",
         }
     )
+    if request.operation == "run":
+        artifacts.append(postprocessing_artifact(root, post_paths, deadline, cancelled,
+                         lambda count: write_phase_progress(root, "Postprocess", len(paths) + count + 1, total_steps)))
+    if sum(p.stat().st_size for p in root.rglob("*") if p.is_file()) > max_bytes:
+        raise ValueError("Job storage limit reached while packaging post-processing.")
     manifest["artifacts"] = artifacts
     (root / "result.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    write_phase_progress(root, "Postprocess", total_steps, total_steps)
     return manifest
 
 

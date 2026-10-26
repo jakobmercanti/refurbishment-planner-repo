@@ -101,19 +101,7 @@ export function PhysicsPanel({
           {(p.dynamicViscosityPaS / p.densityKgM3).toExponential(3)} m²/s.
         </p>
       </details>
-      <details>
-        <summary>Requested outputs &amp; monitoring points</summary>
-        <Parameters
-          value={scenario.outputs}
-          onChange={(v) =>
-            onChange({ ...scenario, outputs: v as typeof scenario.outputs })
-          }
-        />
-        <p className="cfx-caption">
-          Age of air and comfort are requested future fields, not computed
-          metrics.
-        </p>
-      </details>
+      <p className="cfx-caption">Configure requested outputs and probe positions in Solver → Post.</p>
     </section>
   );
 }

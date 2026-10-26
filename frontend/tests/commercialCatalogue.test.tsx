@@ -25,8 +25,7 @@ test("all account Plans entry points use the standalone page and retain a select
   assert.match(redirected, /rel="noopener noreferrer"/);
   assert.doesNotMatch(redirected, /Opening plans and billing/);
   const embedded = renderToStaticMarkup(createElement(AccountDialog, { initialSection: "plans", onClose: () => undefined }));
-  assert.match(embedded, /id="plans-section-tab" href="[^\"]*\/plans\/"/);
-  assert.match(embedded, /id="plans-section-tab"[^>]+target="_blank"/);
+  assert.match(embedded, /action="[^\"]*\/plans\/" method="get" target="_blank"/);
   assert.ok(embedded.includes('data-plans-redirect="true"'));
   const standalone = renderToStaticMarkup(createElement(AccountExperience));
   assert.match(standalone, /id="plans-section-tab" href="[^\"]*\/plans\/"/);

@@ -71,9 +71,15 @@ test("row Mesh/Run actions submit the correct study independently and block arch
   archived.archived = true;
   project.cfdScenarios!.push(second, archived);
   const { page } = await fixture(t, project);
-  assert.equal(await page.getByRole("progressbar").count(), 0);
+  assert.equal(await page.getByRole("progressbar").count(), 2);
+  for (const name of [first.name, second.name]) {
+    const progress=page.getByRole("progressbar",{name:`${name} phase progress`,exact:true});
+    assert.equal(await progress.getAttribute("aria-valuenow"),"0");
+    assert.match(await progress.innerText(),/Not submitted · 0%/);
+  }
   await page.getByRole("button", { name: "Mesh Office airflow", exact: true }).click();
   assert.ok(await page.getByRole("button", { name: "Clear all", exact: true }).isDisabled(), "Clear all must not remove active worker submissions");
+  assert.ok(await page.getByRole("button", { name: "Restore default", exact: true }).isDisabled(), "Defaults must not replace a simulation with an active worker submission");
   await page.getByRole("button", { name: "Run Alternative", exact: true }).click();
   const requests = await eventually(
     () => page.evaluate(() => window.cfdFixture.transport.submissions),
@@ -90,6 +96,7 @@ test("row Mesh/Run actions submit the correct study independently and block arch
     assert.equal(await page.getByRole("progressbar", { name: `${name} phase progress`, exact: true }).getAttribute("aria-valuenow"), null);
   }
   await page.getByRole("checkbox", { name: "Archived", exact: true }).check();
+  assert.equal(await page.getByRole("progressbar",{name:`${archived.name} phase progress`,exact:true}).getAttribute("aria-valuenow"),"0");
   for (const action of ["Mesh", "Run"])
     assert.ok(await page.getByRole("button", { name: `${action} ${archived.name}`, exact: true }).isDisabled());
   await page.evaluate(() => {

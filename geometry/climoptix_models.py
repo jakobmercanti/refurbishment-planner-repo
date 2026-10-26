@@ -122,6 +122,7 @@ class ObjectCopy(Contract):
 
 
 class Boundaries(Contract):
+    hideDefaultGroup: bool = Field(default=False, exclude=True)
     groups: dict[PatchKind, Boundary] = Field(default_factory=dict, max_length=11)
     patches: dict[PatchId, Boundary] = Field(default_factory=dict, max_length=10000)
     collections: list[BoundaryCollection] = Field(default_factory=list, max_length=100)
@@ -306,8 +307,8 @@ class MeshRecipe(Contract):
     maxCellMm: CellLength = 400
     originMm: Vector = (0, 0, 0)
     alignmentDeg: float = Field(default=0, ge=-360, le=360)
-    targetCells: int = Field(default=500000, ge=1, le=1000000000)
-    maxCells: int = Field(default=2000000, ge=1, le=1000000000)
+    targetCells: int = Field(default=100000, ge=1, le=1000000000)
+    maxCells: int = Field(default=500000, ge=1, le=1000000000)
     geometryToleranceMm: float = Field(default=0.01, gt=0, le=1)
     smallFeatureMm: Positive = 5
     snapToleranceMm: Positive = 2
@@ -339,11 +340,11 @@ class MeshRecipe(Contract):
 
 
 class Resources(Contract):
-    cpu: int = Field(default=4, ge=1, le=1024)
-    memoryGb: Positive = 8
-    wallTimeMinutes: int = Field(default=60, ge=1, le=43200)
-    storageGb: Positive = 10
-    retentionDays: int = Field(default=30, ge=1, le=3650)
+    cpu: int = Field(default=1, ge=1, le=1024)
+    memoryGb: Positive = 4
+    wallTimeMinutes: int = Field(default=15, ge=1, le=43200)
+    storageGb: Positive = 1
+    retentionDays: int = Field(default=3, ge=1, le=3650)
     queue: str = Field(default="unassigned", max_length=100)
 
 

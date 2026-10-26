@@ -89,6 +89,15 @@ export function cfdProject(passage = true): ProjectDocument {
   return p;
 }
 /** The browser exercises the real deterministic provider, not a synthetic result fixture. */
+export function realDefaultSetup(request: { project: ProjectDocument; scenario: unknown; clientRevision: string }) {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const python = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+  const result = spawnSync(python, ["-X", "utf8", "-c",
+    "import json,sys; from geometry.climoptix_models import Scenario; from backend.app.climoptix_defaults import default_setup; d=json.load(sys.stdin); print(default_setup(d['project'],Scenario.model_validate(d['scenario']),d['clientRevision']).model_dump_json())"],
+    { cwd: root, input: JSON.stringify(request), encoding: "utf8", timeout: 25000, maxBuffer: 12 * 1024 * 1024 });
+  if (result.status !== 0) throw new Error(result.stderr || result.error?.message || "Default preparation failed");
+  return JSON.parse(result.stdout);
+}
 export function realPreparation(request: {
   project: ProjectDocument;
   scenario: unknown;

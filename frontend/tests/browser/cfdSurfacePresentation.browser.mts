@@ -3,6 +3,11 @@ import test, { before, after } from "node:test";
 import { cfdProject, realPreparation } from "../climoptixFixtures";
 import { ventSchema } from "../../lib/climoptixDocument";
 import { refinementColour } from "../../lib/climoptixWorkflow";
+import { newHeatingProject } from "../../lib/heatingDocument";
+import { newHeatingRadiator, newUFHZone } from "../../lib/heatingDesign";
+import { elementFromRadiator } from "../../lib/heatingElements";
+import { snapRadiatorToWall } from "../../lib/heatingCalculations";
+import type { CFDBoundary } from "../../lib/climoptixDocument";
 import { cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
 
 let harness;
@@ -29,6 +34,53 @@ test("boundary conditions can be added through an explicit room and real surface
   await eventually(saved,p=>p.cfdScenarios[0].boundaries.collections.some(g=>g.id!=='all-surfaces'&&g.patchIds.length===1&&g.boundary));
 });
 const button = (scope, name) => scope.getByRole("button", { name, exact: true });
+
+test("independent heating import uses measured radiator and UFH sources without copying geometry or claiming a thermal solve",async t=>{
+  const project=cfdProject(false),room=project.rooms[0];
+  const heater=elementFromRadiator(snapRadiatorToWall(newHeatingRadiator(room),room,{x:2000,y:2000}));
+  heater.name="Source radiator";room.obstacles.push(heater);
+  project.heatingLayout={...newHeatingProject(),enabled:true,ufhZones:[newUFHZone(room,null)]};
+  const {page,ui,saved}=await open(t,project);
+  const before=structuredClone(await saved());
+  await cfdWindow(ui,'Boundaries');
+  await button(ui,'Import insulation & heating conditions').click();
+  const dialog=page.getByRole('dialog',{name:'Import insulation & heating conditions',exact:true});
+  await dialog.waitFor();
+  assert.equal(await dialog.evaluate(node=>node.parentElement?.classList.contains('cfx-workspace')),true);
+  assert.match(await dialog.innerText(),/current native worker cannot solve temperature or buoyancy/);
+  const radiator=dialog.getByRole('checkbox',{name:/Source radiator/}),floor=dialog.getByRole('checkbox',{name:/UFH floor/});
+  await radiator.check();await floor.check();
+  const temperatures=dialog.getByRole('spinbutton');
+  assert.equal(await temperatures.count(),2);
+  await temperatures.first().fill('320');await temperatures.first().press('Enter');
+  await button(dialog,'Apply selected heating conditions').click();
+  const result=await eventually(saved,p=>p.cfdScenarios[0].assetOverrides.some(a=>a.objectId===heater.id&&a.temperatureK===320));
+  const scenario=result.cfdScenarios[0];assert.equal(scenario.physics.energy,true);assert.equal(scenario.physics.boussinesq,true);
+  assert.equal(scenario.assetOverrides.find(a=>a.objectId===heater.id).heatW,0);
+  assert.ok(Object.values(scenario.boundaries.patches).some(patch=>(patch as CFDBoundary).materialLabel.includes('UFH')&&(patch as CFDBoundary).thermal.value===303.15));
+  assert.deepEqual(result.rooms,before.rooms);assert.deepEqual(result.heatingLayout,before.heatingLayout);
+  assert.equal(await dialog.isVisible(),false);
+});
+test("probe coordinates live in Post, select actual orange 3D markers, and window minimisation preserves layout",async t=>{
+  const project=cfdProject(false);project.cfdScenarios[0].outputs.probesMm=[[1600,1600,1100],[2100,1700,1200]];
+  const {page,ui,saved}=await open(t,project,1440,true);
+  const originalRooms=structuredClone((await saved()).rooms);
+  await ui.getByRole('tab',{name:'Post-processing',exact:true}).click();
+  const row=ui.getByRole('group',{name:'Probe 1',exact:true});await button(row,'Probe 1').click();
+  await eventually(()=>renderState(page,'probe:0'),state=>state?.colour==='#ff7900');
+  const marker=await renderState(page,'probe:0');assert.deepEqual(marker.position,[1.6,1.1,-1.6]);
+  await layout(page,'Dock left');
+  // Exercise actual pointer selection after the setup window is temporarily hidden.
+  await button(page,'Minimise Simulation setup').click();await button(ui,'Select probe 2 in 3D').click();await button(page,'Restore Simulation setup').click();
+  await eventually(()=>renderState(page,'probe:1'),state=>state?.colour==='#ff7900');
+  const setup=ui.locator('.cfx-setup-window'),before=await setup.boundingBox();
+  await button(page,'Minimise Simulation setup').click();assert.equal(await setup.isVisible(),false);
+  await button(page,'Restore Simulation setup').click();const after=await setup.boundingBox();
+  assert.ok(Math.abs(before.x-after.x)<2&&Math.abs(before.y-after.y)<2&&Math.abs(before.width-after.width)<2,JSON.stringify({before,after}));
+  assert.equal(await row.getByRole('spinbutton',{name:'Probe 1 X (mm)',exact:true}).inputValue(),'1600');
+  assert.deepEqual((await saved()).rooms,originalRooms);
+  await button(page,'Window layout for Simulation setup').click();await page.getByRole('menuitem',{name:'Minimise window',exact:true}).click();await button(page,'Restore Simulation setup').click();
+});
 const frame = page => page.locator(".cfx-setup-window");
 async function open(t, project = cfdProject(), width = 1440, inspect = false) {
   const session = await harness.session(project, { viewport: { width, height: 1000 } });
@@ -75,6 +127,18 @@ async function renderState(page, name) {
 }
 async function cameraState(page) {
   return page.evaluate(() => { const s = window.__cfdState(); return { position: s.camera.position.toArray(), quaternion: s.camera.quaternion.toArray(), target: s.controls.target.toArray() }; });
+}
+async function fittedCamera(page, before) {
+  // Bounds copies the new OrbitControls target when its demand-rendered fit
+  // finishes. A fixed sleep races slow software-rendered browser sweeps.
+  await eventually(() => cameraState(page), after => after.target.some((v, i) => Math.abs(v - before.target[i]) > 1e-6),
+    'The explicit view fit must finish before checking selection');
+  let previous = '', stable = 0;
+  return eventually(() => cameraState(page), after => {
+    const next = JSON.stringify(after);
+    stable = next === previous ? stable + 1 : 0; previous = next;
+    return stable >= 3;
+  }, 'The camera must settle after the explicit fit');
 }
 async function assertCameraUnchanged(page, before) {
   // Wait past Bounds' animation duration; a single-frame assertion misses fits.
@@ -144,8 +208,7 @@ test("real 3D selection only highlights orange without moving the camera; face p
   await eventually(() => renderState(page,"refinement:colour-five"), s => s?.colour === "#ff7900");
   await assertCameraUnchanged(page, beforePointerSelection);
   await button(ui.locator(".cfx-view-selector"), "Fit").click();
-  await page.waitForTimeout(400);
-  assert.notDeepEqual(await cameraState(page), beforePointerSelection, "Explicit Fit remains available");
+  assert.notDeepEqual(await fittedCamera(page, beforePointerSelection), beforePointerSelection, "Explicit Fit remains available");
   await capture(page, "refinement-selected");
   await cfdWindow(ui, "Equipment");
   const beforeVent = await cameraState(page);
@@ -153,10 +216,10 @@ test("real 3D selection only highlights orange without moving the camera; face p
   const vent = scenario.vents[1];
   await eventually(() => renderState(page, `vent:${vent.id}`), s => s?.colour === "#ff7900");
   await assertCameraUnchanged(page, beforeVent);
+  const beforeScopeChange = await cameraState(page);
   await ui.getByRole("combobox", { name: "CFD view scope", exact: true }).selectOption("room:room-1");
   await eventually(() => ui.locator(".cfx-viewport").getAttribute("data-scope"), v => v === "room:room-1");
-  await page.waitForTimeout(400);
-  const beforeScopedSelection = await cameraState(page);
+  const beforeScopedSelection = await fittedCamera(page, beforeScopeChange);
   await ui.locator(".cfx-device-name").filter({ hasText: "floor device" }).click();
   assert.equal(await ui.locator(".cfx-viewport").getAttribute("data-scope"), "room:room-1");
   await assertCameraUnchanged(page, beforeScopedSelection);
@@ -167,7 +230,7 @@ test("real 3D selection only highlights orange without moving the camera; face p
   assert.equal(await frame(page).isVisible(), false);
   await capture(page, "face-placement");
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  const candidate = await eventually(() => page.evaluate(hostIds => {
+  const findHost = hostIds => page.evaluate(hostIds => {
     const s = window.__cfdState(), box = s.gl.domElement.getBoundingClientRect();
     const ray = new s.raycaster.constructor(), pointer = s.pointer.clone();
     for (let y = box.top + 150; y < box.bottom - 100; y += 25) for (let x = box.left + 30; x < box.right - 30; x += 25) {
@@ -176,10 +239,48 @@ test("real 3D selection only highlights orange without moving the camera; face p
       const hit = ray.intersectObjects(s.scene.children, true).find(hit => hit.object.name && !hit.object.name.startsWith("vent:"));
       if (hit && hostIds.includes(hit.object.name)) return { x, y, hostId: hit.object.name };
     }
-  }, report.patches.filter(p => p.host).map(p => p.id)), Boolean);
+  }, hostIds);
+  const wallIds = report.patches.filter(p => p.host && p.kind === 'wall').map(p => p.id);
+  const candidate = await eventually(() => findHost(wallIds), Boolean);
   assert.ok(candidate, "An existing planar host must be reachable for an actual pointer placement");
   await page.mouse.click(candidate.x, candidate.y);
-  const stored = await eventually(saved, p => p.cfdScenarios[0].vents.find(v => v.id === vent.id)?.host.patchId === candidate.hostId);
+  const placement = page.getByRole('region',{name:'Vent placement editor',exact:true});
+  await eventually(() => placement.getByRole('combobox',{name:'Vent host face',exact:true}).inputValue(), value => value === candidate.hostId);
+  const second = await eventually(() => findHost(wallIds.filter(id => id !== candidate.hostId)), Boolean);
+  await page.mouse.click(second.x, second.y);
+  await eventually(() => placement.getByRole('combobox',{name:'Vent host face',exact:true}).inputValue(), value => value === second.hostId);
+  const host = report.patches.find(p => p.id === second.hostId).host;
+  const uInput=placement.getByRole('spinbutton',{name:'Host U (0–1)',exact:true});
+  const vInput=placement.getByRole('spinbutton',{name:'Host V (0–1)',exact:true});
+  await uInput.fill('.65'); await uInput.press('Enter'); await vInput.fill('.55'); await vInput.press('Enter');
+  // Face polygons/holes can clamp the requested UV. Drag the actual preview,
+  // not the unvalidated requested coordinate on a randomly reachable wall.
+  const u=Number(await uInput.inputValue()),v=Number(await vInput.inputValue());
+  const center=host.originMm.map((c,i)=>c+host.uAxis[i]*host.widthMm*u+host.vAxis[i]*host.heightMm*v);
+  await page.evaluate(({center,normal})=>{
+    const s=window.__cfdState(); s.controls.target.set(center[0]/1000,center[2]/1000,-center[1]/1000);
+    s.camera.position.set(center[0]/1000+normal[0]*3,center[2]/1000+normal[2]*3,-center[1]/1000-normal[1]*3);
+    s.controls.update(); s.invalidate();
+  },{center,normal:host.normal});
+  await page.waitForTimeout(250);
+  const hit = await page.evaluate(center=>{
+    const s=window.__cfdState(), box=s.gl.domElement.getBoundingClientRect();
+    const p=s.controls.target.clone().set(center[0]/1000,center[2]/1000,-center[1]/1000).project(s.camera);
+    return {x:box.x+(p.x+1)*box.width/2,y:box.y+(1-p.y)*box.height/2};
+  },center);
+  const beforeDrag=await placement.getByLabel('Live vent coordinates').innerText();
+  await page.mouse.move(hit.x,hit.y); await page.mouse.down(); await page.mouse.move(hit.x+60,hit.y+15,{steps:8});
+  await eventually(()=>placement.getByLabel('Live vent coordinates').innerText(),text=>text!==beforeDrag,'Dragging must update coordinates before pointer release');
+  await page.mouse.up();
+  assert.notEqual(await uInput.inputValue(),'.65');
+  const footer=ui.locator('.cfx-placement-actions');
+  assert.ok(await footer.isVisible());
+  const fb=await footer.boundingBox(), wb=await ui.locator('.cfx-placement-editor').boundingBox();
+  assert.ok(Math.abs(fb.y+fb.height-wb.y-wb.height)<3,'OK/Cancel stay pinned to the window bottom');
+  await capture(page,'placement-live-drag');
+  assert.deepEqual((await saved()).cfdScenarios[0].vents, scenario.vents, 'Placement is a draft until OK');
+  await button(ui.locator('.cfx-placement-editor'), 'OK').click();
+  const stored = await eventually(saved, p => p.cfdScenarios[0].vents.find(v => v.id === vent.id)?.host.patchId === second.hostId);
   await eventually(() => frame(page).isVisible(), Boolean);
   assert.equal(stored.cfdScenarios[0].vents.length, 3, "Repositioning must not create another vent");
   assert.deepEqual(stored.rooms, sourceRooms, "CFD placement never changes shared source geometry");
@@ -231,13 +332,11 @@ test("Run uses three/four columns, probes label XYZ in a single action row, plan
   await capture(page, "run-960");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await eventually(() => grid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), n => n === 4);
-  await cfdWindow(ui, "Physics");
-  await ui.locator("summary").filter({ hasText: "Requested outputs & monitoring points" }).click();
+  await cfdWindow(ui, "Solver");await ui.getByRole("tab", {name:"Post-processing",exact:true}).click();
   const row = ui.getByRole("group", { name: "Probe 1", exact: true });
   await row.scrollIntoViewIfNeeded();
   const y = [];
   for (const axis of ["X", "Y", "Z"]) y.push((await row.getByRole("spinbutton", { name: `Probe 1 ${axis} (mm)`, exact: true }).boundingBox()).y);
-  y.push((await button(row, "Remove probe 1").boundingBox()).y);
   assert.ok(Math.max(...y) - Math.min(...y) < 2, `Probe controls must share a row: ${y}`);
   await capture(page, "probes");
   await cfdWindow(ui, "Solver"); await ui.getByRole("tab", { name: "Post-processing", exact: true }).click();

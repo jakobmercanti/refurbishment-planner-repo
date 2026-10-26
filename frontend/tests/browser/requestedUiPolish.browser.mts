@@ -28,7 +28,7 @@ for (const width of [1440, 390]) test(`account and recovery actions follow the p
   await page.getByRole("heading", {name:"Sign in",exact:true}).waitFor();
   await button(page,"Sign in").waitFor();
   await eventually(() => page.locator("body").getAttribute("data-ui-style"), s => s === "modern");
-  const actions = page.locator(".account-form-actions");
+  const actions = page.locator(".account-utility-actions");
   const boxes = await rects(actions.locator("button"));
   assert.equal(boxes.length, 2); assert.ok(Math.abs(boxes[0].w-boxes[1].w)<1);
   assert.ok(Math.abs(boxes[0].y-boxes[1].y)<1); assert.ok(boxes[1].x-boxes[0].x-boxes[0].w>=6);
@@ -39,7 +39,7 @@ for (const width of [1440, 390]) test(`account and recovery actions follow the p
   const popupEvent = context.waitForEvent("page"); await plans.click(); const popup = await popupEvent;
   await popup.waitForURL(accounts.origin + "/planner/plans/"); await popup.close();
   assert.equal(new URL(page.url()).pathname, "/planner/account/");
-  const colours = await page.evaluate(() => ({actual:getComputedStyle(document.querySelector(".account-form-actions .commercial-primary")).backgroundColor, expected:getComputedStyle(document.documentElement).getPropertyValue("--ui-button-activeBackground").trim()}));
+  const colours = await page.evaluate(() => ({actual:getComputedStyle(document.querySelector('.account-auth-tabs button[aria-pressed="true"]')).backgroundColor, expected:getComputedStyle(document.documentElement).getPropertyValue("--ui-button-activeBackground").trim()}));
   assert.equal(colours.actual, "rgb(6, 23, 55)"); assert.equal(colours.expected, "#061737");
   await capture(page, `account-${width}`);
   await button(page, "Forgot your password?").click();

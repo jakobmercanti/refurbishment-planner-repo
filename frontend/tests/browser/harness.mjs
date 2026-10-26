@@ -82,6 +82,11 @@ export async function startBrowserHarness({ climoptixEnabled = false } = {}) {
         try { await route.fulfill({ contentType: "application/json", body: JSON.stringify(realPreparation(route.request().postDataJSON())) }); }
         catch (error) { await route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ detail: String(error) }) }); }
       });
+      await context.route("**/climoptix/default-setup", async route => {
+        const { realDefaultSetup } = await import("../climoptixFixtures.ts");
+        try { await route.fulfill({ json: realDefaultSetup(route.request().postDataJSON()) }); }
+        catch (error) { await route.fulfill({ status: 422, json: { detail: String(error) } }); }
+      });
       await context.route("**/climoptix/geometry", async route => {
         const { realScene } = await import("../climoptixFixtures.ts");
         try {
@@ -136,7 +141,9 @@ export async function cfdWindow(ui, name) {
   if (name === "View properties") {
     const control = page.locator(".cfx-view-selector").getByRole("button", { name, exact: true });
     if (await control.getAttribute("aria-expanded") !== "true") await control.click();
-    await page.locator(".cfx-view-window").getByLabel("Move View properties", { exact: true }).click({ position: { x: 220, y: 20 } });
+    // Focus the titlebar itself: a fixed x coordinate can hit Minimise on a
+    // narrow toolbar as header actions are added or scaled.
+    await page.locator(".cfx-view-window").getByLabel("Move View properties", { exact: true }).focus();
     return;
   }
   if (await page.locator(".cfx-setup-window[data-window-maximized]:visible").count()) {

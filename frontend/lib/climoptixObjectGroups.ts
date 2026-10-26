@@ -4,8 +4,9 @@ import { uniqueGroupName } from "./climoptixGroups";
 
 export const DEFAULT_OBJECT_GROUP = "objects-default";
 export type CFDObjectEntry = { id: string; name: string; detail: string; type: "vent" | "object"; sourceId: string };
-export function objectGroups(scenario: CFDScenario): CFDObjectCollection[] {
+export function objectGroups(scenario: CFDScenario, objects: CFDObject[] = []): CFDObjectCollection[] {
   const groups = scenario.objectGroups ?? [];
+  if (scenario.objectGroups && !groups.length && !objectEntries(scenario, objects).length) return [];
   return groups.some(g => g.id === DEFAULT_OBJECT_GROUP) ? groups : [
     { id: DEFAULT_OBJECT_GROUP, name: uniqueGroupName(groups.map(g => g.name), "General"), memberIds: [] }, ...groups,
   ];

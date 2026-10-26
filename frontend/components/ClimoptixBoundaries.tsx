@@ -1,6 +1,7 @@
 "use client";
 
 import { CFDReorderList } from "./CFDReorderList";
+import { CFDConfirmAction } from "./CFDConfirmAction";
 import { CFDRowMenu } from "./CFDRowMenu";
 import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { assignBoundarySurfaces, boundaryGroups, boundaryMembership, BOUNDARY_COLOURS, DEFAULT_BOUNDARY_GROUP, effectiveBoundary, moveBoundary, uniqueGroupName } from "@/lib/climoptixGroups";
@@ -15,9 +16,11 @@ import { CFDNumber, CFDText, Parameters, labelFor } from "./CFDFields";
 function BoundaryEditor({
   value,
   onChange,
+  solid = false,
 }: {
   value: CFDBoundary;
   onChange: (v: CFDBoundary) => void;
+  solid?: boolean;
 }) {
   const flowUnits: Record<string, string> = {
     velocity: "m/s",
@@ -54,7 +57,7 @@ function BoundaryEditor({
               "opening",
               "symmetry",
             ].map((t) => (
-              <option key={t} value={t}>
+              <option key={t} value={t} disabled={solid && !["noSlip", "slip", "symmetry"].includes(t)}>
                 {labelFor(t)}
               </option>
             ))}
@@ -111,6 +114,7 @@ function BoundaryEditor({
           />
         )}
       </div>
+      {solid && <p className="cfx-caption">Solid surfaces cannot be inlets or outlets. Add a Supply or Extract vent in Objects to let air pass through a wall.</p>}
       {value.thermal.type === "heatTransfer" && (
         <CFDNumber
           label="Ambient temperature (K)"
@@ -202,8 +206,16 @@ export function BoundariesPanel({
     <>
       <div className="cfx-inline-toolbar cfx-boundary-tools">{navigation}
         <button disabled={collections.length >= 100} onClick={() => newGroup()}>Add boundary group</button>
+        <CFDConfirmAction title="Clear all boundary customizations?"
+          description="Remove boundary groups, type defaults and surface overrides. Existing building surfaces and vents are kept. Solid surfaces return to no-slip, adiabatic defaults. Undo can restore the previous conditions."
+          disabled={!collections.length && !Object.keys(scenario.boundaries.groups).length && !Object.keys(scenario.boundaries.patches).length}
+          onConfirm={() => { onChange({ ...scenario, boundaries: { groups: {}, collections: [], patches: {}, hideDefaultGroup: true } }); onSelectGroup(DEFAULT_BOUNDARY_GROUP); setCollapsed(new Set()); setEditing(null); setAssignment(null); setActionGroupId(null); }} />
         <input type="search" aria-label="Find a CFD patch" value={search} maxLength={500} onChange={e => setSearch(e.target.value)} placeholder="Find surface · room, surface or source" />
       </div>
+      {scenario.boundaries.hideDefaultGroup && <details className="cfx-ungrouped-surfaces"><summary>Ungrouped building surfaces · {rows.filter(p => !patchOwners.has(p.id)).length}</summary>
+        <p className="cfx-caption">All boundary groups were removed. Physical surfaces remain; their default conditions still apply. Add a boundary group to assign them.</p>
+        {rows.filter(p => !patchOwners.has(p.id)).map(p => <button key={p.id} aria-label={`Edit surface ${p.id}`} onClick={() => { onSelect(p.id); setEditing("surface"); }}>{p.label ?? labelFor(p.kind)} · {roomNames.get(p.roomId) ?? p.roomId}</button>)}
+      </details>}
       {!scenario.seed && <label>Choose the room whose connected surfaces you want to configure
         <select aria-label="Boundary seed room" value="" onChange={event => {
           const [floorId, roomId] = JSON.parse(event.target.value) as [string, string];
@@ -217,14 +229,14 @@ export function BoundariesPanel({
         {(collection, index) => {
           const allMembers = membership.get(collection.id) ?? [];
           const members = allMembers.filter(p => matchingIds.has(p.id));
-          return <section className={`cfx-boundary-group${currentGroup.id === collection.id ? " selected" : ""}`} key={collection.id}
+          return <section className={`cfx-boundary-group${currentGroup?.id === collection.id ? " selected" : ""}`} key={collection.id}
             aria-label={`Boundary group ${collection.name}`} style={{ "--boundary-colour": BOUNDARY_COLOURS[index % BOUNDARY_COLOURS.length] } as import("react").CSSProperties}>
             <CFDReorderList items={members.map(p => ({ ...p, name: `${p.label ?? labelFor(p.kind)} · ${p.sourceId}` }))}
               label={`${collection.name} surfaces`} scope={`boundary-surfaces:${scenario.id}`} collapsed={collapsed.has(collection.id)}
               header={<header className="cfx-group-heading">
               <button className="cfx-collapse" aria-label={`${collapsed.has(collection.id) ? "Expand" : "Collapse"} boundary group ${collection.name}`} aria-expanded={!collapsed.has(collection.id)}
                 onClick={() => setCollapsed(previous => { const next = new Set(previous); if (next.has(collection.id)) next.delete(collection.id); else next.add(collection.id); return next; })}>{collapsed.has(collection.id) ? "▸" : "▾"}</button>
-              <button className="cfx-group-select" aria-pressed={currentGroup.id === collection.id}
+              <button className="cfx-group-select" aria-pressed={currentGroup?.id === collection.id}
               onClick={() => onSelectGroup(collection.id)}><span className="cfx-level-swatch" aria-hidden="true" style={{ background: "var(--boundary-colour)" }} />{collection.name}</button>
               <small>{allMembers.length} {allMembers.length === 1 ? "surface" : "surfaces"}</small>
               <button className="cfx-boundary-actions-trigger" aria-label={`Actions for boundary group ${collection.name}`} aria-haspopup="dialog" aria-expanded={actionGroupId === collection.id}
@@ -329,7 +341,7 @@ export function BoundariesPanel({
           </div>
         </section>
       </CFDEditorWindow>}
-      {editing === "group" && <CFDEditorWindow title="Edit boundary group" defaultPosition={{ x: 220, y: 90 }} initialSize={{ width: 620 }} maxHeight={850}
+      {editing === "group" && currentGroup && <CFDEditorWindow title="Edit boundary group" defaultPosition={{ x: 220, y: 90 }} initialSize={{ width: 620 }} maxHeight={850}
         bringToFront onClose={() => setEditing(null)} helpSteps={[{ heading: "Surface groups", text: "Each physical surface belongs to one group. Drag grips move groups or surfaces; Escape cancels. Duplicate copies conditions to a new empty group, not geometry. Delete returns surfaces to Default surfaces. Per-surface overrides take precedence over group conditions." }]}>
       <section className="cfx-card" aria-label="Boundary group conditions">
         <CFDText key={currentGroup.id} label="Group name" value={currentGroup.name} maxLength={80}
@@ -347,7 +359,7 @@ export function BoundariesPanel({
           }}>Remove unavailable surface references</button>}
         <label className="cfx-check"><input type="checkbox" checked={currentGroup.boundary !== null} onChange={e => updateCollections(collections.map(g =>
           g.id === currentGroup.id ? { ...g, boundary: e.target.checked ? boundarySchema.parse({}) : null } : g))} />Use group conditions</label>
-        {currentGroup.boundary ? <BoundaryEditor value={currentGroup.boundary} onChange={boundary => updateCollections(collections.map(g => g.id === currentGroup.id ? { ...g, boundary } : g))} /> :
+        {currentGroup.boundary ? <BoundaryEditor solid={(membership.get(currentGroup.id) ?? []).some(p => ["wall", "floor", "ceiling", "slabSide", "object"].includes(p.kind))} value={currentGroup.boundary} onChange={boundary => updateCollections(collections.map(g => g.id === currentGroup.id ? { ...g, boundary } : g))} /> :
           <small className="cfx-caption">Inherited / per-surface conditions</small>}
         {(membership.get(currentGroup.id) ?? []).some(p => !!scenario.boundaries.patches[p.id]) && <button onClick={() => {
           const ids = new Set((membership.get(currentGroup.id) ?? []).map(p => p.id));
@@ -373,7 +385,7 @@ export function BoundariesPanel({
             )}
           </select>
         </label>
-        <BoundaryEditor value={groupValue} onChange={updateGroup} />
+        <BoundaryEditor solid={["wall", "floor", "ceiling", "slabSide", "object"].includes(group)} value={groupValue} onChange={updateGroup} />
         <button onClick={() => updateGroup(groupValue)}>
           Assign this group preset
         </button>
@@ -395,6 +407,7 @@ export function BoundariesPanel({
           ) : (
             <>
               <BoundaryEditor
+                solid={["wall", "floor", "ceiling", "slabSide", "object"].includes(patch.kind)}
                 value={effectiveBoundary(scenario, patch)}
                 onChange={(value) =>
                   onChange({

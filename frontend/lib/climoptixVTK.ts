@@ -75,6 +75,7 @@ function checkedLegacy(text: string): string {
     arrays = 0,
     tuples = 0;
   let association = "";
+  let fieldArrays = 0, associatedField = false, fieldValues = 0;
   const sections = new Set<string>(),
     names = new Set<string>();
   let pending: {
@@ -85,12 +86,15 @@ function checkedLegacy(text: string): string {
     cells?: number;
     read: number;
     vertices: number;
+    skip?: boolean;
   } | null = null;
   for (const line of lines.slice(dataset + 1)) {
     if (!line) continue;
+    let append = true;
     const parts = line.split(" "),
       header = parts[0];
     if (pending) {
+      append = !pending.skip;
       if (pending.lookup) {
         if (header !== "LOOKUP_TABLE" || parts.length !== 2)
           throw new Error(
@@ -129,6 +133,28 @@ function checkedLegacy(text: string): string {
           pending = null;
         }
       }
+    } else if (fieldArrays > 0) {
+      // OpenFOAM's native writer uses FIELD for both global TimeValue metadata
+      // and point/cell arrays. Normalize only validated numeric attributes into
+      // standard legacy sections; never send generic metadata to vtk.js.
+      const name = parts[0], components = bounded(parts[1], 9), count = bounded(parts[2], VTK_MAX_POINTS);
+      if (parts.length !== 4 || !components || ++arrays > 64 || name.length > 200 || names.has(name) ||
+          Object.hasOwn(Object.prototype, name) || name === "prototype" || (associatedField && count !== tuples))
+        throw new Error("Invalid or oversized legacy FIELD array.");
+      const type = typeOf(parts[3]); names.add(name); fieldArrays--; append = false;
+      fieldValues += count * components;
+      if (fieldValues > 4_000_000) throw new Error("VTK fields exceed the four-million-value display limit.");
+      if (associatedField) {
+        if (components === 3) output.push(`VECTORS ${name} double`);
+        else if (components === 9) output.push(`TENSORS ${name} double`);
+        else if (components <= 4) output.push(`SCALARS ${name} double ${components}`, "LOOKUP_TABLE default");
+        else throw new Error("Use ASCII .vtp for legacy fields with five to eight components.");
+      }
+      if (count) pending = { remaining: count * components, type, bit: parts[3] === "bit", lookup: false,
+        read: 0, vertices: 0, skip: !associatedField };
+    } else if (header === "FIELD") {
+      if (parts.length !== 3) throw new Error("Invalid legacy FIELD section.");
+      fieldArrays = bounded(parts[2], 64); associatedField = !!association; append = false;
     } else if (
       header === "POINTS" ||
       ["VERTICES", "LINES", "POLYGONS", "TRIANGLE_STRIPS"].includes(header)
@@ -204,6 +230,8 @@ function checkedLegacy(text: string): string {
       )
         throw new Error("Unsupported or duplicate VTK field array.");
       names.add(parts[1]);
+      fieldValues += tuples * components;
+      if (fieldValues > 4_000_000) throw new Error("VTK fields exceed the four-million-value display limit.");
       pending = {
         remaining: tuples * components,
         type: typeOf(parts[2]),
@@ -219,9 +247,9 @@ function checkedLegacy(text: string): string {
           ". Export this result as ASCII .vtp.",
       );
     }
-    output.push(line);
+    if (append) output.push(line);
   }
-  if (pending)
+  if (pending || fieldArrays)
     throw new Error(
       "Incomplete VTK array: value count does not match its declaration.",
     );

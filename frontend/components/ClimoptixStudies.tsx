@@ -10,6 +10,8 @@ import { duplicateSimulationGroup, sameGroup, simulationGroups, uniqueGroupName 
 import type { CFDJobEntry } from "./useCFDJobs";
 import { CFDReorderList } from "./CFDReorderList";
 import { CFDRowMenu } from "./CFDRowMenu";
+import { CFDConfirmAction } from "./CFDConfirmAction";
+import { CFDJobProgress } from "./CFDJobProgress";
 
 function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
   value: string; label: string; maxLength?: number; onCommit: (value: string) => void | boolean; onDone?: () => void;
@@ -25,7 +27,7 @@ function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
 }
 
 export function ClimoptixStudies({ project, scenarios, scenario, showArchived, onShowArchived, onSelect,
-  onChange, onOrder, onAdd, onDelete, onClear, onImport, entries, worker, onSubmit, onIssues, onUndo, onRedo, canUndo, canRedo,
+  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onIssues, onUndo, onRedo, canUndo, canRedo,
 }: {
   project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
   onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
@@ -34,6 +36,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   onAdd: (group?: string) => void;
   onDelete: (id: string, opener: HTMLButtonElement) => void;
   onClear: (opener: HTMLButtonElement) => void;
+  onReset: () => void; resetting: boolean;
   onImport: (f: File) => void;
   entries: Record<string, CFDJobEntry>; worker: CFDWorkerAdapter | null;
   onSubmit: (operation: CFDOperation, studies: CFDScenario[]) => void;
@@ -63,14 +66,18 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   };
   return <div className="cfx-studies">
     <div className="cfx-study-tools">
-      <button className="cfx-primary" onClick={() => { if (targetGroup) setCollapsed(v => new Set([...v].filter(id => id !== targetGroup.id))); onAdd(targetGroup?.name); }} disabled={scenarios.length >= 100}>New simulation</button>
+      <button className="cfx-primary" onClick={() => { if (targetGroup) setCollapsed(v => new Set([...v].filter(id => id !== targetGroup.id))); onAdd(targetGroup?.name); }} disabled={resetting || scenarios.length >= 100}>New simulation</button>
       <button disabled={groups.length >= 100} onClick={() => {
         const group = { id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name)) };
         onOrder(scenarios, [...groups, group]); setSelectedGroup(group.id);
       }}>Add group</button>
-      <button className="cfx-danger" disabled={!scenarios.length || scenarios.some(s => busy(s) || entries[s.id]?.dispatched)}
+      <button className="cfx-danger" disabled={resetting || (!scenarios.length && !groups.length) || scenarios.some(s => busy(s) || entries[s.id]?.dispatched)}
         title={scenarios.some(s => busy(s) || entries[s.id]?.dispatched) ? "Resolve active or unknown worker submissions before clearing simulations" : undefined}
         onClick={e => onClear(e.currentTarget)}>Clear all</button>
+      <CFDConfirmAction label={resetting ? "Preparing defaults…" : "Restore default"} title="Restore the default workbench?" confirmLabel="Restore default"
+        disabled={resetting || scenarios.some(s => busy(s) || entries[s.id]?.dispatched)}
+        description="Back up all CFD simulations and folders, then replace them with one General group and one runnable coarse-mesh simulation with opposing inlet/outlet vents and adiabatic walls. Measured geometry is kept. No job is started. Undo restores the previous workbench."
+        onConfirm={onReset} />
       <label className="cfx-check"><input type="checkbox" checked={showArchived} onChange={e => onShowArchived(e.target.checked)} />Archived</label>
       <div className="cfx-history"><button disabled={!canUndo} onClick={onUndo}>Undo</button><button disabled={!canRedo} onClick={onRedo}>Redo</button></div>
     </div>
@@ -114,7 +121,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 const entry = entries[s.id], job = entry?.job;
                 const stale = !!job && entry.input !== workerInput(project, s);
                 const phase = entry?.submitting ? "Checking & submitting…" : job ? `${job.phase}${stale ? " · older setup" : ""}` : entry?.dispatched ? "Submission status unknown" : "Not submitted";
-                const reason = (operation: CFDOperation) => s.archived ? "Unarchive this simulation before submitting" : busy(s) ? "Wait for this job to finish" :
+                const reason = (operation: CFDOperation) => resetting ? "Wait for default setup to finish" : s.archived ? "Unarchive this simulation before submitting" : busy(s) ? "Wait for this job to finish" :
                   entry?.dispatched && entry.operation !== operation ? `Recover the previous ${entry.operation} submission first` :
                   !worker?.capabilities.connected ? worker?.capabilities.reason || "Connect an OpenFOAM worker to submit this simulation" :
                   !worker.capabilities[operation] ? worker.capabilities.reason || `This worker does not support ${operation}` : undefined;
@@ -141,11 +148,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       onOrder(moveStudy(scenarios, s.id, target.name, scenarios.filter(v => sameGroup(v.group, target.name)).length), groups);
                     }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
                   </CFDRowMenu>
-                  {(entry?.submitting || entry?.dispatched || job) && <div className="cfx-job-progress" role="progressbar" aria-label={`${s.name} phase progress`}
-                    aria-valuemin={0} aria-valuemax={100} aria-valuenow={job?.progress ?? undefined}
-                    aria-valuetext={job ? `${phase}${job.progress == null ? " · progress not reported" : ` · ${job.progress}%`}` : phase}>
-                    <span style={{ width: `${job?.progress ?? 0}%` }} /></div>}
-                  {job && <small className="cfx-job-detail">{job.phase}{job.progress != null ? ` · ${job.progress}% of phase` : terminalJob(job) ? "" : " · progress not reported"}{job.message && ` · ${job.message}`}</small>}
+                  <CFDJobProgress job={job} name={s.name} operation={entry?.operation} pending={entry?.submitting || entry?.dispatched ? phase : undefined} />
                   {entry?.error && <p className="cfx-error" role="alert">{entry.error} <button className="cfx-issues-link" onClick={() => onIssues(s.id)}>View issues for {s.name}</button></p>}
                 </article>;
               }}

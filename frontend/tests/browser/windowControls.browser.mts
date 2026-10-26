@@ -71,6 +71,28 @@ test("CFD maximise and restore preserve parameters, floating geometry and attach
   await eventually(saved, project => project.cfdScenarios[0].resources.cpu === 7);
 });
 
+test("two minimized CFD windows have separate restore tabs and preserve their position and settings",async t=>{
+  const {page,saved}=await open(t);
+  await page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');
+  const ui=page.locator('.cfx-workspace');await cfdWindow(ui,'Solver');
+  await ui.getByRole('tab',{name:'Run',exact:true}).click();
+  const cpu=ui.getByRole('spinbutton',{name:'CPU cores',exact:true});await cpu.fill('7');await cpu.press('Enter');
+  const setup=page.locator('.cfx-setup-window'),setupBefore=await setup.boundingBox();
+  await cfdWindow(ui,'View properties');
+  const view=page.locator('.cfx-view-window'),viewBefore=await view.boundingBox();
+  await page.getByRole('button',{name:'Minimise View properties',exact:true}).click();
+  await page.getByRole('button',{name:'Minimise Simulation setup',exact:true}).click();
+  assert.equal(await setup.isVisible(),false);assert.equal(await view.isVisible(),false);
+  const tasks=page.locator('.floating-window-task');assert.equal(await tasks.count(),2);
+  const boxes=await tasks.evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().y));assert.ok(Math.abs(boxes[0]-boxes[1])>=34);
+  await page.getByRole('button',{name:'Restore View properties',exact:true}).click();assert.equal(await setup.isVisible(),false);
+  await page.getByRole('button',{name:'Restore Simulation setup',exact:true}).click();
+  for(const [window,before] of [[setup,setupBefore],[view,viewBefore]] as const){
+    const after=await window.boundingBox();for(const axis of ['x','y','width','height'])assert.ok(Math.abs(after[axis]-before[axis])<2,`${axis}: ${JSON.stringify({before,after})}`);
+  }
+  assert.equal(await cpu.inputValue(),'7');await eventually(saved,p=>p.cfdScenarios[0].resources.cpu===7);
+});
+
 test("docking reflows underlying tools and portalled help outside both rails, then restores their widths", async t => {
   const { page } = await open(t);
   const build = panel(page, "Build floorplan"), original = await build.boundingBox();

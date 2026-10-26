@@ -113,23 +113,32 @@ export function ClimoptixConvergence({
   name?: string;
   workerSource?: string;
 }) {
+  const [selectedFields, setSelectedFields] = useState<string[] | null>(null);
+  const [metric, setMetric] = useState<"initial" | "final">("initial");
   const { series, maxIteration } = useMemo(() => {
     const grouped = new Map<string, ResidualSample[]>();
     let maxIteration = 1;
     for (const sample of state.samples) {
       const values = grouped.get(sample.field) ?? [];
-      values.push(sample);
+      const previous = values[values.length - 1];
+      // OpenFOAM can solve p repeatedly within one outer iteration. Joining all
+      // corrections produces the misleading vertical fan shown in the report.
+      if (previous?.iteration === sample.iteration) values[values.length - 1] = { ...previous, final: sample.final };
+      else values.push({ ...sample });
       grouped.set(sample.field, values);
       maxIteration = Math.max(maxIteration, sample.iteration);
     }
     return { series: [...grouped], maxIteration };
   }, [state.samples]);
+  const defaults = series.filter(([field]) => ["Ux", "Uy", "Uz", "p"].includes(field)).map(([field]) => field);
+  const activeFields = selectedFields ?? (defaults.length ? defaults : series.slice(0,4).map(([field]) => field));
+  const shown = series.filter(([field]) => activeFields.includes(field));
   return (
     <section
       className="cfx-convergence"
       aria-label={workerSource ? "Worker convergence history" : "Imported convergence history"}
     >
-      <h3>Convergence{name ? ` · ${name}` : ""} · initial residuals</h3>
+      <details open><summary>Convergence{name ? ` · ${name}` : ""} · residuals</summary>
       <p className="cfx-caption">{workerSource || "External log · unverified · session only"}</p>
       {!workerSource && <p className="cfx-caption">Import an OpenFOAM log to inspect external residuals; imported logs are not verified worker results.</p>}
       {!workerSource && <label className="cfx-file">
@@ -178,10 +187,20 @@ export function ClimoptixConvergence({
         <p>No residual samples.</p>
       ) : (
         <>
+          <div className="cfx-grid"><label>Residuals to display<select aria-label="Residuals to display" value="" onChange={event => {
+            const field=event.target.value;
+            setSelectedFields(field==="all"?series.map(([name])=>name):field==="defaults"?null:activeFields.includes(field)?activeFields.filter(name=>name!==field):[...activeFields,field]);
+          }}>
+            <option value="">Add or remove a residual graph…</option><option value="defaults">Restore default graphs · Ux, Uy, Uz, p</option><option value="all">Show all residual graphs</option>
+            {series.map(([field]) => <option key={field} value={field}>{activeFields.includes(field)?"✓ Remove":"Add"} {field}</option>)}
+          </select></label><label>Residual measure<select aria-label="Residual measure" value={metric} onChange={event=>setMetric(event.target.value as typeof metric)}><option value="initial">Initial residuals</option><option value="final">Final linear-solver residuals</option></select></label></div>
+          <p className="cfx-caption">One initial value per field and outer step; final values use the last correction in that step. Zero values sit at the display floor 10⁻¹²; original logs are unchanged.</p>
+          {!shown.length&&<p>No graphs selected. Add a residual from the dropdown.</p>}
+          <div className="cfx-residual-grid">{shown.map(([graphField]) => <figure key={graphField}><figcaption>{graphField} · {metric === "initial" ? "Initial residuals" : "Final linear-solver residuals"}</figcaption>
           <svg
             viewBox="0 0 360 220"
             role="img"
-            aria-label={`Residual graph for ${series.map(([field]) => field).join(", ")}`}
+            aria-label={`${metric === "initial" ? "Residual" : "Final residual"} graph for ${graphField}`}
           >
             {[-12, -9, -6, -3, 0].map((tick) => {
               const y = 185 - (tick + 12) * 13;
@@ -201,14 +220,15 @@ export function ClimoptixConvergence({
                 </g>
               );
             })}
-            {series.map(([field, data], i) => {
+            {shown.filter(([field])=>field===graphField).map(([field, data]) => {
+              const i = series.findIndex(([name]) => name === field);
               const stride = Math.max(1, Math.ceil(data.length / 1000));
               const point = (sample: ResidualSample) => [
                 47 + (sample.iteration / maxIteration) * 298,
                 185 -
                   (Math.max(
                     -12,
-                    Math.min(0, Math.log10(Math.max(1e-12, sample.initial))),
+                    Math.min(0, Math.log10(Math.max(1e-12, sample[metric]))),
                   ) +
                     12) *
                     13,
@@ -228,9 +248,7 @@ export function ClimoptixConvergence({
                     strokeWidth="2"
                   />
                   <circle cx={x} cy={y} r="2.5" fill={colour}>
-                    <title>
-                      {field}: {data[data.length - 1].initial.toExponential(2)}
-                    </title>
+                    <title>{`${field}: ${data[data.length - 1][metric].toExponential(2)}`}</title>
                   </circle>
                 </g>
               );
@@ -248,20 +266,22 @@ export function ClimoptixConvergence({
               {maxIteration} iterations / time steps
             </text>
           </svg>
+          </figure>)}</div>
           <ul className="cfx-residual-legend">
-            {series.map(([field, data], i) => (
+            {shown.map(([field, data]) => (
               <li key={field}>
                 <i
                   style={{
-                    background: LEVEL_COLOURS[i % LEVEL_COLOURS.length],
+                    background: LEVEL_COLOURS[series.findIndex(([name]) => name === field) % LEVEL_COLOURS.length],
                   }}
                 />
-                {field}: {data[data.length - 1].initial.toExponential(2)}
+                {field}: {data[data.length - 1][metric].toExponential(2)}
               </li>
             ))}
           </ul>
         </>
       )}
+      </details>
     </section>
   );
 }

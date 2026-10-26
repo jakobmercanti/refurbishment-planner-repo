@@ -938,6 +938,7 @@ export function ThermalEnvelopeWindow({
                 <label>
                   Solar forcing
                   <select
+                    aria-label="Solar forcing"
                     value={setup.weather.solarMode}
                     onChange={(e) =>
                       weather({

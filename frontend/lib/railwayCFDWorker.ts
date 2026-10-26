@@ -14,11 +14,13 @@ export type WorkerCapabilities = z.infer<typeof workerCapabilitiesSchema>;
 export class CFDWorkerError extends Error {
   constructor(message: string, readonly status: number) {super(message);}
 }
-const artifactSchema = z.object({id: z.string().regex(/^(native-case|slice-\d+)$/), kind: z.enum(["vtk", "zip"]),
+const artifactSchema = z.object({id: z.string().regex(/^(native-case|postprocessing|slice-\d+)$/), kind: z.enum(["vtk", "zip"]),
+  name: z.string().max(200).optional(),
   size: z.number().int().positive().max(128*1024**2), sha256: z.string().regex(/^[a-f0-9]{64}$/)});
 const resultSchema = z.object({jobId: z.uuid(), studyId: z.string(), clientRevision: z.string(),
   sourceHash: z.string().regex(/^[a-f0-9]{64}$/), configurationHash: z.string().regex(/^[a-f0-9]{64}$/),
-  pressureUnit: z.literal("m2/s2"), accepted: z.boolean(), artifacts: z.array(artifactSchema).max(21),
+  pressureUnit: z.literal("m2/s2"), accepted: z.boolean(), artifacts: z.array(artifactSchema).max(22),
+  expiresAt: z.number().finite().optional(),
   operation:z.enum(["mesh","run"]).optional(),
   mesh:z.object({cells:z.number().int().positive(),maxNonOrthogonality:z.number().finite().optional(),
     maxSkewness:z.number().finite().optional(),maxAspectRatio:z.number().finite().optional(),minVolumeM3:z.number().finite().optional()}).optional(),
@@ -50,7 +52,7 @@ export async function workerRequest(base: string, path: string, signal: AbortSig
   if (!session) throw new CFDWorkerError("Sign in to the enabled account to connect OpenFOAM.", 401);
   const response = await fetch(`${base.replace(/\/$/, "")}/climoptix/worker${path}`, {
     method: body === undefined ? "GET" : "POST", cache: "no-store", credentials: "omit",
-    signal: AbortSignal.any([signal, AbortSignal.timeout(25000)]),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(max > 25 * 1024**2 ? 120000 : 25000)]),
     headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -101,7 +103,8 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
       const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(b => b.toString(16).padStart(2,"0")).join("");
       signal.throwIfAborted();
       if (hash !== item.sha256 || bytes.length !== item.size) throw new Error("Downloaded artifact failed its integrity check.");
-      return new File([bytes], `${job.id}-${item.id}.${item.kind === "zip" ? "zip" : "vtk"}`, {type: item.kind === "zip" ? "application/zip" : "application/octet-stream"});
+      const name = item.name?.replace(/[^a-z0-9_.-]/gi, "-") || `${job.id}-${item.id}.${item.kind === "zip" ? "zip" : "vtk"}`;
+      return new File([bytes], name, {type: item.kind === "zip" ? "application/zip" : "application/octet-stream"});
     },
   } satisfies CFDWorkerAdapter & Record<string, unknown>;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
+import { Bounds, Html, OrbitControls, useBounds } from "@react-three/drei";
 import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
@@ -13,6 +13,7 @@ import {
 } from "three";
 import { useThree, type ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
+import { CFDSceneResult, type SceneResultMetadata } from "./CFDSceneResult";
 import { createPortal } from "react-dom";
 import { ReadOnlyBuildingScene } from "./EngineeringViewer";
 import {
@@ -87,6 +88,7 @@ function Frame({ request }: { request: string }) {
   return null;
 }
 interface Props {
+  resultOverlay?:{file:File;field:string;onMetadata:(value:SceneResultMetadata)=>void};
   project: ProjectDocument;
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -299,6 +301,7 @@ export function ClimoptixViewer({
   onThermalSelect,
   boundaryGroups = [],
   boundarySelection,
+  resultOverlay,
 }: Props) {
   const mouseButtons = useViewerNavigation();
   const thermalVisible = thermalMetric !== "off" && thermalSurfaces.length > 0;
@@ -437,16 +440,15 @@ export function ClimoptixViewer({
     isolate && Boolean(selectedPatch || selected?.startsWith("vent:"));
   const onMeshDown = (e: ThreeEvent<PointerEvent>, patch: CFDViewPatch) => {
     if (e.button !== 0) return;
-    if (picking && patch.id.startsWith("vent:")) return;
     if (
-      !picking &&
       !patch.id.startsWith("vent:") &&
       e.intersections.some((hit) => hit.object.name.startsWith("vent:"))
     )
       return;
     e.stopPropagation();
-    onSelect(patch.id);
     const vent = scenario.vents.find((v) => `vent:${v.id}` === patch.id);
+    if (vent && typeof picking === "object" && vent.id !== picking.id) return;
+    onSelect(patch.id);
     if (canMoveVents && vent) {
       const host = patches.find((p) => p.id === vent.host.patchId);
       if (host?.host) {
@@ -487,6 +489,7 @@ export function ClimoptixViewer({
       current.u = uv[0];
       current.v = uv[1];
       setDrag({ id: current.id, u: uv[0], v: uv[1] });
+      if (picking) onMoveVent(current.id, ...uv);
     }
   };
   const onMeshUp = (e: ThreeEvent<PointerEvent>) => {
@@ -549,6 +552,7 @@ export function ClimoptixViewer({
         </button>
         <button
           type="button"
+          disabled={!!picking}
           aria-expanded={viewSettingsOpen}
           onClick={() => onViewSettings(!viewSettingsOpen)}
         >
@@ -645,6 +649,13 @@ export function ClimoptixViewer({
               <Frame
                 request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit}`}
               />
+              {scenario.outputs.probesMm.map((point,index)=><mesh key={`probe:${index}`} name={`probe:${index}`} position={scene(point)}
+                onPointerDown={event=>{if(event.button===0){event.stopPropagation();onSelect(`probe:${index}`);}}}>
+                <sphereGeometry args={[selected===`probe:${index}` ? .045 : .03,12,8]}/>
+                <meshBasicMaterial color={selected===`probe:${index}`?CFD_SELECTION_COLOUR:"#246ccb"} depthTest={false}/>
+                <Html center zIndexRange={[8,0]}><button className="cfx-probe-marker" style={{background:selected===`probe:${index}`?CFD_SELECTION_COLOUR:"#246ccb"}} aria-label={`Select probe ${index+1} in 3D`} onPointerDown={event=>event.stopPropagation()} onClick={()=>onSelect(`probe:${index}`)}>P{index+1}</button></Html>
+              </mesh>)}
+              {resultOverlay&&<CFDSceneResult {...resultOverlay}/>}
               {displayPatches
                 .filter(
                   (p) =>

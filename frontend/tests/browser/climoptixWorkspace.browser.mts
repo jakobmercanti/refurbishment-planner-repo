@@ -87,10 +87,10 @@ test("simulation groups persist drag order and selected settings with compact pe
     assert.ok(await ui.getByRole("button", { name: `Run ${name}`, exact: true }).isDisabled());
     const row = ui.locator(".cfx-study-row").filter({ has: page.getByRole("button", { name: `Select ${name}`, exact: true }) });
     const box = await row.boundingBox();
-    const nameBox = await row.locator("strong").boundingBox();
+    const nameBox = await row.locator(".cfx-study-name strong").boundingBox();
     const statusBox = await row.locator(".cfx-study-name small").boundingBox();
     const meshBox = await row.getByRole("button", { name: `Mesh ${name}`, exact: true }).boundingBox();
-    assert.ok(box.height <= 52, `Study rows should be compact: ${JSON.stringify(box)}`);
+    assert.ok(box.height <= 88, `Study rows include a compact, always-visible status bar: ${JSON.stringify(box)}`);
     assert.ok(Math.abs(nameBox.y + nameBox.height / 2 - statusBox.y - statusBox.height / 2) < 2, "Name and status share a row");
     assert.ok(Math.abs(meshBox.y + meshBox.height / 2 - nameBox.y - nameBox.height / 2) < 2, "Study actions share the row on a laptop");
   }
@@ -111,8 +111,8 @@ test("simulation groups persist drag order and selected settings with compact pe
         exact: true,
       })
       .count(),
-    0,
-    "Unsubmitted studies do not have empty progress bars",
+    1,
+    "Every unsubmitted study has an idle status bar",
   );
   await ui
     .getByRole("button", { name: "Reorder Summer high flow", exact: true })
@@ -202,8 +202,8 @@ test("global mesh settings belong to Domain, persist per study and are absent fr
     ["Base Cell (mm)", "baseCellMm", 240],
     ["Min Cell (mm)", "minCellMm", 30],
     ["Max Cell (mm)", "maxCellMm", 480],
-    ["Target cell count", "targetCells", 600000],
     ["Maximum cell budget", "maxCells", 2500000],
+    ["Target cell count", "targetCells", 600000],
   ] as const;
   const preset = domain.getByRole("combobox", { name: "Mesh intent preset", exact: true });
   await preset.selectOption("Draft");

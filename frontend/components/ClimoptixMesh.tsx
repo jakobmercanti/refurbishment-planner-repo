@@ -1,6 +1,7 @@
 "use client";
 
 import { CFDReorderList } from "./CFDReorderList";
+import { CFDConfirmAction } from "./CFDConfirmAction";
 import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
@@ -73,6 +74,9 @@ export function MeshPanel({
         Add refinement region
       </button>
         <button disabled={!regions.length} onClick={onShowRefinements}>View refinements in 3D</button>
+        <CFDConfirmAction title="Clear all refinement regions?" disabled={!regions.length}
+          description="Remove every local refinement region from this simulation. Global mesh settings and measured geometry are kept. Undo can restore the regions."
+          onConfirm={() => { onChange({ ...scenario, mesh: { ...scenario.mesh, refinements: [] } }); onSelect(null); }} />
         <small className="cfx-mesh-estimate">{report ? `Estimate · ${report.meshRecipe.estimate.rangeCells.map(v => v.toLocaleString()).join("–")} cells` : "Estimate pending"}</small>
       </header>
       <CFDReorderList

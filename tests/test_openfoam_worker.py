@@ -46,6 +46,19 @@ def test_stale_fingerprints_rejected():
         validate_submission(request)
 
 
+def test_unsupported_physics_reports_actual_conflicts_and_repair_without_mutation():
+    request = fixture()
+    request.scenario.physics.energy = True
+    request.scenario.physics.co2 = True
+    original = request.model_dump()
+    with pytest.raises(ValueError) as failure:
+        validate_submission(request)
+    assert "energy/temperature equation is enabled" in str(failure.value)
+    assert "CO2 transport is enabled" in str(failure.value)
+    assert "Open Physics" in str(failure.value)
+    assert request.model_dump() == original
+
+
 def test_store_idempotency_conflict_owner_isolation_restart(tmp_path):
     store = Store(tmp_path)
     request, owner = fixture(), str(uuid4())

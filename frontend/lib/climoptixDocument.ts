@@ -312,8 +312,8 @@ export const meshRecipeSchema = z
     maxCellMm: cellLength.default(400),
     originMm: vector.default([0, 0, 0]),
     alignmentDeg: finite.min(-360).max(360).default(0),
-    targetCells: z.int().min(1).max(1e9).default(500000),
-    maxCells: z.int().min(1).max(1e9).default(2000000),
+    targetCells: z.int().min(1).max(1e9).default(100000),
+    maxCells: z.int().min(1).max(1e9).default(500000),
     geometryToleranceMm: finite.gt(0).max(1).default(0.01),
     smallFeatureMm: positive.default(5),
     snapToleranceMm: positive.default(2),
@@ -350,11 +350,11 @@ export const meshRecipeSchema = z
   .prefault({});
 const resourcesSchema = z
   .object({
-    cpu: z.int().min(1).max(1024).default(4),
-    memoryGb: positive.default(8),
-    wallTimeMinutes: z.int().min(1).max(43200).default(60),
-    storageGb: positive.default(10),
-    retentionDays: z.int().min(1).max(3650).default(30),
+    cpu: z.int().min(1).max(1024).default(1),
+    memoryGb: positive.default(4),
+    wallTimeMinutes: z.int().min(1).max(43200).default(15),
+    storageGb: positive.default(1),
+    retentionDays: z.int().min(1).max(3650).default(3),
     queue: z.string().max(100).default("unassigned"),
   })
   .strict()
@@ -430,6 +430,7 @@ export const cfdScenarioSchema = z
           .partialRecord(z.enum(PATCH_KINDS), boundarySchema)
           .default({}),
         collections: z.array(boundaryCollectionSchema).max(100).default([]),
+        hideDefaultGroup: z.boolean().optional(),
         patches: z
           .record(patchId, boundarySchema)
           .refine((v) => Object.keys(v).length <= 10000)
@@ -504,6 +505,7 @@ export function newCFDScenario(
     sourceBuildingId: projectId,
     createdAt: now,
     updatedAt: now,
+    physics: { turbulence: "laminar" },
   });
 }
 export function duplicateCFDScenario(s: CFDScenario): CFDScenario {

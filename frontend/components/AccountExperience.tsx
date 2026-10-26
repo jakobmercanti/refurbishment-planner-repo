@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { AUTH_SESSION_CHANGED, AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
 import { PlansRedirect } from "@/components/PlansRedirect";
 import { UiTheme, type SoftwareUi } from "@/components/UiTheme";
@@ -27,6 +27,8 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   const [verificationNeeded, setVerificationNeeded] = useState(false);
   const [resendReadyAt, setResendReadyAt] = useState(0);
   const authForm = useRef<HTMLFormElement>(null);
+  const formId = useId();
+  const submitting = useRef(false);
   const emailInput = useRef<HTMLInputElement>(null);
   const [uiSettings, setUiSettings] = useState<SoftwareUi | null>(null);
   const returnToPlanner = useCallback(() => {
@@ -108,6 +110,8 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true); setError(""); setNotice("");
     try {
       if (recovery) {
@@ -141,7 +145,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       }
       if (cause instanceof AuthRequestError && cause.code === "email_not_confirmed") setVerificationNeeded(true);
       setError(cause instanceof Error ? cause.message : "The account request could not be completed.");
-    } finally { setBusy(false); setShowPassword(false); }
+    } finally { submitting.current = false; setBusy(false); setShowPassword(false); }
   }
 
   async function resendVerification() {
@@ -166,8 +170,8 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
     selectSection("account"); setRecovery(true); setPassword(""); setConfirmPassword(""); setError(""); setNotice("");
   }
 
-  const sectionTabs = <nav className="commercial-tabs account-section-tabs" role="tablist" aria-label="Account sections">
-    <button id="account-section-tab" type="button" role="tab" aria-controls="account-section-panel" aria-selected={(embedded ? embeddedSection : section) === "account"} className={(embedded ? embeddedSection : section) === "account" ? "selected" : ""} onClick={() => selectSection("account")}>{recovery || mode === "reset" ? "Reset password" : session ? "Account" : "Sign in"}</button>
+  const sectionTabs = <nav className="account-section-links" aria-label="Account links">
+    {section === "plans" && <button type="button" className="commercial-secondary" onClick={() => selectSection("account")}>Back to account</button>}
     <a id="plans-section-tab" href={`${base}/plans/`} target="_blank" rel="noopener noreferrer">Open plans and billing <span aria-hidden="true">↗</span></a>
   </nav>;
 
@@ -182,35 +186,43 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
     {!ready ? <p role="status">Checking account…</p> : session && !recovery && mode !== "reset" ? (
       <div className="commercial-stack">
         <p className="commercial-status">Signed in{session.user.email ? " as " + session.user.email : ""}.</p>
-        <a className="commercial-primary" href={base + "/workspace/"} target={embedded ? "_blank" : undefined} rel={embedded ? "noopener noreferrer" : undefined}>Open cloud workspace</a>
-        <button className="commercial-secondary" type="button" onClick={startPasswordChange}>Change password</button>
-        <button className="commercial-secondary" type="button" onClick={() => void leaveAccount()}>Sign out</button>
+        <div className="account-ready-actions">
+          <a className="commercial-primary" href={base + "/workspace/"} target={embedded ? "_blank" : undefined} rel={embedded ? "noopener noreferrer" : undefined}>Open cloud workspace</a>
+          <a className="commercial-secondary" href={base + "/plans/"} target="_blank" rel="noopener noreferrer">Open plans and billing ↗</a>
+          <button className="commercial-secondary" type="button" onClick={startPasswordChange}>Change password</button>
+          <button className="commercial-secondary" type="button" onClick={() => void leaveAccount()}>Sign out</button>
+        </div>
       </div>
     ) : (
       <>
-        {!recovery && mode !== "reset" && <div className="commercial-tabs account-auth-tabs" role="tablist" aria-label="Account options">
-          {(["signin", "signup"] as const).map((value) => <button key={value} type="button" role="tab" disabled={busy} aria-selected={mode === value} className={mode === value ? "selected" : ""} onClick={() => { setMode(value); setVerificationNeeded(false); setError(""); setNotice(""); }}>
-            {value === "signin" ? "Sign in" : "Create account"}
-          </button>)}
-        </div>}
-        <form ref={authForm} className="commercial-stack" onSubmit={submit}>
+        <form id={formId} ref={authForm} className="commercial-stack" onSubmit={submit}>
           {recovery ? <>
             {session?.user.email && <p className="commercial-footnote">Changing the password for {session.user.email}.</p>}
             <label>New password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
             <label>Confirm new password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
           </> : <>
             <label>Email<input ref={emailInput} autoComplete="email" type="email" required disabled={busy} maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            {(mode === "signin" || mode === "signup") && <label>Password<input autoComplete={mode === "signup" ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} minLength={10} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
+            {(mode === "signin" || mode === "signup") && <label>Password<input autoComplete={mode === "signup" ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
           </>}
-          {(recovery || mode === "signin" || mode === "signup") && <button className="commercial-secondary account-password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide password" : "Show password"}</button>}
+          {!recovery && mode !== "reset" && <div className="commercial-tabs account-auth-tabs" role="group" aria-label="Account actions">
+            {(["signin", "signup"] as const).map((value) => <button key={value} type={mode === value ? "submit" : "button"}
+              disabled={busy || (value === "signup" && mode === value && verificationNeeded && !!resendReadyAt)} aria-pressed={mode === value} className={mode === value ? "selected" : ""}
+              onClick={event => { if (mode !== value) { event.preventDefault(); setMode(value); setVerificationNeeded(false); setError(""); setNotice(""); } }}>
+              {busy && mode === value ? "Please wait…" : value === "signin" ? "Sign in" : "Create account"}
+            </button>)}
+          </div>}
           {error && <p className="commercial-error" role="alert">{error}</p>}
           {notice && <p className="commercial-status" role="status">{notice}</p>}
-          <div className="account-form-actions">
-            <button className="commercial-primary" type="submit" disabled={busy || (mode === "signup" && verificationNeeded && !!resendReadyAt)}>{busy ? "Please wait…" : recovery ? "Save new password" : mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
-            {recovery && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => void leaveAccount()}>Cancel and return to sign in</button>}
+          {(recovery || mode !== "reset") && <div className="account-utility-actions">
+            <button className="commercial-secondary account-password-toggle" type="button" disabled={busy} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide password" : "Show password"}</button>
             {!recovery && mode === "signin" && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => { setMode("reset"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Forgot your password?</button>}
+          </div>}
+          {embedded && <a className="commercial-secondary" href={base + "/plans/"} target="_blank" rel="noopener noreferrer">Open plans and billing ↗</a>}
+          {(recovery || mode === "reset") && <div className="account-form-actions">
+            <button className="commercial-primary" type="submit" disabled={busy}>{busy ? "Please wait…" : recovery ? "Save new password" : "Send reset link"}</button>
+            {recovery && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => void leaveAccount()}>Cancel and return to sign in</button>}
             {mode === "reset" && !recovery && <button className="commercial-secondary" type="button" disabled={busy} onClick={() => { setMode("signin"); setVerificationNeeded(false); setError(""); setNotice(""); }}>Back to sign in</button>}
-          </div>
+          </div>}
           {!recovery && (mode === "signup" || verificationNeeded) && <div className="commercial-stack">
             <p className="commercial-footnote">Already registered? Choose Sign in or reset your password; creating the account again does not resend verification. New or unverified accounts can request another link below. Allow at least 60 seconds between requests.</p>
             <button className="commercial-secondary" type="button" disabled={busy || !!resendReadyAt} onClick={() => void resendVerification()}>{resendReadyAt ? "Resend available after 60 seconds" : "Resend verification email"}</button>
@@ -224,10 +236,10 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   </section>;
 
   const content = <>
-    {!embedded && sectionTabs}
-    {(embedded ? embeddedSection : section) === "account" ? <div id="account-section-panel" role="tabpanel" aria-labelledby="account-section-tab" className="account-tab-panel">
+    {!embedded && (!session || recovery || mode === "reset" || section === "plans") && sectionTabs}
+    {(embedded ? embeddedSection : section) === "account" ? <div id="account-section-panel" role="region" aria-label="Account details" className="account-tab-panel">
       {accountContent}
-    </div> : <div id="plans-section-panel" role="tabpanel" aria-labelledby="plans-section-tab" className="account-tab-panel">
+    </div> : <div id="plans-section-panel" role="region" aria-label="Plans and billing" className="account-tab-panel">
       <PlansRedirect
         selectedPlanKey={pendingPlanKey}
       />

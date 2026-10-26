@@ -25,6 +25,8 @@ export const workerJobSchema = z.object({
   ]),
   // Worker-reported completion of the CURRENT phase; null means unknown, not zero.
   progress: z.number().finite().min(0).max(100).nullable(),
+  operation: z.enum(["mesh", "run"]).optional(),
+  progressBasis: z.enum(["steps", "iterationBudget"]).optional(),
   message: z.string().max(2000).default(""),
 });
 export type CFDWorkerJob = z.infer<typeof workerJobSchema>;
@@ -93,7 +95,7 @@ export async function prepareWorkerSubmission(
     : null;
   // Detach only the bounded solver source, not unrelated studies or thermal histories.
   // Do this before the first await, including when a caller mutates its objects.
-  scenario = structuredClone({ ...scenario, thermalSnapshots: undefined });
+  scenario = structuredClone({ ...scenario, thermalSnapshots: undefined, boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined } });
   project = JSON.parse(
     preparationRequestBody(project, scenario, "0".repeat(64)),
   ).project;

@@ -7,13 +7,14 @@ import { WindowHelpButton } from "./WindowHelpButton";
 
 const TABS = [["review", "Simulation review"], ["warnings", "Warnings & checks"], ["transfer", "Import / export"]] as const;
 
-export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onDismissFailure, onChange, onImport, onExport, onError, onRefresh, onInspect, issuesRequest = 0, submissionError }: {
+export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onDismissFailure, onChange, onImport, onExport, onError, onRefresh, onInspect, issuesRequest = 0, submissionError, workerConnected=false }: {
   scenario: CFDScenario; report: CFDReport | null; revision: string; stale: boolean; blocked: boolean;
   onChange: (scenario: CFDScenario) => void; onImport: (file: File) => void; onExport: () => void;
   onError: (message: string) => void; onRefresh: () => void; onInspect: (id: string, group: string) => void;
   failure?: string; onDismissFailure?: () => void;
   issuesRequest?: number;
   submissionError?: string;
+  workerConnected?:boolean;
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>(issuesRequest ? "warnings" : "review");
   const [severity, setSeverity] = useState("all");
@@ -77,7 +78,9 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
       </dl></details>}
     </section>
     <section role="tabpanel" id={`${prefix}-panel-warnings`} aria-labelledby={`${prefix}-warnings`} hidden={tab !== "warnings"}>
-      {submissionError && <p className="cfx-error" role="alert">Worker submission or status: {submissionError}</p>}
+      {submissionError && <article className="cfx-diagnostic error" role="alert"><strong>Simulation was not accepted by the worker</strong><p>{submissionError}</p>
+        <p>Current configuration: {scenario.physics.mode}; {scenario.physics.numerics.coupling}; energy {scenario.physics.energy?"ON":"off"}; CO₂ {scenario.physics.co2?"ON":"off"}; buoyancy {scenario.physics.boussinesq?"ON":"off"}. The connected native worker supports steady isothermal U/p ventilation only.</p>
+        <button onClick={()=>onInspect("physics","physics")}>Review physics settings</button><button onClick={()=>onInspect("solver","mesh")}>Review solver settings</button></article>}
       <div className="cfx-inline-toolbar"><strong>Preflight diagnostics</strong>
         <select aria-label="CFD diagnostic severity" value={severity} onChange={e => setSeverity(e.target.value)}>
           <option value="all">All severities</option><option value="error">Blocking errors</option><option value="warning">Warnings</option><option value="info">Information</option>
@@ -85,7 +88,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
       </div>
       {stale && <p className="cfx-stale">Checks out of date</p>}
       {diagnostics.map((d, index) => <article className={`cfx-diagnostic ${d.severity}`} key={`${d.code}:${d.objectId}:${index}`}>
-        <strong>{d.severity.toUpperCase()} · {d.group}</strong><p>{d.message}</p><small>{d.repair}</small>
+        <strong>{d.severity.toUpperCase()} · {d.group}</strong><p>{workerConnected&&d.message.includes("No CFD mesher")?"Geometry preparation only. A separate worker is connected; native mesh and solver results appear in Solver → Monitor after a job completes.":d.message}</p><small>{workerConnected&&d.message.includes("No CFD mesher")?"Preparation checks are not a completed simulation. Use the connected worker controls to submit a job.":d.repair}</small>
         {d.objectId && <button onClick={() => onInspect(d.objectId!, d.group)}>Inspect {d.objectId}</button>}
       </article>)}
       {!report ? <p>No validation report yet.</p> : !diagnostics.length ? <p>No diagnostics for this filter.</p> : null}

@@ -80,9 +80,11 @@ export function parseResidualLog(text: string): {
     throw new Error("Solver logs must be at most 8 MB.");
   const samples: ResidualSample[] = [];
   const fields = new Set<string>();
+  const lastByField = new Map<string, number>();
   let time = 0,
     iteration = 0,
     truncated = false;
+  let pendingTime = false, sampledTime: number | null = null;
   const number = "([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)";
   const residual = new RegExp(
     `Solving for ([A-Za-z][A-Za-z0-9_]{0,63}),\\s*Initial residual = ${number},\\s*Final residual = ${number}`,
@@ -92,7 +94,7 @@ export function parseResidualLog(text: string): {
     const tick = line.match(timePattern);
     if (tick) {
       time = Number(tick[1]);
-      iteration++;
+      pendingTime = true;
     }
     const hit = line.match(residual);
     if (!hit) continue;
@@ -104,15 +106,27 @@ export function parseResidualLog(text: string): {
       final < 0
     )
       continue;
-    if (samples.length === 20000) {
-      truncated = true;
-      break;
-    }
     if (!fields.has(hit[1]) && fields.size >= 32) {
       truncated = true;
       continue;
     }
+    // Mesh utilities also print Time. Count only time steps that actually
+    // contain solver residuals, not preliminary mesh/metadata headings.
+    if (pendingTime && sampledTime !== time) { iteration++; sampledTime = time; }
+    pendingTime = false;
+    // Keep one first-initial/last-final measurement per field and outer step.
+    // Pressure correctors must not consume the history budget before later steps.
+    const previousIndex = lastByField.get(hit[1]);
+    if (iteration > 0 && previousIndex !== undefined && samples[previousIndex].iteration === iteration) {
+      samples[previousIndex].final = final;
+      continue;
+    }
+    if (samples.length === 20000) {
+      truncated = true;
+      break;
+    }
     fields.add(hit[1]);
+    lastByField.set(hit[1],samples.length);
     samples.push({ field: hit[1], time, initial, final, iteration });
   }
   return { samples, truncated };

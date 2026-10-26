@@ -54,13 +54,13 @@ test("convergence history survives changing phases and its guidance is available
     .getByLabel("Import solver log", { exact: true })
     .setInputFiles(solverLog);
   await ui
-    .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
+    .getByRole("img", { name: "Residual graph for Ux", exact: true })
     .waitFor();
   await cfdWindow(ui, "Domain");
   await cfdWindow(ui, "Simulation");
   assert.equal(
     await ui
-      .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
+      .getByRole("img", { name: "Residual graph for Ux", exact: true })
       .count(),
     1,
     "Leaving the phase must not throw away the imported history",
@@ -73,7 +73,7 @@ test("convergence history survives changing phases and its guidance is available
     exact: true,
   });
   await monitor
-    .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
+    .getByRole("img", { name: "Residual graph for Ux", exact: true })
     .waitFor();
   assert.match(
     await monitor.innerText(),
@@ -95,7 +95,7 @@ test("convergence history survives changing phases and its guidance is available
   await cfdWindow(ui, "Studies");
   await cfdWindow(ui, "Convergence monitor");
   await monitor
-    .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
+    .getByRole("img", { name: "Residual graph for Ux", exact: true })
     .waitFor();
   await page
     .getByRole("button", { name: "Hide Simulation setup", exact: true })
@@ -274,15 +274,16 @@ test("the convergence window keeps study histories separate and supports shared 
     .getByLabel("Import solver log", { exact: true })
     .setInputFiles(solverLog);
   const graph = monitor.getByRole("img", {
-    name: "Residual graph for Ux, p",
+    name: "Residual graph for Ux",
     exact: true,
   });
   await graph.waitFor();
   assert.equal(
     await graph.locator("circle").count(),
-    2,
-    "A field with just one residual must remain visible as a point",
+    1,
+    "Each field has its own graph and terminal point",
   );
+  assert.equal(await monitor.getByRole("img", {name:"Residual graph for p",exact:true}).locator("circle").count(),1,"A field with just one residual remains visible as a point");
   const chooser = ui.getByRole("combobox", {
     name: "CFD scenario",
     exact: true,
@@ -484,7 +485,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
   await chooser.selectOption(project.cfdScenarios[1].id);
   await input.setInputFiles(solverLog);
   await monitor
-    .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
+    .getByRole("img", { name: "Residual graph for Ux", exact: true })
     .waitFor();
   await page.evaluate(() => window.__releaseMonitorLog());
   await chooser.selectOption(first.id);
@@ -495,7 +496,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
     await chooser.selectOption(study.id);
     await input.setInputFiles(solverLog);
     await monitor
-      .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
+      .getByRole("img", { name: "Residual graph for Ux", exact: true })
       .waitFor();
   }
   await chooser.selectOption(first.id);
@@ -517,7 +518,7 @@ test("convergence reads are study-scoped, cancellable before completion and boun
   await chooser.selectOption(project.cfdScenarios[3].id);
   await cfdWindow(ui, "Convergence monitor");
   await monitor
-    .getByRole("img", { name: "Residual graph for Ux, p", exact: true })
+    .getByRole("img", { name: "Residual graph for Ux", exact: true })
     .waitFor();
 });
 

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot, parseEngineeringUnits, subscribeEngineeringUnits } from "@/lib/appPreferences";
 import { ClimoptixObjects } from "./ClimoptixObjects";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { objectGroups } from "@/lib/climoptixObjectGroups";
 import { assetOverrideSchema, ventSchema, type CFDScenario, type CFDVent } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { CFDNumber, CFDText, Parameters, labelFor } from "./CFDFields";
+import { ventCenter } from "@/lib/climoptixPreview";
 
 export function EquipmentPanel({
   scenario,
@@ -19,6 +21,7 @@ export function EquipmentPanel({
   onEditVent,
   editor = false,
   checked = true,
+  placement = false,
 }: {
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -30,8 +33,11 @@ export function EquipmentPanel({
   onEditVent?: (id: string) => void;
   editor?: boolean;
   checked?: boolean;
+  placement?: boolean;
 }) {
-  const [flowUnit, setFlowUnit] = useState("L/s");
+  const unitPreference = useSyncExternalStore(subscribeEngineeringUnits, getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot);
+  const [flowOverride, setFlowUnit] = useState<string | null>(null);
+  const flowUnit = flowOverride ?? parseEngineeringUnits(unitPreference).cfdFlowUnit ?? "L/s";
   const selectedObjectId =
     report?.patches.find((p) => p.kind === "object" && p.id === selected)
       ?.sourceId ?? selected;
@@ -52,7 +58,8 @@ export function EquipmentPanel({
       role,
       host: { patchId: hosts[0]?.id ?? "unassigned" },
     });
-    onChange({ ...scenario, vents: [...scenario.vents, v], ...(groupId ? { objectGroups: objectGroups(scenario).map(g => g.id === groupId ? { ...g, memberIds: [...g.memberIds, `vent:${v.id}`] } : g) } : {}) });
+    const next = { ...scenario, vents: [...scenario.vents, v] };
+    onChange({ ...next, ...(groupId ? { objectGroups: objectGroups(next).map(g => g.id === groupId ? { ...g, memberIds: [...g.memberIds, `vent:${v.id}`] } : g) } : {}) });
     onSelect(`vent:${v.id}`);
     onEditVent?.(v.id);
   };
@@ -223,7 +230,11 @@ export function EquipmentPanel({
             </select>
           </label>
           {!hosts.some(h => h.id === vent.host.patchId) && <p className="cfx-notice" role="status">Unassigned vent · choose a seed room in Domain and resolve preparation checks, then select a validated host face here. This draft cannot be submitted or exported as a runnable case.</p>}
-          <button disabled={!hosts.length} onClick={() => onPick(vent.role, vent.id)}>Place this vent on face…</button>
+          {!placement && <button disabled={!hosts.length} onClick={() => onPick(vent.role, vent.id)}>Place this vent on face…</button>}
+          {placement && (() => {
+            const host = hosts.find(p => p.id === vent.host.patchId)?.host;
+            return host ? <output aria-label="Live vent coordinates" className="cfx-notice">Position (mm): {ventCenter(vent, host).map((v, axis) => `${["X", "Y", "Z"][axis]} ${v.toFixed(1)}`).join(" · ")}</output> : <p>Choose a host face in the 3D view.</p>;
+          })()}
           <div className="cfx-grid">
             <CFDNumber
               label="Host U (0–1)"
@@ -298,6 +309,7 @@ export function EquipmentPanel({
             </label>
           )}
           <CFDNumber
+            convert={false}
             label={
               vent.control === "volumeFlow"
                 ? `Volume flow (${flowUnit})`

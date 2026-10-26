@@ -9,6 +9,7 @@ import { CFDNumber, Parameters } from "./CFDFields";
 import { MeshPanel } from "./ClimoptixMesh";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { CFDCollapseAll } from "./CFDCollapseAll";
+import { CFDProbes } from "./CFDProbes";
 
 export type SimulationTab = "mesh" | "run" | "monitor" | "post";
 
@@ -164,17 +165,24 @@ function PostPanel({
   report,
   onChange,
   onVTK,
+  onResults,
+  selected,
+  onSelect,
 }: {
   scenario: CFDScenario;
   report: CFDReport | null;
   onChange: (s: CFDScenario) => void;
   onVTK: (f: File) => void;
+  onResults?: () => void;
+  selected:string|null;
+  onSelect:(id:string|null)=>void;
 }) {
   const post = scenario.postProcessing,
     planes = samplingPlanes(report?.domain.boundsMm ?? null, post);
   const requested = (["x", "y", "z"] as const).reduce((count, axis) => count + (post[axis].enabled ? post[axis].count : 0), 0);
   return (
     <>
+      <CFDProbes scenario={scenario} onChange={onChange} selected={selected} onSelect={onSelect}/>
       <details open><summary>Sampling planes</summary>
       <p className="cfx-caption">Equally spaced interior slices. The normal is perpendicular to the named plane; positions use the checked domain in millimetres.</p>
       <div className="cfx-post-planes" role="group" aria-label="Sampling plane directions">
@@ -278,12 +286,13 @@ function PostPanel({
           </ul>
         )}
       </details>
+      <div className="cfx-equal-actions">{onResults&&<button className="cfx-primary" onClick={onResults}>Open online results &amp; downloads</button>}
       <label className="cfx-file">
-        Open VTK result
+        Import VTK/VTI result
         <input
           type="file"
           aria-label="Open VTK result"
-          accept=".vtp,.vtk"
+          accept=".vtp,.vtk,.vti"
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
@@ -291,8 +300,9 @@ function PostPanel({
           }}
         />
       </label>
+      </div>
       <small className="cfx-caption">
-        ASCII .vtp / .vtk · 25 MB · external, unverified
+        ASCII .vtp / .vtk / .vti · 25 MB · external, unverified. Use Online results above for the connected job.
       </small>
     </>
   );
@@ -310,7 +320,9 @@ export function ClimoptixSimulation({
   exporting,
   exportDisabled,
   onVTK,
+  onResults,
   convergence,
+  jobProgress,
   onConvergence,
   onShowRefinements,
   onEditRefinement,
@@ -328,15 +340,18 @@ export function ClimoptixSimulation({
   exporting: boolean;
   exportDisabled: boolean;
   convergence: ReactNode;
+  jobProgress?: ReactNode;
   onConvergence: () => void;
   onShowRefinements: () => void;
   onEditRefinement: (id: string) => void;
   connection?: RunConnection;
   workerControls?: ReactNode;
   onVTK: (f: File) => void;
+  onResults?: () => void;
 }) {
   return (
     <>
+      {jobProgress}
       <div className="cfx-inline-toolbar">
       <div
         className="cfx-simulation-tabs"
@@ -436,6 +451,9 @@ export function ClimoptixSimulation({
           report={report}
           onChange={onChange}
           onVTK={onVTK}
+          onResults={onResults}
+          selected={selected}
+          onSelect={onSelect}
         />
       </section>
     </>
