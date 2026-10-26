@@ -5,6 +5,7 @@ import { Bounds, Html, OrbitControls, useBounds } from "@react-three/drei";
 import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
+  EdgesGeometry,
   Mesh,
   DoubleSide,
   Float32BufferAttribute,
@@ -102,7 +103,7 @@ interface Props {
   onSelect: (id: string | null) => void;
   picking: CFDVent | boolean;
   onHostPick: (patchId: string, u: number, v: number) => void;
-  onMoveVent: (id: string, u: number, v: number) => void;
+  onMoveVent: (id: string, u: number, v: number, patchId?: string) => void;
   canMoveVents: boolean;
   showSamplingPlanes?: boolean;
   showRefinements: boolean;
@@ -166,6 +167,7 @@ function PatchMesh({
   offset,
   colour,
   highlighted = false,
+  outlines = false,
 }: {
   patch: CFDViewPatch;
   positions: number[];
@@ -176,6 +178,7 @@ function PatchMesh({
   offset?: Vec3;
   colour?: string;
   highlighted?: boolean;
+  outlines?: boolean;
 }) {
   const geometry = useMemo(() => {
     const g = new BufferGeometry();
@@ -184,8 +187,11 @@ function PatchMesh({
     return g;
   }, [positions]);
   useEffect(() => () => geometry.dispose(), [geometry]);
+  const edges=useMemo(()=>outlines?new EdgesGeometry(geometry):null,[geometry,outlines]);
+  useEffect(()=>()=>edges?.dispose(),[edges]);
   const vent = patch.kind === "supply" || patch.kind === "extract";
   return (
+    <group>
     <mesh
       name={patch.id}
       geometry={geometry}
@@ -197,12 +203,14 @@ function PatchMesh({
       <meshStandardMaterial
         color={selected ? CFD_SELECTION_COLOUR : colour ?? (COLORS[patch.kind] ?? "#8b9eac")}
         side={DoubleSide}
-        transparent={!vent && !selected}
-        opacity={vent || selected ? 1 : highlighted ? 0.66 : 0.34}
+        transparent={outlines || (!vent && !selected)}
+        opacity={outlines ? 0 : vent || selected ? 1 : highlighted ? 0.66 : 0.34}
         roughness={0.85}
-        depthWrite={vent || selected}
+        depthWrite={!outlines && (vent || selected)}
       />
     </mesh>
+    {edges&&<lineSegments name={`wall-outline:${patch.id}`} geometry={edges} raycast={()=>{}}><lineBasicMaterial color={selected?CFD_SELECTION_COLOUR:colour??COLORS.wall}/></lineSegments>}
+    </group>
   );
 }
 function VentIntent({
@@ -310,6 +318,7 @@ export function ClimoptixViewer({
     [thermalSurfaces],
   );
   const [ceilings, setCeilings] = useState(false);
+  const [wallOutlines,setWallOutlines]=useState(false);
   const [detailed, setDetailed] = useState(false);
   const [isolate, setIsolate] = useState(false);
   const [fit, setFit] = useState(0);
@@ -374,7 +383,7 @@ export function ClimoptixViewer({
   ];
   const viewScope = scopes.find((s) => s.id === scope) ?? scopes[0];
   const visibleRooms = new Set(viewScope.rooms);
-  const [drag, setDrag] = useState<{ id: string; u: number; v: number } | null>(
+  const [drag, setDrag] = useState<{ id: string; patch:CFDPatch; u: number; v: number } | null>(
     null,
   );
   const dragRef = useRef<{
@@ -458,7 +467,7 @@ export function ClimoptixViewer({
           u: vent.host.u,
           v: vent.host.v,
         };
-        setDrag({ id: vent.id, u: vent.host.u, v: vent.host.v });
+        setDrag({ id: vent.id, patch:host, u: vent.host.u, v: vent.host.v });
         (e.target as HTMLElement)?.setPointerCapture(e.pointerId);
       }
       return;
@@ -474,6 +483,22 @@ export function ClimoptixViewer({
     const current = dragRef.current;
     if (!current?.patch.host) return;
     e.stopPropagation();
+    const vent = scenario.vents.find(v => v.id === current.id);
+    if(!vent)return;
+    // Captured-pointer events also contain real geometry intersections. Rehost
+    // on the actual checked wall/floor/ceiling under the pointer, not forever
+    // on the plane where the drag started. Geometry is never inferred from pixels.
+    for(const hit of e.intersections){
+      const host=patches.find(p=>p.id===hit.object.name&&p.host&&p.hostable&&["wall","floor","ceiling"].includes(p.kind));
+      if(!host?.host)continue;
+      const location=hostLocation(host,millimetres(hit.point));
+      const uv=location&&snapVentUV(vent,host.host,...location);
+      if(!uv)continue;
+      current.patch=host;current.u=uv[0];current.v=uv[1];
+      setDrag({...current});
+      if(picking)onMoveVent(current.id,...uv,host.id);
+      return;
+    }
     const h = current.patch.host,
       n = h.normal,
       plane = new Plane().setFromNormalAndCoplanarPoint(
@@ -483,13 +508,12 @@ export function ClimoptixViewer({
     const point = e.ray.intersectPlane(plane, new Vector3());
     if (!point) return;
     const proposed = hostLocation(current.patch, millimetres(point));
-    const vent = scenario.vents.find(v => v.id === current.id);
     const uv = proposed && vent ? snapVentUV(vent, h, ...proposed) : null;
     if (uv) {
       current.u = uv[0];
       current.v = uv[1];
-      setDrag({ id: current.id, u: uv[0], v: uv[1] });
-      if (picking) onMoveVent(current.id, ...uv);
+      setDrag({...current});
+      if (picking) onMoveVent(current.id, ...uv,current.patch.id);
     }
   };
   const onMeshUp = (e: ThreeEvent<PointerEvent>) => {
@@ -499,7 +523,7 @@ export function ClimoptixViewer({
     (e.target as HTMLElement)?.releasePointerCapture(e.pointerId);
     dragRef.current = null;
     setDrag(null);
-    onMoveVent(current.id, current.u, current.v);
+    onMoveVent(current.id, current.u, current.v,current.patch.id);
   };
   const dragOffset = (pid: string): Vec3 | undefined => {
     if (!drag || `vent:${drag.id}` !== pid) return;
@@ -561,7 +585,7 @@ export function ClimoptixViewer({
       </div>
       {viewTarget &&
         createPortal(
-          <div className="cfx-inspector" aria-label="CFD view properties">
+          <div className="cfx-inspector" aria-label="CFD view properties"><div className="cfx-view-checks">
             <label className="cfx-check">
               <input
                 type="checkbox"
@@ -595,6 +619,8 @@ export function ClimoptixViewer({
               />
               Refinement intent
             </label>
+            <label className="cfx-check"><input type="checkbox" checked={wallOutlines} onChange={event=>setWallOutlines(event.target.checked)}/>2D wall outlines</label>
+            </div>
             <button type="button" onClick={() => setFit((x) => x + 1)}>
               Fit view
             </button>
@@ -644,6 +670,7 @@ export function ClimoptixViewer({
                   roomIds={viewScope.rooms}
                   showRoof={ceilings}
                   assets={detailed}
+                  wallMode={wallOutlines?"CUTAWAY_2D":"TRANSPARENT"}
                 />
               )}
               <Frame
@@ -682,6 +709,7 @@ export function ClimoptixViewer({
                     offset={dragOffset(p.id)}
                     colour={groupColours.get(p.id)}
                     highlighted={groupSelection.has(p.id)}
+                    outlines={wallOutlines&&p.kind==="wall"}
                     onPointerDown={(e) => onMeshDown(e, p)}
                     onPointerMove={onMeshMove}
                     onPointerUp={onMeshUp}
@@ -707,7 +735,8 @@ export function ClimoptixViewer({
                   ))}
               {scenario.vents.map((vent) => {
                 if (isolated && selected !== `vent:${vent.id}`) return null;
-                const host = patches.find((p) => p.id === vent.host.patchId);
+                const preview=drag?.id===vent.id?{...vent,host:{patchId:drag.patch.id,u:drag.u,v:drag.v}}:vent;
+                const host = drag?.id===vent.id?drag.patch:patches.find((p) => p.id === vent.host.patchId);
                 if (!host?.host || !visibleRooms.has(host.roomId)) return null;
                 const marker = {
                   ...host,
@@ -717,10 +746,9 @@ export function ClimoptixViewer({
                 return (
                   <VentIntent
                     key={vent.id}
-                    vent={vent}
+                    vent={preview}
                     host={host}
                     selected={selected === marker.id}
-                    offset={dragOffset(marker.id)}
                     onDown={(e) => onMeshDown(e, marker)}
                     onMove={onMeshMove}
                     onUp={onMeshUp}

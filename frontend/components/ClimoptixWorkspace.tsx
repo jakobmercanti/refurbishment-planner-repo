@@ -718,14 +718,14 @@ export function ClimoptixWorkspace({
     if (placement.returnEditor) setVentEditor({ studyId: scenario.id, id: placement.ventId });
     openPhase("equipment");
   };
-  const moveVent = (id: string, u: number, v: number) => {
-    if (placement?.ventId === id) { setPicking({ ...placement, draft: { ...placement.draft, host: { ...placement.draft.host, u, v } } }); return; }
+  const moveVent = (id: string, u: number, v: number, patchId?:string) => {
+    if (placement?.ventId === id) { setPicking({ ...placement, draft: { ...placement.draft, host: { patchId:patchId??placement.draft.host.patchId, u, v } } }); return; }
     if (scenario)
       change(
         {
           ...scenario,
           vents: scenario.vents.map((vent) =>
-            vent.id === id ? { ...vent, host: { ...vent.host, u, v } } : vent,
+              vent.id === id ? { ...vent, host: { patchId:patchId??vent.host.patchId, u, v } } : vent,
           ),
         },
         true,

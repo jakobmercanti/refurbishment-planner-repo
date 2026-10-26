@@ -119,6 +119,12 @@ function getContentMinimumHeight(panel: HTMLElement, maxHeight: number, compact 
   const contentStyles = window.getComputedStyle(content);
   const margins = Number.parseFloat(contentStyles.marginTop || "0") + Number.parseFloat(contentStyles.marginBottom || "0");
   const inlineStyle = content.getAttribute("style");
+  // Intrinsic measurement temporarily removes scroll constraints. Browsers can
+  // clamp BOTH this scroller and nested panels to zero during that layout.
+  // Restore the user's viewport after restoring the constraints, in the same task.
+  const scrollers = [content,...content.querySelectorAll<HTMLElement>("*")];
+  for(let parent=content.parentElement;parent;parent=parent.parentElement)scrollers.push(parent);
+  const scrollPositions=scrollers.filter(node=>node.scrollTop||node.scrollLeft).map(node=>({node,top:node.scrollTop,left:node.scrollLeft}));
   let contentHeight = content.scrollHeight;
   try {
     // A flex item with overflow:auto can report its current viewport height as
@@ -133,6 +139,7 @@ function getContentMinimumHeight(panel: HTMLElement, maxHeight: number, compact 
   } finally {
     if (inlineStyle === null) content.removeAttribute("style");
     else content.setAttribute("style", inlineStyle);
+    for(const {node,top,left} of scrollPositions){node.scrollTop=top;node.scrollLeft=left;}
   }
   const naturalHeight = titlebar.getBoundingClientRect().height + contentHeight + margins + borders;
   return Math.max(MIN_FLOATING_WINDOW_HEIGHT, Math.min(maxHeight, Math.ceil(naturalHeight)));
@@ -197,7 +204,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
   const [minimized, setMinimized] = useState(false);
   const minimizedOrder = useSyncExternalStore(subscribeMinimized, minimizedSnapshot, () => "");
   const minimize = () => { setWindowMinimized(windowId, true); setMinimized(true); };
-  const restoreMinimized = () => { setWindowMinimized(windowId, false); setMinimized(false); requestAnimationFrame(() => { focusPanel(); panelRef.current?.querySelector<HTMLElement>(".floating-toolbar-titlebar")?.focus(); }); };
+  const restoreMinimized = () => { setWindowMinimized(windowId, false); setMinimized(false); requestAnimationFrame(() => { focusPanel(); panelRef.current?.querySelector<HTMLElement>(".floating-toolbar-titlebar")?.focus({preventScroll:true}); }); };
   useEffect(() => () => setWindowMinimized(windowId, false), [windowId]);
   const compactWorkspace = useCompactWorkspace();
   const panelRef = useRef<HTMLElement>(null);

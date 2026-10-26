@@ -41,8 +41,9 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
             </div>
           </div>
         </section>
-        <div className="settings-section settings-navigation">
+        <div className="settings-section settings-input-row settings-navigation">
           <label htmlFor="settings-navigation">3D navigation</label>
+          <div className="settings-select-control">
           <select id="settings-navigation" aria-label="3D navigation" value={preferences.navigation ?? "STANDARD"} onChange={event => onChange({ ...preferences, navigation: event.target.value as NavigationPreference })}>
             <option value="STANDARD">Standard</option><option value="CAD">CAD</option><option value="BLENDER">Blender-style</option>
           </select>
@@ -50,6 +51,7 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
             { heading: "Mouse buttons", text: "Standard: left drag orbits, middle drag zooms and right drag pans. CAD: left drag pans, middle drag zooms and right drag orbits. Blender-style: middle drag orbits and right drag pans; left click selects. The wheel zooms in every preset. A right click without dragging opens the toolbar menu; a right drag never opens it." },
             { heading: "Shared controls", text: "The selected preset applies immediately to Floorplan's main 3D viewer and the Climoptix building viewer and is saved on this device. Camera movement changes the view, not any measured room geometry." },
           ]} />
+          </div>
         </div>
         <div className="settings-section">
           <strong>Display units</strong>
@@ -61,21 +63,23 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
             <button type="button" className={preferences.units === "METERS" ? "active" : ""} aria-pressed={preferences.units === "METERS"} onClick={() => onChange({ ...preferences, units: "METERS" })}>Metres</button>
           </div>
         </div>
-        <div className="settings-section">
+        <div className="settings-section settings-input-row">
           <label className="settings-currency-label" htmlFor="settings-default-currency">Default currency</label>
+          <div className="settings-select-control">
           <select id="settings-default-currency" className="settings-currency-select" value={preferences.currency} onChange={(event) => onChange({ ...preferences, currency: event.target.value as CurrencyCode })}>
             {CURRENCY_OPTIONS.map(({ code, name, symbol }) => <option key={code} value={code}>{code} · {symbol} — {name}</option>)}
           </select>
+          </div>
         </div>
         <div className="settings-section settings-engineering-units">
-          <div><label htmlFor="settings-temperature">Temperature units</label>
+          <div className="settings-input-row"><label htmlFor="settings-temperature">Temperature units</label><div className="settings-select-control">
           <select id="settings-temperature" value={preferences.temperatureUnit ?? "K"} onChange={event => onChange({ ...preferences, temperatureUnit: event.target.value as TemperatureUnit })}>
             <option value="C">Celsius (°C)</option><option value="K">Kelvin (K)</option><option value="F">Fahrenheit (°F)</option>
-          </select></div>
-          <div><label htmlFor="settings-flow">CFD volume flow units</label>
+          </select></div></div>
+          <div className="settings-input-row"><label htmlFor="settings-flow">CFD volume flow units</label><div className="settings-select-control">
           <select id="settings-flow" value={preferences.cfdFlowUnit ?? "m³/s"} onChange={event => onChange({ ...preferences, cfdFlowUnit: event.target.value as FlowUnit })}>
             <option>m³/s</option><option>L/s</option><option>m³/h</option>
-          </select></div>
+          </select></div></div>
           <small>Display preferences only. Geometry is saved in millimetres; CFD uses kelvin and SI internally.</small>
         </div>
         <label className="settings-check">

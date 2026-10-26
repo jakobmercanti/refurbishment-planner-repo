@@ -301,11 +301,12 @@ body .cfx-workspace .cfx-results-sidebar details { margin:6px; }
 body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > .cfx-results-sidebar { grid-row:3; grid-column:1; height:100%; }
 body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > .cfx-vtk-canvas { grid-column:2; grid-row:3; height:100%; min-height:0; width:calc(100% - 12px); }
 body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > footer { grid-row:4; }
-body .settings-dialog .settings-navigation { display:grid; grid-template-columns:minmax(0,1fr) minmax(160px,1fr) 34px; align-items:center; gap:8px; }
-body .settings-dialog .settings-engineering-units { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:12px; }
-body .settings-dialog .settings-engineering-units > div { display:grid; gap:6px; min-width:0; }
+body .settings-dialog .settings-input-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:center; gap:7px; }
+body .settings-dialog .settings-select-control { display:grid; grid-template-columns:minmax(0,1fr) 34px; align-items:center; gap:8px; min-width:0; }
+body .settings-dialog .settings-select-control .window-help-button { width:34px; height:34px; margin:0; }
+body .settings-dialog .settings-engineering-units { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:12px; }
 body .settings-dialog :is(.settings-navigation,.settings-engineering-units) label { display:grid; gap:6px; font:600 calc(12px * var(--density-font-scale,1))/1.4 var(--font-sans,Arial,sans-serif); }
-body .settings-dialog :is(.settings-navigation,.settings-engineering-units) select { width:100%; min-width:0; height:34px; margin:0; font:400 13px/1.3 var(--font-sans,Arial,sans-serif); }
+body .settings-dialog select { width:100%; min-width:0; height:34px; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:var(--radius-control,8px); background:var(--surface-muted); color:var(--ink); font:650 12px/1.3 var(--font-sans,Arial,sans-serif); }
 body .settings-dialog .settings-engineering-units small { grid-column:1/-1; font-size:12px; }
 body .cfx-setup-window .floating-toolbar-header-content select { min-height:30px; height:30px; margin-block:0; padding-block:3px; }
 @media(max-width:640px) {
@@ -318,6 +319,8 @@ body .cfx-setup-window .floating-toolbar-header-content select { min-height:30px
   body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > .cfx-vtk-canvas { grid-column:1; grid-row:3; height:100%; min-height:140px; }
   body .settings-dialog .settings-engineering-units { grid-template-columns:1fr; }
 }
+body .cfx-workspace .cfx-view-checks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; align-items:start; }
+body .cfx-workspace .cfx-view-checks .cfx-check { min-width:0; margin:0; }
 
 /* Compact still needs usable hit targets on touch devices. */
 @media (pointer: coarse) {
