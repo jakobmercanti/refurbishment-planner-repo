@@ -108,6 +108,49 @@ fail-closed and all three types of parallel failure advertising only serial.
 Corrected runtime deployment: `04097b6b-93a8-4ea8-b1c0-bdfa63434d68`.
 The complete final backend run passed 774 tests after this correction. A fresh
 local two-processor solve and backend Ruff also passed again.
+The final frontend rerun also passed all 645 unit and 19 persistence tests.
+Runtime safeguards and packaging/onboarding corrections are pushed in
+`9b7f8c6` on `origin/master`.
+
+The first runtime-correction upload above failed in the Railway image-build
+stage with only builder-start messages and no Docker error. Its byte-identical
+retry is `7d44c8d5-770a-406e-a0c6-4626572d8730`. No additional CPU, memory,
+service, credential, volume or account-plan change was used as a workaround.
+Execution is not declared ready until this corrected release passes native
+acceptance and `/health` returns `executionReady: true`.
+
+## Final release state — public compute launch incomplete
+
+Both corrected-worker uploads `04097b6b-93a8-4ea8-b1c0-bdfa63434d68` and
+`7d44c8d5-770a-406e-a0c6-4626572d8730` failed in Railway's build stage; the
+retry produced no Docker build logs. Connector logs, CLI logs, deployment
+diagnostics and the dashboard did not supply a specific actionable Docker
+error. No additional resource, credential or new-service workaround was made.
+
+The initially deployed public worker `b078d9b7-56d1-4557-a631-aa49e487ee9f`
+failed MPI acceptance and left execution disabled. To restore the previous
+working service, the last verified **private preview** image from
+`d636ed28-3f79-4972-b0be-05a5b448aaf4` was rolled back explicitly, without an
+image build. The preceding redeploy attempt
+`4a0ce51f-cbf7-48ba-815f-957102a6de86` unexpectedly requested a build and was
+cancelled. Actual rollback deployment:
+`a4d8cbcf-d98b-4659-8863-87c96b99b272` (SUCCESS).
+
+The rollback logged all three native serial acceptance cases passing and
+`/health` returned `{"status":"ok","executionReady":true}` at approximately
+10:00 UTC. The original email-restricted preview is restored. **Public
+simulation execution and the new lifetime allowance are NOT released on that
+old worker.** The public entry/onboarding, audited planner and preparation API
+remain online; public compute must not be described as available yet.
+
+All requested policy code, tested runtime safeguards, deployment helper and
+onboarding changes are pushed to master (`9b7f8c6`, following `a7c54b7`). The
+remaining action is to deploy the corrected worker bundle using
+`deployment/package-openfoam.ps1`, wait for native startup acceptance, and
+verify both the deployed processor profile and public verified-account access.
+Preserve the current volume/database. No user simulation was started for QA,
+no user data was removed, and no credentials or billing plan were changed.
+Unrelated website and attachment changes remain untouched.
 
 The current Railway CLI warns that legacy railway.json configuration is
 supported until 1 December 2026. Migration to its newer infrastructure format
