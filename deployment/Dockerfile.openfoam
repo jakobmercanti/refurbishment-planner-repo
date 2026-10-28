@@ -1,5 +1,7 @@
 # OpenCFD's official v2312 runtime, pinned independently of the public API image.
 FROM opencfd/openfoam-default:2312@sha256:097e45046a74ee1dae3e6135df0c42723ba55092d246e7c9932f3bfa1e89b7b2
+LABEL org.opencontainers.image.title="Climoptix CFD worker" \
+    org.opencontainers.image.version="public-free-1"
 USER root
 COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /uvx /bin/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini util-linux \

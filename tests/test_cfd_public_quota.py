@@ -20,6 +20,23 @@ def complete(store, owner, *, phase="Completed", operation="run"):
     return request, row
 
 
+def test_public_health_identifies_release_and_limits_without_exposing_account_usage(tmp_path):
+    app = create_app(tmp_path, start_runner=False)
+    with TestClient(app) as client:
+        health = client.get("/health").json()
+        assert health["release"] == "climoptix-public-free-1"
+        assert health["access"] == "verified-accounts"
+        assert health["executionReady"] is False and health["validatedProcessors"] == 0
+        assert health["freeTier"] == {
+            "period": "lifetime", "completedSimulationLimit": 5,
+            "maxCells": 500000, "maxProcessors": 2, "maxMemoryGb": 4,
+        }
+        assert "simulationQuota" not in health and "namespace" not in health
+        assert client.get("/climoptix/worker/capabilities").status_code == 401
+        app.state.worker.update(ready=True, processors=1)
+        assert client.get("/health").json()["validatedProcessors"] == 1
+
+
 def test_five_completed_runs_reject_sixth_but_not_idempotent_retry_or_mesh(tmp_path):
     store, owner = Store(tmp_path), str(uuid4())
     for _ in range(5):

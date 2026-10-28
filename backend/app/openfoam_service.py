@@ -350,7 +350,17 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "executionReady": state["ready"]}
+        # Public policy only: never expose a user's usage, identity or jobs.
+        # A ready old private-preview image must not look like a public release.
+        return {
+            "status": "ok", "release": "climoptix-public-free-1",
+            "executionReady": state["ready"], "access": "verified-accounts",
+            "validatedProcessors": state["processors"] if state["ready"] else 0,
+            "freeTier": {
+                "period": "lifetime", "completedSimulationLimit": FREE_COMPLETED_SIMULATIONS,
+                "maxCells": LIMITS["maxCells"], "maxProcessors": LIMITS["cpu"], "maxMemoryGb": LIMITS["memoryGb"],
+            },
+        }
 
     prefix = "/climoptix/worker"
 

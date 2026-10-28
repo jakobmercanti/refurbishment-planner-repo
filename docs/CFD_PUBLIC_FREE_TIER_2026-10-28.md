@@ -5,6 +5,38 @@ user, 500,000 cells, two processors and 4 GB RAM maximum; publish accumulated
 workbench updates and push master. The allowance is lifetime, not monthly.
 Existing commercial/render plans and credits are unchanged.
 
+## Current release — public serial compute verified
+
+The public launch is online. Railway worker deployment
+`42aa966f-4779-42f0-bbdd-13f012c4c1a7` reached SUCCESS and passed native
+serial acceptance for laminar, kEpsilon and kOmegaSST. Live health identifies
+`climoptix-public-free-1`, `access: verified-accounts`, `executionReady: true`
+and `validatedProcessors: 1`. It reports the five lifetime completions,
+500,000-cell, two-CPU and 4 GB maximum policy, without exposing account usage.
+This supersedes the earlier failed-release and private-preview recovery below.
+
+Railway still fails optional MPI startup with `pmix_progress_thread_start
+failed`. New two-processor requests are rejected; no parallel capability or
+silent substitution is claimed. Validated one-processor runs remain available.
+The actual container ceiling is still two CPUs / 4,000,000,000 bytes and the
+original volume `1b6af3cf-5607-47e7-8b75-294febbbfff2` remains mounted at
+`/data`. There are no staged service changes.
+
+The final backend run passed all 775 tests; all 36 focused quota/worker checks
+and backend Ruff passed. The single existing Starlette/httpx warning remains.
+The unchanged deployed frontend and proxy retain their earlier verification
+below. Live planner proxy checks returned HTTP 401 for both anonymous and
+invalid-token capability requests. Native startup acceptance exercises real
+solvers; no production user was impersonated and no account allowance was
+consumed by a QA submission.
+
+The deployed planner is Cloudflare version
+`85543ae0-f957-47fd-a8fd-c52ea9ec164f`; the existing API deployment remains
+`18dc01bd-e79b-47ea-b920-d013acefd307`. The public entry is
+https://www.freefloorplan3d.com/planner/. User data, credentials, billing plans
+and unrelated website/attachment changes are preserved. Native adjoint remains
+unimplemented and disabled.
+
 ## Implementation
 
 - Public Workspace discovery and account/verified-email onboarding. Server
@@ -119,7 +151,7 @@ service, credential, volume or account-plan change was used as a workaround.
 Execution is not declared ready until this corrected release passes native
 acceptance and `/health` returns `executionReady: true`.
 
-## Final release state — public compute launch incomplete
+## Earlier release state — public compute launch incomplete (superseded)
 
 Both corrected-worker uploads `04097b6b-93a8-4ea8-b1c0-bdfa63434d68` and
 `7d44c8d5-770a-406e-a0c6-4626572d8730` failed in Railway's build stage; the
