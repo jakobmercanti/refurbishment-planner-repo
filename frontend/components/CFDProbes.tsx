@@ -7,9 +7,11 @@ import { CFDConfirmAction } from "./CFDConfirmAction";
 export function CFDProbes({scenario,onChange,selected,onSelect}:{scenario:CFDScenario;onChange:(scenario:CFDScenario)=>void;selected:string|null;onSelect:(id:string|null)=>void}) {
   const probes=scenario.outputs.probesMm;
   const commit=(probesMm:typeof probes)=>onChange({...scenario,outputs:{...scenario.outputs,probesMm}});
-  return <details open><summary>Requested outputs &amp; monitoring points</summary>
+  return <><details open><summary>Requested outputs</summary>
     <Parameters value={scenario.outputs} omit={["probesMm"]} onChange={outputs=>onChange({...scenario,outputs:outputs as typeof scenario.outputs})}/>
-    <p className="cfx-caption">Probe coordinates stay visible. Select a row or a marker in the building viewer to highlight it orange. Requested fields are not proof of computed results.</p>
+    <p className="cfx-caption">Requested fields are not proof of computed results.</p>
+    </details><details open><summary>Monitoring probe positions</summary>
+    <p className="cfx-caption">Select and drag a marker in the building viewer to move it. Arrow keys move X/Y; Page Up/Down moves Z (10 mm, Shift: 100 mm, Alt: 1 mm). Esc cancels a drag.</p>
     <fieldset><legend>Probe positions (mm)</legend>
     <div className="cfx-equal-actions"><button disabled={probes.length>=1000} onClick={()=>{commit([...probes,[0,0,0]]);onSelect(`probe:${probes.length}`);}}>Add probe</button>
       <CFDConfirmAction title="Clear all probes?" disabled={!probes.length} description="Remove every monitoring position. Undo can restore them." onConfirm={()=>{commit([]);onSelect(null);}}/></div>
@@ -23,5 +25,5 @@ export function CFDProbes({scenario,onChange,selected,onSelect}:{scenario:CFDSce
     </div>)}
     {!probes.length&&<p>No probes. Add one to request point monitoring in the next run.</p>}
     </fieldset>
-  </details>;
+  </details></>;
 }

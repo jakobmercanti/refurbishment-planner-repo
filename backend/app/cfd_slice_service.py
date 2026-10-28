@@ -28,8 +28,11 @@ from backend.app.cfd_slice_data import (
     scalar,
     statistics,
 )
+from geometry.climoptix_models import MAX_SAMPLING_PLANES
 
 TERMINAL = {"Completed", "Failed", "Cancelled", "Stale"}
+RETAINED_TIMES = 10
+MAX_SLICE_RECORDS = MAX_SAMPLING_PLANES * RETAINED_TIMES
 METHOD = "GEOS constrained source-cell triangles / barycentric point tuples / stored cell values"
 UNITS = {"U": "m/s", "p": "m²/s²", "k": "m²/s²", "epsilon": "m²/s³", "omega": "s⁻¹"}
 _inventory_lock = threading.Lock()
@@ -128,11 +131,11 @@ def inventory(root: Path, row: sqlite3.Row) -> dict[str, Any]:
                 if times:
                     last_iteration = float(times[-1])
         paths = sorted((root / "postProcessing/slices").glob("*/*.vtk"))
-        # Latest ten stored write times, max 20 planes/time; existing native files
+        # Latest ten stored write times, up to 250 planes/time; existing native files
         # remain in the archive. No volume fields are loaded into the browser.
         valid = [p for p in paths if re.fullmatch(r"[0-9.eE+-]+", p.parent.name)]
-        times = sorted({float(p.parent.name) for p in valid if np.isfinite(float(p.parent.name))})[-10:]
-        candidates = [p for p in valid if float(p.parent.name) in times][-200:]
+        times = sorted({float(p.parent.name) for p in valid if np.isfinite(float(p.parent.name))})[-RETAINED_TIMES:]
+        candidates = [p for p in valid if float(p.parent.name) in times][-MAX_SLICE_RECORDS:]
         retained = {p.relative_to(root).as_posix() for p in candidates}
         index = {key: entry for key, entry in index.items() if key in retained and isinstance(entry, dict)}
         digests = {

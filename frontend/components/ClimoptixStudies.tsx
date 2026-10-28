@@ -10,6 +10,7 @@ import { duplicateSimulationGroup, sameGroup, simulationGroups, uniqueGroupName 
 import type { CFDJobEntry } from "./useCFDJobs";
 import { CFDReorderList } from "./CFDReorderList";
 import { CFDRowMenu } from "./CFDRowMenu";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 import { CFDConfirmAction } from "./CFDConfirmAction";
 import { CFDJobProgress } from "./CFDJobProgress";
 
@@ -64,7 +65,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
     if (members.length && !destination) { destination = { id: crypto.randomUUID(), name: "Ungrouped" }; remaining.push(destination); }
     onOrder(scenarios.map(s => sameGroup(s.group, group.name) ? { ...s, group: destination!.name } : s), remaining);
   };
-  return <div className="cfx-studies">
+  return <div className="cfx-studies" data-cfx-collapse-root>
     <div className="cfx-study-tools">
       <button className="cfx-primary" onClick={() => { if (targetGroup) setCollapsed(v => new Set([...v].filter(id => id !== targetGroup.id))); onAdd(targetGroup?.name); }} disabled={resetting || scenarios.length >= 100}>New simulation</button>
       <button disabled={groups.length >= 100} onClick={() => {
@@ -80,6 +81,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
         onConfirm={onReset} />
       <label className="cfx-check"><input type="checkbox" checked={showArchived} onChange={e => onShowArchived(e.target.checked)} />Archived</label>
       <div className="cfx-history"><button disabled={!canUndo} onClick={onUndo}>Undo</button><button disabled={!canRedo} onClick={onRedo}>Redo</button></div>
+      <CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:groups.map(group=>group.id)))}/>
     </div>
     {error && <p className="cfx-error" role="alert">{error}</p>}
     {!scenarios.length && <div className="cfx-welcome"><h3>No simulations</h3>
@@ -132,7 +134,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       <strong>{s.name}</strong><small id={`cfx-study-status-${s.id}`}>{s.archived ? "Archived · " : ""}{phase}</small>
                     </button>}
                   <div className="cfx-study-actions">
-                    {(["mesh", "run"] as const).map(operation => <button key={operation} className={operation === "run" ? "cfx-primary" : undefined}
+                    {(["mesh", "run"] as const).map(operation => <button key={operation}
                       aria-label={`${operation === "mesh" ? "Mesh" : "Run"} ${s.name}`} disabled={!!reason(operation)} title={reason(operation)} onClick={() => onSubmit(operation, [s])}>
                       {operation === "mesh" ? "Mesh" : "Run"}</button>)}
                     <button aria-label={`Delete ${s.name}`} className="cfx-danger" disabled={busy(s) || entry?.dispatched}

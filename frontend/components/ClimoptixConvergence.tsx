@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { downloadCFD } from "@/lib/climoptix";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 import {
   LEVEL_COLOURS,
   parseResidualLog,
@@ -137,7 +138,9 @@ export function ClimoptixConvergence({
     <section
       className="cfx-convergence"
       aria-label={workerSource ? "Worker convergence history" : "Imported convergence history"}
+      data-cfx-collapse-root={workerSource?undefined:true}
     >
+      {!workerSource&&<div className="cfx-inline-toolbar"><h3>Convergence monitor</h3><CFDCollapseAll/></div>}
       <details open><summary>Convergence{name ? ` · ${name}` : ""} · residuals</summary>
       <p className="cfx-caption">{workerSource || "External log · unverified · session only"}</p>
       {!workerSource && <p className="cfx-caption">Import an OpenFOAM log to inspect external residuals; imported logs are not verified worker results.</p>}

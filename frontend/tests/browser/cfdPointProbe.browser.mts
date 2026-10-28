@@ -22,34 +22,50 @@ async function open(t,transport?,inspect=false,options={}){
 }
 async function load(ui,name,text){await cfdWindow(ui,'Imported results');await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name,mimeType:'application/octet-stream',buffer:Buffer.from(text)});const viewer=ui.getByRole('region',{name:'VTK results viewer',exact:true});await viewer.getByRole('status').filter({hasText:/points.*cell/}).waitFor();return viewer;}
 const reading=scope=>scope.getByRole('status',{name:'Picked result value',exact:true});
-async function clickPlane(page,viewer,dx=0){const canvas=viewer.locator('.cfx-vtk-canvas'),b=await canvas.boundingBox();await page.mouse.click(b.x+b.width/2+dx,b.y+b.height/2);await eventually(()=>reading(viewer).getAttribute('data-probe-value'),value=>value!==null);return read(viewer);}
-async function read(scope){const output=reading(scope),text=await output.innerText();return{value:Number(await output.getAttribute('data-probe-value')),position:['X','Y','Z'].map(axis=>Number(text.match(new RegExp(`${axis} ([-+0-9.eE]+)`))[1])),text};}
+async function clickPlane(page,viewer,dx=0){const canvas=viewer.locator('.cfx-vtk-canvas');await canvas.scrollIntoViewIfNeeded();const b=await canvas.boundingBox();await page.mouse.click(b.x+b.width/2+dx,b.y+b.height/2);await eventually(()=>reading(viewer).getAttribute('data-probe-value'),value=>value!==null);return read(viewer);}
+async function read(scope){const output=reading(scope),text=await output.innerText();return{value:Number(await output.getAttribute('data-probe-value')),position:JSON.parse(await output.getAttribute('data-probe-position')),text};}
 const linear=result=>assert.ok(Math.abs(result.value-(result.position[0]+2*result.position[1]+3*result.position[2]))<2e-5,JSON.stringify(result));
+
+test('viewer controls sit below the plane; fullscreen preserves field; context deletion and dropdown deletion only unload layers',async t=>{
+  const {page,ui}=await open(t),viewer=await load(ui,'first.vtk',vtk());
+  const canvas=viewer.locator('.cfx-vtk-canvas'),controls=viewer.locator('.cfx-results-controls');
+  let box=await canvas.boundingBox();assert.ok((await controls.boundingBox()).y>=box.y+box.height);
+  const fields=viewer.getByRole('combobox',{name:'VTK result field',exact:true});await fields.selectOption('point:U');
+  await button(viewer,'Expand viewer').click();await eventually(()=>page.evaluate(()=>!!document.fullscreenElement),Boolean);
+  const expanded=await canvas.boundingBox();assert.ok(expanded.width>box.width||expanded.height>box.height);assert.equal(await fields.inputValue(),'point:U');
+  await button(viewer,'Restore viewer').click();await eventually(()=>page.evaluate(()=>!!document.fullscreenElement),v=>!v);assert.equal(await fields.inputValue(),'point:U');
+  await button(viewer,'View Z').click();await button(viewer,'Fit').click();await canvas.scrollIntoViewIfNeeded();box=await canvas.boundingBox();
+  await page.mouse.click(box.x+box.width/2,box.y+box.height/2,{button:'right'});
+  const menu=page.getByRole('menu',{name:'Result plane actions',exact:true});await menu.waitFor();await menu.getByRole('menuitem',{name:'Delete plane',exact:true}).click();assert.equal(await viewer.count(),0);
+  await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name:'second.vtk',mimeType:'application/octet-stream',buffer:Buffer.from(vtk())});await viewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
+  await ui.getByText('3D result layers · 1 loaded',{exact:true}).click();await ui.getByRole('combobox',{name:'Delete result plane',exact:true}).selectOption('second.vtk');assert.equal(await viewer.count(),0);
+  await button(ui,'Collapse all').click();assert.equal(await ui.locator('.cfx-results details[open]').count(),0);assert.equal(await ui.locator('.cfx-results').getByRole('combobox').count(),0);
+});
 
 test('V/button point mode reads scalar, vector and cell data, replaces one readout, ignores drags/typing, and Esc exits without closing results',async t=>{
   const {page,ui,saved}=await open(t,undefined,false,{deviceScaleFactor:2}),before=await saved(),viewer=await load(ui,'probe.vtk',vtk());
   await button(viewer,'View Z').click();await button(viewer,'Fit').click();
   await viewer.locator('.cfx-vtk-canvas').focus();await page.keyboard.press('v');assert.ok(await button(viewer,'Exit point probe (Esc)').isVisible());
-  const a=await clickPlane(page,viewer);linear(a);assert.match(a.text,/file units \(unverified\).*Interpolated point data/s);
+  const a=await clickPlane(page,viewer);linear(a);assert.match(a.text,/file units \(unverified\)/);assert.doesNotMatch(a.text,/Interpolated|X |coordinates/);
   const b=await clickPlane(page,viewer,40);linear(b);assert.notEqual(b.value,a.value);assert.equal(await reading(viewer).count(),1);
   const fields=viewer.getByRole('combobox',{name:'VTK result field',exact:true});await fields.selectOption('point:U');assert.equal(await reading(viewer).getAttribute('data-probe-value'),null);
   await viewer.getByLabel('Vector component',{exact:true}).selectOption('0');const x=await clickPlane(page,viewer);assert.ok(Math.abs(x.value-(1+x.position[0]))<2e-5);assert.match(x.text,/U X =/);
   await viewer.getByLabel('Vector component',{exact:true}).selectOption('-1');const magnitude=await clickPlane(page,viewer);assert.ok(Math.abs(magnitude.value-Math.hypot(1+magnitude.position[0],2*magnitude.position[1],3))<2e-5);
-  await fields.selectOption('cell:q');const cell=await clickPlane(page,viewer);assert.equal(cell.value,42);assert.match(cell.text,/Stored cell value/);
+  await fields.selectOption('cell:q');const cell=await clickPlane(page,viewer);assert.equal(cell.value,42);assert.match(cell.text,/q = 42/);
   const box=await viewer.locator('.cfx-vtk-canvas').boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+50,box.y+box.height/2+30,{steps:10});await page.mouse.up();assert.equal((await read(viewer)).text,cell.text);
   const empty=await viewer.locator('.cfx-vtk-canvas').boundingBox();await page.mouse.click(empty.x+8,empty.y+8);assert.equal(await reading(viewer).getAttribute('data-probe-value'),null);assert.match(await reading(viewer).innerText(),/No point on the active result plane/);await clickPlane(page,viewer);
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/point-probe-inspector.png`});
   await page.setViewportSize({width:390,height:900});
+  await viewer.locator('.cfx-vtk-canvas').scrollIntoViewIfNeeded();
   await eventually(async()=>({canvas:await viewer.locator('.cfx-vtk-canvas').boundingBox(),output:await reading(viewer).boundingBox()}),({canvas,output})=>canvas&&output&&canvas.height>=140&&canvas.y+canvas.height<=900&&output.y>=0&&output.y+output.height<=900,'The active mobile probe and plane remain onscreen');
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/point-probe-mobile.png`});
-  assert.equal(await viewer.evaluate(node=>getComputedStyle(node).overflowY),'auto');
-  const download=button(viewer,'Download full original data');await download.scrollIntoViewIfNeeded();const downloadBox=await download.boundingBox(),inspectorBox=await ui.getByRole('dialog',{name:'Result plane inspector',exact:true}).boundingBox();assert.ok(downloadBox.y>=inspectorBox.y&&downloadBox.y+downloadBox.height<=inspectorBox.y+inspectorBox.height+1,'The active probe must not trap downloads below the mobile viewport');
+  const download=button(viewer,'Download full original data');await download.scrollIntoViewIfNeeded();const downloadBox=await download.boundingBox(),inspectorBox=await ui.locator('.cfx-setup-window').boundingBox();assert.ok(downloadBox.y>=inspectorBox.y&&downloadBox.y+downloadBox.height<=inspectorBox.y+inspectorBox.height+1,'The active probe must not trap downloads below the mobile viewport');
   await page.keyboard.press('Escape');assert.equal(await reading(viewer).count(),0);assert.ok(await viewer.isVisible());
   await viewer.getByRole('spinbutton',{name:'Legend minimum',exact:true}).focus();await page.keyboard.press('v');assert.equal(await reading(viewer).count(),0);
   await button(viewer,'Probe point value (V)').click();await button(viewer,'Exit point probe (Esc)').click();assert.equal(await reading(viewer).count(),0);
-  await button(page,'Hide Result plane inspector').click();await button(ui,'Probe selected plane (V)').click();await button(viewer,'Exit point probe (Esc)').waitFor();await page.keyboard.press('Escape');assert.equal(await reading(viewer).count(),0);
-  await button(page,'Hide Result plane inspector').click();await button(ui,'Open plane inspector').click();await button(viewer,'Probe point value (V)').waitFor();assert.equal(await reading(viewer).count(),0);
-  await button(page,'Hide Result plane inspector').click();await ui.getByLabel('Move Simulation setup',{exact:true}).focus();await page.keyboard.press('v');await button(viewer,'Exit point probe (Esc)').waitFor();await page.keyboard.press('Escape');assert.equal(await reading(viewer).count(),0);
+  await button(viewer,'Hide plane viewer').click();await button(ui,'Probe selected plane (V)').click();await button(viewer,'Exit point probe (Esc)').waitFor();await page.keyboard.press('Escape');assert.equal(await reading(viewer).count(),0);
+  await button(viewer,'Hide plane viewer').click();await button(ui,'Show plane viewer').click();await button(viewer,'Probe point value (V)').waitFor();assert.equal(await reading(viewer).count(),0);
+  await button(viewer,'Hide plane viewer').click();await ui.getByLabel('Move Simulation setup',{exact:true}).focus();await page.keyboard.press('v');await button(viewer,'Exit point probe (Esc)').waitFor();await page.keyboard.press('Escape');assert.equal(await reading(viewer).count(),0);
   const after=await saved();assert.deepEqual(after.rooms,before.rooms);assert.deepEqual(after.cfdScenarios[0].outputs,before.cfdScenarios[0].outputs);
 });
 
@@ -80,17 +96,23 @@ test('verified building planes support V/point readout in native units without e
     if(path.endsWith('/artifacts/slice-0'))return route.fulfill({body:data});return route.fulfill({json:job});
   },true);
   const before=await saved();await cfdWindow(ui,'Simulations');await button(ui,'Run Office airflow').click();await eventually(()=>!!job,Boolean);await cfdWindow(ui,'Imported results');
-  await ui.getByRole('combobox',{name:'View result in 3D',exact:true}).selectOption('slice-0');const inspector=ui.getByRole('dialog',{name:'Result plane inspector',exact:true});await eventually(()=>button(inspector,'Load this plane into building 3D').isEnabled(),Boolean);await button(inspector,'Load this plane into building 3D').click();
+  await ui.getByRole('combobox',{name:'View result in 3D',exact:true}).selectOption('slice-0');await eventually(()=>button(ui,'Load selected plane into building 3D').isEnabled(),Boolean);await button(ui,'Load selected plane into building 3D').click();
   const controls=ui.locator('.floating-toolbar').filter({hasText:'verified worker plane · metres → scene coordinates.'});
   await eventually(()=>button(controls,'Probe point value (V)').isEnabled(),Boolean);
   await controls.getByRole('combobox',{name:'Building result field',exact:true}).selectOption('point:p');
   await page.evaluate(()=>{const s=window.__pointScene();s.controls.target.set(.5,0,-.5);s.camera.position.set(.5,2,1);s.controls.update();s.camera.updateMatrixWorld();s.invalidate();});
   await ui.locator('.cfx-viewport').focus();await page.keyboard.press('v');
-  async function pick(x,y){const p=await page.evaluate(({x,y})=>{const s=window.__pointScene(),point=s.camera.position.clone().set(x,0,-y).project(s.camera),b=s.gl.domElement.getBoundingClientRect();return{x:b.x+(point.x+1)*b.width/2,y:b.y+(1-point.y)*b.height/2};},{x,y});await page.mouse.click(p.x,p.y);await eventually(()=>reading(controls).getAttribute('data-probe-value'),v=>v!==null);return read(controls);}
-  const first=await pick(.25,.25);assert.ok(Math.abs(first.value-(first.position[0]+2*first.position[1])/1000)<1e-5,JSON.stringify(first));assert.match(first.text,/p = .*m²\/s²/);assert.ok(Math.abs(first.position[0]-250)<10,JSON.stringify(first));assert.match(first.text,/mm/);
-  const second=await pick(.75,.25);assert.ok(Math.abs(second.value-(second.position[0]+2*second.position[1])/1000)<1e-5,JSON.stringify(second));assert.notEqual(first.value,second.value);assert.equal(await reading(controls).count(),1);
-  await controls.getByRole('combobox',{name:'Building result field',exact:true}).selectOption('point:U');assert.equal(await reading(controls).getAttribute('data-probe-value'),null);const velocity=await pick(.75,.25);assert.ok(Math.abs(velocity.value-Math.hypot(1+velocity.position[0]/1000,2*velocity.position[1]/1000,3))<1e-5,JSON.stringify(velocity));assert.match(velocity.text,/U magnitude = .*m\/s/);
+  const viewport=ui.locator('.cfx-viewport');
+  async function pick(x,y){const p=await page.evaluate(({x,y})=>{const s=window.__pointScene(),point=s.camera.position.clone().set(x,0,-y).project(s.camera),b=s.gl.domElement.getBoundingClientRect();return{x:b.x+(point.x+1)*b.width/2,y:b.y+(1-point.y)*b.height/2};},{x,y});await page.mouse.click(p.x,p.y);await eventually(()=>reading(viewport).getAttribute('data-probe-value'),v=>v!==null);return read(viewport);}
+  const first=await pick(.25,.25);assert.ok(Math.abs(first.value-(first.position[0]+2*first.position[1]))<1e-5,JSON.stringify(first));assert.match(first.text,/p = .*m²\/s²/);assert.ok(Math.abs(first.position[0]-.25)<.01,JSON.stringify(first));assert.doesNotMatch(first.text,/coordinates|Interpolated/);
+  const second=await pick(.75,.25);assert.ok(Math.abs(second.value-(second.position[0]+2*second.position[1]))<1e-5,JSON.stringify(second));assert.notEqual(first.value,second.value);assert.equal(await reading(viewport).count(),1);
+  await controls.getByRole('combobox',{name:'Building result field',exact:true}).selectOption('point:U');assert.equal(await reading(viewport).getAttribute('data-probe-value'),null);const velocity=await pick(.75,.25);assert.ok(Math.abs(velocity.value-Math.hypot(1+velocity.position[0],2*velocity.position[1],3))<1e-5,JSON.stringify(velocity));assert.match(velocity.text,/U magnitude = .*m\/s/);
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/point-probe-building.png`});
-  await page.keyboard.press('Escape');assert.equal(await reading(controls).count(),0);assert.equal(await ui.locator('.cfx-setup-window:visible').count(),0);
+  await page.keyboard.press('Escape');assert.equal(await reading(viewport).count(),0);assert.equal(await ui.locator('.cfx-setup-window:visible').count(),0);
+  const location=await page.evaluate(()=>{const s=window.__pointScene(),p=s.camera.position.clone().set(.5,0,-.5).project(s.camera),b=s.gl.domElement.getBoundingClientRect();return{x:b.x+(p.x+1)*b.width/2,y:b.y+(1-p.y)*b.height/2};});
+  await page.mouse.click(location.x,location.y,{button:'right'});
+  const planeMenu=page.getByRole('menu',{name:'Result plane actions',exact:true});await planeMenu.waitFor();await planeMenu.getByRole('menuitem',{name:'Delete plane',exact:true}).click();
+  await eventually(()=>page.evaluate(()=>!!window.__pointScene()?.scene.getObjectByName('verified-cfd-result')),v=>!v);
+  await cfdWindow(ui,'Imported results');assert.ok(await ui.getByRole('combobox',{name:'View result in 3D',exact:true}).locator('option[value=slice-0]').count(),'Deleting from the view must retain the native worker artifact');
   const after=await saved();assert.deepEqual(after.rooms,before.rooms);assert.deepEqual(after.cfdScenarios[0].outputs,before.cfdScenarios[0].outputs);
 });

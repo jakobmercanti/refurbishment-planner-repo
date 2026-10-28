@@ -162,8 +162,10 @@ body .cfx-workspace .cfx-panel-actions {
 }
 body .cfx-workspace .cfx-panel-actions > button { width: 100%; min-width: 0; white-space: normal; text-align: center; }
 body .cfx-workspace .cfx-run-panel > .cfx-panel-actions {
-  width: 100%; grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%; grid-auto-flow: row; grid-template-columns: repeat(5, minmax(0, 1fr));
 }
+body .cfx-workspace .cfx-run-panel > .cfx-panel-actions > .cfx-disclosure-actions { display:contents; }
+body .cfx-workspace .cfx-run-panel > .cfx-panel-actions > .cfx-disclosure-actions > button { width:100%; min-width:0; white-space:normal; text-align:center; }
 body .cfx-workspace .cfx-group-actions > .cfx-add-sim { white-space: nowrap; }
 body .cfx-workspace :is(.cfx-run-panel, .cfx-physics-panel) > details + details { margin-top: var(--density-section-gap); }
 body .cfx-workspace .cfx-transfer-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-right: calc(var(--density-control-min-height) + var(--density-section-gap)); }
@@ -225,7 +227,6 @@ body .cfx-workspace :is(.cfx-artifact-list > div,.cfx-folder-file) { display: gr
 body .cfx-workspace :is(.cfx-artifact-list,.cfx-result-files,.cfx-results,.cfx-vtk-controls) { min-width: 0; }
 body .cfx-workspace :is(.cfx-artifact-list span,.cfx-folder-file span,.cfx-result-files strong) { overflow-wrap: anywhere; min-width: 0; }
 body .cfx-workspace .cfx-vtk-controls { grid-template-columns: repeat(3,minmax(0,1fr)); }
-body .cfx-workspace .cfx-vtk-viewer > details { margin: 6px; flex: 0 0 auto; }
 body .cfx-workspace .cfx-telemetry .cfx-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 body .cfx-workspace .cfx-telemetry { font-family: var(--font-sans),sans-serif; font-size: calc(13px * var(--density-font-scale)); color: var(--ink); }
 body .cfx-workspace .cfx-telemetry-values { grid-template-columns: repeat(3,minmax(0,1fr)); align-items: start; gap: 16px; }
@@ -238,27 +239,10 @@ body .cfx-workspace .cfx-result-selectors { display: grid; grid-template-columns
 @container cfx-setup (max-width: 400px) {
   body .cfx-workspace :is(.cfx-telemetry-values,.cfx-result-selectors) { grid-template-columns: minmax(0,1fr); }
 }
-body .cfx-workspace .cfx-vtk-viewer .cfx-vtk-canvas { min-height: 340px; flex: 1 0 340px; }
-/* Give actual data the main stage; controls stay in a bounded side inspector. */
-body .cfx-workspace .cfx-vtk-viewer { display: grid; grid-template-columns: minmax(220px,30%) minmax(0,1fr); grid-template-rows: auto auto auto auto auto auto; align-items: start; height: auto; }
-body .cfx-workspace .cfx-vtk-viewer > :is(header,.cfx-stale,footer,.cfx-error,.cfx-notice) { grid-column: 1 / -1; }
-body .cfx-workspace .cfx-vtk-viewer > details { grid-column: 1; overflow: auto; max-height: 360px; }
-body .cfx-workspace .cfx-vtk-viewer .cfx-vtk-controls { grid-template-columns: repeat(2,minmax(0,1fr)); }
-body .cfx-workspace .cfx-vtk-viewer > details .cfx-actions { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
-body .cfx-workspace .cfx-vtk-viewer > details label { overflow-wrap: anywhere; }
-body .cfx-workspace .cfx-vtk-viewer > .cfx-vtk-canvas { grid-column: 2; grid-row: 3 / span 3; height: clamp(380px,55vh,620px); margin: 6px; min-height: 380px; }
-body .cfx-workspace .cfx-vtk-viewer > footer { max-height: none; }
-body .cfx-workspace .cfx-vtk-viewer footer .cfx-colour-scale { display: inline-block; width: 100px; height: 10px; flex: 0 0 100px; }
 @container cfx-setup (max-width: 540px) {
   body .cfx-workspace :is(.cfx-artifact-list > div,.cfx-folder-file) { grid-template-columns: repeat(2,minmax(0,1fr)); }
   body .cfx-workspace :is(.cfx-artifact-list > div,.cfx-folder-file) > span { grid-column: 1 / -1; }
   body .cfx-workspace .cfx-vtk-controls { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  body .cfx-workspace .cfx-vtk-viewer { display: flex; flex-direction: column; }
-  body .cfx-workspace .cfx-vtk-viewer > header { order: 0; }
-  body .cfx-workspace .cfx-vtk-viewer > :is(.cfx-stale,.cfx-error,.cfx-notice) { order: 1; }
-  body .cfx-workspace .cfx-vtk-viewer > .cfx-vtk-canvas { order: 2; min-height: 280px; height: 35dvh; flex: 0 0 35dvh; width: calc(100% - 12px); }
-  body .cfx-workspace .cfx-vtk-viewer > footer { order: 3; }
-  body .cfx-workspace .cfx-vtk-viewer > details { order: 4; width: calc(100% - 12px); max-height: none; }
   body .cfx-workspace .cfx-telemetry .cfx-grid { grid-template-columns: minmax(0,1fr); }
 }
 @container cfx-setup (max-width: 540px) { body .cfx-workspace .cfx-residual-grid { grid-template-columns: minmax(0,1fr); } }
@@ -292,15 +276,14 @@ body .cfx-workspace .cfx-thermal-import :is(.thermal-heading,.thermal-steps,.the
   body .cfx-workspace .cfx-thermal-import .thermal-steps { display:none; }
   body .cfx-workspace .cfx-thermal-import .thermal-step-select { display:grid; margin:0 8px; }
 }
-body .cfx-workspace .cfx-result-inspector > .floating-toolbar-content { display:flex; flex-direction:column; overflow:hidden; }
 body .cfx-workspace .cfx-inspector-plane { display:flex; align-items:center; gap:10px; flex:0 0 auto; padding:4px 8px; }
 body .cfx-workspace .cfx-inspector-plane select { flex:1; min-width:0; }
-body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer { flex:1; min-height:0; overflow:hidden; grid-template-columns:minmax(220px,30%) minmax(0,1fr); grid-template-rows:auto auto minmax(0,1fr) auto; }
-body .cfx-workspace .cfx-vtk-viewer > .cfx-results-sidebar { grid-column:1; grid-row:3 / span 3; min-height:0; overflow:auto; }
-body .cfx-workspace .cfx-results-sidebar details { margin:6px; }
-body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > .cfx-results-sidebar { grid-row:3; grid-column:1; height:100%; }
-body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > .cfx-vtk-canvas { grid-column:2; grid-row:3; height:100%; min-height:0; width:calc(100% - 12px); }
-body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > footer { grid-row:4; }
+body .cfx-workspace .cfx-disclosure-actions { display:inline-grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+body .cfx-workspace .cfx-results-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); margin-bottom:12px; }
+body .cfx-workspace .cfx-probe-value { position:absolute; z-index:4; inset:12px auto auto 12px; max-width:calc(100% - 24px); padding:5px 8px; border-radius:var(--radius-control); background:var(--panel); color:var(--ink); font:700 12px/1.5 var(--font-sans); overflow-wrap:anywhere; pointer-events:none; }
+body .cfx-workspace .cfx-point-probe > .cfx-probe-value { position:static; }
+body .cfx-workspace .cfx-slice-stage { position:relative; min-width:0; }
+body .cfx-workspace .cfx-slice-stage .cfx-probe-value { top:45px; left:56px; max-width:calc(100% - 70px); }
 body .settings-dialog .settings-input-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:center; gap:7px; }
 body .settings-dialog .settings-select-control { display:grid; grid-template-columns:minmax(0,1fr) 34px; align-items:center; gap:8px; min-width:0; }
 body .settings-dialog .settings-select-control .window-help-button { width:34px; height:34px; margin:0; }
@@ -311,13 +294,9 @@ body .cfx-workspace .cfx-point-probe output { display:grid; gap:3px; padding:8px
 body .cfx-workspace .cfx-point-probe output strong { font-weight:700; }
 body .cfx-workspace .cfx-point-probe output small { font-size:11px; }
 body .cfx-workspace .cfx-point-probe > button[aria-pressed=true] { outline:2px solid var(--focus-ring); outline-offset:-2px; }
-body .cfx-workspace .cfx-vtk-viewer > header { flex-wrap:wrap; align-items:flex-start; }
-body .cfx-workspace .cfx-vtk-viewer > header .cfx-point-probe { flex:1 1 240px; }
 body .cfx-workspace :is(.cfx-probing,.cfx-probing canvas,.cfx-viewport[data-point-probing] canvas) { cursor:crosshair; }
 body .cfx-workspace :is(.cfx-vtk-canvas,.cfx-viewport):focus-visible { outline:2px solid var(--focus-ring); outline-offset:-2px; }
-body .cfx-workspace .cfx-result-open-actions { grid-template-columns:repeat(3,minmax(0,1fr)); }
-@container cfx-setup (max-width:640px) { body .cfx-workspace .cfx-result-open-actions { grid-template-columns:minmax(0,1fr); } }
-@container cfx-setup (max-width:640px) { body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer.cfx-point-probing { overflow:auto; } }
+body .cfx-workspace .cfx-result-open-actions { grid-template-columns:repeat(2,minmax(0,1fr)); }
 body .settings-dialog .settings-engineering-units { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:12px; }
 body .settings-dialog :is(.settings-navigation,.settings-engineering-units) label { display:grid; gap:6px; font:600 calc(12px * var(--density-font-scale,1))/1.4 var(--font-sans,Arial,sans-serif); }
 body .settings-dialog select { width:100%; min-width:0; height:34px; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:var(--radius-control,8px); background:var(--surface-muted); color:var(--ink); font:650 12px/1.3 var(--font-sans,Arial,sans-serif); }
@@ -326,11 +305,6 @@ body .cfx-setup-window .floating-toolbar-header-content select { min-height:30px
 @media(max-width:640px) {
   body .cfx-workspace .cfx-probe-entry { grid-template-columns:repeat(3,minmax(0,1fr)); }
   body .cfx-workspace .cfx-probe-entry > .cfx-probe-name { grid-column:1/-1; }
-  body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer { display:grid; grid-template-columns:1fr; grid-template-rows:auto auto minmax(160px,1fr) auto; }
-  body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer { grid-template-rows:auto auto minmax(140px,1fr) minmax(100px,150px) auto; }
-  body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > .cfx-results-sidebar { grid-column:1; grid-row:4; height:100%; }
-  body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > footer { grid-row:5; }
-  body .cfx-workspace .cfx-result-inspector .cfx-vtk-viewer > .cfx-vtk-canvas { grid-column:1; grid-row:3; height:100%; min-height:140px; }
   body .settings-dialog .settings-engineering-units { grid-template-columns:1fr; }
 }
 body .cfx-workspace .cfx-view-checks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; align-items:start; }
@@ -340,4 +314,84 @@ body .cfx-workspace .cfx-view-checks .cfx-check { min-width:0; margin:0; }
 @media (pointer: coarse) {
   :root { --density-control-min-height: 36px; }
   :root[data-density="comfortable"] { --density-control-min-height: 42px; }
+}
+/* Results controls live below the data canvas, with uniform disclosure spacing. */
+body .cfx-workspace :is(.cfx-post-panel,.cfx-results,[role=tabpanel],.cfx-results-controls,.cfx-viewer-frame,.cfx-slices) > details { margin-block:10px; }
+body .cfx-workspace details[open] > summary { margin-bottom:12px; }
+body .cfx-workspace :is(.cfx-post-panel,.cfx-results) details { min-width:0; }
+body .cfx-workspace .cfx-vtk-viewer { display:flex; flex-direction:column; height:auto; min-width:0; }
+body .cfx-workspace .cfx-viewer-frame { display:flex; flex-direction:column; gap:12px; width:100%; min-width:0; padding:8px; box-sizing:border-box; background:var(--paper); color:var(--ink); }
+body .cfx-workspace .cfx-viewer-frame:fullscreen { width:100vw; height:100dvh; padding:20px; overflow:auto; }
+body .cfx-workspace .cfx-vtk-viewer .cfx-vtk-canvas { position:relative; width:100%; height:clamp(350px,55vh,620px); min-height:350px; flex:0 0 auto; margin:0; background:var(--paper); }
+body .cfx-workspace .cfx-viewer-frame:fullscreen > .cfx-vtk-canvas { height:75dvh; }
+body .cfx-workspace .cfx-viewer-frame:fullscreen .cfx-slice-pane canvas { height:48dvh; }
+body .cfx-workspace .cfx-viewer-bottom-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
+body .cfx-workspace .cfx-results-controls .cfx-vtk-controls { grid-template-columns:repeat(3,minmax(0,1fr)); }
+body .cfx-workspace .cfx-results-controls .cfx-actions { display:flex; flex-wrap:wrap; gap:8px; margin-block:10px; }
+body .cfx-workspace .cfx-results-controls details { padding:10px; border:1px solid var(--line); border-radius:var(--radius-panel); }
+body .cfx-workspace .cfx-vtk-viewer footer { display:flex; flex-wrap:wrap; align-items:center; gap:12px; max-height:none; }
+body .cfx-workspace .cfx-vtk-viewer footer .cfx-colour-scale { display:inline-block; width:100px; height:10px; margin-right:8px; }
+body .cfx-workspace .cfx-plane-management { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:10px; }
+body .cfx-workspace .cfx-plane-management label { display:grid; gap:6px; min-width:0; }
+body .cfx-workspace button.cfx-probe-marker { cursor:grab; touch-action:none; user-select:none; }
+body .cfx-workspace button.cfx-probe-marker:active { cursor:grabbing; }
+body .cfx-plane-context-menu { position:fixed; z-index:2147483647; min-width:180px; padding:6px; border:1px solid var(--line,#cbd5e1); border-radius:10px; background:var(--panel,#fff); box-shadow:0 8px 30px #0003; }
+body .cfx-plane-context-menu button { width:100%; padding:10px 14px; border:0; border-radius:6px; background:transparent; color:var(--ink,#10203c); font:650 13px/1.4 var(--font-sans,Arial,sans-serif); text-align:left; cursor:pointer; }
+body .cfx-plane-context-menu button:is(:hover,:focus-visible) { background:var(--surface-muted,#edf4fa); outline:2px solid var(--focus-ring,#1685ef); }
+
+/* CFD workbench: compact rows, readable categories, data-first viewports. */
+body .cfx-workspace .cfx-inline-toolbar { align-items:center; gap:8px; margin-block:8px 12px; }
+body .cfx-workspace .cfx-inline-toolbar > h3 { margin:0; flex:1 1 auto; }
+body .cfx-workspace .cfx-disclosure-actions { margin-left:auto; }
+body .cfx-workspace details:not(.cfx-row-menu) > summary { font:650 calc(13px * var(--density-font-scale,1))/1.45 var(--font-sans); }
+body .cfx-workspace .cfx-domain-panel > details { margin-block:10px; padding:12px; border:1px solid var(--line); border-radius:var(--radius-panel); }
+body .cfx-workspace .cfx-results > .cfx-inline-toolbar { margin-bottom:12px; }
+body .cfx-workspace .cfx-physics-panel > .cfx-inline-toolbar { flex-wrap:nowrap; }
+body .cfx-workspace .cfx-objects > .cfx-inline-toolbar { justify-content:flex-start; flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+body .cfx-workspace .cfx-objects > .cfx-inline-toolbar > button { flex:0 0 auto; }
+body .cfx-workspace :is(.cfx-mesh-panel,.cfx-boundaries-panel,.cfx-objects,.cfx-review [role=tabpanel],.cfx-vent-settings,.cfx-boundary-fields,.cfx-heating-import-panel) > details { margin-block:10px; padding:var(--density-window-padding); border:1px solid var(--line); border-radius:var(--radius-panel); }
+body .cfx-workspace .cfx-review > header { display:flex; flex-wrap:wrap; }
+body .cfx-workspace .cfx-review > header .cfx-segments { flex:1 1 320px; }
+body .cfx-workspace .cfx-transfer-actions { grid-template-columns:repeat(2,minmax(0,1fr)); padding:0; }
+body .cfx-workspace .cfx-study-tools { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+body .cfx-workspace .cfx-study-tools > * { flex-shrink:0; }
+body .cfx-workspace .cfx-boundaries-panel > header { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+body .cfx-workspace .cfx-boundaries-panel > header > * { flex-shrink:0; }
+body .cfx-workspace .cfx-surface-row .cfx-device-actions { width:clamp(240px,25cqw,270px); max-width:100%; }
+body .cfx-workspace .cfx-view-window:not([data-window-maximized]):not([data-edge-docked]) { height:auto!important; min-height:0!important; }
+body .cfx-workspace .cfx-view-window .floating-toolbar-content { flex:0 0 auto; }
+body .cfx-workspace .cfx-thermal-inline { display:flex; flex:1 1 0; min-height:0; overflow:hidden; }
+body .cfx-workspace .cfx-thermal-inline .thermal-content { height:auto; flex:1 1 0; min-height:0; font:inherit; }
+body .cfx-workspace .cfx-thermal-inline :is(.thermal-heading,.thermal-steps,.thermal-step-select,.thermal-footer) { flex-shrink:0; }
+body .cfx-workspace .cfx-thermal-inline .thermal-heading { padding:8px 4px; gap:8px; }
+body .cfx-workspace .cfx-thermal-inline .thermal-heading h2 { font-size:15px; margin:0; }
+body .cfx-workspace .cfx-thermal-inline .cfx-eyebrow { font-size:11px; letter-spacing:.04em; }
+body .cfx-workspace .cfx-thermal-inline .thermal-heading p { margin:4px 0; font-size:12px; }
+body .cfx-workspace .cfx-thermal-inline .thermal-scroll { padding:12px 4px; }
+body .cfx-workspace .cfx-thermal-inline :is(h3,h4,legend) { font-size:13px; line-height:1.45; }
+body .cfx-workspace .cfx-thermal-inline .thermal-footer { display:flex; align-items:stretch; justify-content:space-between; flex-wrap:nowrap; min-width:0; overflow-x:auto; gap:8px; padding:10px 4px; }
+body .cfx-workspace .cfx-thermal-inline .thermal-footer .cfx-actions { display:flex; flex:0 0 auto; flex-wrap:nowrap; align-items:stretch; gap:8px; margin:0; }
+body .cfx-workspace .cfx-thermal-inline .thermal-footer button { min-width:100px; height:42px; flex:1; margin:0; }
+body .cfx-workspace .cfx-adjoint h2 { font-size:15px; margin:0; }
+body .cfx-workspace .cfx-adjoint > details { margin:0; }
+body .cfx-workspace .cfx-adjoint-actions { display:flex; gap:8px; flex-wrap:nowrap; overflow-x:auto; }
+body .cfx-workspace .cfx-adjoint-actions > button { flex:1 0 140px; }
+body .cfx-workspace .cfx-viewer-frame { position:relative; gap:0; padding:0; }
+body .cfx-workspace .cfx-viewer-expand { position:absolute; right:10px; bottom:10px; z-index:7; }
+body .cfx-workspace .cfx-floating-controls { position:absolute; top:10px; right:10px; z-index:8; margin:0!important; padding:0!important; border:0!important; max-width:calc(100% - 20px); }
+body .cfx-workspace .cfx-floating-controls > summary { display:block; width:max-content; margin-left:auto; padding:7px 12px; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--panel); box-shadow:0 2px 8px #0002; cursor:pointer; }
+body .cfx-workspace .cfx-floating-controls-body { width:min(560px,calc(100vw - 80px)); max-width:100%; max-height:55dvh; overflow:auto; padding:12px; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--panel); box-shadow:0 8px 24px #0002; }
+body .cfx-workspace .cfx-floating-controls:not([open]) > .cfx-floating-controls-body { display:none; }
+body .cfx-workspace .cfx-probe-value.cfx-probe-anchored { padding:4px 7px; margin-left:10px; transform:translateY(-50%); max-width:280px; overflow:visible; font-size:12px; }
+body .cfx-workspace .cfx-picked-dot { position:absolute; top:50%; left:-13px; width:6px; height:6px; border-radius:50%; background:#000; transform:translateY(-50%); box-shadow:0 0 0 1px #fff8; }
+@container cfx-setup (max-width:640px) {
+  body .cfx-workspace .cfx-results-controls .cfx-vtk-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  body .cfx-workspace .cfx-plane-management { grid-template-columns:minmax(0,1fr); }
+}
+/* Compact desktop rows must not conceal essential actions on a narrow window. */
+@container cfx-setup (max-width:760px) {
+  body .cfx-workspace :is(.cfx-study-tools,.cfx-boundaries-panel > header,.cfx-physics-panel > .cfx-inline-toolbar,.cfx-objects > .cfx-inline-toolbar) { flex-wrap:wrap; overflow:visible; }
+  body .cfx-workspace .cfx-objects > .cfx-inline-toolbar > button { flex:1 1 140px; }
+  body .cfx-workspace .cfx-boundaries-panel > header > button { flex:1 1 260px; }
+  body .cfx-workspace .cfx-disclosure-actions { flex:0 0 auto; max-width:100%; }
 }

@@ -6,7 +6,7 @@ import { CFDWorkerError, railwayCFDWorker, workerCapabilitiesSchema, workerJSON,
 
 export function useRailwayCFDWorker(active: boolean, base: string) {
   const [adapter, setAdapter] = useState<RailwayCFDWorker | null>(null);
-  const [reason, setReason] = useState("Sign in to connect the enabled OpenFOAM account.");
+  const [reason, setReason] = useState("Sign in with a verified account to use Climoptix's free simulations.");
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!active) return;

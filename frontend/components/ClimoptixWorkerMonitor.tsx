@@ -67,14 +67,17 @@ export function ClimoptixWorkerMonitor({adapter, job, name, older, onVTK}: {
       <button disabled={!text} onClick={() => downloadCFD(new Blob([text], {type:"text/plain"}), `${job.id}.log`)}>Download worker log</button>
     </div>
     </details>
+    {(error||logError||resultError||noResult)&&<details open><summary>Job diagnostics</summary>
     {error && <p className="cfx-error" role="alert">{error}</p>}
     {logError&&<p className="cfx-error" role="alert">{logError}</p>}
     {resultError&&<div role="alert" className="cfx-error"><p>Native result retrieval failed: {resultError} Automatic retries are bounded; the job will not be rerun.</p>
       <button onClick={retryResult}>Retry loading results</button></div>}
     {noResult&&<p>No native result manifest was produced for this {phase.toLowerCase()} job. Available solver logs are shown below.</p>}
+    </details>}
+    <details open><summary>Convergence &amp; residuals</summary>
     <ClimoptixConvergence name={name} workerSource={`Authenticated worker · job ${job.id}${older ? " · older setup: not the current configuration" : " · pinned setup revision"}`}
       state={{file:null, samples:log.samples, truncated:log.truncated, reading:false, error:""}} onImport={() => {}} onClear={() => {}} />
-    <CFDWorkerTelemetry data={telemetry} result={result} jobId={job.id}/>
+    </details><details open><summary>Worker telemetry</summary><CFDWorkerTelemetry data={telemetry} result={result} jobId={job.id}/></details>
     {result && <CFDResultFiles adapter={adapter} job={job} result={result} onVTK={onVTK}/>}
     <details><summary>Bounded native solver log</summary><pre className="cfx-native-log">{text.slice(-64000)}</pre></details>
   </section>;

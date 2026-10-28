@@ -7,12 +7,15 @@ import type { CFDScenario } from "@/lib/climoptixDocument";
 import { applyCFDHeating,cfdHeatingCandidates } from "@/lib/cfdHeatingBridge";
 import { CFDNumber } from "./CFDFields";
 import { CFDIndependentWindow } from "./CFDIndependentWindow";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 
 export function CFDHeatingImport({project,scenario,report,checked,onChange,onClose,onInsulation,onEditSource}:{project:ProjectDocument;scenario:CFDScenario;report:CFDReport|null;checked:boolean;onChange:(s:CFDScenario,checkpoint?:boolean)=>void;onClose:()=>void;onInsulation:()=>void;onEditSource:()=>void}) {
   const candidates=useMemo(()=>report?cfdHeatingCandidates(project,report):[],[project,report]);
   const [selected,setSelected]=useState<Record<string,number>>({}),[error,setError]=useState("");
   return <CFDIndependentWindow title="Import insulation & heating conditions" wide onClose={onClose}>
-    <div className="cfx-equal-actions"><button onClick={onInsulation}>Import insulation boundary conditions</button><button onClick={onEditSource}>Open floorplan source workbenches</button></div>
+    <section data-cfx-collapse-root className="cfx-heating-import-panel">
+    <header className="cfx-inline-toolbar"><h3>Heating &amp; insulation sources</h3><CFDCollapseAll/></header>
+    <details open><summary>Source workbenches</summary><div className="cfx-equal-actions"><button onClick={onInsulation}>Import insulation boundary conditions</button><button onClick={onEditSource}>Open floorplan source workbenches</button></div></details>
     <p className="cfx-notice">Thermal CFD preparation only: the current native worker cannot solve temperature or buoyancy. Applying heating enables the thermal equations and blocks incompatible isothermal runs. Export a thermal contract for a compatible solver; no heat result is fabricated.</p>
     <details open><summary>Radiators &amp; underfloor heating · explicit surface temperatures</summary>
       <p>Sources come from the measured heating workbench in the checked air domain. Radiators use their existing solid proxies, never duplicate boxes. UFH maps the whole checked floor surface, not individual pipe loops or partial zone coverage. Water temperature and rated watts are not surface temperatures.</p>
@@ -24,5 +27,6 @@ export function CFDHeatingImport({project,scenario,report,checked,onChange,onClo
     {!checked&&<p className="cfx-error">Refresh geometry checks before importing. Sources must match the current measured building.</p>}
     {error&&<p role="alert" className="cfx-error">{error}</p>}
     <button className="cfx-primary" disabled={!checked||!Object.keys(selected).length} onClick={()=>{try{onChange(applyCFDHeating(scenario,candidates,selected),true);onClose();}catch(cause){setError(cause instanceof Error?cause.message:"Heating import failed.");}}}>Apply selected heating conditions</button>
+    </section>
   </CFDIndependentWindow>;
 }

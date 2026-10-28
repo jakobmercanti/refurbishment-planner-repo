@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from "react";
 import { downloadCFD, preparationPackage, preparationSummary, type CFDReport } from "@/lib/climoptix";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import { WindowHelpButton } from "./WindowHelpButton";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 
 const TABS = [["review", "Simulation review"], ["warnings", "Warnings & checks"], ["transfer", "Import / export"]] as const;
 
@@ -31,7 +32,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
         kind === "zip" ? `${scenario.name}.climoptix.zip` : `${scenario.name}-preflight.txt`);
     } catch (error) { onError(error instanceof Error ? error.message : "Export failed."); }
   };
-  return <div className="cfx-review">
+  return <div className="cfx-review" data-cfx-collapse-root>
     <header className="cfx-inline-toolbar">
       <div className="cfx-segments" role="tablist" aria-label="Review and transfer">
         {TABS.map(([id, title], index) => <button key={id} role="tab" aria-label={title} id={`${prefix}-${id}`} aria-controls={`${prefix}-panel-${id}`}
@@ -46,6 +47,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
         { heading: "Checks and exports", text: "Checks refresh after committed edits. Use Refresh checks to retry. JSON transfers editable simulation settings; Import creates a separate simulation. Preparation ZIP and preflight exports are handoffs, not runnable OpenFOAM cases or computed results. Stale reports cannot be exported as current preparation." },
         ...((report?.limitations ?? []).map(text => ({ heading: "Provider limitation", text }))),
       ]} />
+      <CFDCollapseAll/>
     </header>
     {failure && <div className="cfx-review-failure" role="alert"><p>{failure}</p>
       {failure.startsWith("Changes not applied") && <button onClick={onDismissFailure}>Keep saved values</button>}
@@ -61,6 +63,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
           : "Not checked"}</span>
         <button onClick={onRefresh}>Refresh checks</button>
       </div>
+      <details open><summary>Notes &amp; preparation outcome</summary>
       <label>Simulation notes<textarea rows={2} value={scenario.description} maxLength={2000} onChange={e => onChange({ ...scenario, description: e.target.value })} /></label>
       {report && !stale && <div className="cfx-review-outcome" role="status">
         {!scenario.seed ? <p>Choose a seed room in Domain to define the simulation&apos;s connected air volume.</p> :
@@ -70,6 +73,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
         </p>)}
         {report.surface.exportable && !report.validation.errors && <p>Preparation passed for {report.domain.includedRoomIds.length} connected rooms and {report.surface.triangleCount} boundary triangles. This is not a completed mesh or solver result.</p>}
       </div>}
+      </details>
       {report && <details><summary>Validation provenance</summary><dl className="cfx-review-metadata">
         <div><dt>Geometry SHA-256</dt><dd>{report.validation.sourceHash}</dd></div>
         <div><dt>Configuration SHA-256</dt><dd>{report.validation.configurationHash}</dd></div>
@@ -81,7 +85,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
       {submissionError && <article className="cfx-diagnostic error" role="alert"><strong>Simulation was not accepted by the worker</strong><p>{submissionError}</p>
         <p>Current configuration: {scenario.physics.mode}; {scenario.physics.numerics.coupling}; energy {scenario.physics.energy?"ON":"off"}; CO₂ {scenario.physics.co2?"ON":"off"}; buoyancy {scenario.physics.boussinesq?"ON":"off"}. The connected native worker supports steady isothermal U/p ventilation only.</p>
         <button onClick={()=>onInspect("physics","physics")}>Review physics settings</button><button onClick={()=>onInspect("solver","mesh")}>Review solver settings</button></article>}
-      <div className="cfx-inline-toolbar"><strong>Preflight diagnostics</strong>
+      <details open><summary>Preflight diagnostics</summary><div className="cfx-inline-toolbar">
         <select aria-label="CFD diagnostic severity" value={severity} onChange={e => setSeverity(e.target.value)}>
           <option value="all">All severities</option><option value="error">Blocking errors</option><option value="warning">Warnings</option><option value="info">Information</option>
         </select><button onClick={onRefresh}>Refresh checks</button>
@@ -92,15 +96,16 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
         {d.objectId && <button onClick={() => onInspect(d.objectId!, d.group)}>Inspect {d.objectId}</button>}
       </article>)}
       {!report ? <p>No validation report yet.</p> : !diagnostics.length ? <p>No diagnostics for this filter.</p> : null}
+      </details>
     </section>
     <section role="tabpanel" id={`${prefix}-panel-transfer`} aria-labelledby={`${prefix}-transfer`} hidden={tab !== "transfer"}>
-      <div className="cfx-grid cfx-transfer-actions">
+      <details open><summary>Simulation transfer &amp; preparation exports</summary><div className="cfx-grid cfx-transfer-actions">
         <button onClick={onExport}>Export simulation JSON</button>
         <label className="cfx-file">Import simulation<input aria-label="Import CFD scenario" type="file" accept=".json,application/json"
           onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onImport(file); }} /></label>
         <button className="cfx-primary" disabled={!report || stale || blocked} onClick={() => save("zip")}>Export preparation ZIP</button>
         <button disabled={!report || stale || blocked} onClick={() => save("summary")}>Download settings &amp; preflight</button>
-      </div>
+      </div></details>
     </section>
   </div>;
 }

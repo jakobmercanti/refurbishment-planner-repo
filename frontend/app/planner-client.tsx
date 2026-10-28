@@ -131,8 +131,9 @@ export default function Home() {
   const [tierPreview, setTierPreview] = useState<PlanKey | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [climoptixAccountPrompt, setClimoptixAccountPrompt] = useState(false);
   const [accountInitialSection, setAccountInitialSection] = useState<"account" | "plans">("account");
-  const closeAccountDialog = useCallback(() => setAccountOpen(false), []);
+  const closeAccountDialog = useCallback(() => { setAccountOpen(false); setClimoptixAccountPrompt(false); }, []);
   const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
   const [floorplanStyle, setFloorplanStyle] = useState<FloorplanStyle>("DEFAULT");
   const [floorplanExportRequest, setFloorplanExportRequest] = useState(0);
@@ -305,7 +306,9 @@ export default function Home() {
   }
 
   async function changeWorkspaceMode(nextMode: "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX") {
-    if (nextMode === "CLIMOPTIX" && !climoptixEnabled) return;
+    if (nextMode === "CLIMOPTIX" && !climoptixEnabled) {
+      setClimoptixAccountPrompt(true); setAccountInitialSection("account"); setAccountOpen(true); return;
+    }
     const request = ++workspaceRequest.current;
     let demoMode = false;
     if (nextMode === "PLANNERBUILD") {
@@ -630,7 +633,7 @@ export default function Home() {
       <header className="topbar">
         <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar onClimoptixMenuTarget={setCFDMenuTarget} buildingView={buildingView} onBuildingViewChange={changeBuildingView} roofAvailable={(roofPreview??building.roof).enabled!==false} onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} workspaceMode={workspaceMode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onDisplayUnitsChange={(units) => handlePreferencesChange({ ...appPreferences, units })} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenElectricalLayout={openElectricalLayout} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
         <nav className="app-nav" aria-label="Project workflow">
-          <label className="workspace-mode-control"><span className="workspace-mode-label">Workspace</span><select className="workspace-mode-select" aria-label="Workspace" value={workspaceMode} onChange={(event) => void changeWorkspaceMode(event.target.value as "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX")}><option value="FLOORPLAN">Floorplan</option><option value="PLANNERBUILD">PlannerBuild</option>{climoptixEnabled && <option value="CLIMOPTIX">Climoptix CFD</option>}</select></label>
+          <label className="workspace-mode-control"><span className="workspace-mode-label">Workspace</span><select className="workspace-mode-select" aria-label="Workspace" value={workspaceMode} onChange={(event) => void changeWorkspaceMode(event.target.value as "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX")}><option value="FLOORPLAN">Floorplan</option><option value="PLANNERBUILD">PlannerBuild</option><option value="CLIMOPTIX">{climoptixEnabled ? "Climoptix CFD" : "Climoptix CFD · free"}</option></select></label>
           {workspaceMode !== "CLIMOPTIX" && <div className="app-nav-modes" role="group" aria-label={workspaceMode === "FLOORPLAN" ? "Floorplan view" : "PlannerBuild view"}>
             {workspaceMode === "FLOORPLAN" ? <>
               <button aria-pressed={mode === "EDITOR"} className={mode === "EDITOR" ? "active" : ""} onClick={() => { setPlacement(null); setViewerOpeningEditRequest(null); setViewerElementEditRequest(null); setMode("EDITOR"); }}>2D</button>
@@ -731,7 +734,8 @@ export default function Home() {
 {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && (requiresWallMount(placement.obstacle) ? " · Snaps and aligns to a wall" : " · R to rotate")}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
       {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={asset=>{if(local.isScopeCurrent(scopeToken))local.addAsset(asset);}} onChange={next=>{if(local.isScopeCurrent(scopeToken))local.setInstances(next);}} onClose={() => setAssetsOpen(false)} />}
       {privacyOpen && <PlannerPrivacyDialog onClose={() => setPrivacyOpen(false)} />}
-      {accountOpen && <AccountDialog onClose={closeAccountDialog} initialSection={accountInitialSection} />}
+      {accountOpen && <AccountDialog onClose={closeAccountDialog} initialSection={accountInitialSection}
+        notice={climoptixAccountPrompt ? "Climoptix free tier: five completed simulations per verified account (lifetime), up to 500,000 cells, 2 processors and 4 GB RAM. Sign in or create an account and verify your email. If already signed in, retry after the worker connection recovers." : undefined} />}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
       {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} humanMockupToolbarVisible={toolbarAvailability["viewer-person"]} onHumanMockupToolbarVisibleChange={setHumanMockupToolbarVisible} uiSettings={uiSettings} onUiSettingsChange={setUiSettings} tierPreview={tierPreview} onTierPreviewChange={setTierPreview} onClose={() => setCatalogueManagerOpen(false)} />}
       <SettingsDialog open={settingsOpen} preferences={appPreferences} onChange={handlePreferencesChange} onClose={() => setSettingsOpen(false)} />

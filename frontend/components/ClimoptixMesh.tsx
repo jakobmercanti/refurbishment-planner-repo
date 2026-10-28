@@ -7,6 +7,7 @@ import { type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { refinementLevel, refinementColour, refinementCell } from "@/lib/climoptixWorkflow";
 import { CFDNumber, CFDText, CFDVector, Parameters } from "./CFDFields";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 
 export function MeshPanel({
   scenario,
@@ -29,9 +30,10 @@ export function MeshPanel({
     region =
       regions.find((r) => `refinement:${r.id}` === selected);
   return (
-    <>
+    <section className="cfx-mesh-panel" data-cfx-collapse-root>
+      <header className="cfx-inline-toolbar"><h3>Mesh refinement</h3><CFDCollapseAll/></header>
+      <details open><summary>Local refinement regions</summary>
       <header className="cfx-inline-toolbar cfx-refinement-toolbar">
-        <h3>Local refinement regions</h3>
         <button
         disabled={regions.length >= 200}
         onClick={() => {
@@ -185,6 +187,7 @@ export function MeshPanel({
       {!regions.length && (
         <p className="cfx-caption">No local refinement regions.</p>
       )}
+      </details>
       <details>
         <summary>Refinements, layers, tolerances &amp; quality intent</summary>
         <Parameters
@@ -206,7 +209,7 @@ export function MeshPanel({
           }
         />
       </details>
-    </>
+    </section>
   );
 }
 
@@ -244,7 +247,9 @@ export function RefinementEditor({
       </p>
     );
   return (
-    <section className="cfx-card">
+    <section className="cfx-card" data-cfx-collapse-root>
+      <header className="cfx-inline-toolbar"><h3>Refinement settings</h3><CFDCollapseAll/></header>
+      <details open><summary>Region &amp; resolution</summary>
       <CFDText
         label="Refinement name"
         value={region.name}
@@ -338,6 +343,8 @@ export function RefinementEditor({
           </p>
         )}
       </div>
+      </details>
+      <details open><summary>Position &amp; extent</summary>
       {region.shape === "object" ? (
         <label>
           Source object
@@ -376,6 +383,7 @@ export function RefinementEditor({
           )}
         </>
       )}
+      </details>
     </section>
   );
 }

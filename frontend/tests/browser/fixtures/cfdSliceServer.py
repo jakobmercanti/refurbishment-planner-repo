@@ -66,6 +66,7 @@ with tempfile.TemporaryDirectory(prefix="cfd-slice-browser-") as folder:
                 "gradientBaseline": ga["id"],
                 "gradientOption": gb["id"],
                 "project": a["project"],
+                "study": a["study"],
             }
         ),
         flush=True,

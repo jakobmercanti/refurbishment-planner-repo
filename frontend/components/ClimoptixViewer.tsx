@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bounds, Html, OrbitControls, useBounds } from "@react-three/drei";
+import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
 import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
@@ -15,6 +15,8 @@ import {
 import { useThree, type ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
 import { CFDSceneResult, type CFDSceneResultProps } from "./CFDSceneResult";
+import { CFDProbeMarker } from "./CFDProbeMarker";
+import { CFDPlaneContextMenu, type PlaneMenu } from "./CFDPlaneContextMenu";
 import { createPortal } from "react-dom";
 import { ReadOnlyBuildingScene } from "./EngineeringViewer";
 import {
@@ -90,6 +92,8 @@ function Frame({ request }: { request: string }) {
 }
 interface Props {
   resultOverlay?:CFDSceneResultProps;
+  additionalResultOverlays?:CFDSceneResultProps[];
+  probeValue?:React.ReactNode;
   project: ProjectDocument;
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -104,6 +108,14 @@ interface Props {
   picking: CFDVent | boolean;
   onHostPick: (patchId: string, u: number, v: number) => void;
   onMoveVent: (id: string, u: number, v: number, patchId?: string) => void;
+  onMoveProbe?: (index:number,point:Vec3)=>void;
+  onRemoveResultFile?: (file:File)=>void;
+  onSelectResultFile?:(file:File)=>void;
+  onlyResults?:boolean;
+  onOnlyResults?:(value:boolean)=>void;
+  resultsVisible?:boolean;
+  onResultsVisible?:(value:boolean)=>void;
+  onResultContextMenuOpen?:()=>void;
   canMoveVents: boolean;
   showSamplingPlanes?: boolean;
   showRefinements: boolean;
@@ -298,6 +310,14 @@ export function ClimoptixViewer({
   picking,
   onHostPick,
   onMoveVent,
+  onMoveProbe,
+  onRemoveResultFile,
+  onSelectResultFile,
+  onlyResults=false,
+  onOnlyResults,
+  resultsVisible=true,
+  onResultsVisible,
+  onResultContextMenuOpen,
   canMoveVents,
   showSamplingPlanes = false,
   showRefinements,
@@ -310,8 +330,11 @@ export function ClimoptixViewer({
   boundaryGroups = [],
   boundarySelection,
   resultOverlay,
+  additionalResultOverlays,
+  probeValue,
 }: Props) {
   const mouseButtons = useViewerNavigation();
+  const [planeMenu,setPlaneMenu]=useState<PlaneMenu|null>(null);
   const thermalVisible = thermalMetric !== "off" && thermalSurfaces.length > 0;
   const thermalPatchIds = useMemo(
     () => new Set(thermalSurfaces.map((f) => f.patchId)),
@@ -621,6 +644,8 @@ export function ClimoptixViewer({
               Refinement intent
             </label>
             <label className="cfx-check"><input type="checkbox" checked={wallOutlines} onChange={event=>setWallOutlines(event.target.checked)}/>2D wall outlines</label>
+            <label className="cfx-check"><input type="checkbox" checked={onlyResults} onChange={event=>onOnlyResults?.(event.target.checked)}/>Only CFD result planes</label>
+            <label className="cfx-check"><input type="checkbox" checked={resultsVisible} onChange={event=>onResultsVisible?.(event.target.checked)}/>Show CFD result planes</label>
             </div>
             <button type="button" onClick={() => setFit((x) => x + 1)}>
               Fit view
@@ -657,6 +682,7 @@ export function ClimoptixViewer({
         data-geometry-source={buildingScene ? "validated" : "project-display"}
         data-boundary-groups={JSON.stringify(boundaryGroups.map(g => ({ id: g.id, colour: g.colour, patchIds: g.patchIds })))}
       >
+        {probeValue}
         {rooms.length > 0 ? (
           <StableCanvas
             frameloop="demand"
@@ -667,6 +693,7 @@ export function ClimoptixViewer({
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
             <Bounds margin={1.15} maxDuration={0.25}>
+              <group name="cfd-building-context" visible={!onlyResults}>
               {!buildingScene && (
                 <ReadOnlyBuildingScene
                   project={project}
@@ -679,13 +706,7 @@ export function ClimoptixViewer({
               <Frame
                 request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit}`}
               />
-              {scenario.outputs.probesMm.map((point,index)=><mesh key={`probe:${index}`} name={`probe:${index}`} position={scene(point)}
-                onPointerDown={event=>{if(event.button===0){event.stopPropagation();onSelect(`probe:${index}`);}}}>
-                <sphereGeometry args={[selected===`probe:${index}` ? .045 : .03,12,8]}/>
-                <meshBasicMaterial color={selected===`probe:${index}`?CFD_SELECTION_COLOUR:"#246ccb"} depthTest={false}/>
-                <Html center zIndexRange={[8,0]}><button className="cfx-probe-marker" style={{background:selected===`probe:${index}`?CFD_SELECTION_COLOUR:"#246ccb"}} aria-label={`Select probe ${index+1} in 3D`} onPointerDown={event=>event.stopPropagation()} onClick={()=>onSelect(`probe:${index}`)}>P{index+1}</button></Html>
-              </mesh>)}
-              {resultOverlay&&<CFDSceneResult {...resultOverlay}/>}
+              {scenario.outputs.probesMm.map((point,index)=><CFDProbeMarker key={`probe:${index}`} point={point} index={index} selected={selected===`probe:${index}`} onSelect={()=>onSelect(`probe:${index}`)} onMove={next=>onMoveProbe?.(index,next)}/>)}
               {displayPatches
                 .filter(
                   (p) =>
@@ -877,6 +898,9 @@ export function ClimoptixViewer({
                         )),
                     ),
                 )}
+              </group>
+              {resultOverlay&&<CFDSceneResult {...resultOverlay} onSelect={()=>onSelectResultFile?.(resultOverlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:resultOverlay.file,x,y});}:undefined}/>}
+              {additionalResultOverlays?.map(overlay=><CFDSceneResult key={overlay.file.name} {...overlay} onSelect={()=>onSelectResultFile?.(overlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:overlay.file,x,y});}:undefined}/>)}
             </Bounds>
             <OrbitControls
               makeDefault
@@ -945,6 +969,7 @@ export function ClimoptixViewer({
           <li><i style={{ background: COLORS.door }} />Boundary cap</li>
         </ul>
       </footer>
+      <CFDPlaneContextMenu menu={planeMenu} onClose={()=>setPlaneMenu(null)} onDelete={file=>onRemoveResultFile?.(file)}/>
     </section>
   );
 }

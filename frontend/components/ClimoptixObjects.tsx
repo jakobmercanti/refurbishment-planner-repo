@@ -10,6 +10,7 @@ import { CFDReorderList } from "./CFDReorderList";
 import { CFDRowMenu } from "./CFDRowMenu";
 import { CFDEditorWindow } from "./CFDEditorWindow";
 import { CFDConfirmAction } from "./CFDConfirmAction";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 
 export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChange, onAdd, onPick, onEditVent, onEditSource, renderObject, canAdd, canPlace, checked }: {
   scenario: CFDScenario; objects: CFDObject[]; selected: string | null; onSelect: (id: string) => void; onChange: (scenario: CFDScenario) => void;
@@ -34,9 +35,10 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     edit({ ...entry, id: copy.id, sourceId: copy.id.slice(copy.id.indexOf(":") + 1) });
   };
   const editingGroup = groups.find(g => editing?.type === "group" && g.id === editing.id);
-  return <div className="cfx-objects">
-    <header className="cfx-inline-toolbar"><h3>Objects &amp; occupants</h3><button onClick={onEditSource}>Edit source building &amp; assets</button></header>
+  return <div className="cfx-objects" data-cfx-collapse-root>
+    <header className="cfx-inline-toolbar"><h3>Objects &amp; occupants</h3><CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:groups.map(group=>group.id)))}/></header>
     <div className="cfx-inline-toolbar">
+      <button onClick={onEditSource}>Edit source building &amp; assets</button>
       <button disabled={!canAdd} onClick={() => onAdd("supply", currentGroup?.id ?? DEFAULT_OBJECT_GROUP)}>+ Supply</button>
       <button disabled={!canAdd} onClick={() => onAdd("extract", currentGroup?.id ?? DEFAULT_OBJECT_GROUP)}>+ Extract</button>
       <button disabled={!canPlace} title={!canPlace ? "Choose a seed room in Domain and resolve preparation checks to obtain validated host faces" : undefined} onClick={onPick}>Place on face…</button>
@@ -54,7 +56,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     </div>
     {!canPlace && canAdd && <p className="cfx-caption" role="status">Supply / Extract can be added as drafts now. Face placement needs a seed room in Domain and validated host geometry; assign a host in Edit before running.</p>}
     {error && <p className="cfx-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></p>}
-    <div className="cfx-group-tree">
+    <details open><summary>Groups &amp; objects</summary><div className="cfx-group-tree">
       <CFDReorderList items={groups} label="Object groups" scope={`object-groups:${scenario.id}`} onMove={(id, at) => onChange({ ...scenario, objectGroups: insertAtBoundary(groups, id, at) })}>
         {group => {
           const members = objectMembers(group, groups, entries);
@@ -102,6 +104,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
         }}
       </CFDReorderList>
     </div>
+    </details>
     {!!scenario.hiddenObjectIds?.length && <details><summary>Removed from this simulation ({scenario.hiddenObjectIds.length})</summary>
       {scenario.hiddenObjectIds.map(id => <button key={id} onClick={() => onChange({ ...scenario, hiddenObjectIds: scenario.hiddenObjectIds!.filter(value => value !== id) })}>Restore {objects.find(o => o.id === id)?.name ?? id}</button>)}
     </details>}

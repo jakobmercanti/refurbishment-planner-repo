@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot, parseEngineeringUnits, subscribeEngineeringUnits } from "@/lib/appPreferences";
 import { ClimoptixObjects } from "./ClimoptixObjects";
 import { WindowHelpButton } from "./WindowHelpButton";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 import { objectGroups } from "@/lib/climoptixObjectGroups";
 import { assetOverrideSchema, ventSchema, type CFDScenario, type CFDVent } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
@@ -82,8 +83,9 @@ export function EquipmentPanel({
             ],
           });
         return (
-          <section className="cfx-card">
-            <header className="cfx-inline-toolbar"><h3>{obj.name}</h3><WindowHelpButton title="Object proxy" steps={[{ heading: "Measured proxy", text: obj.profile ? `Catalogue proxy: ${obj.profile}` : "No eligible catalogue proxy. Exclude this asset or explicitly review a conservative box." }, ...(obj.assumptions ?? []).map(text => ({ heading: "Proxy assumption", text }))]} /></header>
+          <section className="cfx-card" data-cfx-collapse-root>
+            <header className="cfx-inline-toolbar"><h3>{obj.name}</h3><WindowHelpButton title="Object proxy" steps={[{ heading: "Measured proxy", text: obj.profile ? `Catalogue proxy: ${obj.profile}` : "No eligible catalogue proxy. Exclude this asset or explicitly review a conservative box." }, ...(obj.assumptions ?? []).map(text => ({ heading: "Proxy assumption", text }))]} /><CFDCollapseAll/></header>
+            <details open><summary>Treatment &amp; physical inputs</summary>
             {copy && <CFDText key={copy.id} label="CFD object name" value={copy.name} maxLength={120} onChange={name => onChange({ ...scenario, objectCopies: scenario.objectCopies!.map(o => o.id === copy.id ? { ...o, name } : o) })} />}
             {!obj.profile &&
               !scenario.assetOverrides.some((v) => v.objectId === obj.id) && (
@@ -161,6 +163,7 @@ export function EquipmentPanel({
                 }
               />
             )}
+            </details>
           </section>
         );
 
@@ -171,7 +174,9 @@ export function EquipmentPanel({
   return (
     <>
       {editor && vent && (
-        <section className="cfx-card">
+        <section className="cfx-card cfx-vent-settings" data-cfx-collapse-root>
+          <header className="cfx-inline-toolbar"><h3>Vent settings</h3><CFDCollapseAll/></header>
+          <details open><summary>Position &amp; size</summary>
           <CFDText
             label="Vent name"
             value={vent.name}
@@ -279,6 +284,8 @@ export function EquipmentPanel({
               }
             />
           </div>
+          </details>
+          <details open><summary>Flow &amp; thermal conditions</summary>
           <label>
             Controlling quantity
             <select
@@ -350,6 +357,7 @@ export function EquipmentPanel({
               )}
             </p>
           )}
+          </details>
           <details>
             <summary>
               Jet, discharge, grouping &amp; placement constraints

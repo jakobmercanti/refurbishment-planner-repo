@@ -30,7 +30,14 @@ export function newAdjointStudy(scenario:CFDScenario,report:CFDReport,runId:stri
     ports:scenario.vents.map(vent=>{
       const host=report.patches.find(p=>p.id===vent.host.patchId)?.host;
       const u=vent.host.u*(host?.widthMm??0),v=vent.host.v*(host?.heightMm??0);
-      return{ventId:vent.id,bounds:{uMinMm:Math.max(0,u-50),uMaxMm:u+50,vMinMm:Math.max(0,v-50),vMaxMm:v+50}};
+      const angle=vent.rotationDeg*Math.PI/180,clearance=Math.max(10,vent.edgeClearanceMm);
+      const width=vent.shape==="circle"?vent.diameterMm:vent.widthMm,height=vent.shape==="circle"?vent.diameterMm:vent.heightMm;
+      const halfU=vent.shape==="circle"?width/2:(Math.abs(Math.cos(angle))*width+Math.abs(Math.sin(angle))*height)/2;
+      const halfV=vent.shape==="circle"?height/2:(Math.abs(Math.sin(angle))*width+Math.abs(Math.cos(angle))*height)/2;
+      const uMin=Math.max(halfU+clearance,u-50),uMax=Math.min((host?.widthMm??u)-halfU-clearance,u+50),vMin=Math.max(halfV+clearance,v-50),vMax=Math.min((host?.heightMm??v)-halfV-clearance,v+50);
+      const valid=!!host&&uMin<=u&&u<=uMax&&vMin<=v&&v<=vMax&&uMin<uMax&&vMin<vMax;
+      const firstSupply=scenario.vents.find(v=>v.role==="supply"&&report.patches.some(p=>p.id===v.host.patchId&&p.host));
+      return{ventId:vent.id,movable:valid&&vent.id===firstSupply?.id,bounds:valid?{uMinMm:uMin,uMaxMm:uMax,vMinMm:vMin,vMaxMm:vMax}:{uMinMm:u,uMaxMm:u,vMinMm:v,vMaxMm:v}};
     })});
 }
 

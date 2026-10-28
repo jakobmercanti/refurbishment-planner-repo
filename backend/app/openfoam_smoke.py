@@ -125,9 +125,9 @@ def acceptance(root: Path, cancelled=lambda: False):
         shutil.rmtree(root)
     root.mkdir(parents=True)
     results = []
-    # MPI launcher startup fails in this deployment's container constraints.
-    # Advertise serial execution only; never silently run a requested parallel job serially.
-    for cpu, turbulence in ((1, "laminar"), (1, "kEpsilon"), (1, "kOmegaSST")):
+    # Two-processor execution must pass the actual deployed runtime too, not
+    # merely a local compile or a serial substitute for a parallel request.
+    for cpu, turbulence in ((cpu, model) for cpu in (1, 2) for model in ("laminar", "kEpsilon", "kOmegaSST")):
         request = fixture(cpu, turbulence)
         report = validate_submission(request)
         case = root / f"{cpu}-{turbulence}"

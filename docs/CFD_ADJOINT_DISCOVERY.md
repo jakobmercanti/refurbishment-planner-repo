@@ -23,3 +23,22 @@ Date: 2026-10-26. Brief: `climoptix_adjoint_vent_optimisation_codex_prompt.txt`,
 ## Explicit outstanding engineering milestones
 
 Production fixed-mesh wall-exchange BC with conservative inlet normalization and derivative; pressure/extraction outlet law and derivative; converged coupled residual linearization/transpose solve; actual inlet/outlet U/V gradient finite-difference sweeps on a pinned laminar CFD benchmark; leakage/conditioning/resolution evidence; invariant mesh hash/cell addressing; durable multi-step worker lifecycle; accepted/best result artifacts and apply-as-new-scenario; gradient-free cost comparison. These cannot be replaced by a disconnected reduced simulator, a stock aerodynamic shape sensitivity or finite differences labelled adjoint.
+
+## 27 October 2026 — approved local native environment
+
+The user selected native adjoint development and approved local WSL2 setup.
+Ubuntu 22.04, an unprivileged development user, GCC/G++ and OpenCFD v2312
+runtime/source/development packages are now installed. An isolated Linux Python
+environment leaves the existing Windows environment intact. No reboot was
+needed. The native compile/link check and actual ordinary laminar acceptance
+passed. Fresh output exposed an off-plane iso-surface sampling defect; the
+worker/settings exporters now select the geometric plane cutter. All three
+physical orientations passed strict numerical sampling without relaxing reader
+tolerances, and 241 focused backend regressions passed against the fresh archive.
+
+Exact package versions, commands, measured evidence and repeatable checks are
+recorded in `deployment/native-dev/README.md`. This supersedes only the earlier
+local-runtime availability limitation; it does not validate an adjoint. The
+fixed-mesh boundary law, coupled adjoint and durable optimisation execution are
+still unimplemented and `canRun=false` remains authoritative. Everything stays
+local; no Railway release, production-worker restart or remote push occurred.

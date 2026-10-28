@@ -18,12 +18,12 @@ from shapely.geometry import Point
 
 from backend.app.climoptix_api import PreparationRequest, prepare
 from backend.app.climoptix_provider import PreparationOnlyProvider
-from geometry.climoptix_models import Contract, Id, Scenario
+from geometry.climoptix_models import MAX_SAMPLING_PLANES, Contract, Id, Scenario
 from geometry.climoptix_workflow import sampling_planes
 
 Hash = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 LIMITS = {
-    "cpu": 1,
+    "cpu": 2,
     "memoryGb": 4,
     "wallTimeMinutes": 15,
     "storageGb": 1,
@@ -85,7 +85,8 @@ def validate_submission(request: Submission) -> dict[str, Any]:
         raise ValueError("This worker supports steady isothermal SIMPLE ventilation only. "
                          "Conflicting settings: " + "; ".join(conflicts) +
                          ". Open Physics to review these equations and Solver > Run for steady/SIMPLE settings. "
-                         "Keep thermal studies for export or use a thermal-capable worker; no settings were changed automatically.")
+                         "Keep thermal studies for export or use a thermal-capable worker; "
+                         "no settings were changed automatically.")
     if request.thermalApplication or s.thermalSnapshots:
         raise ValueError("Applied thermal conditions are not supported by this solver adapter.")
     if s.mesh.layers.enabled or s.mesh.alignmentDeg != 0:
@@ -97,9 +98,9 @@ def validate_submission(request: Submission) -> dict[str, Any]:
     if (
         len(s.outputs.probesMm) > 100
         or sum(stack.count for stack in (s.postProcessing.x, s.postProcessing.y, s.postProcessing.z) if stack.enabled)
-        > 20
+        > MAX_SAMPLING_PLANES
     ):
-        raise ValueError("This worker supports at most 100 probes and 20 sampling planes.")
+        raise ValueError(f"This worker supports at most 100 probes and {MAX_SAMPLING_PLANES} sampling planes.")
     if p.numerics.maxIterations > 5000:
         raise ValueError("This worker supports at most 5000 steady iterations.")
     for vent in s.vents:
@@ -483,7 +484,9 @@ def compile_case(root: Path, request: Submission, report: dict[str, Any]) -> dic
     planes = sampling_planes(report["domain"]["boundsMm"], s.postProcessing)
     if planes:
         plane_dict = " ".join(
-            f"{plane['id']} {{type cuttingPlane; planeType pointAndNormal; "
+            # The iso-surface `cuttingPlane` sampler can snap off-plane on a
+            # distorted mesh. Use geometric edge intersections for physical slices.
+            f"{plane['id']} {{type plane; planeType pointAndNormal; "
             f"pointAndNormalDict {{point {vector(plane['pointMm'], 0.001)}; normal {vector(plane['normal'])};}} "
             "interpolate true;}"
             for plane in planes

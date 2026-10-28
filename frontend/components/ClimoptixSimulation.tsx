@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { CFDScenario } from "@/lib/climoptixDocument";
+import { MAX_SAMPLING_PLANES, type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { samplingPlanes } from "@/lib/climoptixWorkflow";
 import { CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
@@ -52,7 +52,7 @@ function RunPanel({
         <button onClick={onConvergence}>Open monitor</button>
         <CFDCollapseAll />
       </div>
-      {workerControls}
+      {workerControls&&<details open><summary>Worker connection &amp; limits</summary>{workerControls}</details>}
       <details open><summary>Simulation &amp; resources</summary>
       <div className="cfx-grid">
         <label>
@@ -83,7 +83,7 @@ function RunPanel({
           label="CPU cores"
           value={scenario.resources.cpu}
           min={1}
-          max={1024}
+          max={2}
           onChange={(cpu) =>
             onChange({ ...scenario, resources: { ...scenario.resources, cpu } })
           }
@@ -91,6 +91,7 @@ function RunPanel({
         <CFDNumber
           label="Memory limit (GB)"
           value={scenario.resources.memoryGb}
+          max={4}
           onChange={(memoryGb) =>
             onChange({
               ...scenario,
@@ -181,10 +182,12 @@ function PostPanel({
     planes = samplingPlanes(report?.domain.boundsMm ?? null, post);
   const requested = (["x", "y", "z"] as const).reduce((count, axis) => count + (post[axis].enabled ? post[axis].count : 0), 0);
   return (
-    <>
+    <section className="cfx-post-panel" data-cfx-collapse-root>
+      <div className="cfx-inline-toolbar"><h3>Post-processing</h3><CFDCollapseAll/></div>
       <CFDProbes scenario={scenario} onChange={onChange} selected={selected} onSelect={onSelect}/>
       <details open><summary>Sampling planes</summary>
       <p className="cfx-caption">Equally spaced interior slices. The normal is perpendicular to the named plane; positions use the checked domain in millimetres.</p>
+      <p className="cfx-caption">Execution limit: {MAX_SAMPLING_PLANES} enabled planes in total across X/Y/Z. Existing memory and storage budgets still apply.</p>
       <div className="cfx-post-planes" role="group" aria-label="Sampling plane directions">
       {(["x", "y", "z"] as const).map((axis) => (
         <div className="cfx-slice-row" key={axis}>
@@ -208,7 +211,7 @@ function PostPanel({
             label={`${axis.toUpperCase()} plane count`}
             value={post[axis].count}
             min={1}
-            max={100}
+            max={MAX_SAMPLING_PLANES}
             disabled={!post[axis].enabled}
             onChange={(count) =>
               onChange({
@@ -286,6 +289,7 @@ function PostPanel({
           </ul>
         )}
       </details>
+      <details open><summary>Results &amp; imported files</summary>
       <div className="cfx-equal-actions">{onResults&&<button className="cfx-primary" onClick={onResults}>Open online results &amp; downloads</button>}
       <label className="cfx-file">
         Import VTK/VTI result
@@ -304,7 +308,8 @@ function PostPanel({
       <small className="cfx-caption">
         ASCII .vtp / .vtk / .vti · 25 MB · external, unverified. Use Online results above for the connected job.
       </small>
-    </>
+      </details>
+    </section>
   );
 }
 

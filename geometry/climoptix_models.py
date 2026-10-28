@@ -20,6 +20,8 @@ from pydantic import (
 from geometry.climoptix_adjoint import AdjointStudy
 from geometry.thermal_models import ThermalSetup, ThermalSnapshot
 
+MAX_SAMPLING_PLANES = 250
+
 Id = Annotated[str, Field(pattern=r"^[A-Za-z0-9_:-]+$", min_length=1, max_length=150)]
 PatchId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_:.-]+$", min_length=1, max_length=500)]
 Positive = Annotated[StrictFloat, Field(gt=0, le=1e12)]
@@ -361,7 +363,7 @@ class Outputs(Contract):
 
 class SliceStack(Contract):
     enabled: bool = False
-    count: int = Field(default=3, ge=1, le=100)
+    count: int = Field(default=3, ge=1, le=MAX_SAMPLING_PLANES)
 
 
 def default_slice_fields() -> list[Literal["U", "p", "T", "CO2"]]:

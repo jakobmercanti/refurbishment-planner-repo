@@ -37,6 +37,12 @@ test("HTTP adapter keeps bearer credentials out of URLs and rejects wrong job/lo
   assert.equal(measured.mesh?.cells,100);
   assert.equal(measured.conservation?.relativeImbalance,.1);
   assert.equal(measured.convergence?.finalInitialResiduals?.p,.1);
+  const planes=Array.from({length:250},(_,i)=>({id:`slice-${i}`,kind:'vtk',size:1,sha256:'a'.repeat(64)}));
+  const archives=['native-case','postprocessing'].map(id=>({id,kind:'zip',size:1,sha256:'a'.repeat(64)}));
+  response={...result,artifacts:[...planes,...archives]};
+  assert.equal((await adapter.result(job,new AbortController().signal)).artifacts.length,252);
+  response={...result,artifacts:[...planes,...archives,planes[0]]};
+  await assert.rejects(adapter.result(job,new AbortController().signal));
   response={...result,pressureUnit:"Pa"};
   await assert.rejects(adapter.result(job,new AbortController().signal));
   const selection={runId:id,assetId:"c".repeat(64)};
@@ -56,11 +62,27 @@ test("HTTP adapter keeps bearer credentials out of URLs and rejects wrong job/lo
   response=raster;
   await assert.rejects(adapter.sliceData(rasterRequest,new AbortController().signal),/resolution/);
   assert.equal((await adapter.sliceData({...rasterRequest,size:16},new AbortController().signal)).size,16);
+  const retained=Array.from({length:2500},(_,i)=>({id:i.toString(16).padStart(64,'0'),sha256:'a'.repeat(64),name:`slice-${i%250}.vtk`,axis:'Z',coordinate:(i%250+1)/251,time:String(100+Math.floor(i/250)),status:'ready',bounds:[0,0,1,1],fields:[{name:'U',components:3,cell:false,unit:'m/s'}],method:'Native sampling '+'.'.repeat(480)}));
+  const inventory={schemaVersion:1,runId:id,projectId:capabilities.namespace,studyId:'study',name:'Retained planes',createdAt:1,updatedAt:1,status:'Completed',message:'',sourceHash:'a'.repeat(64),configurationHash:'b'.repeat(64),revision:'c'.repeat(64),frame:'global-XYZ-m-Z-up',solver:'simpleFoam',timeKind:'steady-iteration',pressureReference:'d'.repeat(64),planes:retained,warnings:[],pending:0};
+  assert.ok(new TextEncoder().encode(JSON.stringify(inventory)).length>1024**2);
+  response=inventory;
+  assert.equal((await adapter.slices(id,capabilities.namespace,new AbortController().signal)).planes.length,2500);
+  response={...inventory,planes:[...retained,retained[0]]};
+  await assert.rejects(adapter.slices(id,capabilities.namespace,new AbortController().signal));
 });
 
 test("worker capabilities cannot advertise limits above the approved deployment",()=>{
   assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,limits:{...capabilities.limits,cpu:8}}).success,false);
   assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,limits:{...capabilities.limits,memoryGb:8}}).success,false);
+  assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,limits:{...capabilities.limits,maxCells:500001}}).success,false);
   for (const limits of [{cpu:0}, {cpu:1.5}, {cpu:-1}, {memoryGb:0}, {wallTimeMinutes:0}])
     assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,limits:{...capabilities.limits,...limits}}).success,false);
+});
+
+test("free quota remains explicit and cannot claim inconsistent remaining simulations",()=>{
+  const simulationQuota={tier:"free",period:"lifetime",limit:5,completed:4,remaining:1};
+  assert.equal(workerCapabilitiesSchema.parse({...capabilities,simulationQuota}).simulationQuota?.remaining,1);
+  assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,simulationQuota:{...simulationQuota,remaining:5}}).success,false);
+  assert.equal(workerCapabilitiesSchema.safeParse({...capabilities,simulationQuota:{...simulationQuota,limit:10}}).success,false);
+  assert.equal(workerCapabilitiesSchema.parse({...capabilities,run:false,simulationQuota:{...simulationQuota,completed:7,remaining:0}}).connected,true);
 });

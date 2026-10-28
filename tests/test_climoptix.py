@@ -915,7 +915,7 @@ def test_sampling_plane_settings_are_interior_and_deterministic_in_source_frame(
     assert planes[2]["normal"] == [0, 1, 0]
 
 
-@pytest.mark.parametrize("invalid", [0, 101, 1.5, True, "3"])
+@pytest.mark.parametrize("invalid", [0, 251, 1.5, True, "3"])
 def test_slice_counts_reject_out_of_range_fractional_and_coerced_values(invalid):
     data = scenario(project()).model_dump(mode="json")
     data["postProcessing"]["x"]["count"] = invalid
@@ -999,7 +999,7 @@ def test_foamlib_settings_zip_roundtrips_levels_cores_run_control_and_sampling(m
         assert control["application"] == ("simpleFoam" if mode == "steady" else "pimpleFoam")
         assert control["functions"]["solverInfo"]["type"] == "solverInfo"
         plane = control["functions"]["climoptixSlices"]["surfaces"]["slice_x_001"]
-        assert plane["type"] == "cuttingPlane"
+        assert plane["type"] == "plane"
         assert float(plane["point"][0]) == pytest.approx(manifest["samplingPlanes"][0]["pointMm"][0] / 1000)
         assert json.loads(archive.read("scenario.json"))["postProcessing"] == s.postProcessing.model_dump()
 

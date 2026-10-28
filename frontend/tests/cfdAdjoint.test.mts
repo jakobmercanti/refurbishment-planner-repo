@@ -23,7 +23,7 @@ test('old project schemas remain compatible; saved configurations roundtrip with
   const reloaded=parseProject(JSON.parse(JSON.stringify(p)));
   assert.deepEqual(reloaded.cfdScenarios[0].adjointStudies,JSON.parse(JSON.stringify([study])));
   assert.equal(duplicateCFDScenario(s).adjointStudies,undefined);
-  assert.ok(study.ports.every(v=>!v.movable));
+  assert.equal(study.ports.filter(v=>v.movable).length,1,'A valid default inlet is selected for layout checks');
 });
 test('numeric bounds, integers, budgets and unknown executable expressions are strictly rejected',()=>{
   const {study}=setup();

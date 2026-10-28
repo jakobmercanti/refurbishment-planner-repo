@@ -213,9 +213,10 @@ export function useCFDJobs(
           update(study.id, { input, operation, submissionId, job });
         }
       } catch (error) {
-        // 422 is a definite non-enqueueing validation rejection, not a lost
-        // acceptance response. The next attempt must prepare corrected inputs.
-        const rejected = error instanceof CFDWorkerError && error.status === 422;
+        // Validation and quota/queue rejections never enqueue a job. Neither
+        // should leave a permanent "unknown submission" recovery journal.
+        // A proxy timeout (503), however, can still hide an accepted job.
+        const rejected = error instanceof CFDWorkerError && [422, 429].includes(error.status);
         if (rejected) {
           if (unresolved.current.get(study.id)?.submissionId === submissionId) unresolved.current.delete(study.id);
           removePendingCFD(adapter.namespace, project.projectId, study.id, submissionId);

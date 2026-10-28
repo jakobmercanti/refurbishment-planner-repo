@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AUTH_SESSION_CHANGED, currentSession } from "@/lib/commercialAuth";
 import { workerCapabilitiesSchema, workerJSON } from "@/lib/railwayCFDWorker";
 
-/** Private preview access is server-verified, not a plan or browser email flag. */
+/** Public verified-account access; exhausted compute quota must not hide saved work. */
 export function useClimoptixAccess(base: string, onDenied: () => void) {
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {

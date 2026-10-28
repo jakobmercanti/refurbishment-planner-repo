@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cfdProject } from "./climoptixFixtures";
 import { applyWorkerLimits, workerProfileIssues } from "../lib/cfdWorkerProfile";
+import { postProcessingSchema } from "../lib/climoptixDocument";
 
 const limits = { cpu: 1, memoryGb: 4, wallTimeMinutes: 15, storageGb: 1, retentionDays: 3, maxCells: 500000, concurrentJobs: 1 };
 
@@ -30,4 +31,16 @@ test("worker compatibility advises on unsupported intent without changing it", (
   assert.ok(issues.some(x => x.includes("Boundary layers")));
   assert.ok(issues.some(x => x.includes("velocity")));
   assert.deepEqual(scenario, before);
+});
+
+test("250 enabled sampling planes are allowed across axes while the probe limit stays at 100",()=>{
+  const scenario=applyWorkerLimits(cfdProject().cfdScenarios![0],limits);
+  scenario.postProcessing={...scenario.postProcessing,x:{enabled:true,count:250},y:{enabled:false,count:250},z:{enabled:false,count:250}};
+  assert.ok(postProcessingSchema.safeParse(scenario.postProcessing).success);
+  assert.deepEqual(workerProfileIssues(scenario,limits),[]);
+  scenario.postProcessing.y={enabled:true,count:1};
+  assert.ok(workerProfileIssues(scenario,limits).some(s=>s.includes('250 sampling planes')));
+  scenario.postProcessing.y.enabled=false;scenario.outputs.probesMm=Array.from({length:101},()=>[0,0,0]);
+  assert.ok(workerProfileIssues(scenario,limits).some(s=>s.includes('100 probes')));
+  assert.equal(postProcessingSchema.safeParse({...scenario.postProcessing,x:{enabled:true,count:251}}).success,false);
 });

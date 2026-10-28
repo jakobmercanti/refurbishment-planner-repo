@@ -10,6 +10,18 @@ let harness;
 before(async()=>{harness=await startBrowserHarness({climoptixEnabled:true});});
 after(async()=>{await harness?.close();});
 const button=(scope,name)=>scope.getByRole('button',{name,exact:true});
+
+test('Post accepts 250 planes on one axis and preserves that setting on save',async t=>{
+  const {ui,saved}=await open(t);
+  await cfdWindow(ui,'Solver');await ui.getByRole('tab',{name:'Post-processing',exact:true}).click();
+  await ui.getByRole('checkbox',{name:'XY slices (normal Z)',exact:true}).uncheck();
+  await ui.getByRole('checkbox',{name:'YZ slices (normal X)',exact:true}).check();
+  const count=ui.getByRole('spinbutton',{name:'X plane count',exact:true});
+  assert.equal(await count.getAttribute('max'),'250');await count.fill('250');await count.press('Enter');
+  assert.equal(await count.inputValue(),'250');
+  await eventually(()=>saved(),p=>p?.cfdScenarios[0].postProcessing.x.count===250);
+  assert.ok(await ui.getByText('Plane positions · 250',{exact:true}).isVisible());
+});
 async function open(t,project=cfdProject(false),inspect=false){
   const s=await harness.session(project);t.after(()=>s.close());
   if(inspect){await s.context.addInitScript(()=>{
@@ -22,6 +34,34 @@ async function open(t,project=cfdProject(false),inspect=false){
   return {...s,ui};
 }
 const scrolls=control=>control.evaluate(node=>{const values=[];for(let el=node.parentElement;el;el=el.parentElement)values.push({name:el.className,top:el.scrollTop,left:el.scrollLeft});return values;});
+
+test('Run matches Mesh; Post collapses every category; probe drags commit millimetres and Esc cancels without moving the camera',async t=>{
+  const project=cfdProject(false);project.cfdScenarios[0].outputs.probesMm=[[1200,900,1200]];
+  const {page,ui,saved}=await open(t,project,true),rooms=structuredClone((await saved()).rooms);
+  await cfdWindow(ui,'Simulations');
+  const colour=control=>control.evaluate(node=>({background:getComputedStyle(node).backgroundColor,color:getComputedStyle(node).color}));
+  assert.deepEqual(await colour(ui.getByRole('button',{name:'Run Office airflow',exact:true})),await colour(ui.getByRole('button',{name:'Mesh Office airflow',exact:true})));
+  await cfdWindow(ui,'Solver');await ui.getByRole('tab',{name:'Post-processing',exact:true}).click();
+  const post=ui.locator('.cfx-post-panel');await button(post,'Collapse all').click();
+  assert.equal(await post.locator('details[open]').count(),0);assert.equal(await post.getByRole('spinbutton').count(),0);assert.equal(await post.getByRole('checkbox').count(),0);
+  await button(post,'Expand all').click();assert.equal(await post.locator('details:not([open]):not(.cfx-row-menu)').count(),0);
+  await button(page,'Minimise Simulation setup').click();
+  const marker=ui.getByRole('button',{name:'Select probe 1 in 3D',exact:true});await marker.waitFor();
+  const start=await marker.boundingBox(),camera=await page.evaluate(()=>window.__followupScene().camera.position.toArray());
+  await page.mouse.move(start.x+start.width/2,start.y+start.height/2);await page.mouse.down();
+  assert.equal(await page.evaluate(()=>window.__followupScene().controls.enabled),false);
+  await page.mouse.move(start.x+start.width/2+75,start.y+start.height/2+30,{steps:12});await page.mouse.up();
+  const moved=await eventually(saved,p=>p.cfdScenarios[0].outputs.probesMm[0].some((v,i)=>Math.abs(v-project.cfdScenarios[0].outputs.probesMm[0][i])>1));
+  assert.equal(await page.evaluate(()=>window.__followupScene().controls.enabled),true);assert.deepEqual(await page.evaluate(()=>window.__followupScene().camera.position.toArray()),camera);
+  assert.ok(await button(page,'Restore Simulation setup').isVisible(),'Dragging must not reopen the minimised setup');
+  const position=moved.cfdScenarios[0].outputs.probesMm[0],again=await marker.boundingBox();
+  await page.mouse.move(again.x+again.width/2,again.y+again.height/2);await page.mouse.down();await page.mouse.move(again.x+80,again.y+50,{steps:8});await page.keyboard.press('Escape');await page.mouse.up();
+  assert.equal(await page.evaluate(()=>window.__followupScene().controls.enabled),true);assert.deepEqual((await saved()).cfdScenarios[0].outputs.probesMm[0],position);
+  await marker.focus();await page.keyboard.press('ArrowRight');
+  await eventually(saved,p=>Math.abs(p.cfdScenarios[0].outputs.probesMm[0][0]-position[0]-10)<1e-6);
+  assert.deepEqual((await saved()).rooms,rooms);
+  if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/probe-drag-and-cancel.png`});
+});
 
 test('checkbox changes retain the current nested window scroll position, including delayed preparation updates',async t=>{
   const p=cfdProject(false);p.cfdScenarios[0].outputs.probesMm=Array.from({length:12},(_,i)=>[1000+i*50,1000,1200]);
@@ -49,7 +89,7 @@ test('the shared scroll fix also covers independent thermal source checkboxes an
   const source=thermal.getByRole('checkbox',{name:'Source enabled',exact:true}).last();await source.evaluate(n=>n.scrollIntoView({block:'center'}));
   const before=await thermal.locator('.thermal-scroll').evaluate(n=>n.scrollTop);assert.ok(before>100);
   await source.click();await s.page.waitForTimeout(750);const after=await thermal.locator('.thermal-scroll').evaluate(n=>n.scrollTop);assert.ok(Math.abs(after-before)<120,JSON.stringify({before,after}));
-  await button(s.page,'Hide Insulation boundary import & thermal envelope').click();
+  await s.ui.getByRole('tab',{name:'Conditions',exact:true}).click();
   await s.page.setViewportSize({width:900,height:600});await menu(s.page,'Settings','Preferences…');
   const preferences=s.page.getByRole('dialog',{name:'Preferences',exact:true}),confirm=preferences.getByRole('checkbox',{name:/Confirm before opening/});
   await confirm.evaluate(n=>n.scrollIntoView({block:'center'}));const initial=await preferences.evaluate(n=>n.scrollTop);
@@ -78,7 +118,7 @@ test('View properties uses two checkbox columns and 2D walls are presentation on
   await cfdWindow(ui,'View properties');
   const controls=ui.getByLabel('CFD view properties',{exact:true});
   const columns=await controls.locator('.cfx-view-checks > label').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().x));
-  assert.equal(columns.length,5);assert.equal(new Set(columns).size,2);
+  assert.equal(columns.length,7);assert.equal(new Set(columns).size,2);
   await controls.getByRole('checkbox',{name:'2D wall outlines',exact:true}).check();
   await eventually(()=>page.evaluate(()=>{const s=window.__followupScene();let count=0;s?.scene.traverse(node=>{if(node.name.startsWith('wall-outline:')&&node.visible)count++;});return count;}),count=>count>0);
   await button(page,'Minimise Simulation setup').click();

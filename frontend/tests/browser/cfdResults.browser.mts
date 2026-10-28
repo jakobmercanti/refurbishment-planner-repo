@@ -89,24 +89,89 @@ test('real result folder, old-worker post-processing download, selectable residu
   await folder.getByRole('row',{name:'Folder system',exact:true}).dblclick();const downloaded=page.waitForEvent('download');await button(folder,'Download controlDict').click();assert.match((await downloaded).suggestedFilename(),/controlDict/);await button(folder,'Close folder').click();
   const post=page.waitForEvent('download');await ui.getByRole('combobox',{name:'Download simulation data',exact:true}).selectOption('postprocessing');const postBytes=await readFile(await (await post).path());assert.ok(Object.keys(unzipSync(postBytes)).includes('postProcessing/probes/0/U'));
   await ui.getByRole('combobox',{name:'View result in 3D',exact:true}).selectOption('slice-0');await ui.getByRole('region',{name:'VTK results viewer',exact:true}).getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
-  await ui.getByRole('combobox',{name:'Plane to inspect',exact:true}).selectOption('artifact:slice-1');const viewer=ui.getByRole('region',{name:'VTK results viewer',exact:true});await eventually(()=>viewer.getByRole('combobox',{name:'Active result layer',exact:true}).locator('option').count(),n=>n===2);
-  await viewer.getByRole('combobox',{name:'Active result layer',exact:true}).selectOption('1');await viewer.getByRole('combobox',{name:'VTK result field',exact:true}).selectOption('point:U');
+  await ui.getByRole('combobox',{name:'Plane to inspect',exact:true}).selectOption('artifact:slice-1');const viewer=ui.getByRole('region',{name:'VTK results viewer',exact:true});await eventually(()=>viewer.getByRole('checkbox',{name:/^Show result /}).count(),n=>n===2);
+  await viewer.getByRole('combobox',{name:'VTK result field',exact:true}).selectOption('point:U');
   await viewer.getByLabel('Vector component',{exact:true}).selectOption('0');await viewer.getByLabel('Colour legend',{exact:true}).selectOption('viridis');
   const maximum=viewer.getByRole('spinbutton',{name:'Legend maximum',exact:true});await maximum.fill('5');await maximum.press('Enter');await viewer.getByRole('checkbox',{name:'Show result xy.vtk',exact:true}).uncheck();
-  const canvas=await viewer.locator('.cfx-vtk-canvas').boundingBox(),controls=await viewer.locator('.cfx-results-sidebar').boundingBox();
-  assert.ok(canvas.x>controls.x+controls.width-1&&canvas.width>400,'The main 3D scene stays alongside its bounded inspector');
+  const canvas=await viewer.locator('.cfx-vtk-canvas').boundingBox(),controls=await viewer.locator('.cfx-results-controls').boundingBox();
+  assert.ok(controls.y>=canvas.y+canvas.height-1&&canvas.width>400,'The data canvas stays above its full-width controls');
   await viewer.getByText('Building & object visibility',{exact:true}).click();
   const overlays=viewer.locator('details').filter({hasText:'Building & object visibility'});
   await overlays.getByRole('checkbox').first().check();await overlays.getByRole('checkbox').first().uncheck();
   assert.equal(submits,1);assert.equal(await ui.getByRole('alert').count(),0);
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/results-folder-and-planes.png`});
-  await button(ui.getByRole('dialog',{name:'Result plane inspector',exact:true}),'Load this plane into building 3D').click();
+  await button(ui,'Load selected plane into building 3D').click();
   await eventually(()=>page.evaluate(()=>{const mesh=window.__resultScene()?.scene.getObjectByName('verified-cfd-result');return mesh?Array.from(mesh.geometry.attributes.position.array):null;}),values=>values?.length===18,'A verified real polygon is triangulated into the measured building scene');
   await ui.getByRole('combobox',{name:'Building result field',exact:true}).selectOption('point:U');
   await ui.getByRole('checkbox',{name:'Show result plane',exact:true}).uncheck();
   await eventually(()=>page.evaluate(()=>!!window.__resultScene()?.scene.getObjectByName('verified-cfd-result')),value=>!value);
   await ui.getByRole('checkbox',{name:'Show result plane',exact:true}).check();
   await eventually(()=>page.evaluate(()=>!!window.__resultScene()?.scene.getObjectByName('verified-cfd-result')),Boolean);
+  await cfdWindow(ui,'Imported results');await ui.getByRole('combobox',{name:'Plane to inspect',exact:true}).selectOption('xy.vtk');
+  await button(ui,'Load selected plane into building 3D').click();
+  await eventually(()=>page.evaluate(()=>{let count=0;window.__resultScene()?.scene.traverse(node=>{if(node.name==='verified-cfd-result')count++;});return count;}),n=>n===2);
+  const building=ui.getByRole('combobox',{name:'Building 3D plane',exact:true});assert.equal(await building.locator('option').count(),2);
+  await button(ui,'Unload selected plane').click();await eventually(()=>building.locator('option').count(),n=>n===1);
+  await cfdWindow(ui,'Imported results');await ui.getByText('Planes loaded in building 3D · 1',{exact:true}).click();assert.equal(await ui.getByRole('combobox',{name:'Planes loaded in building 3D',exact:true}).locator('option').count(),2);
+  await button(ui,'Unload all 3D planes').click();
+  await eventually(()=>page.evaluate(()=>{let count=0;window.__resultScene()?.scene.traverse(node=>{if(node.name==='verified-cfd-result')count++;});return count;}),n=>n===0);
+});
+
+test('current simulation owns both result tabs; legacy slice 404 uses verified native planes and no stale run selector',async t=>{
+  const project=cfdProject(false),first=project.cfdScenarios[0],second=duplicateCFDScenario(first);second.name='Second simulation';project.cfdScenarios.push(second);
+  const secondId='88888888-8888-4888-8888-888888888888',requested:string[]=[];
+  const jobs=[first,second].map((s,i)=>({id:i?secondId:jobId,studyId:s.id,clientRevision:'c'.repeat(64),phase:'Completed',progress:100,message:'Completed fixture',operation:'run'}));
+  const data=strToU8(vtk()),artifact={id:'slice-0',name:'native-plane.vtk',kind:'vtk',size:data.length,sha256:digest(data)};
+  const {page,ui}=await open(t,project,async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path.endsWith('/capabilities'))return route.fulfill({json:caps});
+    if(path.endsWith('/jobs'))return route.fulfill({json:jobs});
+    const job=jobs.find(j=>path.includes(j.id));
+    if(path.endsWith('/logs'))return route.fulfill({json:{...job,cursor:0,nextCursor:0,text:''}});
+    if(path.endsWith('/slices')){requested.push(job!.id);return route.fulfill({status:404,json:{detail:'Not Found'}});}
+    if(path.endsWith('/result'))return route.fulfill({json:{jobId:job!.id,studyId:job!.studyId,clientRevision:job!.clientRevision,sourceHash:'a'.repeat(64),configurationHash:'b'.repeat(64),pressureUnit:'m2/s2',accepted:true,artifacts:[artifact]}});
+    if(path.includes('/artifacts/'))return route.fulfill({body:Buffer.from(data)});
+    return route.fulfill({json:job});
+  });
+  await cfdWindow(ui,'Imported results');const viewer=ui.getByRole('region',{name:'VTK results viewer',exact:true});await viewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
+  assert.equal(await ui.getByRole('dialog',{name:'Result plane inspector',exact:true}).count(),0);
+  const actions=await ui.locator('.cfx-result-open-actions > button').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return{x:b.x,y:b.y,w:b.width};}));
+  assert.equal(actions.length,4);assert.equal(actions[0].y,actions[1].y);assert.equal(actions[2].y,actions[3].y);assert.ok(actions[2].y>actions[0].y);assert.ok(Math.max(...actions.map(a=>a.w))-Math.min(...actions.map(a=>a.w))<1);
+  await button(ui,'Collapse all').click();assert.equal(await ui.locator('.cfx-results details[open]').count(),0);await button(ui,'Expand all').click();assert.equal(await ui.locator('.cfx-results details:not([open]):not(.cfx-row-menu)').count(),0);
+  const tabs=ui.getByRole('tablist',{name:'Results views',exact:true});await tabs.getByRole('tab',{name:'Summary & 3D',exact:true}).focus();await page.keyboard.press('ArrowRight');
+  const slices=ui.getByRole('region',{name:'2D CFD slice results',exact:true});await slices.getByText(/This service has no indexed slice API/).waitFor();await viewer.getByLabel('Interactive VTK 2D field',{exact:true}).waitFor();
+  assert.equal(await slices.getByRole('combobox',{name:'Slice run',exact:true}).count(),0);assert.deepEqual([...new Set(requested)],[jobId]);assert.equal(await slices.getByRole('alert').count(),0);
+  await button(viewer,'Probe point value (V)').click();await viewer.locator('.cfx-vtk-canvas').scrollIntoViewIfNeeded();const b=await viewer.locator('.cfx-vtk-canvas').boundingBox();await page.mouse.click(b.x+b.width/2,b.y+b.height/2);
+  const output=viewer.getByRole('status',{name:'Picked result value',exact:true});await eventually(()=>output.getAttribute('data-probe-value'),v=>v!==null);assert.doesNotMatch(await output.innerText(),/coordinates|Interpolated|mm/);await page.keyboard.press('Escape');assert.equal(await output.count(),0);
+  const canvas2d=viewer.locator('.cfx-vtk-canvas');await canvas2d.scrollIntoViewIfNeeded();let area=await canvas2d.boundingBox();
+  await page.mouse.move(area.x+area.width/2,area.y+area.height/2);await page.mouse.down();await page.mouse.move(area.x+area.width/2+20,area.y+area.height/2+15,{steps:8});await page.mouse.up();
+  await button(viewer,'Probe point value (V)').click();await canvas2d.scrollIntoViewIfNeeded();area=await canvas2d.boundingBox();
+  const samples=[];for(const dx of [-20,20]){await page.mouse.click(area.x+area.width/2+dx,area.y+area.height/2);await eventually(()=>output.getAttribute('data-probe-value'),v=>v!==null);samples.push(JSON.parse(await output.getAttribute('data-probe-position')));}
+  assert.ok(Math.abs(samples[0][1]-samples[1][1])<1e-6,'A 2D drag must not rotate physical axes');assert.ok(samples[1][0]>samples[0][0]);
+  await page.keyboard.press('Escape');
+  await ui.getByRole('combobox',{name:'CFD scenario',exact:true}).selectOption(second.id);await ui.getByRole('tab',{name:'2D Slices',exact:true}).click();await slices.getByText(/This service has no indexed slice API/).waitFor();
+  assert.equal(requested.at(-1),secondId);assert.equal(await slices.getByRole('combobox',{name:'Slice run',exact:true}).count(),0);assert.equal(await slices.getByRole('alert').count(),0);
+  await button(slices,'Compare Runs').click();await slices.getByRole('combobox',{name:'Option run',exact:true}).selectOption(jobId);
+  const panes=slices.locator('[data-slice-pane]');assert.equal(await panes.count(),4);
+  const positions=await panes.evaluateAll(nodes=>nodes.map(node=>({x:node.getBoundingClientRect().x,y:node.getBoundingClientRect().y})));
+  assert.equal(positions[0].y,positions[1].y);assert.equal(positions[2].y,positions[3].y);assert.ok(positions[1].x>positions[0].x);
+  const optionViewer=slices.locator('[data-slice-pane=option]').getByRole('region',{name:'VTK results viewer',exact:true});await optionViewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
+  assert.equal(await slices.getByRole('button',{name:'View Z',exact:true}).count(),0);
+  await button(ui,'Collapse all').click();assert.equal(await slices.locator('canvas').filter({visible:true}).count(),0);assert.equal(await slices.getByRole('combobox').count(),0);await button(ui,'Expand all').click();
+  if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/current-simulation-legacy-2d.png`});
+});
+
+test('expired current run gives an actionable retention message, not a generic Not Found or another run',async t=>{
+  const project=cfdProject(false),job={id:jobId,studyId:project.cfdScenarios[0].id,clientRevision:'c'.repeat(64),phase:'Completed',progress:100,message:'Expired fixture'};
+  const {ui}=await open(t,project,route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path.endsWith('/capabilities'))return route.fulfill({json:caps});
+    if(path.endsWith('/jobs'))return route.fulfill({json:[job]});
+    if(path.endsWith('/logs'))return route.fulfill({json:{...job,cursor:0,nextCursor:0,text:''}});
+    return route.fulfill({status:404,json:{detail:'Not Found'}});
+  });
+  await cfdWindow(ui,'Imported results');await ui.getByRole('tab',{name:'2D Slices',exact:true}).click();const slices=ui.getByRole('region',{name:'2D CFD slice results',exact:true});
+  await eventually(()=>slices.getByRole('alert').allTextContents(),v=>v.some(s=>s.includes('retained results are no longer available')));assert.equal(await slices.getByRole('combobox',{name:'Slice run',exact:true}).count(),0);
 });
 
 test('residual dropdown selects multiple full-history graphs with a four-field two-by-two default',async t=>{
@@ -142,14 +207,34 @@ test('a delayed plane download preserves layers added or removed while it was lo
   const menu=ui.getByRole('combobox',{name:'View result in 3D',exact:true});await eventually(()=>menu.isEnabled(),Boolean);await menu.selectOption('slice-0');
   const viewer=ui.getByRole('region',{name:'VTK results viewer',exact:true});await viewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
   await ui.getByRole('combobox',{name:'Plane to inspect',exact:true}).selectOption('artifact:slice-1');await eventually(()=>requested,Boolean);
-  await button(page,'Hide Result plane inspector').click();await ui.getByText('3D result layers · 1 loaded',{exact:true}).click();
-  await button(ui,'Remove layer plane-0.vtk').click();
+  await button(viewer,'Hide plane viewer').click();await ui.getByText('3D result layers · 1 loaded',{exact:true}).click();
+  await ui.getByRole('combobox',{name:'Delete result plane',exact:true}).selectOption('plane-0.vtk');
   await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name:'external.vtk',mimeType:'application/octet-stream',buffer:Buffer.from(data)});
   await viewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();release();
-  await eventually(()=>viewer.getByRole('combobox',{name:'Active result layer',exact:true}).locator('option').allTextContents(),names=>names.includes('plane-1.vtk')&&names.length===2);
-  const names=await viewer.getByRole('combobox',{name:'Active result layer',exact:true}).locator('option').allTextContents();
+  await eventually(()=>viewer.getByRole('checkbox',{name:/^Show result /}).evaluateAll(nodes=>nodes.map(n=>n.parentElement!.textContent)),names=>names.includes('plane-1.vtk')&&names.length===2);
+  const names=await viewer.getByRole('checkbox',{name:/^Show result /}).evaluateAll(nodes=>nodes.map(n=>n.parentElement!.textContent));
   assert.deepEqual([...names].sort(),['external.vtk','plane-1.vtk']);
   assert.match(await viewer.locator('.cfx-stale').innerText(),/External file layers/);
+});
+
+test('unload all stays unloaded when an earlier native-plane download finishes late',async t=>{
+  const project=cfdProject(false),data=strToU8(vtk()),job={id:jobId,studyId:project.cfdScenarios[0].id,clientRevision:'c'.repeat(64),phase:'Completed',progress:100,message:'Retained job'};
+  const artifacts=[0,1].map(i=>({id:`slice-${i}`,name:`plane-${i}.vtk`,kind:'vtk',size:data.length,sha256:digest(data)}));
+  let requested=false,release=()=>{};const delayed=new Promise<void>(resolve=>{release=resolve;});t.after(()=>release());
+  const {ui}=await open(t,project,async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path.endsWith('/capabilities'))return route.fulfill({json:caps});
+    if(path.endsWith('/jobs'))return route.fulfill({json:[job]});
+    if(path.endsWith('/logs'))return route.fulfill({json:{...job,cursor:0,nextCursor:0,text:''}});
+    if(path.endsWith('/result'))return route.fulfill({json:{jobId,studyId:job.studyId,clientRevision:job.clientRevision,sourceHash:'a'.repeat(64),configurationHash:'b'.repeat(64),pressureUnit:'m2/s2',accepted:true,artifacts}});
+    if(path.endsWith('/artifacts/slice-1')){requested=true;await delayed;}
+    if(path.includes('/artifacts/'))return route.fulfill({body:Buffer.from(data)});
+    return route.fulfill({json:job});
+  });
+  await cfdWindow(ui,'Imported results');await ui.getByRole('region',{name:'VTK results viewer',exact:true}).getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
+  const menu=ui.getByRole('combobox',{name:'View result in 3D',exact:true});await menu.selectOption('slice-1');await eventually(()=>requested,Boolean);
+  await ui.getByText('3D result layers · 1 loaded',{exact:true}).click();await button(ui,'Unload all result layers').click();release();await eventually(()=>menu.isEnabled(),Boolean);
+  assert.equal(await ui.getByRole('region',{name:'VTK results viewer',exact:true}).count(),0);assert.ok(await ui.getByText('3D result layers · 0 loaded',{exact:true}).isVisible());
 });
 
 test('structured scalar volumes show real movable slices and computed isosurfaces, without modifying a study',async t=>{
@@ -166,9 +251,10 @@ test('structured scalar volumes show real movable slices and computed isosurface
   await viewer.locator('.cfx-vtk-canvas').scrollIntoViewIfNeeded();
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/results-scalar-isosurface.png`});
   await page.setViewportSize({width:390,height:900});assert.ok(await ui.locator('.cfx-setup-window').evaluate(n=>n.scrollWidth<=n.clientWidth+2));
-  await eventually(async()=>({canvas:await viewer.locator('.cfx-vtk-canvas').boundingBox(),panel:await ui.getByRole('dialog',{name:'Result plane inspector',exact:true}).boundingBox()}),
+  await viewer.locator('.cfx-vtk-canvas').scrollIntoViewIfNeeded();
+  await eventually(async()=>({canvas:await viewer.locator('.cfx-vtk-canvas').boundingBox(),panel:await ui.locator('.cfx-setup-window').boundingBox()}),
     ({canvas,panel})=>canvas&&panel&&canvas.height>=140&&canvas.width>200&&canvas.y>=panel.y&&canvas.y+canvas.height<=panel.y+panel.height+1&&panel.y+panel.height<=901,
-    'The independent mobile inspector keeps a real usable 3D viewport onscreen');
+    'The embedded mobile inspector keeps a real usable 3D viewport onscreen');
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/results-scalar-isosurface-mobile.png`});
   const after=(await saved()).cfdScenarios[0];const original=JSON.parse(before);delete after.validation;delete original.validation;assert.deepEqual(after,original);
 });
@@ -219,7 +305,8 @@ test('Monitor result dropdown opens real FIELD planes from a recovered older job
   await menu.selectOption('slice-1');
   const viewer=ui.getByRole('region',{name:'VTK results viewer',exact:true});
   await viewer.getByRole('status').filter({hasText:/1,?645 points.*\d[\d,]* cells/}).waitFor();
-  await eventually(async()=>({canvas:await viewer.locator('.cfx-vtk-canvas').boundingBox(),windowBox:await ui.getByRole('dialog',{name:'Result plane inspector',exact:true}).boundingBox()}),
+  await viewer.locator('.cfx-vtk-canvas').scrollIntoViewIfNeeded();
+  await eventually(async()=>({canvas:await viewer.locator('.cfx-vtk-canvas').boundingBox(),windowBox:await ui.locator('.cfx-setup-window').boundingBox()}),
     ({canvas,windowBox})=>canvas.width>300&&canvas.height>=280&&canvas.y>=windowBox.y&&canvas.y+canvas.height<=windowBox.y+windowBox.height+2,
     'Opening a plane brings the complete 3D scene into the visible window');
   assert.match(await viewer.locator('.cfx-stale').innerText(),/Authenticated worker job.*older setup/);
@@ -234,10 +321,10 @@ test('Monitor result dropdown opens real FIELD planes from a recovered older job
 });
 
 test('oversized or entity-bearing volume imports fail before allocation and remain removable',async t=>{
-  const {page,ui}=await open(t);await cfdWindow(ui,'Imported results');
+  const {ui}=await open(t);await cfdWindow(ui,'Imported results');
   const bad='<VTKFile type="ImageData"><ImageData WholeExtent="0 999999 0 999999 0 999999"><Piece Extent="0 999999 0 999999 0 999999"><PointData/></Piece></ImageData></VTKFile>';
   await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name:'oversized.vti',mimeType:'application/xml',buffer:Buffer.from(bad)});
-  await ui.getByRole('alert').filter({hasText:/250,000/}).waitFor();await button(page,'Hide Result plane inspector').click();await ui.getByText('3D result layers · 1 loaded',{exact:true}).click();
-  await button(ui,'Remove layer oversized.vti').click();await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name:'entities.vti',mimeType:'application/xml',buffer:Buffer.from('<!DOCTYPE VTKFile [<!ENTITY x SYSTEM "file:///private">]><VTKFile type="ImageData">&x;</VTKFile>')});
+  await ui.getByRole('alert').filter({hasText:/250,000/}).waitFor();await button(ui,'Hide plane viewer').click();await ui.getByText('3D result layers · 1 loaded',{exact:true}).click();
+  await ui.getByRole('combobox',{name:'Delete result plane',exact:true}).selectOption('oversized.vti');await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name:'entities.vti',mimeType:'application/xml',buffer:Buffer.from('<!DOCTYPE VTKFile [<!ENTITY x SYSTEM "file:///private">]><VTKFile type="ImageData">&x;</VTKFile>')});
   await ui.getByRole('alert').filter({hasText:/uncompressed ASCII/}).waitFor();
 });

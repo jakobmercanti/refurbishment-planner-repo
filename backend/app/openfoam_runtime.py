@@ -123,10 +123,13 @@ def convergence(text: str, target: float, turbulent: str) -> dict[str, Any]:
     passed = final_iteration is not None and required.issubset(residuals) and all(
         math.isfinite(residuals[f]) and residuals[f] <= target for f in required
     )
-    return {"converged": passed, "finalInitialResiduals": residuals, "target": target, "finalIteration": final_iteration}
+    return {"converged": passed, "finalInitialResiduals": residuals,
+            "target": target, "finalIteration": final_iteration}
 
 
-def flow_balance(root: Path, names: list[str], tolerance: float, *, expected_iteration: float | None = None) -> dict[str, Any]:
+def flow_balance(
+    root: Path, names: list[str], tolerance: float, *, expected_iteration: float | None = None
+) -> dict[str, Any]:
     values = []
     times = []
     for name in names:
@@ -182,7 +185,9 @@ def execute(
     environment.update(OMPI_MCA_btl="self,tcp", OMPI_MCA_pml="ob1", PMIX_MCA_gds="hash", MALLOC_ARENA_MAX="2")
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     environment["CFD_JOB_CPU_SECONDS"] = str(request.scenario.resources.wallTimeMinutes * 60)
-    environment["CFD_JOB_MEMORY_BYTES"] = str(int(min(request.scenario.resources.memoryGb * 1000**3, 3 * 1024**3)))
+    environment["CFD_JOB_MEMORY_BYTES"] = str(
+        int(min(request.scenario.resources.memoryGb * 1000**3, 3 * 1024**3) / request.scenario.resources.cpu)
+    )
 
     def command(args: list[str], phase: str) -> None:
         update(phase, "Executing " + args[0])
@@ -240,7 +245,6 @@ def execute(
         if cpu > 1:
             command(["decomposePar", "-force"], "Running")
             command(["mpirun", "-np", str(cpu), "simpleFoam", "-parallel"], "Running")
-            command(["reconstructPar", "-latestTime"], "Postprocess")
         else:
             command(["simpleFoam"], "Running")
         text = log.read_text(errors="replace")
@@ -258,6 +262,10 @@ def execute(
             raise ValueError("No finite final solver iteration was reported.")
         manifest["conservation"] = flow_balance(root, flow_names, request.scenario.physics.numerics.balanceTolerance,
                                               expected_iteration=final_iteration)
+        # reconstructPar also prints `Time = ...` but no solver residuals.
+        # Measure the final solver iteration before appending its utility log.
+        if cpu > 1:
+            command(["reconstructPar", "-latestTime"], "Postprocess")
     update("Postprocess", "Packaging provenance-bound native fields and ASCII slices")
     write_phase_progress(root, "Postprocess", 0, 1)
     manifest["accepted"] = request.operation == "mesh" or (
@@ -297,7 +305,8 @@ def execute(
     paths = sorted(path for path in root.rglob("*") if path.is_file() and path.name not in
                    {"native-case.zip", "postprocessing.zip", "phase-progress.json", "phase-progress.tmp"}
                    and not any(part.startswith("processor") for part in path.parts))
-    post_paths = sorted(path for path in (root / "postProcessing").rglob("*") if path.is_file()) if request.operation == "run" else []
+    post_paths = (sorted(path for path in (root / "postProcessing").rglob("*") if path.is_file())
+                  if request.operation == "run" else [])
     total_steps = len(paths) + len(post_paths) + 2  # file writes plus archive integrity hashes
     with ZipFile(archive_path, "w", ZIP_DEFLATED) as archive:
         for index, path in enumerate(paths):

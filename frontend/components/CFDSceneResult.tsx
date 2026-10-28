@@ -7,10 +7,10 @@ import { readResultData, type ResultField } from "@/lib/cfdResultData";
 import { resultProbeMesh, sampleResultPoint, type ProbeMesh, type ResultPointValue } from "@/lib/cfdPointProbe";
 
 export interface SceneResultMetadata { fields:{key:string;name:string;range:[number,number]}[];error:string }
-export interface CFDSceneResultProps { file:File;field:string;onMetadata:(value:SceneResultMetadata)=>void;probing?:boolean;onProbe?:(value:ResultPointValue|null)=>void }
+export interface CFDSceneResultProps { file:File;field:string;onMetadata:(value:SceneResultMetadata)=>void;probing?:boolean;onProbe?:(value:ResultPointValue|null)=>void;onContextMenu?:(x:number,y:number)=>void;onSelect?:()=>void }
 
 /** Native worker files are in metres. Convert only at the Three rendering boundary. */
-export function CFDSceneResult({file,field,onMetadata,probing=false,onProbe}:CFDSceneResultProps) {
+export function CFDSceneResult({file,field,onMetadata,probing=false,onProbe,onContextMenu,onSelect}:CFDSceneResultProps) {
   const [surface,setSurface]=useState<{file:File;positions:number[];mesh:ProbeMesh;fields:ResultField[];arrays:Map<string,ArrayLike<number>>}|null>(null);
   useEffect(()=>{
     let cancelled=false;
@@ -45,9 +45,15 @@ export function CFDSceneResult({file,field,onMetadata,probing=false,onProbe}:CFD
     const value=new BufferGeometry();value.setAttribute("position",new Float32BufferAttribute(data.positions,3));value.setAttribute("color",new Float32BufferAttribute(colours,3));return value;
   },[data,selected,values]);
   useEffect(()=>()=>geometry?.dispose(),[geometry]);
-  return geometry?<mesh name="verified-cfd-result" geometry={geometry} raycast={probing?Mesh.prototype.raycast:()=>{}} renderOrder={3} onClick={event=>{
-    if(!probing||event.button!==0||event.delta>4)return;
-    event.stopPropagation();
+  return geometry?<mesh name="verified-cfd-result" geometry={geometry} raycast={probing||onContextMenu||onSelect?Mesh.prototype.raycast:()=>{}} renderOrder={3} onContextMenu={event=>{
+    if(!onContextMenu)return;event.stopPropagation();event.nativeEvent.preventDefault();event.nativeEvent.stopPropagation();
+    if(event.button!==2)onContextMenu(event.clientX,event.clientY);
+  }} onPointerUp={event=>{
+    if(!onContextMenu||event.button!==2||event.delta>5)return;
+    event.stopPropagation();event.nativeEvent.stopPropagation();onContextMenu(event.clientX,event.clientY);
+  }} onClick={event=>{
+    if(event.button!==0||event.delta>4)return;
+    event.stopPropagation();onSelect?.();if(!probing)return;
     if(!data||!selected||!values||event.faceIndex==null){onProbe?.(null);return;}
     onProbe?.(sampleResultPoint(data.mesh,event.faceIndex,[event.point.x,-event.point.z,event.point.y],selected,values));
   }}><meshBasicMaterial vertexColors side={DoubleSide} polygonOffset polygonOffsetFactor={-1}/></mesh>:null;

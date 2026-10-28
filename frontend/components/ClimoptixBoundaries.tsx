@@ -3,6 +3,7 @@
 import { CFDReorderList } from "./CFDReorderList";
 import { CFDConfirmAction } from "./CFDConfirmAction";
 import { CFDRowMenu } from "./CFDRowMenu";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { assignBoundarySurfaces, boundaryGroups, boundaryMembership, BOUNDARY_COLOURS, DEFAULT_BOUNDARY_GROUP, effectiveBoundary, moveBoundary, uniqueGroupName } from "@/lib/climoptixGroups";
 import { useState, type ReactNode } from "react";
@@ -30,7 +31,9 @@ function BoundaryEditor({
     opening: "Pa",
   };
   return (
-    <>
+    <section className="cfx-boundary-fields" data-cfx-collapse-root>
+      <div className="cfx-inline-toolbar"><h3>Boundary conditions</h3><CFDCollapseAll/></div>
+      <details open><summary>Flow &amp; thermal conditions</summary>
       <div className="cfx-grid">
         <label>
           Flow condition
@@ -124,12 +127,13 @@ function BoundaryEditor({
           }
         />
       )}
-      <Parameters
+      </details>
+      <details><summary>Additional boundary fields</summary><Parameters
         value={value}
         omit={["flow", "thermal"]}
         onChange={(v) => onChange(v as CFDBoundary)}
-      />
-    </>
+      /></details>
+    </section>
   );
 }
 export function BoundariesPanel({
@@ -143,6 +147,7 @@ export function BoundariesPanel({
   onSelectGroup,
   checked,
   navigation,
+  actions,
 }: {
   project: ProjectDocument;
   scenario: CFDScenario;
@@ -154,6 +159,7 @@ export function BoundariesPanel({
   onSelectGroup: (id: string) => void;
   checked: boolean;
   navigation?: ReactNode;
+  actions?: ReactNode;
 }) {
   const [search, setSearch] = useState(""),
     [group, setGroup] = useState<PatchKind>("wall");
@@ -203,8 +209,10 @@ export function BoundariesPanel({
     return added;
   };
   return (
-    <>
-      <div className="cfx-inline-toolbar cfx-boundary-tools">{navigation}
+    <section className="cfx-boundaries-panel" data-cfx-collapse-root>
+      <header className="cfx-inline-toolbar">{navigation}{actions}<CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:collections.map(group=>group.id)))}/></header>
+      <details open><summary>Boundary groups &amp; surfaces</summary>
+      <div className="cfx-inline-toolbar cfx-boundary-tools">
         <button disabled={collections.length >= 100} onClick={() => newGroup()}>Add boundary group</button>
         <CFDConfirmAction title="Clear all boundary customizations?"
           description="Remove boundary groups, type defaults and surface overrides. Existing building surfaces and vents are kept. Solid surfaces return to no-slip, adiabatic defaults. Undo can restore the previous conditions."
@@ -308,6 +316,7 @@ export function BoundariesPanel({
         </CFDReorderList>
       </div>
       {!allPatches.length && <p className="cfx-caption" role="status">Choose a seed room in Domain and resolve preparation checks to assign existing surfaces. You can configure group conditions now; groups do not create new geometry.</p>}
+      </details>
       {assignment && <CFDEditorWindow title="Assign boundary surfaces" initialSize={{ width: 700 }} defaultPosition={{ x: 240, y: 100 }} maxHeight={750}
         bringToFront onClose={() => setAssignment(null)}>
         <section className="cfx-card">
@@ -465,6 +474,6 @@ export function BoundariesPanel({
               ))}
           </details>
         )}
-    </>
+    </section>
   );
 }

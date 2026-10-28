@@ -2,6 +2,8 @@ import { z } from "zod";
 import { thermalSetupSchema, thermalSnapshotSchema } from "./thermalDocument";
 import { adjointStudiesSchema } from "./cfdAdjointDocument";
 
+export const MAX_SAMPLING_PLANES = 250;
+
 const id = z.string().regex(/^[\w:-]{1,150}$/),
   patchId = z.string().regex(/^[\w:.-]{1,500}$/);
 const finite = z.number().finite(),
@@ -385,7 +387,7 @@ const validationSchema = z
 const sliceStackSchema = z
   .object({
     enabled: z.boolean().default(false),
-    count: z.int().min(1).max(100).default(3),
+    count: z.int().min(1).max(MAX_SAMPLING_PLANES).default(3),
   })
   .strict();
 export const postProcessingSchema = z

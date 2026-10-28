@@ -57,7 +57,7 @@ def settings_package(scenario: Scenario, report: dict[str, Any], *, thermal: The
         )
     planes = sampling_planes(report["domain"]["boundsMm"], scenario.postProcessing)
     slices = {
-        p["id"]: {"type": "cuttingPlane", "point": [v / 1000 for v in p["pointMm"]], "normal": p["normal"]}
+        p["id"]: {"type": "plane", "point": [v / 1000 for v in p["pointMm"]], "normal": p["normal"]}
         for p in planes
     }
     monitor_fields = ["U", "p_rgh" if physics.boussinesq else "p"]

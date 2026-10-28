@@ -51,7 +51,7 @@ test("legacy studies default to named slice settings and duplication is independ
     await preparationRevision(preparationInput(p, s)),
     await preparationRevision(preparationInput(p, copy)),
   );
-  for (const count of [0, 101, 1.5, true, "3"])
+  for (const count of [0, 251, 1.5, true, "3"])
     assert.equal(
       cfdScenarioSchema.safeParse({
         ...s,

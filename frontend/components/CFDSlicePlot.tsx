@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CFDFloatingControls } from "./CFDFloatingControls";
 import { downloadCFD } from "@/lib/climoptix";
 import { probeNumber } from "@/lib/cfdPointProbe";
 import { inPlaneAxes, slicePlotQuantity, type SliceData, type defaultLegend } from "@/lib/cfdSlices";
@@ -17,7 +18,7 @@ export function sliceColour(value:number,low:number,high:number,palette:string,b
   return stops[step].map((v,i)=>Math.round(v+(stops[step+1][i]-v)*t)) as [number,number,number];
 }
 
-export function CFDSlicePlot({title,kind,axis,physicalCoordinate,data,values,legend,limits,view,onView,point,probing,hover,onPick,onFocus,focus}:{title:string;kind:string;axis:"X"|"Y"|"Z";physicalCoordinate?:number;data:SliceData|null;values?:(number|null)[]|null;legend:typeof defaultLegend;limits:[number,number];view:SliceView;onView:(v:SliceView)=>void;point:[number,number,number]|null;probing:boolean;hover:boolean;onPick:(p:[number,number,number])=>void;onFocus:()=>void;focus:boolean}) {
+export function CFDSlicePlot({title,kind,axis,physicalCoordinate,data,values,legend,limits,view,onView,point,probing,hover,onPick,onFocus,focus,readout}:{title:string;kind:string;axis:"X"|"Y"|"Z";physicalCoordinate?:number;data:SliceData|null;values?:(number|null)[]|null;legend:typeof defaultLegend;limits:[number,number];view:SliceView;onView:(v:SliceView)=>void;point:[number,number,number]|null;probing:boolean;hover:boolean;onPick:(p:[number,number,number])=>void;onFocus:()=>void;focus:boolean;readout?:{value:number|null;label:string;unit?:string}}) {
   const canvas=useRef<HTMLCanvasElement>(null),gesture=useRef<{id:number;x:number;y:number;view:SliceView}|null>(null);
   const hasValues=values?.some(value=>value!==null)??false;
   // The manifest also supplies this for older workers without option coordinates.
@@ -48,7 +49,7 @@ export function CFDSlicePlot({title,kind,axis,physicalCoordinate,data,values,leg
       values.forEach((v,i)=>{const x=i%size,y=size-1-Math.floor(i/size),at=(x+y*size)*4;if(v===null)return;const rgb=sliceColour(v,limits[0],limits[1],legend.palette,legend.bands);pixels.data.set([...rgb,255],at);});
       oc.putImageData(pixels,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(off,imageX,imageY,imageWidth,imageHeight);
     }
-    if(point&&coordinate!==undefined&&Math.abs(point["XYZ".indexOf(axis)]-coordinate)<1e-7){const x=imageX+(point[a]-lowX)*factor,y=imageY+imageHeight-(point[b]-lowY)*factor;ctx.strokeStyle="#ff7900";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-9,y);ctx.lineTo(x+9,y);ctx.moveTo(x,y-9);ctx.lineTo(x,y+9);ctx.stroke();ctx.strokeRect(x-4,y-4,8,8);}
+
     ctx.restore();ctx.fillStyle=ink;ctx.font="11px sans-serif";
     const fmt=(v:number)=>v&&Math.abs(v)<10**-legend.precision?v.toExponential(legend.precision):v.toFixed(legend.precision);
     ctx.fillText(`${"XYZ"[a]} → [m]`,width/2-30,height-61);ctx.save();ctx.translate(12,height/2);ctx.rotate(-Math.PI/2);ctx.fillText(`${"XYZ"[b]} → [m]`,0,0);ctx.restore();
@@ -61,13 +62,15 @@ export function CFDSlicePlot({title,kind,axis,physicalCoordinate,data,values,leg
   const physical=(x:number,y:number):[number,number,number]=>{const p:[number,number,number]=[coordinate??0,coordinate??0,coordinate??0];p[a]=lowX+(x-imageX)/factor;p[b]=lowY+(imageY+imageHeight-y)/factor;return p;};
   const insidePlot=(x:number,y:number)=>x>=52&&x<=52+usableWidth&&y>=plotTop&&y<=plotTop+usableHeight;
   return <section className="cfx-slice-pane" aria-label={title} data-slice-pane={kind} data-coordinate={coordinate}>
-    <header><strong title={title}>{title}</strong><button type="button" onClick={onFocus}>{focus?"Show all panes":`Focus ${kind}`}</button></header>
-    <canvas ref={canvas} tabIndex={0} aria-label={`${title} physical slice, horizontal ${"XYZ"[a]}, vertical ${"XYZ"[b]} in metres`} data-slice-view={JSON.stringify(view)} data-limits={JSON.stringify(limits)} data-probing={probing||undefined}
+    <header><strong title={title}>{title}</strong></header>
+    <div className="cfx-slice-stage"><canvas ref={canvas} tabIndex={0} aria-label={`${title} physical slice, horizontal ${"XYZ"[a]}, vertical ${"XYZ"[b]} in metres`} data-slice-view={JSON.stringify(view)} data-limits={JSON.stringify(limits)} data-probing={probing||undefined}
       onPointerDown={e=>{const b=e.currentTarget.getBoundingClientRect();if(e.button!==0||!e.isPrimary||!insidePlot(e.clientX-b.left,e.clientY-b.top))return;e.currentTarget.focus({preventScroll:true});e.currentTarget.setPointerCapture(e.pointerId);gesture.current={id:e.pointerId,x:e.clientX,y:e.clientY,view};}}
       onPointerMove={e=>{if(!e.isPrimary)return;const start=gesture.current,b=e.currentTarget.getBoundingClientRect();if(start&&start.id===e.pointerId){if(Math.hypot(e.clientX-start.x,e.clientY-start.y)>4)onView({...start.view,x:start.view.x-(e.clientX-start.x)/imageWidth,y:start.view.y+(e.clientY-start.y)/imageHeight});}else if(probing&&hover&&insidePlot(e.clientX-b.left,e.clientY-b.top))onPick(physical(e.clientX-b.left,e.clientY-b.top));}}
       onPointerUp={e=>{const start=gesture.current;if(!start||start.id!==e.pointerId)return;gesture.current=null;if(e.button===0&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<=4&&probing){const b=e.currentTarget.getBoundingClientRect();onPick(physical(e.clientX-b.left,e.clientY-b.top));}}}
       onPointerCancel={e=>{if(gesture.current?.id===e.pointerId)gesture.current=null;}} onLostPointerCapture={e=>{if(gesture.current?.id===e.pointerId)gesture.current=null;}}/>
+      {probing&&readout&&<output className={`cfx-probe-value${point&&readout.value!==null?" cfx-probe-anchored":""}`} style={point&&readout.value!==null?{left:imageX+(point[a]-lowX)*factor,top:imageY+imageHeight-(point[b]-lowY)*factor}:undefined} role="status" aria-label="Picked result value" data-probe-value={readout.value??undefined} data-probe-position={point?JSON.stringify(point):undefined}>{point&&readout.value!==null&&<i className="cfx-picked-dot" aria-hidden/>}{readout.value===null?"Click the plane to read its value. Esc exits.":`${readout.label} = ${probeNumber(readout.value)}${readout.unit?` ${readout.unit}`:""}`}</output>}
+    </div>
     {!hasValues&&<p className="cfx-caption">{data?"No comparable numeric samples in this pane.":"Choose a ready numeric plane. Loading never reuses an earlier selection's contours."}</p>}
-    <footer><button type="button" onClick={()=>onView({...view,zoom:Math.min(12,view.zoom*1.4)})}>Zoom in {kind}</button><button type="button" onClick={()=>onView({...view,zoom:Math.max(.5,view.zoom/1.4)})}>Zoom out {kind}</button><button type="button" disabled={!hasValues} onClick={()=>{canvas.current?.toBlob(blob=>{if(blob)downloadCFD(blob,`cfd-${kind}.png`);});}}>Download {kind} PNG</button></footer>
+    <CFDFloatingControls label={`${kind} controls`}><button type="button" onClick={onFocus}>{focus?"Show all panes":`Focus ${kind}`}</button><footer><button type="button" onClick={()=>onView({...view,zoom:Math.min(12,view.zoom*1.4)})}>Zoom in {kind}</button><button type="button" onClick={()=>onView({...view,zoom:Math.max(.5,view.zoom/1.4)})}>Zoom out {kind}</button><button type="button" disabled={!hasValues} onClick={()=>{canvas.current?.toBlob(blob=>{if(blob)downloadCFD(blob,`cfd-${kind}.png`);});}}>Download {kind} PNG</button></footer></CFDFloatingControls>
   </section>;
 }

@@ -1,9 +1,10 @@
 "use client";
 
-/** Close native disclosure menus within this panel, including nested parameters. */
-export function CFDCollapseAll() {
-  return <button type="button" onClick={event => {
-    event.currentTarget.closest("[data-cfx-collapse-root]")?.querySelectorAll<HTMLDetailsElement>("details[open]:not(.cfx-row-menu)")
-      .forEach(details => { details.open = false; });
-  }}>Collapse all</button>;
+/** Change disclosures in this panel, without opening row-action menus. */
+export function CFDCollapseAll({onToggle}:{onToggle?:(open:boolean)=>void}) {
+  return <div className="cfx-disclosure-actions">{[false,true].map(open=><button key={String(open)} type="button" onClick={event => {
+    event.currentTarget.closest("[data-cfx-collapse-root]")?.querySelectorAll<HTMLDetailsElement>("details:not(.cfx-row-menu)")
+      .forEach(details => { details.open = open; });
+    onToggle?.(open);
+  }}>{open?"Expand all":"Collapse all"}</button>)}</div>;
 }

@@ -277,6 +277,21 @@ def test_snapshot_cache_retains_only_indexed_iterations_without_removing_native_
     assert {p["axis"] for p in inventory(root, row)["planes"]} == {"Z"}
 
 
+def test_all_250_planes_in_a_write_are_indexed_and_selectable(tmp_path):
+    store, owner = Store(tmp_path), str(uuid4())
+    row, root = job_case(store, owner)
+    for index in range(250):
+        name = 'slice.vtk' if index == 0 else f'plane-{index:03}.vtk'
+        write_plane(root / 'postProcessing/slices/100' / name, coordinate=(index + 1) / 251)
+    manifest = inventory(root, row)
+    assert len(manifest['planes']) == 250 and not manifest['warnings']
+    last = manifest['planes'][-1]
+    request = SliceRequest(projectId=row['project'],baseline={'runId':row['id'],'assetId':last['id']},field='U',size=16)
+    result = slice_data(store, owner, request)
+    assert result['coordinate'] == pytest.approx(250 / 251)
+    assert set(result['a']) == {10}
+
+
 @pytest.mark.parametrize(
     "field,value", [("size", "96"), ("component", False), ("epsilon", True), ("point", [True, 0.5, 0.5])]
 )

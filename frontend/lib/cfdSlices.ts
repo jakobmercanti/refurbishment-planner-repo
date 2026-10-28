@@ -1,9 +1,12 @@
 import { z } from "zod";
+import { MAX_SAMPLING_PLANES } from "./climoptixDocument";
+
+export const MAX_SLICE_RECORDS = MAX_SAMPLING_PLANES * 10;
 
 const finite=z.number().finite(), hash=z.string().regex(/^[a-f0-9]{64}$/);
 export const sliceFieldSchema=z.object({name:z.string().max(200),components:z.number().int().min(1).max(9),cell:z.boolean(),unit:z.string().max(100)});
 export const slicePlaneSchema=z.object({id:hash,sha256:hash,name:z.string().max(200),axis:z.enum(["X","Y","Z"]),coordinate:finite,time:z.string().max(100),status:z.literal("ready"),bounds:z.tuple([finite,finite,finite,finite]),fields:z.array(sliceFieldSchema).max(64),method:z.string().max(500)});
-export const sliceManifestSchema=z.object({schemaVersion:z.literal(1),runId:z.uuid(),projectId:z.uuid(),studyId:z.string().max(200),name:z.string().max(200),createdAt:finite,updatedAt:finite,status:z.string().max(100),message:z.string().max(2000),sourceHash:hash,configurationHash:hash,revision:hash,frame:z.string().max(100),solver:z.string().max(100),timeKind:z.string().max(100),pressureReference:hash,planes:z.array(slicePlaneSchema).max(200),warnings:z.array(z.string().max(1000)).max(20),pending:z.number().int().nonnegative()});
+export const sliceManifestSchema=z.object({schemaVersion:z.literal(1),runId:z.uuid(),projectId:z.uuid(),studyId:z.string().max(200),name:z.string().max(200),createdAt:finite,updatedAt:finite,status:z.string().max(100),message:z.string().max(2000),sourceHash:hash,configurationHash:hash,revision:hash,frame:z.string().max(100),solver:z.string().max(100),timeKind:z.string().max(100),pressureReference:hash,planes:z.array(slicePlaneSchema).max(MAX_SLICE_RECORDS),warnings:z.array(z.string().max(1000)).max(20),pending:z.number().int().nonnegative()});
 const nullable=finite.nullable(), values=z.array(nullable).max(512**2);
 const sample=z.object({value:nullable,velocity:z.tuple([finite,finite,finite]).nullable(),method:z.string().max(1000),reason:z.string().max(2000)});
 export const sliceDataSchema=z.object({

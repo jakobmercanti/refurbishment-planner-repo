@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { physicsPreset, type CFDScenario } from "@/lib/climoptixDocument";
 import { Parameters } from "./CFDFields";
@@ -7,14 +8,16 @@ import { Parameters } from "./CFDFields";
 export function PhysicsPanel({
   scenario,
   onChange,
+  actions,
 }: {
+  actions?:ReactNode;
   scenario: CFDScenario;
   onChange: (s: CFDScenario) => void;
 }) {
   const p = scenario.physics;
   return (
     <section data-cfx-collapse-root className="cfx-physics-panel">
-      <div className="cfx-panel-actions"><CFDCollapseAll /></div>
+      <div className="cfx-inline-toolbar">{actions}<CFDCollapseAll /></div>
       <details open><summary>Models &amp; equations</summary>
       <div className="cfx-grid cfx-physics-primary">
       <label>
@@ -100,8 +103,8 @@ export function PhysicsPanel({
           Kinematic viscosity ν = μ/ρ ={" "}
           {(p.dynamicViscosityPaS / p.densityKgM3).toExponential(3)} m²/s.
         </p>
-      </details>
       <p className="cfx-caption">Configure requested outputs and probe positions in Solver → Post.</p>
+      </details>
     </section>
   );
 }

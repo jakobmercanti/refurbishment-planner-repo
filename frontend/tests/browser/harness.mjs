@@ -137,7 +137,7 @@ export async function menu(page, heading, entry) {
 /** Navigate a tab in the consolidated native floating setup window. */
 export async function cfdWindow(ui, name) {
   const page = typeof ui.page === "function" ? ui.page() : ui;
-  const aliases = { Studies: "Simulations", Simulation: "Solver", "Thermal Envelope & Solar Conditions": "Boundaries", "Convergence monitor": "Solver" };
+  const aliases = { Studies: "Simulations", Simulation: "Solver", "Adjoint Optimisation":"Optimisation", "Thermal Envelope & Solar Conditions": "Boundaries", "Convergence monitor": "Solver" };
   if (name === "View properties") {
     const control = page.locator(".cfx-view-selector").getByRole("button", { name, exact: true });
     if (await control.getAttribute("aria-expanded") !== "true") await control.click();
@@ -147,7 +147,7 @@ export async function cfdWindow(ui, name) {
     return;
   }
   if (await page.locator(".cfx-setup-window[data-window-maximized]:visible").count()) {
-    const phases = { Simulations: ["studies", "Simulations"], Domain: ["domain", "Domain"], Equipment: ["equipment", "Objects"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], "Adjoint Optimisation": ["adjoint", "Adjoint Optimisation"], "Review & export": ["review", "Export"], "Imported results": ["results", "Results"] };
+    const phases = { Simulations: ["studies", "Simulations"], Domain: ["domain", "Domain"], Equipment: ["equipment", "Objects"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], Optimisation: ["adjoint", "Optimisation"], "Review & export": ["review", "Export"], "Imported results": ["results", "Results"] };
     const [id, text] = phases[aliases[name] ?? name];
     const select = ui.getByRole("combobox", { name: "CFD phase", exact: true });
     if (await select.isVisible()) await select.selectOption(id);

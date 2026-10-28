@@ -126,8 +126,8 @@ test("compact simulation labels, separate boundary actions, full-width run contr
   await cfdWindow(ui,"Solver"); await ui.getByRole("tab",{name:"Run",exact:true}).click();
   await button(ui,"Window layout for Simulation setup").click(); await page.getByRole("menuitem",{name:"Maximise window",exact:true}).click();
   const run = ui.locator(".cfx-run-panel > .cfx-panel-actions"); const buttons = await rects(run.locator("button")); const box = await run.boundingBox();
-  assert.equal(buttons.length,4); assert.ok(Math.max(...buttons.map(b=>b.w))-Math.min(...buttons.map(b=>b.w))<1);
-  assert.ok(Math.abs(buttons[0].x-box.x)<1); assert.ok(Math.abs(buttons[3].x+buttons[3].w-box.x-box.width)<1);
+  assert.equal(buttons.length,5); assert.ok(Math.max(...buttons.map(b=>b.w))-Math.min(...buttons.map(b=>b.w))<1);
+  assert.ok(Math.abs(buttons[0].x-box.x)<1); assert.ok(Math.abs(buttons[4].x+buttons[4].w-box.x-box.width)<1);
   const status = ui.getByRole("region",{name:"OpenFOAM connection",exact:true});
   const reason = await status.locator(".cfx-worker-controls > p").boundingBox(); const controls = await status.locator(".cfx-inline-toolbar").boundingBox();
   assert.ok(Math.abs(reason.y+reason.height/2-controls.y-controls.height/2)<2);

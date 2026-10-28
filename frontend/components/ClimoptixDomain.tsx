@@ -4,6 +4,7 @@ import { meshPreset, type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { projectFloors } from "@/lib/buildingDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 import { CFDNumber, Parameters, labelFor } from "./CFDFields";
 
 export function DomainPanel({
@@ -20,7 +21,9 @@ export function DomainPanel({
   const floors = projectFloors(project),
     floor = floors.find((f) => f.id === scenario.seed?.floorId) ?? floors[0];
   return (
-    <>
+    <section data-cfx-collapse-root className="cfx-domain-panel">
+      <div className="cfx-inline-toolbar"><h3>Domain</h3><CFDCollapseAll/></div>
+      <details open><summary>Seed &amp; connected domain</summary>
       <div className="cfx-grid cfx-domain-seed">
       <label>
         Seed floor
@@ -70,7 +73,7 @@ export function DomainPanel({
       {!floor.content.rooms.length && (
         <p className="cfx-notice">No measured enclosed rooms on this floor.</p>
       )}
-      <h3>Mesh settings</h3>
+      </details><details open><summary>Mesh settings</summary>
       <MeshSettings scenario={scenario} onChange={onChange} />
       <details>
         <summary>Mesh origin &amp; alignment</summary>
@@ -78,8 +81,9 @@ export function DomainPanel({
           onChange={mesh => onChange({ ...scenario, mesh: mesh as typeof scenario.mesh })} />
         <p className="cfx-caption">Domain extents follow the measured, connected rooms. Origin and alignment position the mesh grid; they do not resize the building.</p>
       </details>
+      </details>
       {report && (
-        <>
+        <details open><summary>Connectivity &amp; passages</summary>
           <div className="cfx-metrics">
             <div>
               <small>Connected rooms</small>
@@ -144,9 +148,9 @@ export function DomainPanel({
               ↕ Physical slab void · {v.id}
             </div>
           ))}
-        </>
+        </details>
       )}
-    </>
+    </section>
   );
 }
 function MeshSettings({

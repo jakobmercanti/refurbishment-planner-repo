@@ -20,7 +20,8 @@ export function useCFDResult(adapter: RailwayCFDWorker | null, job?: CFDWorkerJo
       }catch(cause){
         if(controller.signal.aborted)return;
         const missing=phase!=="Completed"&&cause instanceof CFDWorkerError&&[404,409].includes(cause.status);
-        setSnapshot({key,result:null,error:missing?"":cause instanceof Error?cause.message:"Native results could not be loaded.",missing});
+        const message=cause instanceof CFDWorkerError&&cause.status===404?"No retained native results were found for this simulation. Worker storage may have expired or the configured worker may have changed. Refresh results, or import a previously downloaded plane.":cause instanceof Error?cause.message:"Native results could not be loaded.";
+        setSnapshot({key,result:null,error:missing?"":message,missing});
         if(!missing&&++attempts<5)timer=setTimeout(()=>void read(),Math.min(1000*2**(attempts-1),10000));
       }
     };

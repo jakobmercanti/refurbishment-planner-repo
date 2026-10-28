@@ -1,4 +1,4 @@
-"""Dedicated authenticated single-runner service; never mounted in the public API."""
+"""Public-account, authenticated and quota-bounded single-runner CFD service."""
 
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ from backend.app.supabase_rest import InvalidAccessToken, SupabaseREST, Supabase
 TERMINAL = ("Completed", "Failed", "Cancelled", "Stale")
 ACTIVE_SQL = "('Queued','Meshing','MeshCheck','Running','Postprocess')"
 MAX_BODY = 4 * 1024**2
+FREE_COMPLETED_SIMULATIONS = 5
 logger = logging.getLogger(__name__)
 
 
@@ -55,6 +56,14 @@ class Store:
                     UNIQUE(owner,submission)
                 );
                 CREATE INDEX IF NOT EXISTS jobs_owner ON jobs(owner,created);
+                CREATE TABLE IF NOT EXISTS simulation_completions (
+                    job TEXT PRIMARY KEY, owner TEXT NOT NULL, completed REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS completions_owner ON simulation_completions(owner);
+                INSERT OR IGNORE INTO simulation_completions
+                    SELECT id, owner, updated FROM jobs
+                    WHERE phase='Completed' AND json_valid(payload)
+                    AND json_extract(payload, '$.operation')='run';
             """)
 
     def connect(self):
@@ -72,6 +81,16 @@ class Store:
     def path(self, job_id: str) -> Path:
         return self.root / str(UUID(job_id))
 
+    def quota(self, owner: str) -> dict:
+        with self.connect() as db:
+            completed = db.execute(
+                "SELECT count(*) FROM simulation_completions WHERE owner=?", (owner,)
+            ).fetchone()[0]
+        return {
+            "tier": "free", "period": "lifetime", "limit": FREE_COMPLETED_SIMULATIONS,
+            "completed": completed, "remaining": max(0, FREE_COMPLETED_SIMULATIONS - completed),
+        }
+
     def submit(self, owner: str, request: Submission):
         payload = request.model_dump_json()
         digest = hashlib.sha256(
@@ -86,6 +105,13 @@ class Store:
                 if existing["digest"] != digest:
                     raise HTTPException(409, "This submission ID already belongs to different immutable input.")
                 return existing
+            # Admission and completion accounting share SQLite's write lock.
+            # One active job per owner reserves the final remaining completion.
+            if request.operation == "run" and db.execute(
+                "SELECT count(*) FROM simulation_completions WHERE owner=?", (owner,)
+            ).fetchone()[0] >= FREE_COMPLETED_SIMULATIONS:
+                raise HTTPException(429, "Free tier limit reached: five completed simulations per account (lifetime). "
+                                    "Existing results and setup remain available; failed/cancelled runs do not count.")
             if db.execute(f"SELECT count(*) FROM jobs WHERE owner=? AND phase IN {ACTIVE_SQL}", (owner,)).fetchone()[0]:
                 raise HTTPException(409, "This account already has an active job. Wait or cancel it first.")
             if db.execute(f"SELECT count(*) FROM jobs WHERE phase IN {ACTIVE_SQL}").fetchone()[0] >= 4:
@@ -124,6 +150,12 @@ class Store:
 
     def update(self, job_id: str, phase: str, message: str):
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT owner, payload FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if phase == "Completed" and row and row["payload"] and json.loads(row["payload"])["operation"] == "run":
+                # Durable and exactly once, even after cleanup, retries or restart.
+                db.execute("INSERT OR IGNORE INTO simulation_completions VALUES (?,?,?)",
+                           (job_id, row["owner"], time.time()))
             db.execute(
                 "UPDATE jobs SET phase=?, message=?, updated=? WHERE id=?", (phase, message[:2000], time.time(), job_id)
             )
@@ -190,9 +222,8 @@ def authenticate(authorization: str | None = Header(default=None)) -> VerifiedUs
         raise HTTPException(403, "Verify your account email first.") from None
     except SupabaseUnavailable:
         raise HTTPException(503, "Account verification is unavailable.") from None
-    allowed = os.environ.get("CFD_ALLOWED_EMAIL", "").strip().casefold()
-    if not user.email_confirmed or not allowed or (user.email or "").casefold() != allowed:
-        raise HTTPException(403, "This account is not enabled for the initial CFD worker.")
+    if not user.email_confirmed or not user.email:
+        raise HTTPException(403, "Verify your account email before using Climoptix.")
     return user
 
 
@@ -215,8 +246,8 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
             state.update(
                 ready=True,
                 reason=(
-                    "OpenCFD v2312: steady isothermal SIMPLE; one serial job, max 4 GB / 15 minutes. "
-                    "Parallel execution is not enabled."
+                    "OpenCFD v2312: steady isothermal SIMPLE; one job, up to 2 processors, "
+                    "500,000 cells, 4 GB RAM and 15 minutes. Free tier: five completed simulations per account."
                 ),
             )
             while not stop.is_set():
@@ -323,13 +354,18 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
     def capabilities(user: WorkerUser):
         from backend.app.climoptix_adjoint import CAPABILITY
 
+        quota = store.quota(str(user.id))
+        reason = state["reason"] if quota["remaining"] else (
+            "Free tier: all five completed simulations have been used. Setup and existing results remain available."
+        )
         return {
             "connected": True,
             "mesh": state["ready"],
-            "run": state["ready"],
-            "reason": state["reason"],
+            "run": state["ready"] and quota["remaining"] > 0,
+            "reason": reason,
             "namespace": str(user.id),
             "limits": LIMITS,
+            "simulationQuota": quota,
             "optimisation": CAPABILITY,
         }
 

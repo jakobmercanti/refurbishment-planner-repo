@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {cfdProject} from '../climoptixFixtures';
+import {defaultSliceState} from '../../lib/cfdSlices';
 import {cfdWindow,eventually,startBrowserHarness} from './harness.mjs';
 
 let harness,server,fixture;
@@ -13,19 +14,69 @@ before(async()=>{
   server=spawn(path.join(root,'.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python'),['-X','utf8',fileURLToPath(new URL('./fixtures/cfdSliceServer.py',import.meta.url))],{cwd:root,stdio:['ignore','pipe','pipe']});
   fixture=await new Promise((resolve,reject)=>{let data='',errors='';const timer=setTimeout(()=>reject(new Error('Slice fixture startup timed out: '+errors)),20000);server.stderr.on('data',v=>errors+=v);server.once('exit',code=>reject(new Error(`Slice fixture exited ${code}: ${errors}`)));server.stdout.on('data',chunk=>{data+=chunk;if(data.includes('\n')){clearTimeout(timer);resolve(JSON.parse(data.split('\n')[0]));}});});
   await eventually(async()=>{try{return(await fetch(fixture.origin+'/health')).ok;}catch{return false;}},Boolean);
+  fixture.namespace=(await(await fetch(fixture.origin+'/climoptix/worker/capabilities')).json()).namespace;
   harness=await startBrowserHarness({climoptixEnabled:true});
 });
 after(async()=>{await harness?.close();server?.kill();});
-async function open(t,options={}){
-  const project=cfdProject(false);project.projectId=fixture.project;project.cfdScenarios.forEach(s=>s.sourceBuildingId=fixture.project);
+async function open(t,options={},axisOnly?:string){
+  const project=cfdProject(false);project.projectId=fixture.project;project.cfdScenarios[0].id=fixture.study;project.cfdScenarios.forEach(s=>s.sourceBuildingId=fixture.project);
   const s=await harness.session(project,options);t.after(()=>s.close());
-  await s.context.route('**/climoptix/worker/**',async route=>{const u=new URL(route.request().url()),start=u.pathname.indexOf('/climoptix/worker/');const response=await fetch(fixture.origin+u.pathname.slice(start)+u.search,{method:route.request().method(),headers:{'Content-Type':'application/json'},...(route.request().method()==='POST'?{body:route.request().postData()}:{} )});await route.fulfill({status:response.status,contentType:'application/json',body:await response.text()});});
+  await s.context.addInitScript(({key,state})=>{if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify(state));},{key:`climoptix:2d-slices:v1:${fixture.namespace}:${fixture.project}:${fixture.study}`,state:{...defaultSliceState,mode:'compare',baseline:fixture.option,option:fixture.shifted}});
+  await s.context.route('**/climoptix/worker/**',async route=>{const u=new URL(route.request().url()),start=u.pathname.indexOf('/climoptix/worker/');const response=await fetch(fixture.origin+u.pathname.slice(start)+u.search,{method:route.request().method(),headers:{'Content-Type':'application/json'},...(route.request().method()==='POST'?{body:route.request().postData()}:{} )});if(u.pathname.endsWith('/jobs')){const jobs=await response.json();jobs.sort((a,b)=>Number(b.id===fixture.baseline)-Number(a.id===fixture.baseline));return route.fulfill({status:response.status,json:jobs});}if(axisOnly&&u.pathname.endsWith('/slices')){const data=await response.json();data.planes=data.planes.filter(p=>p.axis===axisOnly);return route.fulfill({status:response.status,json:data});}await route.fulfill({status:response.status,contentType:'application/json',body:await response.text()});});
   await s.page.reload();await s.page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');const ui=s.page.locator('.cfx-workspace');await cfdWindow(ui,'Imported results');await ui.getByRole('tab',{name:'2D Slices',exact:true}).click();
-  const slices=ui.getByRole('region',{name:'2D CFD slice results',exact:true});await slices.getByRole('combobox',{name:'Slice run',exact:true}).selectOption(fixture.baseline);await eventually(()=>slices.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),v=>v==='[10,10]');
+  const slices=ui.getByRole('region',{name:'2D CFD slice results',exact:true});assert.equal(await slices.getByRole('combobox',{name:'Slice run',exact:true}).count(),0);await eventually(()=>slices.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),v=>v===(axisOnly==='X'?'[10.5,10.5]':'[10,10]'));
   return{...s,ui,slices};
 }
 async function compare(s){await button(s,'Compare Runs').click();await s.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.option);await eventually(()=>s.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),v=>v==='[10,12]');}
 async function screenshot(page,name){if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/slices-${name}.png`});}
+
+test('floating split viewport keeps indexed deltas correct, anchors picked values and browses with Up/Down',async t=>{
+  const {page,ui,slices,saved}=await open(t),before=await saved();
+  const controls=slices.locator('.cfx-viewer-frame > .cfx-floating-controls').first();assert.equal(await controls.getAttribute('open'),null);
+  await button(slices,'Compare Runs').click();await controls.locator(':scope > summary').click();await slices.getByText('Runs, fields & physical plane',{exact:true}).click();
+  await slices.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.option);await eventually(()=>slices.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),v=>v==='[10,12]');
+  await controls.locator(':scope > summary').click();const grid=slices.locator('.cfx-slice-grid.compare');assert.ok((await grid.boundingBox()).height<800);
+  const canvas=slices.locator('[data-slice-pane=baseline] canvas');await canvas.scrollIntoViewIfNeeded();await canvas.focus();await page.keyboard.press('v');const box=await canvas.boundingBox();await page.mouse.click(box.x+box.width/2,box.y+box.height/2-15);
+  const readout=slices.locator('[data-slice-pane=baseline] output');await eventually(()=>readout.getAttribute('data-probe-value'),v=>v==='10');await eventually(()=>slices.locator('[data-slice-pane=delta] output').getAttribute('data-probe-value'),v=>v==='2');assert.equal(await readout.locator('.cfx-picked-dot').count(),1);
+  await canvas.focus();await page.keyboard.press('ArrowUp');await eventually(()=>slices.getByLabel('Available physical plane',{exact:true}).locator('option:checked').textContent(),v=>v?.includes('0.8'));await page.keyboard.press('ArrowDown');await eventually(()=>slices.getByLabel('Available physical plane',{exact:true}).locator('option:checked').textContent(),v=>v?.includes('0.5'));
+  const frame=slices.getByLabel('2D slice plots',{exact:true});await button(frame,'Expand viewer').click();await eventually(()=>page.evaluate(()=>!!document.fullscreenElement),Boolean);assert.ok((await grid.boundingBox()).height<=(await page.viewportSize()).height);await screenshot(page,'floating-fullscreen');await button(frame,'Restore viewer').click();
+  await page.keyboard.press('Escape');assert.deepEqual((await saved()).rooms,before.rooms);await button(ui,'Collapse all').click();assert.equal(await slices.getByRole('combobox').count(),0);
+});
+
+test('audited floating controls preserve signed X/Y/Z deltas, vector and percent definitions and CSV provenance',async t=>{
+  const {page,slices}=await open(t);await button(slices,'Compare Runs').click();
+  const controls=slices.locator('.cfx-viewer-frame > .cfx-floating-controls').first();await controls.locator(':scope > summary').click();
+  await slices.getByText('Runs, fields & physical plane',{exact:true}).click();
+  await slices.getByLabel('Baseline run',{exact:true}).selectOption(fixture.gradientBaseline);await slices.getByLabel('Option run',{exact:true}).selectOption(fixture.gradientOption);await slices.getByLabel('Vector quantity',{exact:true}).selectOption('0');
+  await slices.getByText('Visual settings & delta legend',{exact:true}).click();
+  for(const [axis,mean] of [['X',3.75],['Y',4.5],['Z',5.25]] as const){
+    await slices.getByLabel('Slice orientation',{exact:true}).selectOption(axis);await eventually(()=>slices.getByLabel('Delta statistics',{exact:true}).innerText(),v=>v.includes(`mean ${-3*mean-5}`));
+    assert.match(await slices.locator('[data-slice-pane=baseline] canvas').getAttribute('aria-label'),new RegExp(`horizontal ${axis==='X'?'Y':'X'}, vertical ${axis==='Z'?'Y':'Z'}`));
+  }
+  await slices.getByLabel('Delta definition',{exact:true}).selectOption('vector');await eventually(()=>slices.getByLabel('Delta statistics',{exact:true}).innerText(),v=>v.includes('mean 20.75'));
+  await slices.getByLabel('Delta definition',{exact:true}).selectOption('percent');await eventually(()=>slices.getByLabel('Delta statistics',{exact:true}).innerText(),v=>v.includes('mean -'));
+  await controls.locator(':scope > summary').click();await slices.getByText('Export numeric data & provenance',{exact:true}).click();
+  const download=page.waitForEvent('download');await button(slices,'Download slice / delta CSV').click();const chunks=[];for await(const chunk of await(await download).createReadStream())chunks.push(chunk);
+  const rows=Buffer.concat(chunks).toString('utf8').split('\n').slice(2).filter(Boolean);assert.ok(rows.length>100);
+  for(const row of rows){const [x,y,z,a,b,delta,valid,ox,oy,oz]=row.split(',').map(Number),expected=x+2*y+3*z;assert.ok(Math.abs(a-expected)<1e-10);assert.ok(Math.abs(b-(-2*expected-5))<1e-10);assert.ok(Math.abs(delta-100*(b-a)/Math.abs(a))<1e-10);assert.equal(valid,1);assert.deepEqual([ox,oy,oz],[x,y,z]);}
+});
+
+test('2D viewer expands without changing quantities; collapse all hides every control and canvas',async t=>{
+  const {page,ui,slices}=await open(t);await compare(slices);
+  const canvas=slices.locator('[data-slice-pane=baseline] canvas'),limits=await canvas.getAttribute('data-limits');
+  const frame=slices.getByLabel('2D slice plots',{exact:true});await button(frame,'Expand viewer').click();
+  await eventually(()=>page.evaluate(()=>!!document.fullscreenElement),Boolean);assert.equal(await canvas.getAttribute('data-limits'),limits);
+  const positions=await slices.locator('[data-slice-pane]').evaluateAll(nodes=>nodes.map(n=>({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y})));assert.equal(positions[0].y,positions[1].y);assert.equal(positions[2].y,positions[3].y);
+  await button(frame,'Restore viewer').click();await eventually(()=>page.evaluate(()=>!!document.fullscreenElement),v=>!v);
+  await button(ui,'Collapse all').click();assert.equal(await slices.getByRole('combobox').count(),0);assert.equal(await slices.locator('canvas').evaluateAll(nodes=>nodes.filter(n=>n.checkVisibility({checkVisibilityCSS:true})).length),0);
+  await button(ui,'Expand all').click();assert.ok(await slices.getByLabel('Slice field',{exact:true}).isVisible());
+});
+
+test('single-simulation view ignores a saved foreign run and automatically shows the only sampled orientation',async t=>{
+  const {slices}=await open(t,{},'X');assert.equal(await slices.getByLabel('Slice orientation',{exact:true}).inputValue(),'X');
+  assert.equal(await button(slices,'Single Run').getAttribute('aria-pressed'),'true');assert.equal(await slices.getByRole('combobox',{name:'Option run',exact:true}).count(),0);
+  assert.equal(await slices.locator('[data-slice-pane]').count(),1);assert.ok(await button(slices,'Download baseline PNG').isEnabled());
+});
 
 test('real Results X/Y/Z browsing, actual arrows, keyboard scope and per-axis state do not alter the building viewer',async t=>{
   const {page,ui,slices,saved}=await open(t),before=await saved();
@@ -43,7 +94,7 @@ test('compare quadrant mapping, sign, shared ranges, manual legends, PNG/CSV exp
   const panes=slices.locator('[data-slice-pane]');const positions=await panes.evaluateAll(nodes=>nodes.map(n=>({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y})));assert.equal(positions[0].y,positions[1].y);assert.equal(positions[2].y,positions[3].y);assert.equal(positions[0].x,positions[2].x);
   await button(slices,'Zoom in baseline').click();assert.equal(await slices.locator('[data-slice-pane=baseline] canvas').getAttribute('data-slice-view'),await slices.locator('[data-slice-pane=delta] canvas').getAttribute('data-slice-view'));await button(slices,'Reset plot views').click();
   await button(slices,'Probe point value (V)').click();const c=slices.locator('[data-slice-pane=baseline] canvas');await c.scrollIntoViewIfNeeded();const box=await c.boundingBox();await page.mouse.click(box.x+box.width/2,box.y+150);
-  const reading=slices.getByRole('status',{name:'Picked result value',exact:true});await eventually(()=>reading.getAttribute('data-probe-value'),v=>v==='10');assert.match(await slices.locator('[data-slice-pane=inspector]').innerText(),/Δ\|U\|.*2 m\/s/s);
+  const reading=slices.locator('[data-slice-pane=baseline]').getByRole('status',{name:'Picked result value',exact:true});await eventually(()=>reading.getAttribute('data-probe-value'),v=>v==='10');await eventually(()=>slices.locator('[data-slice-pane=delta] output').getAttribute('data-probe-value'),v=>v==='2');
   await page.mouse.click(box.x+60,box.y+box.height-30);assert.equal(await reading.getAttribute('data-probe-value'),'10');
   await page.keyboard.press('Escape');assert.equal(await reading.count(),0);assert.ok(await slices.isVisible());
   await slices.getByText('Visual settings & delta legend',{exact:true}).click();await slices.getByRole('checkbox',{name:'Auto Delta scale',exact:true}).uncheck();await slices.getByRole('spinbutton',{name:'Delta scale minimum',exact:true}).fill('-1');await page.keyboard.press('Tab');await slices.getByRole('spinbutton',{name:'Delta scale maximum',exact:true}).fill('4');await page.keyboard.press('Tab');
@@ -93,8 +144,8 @@ test('percent semantics, field changes, density metrics and pane/action alignmen
 
 test('nonuniform X/Y/Z planes visibly preserve orientation and signed deltas across different meshes',async t=>{
   const {page,slices}=await open(t);
-  await slices.getByRole('combobox',{name:'Slice run',exact:true}).selectOption(fixture.gradientBaseline);
   await button(slices,'Compare Runs').click();
+  await slices.getByRole('combobox',{name:'Baseline run',exact:true}).selectOption(fixture.gradientBaseline);
   await slices.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.gradientOption);
   await slices.getByLabel('Vector quantity',{exact:true}).selectOption('0');
   await slices.getByText('Visual settings & delta legend',{exact:true}).click();
@@ -132,7 +183,7 @@ test('nonuniform X/Y/Z planes visibly preserve orientation and signed deltas acr
 test('progressive inventory preserves selection and reload restores project-scoped settings with mobile/light-dark layouts',async t=>{
   const {page,ui,slices}=await open(t);await compare(slices);await slices.getByLabel('Available physical plane',{exact:true}).selectOption({label:'Plane 1 of 3 | Z = 0.2 m'});const selected=await slices.getByLabel('Available physical plane',{exact:true}).inputValue();
   assert.ok((await fetch(fixture.origin+'/fixture/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).ok);await button(slices,'Refresh slice data').click();await eventually(()=>slices.getByLabel('Available physical plane',{exact:true}).locator('option').count(),n=>n===4);assert.equal(await slices.getByLabel('Available physical plane',{exact:true}).inputValue(),selected);
-  await eventually(()=>page.evaluate(()=>Object.values(localStorage).some(v=>v.includes('"mode":"compare"'))),Boolean);await page.reload();await page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');await cfdWindow(ui,'Imported results');await ui.getByRole('tab',{name:'2D Slices',exact:true}).click();await button(slices,'Compare Runs').waitFor();assert.equal(await button(slices,'Compare Runs').getAttribute('aria-pressed'),'true');assert.equal(await slices.getByRole('combobox',{name:'Option run',exact:true}).inputValue(),fixture.option);
+  await eventually(()=>page.evaluate(()=>Object.values(localStorage).some(v=>v.includes('"mode":"compare"'))),Boolean);await page.reload();await page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');await cfdWindow(ui,'Imported results');await ui.getByRole('tab',{name:'2D Slices',exact:true}).click();await button(slices,'Compare Runs').waitFor();assert.equal(await button(slices,'Single Run').getAttribute('aria-pressed'),'true');assert.equal(await slices.getByRole('combobox',{name:'Slice run',exact:true}).count(),0);await compare(slices);
   for(const [name,width,height] of [['laptop',1280,900],['tablet',800,1000],['mobile',390,900]]){await page.setViewportSize({width,height});await slices.locator('[data-slice-pane=delta]').scrollIntoViewIfNeeded();assert.equal(await slices.locator('[data-slice-pane]').count(),4);assert.equal(await slices.evaluate(n=>n.scrollWidth<=n.clientWidth+2),true);await screenshot(page,name);}
   await page.evaluate(()=>document.documentElement.dataset.theme='dark');await screenshot(page,'mobile-dark');
 });

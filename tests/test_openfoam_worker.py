@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from backend.app.climoptix_provider import PreparationOnlyProvider
 from backend.app.openfoam_case import Submission, compile_case, validate_submission
 from backend.app.openfoam_runtime import convergence, flow_balance, mesh_metrics
 from backend.app.openfoam_service import Store, authenticate, create_app
@@ -24,6 +25,8 @@ def test_generated_case_has_canonical_vent_regions_and_si_units(tmp_path):
     assert 'flowRateInletVelocity' in (tmp_path / 'case/0/U').read_text()
     assert 'volumetricFlowRate constant 0.005' in (tmp_path / 'case/0/U').read_text()
     assert 'point (1 0.5 0.5)' in (tmp_path / 'case/system/controlDict').read_text()
+    control = (tmp_path / 'case/system/controlDict').read_text()
+    assert 'type plane;' in control and 'type cuttingPlane;' not in control
     assert all(name.startswith('p_') for name in manifest['patches'].values())
 
 
@@ -44,6 +47,32 @@ def test_stale_fingerprints_rejected():
     request.sourceHash = '0'*64
     with pytest.raises(ValueError, match='fingerprint'):
         validate_submission(request)
+
+
+def test_250_sampling_planes_compile_on_one_axis_without_changing_probe_limit(tmp_path):
+    request = fixture()
+    request.scenario.postProcessing.x.enabled = True
+    request.scenario.postProcessing.x.count = 250
+    request.scenario.postProcessing.z.enabled = False
+    request = Submission.model_validate_json(request.model_dump_json())
+    report = PreparationOnlyProvider().validate_scenario(request.project, request.scenario, request.clientRevision)
+    request.sourceHash = report['validation']['sourceHash']
+    request.configurationHash = report['validation']['configurationHash']
+    checked = validate_submission(request)
+    manifest = compile_case(tmp_path / 'case-250', request, checked)
+    assert len(manifest['samplingPlanes']) == 250
+    assert len({p['id'] for p in manifest['samplingPlanes']}) == 250
+    assert (tmp_path / 'case-250/system/controlDict').read_text().count('type plane;') == 250
+    request.scenario.postProcessing.z.enabled = True
+    with pytest.raises(ValueError, match='250 sampling planes'):
+        validate_submission(request)  # total is 251, not 250 per enabled axis
+    request.scenario.postProcessing.z.enabled = False
+    request.scenario.outputs.probesMm = [(1000, 500, 500)] * 101
+    with pytest.raises(ValueError, match='100 probes'):
+        validate_submission(request)
+    request.scenario.postProcessing.x.count = 251
+    with pytest.raises(ValueError, match='250'):
+        Submission.model_validate_json(request.model_dump_json())
 
 
 def test_unsupported_physics_reports_actual_conflicts_and_repair_without_mutation():
@@ -118,7 +147,7 @@ def test_auth_and_finite_body_are_fail_closed(tmp_path, monkeypatch):
                            headers={'Content-Type': 'application/json'}).status_code == 413
     monkeypatch.setenv('CFD_ALLOWED_EMAIL', 'allowed@example.com')
     monkeypatch.setattr('backend.app.openfoam_service.SupabaseREST.verify_user',
-                        lambda self, token, **kwargs: VerifiedUser(UUID(int=1), 'other@example.com', True))
+                        lambda self, token, **kwargs: VerifiedUser(UUID(int=1), 'other@example.com', False))
     with pytest.raises(HTTPException) as rejected:
         authenticate('Bearer token')
     assert rejected.value.status_code == 403
@@ -127,11 +156,12 @@ def test_auth_and_finite_body_are_fail_closed(tmp_path, monkeypatch):
 @pytest.mark.parametrize('allowed,email,confirmed,status', [
     ('allowed@example.com', 'allowed@example.com', True, 200),
     (' ALLOWED@example.com ', 'allowed@example.com', True, 200),
-    ('allowed@example.com', 'other@example.com', True, 403),
+    ('allowed@example.com', 'other@example.com', True, 200),
     ('allowed@example.com', 'allowed@example.com', False, 403),
-    ('', 'allowed@example.com', True, 403),
+    ('', 'allowed@example.com', True, 200),
+    ('', '', True, 403),
 ])
-def test_private_workspace_capabilities_require_verified_enabled_account(tmp_path, monkeypatch, allowed, email, confirmed, status):
+def test_public_workspace_capabilities_require_verified_account(tmp_path, monkeypatch, allowed, email, confirmed, status):
     monkeypatch.setenv('CFD_ALLOWED_EMAIL', allowed)
     owner = VerifiedUser(uuid4(), email, confirmed)
     def verify(self, token, **kwargs):

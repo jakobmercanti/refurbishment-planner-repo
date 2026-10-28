@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { AccountExperience } from "@/components/AccountExperience";
 
-export function AccountDialog({ onClose, initialSection = "account" }: { onClose: () => void; initialSection?: "account" | "plans" }) {
+export function AccountDialog({ onClose, initialSection = "account", notice }: { onClose: () => void; initialSection?: "account" | "plans"; notice?: string }) {
   const dialog = useRef<HTMLElement>(null);
   const [section, setSection] = useState<"account" | "plans">(initialSection);
 
@@ -32,6 +32,7 @@ export function AccountDialog({ onClose, initialSection = "account" }: { onClose
         {section === "plans" && <nav className="account-dialog-tabs" aria-label="Account links"><button type="button" onClick={() => setSection("account")}>Back to account</button></nav>}
         <div className="window-header-actions"><WindowHelpButton title="Account & plans" /><button type="button" className="modal-close" onClick={onClose} aria-label="Close account window">×</button></div>
       </header>
+      {notice && <p className="commercial-status" role="status">{notice}</p>}
       <AccountExperience embedded onClose={onClose} embeddedSection={section} onEmbeddedSectionChange={setSection} />
     </section>
   </div>;

@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { readBoundedResponse } from "./boundedResponse";
+import { MAX_SAMPLING_PLANES } from "./climoptixDocument";
 import { currentSession } from "./commercialAuth";
 import { workerTelemetrySchema } from "./cfdWorkerTelemetry";
 import { sliceDataSchema, sliceManifestSchema, type SliceRequest } from "./cfdSlices";
@@ -10,7 +11,10 @@ import { checkedWorkerJob, workerJobSchema, type CFDSubmission, type CFDWorkerAd
 export const workerCapabilitiesSchema = z.object({
   connected: z.boolean(), mesh: z.boolean(), run: z.boolean(), reason: z.string().max(2000), namespace: z.uuid(),
   limits: z.object({cpu: z.number().int().positive().max(2), memoryGb: z.number().positive().max(4), wallTimeMinutes: z.number().positive().max(15),
-    storageGb: z.number().positive(), retentionDays: z.number().positive(), maxCells: z.number().positive(), concurrentJobs: z.literal(1)}),
+    storageGb: z.number().positive(), retentionDays: z.number().positive(), maxCells: z.number().int().positive().max(500000), concurrentJobs: z.literal(1)}),
+  simulationQuota: z.object({tier:z.literal("free"),period:z.literal("lifetime"),limit:z.literal(5),
+    completed:z.number().int().nonnegative(),remaining:z.number().int().min(0).max(5)})
+    .refine(q=>q.remaining===Math.max(0,q.limit-q.completed),"Inconsistent simulation quota").optional(),
 });
 export type WorkerCapabilities = z.infer<typeof workerCapabilitiesSchema>;
 export class CFDWorkerError extends Error {
@@ -21,7 +25,7 @@ const artifactSchema = z.object({id: z.string().regex(/^(native-case|postprocess
   size: z.number().int().positive().max(128*1024**2), sha256: z.string().regex(/^[a-f0-9]{64}$/)});
 const resultSchema = z.object({jobId: z.uuid(), studyId: z.string(), clientRevision: z.string(),
   sourceHash: z.string().regex(/^[a-f0-9]{64}$/), configurationHash: z.string().regex(/^[a-f0-9]{64}$/),
-  pressureUnit: z.literal("m2/s2"), accepted: z.boolean(), artifacts: z.array(artifactSchema).max(22),
+  pressureUnit: z.literal("m2/s2"), accepted: z.boolean(), artifacts: z.array(artifactSchema).max(MAX_SAMPLING_PLANES+2),
   expiresAt: z.number().finite().optional(),
   operation:z.enum(["mesh","run"]).optional(),
   mesh:z.object({cells:z.number().int().positive(),maxNonOrthogonality:z.number().finite().optional(),
@@ -36,7 +40,7 @@ export type WorkerResult = z.infer<typeof resultSchema>;
 export async function workerRequest(base: string, path: string, signal: AbortSignal, body?: unknown, max = 1024**2): Promise<Uint8Array<ArrayBuffer>> {
   signal.throwIfAborted();
   const session = await currentSession(); signal.throwIfAborted();
-  if (!session) throw new CFDWorkerError("Sign in to the enabled account to connect OpenFOAM.", 401);
+  if (!session) throw new CFDWorkerError("Sign in with a verified account to use Climoptix's free simulations.", 401);
   const response = await fetch(`${base.replace(/\/$/, "")}/climoptix/worker${path}`, {
     method: body === undefined ? "GET" : "POST", cache: "no-store", credentials: "omit",
     signal: AbortSignal.any([signal, AbortSignal.timeout(max > 25 * 1024**2 ? 120000 : 25000)]),
@@ -68,7 +72,7 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
       return z.array(workerJobSchema).max(100).parse(await workerJSON(base, `/jobs?projectId=${z.uuid().parse(projectId)}`, signal));
     },
     async slices(jobId:string,projectId:string,signal:AbortSignal) {
-      const data=sliceManifestSchema.parse(await workerJSON(base,`${jobPath(jobId)}/slices?projectId=${z.uuid().parse(projectId)}`,signal));
+      const data=sliceManifestSchema.parse(JSON.parse(new TextDecoder().decode(await workerRequest(base,`${jobPath(jobId)}/slices?projectId=${z.uuid().parse(projectId)}`,signal,undefined,8*1024**2))));
       if(data.runId!==jobId||data.projectId!==projectId)throw new Error("Slice inventory belongs to a different run/project.");
       return data;
     },
