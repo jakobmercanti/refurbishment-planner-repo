@@ -91,7 +91,7 @@ class Store:
             "completed": completed, "remaining": max(0, FREE_COMPLETED_SIMULATIONS - completed),
         }
 
-    def submit(self, owner: str, request: Submission):
+    def submit(self, owner: str, request: Submission, *, max_cpu: int | None = None):
         payload = request.model_dump_json()
         digest = hashlib.sha256(
             json.dumps(json.loads(payload), sort_keys=True, separators=(",", ":")).encode()
@@ -126,7 +126,7 @@ class Store:
             if sum(p.stat().st_size for p in self.root.rglob("*") if p.is_file()) > 3 * 1000**3:
                 raise HTTPException(507, "Worker storage is full. Wait for automatic retention cleanup.")
             # Recheck AFTER idempotent lookup so a retry returns its accepted job.
-            validate_submission(request)
+            validate_submission(request, max_cpu=max_cpu)
             job_id, now = str(uuid4()), time.time()
             db.execute(
                 "INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?)",
@@ -233,7 +233,7 @@ WorkerUser = Annotated[VerifiedUser, Depends(authenticate)]
 def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAPI:
     store = Store(root or Path(os.environ.get("CFD_DATA_ROOT", "/data/cfd")))
     stop = threading.Event()
-    state = {"ready": False, "reason": "OpenFOAM runtime acceptance is pending."}
+    state = {"ready": False, "reason": "OpenFOAM runtime acceptance is pending.", "processors": 1}
 
     def run_queue():
         try:
@@ -242,12 +242,16 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
                 raise ValueError("The pinned OpenCFD v2312 runtime is unavailable.")
             from backend.app.openfoam_smoke import acceptance
 
-            acceptance(store.root / "acceptance", stop.is_set)
+            profile = acceptance(store.root / "acceptance", stop.is_set)
+            processors = profile["processors"]
             state.update(
                 ready=True,
+                processors=processors,
                 reason=(
-                    "OpenCFD v2312: steady isothermal SIMPLE; one job, up to 2 processors, "
+                    f"OpenCFD v2312: steady isothermal SIMPLE; one job, up to {processors} processor(s), "
                     "500,000 cells, 4 GB RAM and 15 minutes. Free tier: five completed simulations per account."
+                    + (" Two-processor MPI is unavailable on this deployment; serial execution is validated."
+                       if processors < 2 else "")
                 ),
             )
             while not stop.is_set():
@@ -263,7 +267,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
                     continue
                 try:
                     submission = Submission.model_validate_json(row["payload"])
-                    report = validate_submission(submission)
+                    report = validate_submission(submission, max_cpu=processors)
                     result = execute(
                         store.path(job_id),
                         submission,
@@ -364,7 +368,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
             "run": state["ready"] and quota["remaining"] > 0,
             "reason": reason,
             "namespace": str(user.id),
-            "limits": LIMITS,
+            "limits": {**LIMITS, "cpu": state["processors"]},
             "simulationQuota": quota,
             "optimisation": CAPABILITY,
         }
@@ -374,7 +378,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
         if not state["ready"]:
             raise HTTPException(503, state["reason"])
         try:
-            row = store.submit(str(user.id), body)
+            row = store.submit(str(user.id), body, max_cpu=state["processors"])
             return public_job(row, store.path(row["id"]))
         except ValueError as error:
             raise HTTPException(422, str(error)[:2000]) from None

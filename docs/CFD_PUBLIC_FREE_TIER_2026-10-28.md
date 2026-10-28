@@ -29,6 +29,9 @@ Existing commercial/render plans and credits are unchanged.
   before reconstructPar appends another `Time = ...` section. Child address-space
   budgets are divided by processor count; no serial substitution is performed.
   Startup acceptance now exercises all three models at both processor counts.
+  A parallel failure leaves validated serial execution available, advertises
+  only one processor and rejects new unvalidated parallel submissions. The
+  absolute infrastructure ceiling remains two CPU / 4 GB.
 - Publishes the previously local workbench polish, 250-plane allowance,
   geometric plane sampling correction, results/2D/delta/probe/navigation changes
   and local native development tooling. Native adjoint execution remains
@@ -36,7 +39,7 @@ Existing commercial/render plans and credits are unchanged.
 
 ## Verification
 
-- All 768 backend tests passed against a fresh real two-processor native archive
+- All 774 backend tests passed against a fresh real two-processor native archive
   (one existing Starlette/httpx deprecation warning).
 - All 645 frontend unit and 19 persistence tests passed. Production Webpack
   export, frontend lint/source-usage and TypeScript checks passed. Backend Ruff
@@ -44,11 +47,16 @@ Existing commercial/render plans and credits are unchanged.
 - Local real native acceptance passed for laminar, kEpsilon and kOmegaSST on
   each of one and two processors. A separate fresh parallel case also verified
   strict X/Y/Z physical planes, finite U/p sampling, probes and conservation.
-- Public discovery/access/exhausted-quota browser checks passed; final quota-race
-  check and bounded current-layout workbench checks are recorded in the release
-  logs. Historical follow-up selectors for the removed Thermal window and five
-  old View controls were updated for embedded Thermal and seven View controls.
-  An initial broad historical browser run was interrupted, not claimed passed.
+- All seven public discovery/access/quota browser checks passed, including
+  exhausted-quota access and a definite 429 race response clearing the pending
+  dispatch journal. Eight current-layout workbench/slice/probe checks also
+  passed. Historical follow-up selectors for the removed Thermal window and
+  five old View controls were updated for embedded Thermal and seven controls.
+  The broader historical run was **not all-pass**: five old tests still expect
+  controls to be visible before expanding the newer floating disclosures. Their
+  timeouts are recorded in `cfd-public-browser-verified.log`; those tests need
+  further selector migration. An earlier broad run was interrupted. Neither is
+  presented as a fully passed browser suite.
 - 31 authentication/worker/planner proxy tests passed. Anonymous/invalid bearer
   rejection and deployed execution readiness are checked separately from build
   status. No production user is impersonated and no user simulation is started
@@ -69,3 +77,38 @@ Evidence: `.local-logs/cfd-public-*`. Test screenshots are in
 
 Deployment completion, Cloudflare version and master commit are recorded after
 live verification. User data and unrelated work remain preserved.
+
+Source release commit: `a7c54b7`, pushed to `origin/master`. API deployment above
+is SUCCESS. Cloudflare planner version
+`85543ae0-f957-47fd-a8fd-c52ea9ec164f` is deployed (final onboarding copy).
+An isolated production browser confirmed hydration, public discovery, the
+free-tier prompt and anonymous/invalid-token rejection without signing in,
+submitting credentials or starting a simulation.
+
+Worker upload `52b703b9-c4bd-42f8-b5b2-3532a49a6867` failed in BUILD_IMAGE
+after snapshot unpacking, without a useful Docker error or runtime logs. The
+redundant initializing retry `9c01da48-4229-4cf1-9c9b-28095a8e5b3e` was
+cancelled explicitly; the healthy old service was not stopped. A dedicated
+packaged `railway.json` now selects the bundle's root worker Dockerfile, and
+the worker-only `RAILWAY_DOCKERFILE_PATH` is `Dockerfile` (changed with deploys
+skipped). Corrected upload: `b078d9b7-56d1-4557-a631-aa49e487ee9f`.
+This is a diagnostic packaging correction, not proof of the original failure's
+cause. The corrected image built and deployment reached SUCCESS; its native
+startup acceptance is checked separately before claiming execution readiness.
+
+The first deployed native parallel check failed with
+`pmix_progress_thread_start failed` despite all local native cases passing.
+No parallel capability was claimed from the local result alone. The subsequent
+runtime correction separates mandatory serial acceptance from optional parallel
+acceptance, rejects unvalidated CPU requests after immutable retry lookup, and
+keeps serial availability if MPI is unavailable. It also disables unnecessary
+OpenCL topology probing and allows 512 bounded native helper processes/threads.
+All 35 focused quota/worker/profile tests passed, including serial failure staying
+fail-closed and all three types of parallel failure advertising only serial.
+Corrected runtime deployment: `04097b6b-93a8-4ea8-b1c0-bdfa63434d68`.
+The complete final backend run passed 774 tests after this correction. A fresh
+local two-processor solve and backend Ruff also passed again.
+
+The current Railway CLI warns that legacy railway.json configuration is
+supported until 1 December 2026. Migration to its newer infrastructure format
+is a separate follow-up; no unrelated platform migration was performed here.

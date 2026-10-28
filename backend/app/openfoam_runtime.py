@@ -56,7 +56,9 @@ def child_limits() -> None:
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_ARTIFACT, MAX_ARTIFACT))
     resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
-    resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
+    # Linux accounts threads here too. Leave room for MPI's bounded helper
+    # threads; the container still hard-caps aggregate CPU and memory.
+    resource.setrlimit(resource.RLIMIT_NPROC, (512, 512))
     cpu_seconds = int(os.environ["CFD_JOB_CPU_SECONDS"])
     memory_bytes = int(os.environ["CFD_JOB_MEMORY_BYTES"])
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
@@ -183,6 +185,9 @@ def execute(
     # Single-container MPI: avoid shared-memory transports/PMIx datastore sizing
     # against the host's (rather than the container's) memory topology.
     environment.update(OMPI_MCA_btl="self,tcp", OMPI_MCA_pml="ob1", PMIX_MCA_gds="hash", MALLOC_ARENA_MAX="2")
+    # GPU/OpenCL discovery is unnecessary for this CPU-only solver and can
+    # start host-sized driver thread pools inside a small container.
+    environment["HWLOC_COMPONENTS"] = "-opencl"
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     environment["CFD_JOB_CPU_SECONDS"] = str(request.scenario.resources.wallTimeMinutes * 60)
     environment["CFD_JOB_MEMORY_BYTES"] = str(

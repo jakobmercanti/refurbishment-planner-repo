@@ -48,13 +48,16 @@ class Submission(Contract):
     scenario: Scenario
 
 
-def validate_submission(request: Submission) -> dict[str, Any]:
+def validate_submission(request: Submission, *, max_cpu: int | None = None) -> dict[str, Any]:
     s = request.scenario
     if s.id != request.studyId or s.sourceBuildingId != request.project.get("projectId") or s.archived:
         raise ValueError("Study/source identity does not match, or the study is archived.")
     for key in ("cpu", "memoryGb", "wallTimeMinutes", "storageGb", "retentionDays"):
         if getattr(s.resources, key) > LIMITS[key]:
             raise ValueError(f"Worker limit: {key} must be at most {LIMITS[key]}. Change the study explicitly.")
+    if max_cpu is not None and s.resources.cpu > max_cpu:
+        raise ValueError(f"This deployed runtime has validated at most {max_cpu} processor(s). "
+                         "Use worker resource limits before submitting; no serial substitution is performed.")
     if s.mesh.maxCells > LIMITS["maxCells"]:
         raise ValueError("Worker maximum is 500000 cells. Change the study explicitly.")
     p = s.physics

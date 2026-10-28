@@ -182,7 +182,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       : mode === "reset" ? "Enter your account email to request a reset link. Open that link to set a new password; you do not need to know your old password."
       : pendingPlanKey && !session
       ? `Sign in to continue with ${pendingPlanKey.charAt(0).toUpperCase() + pendingPlanKey.slice(1)}. Your selection is kept; no payment has been taken.`
-      : "Floorplanning, Electrical Layout, Heating Layout and Energy & Insulation / EPC retrofit planning are free without an account. Create an account only for cloud backups or paid plans. Energy tools are for preliminary planning, not an official EPC."}</p>
+      : "Floorplanning, Electrical Layout, Heating Layout and Energy & Insulation / EPC retrofit planning are free without an account. A verified account is needed for free Climoptix CFD simulations, cloud backups or paid plans. Energy tools are for preliminary planning, not an official EPC."}</p>
     {!ready ? <p role="status">Checking account…</p> : session && !recovery && mode !== "reset" ? (
       <div className="commercial-stack">
         <p className="commercial-status">Signed in{session.user.email ? " as " + session.user.email : ""}.</p>
@@ -232,7 +232,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       </>
     )}
     <p className="commercial-footnote">{recovery || mode === "reset" ? "Use only the newest reset email. If a link has expired or was already used, request a new one. Your saved floorplans are not changed by resetting your password."
-      : "Email verification is required before paid workspace features are available. Sign-in and sign-out are shared between open tabs on this site; your planner stays open."}</p>
+      : "Email verification is required for CFD simulations and paid workspace features. Sign-in and sign-out are shared between open tabs on this site; your planner stays open."}</p>
   </section>;
 
   const content = <>

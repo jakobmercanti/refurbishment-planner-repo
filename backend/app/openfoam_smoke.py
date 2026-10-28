@@ -125,6 +125,7 @@ def acceptance(root: Path, cancelled=lambda: False):
         shutil.rmtree(root)
     root.mkdir(parents=True)
     results = []
+    parallel_unavailable = False
     # Two-processor execution must pass the actual deployed runtime too, not
     # merely a local compile or a serial substitute for a parallel request.
     for cpu, turbulence in ((cpu, model) for cpu in (1, 2) for model in ("laminar", "kEpsilon", "kOmegaSST")):
@@ -145,6 +146,10 @@ def acceptance(root: Path, cancelled=lambda: False):
             # This is a server-owned fixture log; it never receives auth config.
             if (case / "solver.log").exists():
                 print((case / "solver.log").read_text(errors="replace")[-6000:], flush=True)
+            if cpu > 1 and not cancelled():
+                parallel_unavailable = True
+                print("Two-processor acceptance failed; advertising validated serial execution only.", flush=True)
+                break
             raise
         if not result["accepted"] or not any(a["kind"] == "vtk" for a in result["artifacts"]):
             print(
@@ -152,6 +157,11 @@ def acceptance(root: Path, cancelled=lambda: False):
                 [str(p.relative_to(case)) for p in (case / "postProcessing").rglob("*") if p.is_file()][:30],
                 flush=True,
             )
+            if cpu > 1 and not cancelled():
+                parallel_unavailable = True
+                print("Two-processor numerical acceptance failed; "
+                      "advertising validated serial execution only.", flush=True)
+                break
             raise ValueError(
                 f"Runtime acceptance failed for {cpu} CPU / {turbulence}: "
                 f"{result.get('convergence')} {result.get('conservation')}; artifacts={result['artifacts']}"
@@ -161,6 +171,11 @@ def acceptance(root: Path, cancelled=lambda: False):
             sample["velocityMS"] is not None and sample["pressureM2S2"] is not None
             for sample in measured["probes"][0]["samples"]
         ):
+            if cpu > 1 and not cancelled():
+                parallel_unavailable = True
+                print("Two-processor telemetry acceptance failed; "
+                      "advertising validated serial execution only.", flush=True)
+                break
             raise ValueError(f"Native probe/flux telemetry acceptance failed for {turbulence}.")
         results.append(
             {
@@ -173,7 +188,10 @@ def acceptance(root: Path, cancelled=lambda: False):
             }
         )
     (root / "acceptance.json").write_text(json.dumps(results, indent=2))
+    profile = {"processors": 1 if parallel_unavailable else 2}
+    (root / "runtime-profile.json").write_text(json.dumps(profile))
     print("OpenFOAM runtime acceptance passed", flush=True)
+    return profile
 
 
 if __name__ == "__main__":

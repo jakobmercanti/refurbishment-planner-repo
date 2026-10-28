@@ -115,3 +115,59 @@ def test_exhausted_user_keeps_capabilities_and_owned_results_but_cannot_run(tmp_
         app.dependency_overrides[authenticate] = lambda: VerifiedUser(uuid4(), "other@example.com", True)
         assert client.get("/climoptix/worker/capabilities").json()["simulationQuota"]["completed"] == 0
         assert client.get(f"/climoptix/worker/jobs/{row['id']}").status_code == 404
+
+
+def test_runtime_cpu_gate_rejects_unvalidated_parallel_but_preserves_accepted_retries(tmp_path):
+    app = create_app(tmp_path, start_runner=False)
+    owner = VerifiedUser(uuid4(), "public@example.com", True)
+    app.dependency_overrides[authenticate] = lambda: owner
+    app.state.worker.update(ready=True, reason="Serial validated", processors=1)
+    request = fixture(cpu=2)
+    with TestClient(app) as client:
+        assert client.get("/climoptix/worker/capabilities").json()["limits"]["cpu"] == 1
+        response = client.post("/climoptix/worker/jobs", json=request.model_dump(mode="json"))
+        assert response.status_code == 422 and "validated at most 1" in response.json()["detail"]
+        # Previously accepted jobs remain recoverable after a deployment reduces its profile.
+        existing = app.state.store.submit(str(owner.id), request, max_cpu=2)
+        app.state.store.update(existing["id"], "Completed", "Earlier validated deployment")
+        response = client.post("/climoptix/worker/jobs", json=request.model_dump(mode="json"))
+        assert response.status_code == 200 and response.json()["id"] == existing["id"]
+        assert app.state.store.quota(str(owner.id))["completed"] == 1
+
+
+@pytest.mark.parametrize("failure", ["exception", "numerical", "telemetry", None])
+def test_parallel_profile_is_advertised_only_after_all_models_pass(tmp_path, monkeypatch, failure):
+    from backend.app import openfoam_smoke
+
+    calls = []
+
+    def execute(root, request, *args):
+        calls.append((request.scenario.resources.cpu, request.scenario.physics.turbulence))
+        if request.scenario.resources.cpu == 2 and failure == "exception":
+            raise RuntimeError("Native MPI cannot start")
+        return {"accepted": not (request.scenario.resources.cpu == 2 and failure == "numerical"),
+                "artifacts": [{"kind": "vtk"}], "mesh": {}, "convergence": {}, "conservation": {}}
+
+    def telemetry(root):
+        ready = not (root.name.startswith("2-") and failure == "telemetry")
+        return {"balance": {"samples": []} if ready else None,
+                "probes": [{"samples": [{"velocityMS": [0, 0, 0], "pressureM2S2": 0}]}] if ready else []}
+
+    monkeypatch.setattr(openfoam_smoke, "execute", execute)
+    monkeypatch.setattr(openfoam_smoke, "telemetry", telemetry)
+    profile = openfoam_smoke.acceptance(tmp_path / "fresh-acceptance")
+    assert profile["processors"] == (1 if failure else 2)
+    assert calls[:3] == [(1, "laminar"), (1, "kEpsilon"), (1, "kOmegaSST")]
+    assert len(calls) == (4 if failure else 6)
+
+
+def test_serial_acceptance_failure_never_enables_execution(tmp_path, monkeypatch):
+    from backend.app import openfoam_smoke
+
+    def fail(*args):
+        raise RuntimeError("Serial runtime failed")
+
+    monkeypatch.setattr(openfoam_smoke, "execute", fail)
+    with pytest.raises(RuntimeError, match="Serial runtime failed"):
+        openfoam_smoke.acceptance(tmp_path / "fresh-acceptance")
+    assert not (tmp_path / "fresh-acceptance/runtime-profile.json").exists()

@@ -42,8 +42,12 @@ Persistent volume: `1b6af3cf-5607-47e7-8b75-294febbbfff2`, mounted at `/data`.
 - Actual residual logs, boundary flux balance, probes, ASCII legacy VTK slices and
   an original native-case ZIP with source/configuration provenance and hashes.
 
-Both processor counts must pass native runtime acceptance on service startup.
-The worker never silently substitutes serial execution for a parallel request.
+Both processor counts are tested on service startup. All three serial models
+must pass before execution is enabled. If any parallel case fails, capabilities
+advertise one validated processor and explicitly explain the limitation; new
+two-processor requests are rejected server-side, not silently run serially.
+Previously accepted immutable submissions remain recoverable after a profile
+downgrade. The Railway hard ceiling remains two CPU / 4 GB.
 Thermal/CO2/comfort/age-of-air, transient solvers, porous sources, angled jets,
 partial-open/discharge models, boundary layers, rotated background grids and
 slab-void cases remain disabled. Unsupported requests return actionable errors.
@@ -100,6 +104,8 @@ Users retain access to setup and unexpired owned results.
 CPU/memory/cell limits are validated server-side, not trusted from the browser.
 MPI's child address-space budget is divided by the requested processor count;
 the Railway container's two-CPU/4-GB hard limit remains the aggregate ceiling.
+CPU-only topology discovery disables OpenCL probing. The per-user process/thread
+bound is 512; this does not raise the container CPU or memory ceiling.
 
 Use **Solver → Run → Use worker resource limits** to explicitly adapt the
 study's resources and cell budget. This does not change physics. Defaults in
