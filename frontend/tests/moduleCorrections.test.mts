@@ -50,8 +50,10 @@ test('display crossing detection uses the same precise endpoints, without changi
  assert.ok(crossings.every(c=>!c.sharedEndpoint || Math.hypot(c.position.x-light.center.x,c.position.y-light.center.y)<.01));
  assert.deepEqual(layout.connections,[wire(1),wire(4)].map((w,i)=>({...w,id:layout.connections[i].id}))); // IDs otherwise randomly generated
 });
-test('lighting circuits expose explicit disclosure arrows',()=>{
- const html=renderToStaticMarkup(createElement(ElectricalLightingTest,{layout:DEFAULT_ELECTRICAL_LAYOUT,fixtures:[],result:{groups:[],lights:{},contacts:{},warnings:[],switchLabels:{}},positions:{},onToggle(){},onReset(){}}));
+test('nonempty lighting circuits expose disclosure controls',()=>{
+ const light={...fixture,id:'light',representation_key:'electrical-ceiling-downlight'};
+ const layout={...DEFAULT_ELECTRICAL_LAYOUT,connections:[wire(1)]},fixtures=[fixture,light];
+ const html=renderToStaticMarkup(createElement(ElectricalLightingTest,{layout,fixtures,result:simulateLighting(layout,fixtures,{}),positions:{},onToggle(){},onReset(){}}));
  assert.match(html,/electrical-test-disclosure/);assert.match(html,/▶/);
 });
 test('joined crossings remain logically and visually joined across readable port positions and zoom',()=>{

@@ -14,18 +14,18 @@ export function heatingScheduleCsv(rooms: Room[], heating: HeatingProject) {
   for (const p of heating.pipes) rows.push(["Heating connection", "", "", "", p.kind, "", "", p.name, heatingPipeLengthM(p.pathMm).toFixed(1), "", "", "Schematic route only"]);
   return rows.map(row => row.map(v => { const s = String(v), safe = /^[=+@\-\t\r]/.test(s) ? `'${s}` : s;return `"${safe.replaceAll('"', '""')}"`; }).join(",")).join("\r\n");
 }
-export async function buildHeatingPdf(rooms: Room[], heating: HeatingProject, projectName: string): Promise<Uint8Array> {
+export async function buildHeatingPdf(rooms: Room[], heating: HeatingProject, projectName: string, options: { title?: string; includeDetails?: boolean } = {}): Promise<Uint8Array> {
   if (!heating.radiators.length) heating = withHeatingElements(heating, rooms);
   const pdf = await PDFDocument.create(), font = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold), results = heatingResults(rooms, heating);
   const ascii = (value: string) => value.normalize("NFKD").replace(/²/g, "2").replace(/[^\x20-\x7e\n]/g, "?");
   let page!: PDFPage;let y = 0;
-  const pageStart = (title: string) => { page = pdf.addPage([595, 842]);page.drawRectangle({ x: 0, y: 0, width: 595, height: 842, color: rgb(1, 1, 1) });page.drawText(ascii(title), { x: 36, y: 802, size: 17, font: bold, color: rgb(.14, .2, .27) });let name = ascii(projectName);while (font.widthOfTextAtSize(name, 10) > 500) name = name.slice(0, -1);page.drawText(name + (name !== ascii(projectName) ? "..." : ""), { x: 36, y: 782, size: 10, font });y = 755; };
+  const pageStart = (title: string) => { page = pdf.addPage([595, 842]);page.drawRectangle({ x: 0, y: 0, width: 595, height: 842, color: rgb(1, 1, 1) });page.drawText(ascii(title), { x: 36, y: 802, size: Math.min(17, 520 / Math.max(1, bold.widthOfTextAtSize(ascii(title), 1))), font: bold, color: rgb(.14, .2, .27) });let name = ascii(projectName);while (font.widthOfTextAtSize(name, 10) > 500) name = name.slice(0, -1);page.drawText(name + (name !== ascii(projectName) ? "..." : ""), { x: 36, y: 782, size: 10, font });y = 755; };
   const text = (value: string, heading = false) => {
     const words = ascii(value).split(/\s+/), lines: string[] = [];let line = "";
     for (const word of words) { const candidate = line ? `${line} ${word}` : word;if (font.widthOfTextAtSize(candidate, 10) > 515 && line) { lines.push(line);line = word; }else line = candidate; }if (line) lines.push(line);
     for (const value of lines) { if (y < 55) pageStart("Heating schedule - continued");page.drawText(value, { x: 36, y, size: heading ? 11 : 10, font: heading ? bold : font });y -= 15; }y -= 4;
   };
-  pageStart("Heating plan - preliminary design");
+  pageStart(options.title?.trim() || "Heating plan - preliminary design");
   text(`System ${heating.heatingSystem.flowTemperatureC}/${heating.heatingSystem.returnTemperatureC} C | External ${heating.buildingSettings.externalDesignTemperatureC} C | Design heat loss ${Math.round(results.heatLossW)} W`);
   const points = [...rooms.flatMap(r => r.vertices), ...heating.pipes.flatMap(p => p.pathMm), ...heating.manifolds.map(m => m.positionMm), ...heating.exclusions.flatMap(e => e.polygonMm), ...heating.radiators.flatMap(r => { const angle = r.rotationDeg * Math.PI / 180, x = Math.cos(angle) * r.widthMm / 2, y = Math.sin(angle) * r.widthMm / 2;return [{ x: r.positionMm.x - x, y: r.positionMm.y - y }, { x: r.positionMm.x + x, y: r.positionMm.y + y }]; }), ...heating.ufhCircuits.flatMap(c => [...c.pathMm, ...c.supplyPathMm, ...c.returnPathMm])];
   if (points.length) {
@@ -53,12 +53,14 @@ export async function buildHeatingPdf(rooms: Room[], heating: HeatingProject, pr
   for (const row of results.rooms) {
     text(`${row.room.name}: ${row.demand.areaM2.toFixed(1)} m2; ${row.demand.targetC} C; design demand ${Math.round(row.demand.designW)} W; ${row.settings.selectedEmitterType}; ${row.status}`, true);
     for (const emitter of row.emitters) text(`${emitter.radiator.model}: ${emitter.radiator.widthMm} x ${emitter.radiator.heightMm} mm; ${emitter.radiator.category === "Boiler" ? `central-heating capacity ${emitter.radiator.ratedOutputW ?? "Not set"} W` : `output ${emitter.radiator.estimatedOutput || emitter.estimated ? "estimated " : ""}${emitter.outputW === null ? "Not set" : `${Math.round(emitter.outputW)} W`}`}. ${emitter.note}`);
-    for (const z of row.zones) { text(`UFH active ${z.activeAreaM2.toFixed(1)} m2; coverage estimate ${z.coveredAreaM2.toFixed(1)} m2; spacing ${z.zone.spacingMm} mm; performance ${z.performance ? `${Math.round(z.performance.outputWm2)} W/m2` : "Not set"}.`);for (const c of z.circuits) text(`${c.circuit.name}: ${c.lengthM.toFixed(1)} m; output ${c.outputW === null ? "Not set" : `${Math.round(c.outputW)} W`}; output-based flow ${c.flowLmin?.toFixed(1) ?? "Not set"} L/min; demand-based flow ${c.designFlowLmin?.toFixed(1) ?? "Not set"} L/min.`); }
+    for (const z of row.zones) { text(`Manifold design ${z.zone.designFlowC ?? heating.heatingSystem.flowTemperatureC}/${z.zone.designReturnC ?? heating.heatingSystem.returnTemperatureC} C; surface ${z.performance?.surfaceTemperatureC?.toFixed(1) ?? "not set"} C${z.performance?.surfaceEstimated ? " (planning estimate)" : ""}.`); text(`UFH active ${z.activeAreaM2.toFixed(1)} m2; coverage estimate ${z.coveredAreaM2.toFixed(1)} m2; spacing ${z.zone.spacingMm} mm; performance ${z.performance ? `${Math.round(z.performance.outputWm2)} W/m2` : "Not set"}.`);for (const c of z.circuits) text(`${c.circuit.name}: ${c.lengthM.toFixed(1)} m; output ${c.outputW === null ? "Not set" : `${Math.round(c.outputW)} W`}; output-based flow ${c.flowLmin?.toFixed(1) ?? "Not set"} L/min; demand-based flow ${c.designFlowLmin?.toFixed(1) ?? "Not set"} L/min.`); }
     for (const warning of [...new Set([...row.warnings, ...row.demand.warnings])]) text(`Warning: ${warning}`);
   }
+  if (options.includeDetails !== false) {
   pageStart("Heat-loss calculation details and assumptions");
   text(`U x A x temperature difference, plus 0.33 x ACH x volume x temperature difference. Allowance ${heating.buildingSettings.designAllowancePercent}%. Ground floor is a simplified effective-U model; thermal bridges, solar gains and dynamic recovery are not modelled.`);
   for (const row of results.rooms) { text(row.room.name, true);for (const s of row.demand.surfaces) text(`${s.label}: ${s.areaM2.toFixed(1)} m2 x ${s.uValue} W/m2K x ${Math.max(0, row.demand.targetC - s.adjacentTemperatureC).toFixed(1)} K = ${Math.round(s.lossW)} W.`);text(`Ventilation: 0.33 x ${row.demand.ach} x ${row.demand.volumeM3.toFixed(1)} m3 x ${Math.max(0, row.demand.targetC - heating.buildingSettings.externalDesignTemperatureC)} K = ${Math.round(row.demand.ventilationW)} W. Design total ${Math.round(row.demand.designW)} W.`); }
+  }
   pdf.getPages().forEach((p, i, all) => p.drawText(`Preliminary design - ${i + 1}/${all.length}`, { x: 36, y: 25, size: 8, font, color: rgb(.4, .4, .4) }));
   return pdf.save();
 }

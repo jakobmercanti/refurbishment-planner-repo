@@ -180,7 +180,11 @@ export function calculateUFHOutput(zone: UFHZone, flowC: number, returnC: number
   const output = interpolatePerformance(dataset.points, keys, query, "outputWm2");
   if (!output) return null;
   const surface = interpolatePerformance(dataset.points.filter(p => p.surfaceTemperatureC !== null), keys, query, "surfaceTemperatureC");
-  return { outputWm2: output.value, surfaceTemperatureC: surface?.value ?? null, interpolated: output.interpolated, overLimit: surface !== null && surface.value > zone.maxSurfaceTemperatureC || dataset.maxOutputWm2 !== undefined && output.value > dataset.maxOutputWm2 };
+  // Basic radiant-floor characteristic: q=8.92*(surface-room)^1.1. This is
+  // a planning estimate, never a supplied measurement (IEA SHC RADTEST report).
+  const surfaceEstimated = !surface && zone.estimateSurfaceTemperature === true;
+  const surfaceTemperatureC = surface?.value ?? (surfaceEstimated ? roomC + (output.value / 8.92) ** (1 / 1.1) : null);
+  return { outputWm2: output.value, surfaceTemperatureC, surfaceEstimated, interpolated: output.interpolated, overLimit: surfaceTemperatureC !== null && surfaceTemperatureC > zone.maxSurfaceTemperatureC || dataset.maxOutputWm2 !== undefined && output.value > dataset.maxOutputWm2 };
 }
 export function ufhPerformanceIssue(zone: UFHZone, flowC: number, returnC: number, roomC: number): string {
   const dataset = zone.performanceDataset;

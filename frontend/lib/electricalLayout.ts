@@ -31,6 +31,10 @@ export interface ElectricalCircuit {
   name: string;
   color: string;
   description?: string;
+  socketTopology?: "RADIAL" | "RING";
+  consumerUnitId?: string;
+  /** Ordered socket membership; retained even when a route is deleted. */
+  socketIds?: string[];
 }
 
 export interface ElectricalBomOverride {
@@ -296,7 +300,11 @@ export function normalizeElectricalLayout(value: unknown, validElectricalIds: Re
       const item = candidate as Partial<ElectricalCircuit>;
       if (!safeId(item.id) || circuitIds.has(item.id) || typeof item.name !== "string" || !item.name.trim()) continue;
       circuitIds.add(item.id);
-      circuits.push({ id: item.id, name: item.name.trim().slice(0, 100), color: typeof item.color === "string" && colours.test(item.color) ? item.color : DEFAULT_ELECTRICAL_CONNECTION.color, ...(typeof item.description === "string" ? { description: item.description.slice(0, 500) } : {}) });
+      circuits.push({ id: item.id, name: item.name.trim().slice(0, 100), color: typeof item.color === "string" && colours.test(item.color) ? item.color : DEFAULT_ELECTRICAL_CONNECTION.color, ...(typeof item.description === "string" ? { description: item.description.slice(0, 500) } : {}),
+        ...(item.socketTopology === "RADIAL" || item.socketTopology === "RING" ? { socketTopology: item.socketTopology } : {}),
+        ...(safeId(item.consumerUnitId) ? { consumerUnitId: item.consumerUnitId } : {}),
+        ...(Array.isArray(item.socketIds) ? { socketIds: [...new Set(item.socketIds.filter(safeId))].slice(0, 1000) } : {}),
+      });
     }
   }
   if (!circuits.length) circuits.push({ ...DEFAULT_ELECTRICAL_CIRCUIT });

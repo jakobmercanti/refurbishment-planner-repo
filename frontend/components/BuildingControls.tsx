@@ -15,11 +15,12 @@ import styles from "./HeatingLayoutPanel.module.css";
 
 export type FloorOpeningTool = "RECTANGLE"|"POLYGON"|null;
 export type BuildingView = { whole:boolean; roof:boolean; reference:boolean; snap:boolean };
-export function BuildingControls({project,onEdit,onUndo,onRedo,canUndo,canRedo,units,in3D,view,onView,tool,onTool,keepOpeningSquare,onKeepOpeningSquare,onFinish,selectedOpening,onSelectOpening,onRoofPreview,error,onError}: {
+export function BuildingControls({project,onEdit,onUndo,onRedo,canUndo,canRedo,units,in3D,view,onView,tool,onTool,keepOpeningSquare,onKeepOpeningSquare,onFinish,selectedOpening,onSelectOpening,onRoofPreview,error,onError,onExportFloorplan}: {
   project:ProjectDocument;onEdit:(fn:(p:ProjectDocument)=>ProjectDocument)=>void;onUndo:()=>void;onRedo:()=>void;canUndo:boolean;canRedo:boolean;units:DisplayUnits;in3D:boolean;
   view:BuildingView;onView:(v:BuildingView)=>void;tool:FloorOpeningTool;onTool:(t:FloorOpeningTool)=>void;onFinish:()=>void;selectedOpening:string|null;onSelectOpening:(id:string|null)=>void;
   keepOpeningSquare:boolean;onKeepOpeningSquare:(square:boolean)=>void;
   onRoofPreview:(r:RoofConfiguration|null)=>void;error:string;onError:(s:string)=>void;
+  onExportFloorplan?:()=>void;
 }) {
   const b=buildingOf(project),current=activeFloor(project),floors=projectFloors(project),index=b.floors.findIndex(f=>f.id===current.id),top=floors.at(-1)!;
   const highestFirst=[...floors].reverse();
@@ -46,6 +47,7 @@ export function BuildingControls({project,onEdit,onUndo,onRedo,canUndo,canRedo,u
   };
   const dropFloor=(event:DragEvent<HTMLLIElement>,id:string)=>{event.preventDefault();moveRelative(event.dataTransfer.getData("application/x-building-floor")||dragging,id,event.clientY<event.currentTarget.getBoundingClientRect().top+event.currentTarget.offsetHeight/2);};
   return <>
+    {!in3D && onExportFloorplan && <button type="button" className="floorplan-export-shortcut" aria-label="Export floorplan" onClick={onExportFloorplan}>Export</button>}
     <nav className="building-floor-bar" aria-label="Building floors">
       <label className="workspace-mode-control"><span className="workspace-mode-label">Floor</span><select className="workspace-mode-select" aria-label="Selected floor" value={in3D&&view.whole?"__whole-building__":current.id} onChange={e=>{const id=e.target.value;if(id==="__whole-building__")onView({...view,whole:true});else{select(id);if(in3D)onView({...view,whole:false,roof:id===top.id&&view.roof});}}}>{in3D&&<option value="__whole-building__">Whole building</option>}{highestFirst.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
       <button className="building-tools-button" aria-label="Manage floors and building" title="Floors & building" aria-expanded={windowOpen} onClick={()=>setWindowOpen(!windowOpen)}>+</button>

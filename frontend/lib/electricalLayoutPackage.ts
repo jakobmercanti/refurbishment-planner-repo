@@ -308,7 +308,10 @@ export function planElectricalLayoutImport(
   const circuits = archivedCircuits.map((circuit) => {
     const nextId = occupiedCircuitIds.has(circuit.id) ? id("electrical-circuit") : circuit.id;
     occupiedCircuitIds.add(nextId); remappedCircuitIds.set(circuit.id, nextId);
-    return { ...circuit, id: nextId };
+    return { ...circuit, id: nextId,
+      ...(circuit.consumerUnitId ? { consumerUnitId: remappedItemIds.get(circuit.consumerUnitId) ?? id("missing-consumer-unit") } : {}),
+      ...(circuit.socketIds ? { socketIds: circuit.socketIds.map(socket => remappedItemIds.get(socket) ?? id("missing-socket")) } : {}),
+    };
   });
   const fallbackCircuitId = remappedCircuitIds.get(archivedCircuits[0].id)!;
   const occupiedConnectionIds = new Set((mode === "REPLACE" ? [] : currentLayout.connections).map((connection) => connection.id));

@@ -4,6 +4,7 @@ import type { ElectricalCircuit, ElectricalConnection, ElectricalConnectionDefau
 import { switchGangCount } from "@/lib/electricalSimulation";
 import { electricalEndpointLabel, electricalFittingReferences, electricalGangConnections } from "@/lib/electricalConnectionLabels";
 import type { ElectricalCrossing } from "@/lib/electricalCrossings";
+import { SocketCircuitControls } from "./SocketCircuitControls";
 
 export interface ElectricalDisplayOptions { symbols: boolean; connections: boolean; circuitLabels: boolean }
 export interface ElectricalObjectOption { id: string; label: string; representation_key?: string | null }
@@ -26,6 +27,7 @@ type Props = {
   onUpdateConnection: (id: string, patch: Partial<ElectricalConnection>) => void; onDeleteConnection: (id: string) => void;
   circuits: ElectricalCircuit[]; activeCircuitId: string | null; onActiveCircuitChange: (id: string) => void;
   onCreateCircuit: () => void; onUpdateCircuit: (id: string, patch: Partial<ElectricalCircuit>) => void; onDeleteCircuit: (id: string) => void;
+  onConnectionsChange?: (connections: ElectricalConnection[]) => void;
 };
 
 export function ElectricalLayoutPanel(p: Props) {
@@ -136,6 +138,7 @@ export function ElectricalLayoutPanel(p: Props) {
         </div>
       </div>}
       {!circuit && <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>}
+      {circuit && p.onConnectionsChange && <SocketCircuitControls key={`socket-${circuit.id}`} circuit={circuit} objects={p.objects} connections={p.connections} onUpdate={patch => p.onUpdateCircuit(circuit.id, patch)} onConnectionsChange={p.onConnectionsChange} />}
       {circuit && connectionGroup(circuit.id)}
     </details>
   </div>;

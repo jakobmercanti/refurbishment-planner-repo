@@ -7,7 +7,7 @@ import { useWindowDocking } from "@/lib/windowDocking";
 import { windowViewport } from "@/lib/windowViewport";
 import { useWindowFocusMode } from "@/lib/windowFocusMode";
 import { WindowIcon } from "@/components/WindowIcon";
-import { WindowHelpButton } from "@/components/WindowHelpButton";
+import { WindowHelpButton, WindowHelpScope } from "@/components/WindowHelpButton";
 import { useCompactWorkspace } from "@/lib/useCompactWorkspace";
 import { useServiceMenuHelp } from "@/lib/serviceMenuHelp";
 import type { WindowHelpStep } from "@/lib/windowHelp";
@@ -216,6 +216,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
   const backgroundOnMount = useRef(Boolean(dock) && !bringToFront);
   const foregroundOnMount = useRef(bringToFront);
   const [position, setPosition] = useState(defaultPosition);
+  const [userSized, setUserSized] = useState(false);
   const [size, setSize] = useState<{ width: number; height: number | null }>(() => ({ width: initialSize?.width ?? DEFAULT_FLOATING_WINDOW_WIDTH, height: initialSize?.height ?? null }));
   const [minimumHeight, setMinimumHeight] = useState(compact ? 0 : MIN_FLOATING_WINDOW_HEIGHT);
   const [visibleWorkspace, setVisibleWorkspace] = useState<ReturnType<typeof visibleFloatingWorkspace> | null>(null);
@@ -494,6 +495,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
       return;
     }
     const contentMinimumHeight = getContentMinimumHeight(panel, maxHeight, compact);
+    setUserSized(true);
     releaseDock(panelBounds, parentBounds);
     const left = panelBounds.left - parentBounds.left;
     const top = panelBounds.top - parentBounds.top;
@@ -550,13 +552,15 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
   const top = visibleWorkspace ? `clamp(${minimumTop}, ${cssLength(requestedTop)}, max(${minimumTop}, ${Math.max(visibleWorkspace.top + 8, visibleWorkspace.bottom - Math.min(visibleMinimumHeight, visibleWorkspace.bottom - visibleWorkspace.top - 16) - 8)}px))` : requestedTop;
   const availableHeight = visibleWorkspace ? `max(0px, calc(${visibleWorkspace.bottom - 8}px - (${cssLength(top)})))` : "calc(100% - 16px)";
   const preferredMaximum = heightMaximized || size.height !== null ? "calc(100% - 16px)" : docked ? (dock?.height ?? (dock?.fill ? slotHeight : `min(${maxHeight}px, ${slotHeight})`)) : `${maxHeight}px`;
+  const preferredWidth = docked ? (dock?.width ?? size.width) : size.width;
+  const renderedWidth = userSized || heightMaximized ? preferredWidth : `calc(${cssLength(preferredWidth)} * var(--window-density-width, 1))`;
   const style = {
     "--floating-available-height": availableHeight,
     "--floating-visible-top": cssLength(top),
     left: docked ? (dock?.side === "LEFT" ? 8 : undefined) : position.x,
     right: docked && dock?.side === "RIGHT" ? 8 : undefined,
     top,
-    width: docked ? (dock?.width ?? size.width) : size.width,
+    width: renderedWidth,
     height: heightMaximized ? size.height ?? "auto" : size.height ?? dockHeight,
     minHeight: heightMaximized || appliedMinimumHeight === undefined ? undefined : `min(${appliedMinimumHeight}px, ${availableHeight})`,
     maxHeight: `min(${cssLength(preferredMaximum)}, ${availableHeight})`,
@@ -565,7 +569,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
       "--window-free-left": `${freeWorkspace.left + 8}px`,
       "--window-free-right": `${freeWorkspace.left + freeWorkspace.width - 8}px`,
       "--window-free-width": `${Math.max(0, freeWorkspace.width - 16)}px`,
-      "--window-preferred-width": cssLength(docked ? (dock?.width ?? size.width) : size.width),
+      "--window-preferred-width": cssLength(renderedWidth),
       "--window-preferred-left": docked && dock?.side === "RIGHT" ? `calc(100% - (${cssLength(dock?.width ?? size.width)}) - 8px)` : cssLength(docked ? 8 : position.x),
     } : {}),
     ...(maximized && maximizeBounds ? { "--window-max-left": `${maximizeBounds.left}px`, "--window-max-top": `${maximizeBounds.top}px`, "--window-max-width": `${maximizeBounds.width}px`, "--window-max-height": `${maximizeBounds.height}px` } : {}),
@@ -588,7 +592,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
       {headerContent && <div className="floating-toolbar-header-content">{headerContent}</div>}
       <div className="window-header-actions"><button type="button" className="floating-toolbar-minimize" aria-label={`Minimise ${title}`} title="Minimise window" onClick={minimize}>−</button><WindowDockActions title={title} docking={edgeDock} maximized={maximized} onMaximize={toggleMaximized} onMinimize={minimize} onDock={dockWindow} onFloat={floatWindow} />{help && <WindowHelpButton title={helpTitle} steps={helpSteps} />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
     </header>
-    <div className="floating-toolbar-content" hidden={compact}>{children}</div>
+    <div className="floating-toolbar-content" hidden={compact}><WindowHelpScope title={helpTitle} steps={helpSteps}>{children}</WindowHelpScope></div>
     {footer}
     {(["TOP", "LEFT", "RIGHT", "BOTTOM"] as const).map((edge) => <button key={edge} type="button" tabIndex={-1} className={`floating-toolbar-resize floating-toolbar-resize-${edge.toLowerCase()}`} aria-label={`Resize ${title} from the ${edge.toLowerCase()} edge`} onPointerDown={(event) => beginResize(edge, event)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} />)}
   </section>{minimized && !hidden && !edgeDock.inactive && createPortal(<button className="floating-window-task" aria-label={`Restore ${title}`} style={{bottom:12 + Math.max(0,minimizedOrder.split(",").indexOf(windowId))*42}} onClick={restoreMinimized}>▣ {title}</button>,document.body)}{edgeDock.preview && createPortal(<div className="window-dock-preview" aria-hidden="true" data-dock-side={edgeDock.preview.side} style={{ left: edgeDock.preview.box.left, top: edgeDock.preview.box.top, width: edgeDock.preview.box.width, height: edgeDock.preview.box.height }}><span>Attach {title} · {edgeDock.preview.side.toLowerCase()}</span></div>, document.body)}</>;

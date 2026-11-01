@@ -11,18 +11,18 @@ export function insulationScheduleCsv(rooms: Room[], heating: HeatingProject, en
   for (const r of calculateMaterialQuantities(rooms, heating, energy)) rows.push([`${r.element.label}: ${r.material}`, r.thicknessMm, r.areaM2.toFixed(1), r.volumeM3.toFixed(2), r.orderAreaM2.toFixed(1), r.orderVolumeM3.toFixed(2), energy.energySettings.wastePercent]);
   return rows.map(row => row.map(value => { const text = String(value), safe = /^[=+@\-\t\r]/.test(text) ? `'${text}` : text;return `"${safe.replaceAll('"', '""')}"`; }).join(",")).join("\r\n");
 }
-export async function buildEnergyPdf(rooms: Room[], heating: HeatingProject, energy: EnergyProject, projectName: string): Promise<Uint8Array> {
+export async function buildEnergyPdf(rooms: Room[], heating: HeatingProject, energy: EnergyProject, projectName: string, options: { title?: string; includeDetails?: boolean } = {}): Promise<Uint8Array> {
   const pdf = await PDFDocument.create(), font = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold), result = energyResults(rooms, heating, energy), comparison = compareThermalScenarios(rooms, heating, energy);
   const ascii = (value: string) => value.replace(/[–—]/g, "-").replace(/·/g, " - ").replace(/×/g, "x").replace(/°/g, " deg ").replace(/²/g, "2").replace(/³/g, "3").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7e]/g, "?");
   let page!: PDFPage, y = 0;
-  const start = (title: string) => { page = pdf.addPage([595, 842]);page.drawRectangle({ x: 0, y: 0, width: 595, height: 842, color: rgb(1, 1, 1) });page.drawText(title, { x: 36, y: 802, size: 17, font: bold, color: rgb(.12, .28, .25) });y = 778; };
+  const start = (title: string) => { page = pdf.addPage([595, 842]);page.drawRectangle({ x: 0, y: 0, width: 595, height: 842, color: rgb(1, 1, 1) });page.drawText(ascii(title), { x: 36, y: 802, size: Math.min(17, 520 / Math.max(1, bold.widthOfTextAtSize(ascii(title), 1))), font: bold, color: rgb(.12, .28, .25) });y = 778; };
   const text = (value: string, heading = false) => {
     const tokens = ascii(value).split(/\s+/).flatMap(word => { const chunks: string[] = [];while (font.widthOfTextAtSize(word, 10) > 510) { let cut = word.length - 1;while (cut > 1 && font.widthOfTextAtSize(word.slice(0, cut), 10) > 510) cut--;chunks.push(word.slice(0, cut));word = word.slice(cut); }return [...chunks, word]; });
     let line = "";const lines: string[] = [];
     for (const token of tokens) { const next = line ? `${line} ${token}` : token;if (font.widthOfTextAtSize(next, 10) > 510) { lines.push(line);line = token; } else line = next; }if (line) lines.push(line);
     for (const line of lines) { if (y < 55) start("Energy & Insulation - continued");page.drawText(line, { x: 36, y, size: 10, font: heading ? bold : font, color: rgb(.1, .14, .18) });y -= 15; }y -= 5;
   };
-  start("Energy & Insulation - retrofit planning");text(projectName, true);text(`Selected model: ${energy.scenarios.find(s => s.scenarioId === energy.activeScenarioId)?.name ?? "Existing Building"}`);
+  start(options.title?.trim() || "Energy & Insulation - retrofit planning");text(projectName, true);text(`Selected model: ${energy.scenarios.find(s => s.scenarioId === energy.activeScenarioId)?.name ?? "Existing Building"}`);
   text(`Floor area ${result.areaM2.toFixed(1)} m2 | Design heat loss ${(result.designW / 1000).toFixed(1)} kW | H ${Math.round(result.coefficient.total)} W/K`);
   text(`Shared Heating inputs: outside ${heating.buildingSettings.externalDesignTemperatureC} C; ACH fallback ${heating.buildingSettings.airChangeRate}; allowance ${heating.buildingSettings.designAllowancePercent}%. System ${heating.heatingSystem.name} ${heating.heatingSystem.flowTemperatureC}/${heating.heatingSystem.returnTemperatureC} C.`);
   const points = rooms.flatMap(r => r.vertices);
@@ -35,6 +35,7 @@ export async function buildEnergyPdf(rooms: Room[], heating: HeatingProject, ene
   }
   text("Existing and proposed scenarios", true);
   for (const s of comparison) text(`${s.name}: ${(s.result.designW / 1000).toFixed(1)} kW; H ${Math.round(s.result.coefficient.total)} W/K; reduction ${(s.reductionW / 1000).toFixed(1)} kW${!s.result.verified ? "; incomplete construction inputs - fallback, unverified" : ""}.`);
+  if (options.includeDetails !== false) {
   start("Building fabric and calculation details");
   const assignments = scenarioAssignments(energy);
   for (const e of result.elements) {
@@ -43,6 +44,7 @@ export async function buildEnergyPdf(rooms: Room[], heating: HeatingProject, ene
     if (assembly) { const c = calculateAssemblyUValue(assembly, energy.materials);text(`${assembly.name}: ${c.method}; Rsi ${assembly.rsi}, Rse ${assembly.rse}; total R ${c.totalR?.toFixed(3) ?? "Not set"}; U ${c.uValue?.toFixed(3) ?? "Not set - Heating fallback shown"}.`);for (const l of c.layers) { const m = energy.materials.find(m => m.materialId === l.layer.materialId);text(`${m?.name}: ${l.layer.thicknessMm} mm; lambda ${l.layer.lambdaOverride ?? m?.lambda ?? "Not set"}; R ${l.resistance?.toFixed(3) ?? "Not set"}${l.layer.resistanceOverride !== null ? " (entered R override)" : ""}.`); } }
   }
   text("Room heating demand and ventilation", true);for (const r of result.rooms) text(`${r.room.name}: ${r.loss.targetC} C; ${r.loss.volumeM3.toFixed(1)} m3; ACH ${r.loss.ach}; fabric ${Math.round(r.loss.fabricW)} W; ventilation 0.33 x ${r.loss.ach} x ${r.loss.volumeM3.toFixed(1)} x ${Math.max(0, r.loss.targetC - result.outside).toFixed(1)} = ${Math.round(r.loss.ventilationW)} W; design ${Math.round(r.loss.designW)} W.`);
+  }
   start("Insulation schedule and energy assumptions");
   for (const r of calculateMaterialQuantities(rooms, heating, energy)) text(`${r.element.label}: ${r.material}, ${r.thicknessMm} mm; net ${r.areaM2.toFixed(1)} m2 / ${r.volumeM3.toFixed(2)} m3; with ${energy.energySettings.wastePercent}% waste ${r.orderAreaM2.toFixed(1)} m2 / ${r.orderVolumeM3.toFixed(2)} m3.`);
   if (result.annual) { text(`Indicative useful space heat: approximately ${Math.round(result.annual.usefulKwh / 100) * 100} kWh/year; H x HDD x 24 / 1000 x schedule factor. Delivered energy ${result.annual.deliveredKwh === null ? "Not set" : `approximately ${Math.round(result.annual.deliveredKwh / 100) * 100} kWh/year`}.`);text(`HDD ${energy.energySettings.heatingDegreeDays}, base ${energy.energySettings.baseTemperatureC} C, source ${energy.energySettings.climateReference}, schedule multiplier ${energy.energySettings.scheduleFactor}; seasonal efficiency / SPF ${energy.energySettings.seasonalEfficiency ?? "Not set"}, basis ${energy.energySettings.efficiencyBasis || "Not set"}.`); }

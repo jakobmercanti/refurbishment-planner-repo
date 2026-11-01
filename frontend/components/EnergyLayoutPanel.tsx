@@ -1,12 +1,13 @@
 "use client";
 import { isInsulationSelectable } from "@/lib/energyCalculations";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { Room } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
 import { type ConstructionAssembly, type EnergyProject, type ElementAssignment } from "@/lib/energyDocument";
 import { calculateAssemblyUValue, energyResults, scenarioAssignments, type EnergyElement } from "@/lib/energyCalculations";
 import { assemblyThickness, createElementAssemblyDraft, fabricTargetScore, resizeAssembly, setWallAssembly, wallThicknessForElement } from "@/lib/energyWallConstruction";
 import { buildEnergyPdf } from "@/lib/energyExport";
+import { ReportExportPreview, type ReportPreviewOptions } from "./ReportExportPreview";
 import { WallLayersPreview } from "./WallLayersPreview";
 import styles from "./HeatingLayoutPanel.module.css";
 import ui from "./EnergyLayoutPanel.module.css";
@@ -15,7 +16,7 @@ import { WallLayersEditor } from "./WallLayersEditor";
 import { removeEnergyScenario, renameEnergyScenario, saveEnergyScenarioAs } from "@/lib/energyScenarios";
 
 export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingChange, selectedIds, onSelect, onUndo, onRedo, canUndo, canRedo, projectName }: { rooms: Room[]; data: EnergyProject; heating: HeatingProject; onChange: (data: EnergyProject) => void; onHeatingChange: (data: HeatingProject) => void; selectedIds: string[]; onSelect: (ids: string[]) => void; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string }) {
-  const [tab, setTab] = useState<"Walls" | "Floors" | "Roofs" | "Openings" | "Results">("Walls"), [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"Walls" | "Floors" | "Roofs" | "Openings" | "Results">("Walls"), [error, setError] = useState(""), [reportOpen, setReportOpen] = useState(false);
   const [newScenarioName, setNewScenarioName] = useState(""), [scenarioNameDraft, setScenarioNameDraft] = useState<{ id: string; text: string } | null>(null);
   const [resultsSelection, setResultsSelection] = useState<string | undefined>();
   const [editor, setEditor] = useState<{ source: EnergyProject; draft: EnergyProject; assembly: ConstructionAssembly; element: EnergyElement; thickness: number } | null>(null);
@@ -45,7 +46,7 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
   const saveScenario = () => { try { update(saveEnergyScenarioAs(data, newScenarioName || `Upgrade ${data.scenarios.length + 1}`));setNewScenarioName(""); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save scenario."); } };
   const renameScenario = () => { if (!activeScenario || editableScenarioName === activeScenario.name) return;try { update(renameEnergyScenario(data, activeScenario.scenarioId, editableScenarioName));setScenarioNameDraft(null); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not rename scenario.");setScenarioNameDraft(null); } };
   const edit = (a: ConstructionAssembly, draft = data) => { if (!first) return;const total = assemblyThickness(a);if (total < 1 || total > 2000) { setError("Overall wall thickness must be between 1 and 2000 mm.");return; }update(setWallAssembly(draft, first, { ...a, directUValue: null })); };
-  async function exportPdf() { setBusy(true);try { const bytes = await buildEnergyPdf(rooms, heating, data, projectName), url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: "application/pdf" })), a = document.createElement("a");a.href = url;a.download = "energy-insulation-report.pdf";a.click();setTimeout(() => URL.revokeObjectURL(url), 30000); } catch (e) { setError(e instanceof Error ? e.message : "Export failed."); } finally { setBusy(false); } }
+  const makeReport = useCallback((options: ReportPreviewOptions) => buildEnergyPdf(rooms, heating, data, projectName, options), [rooms, heating, data, projectName]);
   return <div className={styles.panel + " " + ui.panel} role="region" aria-label="Energy & Insulation controls">
     <div className={ui.summaryRow}><p className={ui.buildingSummary}><strong>Overall heating loss: {(result.designW / 1000).toFixed(2)} kW</strong> · H {Math.round(result.coefficient.total)} W/K</p><div className={styles.actions}><button onClick={onUndo} disabled={!canUndo}>Undo</button><button onClick={onRedo} disabled={!canRedo}>Redo</button></div></div>
     <div className={ui.sectionNav}><div className={`${styles.tabs} ${ui.energyTabs}`} role="tablist" aria-label="Energy & Insulation tabs">{(["Walls", "Floors", "Roofs", "Openings", "Results"] as const).map(t => <button key={t} role="tab" aria-selected={t === activeTab} onClick={() => { setTab(t); if (t === "Results") setResultsSelection(selectedIds[0]); if (t !== "Results") { const target = result.elements.find(e => e.category === categories[t] || t === "Openings" && e.category === "door"); onSelect(target ? [target.elementId] : []); } }}>{t}</button>)}</div></div>
@@ -78,7 +79,7 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
       <details><summary>Heat-loss breakdown by element & room</summary>{result.categories.map(c => <p key={c.category}>{c.category}: {(c.lossW / 1000).toFixed(2)} kW</p>)}<p>Ventilation: {(result.ventilationW / 1000).toFixed(2)} kW</p>
       {result.rooms.map(r => <p key={r.room.id}>{r.room.name}: {Math.round(r.loss.designW)} W · {r.loss.targetC}°C · ACH {r.loss.ach}</p>)}</details>
       <details><summary>Shared heating design assumptions</summary><NumberField label="External design temperature °C" value={heating.buildingSettings.externalDesignTemperatureC} min={-50} max={25} onChange={v => { if (v !== null) onHeatingChange({ ...heating, buildingSettings: { ...heating.buildingSettings, externalDesignTemperatureC: v } }); }} /><NumberField label="Building ACH" value={heating.buildingSettings.airChangeRate} max={10} onChange={v => { if (v !== null) onHeatingChange({ ...heating, buildingSettings: { ...heating.buildingSettings, airChangeRate: v } }); }} /></details>
-      <button disabled={busy} onClick={() => void exportPdf()}>{busy ? "Exporting…" : "Export Energy Report PDF"}</button>{!result.verified && <p className={styles.warning}>Some fabric inputs are incomplete. Heating fallback assumptions are included in overall loss, not claimed as calculated layer values.</p>}
+      <button onClick={() => setReportOpen(true)}>Export Energy Report PDF</button>{reportOpen && <ReportExportPreview title="Energy Report" fileName="energy-insulation-report.pdf" makePdf={makeReport} onClose={() => setReportOpen(false)} />}{!result.verified && <p className={styles.warning}>Some fabric inputs are incomplete. Heating fallback assumptions are included in overall loss, not claimed as calculated layer values.</p>}
     </>}
     {editor && <WallLayersEditor source={editor.draft} initialAssembly={editor.assembly} element={editor.element} rooms={rooms} heating={heating} scenarioName={scenarioLabel} stale={editor.source !== data || editor.element.elementId !== first?.elementId || editor.element.geometrySignature !== first?.geometrySignature || editor.element.deltaTK !== first?.deltaTK || editor.element.areaM2 !== first?.areaM2 || editor.thickness !== shownThickness} onCancel={() => setEditor(null)} onCommit={next => { update(next);setEditor(null); }} />}
   </div>;

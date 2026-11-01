@@ -50,20 +50,22 @@ function routeInside(a: Point2D, b: Point2D, boundary: Point2D[], exclusions: Po
   return null;
 }
 /** Round corners to sampled arcs of the requested radius; the persisted polyline is authoritative. */
-export function roundPipeCorners(path: Point2D[], radiusMm: number): Point2D[] | null {
+export function roundPipeCorners(path: Point2D[], radiusMm: number | readonly number[]): Point2D[] | null {
   if (path.length < 3) return path;
   const result = [path[0]];
   for (let i = 1; i < path.length - 1; i++) {
+    const radius = typeof radiusMm === "number" ? radiusMm : radiusMm[i];
+    if (!Number.isFinite(radius) || radius <= 0) return null;
     const a = path[i - 1], v = path[i], b = path[i + 1], l1 = distanceMm(a, v), l2 = distanceMm(v, b);
     if (l1 < 0.01 || l2 < 0.01) continue;
     const u = { x: (a.x - v.x) / l1, y: (a.y - v.y) / l1 }, w = { x: (b.x - v.x) / l2, y: (b.y - v.y) / l2 }, angle = Math.acos(Math.max(-1, Math.min(1, u.x * w.x + u.y * w.y)));
     if (Math.abs(Math.PI - angle) < 1e-6) continue;
-    const tangent = radiusMm / Math.tan(angle / 2); if (!Number.isFinite(tangent) || tangent > l1 / 2 + 0.01 || tangent > l2 / 2 + 0.01) return null;
-    const p = { x: v.x + u.x * tangent, y: v.y + u.y * tangent }, q = { x: v.x + w.x * tangent, y: v.y + w.y * tangent }, bisectorLength = Math.hypot(u.x + w.x, u.y + w.y), centreDistance = radiusMm / Math.sin(angle / 2);
+    const tangent = radius / Math.tan(angle / 2); if (!Number.isFinite(tangent) || tangent > l1 / 2 + 0.01 || tangent > l2 / 2 + 0.01) return null;
+    const p = { x: v.x + u.x * tangent, y: v.y + u.y * tangent }, q = { x: v.x + w.x * tangent, y: v.y + w.y * tangent }, bisectorLength = Math.hypot(u.x + w.x, u.y + w.y), centreDistance = radius / Math.sin(angle / 2);
     const centre = { x: v.x + (u.x + w.x) / bisectorLength * centreDistance, y: v.y + (u.y + w.y) / bisectorLength * centreDistance }, start = Math.atan2(p.y - centre.y, p.x - centre.x);
     let delta = Math.atan2(q.y - centre.y, q.x - centre.x) - start; while (delta > Math.PI) delta -= 2 * Math.PI; while (delta < -Math.PI) delta += 2 * Math.PI;
     result.push(p); const steps = Math.max(2, Math.ceil(Math.abs(delta) / (Math.PI / 36)));
-    for (let step = 1; step <= steps; step++) result.push({ x: centre.x + radiusMm * Math.cos(start + delta * step / steps), y: centre.y + radiusMm * Math.sin(start + delta * step / steps) });
+    for (let step = 1; step <= steps; step++) result.push({ x: centre.x + radius * Math.cos(start + delta * step / steps), y: centre.y + radius * Math.sin(start + delta * step / steps) });
   }
   result.push(path.at(-1)!);return result;
 }
@@ -98,7 +100,7 @@ export function generateUFHLoops(room: Room, zone: UFHZone, manifold: HeatingMan
     const xs = boundary.map(p => p.x), ys = boundary.map(p => p.y), vertical = zone.orientation === "Vertical" || zone.orientation === "Auto" && Math.max(...ys) - Math.min(...ys) > Math.max(...xs) - Math.min(...xs);
     const transform = (p: Point2D) => vertical ? { x: p.y, y: p.x } : p;
     const shape = boundary.map(transform), holes = exclusions.map(p => p.map(transform)), low = Math.min(...shape.map(p => p.y)) + margin, high = Math.max(...shape.map(p => p.y)) - margin;
-    const count = Math.floor((high - low) / zone.spacingMm) + 1; if (count > 600) { warnings.push("Zone is too large for one generation operation; split into smaller rooms/zones."); return result([]); }
+    const count = zone.runCountTarget ?? Math.floor((high - low) / zone.spacingMm) + 1; if (count > 600) { warnings.push("Zone is too large for one generation operation; split into smaller rooms/zones."); return result([]); }
     let current: Point2D[] = [];
     for (let row = 0; row < count; row++) {
       const y = low + row * zone.spacingMm, spans = subtractIntervals(polygonIntervals(shape, y), holes.flatMap(h => polygonIntervals(h, y)));
@@ -132,7 +134,7 @@ export function generateUFHLoops(room: Room, zone: UFHZone, manifold: HeatingMan
     // again creates tiny backwards segments/self-crossings at the arc joins.
     const rounded = pattern === "Spiral" ? raw : roundPipeCorners(raw, zone.minBendRadiusMm) ?? raw, full = make(rounded);
     if (!validPath(rounded)) { warnings.push("A route could not satisfy boundary/exclusion clearance; not generated."); continue; }
-    const total = calculateCircuitLength(full), pieces = Math.max(1, Math.ceil(total / zone.maxCircuitLengthM));
+    const total = calculateCircuitLength(full), pieces = Math.max(zone.circuitCountTarget ?? 1, Math.ceil(total / zone.maxCircuitLengthM));
     const splits = splitPathByLength(rounded, pieces);
     let accepted = false;
     for (let count = pieces; count <= Math.min(200, pieces + 100); count++) {

@@ -17,6 +17,7 @@ import "./window-docking.css";
 import "./density.css";
 import "./cfd-slices.css";
 import "./cfd-adjoint.css";
+import "./ui-controls.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.freefloorplan3d.com"),

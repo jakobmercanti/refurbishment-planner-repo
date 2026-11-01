@@ -2,19 +2,24 @@
 import type { ElectricalLayoutData } from "@/lib/electricalLayout";
 import { switchGangCount, switchTestKey, type LightingTestResult } from "@/lib/electricalSimulation";
 import type { Obstacle } from "@/lib/types";
+import type { SocketTest } from "@/lib/socketCircuits";
 
-export function ElectricalLightingTest({ layout, fixtures, result, positions, onToggle, onReset }: {
+export function ElectricalLightingTest({ layout, fixtures, result, positions, onToggle, onReset, socketTests = [], selectedSocketId, onTestSocket }: {
   layout: ElectricalLayoutData; fixtures: Obstacle[]; result: LightingTestResult; positions: Record<string, boolean>;
   onToggle: (key: string) => void; onReset: () => void;
+  socketTests?: SocketTest[]; selectedSocketId?: string | null; onTestSocket?: (id: string) => void;
 }) {
   const switches = fixtures.filter(item => switchGangCount(item.representation_key));
   const name = (id: string) => fixtures.find(item => item.id === id)?.name ?? "Missing fitting";
+  const warnings = result.warnings.filter(message => !socketTests.length || message !== "Add a lighting fitting to test the layout.");
   return <div className="electrical-layout-panel electrical-test-panel" role="region" aria-label="Lighting layout test">
-    <div className="electrical-test-summary"><strong role="status">{Object.values(result.lights).filter(Boolean).length} / {Object.keys(result.lights).length} lights on</strong><button type="button" className="review-style-button" onClick={onReset}>Reset test</button></div>
+    {socketTests.length > 0 && <details className="electrical-layout-section" open><summary>Socket connectivity test</summary><p>Choose a socket here or click it on the plan. This checks the drawn circuit’s connection to its consumer unit; it does not test installed wiring.</p><div className="socket-test-list">{socketTests.map(test => <button type="button" key={test.socketId} className="review-style-button" aria-pressed={selectedSocketId === test.socketId} onClick={() => onTestSocket?.(test.socketId)}><strong>{name(test.socketId)}</strong><span>{test.passed ? "Connected" : "Review"} · {test.message}</span></button>)}</div></details>}
+    <div className="electrical-test-summary"><strong role="status">{Object.keys(result.lights).length ? `${Object.values(result.lights).filter(Boolean).length} / ${Object.keys(result.lights).length} lights on` : "Socket and circuit test"}</strong><button type="button" className="review-style-button" onClick={onReset}>Reset test</button></div>
     {layout.circuits.map(circuit => {
       const groups = result.groups.filter(group => group.circuitId === circuit.id);
       const linkedSwitches = switches.filter(item => layout.connections.some(link => link.circuitId === circuit.id && [link.fromId, link.toId].includes(item.id)));
       const lightIds = [...new Set(groups.flatMap(group => group.lightIds))];
+      if (!linkedSwitches.length && !lightIds.length) return null;
       return <details key={circuit.id} className="electrical-layout-section electrical-test-circuit" open={groups.length > 0}>
         <summary><span className="electrical-test-circuit-title"><span className="electrical-test-disclosure" aria-hidden="true">▶</span>{circuit.name}</span><small>{lightIds.filter(id => result.lights[id]).length}/{lightIds.length} lights on</small></summary>
         <div className="electrical-test-controls">{linkedSwitches.map(item => <section key={item.id} className="electrical-test-fitting"><strong>{item.name}</strong><div className="electrical-test-gangs">{Array.from({ length: switchGangCount(item.representation_key) }, (_, index) => {
@@ -29,6 +34,6 @@ export function ElectricalLightingTest({ layout, fixtures, result, positions, on
         {groups.some(group => group.switchKeys.length === 2) && <details className="electrical-test-explanation"><summary>Two-way control details</summary>{groups.filter(group => group.switchKeys.length === 2).map(group => <div key={group.id}><p>{group.lightIds.map(name).join(", ")} — {group.on ? "On" : "Off"}</p><svg viewBox="0 0 340 100" role="img" aria-label={`Two-way contact demonstration: ${group.on ? "On" : "Off"}`}><path d="M90,30H250M90,65H250" stroke="#64748b" strokeWidth="3" /><path d={`M40,47L90,${result.contacts[group.switchKeys[0]] ? 65 : 30}M250,${result.contacts[group.switchKeys[1]] ? 65 : 30}L300,47`} stroke={group.on ? "#ca8a04" : "#64748b"} strokeWidth="4" /><circle cx="320" cy="47" r="12" fill={group.on ? "#facc15" : "#d1d5db"} /><text x="30" y="92" fill="currentColor">Switch 1</text><text x="245" y="92" fill="currentColor">Switch 2</text></svg></div>)}</details>}
       </details>;
     })}
-    {result.warnings.length > 0 && <details className="electrical-layout-section"><summary>Review feedback ({result.warnings.length})</summary><ul>{result.warnings.map(message => <li key={message}>{message}</li>)}</ul></details>}
+    {warnings.length > 0 && <details className="electrical-layout-section"><summary>Review feedback ({warnings.length})</summary><ul>{warnings.map(message => <li key={message}>{message}</li>)}</ul></details>}
   </div>;
 }

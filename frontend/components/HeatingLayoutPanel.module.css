@@ -24,7 +24,6 @@
 .panel.panel .roomSettingsActions button { width:100%; min-width:0; height:100%; min-height:40px; padding:6px; line-height:1.3; }
 @container electrical-layout-window (max-width:560px) {
   .roomSettingsActions { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .roomSettingsActions > button:last-child { grid-column:1/-1; }
 }
 .actionGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-block:8px; }
 .panel.panel .actionGrid button { height:42px; min-width:0; padding:5px 8px; line-height:1.2; }
@@ -48,6 +47,22 @@
 .panel p.guide,.panel p.hint { color:var(--muted,#526b80); margin:0; }
 .toolbar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; padding-top:8px; }
 .toolbar > .actions { display:contents; }
+.constructionScenario { display: grid; gap: var(--density-section-gap, 8px); }
+.constructionScenario:not([open]) > :not(summary) { display: none; }
+.scenarioActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--density-section-gap, 8px); }
+.scenarioActions > button { flex: 1 1 auto; }
+.roomSetup > .grid { margin-top: 10px; }
+.panel .roomSettingsActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.panel .roomSettingsActions > * { grid-column: auto; width: 100%; min-width: 0; min-height: 38px; height: auto; }
+.panel .pipeActions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.panel .pipeActions > button { width: 100%; min-width: 0; }
+.panel .exportActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-block: 10px; }
+.panel .exportActions > button { width: 100%; min-width: 0; }
+.panel button.fullWidth { display: block; width: 100%; margin-block: 10px; }
+.panel details.elementCard { padding: 0; }
+.panel summary.elementSelect { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 60px; padding: 9px 30px 9px 10px; background: var(--surface-muted); }
+.panel summary.elementSelect > span:first-child { display: grid; gap: 4px; min-width: 0; }
+.panel .elementNotes { padding: 10px; }
 .panel.panel .toolbar button { width:100%; min-height:40px; height:40px; padding:4px 6px; line-height:1.1; box-sizing:border-box; font-size:calc(11px * var(--density-font-scale,1)); }
 .systemChip strong { white-space:nowrap; flex-shrink:0; }
 .roomPicker { display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:10px; align-items:end; }

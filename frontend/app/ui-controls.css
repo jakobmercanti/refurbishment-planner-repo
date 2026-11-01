@@ -1,0 +1,90 @@
+/* Content gutters are independent of the unchanged five-pixel resize targets. */
+:root { --window-side-padding: 5px; --window-density-width: 1; }
+:root[data-density="compact"] { --window-side-padding: 3px; --window-density-width: .86; }
+body :is(.floating-toolbar-content, .popup-content, .local-assets-content, .settings-content, .settings-sections, .cfx-setup-panel, .thermal-body) {
+  padding-inline: var(--window-side-padding);
+}
+body .floating-toolbar-content { margin-inline: 5px; }
+body .floating-toolbar-content :is(.tool-section, .selected-properties, .fixture-editor, .person-editor) { padding-inline: var(--window-side-padding); }
+body .cfx-setup-window > .floating-toolbar-content { padding: 0; }
+/* The standalone dialogs use the same density and gutters as floating tools. */
+:root body :is(.settings-dialog, .save-as-dialog, .floorplan-export-dialog, .catalogue-manager-modal, .catalogue-detail-dialog) { padding-inline: var(--window-side-padding); width: min(calc(var(--window-dialog-width, 470px) * var(--window-density-width)), calc(100vw - 32px)); }
+body .floorplan-export-dialog { --window-dialog-width: 420px; }
+body .catalogue-manager-modal { --window-dialog-width: 760px; }
+body .catalogue-detail-dialog { --window-dialog-width: 720px; }
+:root body[data-ui-style="modern"] :is(.settings-dialog, .save-as-dialog, .floorplan-export-dialog, .catalogue-manager-modal) > header,
+:root body[data-ui-style="modern"] .catalogue-detail-dialog > .catalogue-form-heading { margin-inline: calc(-1 * var(--window-side-padding)); padding-inline: var(--window-side-padding); }
+:root body .account-dialog-content { padding-inline: var(--window-side-padding); }
+:root[data-density="compact"] .floating-toolbar.full-plan-build-toolbar { min-width: min(290px, calc(100vw - 16px)); }
+:root[data-density="compact"] .popup:not(.floating-toolbar, .appearance-popup, .electrical-bom-editor) { width: min(360px, calc(100vw - 32px)); }
+body .floating-toolbar-content :is(button, summary) { text-overflow: clip; }
+body .floating-toolbar-content button:not(.colour-swatch, .color-swatch, .material-swatch) { white-space: normal; overflow-wrap: anywhere; }
+body .building-floor-bar { padding-left: 12px; }
+.floorplan-export-shortcut { position: absolute; top: 8px; left: 8px; z-index: 1950; min-height: var(--building-selector-height, 38px); padding: 6px 14px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); color: var(--ink); box-shadow: 0 3px 12px #14271f1f; font: 650 calc(12px * var(--density-font-scale, 1))/1.25 var(--font-sans); cursor: pointer; }
+.floorplan-export-shortcut + .building-floor-bar { max-width: calc(100% - 104px); }
+.floorplan-export-shortcut + .building-floor-bar .workspace-mode-control { min-width: 0; gap: 8px; }
+.floorplan-export-shortcut + .building-floor-bar select { min-width: 0; }
+
+/* One outlined chevron, shared by native selects and custom disclosures. */
+:root { --ui-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+body select:not([multiple], [size]) {
+  appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%2364748b' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-position: right 9px center !important; background-size: 16px 16px !important; background-repeat: no-repeat !important; padding-right: 32px !important;
+}
+/* Match the density shorthand's specificity so it cannot remove arrow space. */
+body :is(.floating-toolbar-content, .settings-dialog, .popup, [aria-modal="true"], .building-floor-bar, .topbar, .planner-build-screen) select:not([multiple], [size]) { padding-right: 32px !important; }
+body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace) details > summary:not(.cfx-row-menu > summary) { list-style: none; position: relative; padding-right: 28px; }
+body summary::-webkit-details-marker { display: none; }
+body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace) details > summary:not(.cfx-row-menu > summary)::before { content: none !important; }
+body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace) details > summary:not(.cfx-row-menu > summary)::after {
+  content: ""; position: absolute; right: 7px; top: 50%; width: 16px; height: 16px; margin: 0; background: currentColor; mask: var(--ui-chevron) center / contain no-repeat; transform: translateY(-50%) rotate(-90deg); pointer-events: none;
+}
+body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace) details[open] > summary:not(.cfx-row-menu > summary)::after { transform: translateY(-50%); }
+body :is(.fixture-section-toggle, .fixture-colours-toggle, .full-plan-overall-toggle, .catalogue-disclosure) > span[aria-hidden],
+body .fixture-cascading-chevron,
+body .annotation-arrow-end-chevron, body .marker-symbol-trigger-chevron, body .outline-menu-arrow {
+  font-size: 0 !important; display: inline-block; flex-shrink: 0; width: 16px; height: 16px; background-color: currentColor; mask: var(--ui-chevron) center / 16px 16px no-repeat;
+}
+body :is(.fixture-section-toggle, .fixture-colours-toggle, .full-plan-overall-toggle, .catalogue-disclosure) { position: relative; padding-right: 32px; }
+body :is(.fixture-section-toggle, .fixture-colours-toggle, .full-plan-overall-toggle, .catalogue-disclosure) > span[aria-hidden] { position: absolute; right: 9px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+body :is(.fixture-section-toggle, .fixture-colours-toggle, .full-plan-overall-toggle, .catalogue-disclosure)[aria-expanded="true"] > span[aria-hidden] { transform: translateY(-50%); }
+body .outline-menu-arrow { transform: rotate(-90deg); }
+body .fixture-cascading-trigger[aria-expanded="true"] .fixture-cascading-chevron { transform: rotate(0); }
+/* Mask the icon, never the interactive button: modern button backgrounds can
+   otherwise paint the entire mask in the same colour as the surrounding row. */
+body :is(.fixture-cascading-menu-header, .fixture-cascading-collapsed) > button[aria-expanded] { display: grid; place-items: center; font-size: 0 !important; }
+body :is(.fixture-cascading-menu-header, .fixture-cascading-collapsed) > button[aria-expanded]::after { content: ""; width: 16px; height: 16px; background: currentColor; mask: var(--ui-chevron) center / contain no-repeat; pointer-events: none; }
+body .fixture-cascading-menu-header > button[aria-expanded="true"]::after { transform: rotate(180deg); }
+body .elements-list-section > .elements-list-content { padding-top: var(--density-section-gap, 8px); }
+body .electrical-test-disclosure { display: none; }
+.socket-members { display: grid; gap: 6px; margin-block: 8px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 8px; }
+.socket-members label { display: flex; align-items: center; gap: 8px; }
+.socket-route-order { padding-left: 24px; }
+.socket-route-order li { display: flex; align-items: center; gap: 6px; margin-block: 5px; }
+.socket-route-order li > span { flex: 1; }
+.socket-route-order li > button { flex: 0 0 30px; width: 30px; min-width: 30px; padding-inline: 0; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); color: var(--ink); font: inherit; cursor: pointer; }
+.socket-test-list { display: grid; gap: 6px; }
+.socket-test-list > button { display: grid; gap: 3px; text-align: left; }
+.heating-surface-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.report-preview-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+.report-preview-options > label { display: grid; gap: 5px; }
+.report-preview-options > label:has(input[type=checkbox]) { grid-column: 1 / -1; display: flex; align-items: center; }
+.report-export-preview .floating-toolbar-content { color: var(--ink); font: 500 calc(12px * var(--density-font-scale,1))/1.5 var(--font-sans),sans-serif; }
+.report-export-preview :is(input:not([type=checkbox]), .report-preview-actions button, .report-page-navigation button) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 7px 10px; color: var(--ink); background: var(--surface-raised); font: inherit; }
+.report-export-preview :is(.report-preview-actions button, .report-page-navigation button) { background: var(--surface-muted); font-weight: 650; cursor: pointer; }
+.report-export-preview button:disabled { opacity: .5; cursor: default; }
+.report-export-preview .report-preview-actions button:last-child { background: var(--deep); color: var(--on-deep, white); }
+.report-page-navigation { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; margin-block: 8px; }
+.report-pdf-preview { display: block; width: 100%; min-height: 280px; height: 48vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-muted); }
+.report-pdf-preview canvas { display: block; width: 100%; height: auto; background: white; }
+.report-preview-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.heating-route-menu {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #cbd8e5);
+  border-radius: 10px;
+  box-shadow: 0 4px 18px #10234526;
+}
+.heating-route-menu button { width: 100%; min-height: 30px; }

@@ -62,7 +62,7 @@ export async function startBrowserHarness({ climoptixEnabled = false } = {}) {
       const file = path.resolve(output, "." + decodeURIComponent(filePath.endsWith("/") ? filePath + "index.html" : filePath));
       if (!file.startsWith(output)) throw new Error("Outside preview root");
       const content = await readFile(file);
-      response.writeHead(200, { "content-type": ({ ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".woff": "font/woff", ".woff2": "font/woff2" })[path.extname(file)] || "application/octet-stream" });
+      response.writeHead(200, { "content-type": ({ ".html": "text/html", ".js": "application/javascript", ".mjs": "application/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".woff": "font/woff", ".woff2": "font/woff2" })[path.extname(file)] || "application/octet-stream" });
       response.end(content);
     } catch { response.writeHead(404); response.end(); }
   });
