@@ -1,5 +1,5 @@
 import { projectFloors } from "./buildingDocument";
-import { assetOverrideSchema, boundarySchema, cfdScenarioSchema, type CFDScenario } from "./climoptixDocument";
+import { assetOverrideSchema, cfdScenarioSchema, type CFDScenario } from "./climoptixDocument";
 import type { CFDReport } from "./climoptix";
 import type { ProjectDocument } from "./projectDocument";
 
@@ -32,7 +32,7 @@ export function applyCFDHeating(scenario:CFDScenario,candidates:CFDHeatingCandid
       const override=assetOverrideSchema.parse({...previous,objectId:source.target,mode:"solidProxy",heatW:0,temperatureK,notes:"Surface temperature explicitly imported from heating workbench source; not inferred from water temperature or rated watts."});
       next.assetOverrides=[...next.assetOverrides.filter(item=>item.objectId!==source.target),override];
       next.hiddenObjectIds=next.hiddenObjectIds?.filter(id=>id!==source.target);
-    } else next.boundaries.patches[source.target]=boundarySchema.parse({...source.boundary,thermal:{type:"temperature",value:temperatureK,ambientK:scenario.physics.referenceTemperatureK},materialLabel:"UFH · explicit whole-floor surface temperature"});
+    } else throw new Error("UFH requires its actual heated zone footprint. Whole-floor temperature substitution is not supported; use Shared HVAC to export the zone boundary package.");
   }
   if(Object.keys(selected).length) {
     next.physics={...next.physics,preset:"custom",energy:true,boussinesq:true};

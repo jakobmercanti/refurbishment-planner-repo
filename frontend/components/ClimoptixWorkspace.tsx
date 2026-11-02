@@ -14,6 +14,7 @@ import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import type { SceneResultMetadata } from "./CFDSceneResult";
 import { CFDHeatingImport } from "./CFDHeatingImport";
 import { resolveHvacScenario } from "@/lib/hvacBridge";
+import { hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
 import { SharedHvacCFD } from "./SharedHvacCFD";
 import { useHvac } from "./HvacContext";
 import { CFDPointProbeControls, CFDPointProbeValue, useCFDPointProbe } from "./CFDPointProbeControls";
@@ -198,7 +199,7 @@ interface Props {
   project: ProjectDocument;
   apiUrl: string;
   menuTarget: HTMLElement | null;
-  onChange: (scenarios: CFDScenario[], checkpoint?: boolean, groups?: CFDSimulationGroup[]) => void;
+  onChange: (scenarios: CFDScenario[], checkpoint?: boolean, groups?: CFDSimulationGroup[], domain?: HvacDomainScope, copiedFrom?: Record<string, string>) => void;
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
@@ -434,7 +435,7 @@ export function ClimoptixWorkspace({
         scenarios.map((v) => (v.id === s.id ? result.data : v)),
         checkpoint || devicesChanged || regionsChanged || boundaryMembershipChanged || objectsChanged,
       );
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Invalid shared HVAC operation; previous inputs retained."); }
+    } catch (cause) { setError(hvacErrorMessage(cause, "Invalid shared HVAC operation; previous inputs retained.")); }
   };
   const thermalReport = scenario ? (thermalReports[scenario.id] ?? null) : null;
   const thermalBusy = thermalTask.studyId === scenario?.id && thermalTask.busy;
@@ -632,7 +633,7 @@ export function ClimoptixWorkspace({
         const now = current.current, live = now.scenarios.find(s => s.id === captured.id);
         if (controller.signal.aborted || !live || preparationInput(now.project, live) !== input) return;
         setReports(previous => ({ ...Object.fromEntries(Object.entries(previous).filter(([id]) => id !== captured.id).slice(-2)), [captured.id]: value }));
-        validationTarget.current.onChange(now.scenarios.map(s => s.id === captured.id ? { ...s, validation: value.validation } : s));
+        validationTarget.current.onChange(now.scenarios.map(s => s.id === captured.id ? { ...s, validation: value.validation } : s), false, undefined, { scenarioId: captured.id, rooms: value.domain.regions.filter(r => r.included).map(r => ({ floorId: r.floorId, roomId: r.id })) });
       }).catch(reason => {
         if (!controller.signal.aborted) setPreparationFailure({ input, message: reason instanceof Error ? reason.message : "Preparation unavailable. Your simulation is saved locally." });
       }).finally(() => { if (!controller.signal.aborted) setPreparing(""); });
@@ -1143,7 +1144,7 @@ export function ClimoptixWorkspace({
                   setMessage("");
                 }}
                 onChange={change}
-                onOrder={(next, groups) => onChange(next, true, groups)}
+                onOrder={(next, groups, copies) => { try { onChange(next, true, groups, undefined, copies); } catch (cause) { setError(hvacErrorMessage(cause)); } }}
                 onAdd={add}
                 onDelete={(id, opener) => setDeleting({ id, opener })}
                 onClear={setClearing}
@@ -1188,7 +1189,7 @@ export function ClimoptixWorkspace({
                       />
                     )}
                     {panel.id === "equipment" && (
-                      <><SharedHvacCFD scenario={scenario} report={activeReport} onEditSource={onEditBuilding} />
+                      <><SharedHvacCFD scenario={scenario} report={activeReport} checked={!stale && !busy} onEditSource={onEditBuilding} />
                       <EquipmentPanel
                         checked={!stale}
                         scenario={scenario}

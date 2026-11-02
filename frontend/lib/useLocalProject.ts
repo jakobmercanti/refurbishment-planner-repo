@@ -18,7 +18,7 @@ import { commitHeatingElements } from "./heatingElements";
 import { ProjectHistory } from "./projectHistory";
 import { matchesProjectScope } from "./projectScope";
 import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
-import { commitHvacCFD, hvacSchema, type HvacProject } from "./hvacDocument";
+import { commitHvacCFD, hvacSchema, type HvacProject, type HvacDomainScope } from "./hvacDocument";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
@@ -126,15 +126,16 @@ export function useLocalProject() {
     const p = current.current;
     if (!p || !matchesProjectScope(p, scope, sessionRef.current)) return;
     const changes = { hvac: hvacSchema.parse(hvac), ...(scenarios ? { cfdScenarios: cfdScenariosSchema.parse(scenarios) } : {}) };
+    if (new TextEncoder().encode(JSON.stringify({ ...p, ...changes })).byteLength > 8 * 1024 * 1024) throw new Error("This HVAC handoff would exceed the 8 MB project limit. Export the boundary package and remove an older saved handoff before retrying.");
     parseProject({ ...p, ...changes });
     update(changes, true);
   }, [update]);
-  const setCFDScenarios = useCallback((scenarios: CFDScenario[],scope?:string,checkpoint=false,groups?:CFDSimulationGroup[]) => {
+  const setCFDScenarios = useCallback((scenarios: CFDScenario[],scope?:string,checkpoint=false,groups?:CFDSimulationGroup[],domain?:HvacDomainScope,copiedFrom?:Record<string,string>) => {
     const p=current.current;
     if(!p||!matchesProjectScope(p,scope,sessionRef.current))return;
     const next=cfdScenariosSchema.parse(scenarios);
     if(next.some(s=>s.sourceBuildingId!==p.projectId))throw new Error("Scenario source does not match this project.");
-    const shared = commitHvacCFD(p, next);
+    const shared = commitHvacCFD(p, next, domain, copiedFrom);
     update({hvac:shared.hvac,cfdScenarios:shared.cfdScenarios,...(groups ? {cfdSimulationGroups:simulationGroupsSchema.parse(groups)} : {})},checkpoint);
   },[update]);
   const restoreEdit = useCallback((p: ProjectDocument | null) => { if(!p)return null;refreshHistory(); const next={...p,updatedAt:new Date().toISOString()};current.current=next;setProject(next);setRestore(next);setRevision(r=>r+1);return next; },[refreshHistory]);

@@ -37,7 +37,7 @@ class Conditions(Contract):
 
 class VentOperation(Contract):
     enabled: bool | None = None
-    valueSI: FiniteFloat | None = None
+    valueSI: Annotated[FiniteFloat, Field(ge=-1e9, le=1e9)] | None = None
     temperatureK: Annotated[FiniteFloat, Field(ge=150, le=1500)] | None = None
 
 
@@ -65,11 +65,18 @@ class Device(Contract):
     enabled: bool = True
 
 
+class RoomScope(Contract):
+    floorId: Identifier
+    roomId: Identifier
+
+
 class Binding(Contract):
     operatingScenarioId: Identifier | None = None
     deviceIds: list[Identifier] = Field(max_length=500)
     editMode: Literal["design", "override"] = "design"
     overrides: dict[Identifier, VentOperation] = Field(default_factory=dict, max_length=500)
+    scopeRooms: list[RoomScope] | None = Field(default=None, max_length=200)
+    scopeSeed: RoomScope | None = None
 
 
 class Snapshot(Contract):
@@ -77,7 +84,7 @@ class Snapshot(Contract):
     operatingScenarioId: Identifier
     createdAt: Annotated[str, Field(max_length=50)]
     inputHash: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
-    boundaryJson: Annotated[str, Field(max_length=100000)]
+    boundaryJson: Annotated[str, Field(max_length=1500000)]
 
     @model_validator(mode="after")
     def valid_package(self) -> Snapshot:

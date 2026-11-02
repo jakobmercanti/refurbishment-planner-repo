@@ -16,7 +16,8 @@ scrolling and support arrow keys, Home and End.
    existing CFD editor. Select another row, duplicate, reorder or remove with
    confirmation. Undo/Redo uses project history. Host validation still checks
    edges, openings and overlaps. 3D dragging remains in the established CFD
-   viewer. Checked plan markers use measured millimetres, never visual meshes.
+   viewer. The conventional plan also supports measured-host dragging, undo and
+   Escape cancellation. Checked plan markers use millimetres, never visual meshes.
 3. Set outdoor-air fraction, room conditions, infiltration, people, equipment,
    solar gain, target ACH and optional people/area flow rates. Results update
    live; **Update calculations** explicitly validates the current inputs.
@@ -103,9 +104,11 @@ inputs remain reviewable/exportable. No CFD temperature, local velocity, humidit
 fan energy or legal compliance result is invented. Existing unrelated isothermal
 CFD workflows remain operational.
 
-Handoff snapshots are limited to five packages of 100,000 characters each,
-consistent with existing project string bounds. Oversized/invalid handoffs fail
-before committing; full packages can still be downloaded separately.
+Handoff snapshots are limited to five packages of 1.5 million characters each,
+with an 8 MB total project guard. This exception applies only to validated HVAC
+snapshot text. Oversized/invalid handoffs fail before committing; full packages
+can still be downloaded separately. The fresh two-pass review and corrective
+regression evidence are in `HVAC_REAUDIT_2026-11-02.md`.
 
 ## Change map
 

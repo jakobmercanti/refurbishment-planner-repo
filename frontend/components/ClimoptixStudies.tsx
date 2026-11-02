@@ -33,7 +33,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
   onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
   onChange: (s: CFDScenario, checkpoint?: boolean) => void;
-  onOrder: (s: CFDScenario[], groups?: CFDSimulationGroup[]) => void;
+  onOrder: (s: CFDScenario[], groups?: CFDSimulationGroup[], copiedFrom?: Record<string, string>) => void;
   onAdd: (group?: string) => void;
   onDelete: (id: string, opener: HTMLButtonElement) => void;
   onClear: (opener: HTMLButtonElement) => void;
@@ -107,7 +107,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
               <div className="cfx-group-actions">
                 <button className="cfx-add-sim" aria-label={`Add simulation to ${group.name}`} disabled={scenarios.length >= 100} onClick={() => { setCollapsed(v => new Set([...v].filter(id => id !== group.id))); onAdd(group.name); }}>+ sim</button>
                 <button aria-label={`Duplicate group ${group.name}`} disabled={scenarios.length + allMembers.length > 100 || groups.length >= 100}
-                  onClick={() => { const copy = duplicateSimulationGroup(scenarios, groups, group.id); if (copy) { onOrder(copy.scenarios, copy.groups); setSelectedGroup(copy.groups.find(g => !groups.some(old => old.id === g.id))!.id); } }}>Duplicate</button>
+                  onClick={() => { const copy = duplicateSimulationGroup(scenarios, groups, group.id); if (copy) { const sources = scenarios.filter(s => sameGroup(s.group, group.name)), added = copy.scenarios.filter(s => !scenarios.some(old => old.id === s.id)); onOrder(copy.scenarios, copy.groups, Object.fromEntries(added.map((s, i) => [s.id, sources[i].id]))); setSelectedGroup(copy.groups.find(g => !groups.some(old => old.id === g.id))!.id); } }}>Duplicate</button>
                 <button className="cfx-danger" aria-label={`Delete group ${group.name}`} title="Remove this folder; keep its simulations in Ungrouped"
                   onClick={() => deleteGroup(group)}>Delete</button>
               </div>
@@ -142,7 +142,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                   </div>
                   <CFDRowMenu label={`Actions for ${s.name}`}>
                     <button onClick={e => { e.currentTarget.closest("details")!.open = false; setRenaming(s.id); }}>Rename</button>
-                    <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups); onSelect(copy.id); }}>Duplicate simulation</button>
+                    <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups, { [copy.id]: s.id }); onSelect(copy.id); }}>Duplicate simulation</button>
                     <button disabled={busy(s) || entry?.dispatched} onClick={() => onChange({ ...s, archived: !s.archived }, true)}>{s.archived ? "Unarchive" : "Archive"}</button>
                     <label>Move to group<select aria-label={`Move ${s.name} to group`} value={group.id} onChange={e => {
                       const target = groups.find(g => g.id === e.target.value)!;

@@ -81,22 +81,31 @@ export interface ProjectDocument {
   hvac?: HvacProject;
 }
 
-function inspectJson(value: unknown, depth = 0): void {
+function inspectJson(value: unknown, depth = 0, path: string[] = []): void {
   if (depth > 40) throw new Error("Project nesting limit exceeded.");
   if (typeof value === "number" && !Number.isFinite(value)) throw new Error("Invalid project number.");
-  if (typeof value === "string" && value.length > 100000) throw new Error("Project text exceeds the size limit.");
+  const snapshotText = path.length === 4 && path[0] === "hvac" && path[1] === "snapshots" && /^\d+$/.test(path[2]) && path[3] === "boundaryJson";
+  if (typeof value === "string" && value.length > (snapshotText ? 1500000 : 100000)) throw new Error("Project text exceeds the size limit.");
   if (!value || typeof value !== "object") return;
   for (const [key, item] of Object.entries(value)) {
     if (item === undefined || item === null) continue;
     if (["__proto__", "prototype", "constructor", "stl_base64", "stl_filename"].includes(key)) throw new Error("Unsupported project content.");
     if (typeof item === "string" && /(?:url|uri|path)$/i.test(key) && item !== "" && !/^\/(?:planner\/)?fixture-(symbols|previews)\/[\w-]+\.(svg|png|jpg|webp)$/.test(item) && !(key === "plan_symbol_data_url" && isLocalPlanSymbol(item))) throw new Error("External resources are not allowed in project files.");
-    inspectJson(item, depth + 1);
+    inspectJson(item, depth + 1, [...path, key]);
   }
 }
 function unique(values: string[]) { if (new Set(values).size !== values.length) throw new Error("Duplicate project entity ID."); }
 export function parseProject(input: unknown): ProjectDocument {
   inspectJson(input);
   if (!input || typeof input !== "object" || !("schemaVersion" in input) || input.schemaVersion !== 1) throw new Error("Unsupported project schema version. This app supports version 1.");
+  // Earlier HVAC saves retained bindings for deleted studies. Drop only those
+  // dead references before applying the bounded schema; devices and historical
+  // packages remain intact, including projects that cycled through >100 cases.
+  const candidate = input as { cfdScenarios?: unknown; hvac?: { bindings?: unknown } };
+  if (Array.isArray(candidate.cfdScenarios) && candidate.hvac && typeof candidate.hvac === "object" && candidate.hvac.bindings && typeof candidate.hvac.bindings === "object" && !Array.isArray(candidate.hvac.bindings)) {
+    const ids = new Set(candidate.cfdScenarios.map(s => s?.id));
+    input = { ...input, hvac: { ...candidate.hvac, bindings: Object.fromEntries(Object.entries(candidate.hvac.bindings).filter(([id]) => ids.has(id))) } };
+  }
   const parsed = documentSchema.parse(input) as unknown as ProjectDocument & { renderCamera?: unknown; electricalLayout?: unknown; plannerBuild?: unknown };
   const { renderCamera: rawCamera, electricalLayout: rawElectricalLayout, plannerBuild: rawPlannerBuild, ...projectFields } = parsed;
   const normalizedCamera = normalizeRenderCameraState(rawCamera);

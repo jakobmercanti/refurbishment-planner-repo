@@ -24,7 +24,7 @@ export const hvacConditionsSchema = z.object({
 }).strict().prefault({});
 export type HvacConditions = z.infer<typeof hvacConditionsSchema>;
 const ventOperation = z.object({
-  enabled: z.boolean().optional(), valueSI: finite.optional(),
+  enabled: z.boolean().optional(), valueSI: finite.min(-1e9).max(1e9).optional(),
   temperatureK: finite.min(150).max(1500).optional(),
 }).strict();
 const heaterOperation = z.object({ enabled: z.boolean().default(true), actualW: finite.nonnegative().max(1e9).nullable().default(null) }).strict();
@@ -35,26 +35,28 @@ const operatingScenario = z.object({
   heaterOverrides: z.record(id, heaterOperation).default({}),
 }).strict();
 export type HvacOperatingScenario = z.infer<typeof operatingScenario>;
-const device = z.object({
+export const ventDeviceSchema = z.object({
   vent: ventSchema, floorId: id, roomId: id,
   outdoorAirFraction: finite.min(0).max(1).default(1),
   extractKind: z.enum(["exhaust", "return"]).default("exhaust"),
   enabled: z.boolean().default(true),
 }).strict();
-export type VentDevice = z.infer<typeof device>;
+export type VentDevice = z.infer<typeof ventDeviceSchema>;
 const binding = z.object({
   operatingScenarioId: id.nullable().default(null),
   deviceIds: z.array(id).max(500),
   editMode: z.enum(["design", "override"]).default("design"),
   overrides: z.record(id, ventOperation).default({}),
+  scopeRooms: z.array(z.object({ floorId: id, roomId: id }).strict()).max(200).nullable().optional(),
+  scopeSeed: z.object({ floorId: id, roomId: id }).strict().nullable().optional(),
 }).strict();
 export const hvacSchema = z.object({
-  version: z.literal(1), devices: z.array(device).max(500),
+  version: z.literal(1), devices: z.array(ventDeviceSchema).max(500),
   scenarios: z.array(operatingScenario).max(100).default([]),
   activeScenarioId: id.nullable().default(null),
-  bindings: z.record(id, binding).default({}),
+  bindings: z.record(id, binding).refine(v => Object.keys(v).length <= 100, "A project supports 100 CFD bindings.").default({}),
   migrationWarnings: z.array(z.string().max(500)).max(500).default([]),
-  snapshots: z.array(z.object({ caseId: id, operatingScenarioId: id, createdAt: z.iso.datetime(), inputHash: z.string().regex(/^[a-f0-9]{64}$/), boundaryJson: z.string().max(100000).refine(value => { try { const parsed = JSON.parse(value); return parsed?.version === 1 && typeof parsed.sourceInput === "string"; } catch { return false; } }, "Invalid HVAC boundary snapshot.") }).strict()).max(5).default([]),
+  snapshots: z.array(z.object({ caseId: id, operatingScenarioId: id, createdAt: z.iso.datetime(), inputHash: z.string().regex(/^[a-f0-9]{64}$/), boundaryJson: z.string().max(1500000).refine(value => { try { const parsed = JSON.parse(value); return parsed?.version === 1 && typeof parsed.sourceInput === "string"; } catch { return false; } }, "Invalid HVAC boundary snapshot.") }).strict()).max(5).default([]),
 }).strict().superRefine((data, ctx) => {
   if (new Set(data.devices.map(d => d.vent.id)).size !== data.devices.length ||
       new Set(data.scenarios.map(s => s.id)).size !== data.scenarios.length ||
@@ -70,6 +72,10 @@ export const hvacSchema = z.object({
 });
 export type HvacProject = z.infer<typeof hvacSchema>;
 export const newHvacProject = (): HvacProject => hvacSchema.parse({ version: 1, devices: [] });
+export function hvacErrorMessage(cause: unknown, fallback = "Invalid HVAC inputs."): string {
+  return cause instanceof z.ZodError ? cause.issues.slice(0, 3).map(issue => issue.message).join(" ") : cause instanceof Error ? cause.message : fallback;
+}
+export interface HvacDomainScope { scenarioId: string; rooms: { floorId: string; roomId: string }[] }
 
 /** One-time identity reconciliation. Canonical designs are never copied into saved CFD arrays. */
 export function migrateHvac(project: ProjectDocument): ProjectDocument {
@@ -111,18 +117,35 @@ export function resolveHvacVents(project: ProjectDocument, scenario: CFDScenario
   if (!hvac || !link) return scenario.vents;
   const operating = hvac.scenarios.find(s => s.id === link.operatingScenarioId);
   const designs = operatingVents(hvac, operating);
-  return link.deviceIds.flatMap(id => {
-    const d = designs.find(d => d.vent.id === id), override = link.overrides[id];
-    if (!d || !(override?.enabled ?? d.enabled)) return [];
+  const scope = JSON.stringify(link.scopeSeed) === JSON.stringify(scenario.seed) ? link.scopeRooms ?? [] : [];
+  const rooms = [...scope, ...(scenario.seed ? [scenario.seed] : [])];
+  return designs.flatMap(d => {
+    const id = d.vent.id, override = link.overrides[id];
+    if (!link.deviceIds.includes(id) && !rooms.some(r => r.floorId === d.floorId && r.roomId === d.roomId)) return [];
+    if (!(override?.enabled ?? d.enabled)) return [];
     return [ventSchema.parse({ ...d.vent, valueSI: override?.valueSI ?? d.vent.valueSI, temperatureK: override?.temperatureK ?? d.vent.temperatureK })];
   });
 }
 
 /** The shared project command boundary for CFD edits, drags, duplication and optimiser moves. */
-export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]): ProjectDocument {
+export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[], domain?: HvacDomainScope, copiedFrom?: Record<string, string>): ProjectDocument {
   let next = migrateHvac(project);
   if (!next.hvac) return migrateHvac({ ...project, cfdScenarios: scenarios });
   const hvac = structuredClone(next.hvac);
+  for (const [copyId, sourceId] of Object.entries(copiedFrom ?? {})) {
+    if (project.cfdScenarios?.some(s => s.id === copyId) || !scenarios.some(s => s.id === copyId)) continue;
+    const source = hvac.bindings[sourceId]; if (!source) continue;
+    const copy = structuredClone(source), operation = hvac.scenarios.find(s => s.id === source.operatingScenarioId);
+    if (operation) {
+      if (hvac.scenarios.length >= 100) throw new Error("The 100-scenario HVAC limit is reached. The case was not duplicated.");
+      const overrides = structuredClone(operation.ventOverrides);
+      for (const [id, override] of Object.entries(copy.overrides)) overrides[id] = { ...overrides[id], ...override };
+      const cloned = { ...structuredClone(operation), id: crypto.randomUUID(), name: `${operation.name.slice(0, 95)} copy`, ventOverrides: overrides };
+      hvac.scenarios.push(cloned); copy.operatingScenarioId = cloned.id; copy.overrides = {};
+    }
+    hvac.bindings[copyId] = copy;
+  }
+  const deleted = new Set<string>();
   const stored = scenarios.map(s => {
     const old = project.cfdScenarios?.find(item => item.id === s.id);
     const before = old ? resolveHvacVents(next, old) : [];
@@ -131,16 +154,23 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
     if (old && s === old) return s;
     const removed = before.filter(v => !s.vents.some(v2 => v2.id === v.id));
     const operating = hvac.scenarios.find(op => op.id === link.operatingScenarioId);
-    if (operating) operating.conditions = hvacConditionsSchema.parse({ ...operating.conditions,
-      densityKgM3: s.physics.densityKgM3, cpJKgK: s.physics.heatCapacityJKgK,
-      roomC: s.physics.referenceTemperatureK - 273.15, outdoorC: s.physics.outdoorTemperatureK - 273.15,
-    });
+    const baselineOperation = next.hvac!.scenarios.find(op => op.id === link.operatingScenarioId);
+    if (operating && baselineOperation) {
+      const c = baselineOperation.conditions;
+      operating.conditions = hvacConditionsSchema.parse({ ...operating.conditions,
+        ...(s.physics.densityKgM3 !== c.densityKgM3 ? { densityKgM3: s.physics.densityKgM3 } : {}),
+        ...(s.physics.heatCapacityJKgK !== c.cpJKgK ? { cpJKgK: s.physics.heatCapacityJKgK } : {}),
+        ...(s.physics.referenceTemperatureK !== c.roomC + 273.15 ? { roomC: s.physics.referenceTemperatureK - 273.15 } : {}),
+        ...(s.physics.outdoorTemperatureK !== c.outdoorC + 273.15 ? { outdoorC: s.physics.outdoorTemperatureK - 273.15 } : {}),
+      });
+    }
     for (const v of removed) {
       if (link.editMode === "override") {
         if (operating) operating.ventOverrides[v.id] = { ...operating.ventOverrides[v.id], enabled: false };
         else link.overrides[v.id] = { ...link.overrides[v.id], enabled: false };
       }
       else {
+        deleted.add(v.id);
         hvac.devices = hvac.devices.filter(d => d.vent.id !== v.id);
         for (const b of Object.values(hvac.bindings)) { b.deviceIds = b.deviceIds.filter(id => id !== v.id); delete b.overrides[v.id]; }
         for (const op of hvac.scenarios) delete op.ventOverrides[v.id];
@@ -150,8 +180,16 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
       const owner = projectFloors(project).flatMap(f => f.content.rooms.map(room => ({ floorId: f.id, roomId: room.id, prefix: `${f.id}:${room.id}:` }))).filter(r => v.host.patchId.startsWith(r.prefix)).sort((a, b) => b.prefix.length - a.prefix.length)[0];
       const found = hvac.devices.find(d => d.vent.id === v.id);
       const prior = before.find(item => item.id === v.id);
+      if (prior && JSON.stringify(prior) === JSON.stringify(v)) continue;
+      if (deleted.has(v.id)) throw new Error("Conflicting simultaneous vent edits and deletion. Refresh the case and retry.");
       if (!found) hvac.devices.push({ vent: v, floorId: owner?.floorId ?? s.seed?.floorId ?? "unassigned", roomId: owner?.roomId ?? s.seed?.roomId ?? "unassigned", outdoorAirFraction: 1, extractKind: "exhaust", enabled: true });
-      else if (JSON.stringify(prior) !== JSON.stringify(v)) {
+      else if (!old) {
+        const geometry = (vent: CFDVent) => JSON.stringify({ ...vent, valueSI: 0, temperatureK: 0 });
+        if (geometry(found.vent) !== geometry(v)) throw new Error("Imported vent geometry conflicts with a shared design ID. Give the imported device a new ID before importing.");
+        const effective = operatingVents(hvac, operating).find(d => d.vent.id === v.id)?.vent ?? found.vent;
+        if (effective.valueSI !== v.valueSI || effective.temperatureK !== v.temperatureK) link.overrides[v.id] = { valueSI: v.valueSI, temperatureK: v.temperatureK };
+      }
+      else {
         if (link.editMode === "override") {
           found.vent = { ...v, valueSI: found.vent.valueSI, temperatureK: found.vent.temperatureK };
           if (operating) operating.ventOverrides[v.id] = { ...operating.ventOverrides[v.id], valueSI: v.valueSI, temperatureK: v.temperatureK };
@@ -175,7 +213,8 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
       if (!link.deviceIds.includes(v.id)) link.deviceIds.push(v.id);
     }
     const order = s.objectGroups?.flatMap(g => g.memberIds.filter(id => id.startsWith("vent:")).map(id => id.slice(5))) ?? s.vents.map(v => v.id);
-    const beforeOrder = old?.objectGroups?.flatMap(g => g.memberIds.filter(id => id.startsWith("vent:")).map(id => id.slice(5))) ?? before.map(v => v.id);
+    const rank = new Map(next.hvac!.devices.map((d, i) => [d.vent.id, i]));
+    const beforeOrder = old?.objectGroups?.flatMap(g => g.memberIds.filter(id => id.startsWith("vent:")).map(id => id.slice(5)).sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity))) ?? before.map(v => v.id);
     if (link.editMode === "design" && JSON.stringify(order) !== JSON.stringify(beforeOrder)) {
       const ids = new Set(order), ordered = order.flatMap(id => hvac.devices.filter(d => d.vent.id === id));
       hvac.devices = [...hvac.devices.filter(d => !ids.has(d.vent.id)), ...ordered];
@@ -183,6 +222,12 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
     hvac.bindings[s.id] = link;
     return { ...s, vents: [] };
   });
+  const studyIds = new Set(stored.map(s => s.id));
+  hvac.bindings = Object.fromEntries(Object.entries(hvac.bindings).filter(([id]) => studyIds.has(id)));
+  if (domain && hvac.bindings[domain.scenarioId]) {
+    hvac.bindings[domain.scenarioId].scopeRooms = domain.rooms;
+    hvac.bindings[domain.scenarioId].scopeSeed = stored.find(s => s.id === domain.scenarioId)?.seed ?? null;
+  }
   next = { ...next, hvac: hvacSchema.parse(hvac), cfdScenarios: stored };
   return next;
 }

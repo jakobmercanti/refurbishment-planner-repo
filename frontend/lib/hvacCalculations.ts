@@ -1,4 +1,4 @@
-import { hvacConditionsSchema, type HvacConditions, type VentDevice } from "./hvacDocument";
+import { hvacConditionsSchema, ventDeviceSchema, type HvacConditions, type VentDevice } from "./hvacDocument";
 
 export interface HvacSurface { label: string; hWK: number; adjacentC: number }
 export interface HvacHeat { id: string; name: string; watts: number | null }
@@ -30,7 +30,7 @@ export function calculateHvac(input: {
   const surfaces = input.surfaces ?? [];
   if (surfaces.some(s => !Number.isFinite(s.hWK) || s.hWK < 0 || !Number.isFinite(s.adjacentC))) throw new Error("Invalid envelope conductance or source temperature.");
   const warnings: string[] = [];
-  const streams = input.devices.filter(d => d.enabled).map(device => {
+  const streams = input.devices.map(d => ventDeviceSchema.parse(d)).filter(d => d.enabled).map(device => {
     const flowM3S = ventFlowM3S(device, c.densityKgM3), areaM2 = ventAreaM2(device);
     if (!(areaM2 > 0)) throw new Error("Vent effective area must be positive.");
     if (flowM3S === null) warnings.push(`${device.vent.name}: pressure-controlled flow is unknown until solved.`);
@@ -45,7 +45,8 @@ export function calculateHvac(input: {
   const recirculatedM3S = supplyM3S === null || outdoorM3S === null ? null : supplyM3S - outdoorM3S;
   if (recirculatedM3S && returnM3S !== null && returnM3S < recirculatedM3S - 1e-8) warnings.push("Recirculated supply exceeds declared return flow; review the mixing/return path.");
   const balanceM3S = supplyM3S === null || extractM3S === null ? null : supplyM3S + c.infiltrationM3S - extractM3S;
-  const massValid = balanceM3S === null || balanceM3S >= -1e-8;
+  const knownExtract = extracts.reduce((sum, s) => sum + (s.flowM3S ?? 0), 0);
+  const massValid = supplyM3S !== null && supplyM3S + c.infiltrationM3S >= knownExtract - 1e-8;
   if (!massValid) warnings.push("Extract exceeds known inflow. Add the actual infiltration/transfer path before calculating room temperature.");
   if (balanceM3S !== null && balanceM3S > 1e-8) warnings.push("Surplus inflow requires a pressure outlet or equal relief/exfiltration at room temperature; no extra outdoor inflow is invented.");
   const heating = c.includeHeating ? input.heating ?? [] : [];

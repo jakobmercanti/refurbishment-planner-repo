@@ -605,13 +605,11 @@ test("refinement regions are editable visual intent, patch isolation works, and 
   );
   await ui.getByRole("button", { name: "Done", exact: true }).click();
   await validate(ui);
-  const downloadEvent = page.waitForEvent("download");
   await cfdWindow(ui, "Review & export");
   await ui.getByRole("tab", { name: "Import / export", exact: true }).click();
-  await ui
-    .getByRole("button", { name: "Download settings & preflight", exact: true })
-    .click();
-  const file = await downloadEvent;
+  const exportButton = ui.getByRole("button", { name: "Download settings & preflight", exact: true });
+  await eventually(() => exportButton.isEnabled(), enabled => enabled);
+  const [file] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
   assert.match(
     await readFile(await file.path(), "utf8"),
     /MESH INTENT — NOT GENERATED CELLS/,

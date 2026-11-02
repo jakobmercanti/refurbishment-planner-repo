@@ -55,6 +55,16 @@ def test_invalid_scenario_flow_and_corrupt_snapshot_are_rejected():
     data["bindings"]["case-1"]["overrides"] = {"supply-1": {"valueSI": -1}}
     with pytest.raises(ValidationError, match="positive"):
         HvacProject.model_validate(data)
+
+
+def test_domain_scope_and_bounded_overrides_match_client_contract():
+    data = hvac()
+    data["bindings"]["case-1"]["scopeRooms"] = [{"floorId": "ground", "roomId": "room"}]
+    data["bindings"]["case-1"]["scopeSeed"] = {"floorId": "ground", "roomId": "room"}
+    assert HvacProject.model_validate(data).bindings["case-1"].scopeRooms[0].roomId == "room"
+    data["bindings"]["case-1"]["overrides"] = {"supply-1": {"valueSI": 1e50}}
+    with pytest.raises(ValidationError):
+        HvacProject.model_validate(data)
     data = hvac()
     data["snapshots"] = [
         {
@@ -94,3 +104,22 @@ def test_cloud_project_accepts_shared_hvac_and_rejects_invalid_devices():
     with pytest.raises(HTTPException) as error:
         _validate_project(document, project_id)
     assert error.value.status_code == 422
+
+
+def test_large_boundary_packages_have_a_separate_bounded_snapshot_limit():
+    import json
+
+    data = hvac()
+    data["snapshots"] = [
+        {
+            "caseId": "case-1",
+            "operatingScenarioId": "op",
+            "createdAt": "2026-11-02T00:00:00Z",
+            "inputHash": "0" * 64,
+            "boundaryJson": json.dumps({"version": 1, "sourceInput": "x" * 150000}),
+        }
+    ]
+    assert len(HvacProject.model_validate(data).snapshots[0].boundaryJson) > 100000
+    data["snapshots"][0]["boundaryJson"] = "x" * 1500001
+    with pytest.raises(ValidationError):
+        HvacProject.model_validate(data)

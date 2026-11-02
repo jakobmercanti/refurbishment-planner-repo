@@ -19,7 +19,18 @@ function editKey(p: ProjectDocument) {
   }));
   // Schema parsing and editor hydration can insert identical fields in a
   // different order. Compare object contents, while retaining array order.
-  return JSON.stringify([floors,buildingOf(p).roof,p.cfdScenarios?.map(s=>({...s,validation:undefined,updatedAt:undefined}))??[],p.cfdSimulationGroups??[],p.hvac],(_key,value:unknown)=>
+  const hvac = p.hvac ? { ...p.hvac, activeScenarioId: undefined, bindings: Object.fromEntries(Object.entries(p.hvac.bindings).map(([id, binding]) => [id, { ...binding, editMode: undefined, scopeRooms: undefined, scopeSeed: undefined }])) } : undefined;
+  const radiatorIds = new Set(projectFloors(p).flatMap(f => f.content.rooms.flatMap(r => r.obstacles.filter(o => o.heating_spec && o.heating_spec.category !== "Boiler").map(o => o.id))));
+  const cases = p.cfdScenarios?.map(s => {
+    const binding = p.hvac?.bindings[s.id], linked = !!binding?.operatingScenarioId;
+    return { ...s, validation: undefined, updatedAt: undefined,
+      assetOverrides: binding ? s.assetOverrides.filter(o => !radiatorIds.has(o.objectId)) : s.assetOverrides,
+      // These fields are projections of the shared operating scenario, not
+      // independent modelling edits made by background preparation.
+      ...(linked ? { physics: { ...s.physics, preset: undefined, energy: undefined, boussinesq: undefined, densityKgM3: undefined, heatCapacityJKgK: undefined, referenceTemperatureK: undefined, initialTemperatureK: undefined, outdoorTemperatureK: undefined }, outputs: { ...s.outputs, temperature: undefined }, postProcessing: { ...s.postProcessing, fields: s.postProcessing.fields.filter(f => f !== "T") } } : {}),
+    };
+  }) ?? [];
+  return JSON.stringify([floors,buildingOf(p).roof,cases,p.cfdSimulationGroups??[],hvac],(_key,value:unknown)=>
     value&&typeof value==="object"&&!Array.isArray(value)
       ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0))
       :value);
