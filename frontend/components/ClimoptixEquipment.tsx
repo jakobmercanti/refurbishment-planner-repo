@@ -10,6 +10,9 @@ import { assetOverrideSchema, ventSchema, type CFDScenario, type CFDVent } from 
 import type { CFDReport } from "@/lib/climoptix";
 import { CFDNumber, CFDText, Parameters, labelFor } from "./CFDFields";
 import { ventCenter } from "@/lib/climoptixPreview";
+import { useHvac } from "./HvacContext";
+import { hvacBoundaryPackage } from "@/lib/hvacBridge";
+import type { FlowUnit } from "@/lib/cfdUnits";
 
 export function EquipmentPanel({
   scenario,
@@ -36,9 +39,10 @@ export function EquipmentPanel({
   checked?: boolean;
   placement?: boolean;
 }) {
+  const hvacContext = useHvac();
   const unitPreference = useSyncExternalStore(subscribeEngineeringUnits, getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot);
   const [flowOverride, setFlowUnit] = useState<string | null>(null);
-  const flowUnit = flowOverride ?? parseEngineeringUnits(unitPreference).cfdFlowUnit ?? "L/s";
+  const flowUnit = hvacContext?.flowUnit ?? flowOverride ?? parseEngineeringUnits(unitPreference).cfdFlowUnit ?? "L/s";
   const selectedObjectId =
     report?.patches.find((p) => p.kind === "object" && p.id === selected)
       ?.sourceId ?? selected;
@@ -82,6 +86,7 @@ export function EquipmentPanel({
               v,
             ],
           });
+        const sharedHeater = hvacContext?.project.hvac?.bindings[scenario.id] ? hvacBoundaryPackage(hvacContext.project, scenario).heaters.find(h => h.id === obj.id) : null;
         return (
           <section className="cfx-card" data-cfx-collapse-root>
             <header className="cfx-inline-toolbar"><h3>{obj.name}</h3><WindowHelpButton title="Object proxy" steps={[{ heading: "Measured proxy", text: obj.profile ? `Catalogue proxy: ${obj.profile}` : "No eligible catalogue proxy. Exclude this asset or explicitly review a conservative box." }, ...(obj.assumptions ?? []).map(text => ({ heading: "Proxy assumption", text }))]} /><CFDCollapseAll/></header>
@@ -98,6 +103,7 @@ export function EquipmentPanel({
                 CFD treatment
                 <select
                   value={override.mode}
+                  disabled={!!sharedHeater}
                   onChange={(e) =>
                     apply({
                       ...override,
@@ -116,20 +122,24 @@ export function EquipmentPanel({
               <CFDNumber
                 label={`Heat · ${obj.name} (W)`}
                 value={override.heatW}
+                disabled={!!sharedHeater}
                 onChange={(heatW) => apply({ ...override, heatW })}
               />
               <CFDNumber
                 label={`CO₂ · ${obj.name} (m³/s)`}
                 value={override.co2M3S}
+                disabled={!!sharedHeater}
                 onChange={(co2M3S) => apply({ ...override, co2M3S })}
               />
               <CFDNumber
                 label={`Count · ${obj.name}`}
                 value={override.count}
+                disabled={!!sharedHeater}
                 onChange={(count) => apply({ ...override, count })}
               />
             </div>
-            <Parameters
+            {sharedHeater && <p className="cfx-notice">Shared Heating output. Change its operating watts in Shared HVAC design &amp; operation, or open Heating to edit design geometry/ratings.</p>}
+            {!sharedHeater && <Parameters
               value={override}
               omit={[
                 "objectId",
@@ -140,10 +150,11 @@ export function EquipmentPanel({
                 "temperatureK",
               ]}
               onChange={(v) => apply(v as typeof override)}
-            />
+            />}
             <label className="cfx-check">
               <input
                 type="checkbox"
+                disabled={!!sharedHeater}
                 checked={override.temperatureK !== null}
                 onChange={(e) =>
                   apply({
@@ -307,7 +318,7 @@ export function EquipmentPanel({
               <select
                 aria-label="Flow display unit"
                 value={flowUnit}
-                onChange={(e) => setFlowUnit(e.target.value)}
+                onChange={(e) => { setFlowUnit(e.target.value); hvacContext?.setFlowUnit(e.target.value as FlowUnit); }}
               >
                 {["L/s", "m³/h", "m³/s"].map((u) => (
                   <option key={u}>{u}</option>

@@ -87,7 +87,7 @@ def validate_building(
             base = {
                 k: v
                 for k, v in document.items()
-                if k not in {"building", "electricalLayout", "heatingLayout", "energyLayout", "cfdScenarios", "cfdSimulationGroups"}
+                if k not in {"building", "electricalLayout", "heatingLayout", "energyLayout", "cfdScenarios", "cfdSimulationGroups", "hvac"}
             }
             validate_content({**base, **payload})
         owned_ids: set[str] = set()

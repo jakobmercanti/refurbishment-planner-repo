@@ -11,12 +11,17 @@ import { CFDRowMenu } from "./CFDRowMenu";
 import { CFDEditorWindow } from "./CFDEditorWindow";
 import { CFDConfirmAction } from "./CFDConfirmAction";
 import { CFDCollapseAll } from "./CFDCollapseAll";
+import { useHvac } from "./HvacContext";
+import { hvacBoundaryPackage } from "@/lib/hvacBridge";
 
 export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChange, onAdd, onPick, onEditVent, onEditSource, renderObject, canAdd, canPlace, checked }: {
   scenario: CFDScenario; objects: CFDObject[]; selected: string | null; onSelect: (id: string) => void; onChange: (scenario: CFDScenario) => void;
   onAdd: (role: "supply" | "extract", group: string) => void; onPick: () => void; onEditVent?: (id: string) => void;
   onEditSource: () => void; renderObject: (id: string) => ReactNode; canAdd: boolean; canPlace: boolean; checked: boolean;
 }) {
+  const hvac = useHvac();
+  const sharedHeaters = new Set(hvac?.project.hvac?.bindings[scenario.id] ? hvacBoundaryPackage(hvac.project, scenario).heaters.filter(h => h.kind === "radiator").map(h => h.id) : []);
+  const editHeating = () => { hvac?.setTab("Heating"); hvac?.requestHeating(); onEditSource(); };
   const groups = objectGroups(scenario, objects), entries = objectEntries(scenario, objects);
   const [selectedGroup, setSelectedGroup] = useState(DEFAULT_OBJECT_GROUP);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -49,7 +54,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
       <CFDConfirmAction title="Clear all CFD objects?" disabled={!entries.length && !scenario.objectGroups?.length && !scenario.assetOverrides.length && !scenario.objectCopies?.length}
         description="Remove every vent, CFD copy and object treatment from this simulation. Source furniture and measured room geometry are kept, but excluded from this simulation. Undo can restore the previous setup."
         onConfirm={() => {
-          const originals = objects.filter(o => !scenario.objectCopies?.some(copy => copy.id === o.id)).map(o => o.id);
+          const originals = objects.filter(o => !sharedHeaters.has(o.id) && !scenario.objectCopies?.some(copy => copy.id === o.id)).map(o => o.id);
           onChange({ ...scenario, vents: [], assetOverrides: [], objectCopies: [], objectGroups: [], hiddenObjectIds: [...new Set([...scenario.hiddenObjectIds ?? [], ...originals])] });
           setEditing(null); setSelectedGroup(DEFAULT_OBJECT_GROUP); setCollapsed(new Set());
         }} />
@@ -70,7 +75,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
                 <button className="cfx-group-select" aria-pressed={currentGroup.id === group.id} onClick={() => setSelectedGroup(group.id)}>{group.name}</button>
                 <div className="cfx-group-actions">
                   <button aria-label={`Edit object group ${group.name}`} onClick={() => setEditing({ type: "group", id: group.id })}>Edit</button>
-                  <button disabled={groups.length >= 100 || members.some(e => e.type === "object" && objects.find(o => o.id === e.sourceId)?.roomId === "unresolved")}
+                  <button disabled={groups.length >= 100 || members.some(e => sharedHeaters.has(e.sourceId) || e.type === "object" && objects.find(o => o.id === e.sourceId)?.roomId === "unresolved")}
                     aria-label={`Duplicate object group ${group.name}`} onClick={() => {
                       const copy = { id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name), group.name.slice(0, 70) + " copy"), memberIds: [] as string[] };
                       let next = scenario;
@@ -90,8 +95,8 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
                 <button className="cfx-device-name" aria-label={`Select ${entry.name}`} onClick={() => onSelect(entry.type === "vent" ? entry.id : entry.sourceId)}><strong>{entry.name}</strong><small>{entry.detail}</small></button>
                 <div className="cfx-device-actions">
                   <button aria-label={`Edit ${entry.name}`} onClick={() => edit(entry)}>Edit</button>
-                  <button aria-label={`Duplicate ${entry.name}`} disabled={entry.type === "object" && objects.find(o => o.id === entry.sourceId)?.roomId === "unresolved"} onClick={() => duplicate(entry, group.id)}>Duplicate</button>
-                  <button className="cfx-danger" aria-label={`Delete ${entry.name}`} onClick={() => { onChange(deleteObjectEntry(scenario, entry)); if (editing?.id === entry.sourceId) setEditing(null); }}>Delete</button>
+                  <button aria-label={`Duplicate ${entry.name}`} title={sharedHeaters.has(entry.sourceId) ? "Duplicate measured heating devices in Heating, then they appear here automatically." : undefined} disabled={sharedHeaters.has(entry.sourceId) || entry.type === "object" && objects.find(o => o.id === entry.sourceId)?.roomId === "unresolved"} onClick={() => duplicate(entry, group.id)}>Duplicate</button>
+                  {sharedHeaters.has(entry.sourceId) ? <button onClick={editHeating}>Edit in Heating</button> : <button className="cfx-danger" aria-label={`Delete ${entry.name}`} onClick={() => { onChange(deleteObjectEntry(scenario, entry)); if (editing?.id === entry.sourceId) setEditing(null); }}>Delete</button>}
                 </div>
                 <CFDRowMenu label={`Move ${entry.name}`}><label>Move to group<select aria-label={`Move ${entry.name} to group`} value={group.id} onChange={e => {
                   const target = groups.find(g => g.id === e.target.value)!;

@@ -1,0 +1,123 @@
+import { projectFloors } from "./buildingDocument";
+import { withEnergyFabric } from "./energyCalculations";
+import { newEnergyProject } from "./energyDocument";
+import { heatingResults } from "./heatingDesign";
+import { newHeatingProject } from "./heatingDocument";
+import { withHeatingElements } from "./heatingElements";
+import { assetOverrideSchema, type CFDScenario } from "./climoptixDocument";
+import { calculateHvac, ventAreaM2, ventFlowM3S } from "./hvacCalculations";
+import { operatingVents, resolveHvacVents, type HvacConditions, type HvacOperatingScenario } from "./hvacDocument";
+import type { ProjectDocument } from "./projectDocument";
+import type { CFDReport } from "./climoptix";
+
+/** All powers are room-effective thermal W, never water temperatures or electrical fan draw. */
+export function hvacHeatingSources(project: ProjectDocument, operating?: HvacOperatingScenario | null) {
+  return projectFloors(project).flatMap(floor => {
+    const data = floor.content;
+    let heating = withHeatingElements(data.heatingLayout ?? newHeatingProject(), data.rooms);
+    if (operating && floor.id === operating.floorId) heating = { ...heating,
+      buildingSettings: { ...heating.buildingSettings, externalDesignTemperatureC: operating.conditions.outdoorC },
+      rooms: [...heating.rooms.filter(r => r.roomId !== operating.roomId), {
+        roomId: operating.roomId,
+        airChangeRate: 0, selectedEmitterType: "Radiator", floorBoundary: "Ground", ceilingBoundary: "External", adjacentTemperatureC: 10, walls: {},
+        ...heating.rooms.find(r => r.roomId === operating.roomId),
+        // Evaluate emitter output at this scenario's air temperature; retain all design settings.
+        ...( { designIndoorTemperatureC: operating.conditions.roomC, designTemperatureOverride: true } ),
+      }],
+    };
+    heating = withEnergyFabric(heating, data.energyLayout ?? newEnergyProject(), data.rooms);
+    return heatingResults(data.rooms, heating).rooms.map(row => ({ floorId: floor.id, row, heating }));
+  });
+}
+
+export function conventionalHvac(project: ProjectDocument, operating: HvacOperatingScenario) {
+  const source = hvacHeatingSources(project, operating).find(r => r.floorId === operating.floorId && r.row.room.id === operating.roomId);
+  if (!source) throw new Error("Select an existing measured room on this floor.");
+  const row = source.row;
+  const heaters = [...row.emitters.filter(e => e.radiator.category !== "Boiler").map(e => ({ id: e.radiator.radiatorId, name: e.radiator.model, watts: e.outputW })),
+    ...row.zones.map(z => ({ id: z.zone.zoneId, name: z.zone.name, watts: z.warnings.length ? null : z.outputW }))].map(h => {
+      const o = operating.heaterOverrides[h.id];
+      return { ...h, watts: o?.enabled === false ? 0 : o?.actualW ?? h.watts };
+    });
+  const devices = operatingVents(project.hvac!, operating).filter(d => d.floorId === operating.floorId && d.roomId === operating.roomId);
+  return calculateHvac({ areaM2: row.demand.areaM2, volumeM3: row.demand.volumeM3, conditions: operating.conditions, devices,
+    surfaces: row.demand.surfaces.map(s => ({ label: s.label, hWK: s.boundary === "Adiabatic" ? 0 : s.uValue * s.areaM2, adjacentC: s.adjacentTemperatureC })), heating: heaters });
+}
+
+export interface HvacCfdBoundaryPackage {
+  version: 1; units: "mm"; scenarioId: string; operatingScenarioId: string | null;
+  conditions: HvacConditions | null;
+  zoneGains: { peopleW: number; equipmentW: number; solarW: number; mapping: "requiresLocatedSources" } | null;
+  envelope: { floorId: string; roomId: string; surfaceKey: string; label: string; areaM2: number; uWm2K: number; adjacentC: number; boundary: string }[];
+  sourceInput: string; vents: { id: string; roomId: string; floorId: string; host: string; role: string; areaM2: number; volumeFlowM3S: number | null; massFlowKgS: number | null; meanNormalVelocityMS: number | null; temperatureK: number; control: string }[];
+  heaters: { id: string; name: string; floorId: string; roomId: string; kind: "radiator" | "ufh"; watts: number | null; enabled: boolean; inDomain: boolean; model: string; coverageM2: number | null; footprint: unknown; notes: string }[];
+  warnings: string[]; thermalExecution: "notConnected";
+}
+
+export function hvacBoundaryPackage(project: ProjectDocument, scenario: CFDScenario, report?: CFDReport | null): HvacCfdBoundaryPackage {
+  const hvac = project.hvac, binding = hvac?.bindings[scenario.id];
+  const operating = hvac?.scenarios.find(s => s.id === binding?.operatingScenarioId);
+  const density = operating?.conditions.densityKgM3 ?? 1.2;
+  const vents = resolveHvacVents(project, scenario).map(vent => {
+    const d = hvac?.devices.find(d => d.vent.id === vent.id);
+    const device = { vent, enabled: true, floorId: d?.floorId ?? "unassigned", roomId: d?.roomId ?? "unassigned", outdoorAirFraction: d?.outdoorAirFraction ?? 1, extractKind: d?.extractKind ?? "exhaust" as const };
+    const q = ventFlowM3S(device, density), areaM2 = ventAreaM2(device);
+    return { id: vent.id, roomId: device.roomId, floorId: device.floorId, host: vent.host.patchId, role: vent.role === "extract" ? device.extractKind : "supply", areaM2, volumeFlowM3S: q, massFlowKgS: q === null ? null : q * density, meanNormalVelocityMS: q === null ? null : q / areaM2, temperatureK: vent.temperatureK, control: vent.control };
+  });
+  const included = (floorId: string, roomId: string) => report ? report.domain.regions.some(r => r.included && r.id === roomId && r.floorId === floorId) : scenario.seed?.floorId === floorId && scenario.seed?.roomId === roomId;
+    const heaters: HvacCfdBoundaryPackage["heaters"] = [];
+  const envelope: HvacCfdBoundaryPackage["envelope"] = [];
+  for (const { floorId, row, heating } of hvacHeatingSources(project, operating)) {
+    envelope.push(...row.demand.surfaces.map(s => ({ floorId, roomId: row.room.id, surfaceKey: s.key, label: s.label, areaM2: s.areaM2, uWm2K: s.uValue, adjacentC: s.adjacentTemperatureC, boundary: s.boundary })));
+    for (const e of row.emitters.filter(e => e.radiator.category !== "Boiler")) {
+      const override = operating?.heaterOverrides[e.radiator.radiatorId];
+      heaters.push({ id: e.radiator.radiatorId, name: e.radiator.model, floorId, roomId: row.room.id, kind: "radiator", watts: override?.enabled === false ? 0 : override?.actualW ?? e.outputW,
+        enabled: override?.enabled !== false && (operating?.conditions.includeHeating ?? true), inDomain: included(floorId, row.room.id), model: "solidProxySurfacePower", coverageM2: null, footprint: e.radiator.positionMm,
+        notes: `${e.note} Lumped room-effective sensible heat distributed once over exposed proxy surfaces. Radiation is not separately resolved; no local comfort claim.` });
+    }
+    for (const z of row.zones) {
+      const override = operating?.heaterOverrides[z.zone.zoneId];
+      heaters.push({ id: z.zone.zoneId, name: z.zone.name, floorId, roomId: row.room.id, kind: "ufh", watts: override?.enabled === false ? 0 : override?.actualW ?? (z.warnings.length ? null : z.outputW),
+        enabled: override?.enabled !== false && (operating?.conditions.includeHeating ?? true), inDomain: included(floorId, row.room.id), model: "zoneHeatFluxRequiresFaceMapping", coverageM2: z.coveredAreaM2,
+        footprint: { roomPolygonMm: row.room.vertices, exclusions: heating.exclusions.filter(e => e.roomId === row.room.id), circuits: z.circuits.map(c => ({ id: c.circuit.circuitId, pathMm: c.circuit.pathMm, spacingMm: c.circuit.spacingMm })), zone: z.zone },
+        notes: "Upward room-side watts from the existing UFH performance model. Partial coverage retained. Native adapter cannot yet split heated/unheated floor faces; not applied to the whole floor." });
+    }
+  }
+  const warnings = ["Thermal execution is not connected to the isothermal native worker. Export this package for a compatible energy solver.",
+    "Room-average sensible balance assumes steady, well-mixed air and lumped radiant exchange. It does not predict local temperatures, draught or humidity.",
+    "Envelope U-values include the Heating model's film assumptions. Review the existing CFD Thermal Envelope adapter before imposing Robin conditions; do not add room-side film resistance twice.",
+    ...(operating && (operating.conditions.occupants || operating.conditions.equipmentW || operating.conditions.solarW) ? ["Zone-average people/equipment/solar gains are exported as intent. Located CFD source/receiver mapping is not connected; no extra air heat source is invented."] : []),
+    ...(operating?.conditions.infiltrationM3S ? ["Conventional infiltration has no located CFD opening; define its physical boundary before thermal solving."] : []),
+    ...heaters.filter(h => h.inDomain && h.enabled && h.watts === null).map(h => `${h.name}: effective heat is unknown; enter reviewed actual watts.`),
+    ...heaters.filter(h => h.inDomain && h.enabled && h.kind === "ufh").map(h => `${h.name}: partial floor-face heat mapping is not connected; watts/footprints are exported without a whole-floor approximation.`)];
+  const sourceInput = JSON.stringify({ operating, devices: hvac?.devices, heaters: heaters.map(({ inDomain, ...h }) => { void inDomain; return h; }), vents,
+    floors: projectFloors(project).map(f => ({ id: f.id, elevationMm: f.elevationMm, heightMm: f.heightMm, openings: f.openings, rooms: f.content.rooms, energy: f.content.energyLayout, heating: f.content.heatingLayout ? { ...f.content.heatingLayout, enabled: undefined, display: undefined } : undefined })), roof: project.building?.roof });
+  return { version: 1, units: "mm", scenarioId: scenario.id, operatingScenarioId: operating?.id ?? null, conditions: operating?.conditions ?? null,
+    zoneGains: operating ? { peopleW: operating.conditions.occupants * operating.conditions.sensibleWPerson, equipmentW: operating.conditions.equipmentW, solarW: operating.conditions.solarW, mapping: "requiresLocatedSources" } : null,
+    envelope, sourceInput, vents, heaters, warnings, thermalExecution: "notConnected" };
+}
+
+/** Derived solver view. No canonical room/device is cloned back into a second editable collection. */
+export function resolveHvacScenario(project: ProjectDocument, scenario: CFDScenario): CFDScenario {
+  if (!project.hvac?.bindings[scenario.id]) return scenario;
+  const pkg = hvacBoundaryPackage(project, scenario);
+  const radiatorIds = new Set(pkg.heaters.filter(h => h.kind === "radiator").map(h => h.id));
+  // The deterministic provider, rather than a client connectivity approximation,
+  // filters these measured IDs to the actual connected air domain.
+  const sources = pkg.heaters.filter(h => h.kind === "radiator");
+  const binding = project.hvac.bindings[scenario.id];
+  const operating = project.hvac.scenarios.find(s => s.id === binding.operatingScenarioId);
+  const thermal = !!pkg.operatingScenarioId || sources.some(h => h.inDomain && h.enabled && (h.watts ?? 0) > 0);
+  const order = new Map(project.hvac.devices.map((d, i) => [`vent:${d.vent.id}`, i]));
+  return { ...scenario, vents: resolveHvacVents(project, scenario),
+    objectGroups: scenario.objectGroups?.map(g => {
+      const vents = g.memberIds.filter(id => id.startsWith("vent:")).sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity));
+      let i = 0;
+      return { ...g, memberIds: g.memberIds.map(id => id.startsWith("vent:") ? vents[i++] : id) };
+    }),
+    assetOverrides: [...scenario.assetOverrides.filter(o => !radiatorIds.has(o.objectId)), ...sources.map(h => assetOverrideSchema.parse({ objectId: h.id, mode: "solidProxy", heatW: h.enabled ? h.watts ?? 0 : 0, temperatureK: null, notes: h.notes }))],
+    ...(thermal ? { physics: { ...scenario.physics, energy: true, boussinesq: true, preset: "custom",
+      ...(operating ? { densityKgM3: operating.conditions.densityKgM3, heatCapacityJKgK: operating.conditions.cpJKgK, referenceTemperatureK: operating.conditions.roomC + 273.15, initialTemperatureK: operating.conditions.roomC + 273.15, outdoorTemperatureK: operating.conditions.outdoorC + 273.15 } : {}),
+    }, outputs: { ...scenario.outputs, temperature: true }, postProcessing: { ...scenario.postProcessing, fields: [...new Set([...scenario.postProcessing.fields, "T" as const])] } } : {}),
+  };
+}

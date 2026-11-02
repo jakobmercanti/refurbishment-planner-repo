@@ -15,6 +15,7 @@ import { validateFloorOpening, validateRoofGuardClearance } from "./buildingGeom
 import { PASSAGE_PROFILES, passageProfileForKey } from "./passageOpenings";
 import { personSpecSchema, supportsPerson, PERSON_MODELS } from "./people";
 import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
+import { hvacSchema, migrateHvac, type HvacProject } from "./hvacDocument";
 
 const id = z.string().min(1).max(150).regex(/^[\w:-]+$/);
 const number = z.number().finite().min(-1e7).max(1e7);
@@ -63,6 +64,7 @@ const documentSchema = z.object({
   building: buildingSchema.optional(),
   cfdScenarios: cfdScenariosSchema.optional(),
   cfdSimulationGroups: simulationGroupsSchema.optional(),
+  hvac: hvacSchema.optional(),
 }).strict();
 export interface ProjectDocument {
   schemaVersion: 1; projectId: string; name: string; units: "mm"; createdAt: string; updatedAt: string; generated: boolean;
@@ -76,6 +78,7 @@ export interface ProjectDocument {
   building?: BuildingDocument;
   cfdScenarios?: CFDScenario[];
   cfdSimulationGroups?: CFDSimulationGroup[];
+  hvac?: HvacProject;
 }
 
 function inspectJson(value: unknown, depth = 0): void {
@@ -177,7 +180,7 @@ export function parseProject(input: unknown): ProjectDocument {
     if(p.building.roof.roomOverrides?.some(item=>!roomIds.has(item.roomId)))throw new Error("Room roof references a missing room.");
     const top=projectFloors(p).at(-1)!;validateRoofGuardClearance(top.content,top.openings,p.building.roof);
   } else p.building = defaultBuilding(p);
-  return p;
+  return migrateHvac(p);
 }
 // New versions must add explicit sequential migrations here, never shape guessing.
 export const migrateProject = parseProject;

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { zipSync, strToU8 } from "fflate";
+import { resolveHvacScenario } from "./hvacBridge";
 import {
   projectFloors,
   buildingOf,
@@ -375,6 +376,7 @@ export function preparationInput(
   project: ProjectDocument,
   scenario: CFDScenario,
 ): string {
+  scenario = resolveHvacScenario(project, scenario);
   const b = buildingOf(project);
   return stable({
     projectId: project.projectId,
@@ -402,6 +404,7 @@ export function preparationInput(
         openings: r.openings,
         obstacles: r.obstacles,
       })),
+      heating: project.hvac && f.content.heatingLayout ? { ...f.content.heatingLayout, enabled: undefined, display: undefined } : undefined,
     })),
     scenario: {
       ...scenario,
@@ -433,6 +436,7 @@ export function preparationRequestBody(
   scenario: CFDScenario,
   clientRevision: string,
 ): string {
+  scenario = resolveHvacScenario(project, scenario);
   // This stateless public preparation endpoint does not need quotations, other
   // studies, service layouts, reference drawings or embedded symbol pictures.
   // Symbol URLs are drawing metadata, not air-domain geometry. In particular,
@@ -481,6 +485,7 @@ export function preparationRequestBody(
       plannerBuild: { activities: [] },
       quotes: [],
       cfdScenarios: undefined,
+      hvac: undefined,
       cfdSimulationGroups: undefined,
       renderCamera: undefined,
       electricalLayout: undefined,

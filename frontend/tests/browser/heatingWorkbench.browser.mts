@@ -43,7 +43,7 @@ async function segmentPoint(line, fraction=.5) {
 
 test("temperature, comparison and results question marks open specific help without toggling sections",async t=>{
  const session=await harness.session(fixture());t.after(()=>session.close());const {page}=session,panel=await heating(session);
- const before=JSON.stringify((await session.saved()).heatingLayout);
+ const before=JSON.stringify((await eventually(session.saved,p=>p.heatingLayout?.enabled)).heatingLayout);
  for(const [tab,section,heading] of [['System','Heating system temperatures','Set the water temperatures'],['System','Compare system temperatures','Compare without changing the design'],['Results','Heating results','Heat required and heat available']]){
   await panel.getByRole('tab',{name:tab,exact:true}).click();
   const button=panel.getByRole('button',{name:'Help for '+section,exact:true});await button.waitFor();

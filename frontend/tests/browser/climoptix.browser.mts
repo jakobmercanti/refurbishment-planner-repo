@@ -1,4 +1,5 @@
 import { cfdWindow, cfdRefresh } from "./harness.mjs";
+import { resolveHvacVents } from "../../lib/hvacDocument";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -121,7 +122,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
   const stored = await eventually(
     s.saved,
     (p) =>
-      p.cfdScenarios[0].vents.length === 2 &&
+      resolveHvacVents(p, p.cfdScenarios[0]).length === 2 &&
       p.cfdScenarios[0].physics.co2 &&
       p.cfdScenarios[0].mesh.preset === "Draft",
   );
@@ -529,8 +530,8 @@ test("vents can be picked and dragged in the full-size 3D viewer without changin
   const dragged = await eventually(
     s.saved,
     (p) =>
-      Math.abs(p.cfdScenarios[0].vents[0].host.u - before.host.u) > 0.001 ||
-      Math.abs(p.cfdScenarios[0].vents[0].host.v - before.host.v) > 0.001,
+      Math.abs(resolveHvacVents(p, p.cfdScenarios[0])[0].host.u - before.host.u) > 0.001 ||
+      Math.abs(resolveHvacVents(p, p.cfdScenarios[0])[0].host.v - before.host.v) > 0.001,
   );
   assert.equal(JSON.stringify(dragged.rooms), source);
   await eventually(() => ui.getAttribute("data-preparation-state"), state => state === "checked");

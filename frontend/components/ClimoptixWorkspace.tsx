@@ -13,6 +13,9 @@ import { CFDJobProgress } from "./CFDJobProgress";
 import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import type { SceneResultMetadata } from "./CFDSceneResult";
 import { CFDHeatingImport } from "./CFDHeatingImport";
+import { resolveHvacScenario } from "@/lib/hvacBridge";
+import { SharedHvacCFD } from "./SharedHvacCFD";
+import { useHvac } from "./HvacContext";
 import { CFDPointProbeControls, CFDPointProbeValue, useCFDPointProbe } from "./CFDPointProbeControls";
 import { completedRunReference, terminalJob, workerInput } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
@@ -190,6 +193,7 @@ function DeleteStudy({
   );
 }
 interface Props {
+  openRequest?: { id: string; nonce: string } | null;
   active: boolean;
   project: ProjectDocument;
   apiUrl: string;
@@ -207,6 +211,7 @@ interface Props {
   ) => void;
 }
 export function ClimoptixWorkspace({
+  openRequest,
   active,
   project,
   apiUrl,
@@ -220,6 +225,7 @@ export function ClimoptixWorkspace({
   onEditInsulation,
   workerAdapter: providedWorker,
 }: Props) {
+  const hvacContext = useHvac();
   const remoteWorker = useRailwayCFDWorker(active && providedWorker === undefined, apiUrl);
   const workerAdapter = providedWorker === undefined ? remoteWorker.adapter : providedWorker;
   const [selectedId, setSelectedId] = useState(""),
@@ -227,6 +233,7 @@ export function ClimoptixWorkspace({
   const [setupOpen, setSetupOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<CFDWindowId>("studies");
   const [setupFocus, setSetupFocus] = useState(0);
+  useEffect(() => { if (openRequest) queueMicrotask(() => { setSelectedId(openRequest.id); setActiveTab("equipment"); setSetupOpen(true); setSetupFocus(n => n + 1); }); }, [openRequest]);
   const [viewTarget, setViewTarget] = useState<HTMLDivElement | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [boundsTab, setBoundsTab] = useState<"conditions" | "thermal">("conditions");
@@ -260,7 +267,7 @@ export function ClimoptixWorkspace({
   };
   const [selected, setSelected] = useState<string | null>(null),
     [reports, setReports] = useState<Record<string, CFDReport>>({});
-  const selectObject = (id: string | null) => { setSelected(id); if (id?.startsWith("refinement:")) setShowRefinements(true); };
+  const selectObject = (id: string | null) => { setSelected(id); if (id?.startsWith("vent:")) hvacContext?.selectVent(id.slice(5)); if (id?.startsWith("refinement:")) setShowRefinements(true); };
   const [hash, setHash] = useState({ input: "", revision: "" }),
     [preparing, setPreparing] = useState(""),
     [message, setMessage] = useState(""),
@@ -325,7 +332,7 @@ export function ClimoptixWorkspace({
   const [onlyResultPlanes,setOnlyResultPlanes]=useState(false);
   const [mainResultMetadata,setMainResultMetadata]=useState<SceneResultMetadata>({fields:[],error:""});
   const { scenarios, visible, scenario, input } = useMemo(() => {
-    const scenarios = project.cfdScenarios ?? EMPTY_SCENARIOS;
+    const scenarios = (project.cfdScenarios ?? EMPTY_SCENARIOS).map(s => resolveHvacScenario(project, s));
     const visible = scenarios.filter((s) => showArchived || !s.archived);
     const scenario = visible.find((s) => s.id === selectedId) ?? visible[0];
     return {
@@ -357,6 +364,8 @@ export function ClimoptixWorkspace({
     !activeReport ||
     !revision ||
     activeReport.validation.clientRevision !== revision;
+  const setHvacGeometry = hvacContext?.setGeometryReport;
+  useEffect(() => { if (active && activeReport && !stale) queueMicrotask(() => setHvacGeometry?.(activeReport)); }, [active, activeReport, stale, setHvacGeometry]);
   const current = useRef({ project, scenarios, jobs });
   useEffect(() => {
     current.current = { project, scenarios, jobs };
@@ -420,10 +429,12 @@ export function ClimoptixWorkspace({
       !result.data.mesh.refinements.some((r) => r.id === refinementEditor.id)
     )
       setRefinementEditor(null);
-    onChange(
-      scenarios.map((v) => (v.id === s.id ? result.data : v)),
-      checkpoint || devicesChanged || regionsChanged || boundaryMembershipChanged || objectsChanged,
-    );
+    try {
+      onChange(
+        scenarios.map((v) => (v.id === s.id ? result.data : v)),
+        checkpoint || devicesChanged || regionsChanged || boundaryMembershipChanged || objectsChanged,
+      );
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Invalid shared HVAC operation; previous inputs retained."); }
   };
   const thermalReport = scenario ? (thermalReports[scenario.id] ?? null) : null;
   const thermalBusy = thermalTask.studyId === scenario?.id && thermalTask.busy;
@@ -1177,6 +1188,7 @@ export function ClimoptixWorkspace({
                       />
                     )}
                     {panel.id === "equipment" && (
+                      <><SharedHvacCFD scenario={scenario} report={activeReport} onEditSource={onEditBuilding} />
                       <EquipmentPanel
                         checked={!stale}
                         scenario={scenario}
@@ -1188,6 +1200,7 @@ export function ClimoptixWorkspace({
                         onEditSource={onEditBuilding}
                         onEditVent={id => setVentEditor({ studyId: scenario.id, id })}
                       />
+                      </>
                     )}
                     {panel.id === "boundaries" && (
                       <>
@@ -1226,6 +1239,7 @@ export function ClimoptixWorkspace({
                           connected:
                             workerAdapter?.capabilities.connected ?? false,
                           canRun:
+                            !project.hvac?.bindings[scenario.id]?.operatingScenarioId &&
                             !!workerAdapter?.capabilities.connected &&
                             workerAdapter.capabilities.run &&
                             !(
@@ -1233,7 +1247,7 @@ export function ClimoptixWorkspace({
                               jobs[scenario.id].operation !== "run"
                             ),
                           blockedReason:
-                            jobs[scenario.id]?.dispatched &&
+                            project.hvac?.bindings[scenario.id]?.operatingScenarioId ? "Shared HVAC thermal execution is not connected; export the boundary package." : jobs[scenario.id]?.dispatched &&
                             jobs[scenario.id].operation !== "run"
                               ? "Recover the previous Mesh submission from Simulations first"
                               : workerAdapter?.capabilities.run === false ? workerAdapter.capabilities.reason : undefined,

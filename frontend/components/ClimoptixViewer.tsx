@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
+import { Bounds, Line, OrbitControls, useBounds } from "@react-three/drei";
 import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
@@ -707,6 +707,7 @@ export function ClimoptixViewer({
                 request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit}`}
               />
               {scenario.outputs.probesMm.map((point,index)=><CFDProbeMarker key={`probe:${index}`} point={point} index={index} selected={selected===`probe:${index}`} onSelect={()=>onSelect(`probe:${index}`)} onMove={next=>onMoveProbe?.(index,next)}/>)}
+              {project.hvac?.bindings[scenario.id] && projectFloors(project).flatMap(floor => (floor.content.heatingLayout?.ufhZones ?? []).filter(zone => report?.domain.regions.some(r => r.included && r.floorId === floor.id && r.id === zone.roomId)).flatMap(zone => (floor.content.heatingLayout?.ufhCircuits ?? []).filter(c => c.zoneId === zone.zoneId).map(circuit => <Line key={`hvac:${floor.id}:${circuit.circuitId}`} name={`UFH loop intent: ${zone.name}`} points={circuit.pathMm.map(p => scene([p.x, p.y, floor.elevationMm + 5]))} color={COLORS.object} lineWidth={2} raycast={() => {}} />)))}
               {displayPatches
                 .filter(
                   (p) =>

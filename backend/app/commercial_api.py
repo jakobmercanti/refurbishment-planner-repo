@@ -213,6 +213,7 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
                 "building",
                 "cfdScenarios",
                 "cfdSimulationGroups",
+                "hvac",
             }
         )
         or type(document.get("schemaVersion")) is not int
@@ -343,6 +344,13 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
                 raise ValueError("Simulation group IDs and names must be unique.")
         except ValueError as error:
             raise HTTPException(status_code=422, detail=f"Invalid simulation groups: {error}") from None
+    if "hvac" in document:
+        from backend.app.hvac_document import HvacProject
+
+        try:
+            HvacProject.model_validate(document["hvac"])
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=f"Invalid shared HVAC data: {error}") from None
     if "cfdScenarios" in document:
         from geometry.climoptix_models import Scenario
 
