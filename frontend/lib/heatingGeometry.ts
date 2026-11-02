@@ -146,6 +146,10 @@ export function generateUFHLoops(room: Room, zone: UFHZone, manifold: HeatingMan
   if (!circuits.length) warnings.push("No valid pipe route generated. Review spacing, boundary offset, bend radius and exclusions.");
   if (circuits.length > manifold.ports) warnings.push("Generated circuit count exceeds available manifold ports.");
   if (paths.length > 1) warnings.push("Disconnected safe pipe runs require separate circuits; inspect coverage and balancing.");
+  // Port capacity is checked against the current manifold in heatingResults;
+  // first setup can allocate more ports after these routes have been generated.
+  const routeWarnings = warnings.filter(w => w !== "Generated circuit count exceeds available manifold ports.");
+  for (const circuit of circuits) circuit.generationWarnings = [...new Set([...circuit.generationWarnings, ...routeWarnings])];
   pattern = circuits[0]?.pattern ?? pattern;
   return result(circuits);
 }

@@ -6,12 +6,12 @@ import { heatingResults } from "@/lib/heatingDesign";
 import { heatingPlanSize, heatingRoomBalance, heatingWatts } from "@/lib/heatingPresentation";
 import { calculateCircuitLength, projectOnSegment, snapRadiatorToWall } from "@/lib/heatingCalculations";
 import type { HeatingSelection } from "./HeatingLayoutPanel";
-import { heatingPipeLengthM, refreshHeatingPipeEndpoints } from "@/lib/heatingPipes";
+import { heatingPipeLengthM, moveHeatingRouteSegment, refreshHeatingPipeEndpoints } from "@/lib/heatingPipes";
 import { EditableHeatingPath } from "./EditableHeatingPath";
 import { editUFHBend, ufhBendControls } from "@/lib/ufhBendControls";
 import { pipeSegmentAllowed } from "@/lib/heatingGeometry";
 interface Props { onPipeDraftChange?: (path: Point2D[]) => void; pipePointer?: Point2D | null; zoom?: number; connecting?: boolean; onConnect?: (id: string) => void; pipeDraft?: Point2D[]; data: HeatingProject; rooms: Room[]; selection: HeatingSelection; onSelect: (s: HeatingSelection) => void; onChange: (p: HeatingProject) => void; toScreen: (p: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D; highlightedRoomId: string | null; draft: Point2D[]; }
-type Drag = { bend?: number; bendMode?: "POSITION" | "RADIUS"; before: HeatingProject; kind: "radiator" | "manifold" | "exclusion" | "circuit" | "roomIndicator"; id: string; pathKey?: "pathMm" | "supplyPathMm" | "returnPathMm"; index?: number; segment?: boolean; start: Point2D; };
+type Drag = { bend?: number; bendMode?: "POSITION" | "RADIUS"; source: HeatingProject; before: HeatingProject; kind: "radiator" | "manifold" | "exclusion" | "circuit" | "roomIndicator"; id: string; pathKey?: "pathMm" | "supplyPathMm" | "returnPathMm"; index?: number; segment?: boolean; start: Point2D; };
 export function HeatingLayoutOverlay(props: Props) {
   const [preview, setPreview] = useState<HeatingProject | null>(null);
   const [editError, setEditError] = useState("");
@@ -19,14 +19,14 @@ export function HeatingLayoutOverlay(props: Props) {
   const results = useMemo(() => heatingResults(props.rooms, props.data), [props.rooms, props.data]);
   const screenPath = (p: Point2D[]) => p.map(props.toScreen).map(p => `${p.x},${p.y}`).join(" ");
   const pointFromEvent = (event: ReactPointerEvent<SVGElement> | ReactMouseEvent<SVGElement>) => props.fromClient(event.clientX, event.clientY, event.currentTarget.ownerSVGElement!);
-  function begin(event: ReactPointerEvent<SVGElement>, value: Omit<Drag, "before" | "start">) {
+  function begin(event: ReactPointerEvent<SVGElement>, value: Omit<Drag, "before" | "start" | "source">) {
     if (event.button !== 0) return; event.preventDefault(); event.stopPropagation();
     // preventDefault retains the previous form focus; explicitly return keyboard actions to the canvas.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     event.currentTarget.closest<SVGElement>('[role="button"]')?.focus(); if (props.connecting && (value.kind === "radiator" || value.kind === "manifold")) { props.onConnect?.(value.id); return; } if (value.kind !== "roomIndicator") props.onSelect({ kind: value.kind, id: value.id });setEditError("");
     const circuit = data.ufhCircuits.find(c => c.circuitId === value.id), radiator = data.radiators.find(r => r.radiatorId === value.id);
     if (circuit?.locked || radiator?.locked) return;
-    drag.current = { ...value, before: structuredClone(props.data), start: pointFromEvent(event) };latest.current = null;event.currentTarget.closest<SVGGElement>('[aria-label="Heating layer"]')!.setPointerCapture(event.pointerId);
+    drag.current = { ...value, source: props.data, before: structuredClone(props.data), start: pointFromEvent(event) };latest.current = null;event.currentTarget.closest<SVGGElement>('[aria-label="Heating layer"]')!.setPointerCapture(event.pointerId);
   }
   function move(event: ReactPointerEvent<SVGElement>) {
     const value = drag.current;if (!value) return;event.stopPropagation();const at = pointFromEvent(event), next = structuredClone(value.before), dx = at.x - value.start.x, dy = at.y - value.start.y;
@@ -47,14 +47,14 @@ export function HeatingLayoutOverlay(props: Props) {
           if (!path.slice(1).every((p,i) => pipeSegmentAllowed(path[i], p, room.vertices, holes, zone.boundaryOffsetMm))) throw new Error("This bend would cross a wall, exclusion or clearance boundary.");
           c.pathMm = path; setEditError("");
         } catch (cause) { setEditError(cause instanceof Error ? cause.message : "Invalid bend."); return; }
-      } else if (value.segment) { for (const index of [value.index!, value.index! + 1]) c[key][index] = { x: c[key][index].x + dx, y: c[key][index].y + dy }; }else c[key][value.index!] = at;c.manuallyEdited = true;
+      } else if (value.segment) { c[key] = moveHeatingRouteSegment(c[key], value.index!, { x: dx, y: dy }, false, true, true); }else c[key][value.index!] = at;c.manuallyEdited = true;
       if (key === "pathMm") { c.supplyPathMm[c.supplyPathMm.length - 1] = c.pathMm[0];c.returnPathMm[0] = c.pathMm.at(-1)!; }
       if (key === "supplyPathMm" && value.index === c.supplyPathMm.length - 1) c.pathMm[0] = c.supplyPathMm.at(-1)!;
       if (key === "returnPathMm" && value.index === 0) c.pathMm[c.pathMm.length - 1] = c.returnPathMm[0];
     }
     Object.assign(next, refreshHeatingPipeEndpoints(next));latest.current = next;setPreview(next);
   }
-  function finish(event: ReactPointerEvent<SVGElement>) { if (!drag.current) return;event.stopPropagation();if (latest.current) props.onChange(latest.current);drag.current = null;latest.current = null;setPreview(null); }
+  function finish(event: ReactPointerEvent<SVGElement>) { if (!drag.current) return;event.stopPropagation();if (latest.current && props.data === drag.current.source) props.onChange(latest.current);drag.current = null;latest.current = null;setPreview(null); }
   function insert(event: ReactMouseEvent<SVGPolylineElement>, id: string, key: "pathMm" | "supplyPathMm" | "returnPathMm") {
     event.preventDefault();event.stopPropagation();const next = structuredClone(props.data), circuit = next.ufhCircuits.find(c => c.circuitId === id)!;if (circuit.locked) return;
     const p = pointFromEvent(event), nearest = circuit[key].slice(1).map((b, i) => ({ ...projectOnSegment(p, circuit[key][i], b), i })).sort((a, b) => a.distance - b.distance)[0];
@@ -67,16 +67,16 @@ export function HeatingLayoutOverlay(props: Props) {
         {props.highlightedRoomId === row.room.id && row.demand.surfaces.filter(s => s.edgeIndex !== undefined && s.lossW > 0).map(s => <line key={s.key} x1={props.toScreen(s.startMm!).x} y1={props.toScreen(s.startMm!).y} x2={props.toScreen(s.endMm!).x} y2={props.toScreen(s.endMm!).y} stroke="#dd791d" strokeWidth="5" opacity=".65" />)}
     </g>)}
     {data.display.exclusions && data.exclusions.map(ex => <g key={ex.exclusionId} data-plan-info="Underfloor heating exclusion: no heated pipe should enter this area. Click to select; drag its corners to edit."><polygon points={screenPath(ex.polygonMm)} fill="url(#heating-exclusion-hatch)" fillOpacity=".5" stroke="#a15f22" strokeWidth="2" onPointerDown={e => begin(e, { kind: "exclusion", id: ex.exclusionId })} style={{ cursor: "move" }} />{props.selection?.id === ex.exclusionId && ex.polygonMm.map((p, i) => <circle key={i} cx={props.toScreen(p).x} cy={props.toScreen(p).y} r="5" fill="white" stroke="#a15f22" onPointerDown={e => begin(e, { kind: "exclusion", id: ex.exclusionId, index: i })} />)}</g>)}
-    {data.ufhCircuits.map(c => <g key={c.circuitId} data-plan-info={`${c.name}\nUnderfloor heating loop · ${calculateCircuitLength(c).toFixed(1)} m. Click to select; drag control points or double-click to add a corner.`}>
+    {data.ufhCircuits.map(c => <g key={c.circuitId} data-plan-info={`${c.name}\nUnderfloor heating loop · ${calculateCircuitLength(c).toFixed(1)} m. Click to select; use position/radius handles for tube bends. Drag lead corners or double-click a lead to add a point.`}>
       {(["pathMm", "supplyPathMm", "returnPathMm"] as const).map(key => {
         if (!(key === "pathMm" ? data.display.loops : data.display.tails)) return null;
         const path = c[key], selected = props.selection?.id === c.circuitId, colour = key === "returnPathMm" ? "#277ab5" : "#d76824";
         return <g key={key}><polyline points={screenPath(path)} fill="none" stroke={selected ? "#f2b644" : colour} strokeWidth={selected ? 3 : 1.8} strokeDasharray={key === "returnPathMm" ? "5 3" : undefined} pointerEvents="none" />
-          <polyline points={screenPath(path)} fill="none" stroke="transparent" strokeWidth="10" onDoubleClick={e => insert(e, c.circuitId, key)} onPointerDown={e => { props.onSelect({ kind: "circuit", id: c.circuitId });if (e.shiftKey) { const p = pointFromEvent(e), nearest = path.slice(1).map((b, i) => ({ i, distance: projectOnSegment(p, path[i], b).distance })).sort((a, b) => a.distance - b.distance)[0];if (nearest) begin(e, { kind: "circuit", id: c.circuitId, index: nearest.i, pathKey: key, segment: true }); }else e.stopPropagation(); }} style={{ cursor: c.locked ? "pointer" : "move" }} />
+          <polyline points={screenPath(path)} fill="none" stroke="transparent" strokeWidth="10" onDoubleClick={key === "pathMm" ? undefined : e => insert(e, c.circuitId, key)} onPointerDown={e => { props.onSelect({ kind: "circuit", id: c.circuitId });if (e.shiftKey && key !== "pathMm") { const p = pointFromEvent(e), nearest = path.slice(1).map((b, i) => ({ i, distance: projectOnSegment(p, path[i], b).distance })).sort((a, b) => a.distance - b.distance)[0];if (nearest) begin(e, { kind: "circuit", id: c.circuitId, index: nearest.i, pathKey: key, segment: true }); }else e.stopPropagation(); }} style={{ cursor: c.locked ? "pointer" : "move" }} />
           {selected && !c.locked && (key === "pathMm" ? ufhBendControls(path, data.ufhZones.find(z => z.zoneId === c.zoneId)?.minBendRadiusMm ?? 50, c.spacingMm).bends.map((bend, index) => <g key={index} data-ufh-bend={index}>{(["POSITION", "RADIUS"] as const).map(mode => {
             const p = props.toScreen(mode === "POSITION" ? bend.position : bend.radiusHandle);
             return <circle key={mode} role="button" tabIndex={0} aria-label={"UFH bend "+(index+1)+" "+(mode === "POSITION" ? "position" : "radius")} data-ufh-handle={mode.toLowerCase()} cx={p.x} cy={p.y} r={mode === "POSITION" ? 5 : 4} fill={mode === "POSITION" ? "white" : "#ffc765"} stroke="#8b4319" strokeWidth={2} style={{cursor:"move"}} onPointerDown={e => begin(e, { kind:"circuit",id:c.circuitId,pathKey:key,bend:index,bendMode:mode })}><title>{mode === "POSITION" ? "Move this tube end along the runs" : "Drag to change this bend radius"}</title></circle>;
-          })}</g>) : path.map((p,index) => <circle key={index} cx={props.toScreen(p).x} cy={props.toScreen(p).y} r={4} fill="white" stroke="#b55419" onPointerDown={e => begin(e,{kind:"circuit",id:c.circuitId,pathKey:key,index})} />))}
+          })}</g>) : path.map((p,index) => key === "supplyPathMm" && index === 0 || key === "returnPathMm" && index === path.length - 1 ? null : <circle key={index} cx={props.toScreen(p).x} cy={props.toScreen(p).y} r={4} fill="white" stroke="#b55419" onPointerDown={e => begin(e,{kind:"circuit",id:c.circuitId,pathKey:key,index})} />))}
         </g>;
       })}
       {data.display.labels && <text x={props.toScreen(c.pathMm[0]).x + 7} y={props.toScreen(c.pathMm[0]).y - 7} fill="#8b4319" fontSize="10" pointerEvents="none">{c.name} · {calculateCircuitLength(c).toFixed(1)} m{c.locked ? " (locked)" : ""}</text>}

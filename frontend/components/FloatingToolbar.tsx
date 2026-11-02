@@ -424,7 +424,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
     maximizeRestore.current = null;
     setIsDocked(false);
     setHeightMaximized(false);
-    edgeDock.attach(side, size.width);
+    edgeDock.attach(side, panelRef.current?.getBoundingClientRect().width ?? size.width);
   }
 
   function floatWindow() {

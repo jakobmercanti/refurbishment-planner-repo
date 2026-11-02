@@ -46,6 +46,14 @@ test("compact windows shrink without clipped actions and keep resize targets", a
   const compact = await panel.boundingBox(); assert.ok(compact && compact.width < before.width - 20);
   assert.equal(await panel.locator(".floating-toolbar-resize-right").evaluate(el => el.getBoundingClientRect().width), railWidth);
   assert.deepEqual(await panel.locator(".floating-toolbar-content button:visible").evaluateAll(buttons => buttons.filter(b => b.scrollWidth > b.clientWidth + 1 || b.scrollHeight > b.clientHeight + 1).map(b => b.textContent)), []);
+  await panel.getByRole('button',{name:'Window layout for Build floorplan',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Dock left',exact:true}).click();
+  await eventually(()=>panel.getAttribute('data-edge-docked'),side=>side==='LEFT');
+  assert.ok(Math.abs((await panel.boundingBox()).width-compact.width)<2,'Docking must retain the compact width');
+  await panel.getByRole('button',{name:'Window layout for Build floorplan',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Float window',exact:true}).click();
+  await eventually(()=>panel.getAttribute('data-edge-docked'),side=>!side);
+  assert.ok(Math.abs((await panel.boundingBox()).width-compact.width)<2);
   const rail = await panel.locator(".floating-toolbar-resize-right").boundingBox(); assert.ok(rail);
   await page.mouse.move(rail.x + rail.width / 2, rail.y + 15); await page.mouse.down(); await page.mouse.move(rail.x + rail.width / 2 + 60, rail.y + 15, { steps: 8 }); await page.mouse.up();
   const resized = await panel.boundingBox(); assert.ok(resized && Math.abs(resized.width - compact.width - 60) < 3);
@@ -77,6 +85,23 @@ test("socket ring generation persists, individual plan testing works, broken ret
   await eventually(session.saved, value => value?.electricalLayout?.connections.length === 3 && !value.electricalLayout.connections.some(e => e.id === connection.id));
   await panel.getByRole("button", { name: "Check layout", exact: true }).click();
   assert.equal(await tester.locator(".socket-test-list button").filter({ hasText: "Ring incomplete" }).count(), 3);
+});
+
+test("missing socket references can be removed and a replacement consumer unit restores a radial",async t=>{
+  const project=fixture();project.electricalLayout!.circuits[0]={...project.electricalLayout!.circuits[0],socketTopology:'RADIAL',consumerUnitId:'missing-board',socketIds:['a','missing-socket']};
+  const session=await harness.session(parseProject(project));t.after(()=>session.close());const {page}=session;
+  await menu(page,'Tools','Full Electrical Layout module…');const panel=page.locator('.electrical-layout-window');
+  await panel.locator('summary').filter({hasText:'Circuits (1)'}).click();
+  const board=panel.getByRole('combobox',{name:'Consumer unit',exact:true});
+  assert.match(await board.locator('option:checked').textContent(),/Missing consumer unit/);
+  await panel.getByRole('button',{name:'Remove missing socket from circuit',exact:true}).click();
+  await board.selectOption('board');await panel.getByRole('button',{name:'Create socket routes',exact:true}).click();
+  const saved=await eventually(session.saved,p=>p?.electricalLayout?.connections.length===1);
+  assert.deepEqual(saved.electricalLayout.circuits[0].socketIds,['a']);
+  assert.deepEqual([saved.electricalLayout.connections[0].fromId,saved.electricalLayout.connections[0].toId],['board','a']);
+  await panel.getByRole('button',{name:'Check layout',exact:true}).click();
+  const tester=page.locator('.electrical-lighting-test-window');await tester.getByRole('button',{name:/^Socket a/}).click();
+  assert.match(await tester.getByRole('button',{name:/^Socket a/}).textContent(),/Radial connected/);
 });
 
 test("service section help never repeats the main guide or another section guide", async t => {

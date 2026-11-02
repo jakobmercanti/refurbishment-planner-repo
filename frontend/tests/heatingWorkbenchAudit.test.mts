@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { newHeatingProject, parseHeatingProject } from "../lib/heatingDocument.ts";
 import { newEnergyProject, parseEnergyProject } from "../lib/energyDocument.ts";
-import { createRoomUFH, heatingResults } from "../lib/heatingDesign.ts";
+import { createRoomUFH, heatingResults, regenerateHeatingRoom } from "../lib/heatingDesign.ts";
 import { assignEnergyElements, energyElements, withEnergyFabric } from "../lib/energyCalculations.ts";
 import { ufhBendControls, editUFHBend } from "../lib/ufhBendControls.ts";
 import { moveHeatingRouteSegment, moveHeatingRouteVertex } from "../lib/heatingPipes.ts";
@@ -25,6 +25,29 @@ test("default room UFH has finite output, flow and explicit manifold design cond
   assert.notEqual(row.status,"Sufficient");
   assert.deepEqual(parseHeatingProject(JSON.parse(JSON.stringify(data))).ufhZones,data.ufhZones);
   assert.equal(calculateUFHOutput({...zone,estimateSurfaceTemperature:false},40,30,20)?.surfaceTemperatureC,null);
+});
+
+test("unknown UFH preset falls back to a complete default design", () => {
+  const data=createRoomUFH(room,newHeatingProject(),999).heating;
+  const result=heatingResults([room],data).rooms[0].zones[0];
+  assert.equal(data.ufhZones[0].designFlowC,40);
+  assert.equal(data.ufhZones[0].designReturnC,30);
+  assert.ok(result.outputW!>0);assert.ok(result.circuits.every(c=>c.flowLmin!>0));
+});
+
+test("a generated spiral fallback remains visible in saved route warnings and room results",()=>{
+ const data=createRoomUFH(room,newHeatingProject()).heating;data.ufhZones[0].pattern='Spiral';
+ const next=regenerateHeatingRoom(room,data).heating;
+ assert.equal(next.ufhCircuits[0].pattern,'Serpentine');
+ assert.ok(next.ufhCircuits.every(c=>c.generationWarnings.some(w=>/spiral unavailable/i.test(w))));
+ assert.ok(heatingResults([room],next).rooms[0].warnings.some(w=>/spiral unavailable/i.test(w)));
+});
+
+test("automatic manifold port allocation does not leave an obsolete capacity warning",()=>{
+ const data=createRoomUFH(room,newHeatingProject()).heating;data.ufhCircuits=[];data.ufhZones[0].circuitCountTarget=20;
+ const next=createRoomUFH(room,data).heating;
+ assert.equal(next.ufhCircuits.length,20);assert.equal(next.manifolds[0].ports,20);
+ assert.ok(!heatingResults([room],next).rooms[0].warnings.some(w=>/ports? (count )?exceeded|exceeds available manifold ports/i.test(w)));
 });
 test("surface U edits are the same Insulation assignments used by Heating", () => {
   const heating = newHeatingProject(), energy = newEnergyProject(), wall = energyElements([room],heating,energy).find(e => e.category === "wall")!;

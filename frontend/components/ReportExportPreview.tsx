@@ -33,16 +33,18 @@ export function ReportExportPreview({ title, fileName, makePdf, onClose }: { tit
   const [options, setOptions] = useState<ReportPreviewOptions>({ title, includeDetails: true });
   const [name, setName] = useState(fileName), [preview, setPreview] = useState<{ bytes: Uint8Array; url: string; key: string; builder: typeof makePdf } | null>(null), [error, setError] = useState("");
   const current = preview?.key === JSON.stringify(options) && preview.builder === makePdf ? preview : null;
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview.url); }, [preview]);
+  const updateOptions = (next: ReportPreviewOptions) => { setPreview(null); setError(""); setOptions(next); };
   useEffect(() => {
-    let active = true, url: string | undefined;
+    let active = true;
     const timer = setTimeout(() => { setPreview(null); setError(""); void makePdf(options).then(bytes => {
       if (!active) return; const blob = new Blob([new Uint8Array(bytes).buffer], { type: "application/pdf" });
-      url = URL.createObjectURL(blob); setPreview({ bytes, url, key: JSON.stringify(options), builder: makePdf });
+      const url = URL.createObjectURL(blob); setPreview({ bytes, url, key: JSON.stringify(options), builder: makePdf });
     }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Could not create the preview."); }); }, 180);
-    return () => { active = false; clearTimeout(timer); if (url) URL.revokeObjectURL(url); };
+    return () => { active = false; clearTimeout(timer); };
   }, [makePdf, options]);
   return createPortal(<FloatingToolbar title={`${title} — preview`} className="report-export-preview" dialog defaultPosition={{ x: 80, y: 70 }} initialSize={{ width: 900, height: 760 }} maxHeight={900} bringToFront onClose={onClose}>
-    <div className="report-preview-options"><label>Report title<input value={options.title} maxLength={100} onChange={e => setOptions({ ...options, title: e.target.value })} /></label><label>File name<input value={name} maxLength={120} onChange={e => setName(e.target.value)} /></label><label><input type="checkbox" checked={options.includeDetails} onChange={e => setOptions({ ...options, includeDetails: e.target.checked })} />Include calculation details</label></div>
+    <div className="report-preview-options"><label>Report title<input value={options.title} maxLength={100} onChange={e => updateOptions({ ...options, title: e.target.value })} /></label><label>File name<input value={name} maxLength={120} onChange={e => setName(e.target.value)} /></label><label><input type="checkbox" checked={options.includeDetails} onChange={e => updateOptions({ ...options, includeDetails: e.target.checked })} />Include calculation details</label></div>
     {error && <p role="alert">{error}</p>}
     {current ? <PdfReportPages bytes={current.bytes} /> : !error && <p role="status">Preparing preview…</p>}
     <div className="report-preview-actions"><button type="button" onClick={onClose}>Cancel</button><button type="button" disabled={!current || !name.trim()} onClick={() => {

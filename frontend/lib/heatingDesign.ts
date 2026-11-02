@@ -18,7 +18,7 @@ export function createRoomUFH(room: Room, heating: HeatingProject, systemIndex =
   if (current && next.ufhCircuits.some(c => c.zoneId === current.zoneId)) return { heating: next, changes: ["This room already has UFH. Adjust settings then choose Regenerate room explicitly; existing routes retained."] };
   const dataset = REFERENCE_UFH_DATASETS[systemIndex] ?? REFERENCE_UFH_DATASETS[2];
   const defaults = referenceUFHSettings(dataset);
-  const zone = current ?? { ...newUFHZone(room, null), ...defaults, boundaryOffsetMm: 50, ...(systemIndex === 2 ? { designFlowC: 40, designReturnC: 30, estimateSurfaceTemperature: true } : {}), pattern: defaults.spacingMm < 2 * defaults.minBendRadiusMm ? "Spiral" as const : "Serpentine" as const };
+  const zone = current ?? { ...newUFHZone(room, null), ...defaults, boundaryOffsetMm: 50, ...(dataset === REFERENCE_UFH_DATASETS[2] ? { designFlowC: 40, designReturnC: 30, estimateSurfaceTemperature: true } : {}), pattern: defaults.spacingMm < 2 * defaults.minBendRadiusMm ? "Spiral" as const : "Serpentine" as const };
   let manifold = next.manifolds.find(m => m.manifoldId === zone.manifoldId);
   if (!manifold) {
     const b = room.vertices[1], a = room.vertices[0], length = Math.hypot(b.x-a.x,b.y-a.y);
