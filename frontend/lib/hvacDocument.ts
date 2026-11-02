@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ventSchema, type CFDScenario, type CFDVent } from "./climoptixDocument";
 import type { ProjectDocument } from "./projectDocument";
 import { projectFloors } from "./buildingDocument";
+import { isHeatingElement } from "./heatingElements";
 
 const id = z.string().regex(/^[\w:-]{1,150}$/);
 const finite = z.number().finite();
@@ -77,12 +78,28 @@ export function hvacErrorMessage(cause: unknown, fallback = "Invalid HVAC inputs
 }
 export interface HvacDomainScope { scenarioId: string; rooms: { floorId: string; roomId: string }[] }
 
-/** One-time identity reconciliation. Canonical designs are never copied into saved CFD arrays. */
+function sharedRadiatorIds(project: ProjectDocument) {
+  return new Set(projectFloors(project).flatMap(f => [
+    ...f.content.rooms.flatMap(r => r.obstacles.filter(o => isHeatingElement(o) && o.heating_spec?.category !== "Boiler").map(o => o.id)),
+    ...(f.content.heatingLayout?.radiators.filter(r => r.category !== "Boiler").map(r => r.radiatorId) ?? []),
+  ]));
+}
+
+/** Idempotent shared-source reconciliation, including cases created before HVAC setup. */
 export function migrateHvac(project: ProjectDocument): ProjectDocument {
-  if (!project.hvac && !project.cfdScenarios?.some(s => s.vents.length)) return project;
+  const radiators = sharedRadiatorIds(project);
+  if (!project.hvac && !project.cfdScenarios?.some(s => s.vents.length) && !radiators.size && !projectFloors(project).some(f => f.content.heatingLayout?.ufhZones.length)) return project;
   const hvac = structuredClone(project.hvac ?? newHvacProject());
   const scenarios = project.cfdScenarios?.map(s => {
-    if (!s.vents.length) return s;
+    const stored = s.assetOverrides.some(o => radiators.has(o.objectId)) ? { ...s, assetOverrides: s.assetOverrides.filter(o => !radiators.has(o.objectId)) } : s;
+    if (!s.vents.length) {
+      if (!hvac.bindings[s.id]) {
+        // Establish shared design without replacing an older case's independent
+        // air conditions. Operating linkage is an explicit workbench selection.
+        hvac.bindings[s.id] = { operatingScenarioId: null, deviceIds: [], editMode: "design", overrides: {} };
+      }
+      return stored;
+    }
     const ids: string[] = [];
     const overrides: Record<string, z.infer<typeof ventOperation>> = {};
     for (const vent of s.vents) {
@@ -100,7 +117,7 @@ export function migrateHvac(project: ProjectDocument): ProjectDocument {
       ids.push(key);
     }
     hvac.bindings[s.id] = { operatingScenarioId: null, deviceIds: ids, editMode: "design", overrides };
-    return { ...s, vents: [] };
+    return { ...stored, vents: [] };
   });
   return { ...project, hvac: hvacSchema.parse(hvac), cfdScenarios: scenarios };
 }
@@ -132,6 +149,7 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
   let next = migrateHvac(project);
   if (!next.hvac) return migrateHvac({ ...project, cfdScenarios: scenarios });
   const hvac = structuredClone(next.hvac);
+  const radiators = sharedRadiatorIds(next);
   for (const [copyId, sourceId] of Object.entries(copiedFrom ?? {})) {
     if (project.cfdScenarios?.some(s => s.id === copyId) || !scenarios.some(s => s.id === copyId)) continue;
     const source = hvac.bindings[sourceId]; if (!source) continue;
@@ -166,7 +184,10 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
     }
     for (const v of removed) {
       if (link.editMode === "override") {
-        if (operating) operating.ventOverrides[v.id] = { ...operating.ventOverrides[v.id], enabled: false };
+        if (operating) {
+          operating.ventOverrides[v.id] = { ...operating.ventOverrides[v.id], enabled: false };
+          if (link.overrides[v.id]) { delete link.overrides[v.id].enabled; if (!Object.keys(link.overrides[v.id]).length) delete link.overrides[v.id]; }
+        }
         else link.overrides[v.id] = { ...link.overrides[v.id], enabled: false };
       }
       else {
@@ -192,7 +213,15 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
       else {
         if (link.editMode === "override") {
           found.vent = { ...v, valueSI: found.vent.valueSI, temperatureK: found.vent.temperatureK };
-          if (operating) operating.ventOverrides[v.id] = { ...operating.ventOverrides[v.id], valueSI: v.valueSI, temperatureK: v.temperatureK };
+          if (operating) {
+            const flowChanged = prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
+            if (flowChanged || temperatureChanged) operating.ventOverrides[v.id] = { ...operating.ventOverrides[v.id], ...(flowChanged ? { valueSI: v.valueSI } : {}), ...(temperatureChanged ? { temperatureK: v.temperatureK } : {}) };
+            if (link.overrides[v.id]) {
+              if (flowChanged) delete link.overrides[v.id].valueSI;
+              if (temperatureChanged) delete link.overrides[v.id].temperatureK;
+              if (!Object.keys(link.overrides[v.id]).length) delete link.overrides[v.id];
+            }
+          }
           else link.overrides[v.id] = { ...link.overrides[v.id], valueSI: v.valueSI, temperatureK: v.temperatureK };
         } else {
           const flowChanged = prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
@@ -220,7 +249,7 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
       hvac.devices = [...hvac.devices.filter(d => !ids.has(d.vent.id)), ...ordered];
     }
     hvac.bindings[s.id] = link;
-    return { ...s, vents: [] };
+    return { ...s, vents: [], assetOverrides: s.assetOverrides.filter(o => !radiators.has(o.objectId)) };
   });
   const studyIds = new Set(stored.map(s => s.id));
   hvac.bindings = Object.fromEntries(Object.entries(hvac.bindings).filter(([id]) => studyIds.has(id)));

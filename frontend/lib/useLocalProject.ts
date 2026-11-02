@@ -18,7 +18,7 @@ import { commitHeatingElements } from "./heatingElements";
 import { ProjectHistory } from "./projectHistory";
 import { matchesProjectScope } from "./projectScope";
 import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
-import { commitHvacCFD, hvacSchema, type HvacProject, type HvacDomainScope } from "./hvacDocument";
+import { commitHvacCFD, hvacSchema, migrateHvac, type HvacProject, type HvacDomainScope } from "./hvacDocument";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
@@ -46,7 +46,7 @@ export function useLocalProject() {
     // An empty floor publishes a fresh [] when the editor is restored. Avoid
     // feeding an unchanged snapshot back into the editor and starving autosave.
     if (Object.entries(changes).every(([key,value]) => JSON.stringify(p[key as keyof ProjectDocument]) === JSON.stringify(value))) return;
-    let next = { ...p, ...changes, updatedAt: new Date().toISOString() };
+    let next = migrateHvac({ ...p, ...changes, updatedAt: new Date().toISOString() });
     if(changes.rooms&&next.building?.roof.roomOverrides){const ids=new Set(projectFloors(next).flatMap(f=>f.content.rooms.map(room=>room.id)));next={...next,building:{...next.building,roof:{...next.building.roof,roomOverrides:next.building.roof.roomOverrides.filter(item=>ids.has(item.roomId))}}};}
     history.current.record(p,next,forceHistory);
     refreshHistory();

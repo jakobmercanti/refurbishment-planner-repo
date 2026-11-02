@@ -21,6 +21,7 @@ import styles from "./HeatingLayoutPanel.module.css";
 import { parallelRunCount } from "@/lib/ufhBendControls";
 import { SharedThermalValues } from "./SharedThermalValues";
 import { ReportExportPreview, type ReportPreviewOptions } from "./ReportExportPreview";
+import { useHvac } from "./HvacContext";
 
 export type HeatingSelection = { kind: "radiator" | "manifold" | "circuit" | "exclusion" | "pipe"; id: string } | null;
 export type HeatingTool = "MANIFOLD" | "EXCLUSION" | "PIPE" | "CONNECT" | null;
@@ -33,7 +34,9 @@ function NumberField({ label, value, onChange, min, max, step = "any", help }: {
 }
 export function HeatingLayoutPanel(props: Props) {
   const { rooms, data, onChange, selection } = props;
+  const hvac = useHvac(), focusedRoomId = rooms.find(r => r.id === hvac?.focus?.roomId)?.id;
   const [tab, setTab] = useState(selection?.kind === "radiator" ? "Radiators" : selection && ["circuit", "manifold", "exclusion"].includes(selection.kind) ? "UFH" : "Heat Loss"), [roomId, setRoomId] = useState(rooms[0]?.id ?? ""), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  useEffect(() => { if (focusedRoomId) queueMicrotask(() => setRoomId(focusedRoomId)); }, [focusedRoomId, hvac?.focus]);
   const [newUFHSystem, setNewUFHSystem] = useState(2);
   const [reportOpen, setReportOpen] = useState(false);
   const makeReport = useCallback(async (options: ReportPreviewOptions) => (await import("@/lib/heatingExport")).buildHeatingPdf(rooms, data, props.projectName, options), [rooms, data, props.projectName]);

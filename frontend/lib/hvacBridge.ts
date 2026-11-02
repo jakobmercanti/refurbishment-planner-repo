@@ -46,7 +46,7 @@ export function conventionalHvac(project: ProjectDocument, operating: HvacOperat
 
 function hvacCaseSettings(scenario: CFDScenario, operating: HvacOperatingScenario | undefined, heaters: HvacCfdBoundaryPackage["heaters"]) {
   const radiators = heaters.filter(h => h.kind === "radiator"), ids = new Set(radiators.map(h => h.id));
-  const thermal = !!operating || radiators.some(h => h.inDomain && h.enabled && (h.watts ?? 0) > 0);
+  const thermal = !!operating || heaters.some(h => h.inDomain && h.enabled && (h.watts === null || h.watts > 0));
   return {
     seed: scenario.seed, mesh: scenario.mesh,
     boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined },
@@ -122,6 +122,12 @@ export function hvacBoundaryPackage(project: ProjectDocument, scenario: CFDScena
 
 export const hvacModelLabel = (model: string) => model === "solidProxySurfacePower" ? "Room-effective heat over the measured radiator surface" : model === "zoneHeatFluxRequiresFaceMapping" ? "Heated floor region · flux mapping not connected" : model;
 export const hvacControlLabel = (control: CFDVent["control"]) => ({ volumeFlow: "Volume flow", massFlow: "Mass flow", velocity: "Mean velocity", pressure: "Pressure" })[control];
+
+export function requiresHvacThermalExecution(project: ProjectDocument, scenario: CFDScenario): boolean {
+  if (!project.hvac?.bindings[scenario.id]) return false;
+  if (project.hvac.bindings[scenario.id].operatingScenarioId) return true;
+  return hvacBoundaryPackage(project, scenario).heaters.some(h => h.inDomain && h.enabled && (h.watts === null || h.watts > 0));
+}
 
 /** Derived solver view. No canonical room/device is cloned back into a second editable collection. */
 export function resolveHvacScenario(project: ProjectDocument, scenario: CFDScenario): CFDScenario {

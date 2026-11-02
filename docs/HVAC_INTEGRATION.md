@@ -38,6 +38,16 @@ scrolling and support arrow keys, Home and End.
    Heater effective watts/off settings are scenario operations. **Open Ventilation**
    and **Edit shared Heating geometry** return to the actual source workbench.
 
+Cases created before HVAC setup also receive the live design connection on load
+and project updates, including Heating-only radiator/UFH projects. In CFD,
+**Shared operating scenario** shows which conventional operation supplies the
+case. Choose a room scenario to share operating edits in both directions; the
+explicit case-air-settings option retains independent operating conditions.
+Changing that selection clears case-only vent overrides. Generated radiator
+treatments are transport data and are not persisted as a second heat source.
+The follow-up creation-order and bidirectional checks are recorded in
+`HVAC_SYNC_AUDIT_2026-11-02.md`.
+
 ## Authority and migration
 
 `ProjectDocument.hvac` is a versioned shared design/operating document. CFD vent

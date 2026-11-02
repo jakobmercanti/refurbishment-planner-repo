@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { resolveHvacScenario } from "./hvacBridge";
+import { resolveHvacScenario, requiresHvacThermalExecution } from "./hvacBridge";
 import type { CFDScenario } from "./climoptixDocument";
 import type { ProjectDocument } from "./projectDocument";
 import {
@@ -89,7 +89,7 @@ export async function prepareWorkerSubmission(
   submissionId: string = crypto.randomUUID(),
 ): Promise<CFDSubmission> {
   signal.throwIfAborted();
-  if (operation === "run" && project.hvac?.bindings[scenario.id]?.operatingScenarioId)
+  if (operation === "run" && requiresHvacThermalExecution(project, scenario))
     throw new Error("Shared HVAC thermal execution is not connected. Export the boundary package; partial UFH/envelope/source mapping must be implemented by a compatible energy adapter before solving.");
   scenario = resolveHvacScenario(project, scenario);
   const applied = scenario.thermalSnapshots?.[0];

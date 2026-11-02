@@ -13,7 +13,7 @@ import { CFDJobProgress } from "./CFDJobProgress";
 import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import type { SceneResultMetadata } from "./CFDSceneResult";
 import { CFDHeatingImport } from "./CFDHeatingImport";
-import { resolveHvacScenario } from "@/lib/hvacBridge";
+import { resolveHvacScenario, requiresHvacThermalExecution } from "@/lib/hvacBridge";
 import { hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
 import { SharedHvacCFD } from "./SharedHvacCFD";
 import { useHvac } from "./HvacContext";
@@ -344,6 +344,7 @@ export function ClimoptixWorkspace({
     };
   }, [project, selectedId, showArchived]);
   const currentWorkerInput = useMemo(() => scenario ? workerInput(project, scenario) : "", [project, scenario]);
+  const hvacThermalRequired = useMemo(() => scenario ? requiresHvacThermalExecution(project, scenario) : false, [project, scenario]);
   const currentVTKFile=vtkFile&&scenario&&vtkFile.studyId===scenario.id&&vtkFile.jobId===jobs[scenario.id]?.job?.id?vtkFile:null;
   const mainProbeKey=[mainResult?.file,mainResultField,currentWorkerInput,mainResultVisible];
   const mainProbe=useCFDPointProbe(active&&!setupOpen&&!!mainResult&&mainResultVisible&&mainResult.studyId===scenario?.id&&mainResult.jobId===jobs[scenario?.id??""]?.job?.id&&mainResult.input===currentWorkerInput&&!!mainResultMetadata.fields.length&&!mainResultMetadata.error,mainProbeKey);
@@ -1240,7 +1241,7 @@ export function ClimoptixWorkspace({
                           connected:
                             workerAdapter?.capabilities.connected ?? false,
                           canRun:
-                            !project.hvac?.bindings[scenario.id]?.operatingScenarioId &&
+                            !hvacThermalRequired &&
                             !!workerAdapter?.capabilities.connected &&
                             workerAdapter.capabilities.run &&
                             !(
@@ -1248,7 +1249,7 @@ export function ClimoptixWorkspace({
                               jobs[scenario.id].operation !== "run"
                             ),
                           blockedReason:
-                            project.hvac?.bindings[scenario.id]?.operatingScenarioId ? "Shared HVAC thermal execution is not connected; export the boundary package." : jobs[scenario.id]?.dispatched &&
+                            hvacThermalRequired ? "Shared HVAC thermal execution is not connected; export the boundary package." : jobs[scenario.id]?.dispatched &&
                             jobs[scenario.id].operation !== "run"
                               ? "Recover the previous Mesh submission from Simulations first"
                               : workerAdapter?.capabilities.run === false ? workerAdapter.capabilities.reason : undefined,

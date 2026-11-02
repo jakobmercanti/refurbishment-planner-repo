@@ -20,8 +20,13 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
   onEditSource: () => void; renderObject: (id: string) => ReactNode; canAdd: boolean; canPlace: boolean; checked: boolean;
 }) {
   const hvac = useHvac();
-  const sharedHeaters = new Set(hvac?.project.hvac?.bindings[scenario.id] ? hvacBoundaryPackage(hvac.project, scenario).heaters.filter(h => h.kind === "radiator").map(h => h.id) : []);
-  const editHeating = () => { hvac?.setTab("Heating"); hvac?.requestHeating(); onEditSource(); };
+  const heatingSources = hvac?.project.hvac?.bindings[scenario.id] ? hvacBoundaryPackage(hvac.project, scenario).heaters.filter(h => h.kind === "radiator") : [];
+  const sharedHeaters = new Set(heatingSources.map(h => h.id));
+  const editHeating = (id: string) => {
+    const source = heatingSources.find(h => h.id === id), shared = hvac?.project.hvac, operationId = shared?.bindings[scenario.id]?.operatingScenarioId;
+    if (hvac && shared && operationId && shared.activeScenarioId !== operationId) hvac.commit({ ...shared, activeScenarioId: operationId });
+    if (source) hvac?.focusRoom(source); hvac?.setTab("Heating"); hvac?.requestHeating(); onEditSource();
+  };
   const groups = objectGroups(scenario, objects), entries = objectEntries(scenario, objects);
   const [selectedGroup, setSelectedGroup] = useState(DEFAULT_OBJECT_GROUP);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -96,7 +101,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
                 <div className="cfx-device-actions">
                   <button aria-label={`Edit ${entry.name}`} onClick={() => edit(entry)}>Edit</button>
                   <button aria-label={`Duplicate ${entry.name}`} title={sharedHeaters.has(entry.sourceId) ? "Duplicate measured heating devices in Heating, then they appear here automatically." : undefined} disabled={sharedHeaters.has(entry.sourceId) || entry.type === "object" && objects.find(o => o.id === entry.sourceId)?.roomId === "unresolved"} onClick={() => duplicate(entry, group.id)}>Duplicate</button>
-                  {sharedHeaters.has(entry.sourceId) ? <button onClick={editHeating}>Edit in Heating</button> : <button className="cfx-danger" aria-label={`Delete ${entry.name}`} onClick={() => { onChange(deleteObjectEntry(scenario, entry)); if (editing?.id === entry.sourceId) setEditing(null); }}>Delete</button>}
+                  {sharedHeaters.has(entry.sourceId) ? <button onClick={() => editHeating(entry.sourceId)}>Edit in Heating</button> : <button className="cfx-danger" aria-label={`Delete ${entry.name}`} onClick={() => { onChange(deleteObjectEntry(scenario, entry)); if (editing?.id === entry.sourceId) setEditing(null); }}>Delete</button>}
                 </div>
                 <CFDRowMenu label={`Move ${entry.name}`}><label>Move to group<select aria-label={`Move ${entry.name} to group`} value={group.id} onChange={e => {
                   const target = groups.find(g => g.id === e.target.value)!;
