@@ -41,6 +41,38 @@ async function segmentPoint(line, fraction=.5) {
   },fraction);
 }
 
+test("temperature, comparison and results question marks open specific help without toggling sections",async t=>{
+ const session=await harness.session(fixture());t.after(()=>session.close());const {page}=session,panel=await heating(session);
+ const before=JSON.stringify((await session.saved()).heatingLayout);
+ for(const [tab,section,heading] of [['System','Heating system temperatures','Set the water temperatures'],['System','Compare system temperatures','Compare without changing the design'],['Results','Heating results','Heat required and heat available']]){
+  await panel.getByRole('tab',{name:tab,exact:true}).click();
+  const button=panel.getByRole('button',{name:'Help for '+section,exact:true});await button.waitFor();
+  const open=await button.evaluate(el=>el.closest('details').open);await button.click();
+  const help=page.locator('.window-help-host .floating-toolbar-content');await help.getByRole('heading',{name:heading,exact:true}).waitFor();
+  await page.keyboard.press('Escape');assert.equal(await button.evaluate(el=>el.closest('details').open),open);
+ }
+ assert.equal(JSON.stringify((await session.saved()).heatingLayout),before);
+ await page.screenshot({path:'../.local-logs/heating-nov01-qa/section-help-buttons.png'});
+});
+
+test("manifold symbol and help explain supply, return and actual loop usage",async t=>{
+ const project=fixture();project.heatingLayout=createRoomUFH(project.rooms[0],project.heatingLayout!).heating;
+ const session=await harness.session(parseProject(project));t.after(()=>session.close());const {page}=session,panel=await heating(session);
+ const manifold=page.getByRole('button',{name:'Heating manifold: Room 1 manifold',exact:true});
+ await manifold.locator('text').getByText('Room 1 manifold · 1/12 loops',{exact:true}).waitFor();
+ const strokes=await manifold.locator('path').evaluateAll(paths=>paths.map(p=>p.getAttribute('stroke')));assert.deepEqual(strokes,['#c74b1d','#277ab5']);
+ await panel.locator('.floating-toolbar-titlebar').getByRole('button',{name:'Help for Heating Layout',exact:true}).click();
+ const help=page.locator('.window-help-host .floating-toolbar-content');await help.getByRole('heading',{name:'What is a manifold?',exact:true}).waitFor();
+ assert.match(await help.innerText(),/one loop is connected out of twelve/);await page.keyboard.press('Escape');
+ await clearOtherWindows(page);await panel.getByRole('button',{name:'Minimise Heating Layout',exact:true}).click();
+ await manifold.focus();await manifold.press('Enter');await page.getByRole('button',{name:'Restore Heating Layout',exact:true}).click();
+ const edit=panel.locator('details').filter({has:page.getByRole('spinbutton',{name:'Loop connection capacity',exact:true})});
+ await edit.getByText('1 of 12 loop connections used.',{exact:false}).waitFor();
+ await edit.getByRole('button',{name:'Help for Edit manifold',exact:true}).click();
+ await help.getByRole('heading',{name:'Place and connect it',exact:true}).waitFor();
+ await page.screenshot({path:'../.local-logs/heating-nov01-qa/manifold-help.png'});
+});
+
 test("shared U focus is read-only and edits preserve inherited boundary and adjacent temperature",async t=>{
   const project=fixture(),energy=project.energyLayout!,room=project.rooms[0],assembly=newAssembly();
   energy.assemblies=[assembly];const element=energyElements([room],project.heatingLayout!,energy).find(e=>e.category==='wall')!;

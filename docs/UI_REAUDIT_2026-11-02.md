@@ -72,3 +72,23 @@ boundaries documented in `HEATING_UFH_UI_AUDIT_2026-11-01.md` remain applicable.
   PDF, UFH and phone screenshots from the regression run.
 - `git diff --check` passes. Generated Next declaration imports are restored to
   the tracked development paths; unrelated website changes are excluded.
+
+## Screenshot follow-up: chevrons and contextual help
+
+Secondary fitting selectors and Appearance/Position chevrons use 12 px icons
+beside the 16 px main category arrow, retaining the original button hit targets.
+Manifold guides in the main Heating help, Underfloor setup and Edit manifold
+explain the supply/return rails, placement, connections and capacity. The plan
+symbol uses orange/blue rails and shows used/available loops; its settings label
+reads Loop connection capacity.
+
+Heating system temperatures, Compare system temperatures and Heating results
+now have distinct task guides. Their previous shared content caused the
+duplicate-help filter to suppress the question-mark controls. Deduplication is
+retained, and the three controls now open the relevant guide without toggling
+their section or changing project data.
+
+45 focused tests and all 19 relevant browser cases pass, including arrow sizes,
+button hit targets, manifold counts/colours and specific contextual help. Lint,
+source usage and the production static build with TypeScript pass. Updated
+screenshots were reviewed; evidence is in `.local-logs/help-chevron-*`.

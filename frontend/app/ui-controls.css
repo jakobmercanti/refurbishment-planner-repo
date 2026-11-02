@@ -55,6 +55,10 @@ body .fixture-cascading-trigger[aria-expanded="true"] .fixture-cascading-chevron
 body :is(.fixture-cascading-menu-header, .fixture-cascading-collapsed) > button[aria-expanded] { display: grid; place-items: center; font-size: 0 !important; }
 body :is(.fixture-cascading-menu-header, .fixture-cascading-collapsed) > button[aria-expanded]::after { content: ""; width: 16px; height: 16px; background: currentColor; mask: var(--ui-chevron) center / contain no-repeat; pointer-events: none; }
 body .fixture-cascading-menu-header > button[aria-expanded="true"]::after { transform: rotate(180deg); }
+/* Secondary controls keep their full click target with a smaller chevron. */
+body :is(.fixture-section-toggle, .fixture-colours-toggle) > span[aria-hidden],
+body .fixture-cascading-chevron { width: 12px; height: 12px; mask-size: 12px 12px; }
+body :is(.fixture-cascading-menu-header, .fixture-cascading-collapsed) > button[aria-expanded]::after { width: 12px; height: 12px; }
 body .elements-list-section > .elements-list-content { padding-top: var(--density-section-gap, 8px); }
 body .electrical-test-disclosure { display: none; }
 .socket-members { display: grid; gap: 6px; margin-block: 8px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 8px; }

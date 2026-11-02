@@ -130,6 +130,10 @@ test("opening controls use one outlined chevron and keep content gutters clear o
   const arrows = panel.locator(".fixture-colours-toggle > span[aria-hidden], .fixture-section-toggle > span[aria-hidden], .fixture-cascading-collapsed > button");
   assert.ok(await arrows.count() >= 2);
   assert.ok((await arrows.evaluateAll(elements => elements.map(el => getComputedStyle(el, el.tagName === "BUTTON" ? "::after" : null).maskImage))).every(mask => mask.includes("data:image/svg+xml")));
+  const primarySize=await selector.evaluate(el=>parseFloat(getComputedStyle(el).backgroundSize));
+  const secondarySizes=await arrows.evaluateAll(elements=>elements.map(el=>parseFloat(getComputedStyle(el,el.tagName==='BUTTON'?'::after':null).width)));
+  assert.equal(primarySize,16);assert.ok(secondarySizes.every(size=>size===12));
+  assert.ok(await panel.locator('.fixture-cascading-collapsed > button, .fixture-cascading-trigger').first().evaluate(el=>el.getBoundingClientRect().width>=24));
   const gutters = await panel.locator(".floating-toolbar-content").evaluate(el => { const s = getComputedStyle(el); return [parseFloat(s.paddingLeft), parseFloat(s.paddingRight), parseFloat(s.marginLeft), parseFloat(s.marginRight)]; });
   assert.ok(gutters.every(v => v <= 5));
   await page.screenshot({ path: "../.local-logs/ui-nov01-qa/chevrons-and-gutters.png" });
