@@ -88,10 +88,13 @@ function sharedRadiatorIds(project: ProjectDocument) {
 /** Idempotent shared-source reconciliation, including cases created before HVAC setup. */
 export function migrateHvac(project: ProjectDocument): ProjectDocument {
   const radiators = sharedRadiatorIds(project);
-  if (!project.hvac && !project.cfdScenarios?.some(s => s.vents.length) && !radiators.size && !projectFloors(project).some(f => f.content.heatingLayout?.ufhZones.length)) return project;
+  const shared = projectFloors(project).some(f => { const e = f.content.energyLayout; return f.content.heatingLayout?.ufhZones.length || f.content.rooms.some(r => r.obstacles.some(isHeatingElement)) || e && (e.existingAssignments.length || e.scenarios.find(s => s.scenarioId === e.activeScenarioId)?.assignments.length); });
+  if (!project.hvac && !project.cfdScenarios?.some(s => s.vents.length) && !radiators.size && !shared) {
+    return project.cfdScenarios?.some(s => s.sharedBoundaries) ? { ...project, cfdScenarios: project.cfdScenarios.map(s => ({ ...s, sharedBoundaries: undefined })) } : project;
+  }
   const hvac = structuredClone(project.hvac ?? newHvacProject());
   const scenarios = project.cfdScenarios?.map(s => {
-    const stored = s.assetOverrides.some(o => radiators.has(o.objectId)) ? { ...s, assetOverrides: s.assetOverrides.filter(o => !radiators.has(o.objectId)) } : s;
+    const stored = s.sharedBoundaries || s.assetOverrides.some(o => radiators.has(o.objectId)) ? { ...s, sharedBoundaries: undefined, assetOverrides: s.assetOverrides.filter(o => !radiators.has(o.objectId)) } : s;
     if (!s.vents.length) {
       if (!hvac.bindings[s.id]) {
         // Establish shared design without replacing an older case's independent
@@ -249,7 +252,7 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
       hvac.devices = [...hvac.devices.filter(d => !ids.has(d.vent.id)), ...ordered];
     }
     hvac.bindings[s.id] = link;
-    return { ...s, vents: [], assetOverrides: s.assetOverrides.filter(o => !radiators.has(o.objectId)) };
+    return { ...s, vents: [], sharedBoundaries: undefined, assetOverrides: s.assetOverrides.filter(o => !radiators.has(o.objectId)) };
   });
   const studyIds = new Set(stored.map(s => s.id));
   hvac.bindings = Object.fromEntries(Object.entries(hvac.bindings).filter(([id]) => studyIds.has(id)));

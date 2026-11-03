@@ -1,5 +1,6 @@
 import type { ProjectDocument } from "./projectDocument";
 import { buildingOf, projectFloors } from "./buildingDocument";
+import { requiresHvacThermalExecution } from "./hvacBridge";
 /** View-only changes must not bury modelling edits in the history. */
 function editKey(p: ProjectDocument) {
   // Canonical level content is independent of which floor is projected into
@@ -23,11 +24,12 @@ function editKey(p: ProjectDocument) {
   const radiatorIds = new Set(projectFloors(p).flatMap(f => f.content.rooms.flatMap(r => r.obstacles.filter(o => o.heating_spec && o.heating_spec.category !== "Boiler").map(o => o.id))));
   const cases = p.cfdScenarios?.map(s => {
     const binding = p.hvac?.bindings[s.id], linked = !!binding?.operatingScenarioId;
-    return { ...s, validation: undefined, updatedAt: undefined,
+    const thermalSource = !!binding && requiresHvacThermalExecution(p, { ...s, sharedBoundaries: undefined });
+    return { ...s, validation: undefined, updatedAt: undefined, sharedBoundaries: undefined,
       assetOverrides: binding ? s.assetOverrides.filter(o => !radiatorIds.has(o.objectId)) : s.assetOverrides,
       // These fields are projections of the shared operating scenario, not
       // independent modelling edits made by background preparation.
-      ...(linked ? { physics: { ...s.physics, preset: undefined, energy: undefined, boussinesq: undefined, densityKgM3: undefined, heatCapacityJKgK: undefined, referenceTemperatureK: undefined, initialTemperatureK: undefined, outdoorTemperatureK: undefined }, outputs: { ...s.outputs, temperature: undefined }, postProcessing: { ...s.postProcessing, fields: s.postProcessing.fields.filter(f => f !== "T") } } : {}),
+      ...(thermalSource ? { physics: { ...s.physics, preset: undefined, energy: undefined, boussinesq: undefined, ...(linked ? { densityKgM3: undefined, heatCapacityJKgK: undefined, referenceTemperatureK: undefined, initialTemperatureK: undefined, outdoorTemperatureK: undefined } : {}) }, outputs: { ...s.outputs, temperature: undefined }, postProcessing: { ...s.postProcessing, fields: s.postProcessing.fields.filter(f => f !== "T") } } : {}),
     };
   }) ?? [];
   return JSON.stringify([floors,buildingOf(p).roof,cases,p.cfdSimulationGroups??[],hvac],(_key,value:unknown)=>

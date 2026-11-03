@@ -83,7 +83,11 @@ export function moveBoundary(scenario: CFDScenario, patchId: string, target: str
     return { ...g, patchIds: ids };
   }) } };
 }
+export function isSourceThermalBoundary(patch: CFDPatch) {
+  return /^(shared |asset power|asset temperature|vent control)/.test(patch.boundaryOrigin);
+}
 export function effectiveBoundary(scenario: CFDScenario, patch: CFDPatch) {
+  if (isSourceThermalBoundary(patch)) return patch.boundary;
   const collection = scenario.boundaries.collections.find(g => g.patchIds.includes(patch.id)) ??
     scenario.boundaries.collections.find(g => g.id === DEFAULT_BOUNDARY_GROUP);
   const defaults = scenario.boundaries.collections.find(g => g.id === DEFAULT_BOUNDARY_GROUP);

@@ -16,6 +16,7 @@ import { CFDHeatingImport } from "./CFDHeatingImport";
 import { resolveHvacScenario, requiresHvacThermalExecution } from "@/lib/hvacBridge";
 import { hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
 import { SharedHvacCFD } from "./SharedHvacCFD";
+import { SharedBoundaryCapture } from "./SharedBoundaryCapture";
 import { useHvac } from "./HvacContext";
 import { CFDPointProbeControls, CFDPointProbeValue, useCFDPointProbe } from "./CFDPointProbeControls";
 import { completedRunReference, terminalJob, workerInput } from "@/lib/climoptixJobs";
@@ -499,20 +500,7 @@ export function ClimoptixWorkspace({
   const openThermal = () => {
     if (!scenario) return;
     const setup = scenario.thermalEnvelope ?? thermalSetupSchema.parse({});
-    const insulationScenarios = Object.fromEntries(
-      projectFloors(project).map((f) => [
-        f.id,
-        Object.hasOwn(setup.insulationScenarios, f.id)
-          ? setup.insulationScenarios[f.id]
-          : (f.content.energyLayout?.activeScenarioId ?? null),
-      ]),
-    );
-    const target =
-      !scenario.thermalEnvelope ||
-      JSON.stringify(insulationScenarios) !==
-        JSON.stringify(setup.insulationScenarios)
-        ? { ...scenario, thermalEnvelope: { ...setup, insulationScenarios } }
-        : scenario;
+    const target = !scenario.thermalEnvelope ? { ...scenario, thermalEnvelope: setup } : scenario;
     if (target !== scenario) change(target, true);
     setThermalOpen(true);
     openPhase("thermal");
@@ -1206,6 +1194,7 @@ export function ClimoptixWorkspace({
                     )}
                     {panel.id === "boundaries" && (
                       <>
+                        {project.hvac?.bindings[scenario.id] && <SharedBoundaryCapture report={activeReport} checked={!stale && !busy} />}
                         {scenario.thermalSnapshots?.length ? (
                           <p className="cfx-notice">
                             Thermal handoff stored ·{" "}

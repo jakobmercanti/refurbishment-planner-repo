@@ -163,7 +163,7 @@ const CHOICES: Record<string, string[]> = {
   monitor: ["flowBalance", "temperature", "co2"],
   objective: ["comfort", "co2", "uniformity", "pressureLoss"],
   shape: ["box", "sphere", "object"],
-  scalarType: ["zeroFlux", "concentration", "flux"],
+  scalarType: ["zeroFlux", "concentration", "inletOutlet", "flux"],
 };
 const replaceAt = <T,>(values: T[], index: number, value: T) => values.map((old, at) => at === index ? value : old);
 const numeric = (value: unknown): value is number[] => Array.isArray(value) && value.every(item => typeof item === "number");

@@ -5,6 +5,7 @@ import { CFDCollapseAll } from "./CFDCollapseAll";
 import { physicsPreset, type CFDScenario } from "@/lib/climoptixDocument";
 import { Parameters } from "./CFDFields";
 import { useHvac } from "./HvacContext";
+import { requiresHvacThermalExecution } from "@/lib/hvacBridge";
 
 export function PhysicsPanel({
   scenario,
@@ -18,6 +19,7 @@ export function PhysicsPanel({
   const p = scenario.physics;
   const ctx = useHvac();
   const linked = !!ctx?.project.hvac?.bindings[scenario.id]?.operatingScenarioId;
+  const thermalSource = !!ctx && requiresHvacThermalExecution(ctx.project, { ...scenario, sharedBoundaries: undefined });
   return (
     <section data-cfx-collapse-root className="cfx-physics-panel">
       <div className="cfx-inline-toolbar">{actions}<CFDCollapseAll /></div>
@@ -27,7 +29,7 @@ export function PhysicsPanel({
         Physics preset
         <select
           aria-label="Physics preset"
-          disabled={linked}
+          disabled={thermalSource}
           value={p.preset}
           onChange={(e) =>
             onChange({
@@ -66,7 +68,8 @@ export function PhysicsPanel({
         </label>
       </div>
       {linked && <p className="cfx-notice">Linked HVAC scenario: energy and buoyancy are required. Density, cp, reference room temperature and outdoor temperature edit the same conventional operating conditions. Thermal execution is unavailable on the isothermal worker.</p>}
-      <Parameters value={p} omit={Object.keys(p).filter(k => !(linked ? ["co2"] : ["energy", "co2", "boussinesq"]).includes(k))}
+      {thermalSource && !linked && <p className="cfx-notice">Shared Heating or Insulation conditions require energy and buoyancy. Air properties remain case settings; thermal execution needs a compatible energy adapter.</p>}
+      <Parameters value={p} omit={Object.keys(p).filter(k => !(thermalSource ? ["co2"] : ["energy", "co2", "boussinesq"]).includes(k))}
         onChange={v => onChange({ ...scenario, physics: { ...v, preset: "custom" } as typeof p })} />
       </details>
       {([

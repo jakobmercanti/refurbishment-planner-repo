@@ -223,7 +223,8 @@ def thermal_package(
         sources = _sources(setup, scenario, report, errors, warnings, project)
         envelope_patches = {face["patchId"] for face in records}
         if any(
-            p["id"] in envelope_patches and p["boundary"]["thermal"]["type"] != "adiabatic" for p in report["patches"]
+            p["id"] in envelope_patches and p["boundary"]["thermal"]["type"] != "adiabatic"
+            and not p["boundaryOrigin"].startswith("shared ") for p in report["patches"]
         ):
             projection.append(
                 "Existing envelope thermal boundary conditions are active. "
@@ -251,7 +252,7 @@ def thermal_package(
                 continue
             try:
                 u = face["uWm2K"]
-                if u is None or face["source"] == "heatingEstimate":
+                if u is None or u <= 0 or face["source"] == "heatingEstimate":
                     raise ValueError("verified overall U is missing; no Heating fallback is permitted")
                 incident = 0.0
                 if face["exposure"] == "outdoors":

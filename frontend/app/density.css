@@ -389,6 +389,11 @@ body .cfx-workspace .cfx-picked-dot { position:absolute; top:50%; left:-13px; wi
   body .cfx-workspace .cfx-plane-management { grid-template-columns:minmax(0,1fr); }
 }
 /* Compact desktop rows must not conceal essential actions on a narrow window. */
+@container cfx-window (max-width:620px) {
+  body .cfx-workspace .cfx-thermal-inline .thermal-footer { flex-wrap:wrap; overflow-x:visible; }
+  body .cfx-workspace .cfx-thermal-inline .thermal-footer .cfx-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); flex:1 1 100%; min-width:0; }
+  body .cfx-workspace .cfx-thermal-inline .thermal-footer button { min-width:0; height:auto; min-height:42px; white-space:normal; }
+}
 @container cfx-setup (max-width:760px) {
   body .cfx-workspace :is(.cfx-study-tools,.cfx-boundaries-panel > header,.cfx-physics-panel > .cfx-inline-toolbar,.cfx-objects > .cfx-inline-toolbar) { flex-wrap:wrap; overflow:visible; }
   body .cfx-workspace .cfx-objects > .cfx-inline-toolbar > button { flex:1 1 140px; }

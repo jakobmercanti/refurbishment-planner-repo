@@ -25,8 +25,9 @@ scrolling and support arrow keys, Home and End.
    Existing per-device supply temperatures are retained until explicitly changed.
 4. Add/edit radiators and UFH in Heating. Placed obstacles remain radiator
    authority; hydraulic circuits, zones and exclusions remain Heating authority.
-   Both are visible in the CFD source list. UFH loops are also drawn as scene
-   intent; this drawing is not a resolved heat-flux distribution.
+   Both are visible in the CFD source list. Preparation maps UFH upward watts
+   over checked tube-spacing footprints, preserving exclusions and unheated
+   floor areas. The loop drawing itself never supplies a mesh or fit decision.
 5. **Evaluate same configuration in CFD** checks the actual domain and displays
    the vent/heater inputs, connected-room difference, source powers and execution
    limitations. Export the boundary package or create a new CFD case. No existing
@@ -99,18 +100,25 @@ hash. Geometry preparation still uses the existing checked cutout/mesh adapter.
 
 Radiators use one lumped surface-power representation on the existing proxy;
 full output is never added again as air/radiation power, and water temperature
-is never treated as a surface temperature. UFH exports upward room-side output
-and real zone/loop coverage. It does **not** impose a partial zone as a whole-floor
-temperature condition. Film assumptions are retained for review with the existing
-CFD Thermal Envelope adapter; they are not silently turned into Robin conditions.
+is never treated as a surface temperature. UFH maps upward room-side watts to
+uniform tube-spacing coverage clipped to real checked floor faces, exclusions
+and vent apertures. It does **not** impose a partial zone as a whole-floor
+temperature condition. Overlapping/stale zones and unknown watts require review.
+Insulation layers map to a Robin coefficient using `Rtotal - Rsi` once; declared
+Rse stays in the outward resistance. Entered U-values without a known film split
+or missing ground/adjacent temperatures remain explicitly unmapped. Floor
+insulation and UFH use a combined Robin plus upward-source-flux contract.
+Open apertures use backflow temperature conditions rather than solid U-values.
 See the distinction between thermal boundary models in the
 [OpenFOAM boundary-condition documentation](https://www.openfoam.com/documentation/user-guide/5-models-and-physical-properties/5.1-boundary-conditions).
 
 The native worker is isothermal. Shared HVAC thermal runs are disabled and also
 rejected at the submission boundary, including custom adapters advertising run
-capability. Partial UFH face-flux mapping, located zone-gain/infiltration mapping
-and a compatible thermal envelope/energy adapter are not connected. Their exact
-inputs remain reviewable/exportable. No CFD temperature, local velocity, humidity,
+capability. Geometry/boundary preparation and a checked boundary export are
+implemented; the native worker does not execute these thermal contracts. Located
+zone-gain/infiltration mapping, full solid coupling and resolved radiation still
+need a compatible energy adapter. Unlocated gains/flows appear as Needs input
+and cannot make the capture audit report complete. No CFD temperature, local velocity, humidity,
 fan energy or legal compliance result is invented. Existing unrelated isothermal
 CFD workflows remain operational.
 
@@ -119,6 +127,15 @@ with an 8 MB total project guard. This exception applies only to validated HVAC
 snapshot text. Oversized/invalid handoffs fail before committing; full packages
 can still be downloaded separately. The fresh two-pass review and corrective
 regression evidence are in `HVAC_REAUDIT_2026-11-02.md`.
+The current surface-mapping implementation, source-selection rules, tested
+failure states and final audit are in `HVAC_BOUNDARY_AUDIT_2026-11-03.md`.
+
+In CFD **Objects** or **Bounds**, expand **Shared boundary capture** to review
+actual checked powers, areas, outward coefficients and missing inputs. Source
+thermal fields in the surface editor show prepared values and stay read-only;
+edit their Heating/Insulation source or reviewed Thermal Envelope override.
+The exported shared package includes checked patch conditions. Rechecking after
+source edits invalidates stale capture data without changing historical packages.
 
 ## Change map
 

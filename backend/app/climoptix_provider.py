@@ -39,6 +39,8 @@ from geometry.climoptix_surface import (
     triangulate_skin,
 )
 from geometry.climoptix_workflow import refinement_cell_mm, refinement_level
+from geometry.shared_boundaries import finalize_shared_boundaries, prepare_shared_surfaces
+from geometry.thermal_envelope import insulation_source
 
 
 class UnsupportedProviderOperation(RuntimeError):
@@ -531,16 +533,23 @@ def _resolve_boundaries(
     devices = {f"vent:{v.id}": v for v in scenario.vents}
     assets = {a.objectId: a for a in scenario.assetOverrides}
     powers = {o["id"]: o["heatW"] for o in objects}
-    collections = {pid: group for group in scenario.boundaries.collections if group.id != "all-surfaces" for pid in group.patchIds}
+    collections = {
+        pid: group
+        for group in scenario.boundaries.collections
+        if group.id != "all-surfaces"
+        for pid in group.patchIds
+    }
     default_group = next((g for g in scenario.boundaries.collections if g.id == "all-surfaces"), None)
     for pid, patch in patches.items():
         kind = patch["kind"]
-        collection = collections.get(pid, default_group)
+        host_id = patch.get("envelopeHostPatchId", pid)
+        collection = collections.get(pid, collections.get(host_id, default_group))
         group_bc = (collection.boundary if collection and collection.boundary is not None else
                     default_group.boundary if default_group else None)
-        bc = scenario.boundaries.patches.get(pid) or group_bc or scenario.boundaries.groups.get(kind)
+        bc = (scenario.boundaries.patches.get(pid) or scenario.boundaries.patches.get(host_id)
+              or group_bc or scenario.boundaries.groups.get(kind))
         condition_group = collection if collection and collection.boundary is not None else default_group
-        origin = ("patch override" if pid in scenario.boundaries.patches else
+        origin = ("patch override" if pid in scenario.boundaries.patches or host_id in scenario.boundaries.patches else
                   f"boundary group: {condition_group.name}" if group_bc and condition_group else
                   "group preset" if bc else "sample default")
         if kind in ("supply", "extract"):
@@ -549,11 +558,17 @@ def _resolve_boundaries(
                 {
                     "flow": {"type": vent.control, "value": vent.valueSI},
                     "thermal": {
-                        "type": "temperature" if vent.role == "supply" and scenario.physics.energy else "adiabatic",
-                        "value": vent.temperatureK if vent.role == "supply" and scenario.physics.energy else 0,
+                        "type": (
+                            ("temperature" if vent.role == "supply" else "inletOutlet")
+                            if scenario.physics.energy else "adiabatic"
+                        ),
+                        "value": vent.temperatureK if scenario.physics.energy else 0,
                     },
                     "scalarPpm": vent.co2Ppm,
-                    "scalarType": "concentration" if vent.role == "supply" and scenario.physics.co2 else "zeroFlux",
+                    "scalarType": (
+                        ("concentration" if vent.role == "supply" else "inletOutlet")
+                        if scenario.physics.co2 else "zeroFlux"
+                    ),
                     "turbulenceIntensity": vent.turbulenceIntensity,
                     "turbulenceLengthM": vent.turbulenceLengthM,
                 }
@@ -569,7 +584,7 @@ def _resolve_boundaries(
         if kind == "object":
             asset = assets.get(patch["sourceId"])
             if asset and asset.temperatureK is not None:
-                if (pid in scenario.boundaries.patches or group_bc) and bc.thermal.type != "adiabatic":
+                if bc.thermal.type != "adiabatic":
                     _issue(
                         domain.diagnostics,
                         "error",
@@ -583,7 +598,7 @@ def _resolve_boundaries(
                 origin = "asset temperature"
             heat = powers.get(patch["sourceId"], 0)
             if heat > 0:
-                if (pid in scenario.boundaries.patches or group_bc) and bc.thermal.type != "adiabatic":
+                if bc.thermal.type != "adiabatic":
                     _issue(
                         domain.diagnostics,
                         "error",
@@ -673,6 +688,11 @@ class PreparationOnlyProvider:
         patches = {pid: patch for pid, patch in patches.items() if pid in live_ids}
         vents = _prepare_vents(domain, scenario, faces, patches)
         faces = merge_planar_faces(faces)
+        shared_audit = None
+        if scenario.sharedBoundaries:
+            faces, shared_audit = prepare_shared_surfaces(project, scenario, domain, faces, patches)
+            live_ids = {face.patch for face in faces if face.polygon.area > 1e-6}
+            patches = {pid: patch for pid, patch in patches.items() if pid in live_ids}
         faces_by_patch: dict[str, list[Face]] = {}
         for face in faces:
             faces_by_patch.setdefault(face.patch, []).append(face)
@@ -680,7 +700,7 @@ class PreparationOnlyProvider:
             matching = faces_by_patch.get(pid, [])
             patch["areaM2"] = sum(f.polygon.area for f in matching) * 1e-6
             patch["normal"] = matching[0].normal if matching else (0, 0, 0)
-            patch["label"] = (
+            patch["label"] = patch.get("label") or (
                 "Wall " + patch["sourceId"].rsplit("-", 1)[-1].lstrip("0")
                 if patch["kind"] == "wall" and patch["sourceId"].startswith("wall-")
                 else "Ceiling zone " + str(int(pid.rsplit(":", 1)[-1]) + 1)
@@ -688,6 +708,8 @@ class PreparationOnlyProvider:
                 else patch["kind"].replace("slabSide", "Slab void side").title()
             )
         _resolve_boundaries(scenario, domain, patches, objects)
+        if shared_audit is not None:
+            finalize_shared_boundaries(scenario, domain, patches, shared_audit)
         skin = triangulate_skin(faces)
         if not skin["closed"]:
             _issue(
@@ -967,7 +989,10 @@ class PreparationOnlyProvider:
         stamp = ValidationStamp(
             clientRevision=client_revision,
             sourceHash=domain.source_hash,
-            configurationHash=canonical_hash(config),
+            configurationHash=canonical_hash({
+                **config,
+                **({"sharedInsulation": insulation_source(project)} if scenario.sharedBoundaries else {}),
+            }),
             checkedAt=datetime.now(UTC),
             errors=errors,
             warnings=warnings,
@@ -995,6 +1020,7 @@ class PreparationOnlyProvider:
             else None
         )
         return {
+            **({"sharedBoundaryAudit": shared_audit} if shared_audit is not None else {}),
             "schemaVersion": 1,
             "kind": "ClimoptixPreparation",
             "adapterVersion": 1,

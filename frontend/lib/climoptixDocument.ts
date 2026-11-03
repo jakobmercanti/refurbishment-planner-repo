@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { thermalSetupSchema, thermalSnapshotSchema } from "./thermalDocument";
 import { adjointStudiesSchema } from "./cfdAdjointDocument";
+import { sharedBoundaryInputsSchema } from "./sharedBoundaryDocument";
 
 export const MAX_SAMPLING_PLANES = 250;
 
@@ -49,14 +50,15 @@ export const flowSchema = z
 const thermalSchema = z
   .object({
     type: z
-      .enum(["adiabatic", "temperature", "heatFlux", "heatTransfer"])
+      .enum(["adiabatic", "temperature", "inletOutlet", "heatFlux", "heatTransfer"])
       .default("adiabatic"),
     value: finite.min(-1e6).max(1e6).default(0),
     ambientK: temperature.default(293.15),
+    sourceFluxWm2: finite.min(0).max(1e6).optional(),
   })
   .strict()
   .superRefine((v, c) => {
-    if (v.type === "temperature" && (v.value < 150 || v.value > 1500))
+    if (["temperature", "inletOutlet"].includes(v.type) && (v.value < 150 || v.value > 1500))
       c.addIssue({
         code: "custom",
         message: "Temperature must be 150–1500 K.",
@@ -68,6 +70,8 @@ const thermalSchema = z
         message: "Heat-transfer coefficient cannot be negative.",
         path: ["value"],
       });
+    if (v.sourceFluxWm2 && v.type !== "heatTransfer")
+      c.addIssue({ code: "custom", message: "An additive source flux requires a heat-transfer boundary.", path: ["sourceFluxWm2"] });
   })
   .prefault({});
 export const boundarySchema = z
@@ -76,7 +80,7 @@ export const boundarySchema = z
     thermal: thermalSchema,
     scalarPpm: finite.min(0).max(1e6).default(420),
     scalarType: z
-      .enum(["zeroFlux", "concentration", "flux"])
+      .enum(["zeroFlux", "concentration", "inletOutlet", "flux"])
       .default("zeroFlux"),
     scalarFluxM3M2S: finite.min(-1000).max(1000).default(0),
     materialLabel: z.string().max(200).default(""),
@@ -458,6 +462,7 @@ export const cfdScenarioSchema = z
       .prefault({}),
     adjointStudies: adjointStudiesSchema.optional(),
     thermalEnvelope: thermalSetupSchema.nullable().optional(),
+    sharedBoundaries: sharedBoundaryInputsSchema.nullable().optional(),
     thermalSnapshots: z.array(thermalSnapshotSchema).max(3).optional(),
     validation: validationSchema.nullable().default(null),
   })

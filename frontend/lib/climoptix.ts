@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { zipSync, strToU8 } from "fflate";
 import { resolveHvacScenario } from "./hvacBridge";
+import { sharedBoundaryAuditSchema, type SharedBoundaryAudit } from "./sharedBoundaryDocument";
 import {
   projectFloors,
   buildingOf,
@@ -86,6 +87,7 @@ export interface CFDObject {
   triangles: [number, number, number][];
 }
 export interface CFDReport {
+  sharedBoundaryAudit?: SharedBoundaryAudit;
   schemaVersion: 1;
   kind: "ClimoptixPreparation";
   adapterVersion: number;
@@ -166,6 +168,7 @@ const finite = z.number().finite(),
   ]);
 const reportGuard = z
   .object({
+    sharedBoundaryAudit: sharedBoundaryAuditSchema.optional(),
     schemaVersion: z.literal(1),
     kind: z.literal("ClimoptixPreparation"),
     adapterVersion: z.literal(1),
@@ -392,7 +395,7 @@ export function preparationInput(
       wallRuns: f.content.floorplan?.walls ?? [],
       sourceWallHeightMm: f.content.floorplan?.wallHeight,
       sourceWallThicknessMm: f.content.floorplan?.wallThickness,
-      insulation: scenario.thermalEnvelope
+      insulation: scenario.thermalEnvelope || scenario.sharedBoundaries
         ? thermalInsulation(f.content)
         : undefined,
       rooms: f.content.rooms.map((r) => ({
@@ -404,7 +407,7 @@ export function preparationInput(
         openings: r.openings,
         obstacles: r.obstacles,
       })),
-      heating: project.hvac && f.content.heatingLayout ? { ...f.content.heatingLayout, enabled: undefined, display: undefined } : undefined,
+      heating: !scenario.sharedBoundaries && project.hvac && f.content.heatingLayout ? { ...f.content.heatingLayout, enabled: undefined, display: undefined } : undefined,
     })),
     scenario: {
       ...scenario,
@@ -469,7 +472,7 @@ export function preparationRequestBody(
         }
       : null,
     assetInstances: content.assetInstances,
-    energyLayout: scenario.thermalEnvelope ? content.energyLayout : undefined,
+    energyLayout: scenario.thermalEnvelope || scenario.sharedBoundaries ? content.energyLayout : undefined,
   });
   const b = buildingOf(project),
     source = {
@@ -490,7 +493,7 @@ export function preparationRequestBody(
       renderCamera: undefined,
       electricalLayout: undefined,
       heatingLayout: undefined,
-      energyLayout: scenario.thermalEnvelope ? project.energyLayout : undefined,
+      energyLayout: scenario.thermalEnvelope || scenario.sharedBoundaries ? project.energyLayout : undefined,
     };
   const body = JSON.stringify({
     project: source,

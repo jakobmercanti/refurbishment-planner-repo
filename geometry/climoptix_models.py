@@ -18,6 +18,7 @@ from pydantic import (
 )
 
 from geometry.climoptix_adjoint import AdjointStudy
+from geometry.shared_boundary_models import SharedBoundaryInputs
 from geometry.thermal_models import ThermalSetup, ThermalSnapshot
 
 MAX_SAMPLING_PLANES = 250
@@ -69,16 +70,19 @@ class Flow(Contract):
 
 
 class Thermal(Contract):
-    type: Literal["adiabatic", "temperature", "heatFlux", "heatTransfer"] = "adiabatic"
+    type: Literal["adiabatic", "temperature", "inletOutlet", "heatFlux", "heatTransfer"] = "adiabatic"
     value: float = Field(default=0, ge=-1e6, le=1e6)
     ambientK: Temperature = 293.15
+    sourceFluxWm2: float = Field(default=0, ge=0, le=1e6)
 
     @model_validator(mode="after")
     def physical_value(self) -> Self:
-        if self.type == "temperature" and not 150 <= self.value <= 1500:
+        if self.type in ("temperature", "inletOutlet") and not 150 <= self.value <= 1500:
             raise ValueError("Surface temperature must be 150–1500 K.")
         if self.type == "heatTransfer" and self.value < 0:
             raise ValueError("Heat-transfer coefficient cannot be negative.")
+        if self.sourceFluxWm2 and self.type != "heatTransfer":
+            raise ValueError("An additive source flux requires a heat-transfer boundary.")
         return self
 
 
@@ -86,7 +90,7 @@ class Boundary(Contract):
     flow: Flow = Field(default_factory=Flow)
     thermal: Thermal = Field(default_factory=Thermal)
     scalarPpm: float = Field(default=420, ge=0, le=1e6)
-    scalarType: Literal["zeroFlux", "concentration", "flux"] = "zeroFlux"
+    scalarType: Literal["zeroFlux", "concentration", "inletOutlet", "flux"] = "zeroFlux"
     scalarFluxM3M2S: float = Field(default=0, ge=-1000, le=1000)
     materialLabel: str = Field(default="", max_length=200)
     turbulenceIntensity: Fraction = 0.05
@@ -110,7 +114,9 @@ class BoundaryCollection(SimulationGroup):
 
 
 class ObjectCollection(SimulationGroup):
-    memberIds: list[Annotated[str, Field(pattern=r"^(vent|object):[\w:-]{1,150}$")]] = Field(default_factory=list, max_length=3000)
+    memberIds: list[Annotated[str, Field(pattern=r"^(vent|object):[\w:-]{1,150}$")]] = Field(
+        default_factory=list, max_length=3000
+    )
 
 
 class ObjectCopy(Contract):
@@ -430,6 +436,7 @@ class Scenario(Contract):
     adjointStudies: list[AdjointStudy] = Field(default_factory=list, max_length=20)
     validation: ValidationStamp | None = None
     thermalEnvelope: ThermalSetup | None = None
+    sharedBoundaries: SharedBoundaryInputs | None = None
     thermalSnapshots: list[ThermalSnapshot] = Field(default_factory=list, max_length=3)
 
     @model_validator(mode="after")
@@ -441,9 +448,13 @@ class Scenario(Contract):
         if (len({g.id for g in groups}) != len(groups) or len({g.name.lower() for g in groups}) != len(groups)
                 or len(set(members)) != len(members) or len(members) > 3000
                 or (len(groups) == 100 and not any(g.id == "objects-default" for g in groups))
-                or len({o.id for o in copies}) != len(copies) or any(o.sourceObjectId in {v.id for v in copies} for o in copies)
+                or len({o.id for o in copies}) != len(copies)
+                or any(o.sourceObjectId in {v.id for v in copies} for o in copies)
                 or len(set(hidden)) != len(hidden)):
-            raise ValueError("Object groups, copies and hidden IDs must have unique valid membership; copies reference original measured objects.")
+            raise ValueError(
+                "Object groups, copies and hidden IDs must have unique valid membership; "
+                "copies reference original measured objects."
+            )
         for collection, key in ((self.vents, "id"), (self.assetOverrides, "objectId")):
             if len({getattr(item, key) for item in collection}) != len(collection):
                 raise ValueError("Scenario object IDs must be unique.")

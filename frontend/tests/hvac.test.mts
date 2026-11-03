@@ -125,7 +125,7 @@ test("UFH exports loop-level coverage and exclusions without imposing a whole-fl
   p.hvac!.scenarios[0].heaterOverrides[zone.zoneId] = { enabled: true, actualW: 1000 };
   p.hvac!.bindings[s.id] = { deviceIds: [], operatingScenarioId: "operation-1", editMode: "design", overrides: {} };
   const before = JSON.stringify(p.heatingLayout), pkg = hvacBoundaryPackage(p, s), ufh = pkg.heaters.find(h => h.kind === "ufh")!;
-  assert.equal(ufh.watts, 1000); assert.ok(ufh.coverageM2! > 0); assert.equal(ufh.model, "zoneHeatFluxRequiresFaceMapping");
+  assert.equal(ufh.watts, 1000); assert.ok(ufh.coverageM2! > 0); assert.equal(ufh.model, "zoneHeatFluxTubeSpacing");
   assert.ok((ufh.footprint as { circuits: unknown[] }).circuits.length > 0);
   assert.deepEqual(resolveHvacScenario(p, s).boundaries, s.boundaries); assert.equal(JSON.stringify(p.heatingLayout), before);
 });

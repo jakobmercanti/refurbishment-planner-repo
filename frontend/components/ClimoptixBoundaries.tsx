@@ -5,7 +5,7 @@ import { CFDConfirmAction } from "./CFDConfirmAction";
 import { CFDRowMenu } from "./CFDRowMenu";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { insertAtBoundary } from "@/lib/climoptixStudies";
-import { assignBoundarySurfaces, boundaryGroups, boundaryMembership, BOUNDARY_COLOURS, DEFAULT_BOUNDARY_GROUP, effectiveBoundary, moveBoundary, uniqueGroupName } from "@/lib/climoptixGroups";
+import { assignBoundarySurfaces, boundaryGroups, boundaryMembership, BOUNDARY_COLOURS, DEFAULT_BOUNDARY_GROUP, effectiveBoundary, isSourceThermalBoundary, moveBoundary, uniqueGroupName } from "@/lib/climoptixGroups";
 import { useState, type ReactNode } from "react";
 import { CFDEditorWindow } from "./CFDEditorWindow";
 import { boundarySchema, type CFDBoundary, type CFDScenario, type PatchKind, PATCH_KINDS } from "@/lib/climoptixDocument";
@@ -18,10 +18,12 @@ function BoundaryEditor({
   value,
   onChange,
   solid = false,
+  sourceThermal = false,
 }: {
   value: CFDBoundary;
   onChange: (v: CFDBoundary) => void;
   solid?: boolean;
+  sourceThermal?: boolean;
 }) {
   const flowUnits: Record<string, string> = {
     velocity: "m/s",
@@ -79,6 +81,7 @@ function BoundaryEditor({
           Thermal condition
           <select
             aria-label="Boundary thermal condition"
+            disabled={sourceThermal}
             value={value.thermal.type}
             onChange={(e) => {
               const type = e.target.value as CFDBoundary["thermal"]["type"];
@@ -87,12 +90,13 @@ function BoundaryEditor({
                 thermal: {
                   ...value.thermal,
                   type,
-                  value: type === "temperature" ? 293.15 : 0,
+                  value: ["temperature", "inletOutlet"].includes(type) ? 293.15 : 0,
+                  sourceFluxWm2: undefined,
                 },
               });
             }}
           >
-            {["adiabatic", "temperature", "heatFlux", "heatTransfer"].map(
+            {["adiabatic", "temperature", "inletOutlet", "heatFlux", "heatTransfer"].map(
               (t) => (
                 <option key={t} value={t}>
                   {labelFor(t)}
@@ -104,13 +108,14 @@ function BoundaryEditor({
         {value.thermal.type !== "adiabatic" && (
           <CFDNumber
             label={
-              value.thermal.type === "temperature"
+              ["temperature", "inletOutlet"].includes(value.thermal.type)
                 ? "Boundary temperature (K)"
                 : value.thermal.type === "heatFlux"
                   ? "Heat flux into air (W/m²)"
                   : "Heat-transfer coefficient (W/m²·K)"
             }
             value={value.thermal.value}
+            disabled={sourceThermal}
             onChange={(v) =>
               onChange({ ...value, thermal: { ...value.thermal, value: v } })
             }
@@ -122,11 +127,14 @@ function BoundaryEditor({
         <CFDNumber
           label="Ambient temperature (K)"
           value={value.thermal.ambientK}
+          disabled={sourceThermal}
           onChange={(ambientK) =>
             onChange({ ...value, thermal: { ...value.thermal, ambientK } })
           }
         />
       )}
+      {sourceThermal && <p className="cfx-caption">Thermal values come from the checked shared source. Edit Heating, Insulation or its reviewed thermal settings to change them; flow and scalar settings remain separate.</p>}
+      {!!value.thermal.sourceFluxWm2 && <p>Additional upward UFH flux: {value.thermal.sourceFluxWm2.toFixed(3)} W/m².</p>}
       </details>
       <details><summary>Additional boundary fields</summary><Parameters
         value={value}
@@ -203,7 +211,7 @@ export function BoundariesPanel({
     if (collections.length >= 100) return;
     const patch = allPatches.find(p => p.id === patchId);
     const added = { id: crypto.randomUUID(), name: uniqueGroupName(collections.map(g => g.name)), patchIds: patchId ? [patchId] : [],
-      boundary: patch && patch.kind !== "supply" && patch.kind !== "extract" ? effectiveBoundary(scenario, patch) : null };
+      boundary: patch && patch.kind !== "supply" && patch.kind !== "extract" && !isSourceThermalBoundary(patch) ? effectiveBoundary(scenario, patch) : null };
     updateCollections([...collections.map(g => ({ ...g, patchIds: g.patchIds.filter(id => id !== patchId) })), added]);
     onSelectGroup(added.id);
     return added;
@@ -291,7 +299,7 @@ export function BoundariesPanel({
                 </button>
                 <div className="cfx-device-actions">
                   <button aria-label={`Edit surface ${p.id}`} onClick={() => { onSelectGroup(collection.id); onSelect(p.id); setEditing("surface"); }}>Edit</button>
-                  <button aria-label={`Duplicate conditions for ${p.id}`} disabled={collections.length >= 100} title="Copy these conditions to a new empty group" onClick={() => {
+                  <button aria-label={`Duplicate conditions for ${p.id}`} disabled={collections.length >= 100 || isSourceThermalBoundary(p)} title={isSourceThermalBoundary(p) ? "Source thermal conditions stay with their physical Heating/Insulation source." : "Copy these conditions to a new empty group"} onClick={() => {
                     const copy = { id: crypto.randomUUID(), name: uniqueGroupName(collections.map(g => g.name), "Surface conditions"), patchIds: [], boundary: structuredClone(effectiveBoundary(scenario, p)) };
                     updateCollections([...collections, copy]); onSelectGroup(copy.id);
                   }}>Duplicate</button>
@@ -417,6 +425,7 @@ export function BoundariesPanel({
             <>
               <BoundaryEditor
                 solid={["wall", "floor", "ceiling", "slabSide", "object"].includes(patch.kind)}
+                sourceThermal={isSourceThermalBoundary(patch)}
                 value={effectiveBoundary(scenario, patch)}
                 onChange={(value) =>
                   onChange({
@@ -425,7 +434,7 @@ export function BoundariesPanel({
                       ...scenario.boundaries,
                       patches: {
                         ...scenario.boundaries.patches,
-                        [patch.id]: value,
+                        [patch.id]: isSourceThermalBoundary(patch) ? { ...value, thermal: scenario.boundaries.patches[patch.id]?.thermal ?? boundarySchema.parse({}).thermal } : value,
                       },
                     },
                   })

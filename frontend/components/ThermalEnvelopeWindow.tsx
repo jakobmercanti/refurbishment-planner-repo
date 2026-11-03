@@ -463,16 +463,15 @@ export function ThermalEnvelopeWindow({
                     <label key={f.id}>
                       {f.name}
                       <select
-                        value={setup.insulationScenarios[f.id] ?? ""}
-                        onChange={(e) =>
-                          update({
-                            insulationScenarios: {
-                              ...setup.insulationScenarios,
-                              [f.id]: e.target.value || null,
-                            },
-                          })
-                        }
+                        value={Object.hasOwn(setup.insulationScenarios, f.id) ? setup.insulationScenarios[f.id] ?? "" : "__active"}
+                        onChange={(e) => {
+                          const selected = { ...setup.insulationScenarios };
+                          if (e.target.value === "__active") delete selected[f.id];
+                          else selected[f.id] = e.target.value || null;
+                          update({ insulationScenarios: selected });
+                        }}
                       >
+                        <option value="__active">Current Insulation workbench selection</option>
                         <option value="">Existing Building</option>
                         {setup.insulationScenarios[f.id] &&
                           !f.content.energyLayout?.scenarios.some(

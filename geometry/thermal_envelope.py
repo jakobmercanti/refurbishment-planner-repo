@@ -114,7 +114,7 @@ def construction(
     if direct is None and assembly:
         direct = assembly.get("directUValue")
     calculated = bool(assembly and layers and not warnings and total > 0)
-    u = _number(direct, "Declared U-value", 1e-12, 100) if direct is not None else 1 / total if calculated else None
+    u = _number(direct, "Declared U-value", 0, 100) if direct is not None else 1 / total if calculated else None
     films_known = bool(calculated and direct is None and not retained)
     if assembly and assembly.get("notes", "").strip():
         warnings.append("Construction source note: " + assembly["notes"][:2000])
@@ -157,12 +157,14 @@ def construction(
 def _skin_faces(report: dict[str, Any]) -> list[Face]:
     """Use freshly generated kernel triangles, never a client/display mesh."""
     patch_kinds = {p["id"]: p["kind"] for p in report["patches"]}
+    host_ids = {p["id"]: p.get("envelopeHostPatchId", p["id"]) for p in report["patches"]}
     points = report["surface"]["verticesMm"]
     grouped: dict[tuple[Any, ...], list[Polygon]] = defaultdict(list)
     frames: dict[tuple[Any, ...], Face] = {}
     for triangle, patch in zip(report["surface"]["triangles"], report["surface"]["trianglePatches"], strict=True):
         if patch_kinds.get(patch) in ("object", "supply", "extract"):
             continue
+        patch = host_ids[patch]
         a, b, c = [tuple(points[i]) for i in triangle]
         n = unit(cross(sub(b, a), sub(c, a)))
         key = (patch, *(round(v, 8) for v in n), round(dot(n, a), 5))

@@ -113,7 +113,7 @@ test("UFH floor settings export live and CFD operating watts are shared with con
   const ui = await cfd(s), shared = ui.getByLabel("Shared HVAC devices", { exact: true });
   const pkg = await packageFrom(shared, s.page), ufh = pkg.heaters.find(h => h.id === zone.zoneId);
   assert.equal(ufh.footprint.zone.floorConstruction, "Reviewed timber build-up"); assert.ok(ufh.footprint.circuits.length > 0);
-  const details = shared.locator("details").filter({ hasText: `${zone.name} · Underfloor heating` });
+  const details = shared.getByLabel(`Shared heating source · ${zone.name}`, { exact: true });
   await details.locator("summary").click(); await number(details, `Scenario effective output · ${zone.name} (W)`, 900);
   const saved = await eventually(s.saved, p => p.hvac.scenarios[0].heaterOverrides[zone.zoneId]?.actualW === 900);
   assert.equal(conventionalHvac(saved, saved.hvac.scenarios[0]).heatingW, 1900);

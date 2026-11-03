@@ -90,7 +90,7 @@ export async function prepareWorkerSubmission(
 ): Promise<CFDSubmission> {
   signal.throwIfAborted();
   if (operation === "run" && requiresHvacThermalExecution(project, scenario))
-    throw new Error("Shared HVAC thermal execution is not connected. Export the boundary package; partial UFH/envelope/source mapping must be implemented by a compatible energy adapter before solving.");
+    throw new Error("Shared HVAC thermal execution is not connected. Export the checked boundary package; a compatible energy adapter must implement the prepared thermal conditions before solving.");
   scenario = resolveHvacScenario(project, scenario);
   const applied = scenario.thermalSnapshots?.[0];
   const thermalApplication = applied

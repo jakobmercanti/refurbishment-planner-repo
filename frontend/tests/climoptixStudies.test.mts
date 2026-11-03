@@ -397,7 +397,7 @@ test("thermal worker handoffs preserve authoritative hashes but omit histories a
       "/api",
       project,
       scenario,
-      "run",
+      "mesh",
       new AbortController().signal,
     );
     assert.equal(
@@ -421,6 +421,7 @@ test("thermal worker handoffs preserve authoritative hashes but omit histories a
       1,
       "The saved history belongs to the user and is unchanged",
     );
+    await assert.rejects(prepareWorkerSubmission("/api", project, scenario, "run", new AbortController().signal), /thermal execution is not connected/);
   } finally {
     globalThis.fetch = fetch;
   }

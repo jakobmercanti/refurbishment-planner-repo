@@ -7,6 +7,7 @@ import { downloadCFD } from "@/lib/climoptix";
 import type { CFDReport } from "@/lib/climoptix";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import { hvacBoundaryPackage, hvacModelLabel } from "@/lib/hvacBridge";
+import { SharedBoundaryCapture } from "./SharedBoundaryCapture";
 
 export function SharedHvacCFD({ scenario, report, checked = false, onEditSource }: { scenario: CFDScenario; report: CFDReport | null; checked?: boolean; onEditSource: () => void }) {
   const ctx = useHvac(), hvac = ctx?.project.hvac, link = hvac?.bindings[scenario.id];
@@ -36,13 +37,14 @@ export function SharedHvacCFD({ scenario, report, checked = false, onEditSource 
     <p role="status">{stale ? "CFD case outdated — shared inputs changed. Existing result snapshots are preserved." : snapshot ? "Synced with conventional snapshot" : "Shared design · no conventional case snapshot"}</p>
     <div className="cfx-equal-actions"><button onClick={() => openSource("Ventilation")}>Open Ventilation</button><button onClick={() => openSource("Heating")}>Edit shared Heating geometry</button><button onClick={() => commit({ ...hvac, bindings: { ...hvac.bindings, [scenario.id]: { ...link, overrides: {} } }, scenarios: hvac.scenarios.map(s => s.id === operating?.id ? { ...s, ventOverrides: {}, heaterOverrides: {} } : s) })}>Use design values</button></div>
     {overrideCount > 0 && <p>Scenario override active for {overrideCount} vent(s). Geometry moves retain baseline operating design values.</p>}
-    {pkg.heaters.map(h => <details key={`${h.floorId}:${h.id}`}><summary>{h.name} · {h.kind === "ufh" ? "Underfloor heating" : "Radiator"} · {h.inDomain ? "In domain" : "Out of domain"}</summary>
+    {pkg.heaters.map(h => <details key={`${h.floorId}:${h.id}`} aria-label={`Shared heating source · ${h.name}`}><summary>{h.name} · {h.kind === "ufh" ? "Underfloor heating" : "Radiator"} · {h.inDomain ? "In domain" : "Out of domain"}</summary>
       <p>{h.watts === null ? "Unknown effective output" : `${h.watts.toFixed(1)} W`} · {hvacModelLabel(h.model)}{h.coverageM2 !== null ? ` · ${h.coverageM2.toFixed(2)} m² heated coverage` : ""}</p><p>{h.notes}</p>
       {operating && <><label className="cfx-check"><input type="checkbox" checked={operating.heaterOverrides[h.id]?.enabled ?? true} onChange={e => commit({ ...hvac, scenarios: hvac.scenarios.map(s => s.id === operating.id ? { ...s, heaterOverrides: { ...s.heaterOverrides, [h.id]: { actualW: s.heaterOverrides[h.id]?.actualW ?? null, enabled: e.target.checked } } } : s) })} />Enabled in {operating.name}</label>
       <CFDNumber label={`Scenario effective output · ${h.name} (W)`} value={h.watts ?? 0} min={0} onChange={actualW => commit({ ...hvac, scenarios: hvac.scenarios.map(s => s.id === operating.id ? { ...s, heaterOverrides: { ...s.heaterOverrides, [h.id]: { enabled: s.heaterOverrides[h.id]?.enabled ?? true, actualW } } } : s) })} />
       <button onClick={() => commit({ ...hvac, scenarios: hvac.scenarios.map(s => { if (s.id !== operating.id) return s; const overrides = { ...s.heaterOverrides }; delete overrides[h.id]; return { ...s, heaterOverrides: overrides }; }) })}>Use Heating output</button></>}
     </details>)}
     {error && <p role="alert" className="cfx-error">{error}</p>}
+    <SharedBoundaryCapture report={report} checked={checked} />
     {pkg.warnings.map(w => <p key={w} className="cfx-notice">{w}</p>)}
     <button onClick={() => downloadCFD(new Blob([JSON.stringify(pkg, null, 2)], { type: "application/json" }), "hvac-cfd-boundaries.json")}>Export shared boundary package</button>
   </details>;
