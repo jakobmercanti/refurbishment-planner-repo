@@ -2,7 +2,7 @@
 
 import math
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any
 
 from shapely import unary_union
 from shapely.geometry import Point, Polygon, box
@@ -45,21 +45,6 @@ from geometry.thermal_envelope import insulation_source
 
 class UnsupportedProviderOperation(RuntimeError):
     pass
-
-
-class CFDProvider(Protocol):
-    def capabilities(self) -> ProviderCapabilities: ...
-    def validate_scenario(
-        self, project: dict[str, Any], scenario: Scenario, client_revision: str
-    ) -> dict[str, Any]: ...
-    def prepare_geometry(self, project: dict[str, Any], scenario: Scenario) -> Domain: ...
-    def prepare_mesh_recipe(self, scenario: Scenario, volume_m3: float) -> dict[str, Any]: ...
-    def generate_case(self, scenario: Scenario) -> PreparedCase: ...
-    def submit_mesh(self, scenario: Scenario) -> JobHandle: ...
-    def submit_run(self, scenario: Scenario) -> JobHandle: ...
-    def get_job_status(self, job_id: str) -> JobHandle: ...
-    def cancel_job(self, job_id: str) -> JobHandle: ...
-    def get_result_manifest(self, job_id: str) -> ResultManifest: ...
 
 
 def _issue(
@@ -709,7 +694,7 @@ class PreparationOnlyProvider:
             )
         _resolve_boundaries(scenario, domain, patches, objects)
         if shared_audit is not None:
-            finalize_shared_boundaries(scenario, domain, patches, shared_audit)
+            finalize_shared_boundaries(domain, patches, shared_audit)
         skin = triangulate_skin(faces)
         if not skin["closed"]:
             _issue(

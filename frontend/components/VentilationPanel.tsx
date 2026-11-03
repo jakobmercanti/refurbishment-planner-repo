@@ -1,4 +1,5 @@
 "use client";
+import { conventionalHvac } from "@/lib/hvacHeating";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHvac } from "./HvacContext";
 import { EquipmentPanel } from "./ClimoptixEquipment";
@@ -8,7 +9,7 @@ import { WindowHelpButton } from "./WindowHelpButton";
 import { projectFloors } from "@/lib/buildingDocument";
 import { cfdScenarioSchema, newCFDScenario, ventSchema, type CFDScenario } from "@/lib/climoptixDocument";
 import { downloadCFD, preparationInput, preparationRevision, prepareCFD, type CFDReport } from "@/lib/climoptix";
-import { conventionalHvac, hvacBoundaryPackage, hvacControlLabel, hvacModelLabel, resolveHvacScenario, type HvacCfdBoundaryPackage } from "@/lib/hvacBridge";
+import { hvacBoundaryPackage, hvacControlLabel, hvacModelLabel, resolveHvacScenario, type HvacCfdBoundaryPackage } from "@/lib/hvacBridge";
 import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
 import { HvacVentPlan } from "./HvacVentPlan";
 import styles from "./HeatingLayoutPanel.module.css";
@@ -16,7 +17,7 @@ import styles from "./HeatingLayoutPanel.module.css";
 export function HeatingVentilationTabs({ children }: { children: ReactNode }) {
   const ctx = useHvac();
   if (!ctx) return children;
-  return <div className={styles.panel}>
+  return <div className={`${styles.panel} ${styles.hvacWorkbench}`}>
     <nav className={`${styles.tabs} ${styles.hvacTabs}`} role="tablist" aria-label="HVAC workbench">
       {(["Heating", "Ventilation"] as const).map((tab, index) => <button key={tab} id={`hvac-tab-${tab}`} type="button" role="tab" aria-selected={ctx.tab === tab} aria-controls={`hvac-panel-${tab}`} tabIndex={ctx.tab === tab ? 0 : -1} onClick={() => ctx.setTab(tab)} onKeyDown={e => {
         if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); const next = e.key === "Home" ? "Heating" : e.key === "End" ? "Ventilation" : index === 0 ? "Ventilation" : "Heating"; ctx.setTab(next); document.getElementById(`hvac-tab-${next}`)?.focus(); }

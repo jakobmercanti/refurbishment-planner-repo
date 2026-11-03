@@ -10,13 +10,14 @@ from typing import Any
 from shapely import unary_union
 from shapely.geometry import LineString, Polygon
 
-from geometry.climoptix_domain import canonical_hash
-from geometry.climoptix_models import Diagnostic, Thermal
+from geometry.climoptix_domain import Domain, canonical_hash
+from geometry.climoptix_models import Diagnostic, Scenario, Thermal
 from geometry.climoptix_surface import Face, dot, sub, triangulate_skin
+from geometry.shared_boundary_models import BoundaryCapture, BoundaryStatus, SharedBoundaryAudit, SharedBoundaryInputs
 from geometry.thermal_envelope import envelope_records
 
 
-def _row(key: str, name: str, floor: str, room: str, kind: str) -> dict[str, Any]:
+def _row(key: str, name: str, floor: str, room: str, kind: str) -> BoundaryCapture:
     return dict(
         id=key,
         name=name,
@@ -36,10 +37,10 @@ def _row(key: str, name: str, floor: str, room: str, kind: str) -> dict[str, Any
     )
 
 
-def _issue(domain: Any, row: dict[str, Any], code: str, severity: str = "warning") -> None:
+def _issue(domain: Domain, row: BoundaryCapture, code: str) -> None:
     domain.diagnostics.append(
         Diagnostic(
-            severity=severity,
+            severity="warning",
             group="boundaries",
             code=code,
             objectId=row["id"],
@@ -49,7 +50,9 @@ def _issue(domain: Any, row: dict[str, Any], code: str, severity: str = "warning
     )
 
 
-def _envelope_condition(record: dict[str, Any], scenario: Any) -> tuple[dict[str, Any] | None, str, str]:
+def _envelope_condition(
+    record: dict[str, Any], scenario: Scenario
+) -> tuple[dict[str, Any] | None, BoundaryStatus, str]:
     if record["status"] == "stale":
         return None, "incomplete", "Construction geometry or override is stale; reassign/review it."
     if record.get("openAir"):
@@ -157,77 +160,80 @@ def _clone_patch(patches: dict[str, Any], parent: str, key: str, label: str) -> 
     return pid
 
 
-def prepare_shared_surfaces(
-    project: dict[str, Any], scenario: Any, domain: Any, faces: list[Face], patches: dict[str, Any]
-) -> tuple[list[Face], dict[str, Any]]:
-    inputs = scenario.sharedBoundaries
-    audit: dict[str, Any] = dict(
-        version=1, state="complete", sources=[], envelope=[], inventory=[i.model_dump() for i in inputs.inventory]
-    )
-    if inputs.captureEnvelope:
-        try:
-            records = envelope_records(
-                project, scenario, domain, {"patches": list(patches.values()), "surface": triangulate_skin(faces)}
-            )
-        except ValueError as error:
-            row = _row("insulation:unavailable", "Insulation source", "", "", "insulation")
-            row["message"] = str(error)[:1000]
-            audit["envelope"].append(row)
-            records = []
-        assigned: set[str] = set()
-        new_faces: list[Face] = []
-        by_patch: dict[str, list[dict[str, Any]]] = {}
-        for record in records:
-            by_patch.setdefault(record["patchId"], []).append(record)
-            patch = patches[record["patchId"]]
-            portal = next((p for p in domain.portals if p.id == patch["sourceId"]), None)
-            record["openAir"] = patch["kind"] == "cap" or (
-                patch["kind"] in ("door", "window") and portal is not None and portal.raw.get("swing_angle_deg", 0) > 0
-            )
-            row = _row(
-                record["surfaceId"],
-                f"{record['roomName']} · {record['elementId'].split('|')[-1]}",
-                record["floorId"],
-                record["roomId"],
-                "insulation",
-            )
-            thermal, row["status"], row["message"] = _envelope_condition(record, scenario)
-            row.update(uWm2K=record["uWm2K"], rsiM2KW=record["rsi"])
-            if thermal and thermal["type"] == "heatTransfer":
-                row.update(coefficientWm2K=thermal["value"], ambientK=thermal["ambientK"])
-            record["sharedRow"], record["sharedThermal"] = row, thermal
-            audit["envelope"].append(row)
-        # Preserve each original host ID on its first part. Host coordinates
-        # still describe the original measured host, independent of face splits.
-        child_for_record: dict[str, str] = {}
-        for face in faces:
-            remaining = face.polygon
-            for record in by_patch.get(face.patch, []):
-                cut = remaining.intersection(_record_polygon(record, face))
-                if cut.area <= 1e-6:
-                    continue
-                sid = record["surfaceId"]
-                if sid not in child_for_record:
-                    pid = (
-                        face.patch
-                        if face.patch not in assigned
-                        else _clone_patch(
-                            patches, face.patch, "ins:" + canonical_hash(sid)[:12], record["sharedRow"]["name"]
-                        )
+def _prepare_envelope(
+    project: dict[str, Any],
+    scenario: Scenario,
+    domain: Domain,
+    faces: list[Face],
+    patches: dict[str, Any],
+    audit: SharedBoundaryAudit,
+) -> list[Face]:
+    try:
+        records = envelope_records(
+            project, scenario, domain, {"patches": list(patches.values()), "surface": triangulate_skin(faces)}
+        )
+    except ValueError as error:
+        row = _row("insulation:unavailable", "Insulation source", "", "", "insulation")
+        row["message"] = str(error)[:1000]
+        audit["envelope"].append(row)
+        records = []
+    assigned: set[str] = set()
+    new_faces: list[Face] = []
+    by_patch: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        by_patch.setdefault(record["patchId"], []).append(record)
+        patch = patches[record["patchId"]]
+        portal = next((p for p in domain.portals if p.id == patch["sourceId"]), None)
+        record["openAir"] = patch["kind"] == "cap" or (
+            patch["kind"] in ("door", "window") and portal is not None and portal.raw.get("swing_angle_deg", 0) > 0
+        )
+        row = _row(
+            record["surfaceId"],
+            f"{record['roomName']} · {record['elementId'].split('|')[-1]}",
+            record["floorId"],
+            record["roomId"],
+            "insulation",
+        )
+        thermal, row["status"], row["message"] = _envelope_condition(record, scenario)
+        row.update(uWm2K=record["uWm2K"], rsiM2KW=record["rsi"])
+        if thermal and thermal["type"] == "heatTransfer":
+            row.update(coefficientWm2K=thermal["value"], ambientK=thermal["ambientK"])
+        record["sharedRow"], record["sharedThermal"] = row, thermal
+        audit["envelope"].append(row)
+    # Preserve each original host ID on its first part. Host coordinates
+    # still describe the original measured host, independent of face splits.
+    child_for_record: dict[str, str] = {}
+    for face in faces:
+        remaining = face.polygon
+        for record in by_patch.get(face.patch, []):
+            cut = remaining.intersection(_record_polygon(record, face))
+            if cut.area <= 1e-6:
+                continue
+            sid = record["surfaceId"]
+            if sid not in child_for_record:
+                pid = (
+                    face.patch
+                    if face.patch not in assigned
+                    else _clone_patch(
+                        patches, face.patch, "ins:" + canonical_hash(sid)[:12], record["sharedRow"]["name"]
                     )
-                    child_for_record[sid] = pid
-                    assigned.add(face.patch)
-                pid = child_for_record[sid]
-                patches[pid]["sharedEnvelopeId"] = sid
-                patches[pid]["sharedThermal"] = record["sharedThermal"]
-                new_faces.append(Face(pid, face.origin, face.u, face.v, face.normal, cut))
-                remaining = remaining.difference(cut)
-            if remaining.area > 1e-6:
-                new_faces.append(Face(face.patch, face.origin, face.u, face.v, face.normal, remaining))
-        faces = new_faces
+                )
+                child_for_record[sid] = pid
+                assigned.add(face.patch)
+            pid = child_for_record[sid]
+            patches[pid]["sharedEnvelopeId"] = sid
+            patches[pid]["sharedThermal"] = record["sharedThermal"]
+            new_faces.append(Face(pid, face.origin, face.u, face.v, face.normal, cut))
+            remaining = remaining.difference(cut)
+        if remaining.area > 1e-6:
+            new_faces.append(Face(face.patch, face.origin, face.u, face.v, face.normal, remaining))
+    return new_faces
+
+
+def _prepare_source_masks(inputs: SharedBoundaryInputs, domain: Domain, audit: SharedBoundaryAudit):
     regions = {(r.floor_id, r.id): r for r in domain.regions if r.id in domain.included}
     masks: dict[str, Any] = {}
-    source_rows: dict[str, dict[str, Any]] = {}
+    source_rows: dict[str, BoundaryCapture] = {}
     for source in inputs.sources:
         row = _row(source.id, source.name, source.floorId, source.roomId, source.kind)
         row["watts"] = source.watts
@@ -271,6 +277,10 @@ def prepare_shared_surfaces(
                 )
             except ValueError as error:
                 row["message"] = str(error)
+    return masks, source_rows, regions
+
+
+def _reject_overlapping_ufh(masks: dict[str, Any], source_rows: dict[str, BoundaryCapture]) -> None:
     ids = sorted(masks)
     for i, key in enumerate(ids):
         for other in ids[i + 1 :]:
@@ -283,56 +293,62 @@ def prepare_shared_surfaces(
                         status="incomplete",
                         message="UFH zones overlap. Review disjoint heated coverage before mapping power.",
                     )
-    for key in ids:
-        row = source_rows[key]
-        if row["status"] != "applied":
+
+
+def _map_ufh_source(
+    faces: list[Face],
+    patches: dict[str, Any],
+    row: BoundaryCapture,
+    key: str,
+    mask: Any,
+) -> list[Face]:
+    parts: list[tuple[Face, Any]] = []
+    for face in faces:
+        patch = patches[face.patch]
+        if patch["kind"] != "floor" or (patch["floorId"], patch["roomId"]) != (row["floorId"], row["roomId"]):
             continue
-        parts: list[tuple[Face, Any]] = []
-        for face in faces:
-            patch = patches[face.patch]
-            if patch["kind"] != "floor" or (patch["floorId"], patch["roomId"]) != (row["floorId"], row["roomId"]):
-                continue
-            if abs(face.normal[2]) < 0.999999:
-                continue
-            rings = [masks[key]] if isinstance(masks[key], Polygon) else list(masks[key].geoms)
-            projected = unary_union(
-                [
-                    Polygon(
-                        [face.project((x, y, face.origin[2])) for x, y in ring.exterior.coords],
-                        [[face.project((x, y, face.origin[2])) for x, y in hole.coords] for hole in ring.interiors],
-                    )
-                    for ring in rings
-                    if isinstance(ring, Polygon)
-                ]
-            )
-            cut = face.polygon.intersection(projected)
-            if cut.area > 1e-6:
-                parts.append((face, cut))
-        area = sum(part.area for _, part in parts) * 1e-6
-        if area <= 0 or row["watts"] / area > 1e6:
-            row.update(
-                status="incomplete", message="UFH has no exposed floor area or exceeds the supported flux range."
-            )
+        if abs(face.normal[2]) < 0.999999:
             continue
-        flux = row["watts"] / area
-        used = {id(face): part for face, part in parts}
-        updated: list[Face] = []
-        for face in faces:
-            cut = used.get(id(face))
-            if cut is None:
-                updated.append(face)
-                continue
-            remaining = face.polygon.difference(cut)
-            pid = (
-                _clone_patch(patches, face.patch, "ufh:" + key, f"UFH · {row['name']}")
-                if remaining.area > 1e-6
-                else face.patch
-            )
-            patches[pid]["sharedSourceId"], patches[pid]["sharedSourceFlux"] = key, flux
-            updated.append(Face(pid, face.origin, face.u, face.v, face.normal, cut))
-            if remaining.area > 1e-6:
-                updated.append(Face(face.patch, face.origin, face.u, face.v, face.normal, remaining))
-        faces = updated
+        rings = [mask] if isinstance(mask, Polygon) else list(mask.geoms)
+        projected = unary_union(
+            [
+                Polygon(
+                    [face.project((x, y, face.origin[2])) for x, y in ring.exterior.coords],
+                    [[face.project((x, y, face.origin[2])) for x, y in hole.coords] for hole in ring.interiors],
+                )
+                for ring in rings
+                if isinstance(ring, Polygon)
+            ]
+        )
+        cut = face.polygon.intersection(projected)
+        if cut.area > 1e-6:
+            parts.append((face, cut))
+    area = sum(part.area for _, part in parts) * 1e-6
+    if area <= 0 or row["watts"] / area > 1e6:
+        row.update(status="incomplete", message="UFH has no exposed floor area or exceeds the supported flux range.")
+        return faces
+    flux = row["watts"] / area
+    used = {id(face): part for face, part in parts}
+    updated: list[Face] = []
+    for face in faces:
+        cut = used.get(id(face))
+        if cut is None:
+            updated.append(face)
+            continue
+        remaining = face.polygon.difference(cut)
+        pid = (
+            _clone_patch(patches, face.patch, "ufh:" + key, f"UFH · {row['name']}")
+            if remaining.area > 1e-6
+            else face.patch
+        )
+        patches[pid]["sharedSourceId"], patches[pid]["sharedSourceFlux"] = key, flux
+        updated.append(Face(pid, face.origin, face.u, face.v, face.normal, cut))
+        if remaining.area > 1e-6:
+            updated.append(Face(face.patch, face.origin, face.u, face.v, face.normal, remaining))
+    return updated
+
+
+def _capture_unlocated(inputs: SharedBoundaryInputs, regions: dict, audit: SharedBoundaryAudit) -> None:
     for value in inputs.unlocated:
         row = _row(value.id, value.name, value.floorId, value.roomId, value.kind)
         row["watts"] = value.valueSI if value.units == "W" else None
@@ -342,10 +358,30 @@ def prepare_shared_surfaces(
             "opening/object/receiving-surface mapping. It is not added as an arbitrary CFD boundary."
         )
         audit["sources"].append(row)
+
+
+def prepare_shared_surfaces(
+    project: dict[str, Any], scenario: Scenario, domain: Domain, faces: list[Face], patches: dict[str, Any]
+) -> tuple[list[Face], SharedBoundaryAudit]:
+    inputs = scenario.sharedBoundaries
+    if inputs is None:
+        raise ValueError("Shared boundary intent is required for source mapping.")
+    audit: SharedBoundaryAudit = dict(
+        version=1, state="complete", sources=[], envelope=[], inventory=[i.model_dump() for i in inputs.inventory]
+    )
+    if inputs.captureEnvelope:
+        faces = _prepare_envelope(project, scenario, domain, faces, patches, audit)
+    masks, source_rows, regions = _prepare_source_masks(inputs, domain, audit)
+    _reject_overlapping_ufh(masks, source_rows)
+    for key in sorted(masks):
+        row = source_rows[key]
+        if row["status"] == "applied":
+            faces = _map_ufh_source(faces, patches, row, key, masks[key])
+    _capture_unlocated(inputs, regions, audit)
     return faces, audit
 
 
-def finalize_shared_boundaries(scenario: Any, domain: Any, patches: dict[str, Any], audit: dict[str, Any]) -> None:
+def _apply_envelope_conditions(patches: dict[str, Any], audit: SharedBoundaryAudit) -> None:
     envelope = {r["id"]: r for r in audit["envelope"]}
     for patch in patches.values():
         row = envelope.get(patch.get("sharedEnvelopeId"))
@@ -367,64 +403,77 @@ def finalize_shared_boundaries(scenario: Any, domain: Any, patches: dict[str, An
                 patch["boundary"]["thermal"] = wanted
                 patch["boundaryOrigin"] = "shared insulation"
                 patch.pop("needsReview", None)
+
+
+def _finalize_ufh(row: BoundaryCapture, found: list[dict[str, Any]]) -> None:
+    if row["status"] == "applied" and any(
+        p["boundary"]["thermal"]["type"] not in ("adiabatic", "heatTransfer") for p in found
+    ):
+        row.update(
+            status="incomplete",
+            message="A fixed temperature/flux conflicts with UFH power; choose one floor source model.",
+        )
+    for patch in found:
+        row["patchIds"].append(patch["id"])
+        row["areaM2"] += patch["areaM2"]
+        flux = patch.pop("sharedSourceFlux")
+        if row["status"] == "applied":
+            thermal = patch["boundary"]["thermal"]
+            if thermal["type"] == "heatTransfer":
+                thermal["sourceFluxWm2"] = flux
+            else:
+                patch["boundary"]["thermal"] = Thermal(type="heatFlux", value=flux).model_dump()
+            patch["boundaryOrigin"] = "shared UFH + insulation" if thermal["type"] == "heatTransfer" else "shared UFH"
+            patch.pop("needsReview", None)
+            row["appliedW"] += flux * patch["areaM2"]
+
+
+def _finalize_radiator(row: BoundaryCapture, found: list[dict[str, Any]], domain: Domain) -> None:
+    row["patchIds"] = [p["id"] for p in found]
+    row["areaM2"] = sum(p["areaM2"] for p in found)
+    row["appliedW"] = sum(
+        p["boundary"]["thermal"]["value"] * p["areaM2"] for p in found if p["boundary"]["thermal"]["type"] == "heatFlux"
+    )
+    if row["status"] == "off" and any(p["boundary"]["thermal"]["type"] != "adiabatic" for p in found):
+        row.update(
+            status="incomplete",
+            message=(
+                "Heating is off but an explicit CFD thermal condition is active on its proxy. "
+                "Remove the conflicting override."
+            ),
+        )
+    if any(d.severity == "error" and d.objectId in {row["id"], *row["patchIds"]} for d in domain.diagnostics):
+        row.update(
+            status="incomplete",
+            message="Source geometry or thermal controls are invalid; review the reported source issues.",
+        )
+    if row["status"] == "applied" and (
+        not found or abs(row["appliedW"] - row["watts"]) > max(0.01, row["watts"] * 1e-8)
+    ):
+        row.update(
+            status="incomplete",
+            message="The measured radiator proxy does not conserve its declared room power.",
+        )
+
+
+def finalize_shared_boundaries(domain: Domain, patches: dict[str, Any], audit: SharedBoundaryAudit) -> None:
+    _apply_envelope_conditions(patches, audit)
+    # Index once: source-by-source scans over every patch become costly on large floors.
+    ufh: dict[str, list[dict[str, Any]]] = {}
+    radiators: dict[str, list[dict[str, Any]]] = {}
+    for patch in patches.values():
+        if source := patch.get("sharedSourceId"):
+            ufh.setdefault(source, []).append(patch)
+        if patch["kind"] == "object":
+            radiators.setdefault(patch["sourceId"], []).append(patch)
     for row in audit["sources"]:
-        if row["kind"] not in ("radiator", "ufh"):
-            if row["status"] == "incomplete":
-                _issue(domain, row, "shared-source-unlocated")
-            continue
         if row["kind"] == "ufh":
-            found = [p for p in patches.values() if p.get("sharedSourceId") == row["id"]]
-            if row["status"] == "applied" and any(
-                p["boundary"]["thermal"]["type"] not in ("adiabatic", "heatTransfer") for p in found
-            ):
-                row.update(
-                    status="incomplete",
-                    message="A fixed temperature/flux conflicts with UFH power; choose one floor source model.",
-                )
-            for patch in found:
-                row["patchIds"].append(patch["id"])
-                row["areaM2"] += patch["areaM2"]
-                flux = patch.pop("sharedSourceFlux")
-                if row["status"] == "applied":
-                    thermal = patch["boundary"]["thermal"]
-                    if thermal["type"] == "heatTransfer":
-                        thermal["sourceFluxWm2"] = flux
-                    else:
-                        patch["boundary"]["thermal"] = Thermal(type="heatFlux", value=flux).model_dump()
-                    patch["boundaryOrigin"] = (
-                        "shared UFH + insulation" if thermal["type"] == "heatTransfer" else "shared UFH"
-                    )
-                    patch.pop("needsReview", None)
-                    row["appliedW"] += flux * patch["areaM2"]
-        else:
-            found = [p for p in patches.values() if p["kind"] == "object" and p["sourceId"] == row["id"]]
-            row["patchIds"] = [p["id"] for p in found]
-            row["areaM2"] = sum(p["areaM2"] for p in found)
-            row["appliedW"] = sum(
-                p["boundary"]["thermal"]["value"] * p["areaM2"]
-                for p in found
-                if p["boundary"]["thermal"]["type"] == "heatFlux"
-            )
-            if row["status"] == "off" and any(p["boundary"]["thermal"]["type"] != "adiabatic" for p in found):
-                row.update(
-                    status="incomplete",
-                    message=(
-                        "Heating is off but an explicit CFD thermal condition is active on its proxy. "
-                        "Remove the conflicting override."
-                    ),
-                )
-            if any(d.severity == "error" and d.objectId in {row["id"], *row["patchIds"]} for d in domain.diagnostics):
-                row.update(
-                    status="incomplete",
-                    message="Source geometry or thermal controls are invalid; review the reported source issues.",
-                )
-            if row["status"] == "applied" and (
-                not found or abs(row["appliedW"] - row["watts"]) > max(0.01, row["watts"] * 1e-8)
-            ):
-                row.update(
-                    status="incomplete",
-                    message="The measured radiator proxy does not conserve its declared room power.",
-                )
+            _finalize_ufh(row, ufh.get(row["id"], []))
+        elif row["kind"] == "radiator":
+            _finalize_radiator(row, radiators.get(row["id"], []), domain)
+        elif row["status"] == "incomplete":
+            _issue(domain, row, "shared-source-unlocated")
+            continue
         if row["status"] == "incomplete":
             _issue(domain, row, "shared-source-incomplete")
     for row in audit["envelope"]:

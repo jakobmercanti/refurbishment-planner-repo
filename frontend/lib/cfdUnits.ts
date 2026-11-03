@@ -2,7 +2,7 @@ import { fromDisplayNumber, toDisplayInputNumber, UNIT_LABEL, type DisplayUnits 
 
 export type TemperatureUnit = "K" | "C" | "F";
 export type FlowUnit = "m³/s" | "L/s" | "m³/h";
-export type EngineeringUnits = { units?: DisplayUnits; temperatureUnit?: TemperatureUnit; cfdFlowUnit?: FlowUnit };
+type EngineeringUnits = { units?: DisplayUnits; temperatureUnit?: TemperatureUnit; cfdFlowUnit?: FlowUnit };
 export const toTemperature = (kelvin: number, unit: TemperatureUnit) => unit === "K" ? kelvin : unit === "C" ? kelvin - 273.15 : (kelvin - 273.15) * 9 / 5 + 32;
 export const fromTemperature = (value: number, unit: TemperatureUnit) => unit === "K" ? value : unit === "C" ? value + 273.15 : (value - 32) * 5 / 9 + 273.15;
 

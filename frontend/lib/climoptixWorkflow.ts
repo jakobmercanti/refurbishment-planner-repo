@@ -15,7 +15,7 @@ export const LEVEL_COLOURS = [
   "#b23d91",
   "#6260c6",
 ] as const;
-export type Refinement = CFDScenario["mesh"]["refinements"][number];
+type Refinement = CFDScenario["mesh"]["refinements"][number];
 export function refinementLevel(
   base: number,
   region: Pick<Refinement, "level" | "cellMm">,
@@ -36,7 +36,7 @@ export const refinementCell = (
   return (base / 2 ** Math.min(level, 1023)) * 2 ** -Math.max(level - 1023, 0);
 };
 
-export interface SamplingPlane {
+interface SamplingPlane {
   id: string;
   axis: "X" | "Y" | "Z";
   pointMm: Vec3;

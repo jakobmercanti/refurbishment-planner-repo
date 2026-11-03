@@ -1,9 +1,10 @@
+import { conventionalHvac } from "../lib/hvacHeating";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculateHvac, requiredSensibleFlow, flowFromDisplay, flowToDisplay } from "../lib/hvacCalculations";
 import { commitHvacCFD, hvacConditionsSchema, hvacSchema, migrateHvac, operatingVents, removeVent, resolveHvacVents, type VentDevice } from "../lib/hvacDocument";
 import { cfdScenarioSchema, ventSchema } from "../lib/climoptixDocument";
-import { conventionalHvac, hvacBoundaryPackage, resolveHvacScenario } from "../lib/hvacBridge";
+import { hvacBoundaryPackage, resolveHvacScenario } from "../lib/hvacBridge";
 import { preparationInput, preparationRequestBody } from "../lib/climoptix";
 import { ProjectHistory } from "../lib/projectHistory";
 import { parseProject } from "../lib/projectDocument";

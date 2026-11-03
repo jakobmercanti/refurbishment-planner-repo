@@ -39,7 +39,7 @@ export function useCFDPointProbe(enabled: boolean, key: readonly unknown[]|strin
   return { registerControl, enabled, mode, toggle, pick, reading: mode&&current ? reading : null };
 }
 
-export type CFDPointProbeController = ReturnType<typeof useCFDPointProbe>;
+type CFDPointProbeController = ReturnType<typeof useCFDPointProbe>;
 export function CFDPointProbeValue({probe,native=false,unit:explicitUnit,anchor}:{probe:CFDPointProbeController;native?:boolean;unit?:string;anchor?:{x:number;y:number}|null}) {
   const sample = probe.reading?.sample, unit = explicitUnit??(native && sample ? ({ U: "m/s", p: "m²/s²", T: "K" } as Record<string, string>)[sample.field] ?? "file units" : "file units (unverified)");
   if(sample&&anchor===null)return null;

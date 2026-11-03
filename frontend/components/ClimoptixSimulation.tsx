@@ -13,7 +13,7 @@ import { CFDProbes } from "./CFDProbes";
 
 export type SimulationTab = "mesh" | "run" | "monitor" | "post";
 
-export interface RunConnection {
+interface RunConnection {
   connected: boolean;
   canRun: boolean;
   busy: boolean;

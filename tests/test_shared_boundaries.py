@@ -12,6 +12,18 @@ def prepare(p, s):
     return PreparationOnlyProvider().validate_scenario(p, Scenario.model_validate(s.model_dump()), "b" * 64)
 
 
+@pytest.mark.parametrize("kind,units", [("equipment", "m³/s"), ("infiltration", "W")])
+def test_unlocated_inputs_reject_mismatched_units_and_duplicate_ids(kind, units):
+    entry = dict(id="unlocated", name="Input", floorId="floor-ground", roomId="a", kind=kind, valueSI=1, units=units)
+    inputs = dict(version=1, captureEnvelope=True, sources=[], inventory=[], unlocated=[entry])
+    with pytest.raises(ValueError, match="Infiltration uses"):
+        SharedBoundaryInputs.model_validate(inputs)
+    entry["units"] = "m³/s" if kind == "infiltration" else "W"
+    inputs["unlocated"] = [entry, entry]
+    with pytest.raises(ValueError, match="IDs must be unique"):
+        SharedBoundaryInputs.model_validate(inputs)
+
+
 def shared_case():
     p = project()
     s = scenario(p)

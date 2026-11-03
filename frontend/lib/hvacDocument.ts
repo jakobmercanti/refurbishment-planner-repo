@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ventSchema, type CFDScenario, type CFDVent } from "./climoptixDocument";
 import type { ProjectDocument } from "./projectDocument";
 import { projectFloors } from "./buildingDocument";
-import { isHeatingElement } from "./heatingElements";
+import { hasSharedSources, sharedCaseRooms, sharedRadiatorIds } from "./sharedSources";
 
 const id = z.string().regex(/^[\w:-]{1,150}$/);
 const finite = z.number().finite();
@@ -78,17 +78,10 @@ export function hvacErrorMessage(cause: unknown, fallback = "Invalid HVAC inputs
 }
 export interface HvacDomainScope { scenarioId: string; rooms: { floorId: string; roomId: string }[] }
 
-function sharedRadiatorIds(project: ProjectDocument) {
-  return new Set(projectFloors(project).flatMap(f => [
-    ...f.content.rooms.flatMap(r => r.obstacles.filter(o => isHeatingElement(o) && o.heating_spec?.category !== "Boiler").map(o => o.id)),
-    ...(f.content.heatingLayout?.radiators.filter(r => r.category !== "Boiler").map(r => r.radiatorId) ?? []),
-  ]));
-}
-
 /** Idempotent shared-source reconciliation, including cases created before HVAC setup. */
 export function migrateHvac(project: ProjectDocument): ProjectDocument {
   const radiators = sharedRadiatorIds(project);
-  const shared = projectFloors(project).some(f => { const e = f.content.energyLayout; return f.content.heatingLayout?.ufhZones.length || f.content.rooms.some(r => r.obstacles.some(isHeatingElement)) || e && (e.existingAssignments.length || e.scenarios.find(s => s.scenarioId === e.activeScenarioId)?.assignments.length); });
+  const shared = hasSharedSources(project);
   if (!project.hvac && !project.cfdScenarios?.some(s => s.vents.length) && !radiators.size && !shared) {
     return project.cfdScenarios?.some(s => s.sharedBoundaries) ? { ...project, cfdScenarios: project.cfdScenarios.map(s => ({ ...s, sharedBoundaries: undefined })) } : project;
   }
@@ -137,8 +130,7 @@ export function resolveHvacVents(project: ProjectDocument, scenario: CFDScenario
   if (!hvac || !link) return scenario.vents;
   const operating = hvac.scenarios.find(s => s.id === link.operatingScenarioId);
   const designs = operatingVents(hvac, operating);
-  const scope = JSON.stringify(link.scopeSeed) === JSON.stringify(scenario.seed) ? link.scopeRooms ?? [] : [];
-  const rooms = [...scope, ...(scenario.seed ? [scenario.seed] : [])];
+  const rooms = sharedCaseRooms(project, scenario);
   return designs.flatMap(d => {
     const id = d.vent.id, override = link.overrides[id];
     if (!link.deviceIds.includes(id) && !rooms.some(r => r.floorId === d.floorId && r.roomId === d.roomId)) return [];

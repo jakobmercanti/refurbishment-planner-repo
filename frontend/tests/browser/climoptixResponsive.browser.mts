@@ -142,7 +142,7 @@ test("mobile and tablet use a single phase selector; every available phase remai
     name: "Climoptix setup",
     exact: true,
   });
-  assert.equal(await tabs.getByRole("tab").count(), 8);
+  assert.deepEqual(await tabs.getByRole("tab").allTextContents(), ["Simulations", "Domain", "Objects", "Bounds", "Physics", "Solver", "Optimisation", "Export", "Results"]);
   assert.equal(
     await tabs
       .getByRole("tab", { name: "Solver", exact: true })
@@ -175,7 +175,7 @@ test("mobile and tablet use a single phase selector; every available phase remai
     false,
   );
   assert.equal(await ui.getByRole("navigation", { name: "Thermal setup steps", exact: true }).isVisible(),true,
-    "The independent 1120px thermal window has one wide navigation mode");
+    "The consolidated setup window has one wide thermal navigation mode");
 });
 
 test("a narrow resized laptop window switches navigation without losing the selected phase", async (t) => {
@@ -287,7 +287,8 @@ test("landscape touch tablets use selectors; guidance is in contextual help and 
   );
   assert.match(await thermalHelp.innerText(), /Advanced surface override/);
   await page.keyboard.press("Escape");
-  await ui.getByRole('button',{name:'Hide Insulation boundary import & thermal envelope',exact:true}).click();
+  await ui.getByRole('tab',{name:'Conditions',exact:true}).click();
+  await thermal.waitFor({state:'hidden'});
   await phase.selectOption("mesh");
   await ui
     .getByRole("button", {

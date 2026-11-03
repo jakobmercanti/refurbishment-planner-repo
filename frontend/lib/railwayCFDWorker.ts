@@ -37,7 +37,7 @@ const resultSchema = z.object({jobId: z.uuid(), studyId: z.string(), clientRevis
 });
 export type WorkerResult = z.infer<typeof resultSchema>;
 
-export async function workerRequest(base: string, path: string, signal: AbortSignal, body?: unknown, max = 1024**2): Promise<Uint8Array<ArrayBuffer>> {
+async function workerRequest(base: string, path: string, signal: AbortSignal, body?: unknown, max = 1024**2): Promise<Uint8Array<ArrayBuffer>> {
   signal.throwIfAborted();
   const session = await currentSession(); signal.throwIfAborted();
   if (!session) throw new CFDWorkerError("Sign in with a verified account to use Climoptix's free simulations.", 401);

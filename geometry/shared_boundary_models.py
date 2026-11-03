@@ -1,6 +1,6 @@
 """Bounded shared Heating/Ventilation source intent; no browser/display meshes."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -42,20 +42,6 @@ class HeatingInventory(Input):
     count: int = Field(ge=0, le=10000)
 
 
-class SharedBoundaryInputs(Input):
-    version: Literal[1]
-    captureEnvelope: bool
-    sources: list[SharedHeatSource] = Field(max_length=2000)
-    inventory: list[HeatingInventory] = Field(max_length=80)
-    unlocated: list["UnlocatedInput"] = Field(default_factory=list, max_length=4)
-
-    @model_validator(mode="after")
-    def unique_sources(self) -> "SharedBoundaryInputs":
-        if len({s.id for s in self.sources}) != len(self.sources):
-            raise ValueError("Shared heat source IDs must be unique.")
-        return self
-
-
 class UnlocatedInput(Input):
     id: Identifier
     name: str = Field(max_length=200)
@@ -65,5 +51,52 @@ class UnlocatedInput(Input):
     valueSI: float = Field(ge=0, le=1e9)
     units: Literal["W", "m³/s"]
 
+    @model_validator(mode="after")
+    def matching_units(self) -> "UnlocatedInput":
+        if (self.kind == "infiltration") != (self.units == "m³/s"):
+            raise ValueError("Infiltration uses m³/s; sensible gains use W.")
+        return self
 
-SharedBoundaryInputs.model_rebuild()
+
+class SharedBoundaryInputs(Input):
+    version: Literal[1]
+    captureEnvelope: bool
+    sources: list[SharedHeatSource] = Field(max_length=2000)
+    inventory: list[HeatingInventory] = Field(max_length=80)
+    unlocated: list[UnlocatedInput] = Field(default_factory=list, max_length=4)
+
+    @model_validator(mode="after")
+    def unique_sources(self) -> "SharedBoundaryInputs":
+        ids = [s.id for s in self.sources] + [s.id for s in self.unlocated]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Shared heat source IDs must be unique.")
+        return self
+
+
+BoundaryStatus = Literal["incomplete", "unassigned", "applied", "off", "outside"]
+
+
+class BoundaryCapture(TypedDict):
+    id: str
+    name: str
+    floorId: str
+    roomId: str
+    kind: str
+    status: BoundaryStatus
+    patchIds: list[str]
+    areaM2: float
+    watts: float | None
+    appliedW: float
+    uWm2K: float | None
+    rsiM2KW: float | None
+    coefficientWm2K: float | None
+    ambientK: float | None
+    message: str
+
+
+class SharedBoundaryAudit(TypedDict):
+    version: Literal[1]
+    state: Literal["complete", "review"]
+    sources: list[BoundaryCapture]
+    envelope: list[BoundaryCapture]
+    inventory: list[dict[str, Any]]

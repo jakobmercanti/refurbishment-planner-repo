@@ -1,10 +1,11 @@
+import { conventionalHvac } from "../../lib/hvacHeating";
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { hvacProject } from "../hvacFixtures";
 import { createRoomUFH } from "../../lib/heatingDesign";
 import { duplicateFloor, projectFloors, selectFloor } from "../../lib/buildingDocument";
-import { conventionalHvac, hvacBoundaryPackage, resolveHvacScenario } from "../../lib/hvacBridge";
+import { hvacBoundaryPackage, resolveHvacScenario } from "../../lib/hvacBridge";
 import { labelFor } from "../../components/CFDFields";
 import { eventually, menu, startBrowserHarness, cfdWindow } from "./harness.mjs";
 

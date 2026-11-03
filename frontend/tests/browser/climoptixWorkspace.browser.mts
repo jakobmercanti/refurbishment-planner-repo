@@ -518,7 +518,7 @@ test("one native setup window contains equal-width tabs, moves and resizes, and 
       );
     } else {
       assert.equal(await compact.isVisible(), false);
-      assert.equal(widths.length, 8);
+      assert.equal(widths.length, 9);
       assert.ok(Math.max(...widths) - Math.min(...widths) < 1);
     }
     if (process.env.BROWSER_ARTIFACTS)

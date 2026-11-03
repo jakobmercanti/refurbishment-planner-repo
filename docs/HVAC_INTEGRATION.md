@@ -142,16 +142,21 @@ source edits invalidates stale capture data without changing historical packages
 - Shared contracts/history/persistence: `frontend/lib/hvacDocument.ts`,
   `projectDocument.ts`, `projectHistory.ts`, `useLocalProject.ts`;
   `backend/app/hvac_document.py`, `commercial_api.py`, `building_document.py`.
-- Calculations and mapping: `frontend/lib/hvacCalculations.ts`, `hvacBridge.ts`,
-  `climoptix.ts`, `climoptixJobs.ts`.
+- Calculations and mapping: `frontend/lib/hvacCalculations.ts`, `hvacHeating.ts`,
+  `hvacBridge.ts`, `sharedSources.ts`, `climoptix.ts`, `climoptixReport.ts`,
+  `climoptixJobs.ts`.
 - Workbench and plan integration: `frontend/components/VentilationPanel.tsx`,
   `HvacContext.tsx`, `HvacPlanMarkers.tsx`, `HeatingLayoutPanel.module.css`,
   `FullFloorplanEditor.tsx`, `frontend/app/planner-client.tsx`.
 - CFD integration: `frontend/components/SharedHvacCFD.tsx`,
   `ClimoptixEquipment.tsx`, `ClimoptixObjects.tsx`, `ClimoptixPhysics.tsx`,
   `ClimoptixViewer.tsx`, `ClimoptixWorkspace.tsx`.
+  Request lifecycles are in `useCFDPreparation.ts` and `useCFDThermal.ts`;
+  source identity/report retention is in `frontend/lib/cfdSource.ts`.
 - Tests: `frontend/tests/hvacFixtures.ts`, `hvac.test.mts`,
   `frontend/tests/browser/hvac.browser.mts`, `climoptix.browser.mts`,
   `heatingWorkbench.browser.mts`, `tests/test_hvac_document.py`.
 - Discovery and both final audit passes are the adjacent `HVAC_*.md` documents.
   No new dependency or separate application/store was introduced.
+  The subsequent workbench refactor and its verification are recorded in
+  `CFD_REFACTOR_AUDIT.md`.

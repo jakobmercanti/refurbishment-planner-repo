@@ -140,7 +140,13 @@ test('all embedded Thermal steps remain contained with aligned reachable actions
       const select=panel.getByLabel('Thermal step',{exact:true});if(await select.isVisible())await select.selectOption(String(step));else await panel.locator('.thermal-steps button').nth(step).click();
       const body=panel.locator('.thermal-scroll'),dimensions=await body.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth}));assert.ok(dimensions.scroll<=dimensions.width+2,`Thermal step ${step} at ${width}px: ${JSON.stringify(dimensions)}`);
       const footer=await panel.locator('.thermal-footer').boundingBox(),bounds=await ui.locator('.cfx-setup-window').boundingBox();assert.ok(footer.y+footer.height<=bounds.y+bounds.height+1);
-      const positions=await panel.locator('.thermal-footer button').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().y));assert.ok(Math.max(...positions)-Math.min(...positions)<2);
+      // Narrow workbenches intentionally wrap the two action pairs to keep Apply visible.
+      const actions=await panel.locator('.thermal-footer button').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect();return {text:n.textContent,x:b.x,right:b.right,y:b.y,bottom:b.bottom,width:b.width,height:b.height};}));
+      assert.equal(actions.length,4);
+      for(const action of actions)assert.ok(action.width>0&&action.height>0&&action.x>=footer.x-1&&action.right<=footer.x+footer.width+1&&action.y>=footer.y-1&&action.bottom<=footer.y+footer.height+1,`Thermal action remains reachable at ${width}px: ${JSON.stringify(action)}`);
+      for(const pair of await panel.locator('.thermal-footer .cfx-actions').all()){
+        const positions=await pair.locator('button').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().y));assert.ok(Math.max(...positions)-Math.min(...positions)<2,'Each action pair stays aligned when the footer wraps');
+      }
     }
     await shot(page,`audit-thermal-${width}-${theme}-${density}`);
   }

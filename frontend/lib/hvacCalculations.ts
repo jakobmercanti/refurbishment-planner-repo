@@ -1,7 +1,7 @@
 import { hvacConditionsSchema, ventDeviceSchema, type HvacConditions, type VentDevice } from "./hvacDocument";
 
-export interface HvacSurface { label: string; hWK: number; adjacentC: number }
-export interface HvacHeat { id: string; name: string; watts: number | null }
+interface HvacSurface { label: string; hWK: number; adjacentC: number }
+interface HvacHeat { id: string; name: string; watts: number | null }
 export const flowToDisplay = (q: number, unit: string) => q * (unit === "L/s" ? 1000 : unit === "m³/h" ? 3600 : 1);
 export const flowFromDisplay = (q: number, unit: string) => q / (unit === "L/s" ? 1000 : unit === "m³/h" ? 3600 : 1);
 export function ventAreaM2(device: VentDevice): number {

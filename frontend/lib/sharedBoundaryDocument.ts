@@ -16,7 +16,15 @@ export const sharedBoundaryInputsSchema = z.object({
   unlocated: z.array(z.object({ id, name: z.string().max(200), floorId: id, roomId: id,
     kind: z.enum(["people", "equipment", "solar", "infiltration"]), valueSI: n.min(0).max(1e9), units: z.enum(["W", "m³/s"]),
   }).strict()).max(4).default([]),
-}).strict();
+}).strict().superRefine((inputs, ctx) => {
+  const ids = [...inputs.sources, ...inputs.unlocated].map(source => source.id);
+  if (new Set(ids).size !== ids.length)
+    ctx.addIssue({ code: "custom", message: "Shared heat source IDs must be unique." });
+  for (const value of inputs.unlocated) {
+    if ((value.kind === "infiltration") !== (value.units === "m³/s"))
+      ctx.addIssue({ code: "custom", message: "Infiltration uses m³/s; sensible gains use W.", path: ["unlocated"] });
+  }
+});
 export type SharedBoundaryInputs = z.infer<typeof sharedBoundaryInputsSchema>;
 
 const row = z.object({

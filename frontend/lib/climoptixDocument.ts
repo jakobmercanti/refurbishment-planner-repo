@@ -29,7 +29,7 @@ export const PATCH_KINDS = [
   "slabSide",
 ] as const;
 export type PatchKind = (typeof PATCH_KINDS)[number];
-export const flowSchema = z
+const flowSchema = z
   .object({
     type: z
       .enum([
@@ -91,7 +91,7 @@ export const boundarySchema = z
   .strict()
   .prefault({});
 export type CFDBoundary = z.infer<typeof boundarySchema>;
-export const boundaryCollectionSchema = z.object({
+const boundaryCollectionSchema = z.object({
   id,
   name: z.string().trim().min(1).max(80),
   patchIds: z.array(patchId).max(20000).default([]),
@@ -244,7 +244,7 @@ const numericsSchema = z
   })
   .strict()
   .prefault({});
-export const physicsSchema = z
+const physicsSchema = z
   .object({
     preset: z
       .enum(["isothermal", "buoyant", "co2", "custom"])
@@ -311,7 +311,7 @@ const layersSchema = z
   })
   .strict()
   .prefault({});
-export const meshRecipeSchema = z
+const meshRecipeSchema = z
   .object({
     preset: z.enum(["Draft", "Standard", "Fine", "Custom"]).default("Standard"),
     baseCellMm: cellLength.default(200),
@@ -378,7 +378,7 @@ const outputsSchema = z
   })
   .strict()
   .prefault({});
-const validationSchema = z
+export const cfdValidationSchema = z
   .object({
     clientRevision: hash,
     sourceHash: hash,
@@ -464,7 +464,7 @@ export const cfdScenarioSchema = z
     thermalEnvelope: thermalSetupSchema.nullable().optional(),
     sharedBoundaries: sharedBoundaryInputsSchema.nullable().optional(),
     thermalSnapshots: z.array(thermalSnapshotSchema).max(3).optional(),
-    validation: validationSchema.nullable().default(null),
+    validation: cfdValidationSchema.nullable().default(null),
   })
   .strict()
   .superRefine((s, c) => {

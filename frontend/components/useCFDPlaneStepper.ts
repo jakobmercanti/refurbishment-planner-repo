@@ -6,7 +6,7 @@ import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import { readResultData } from "@/lib/cfdResultData";
 import { useCFDResult } from "./useCFDResult";
 
-export async function physicalPlane(file:File) {
+async function physicalPlane(file:File) {
   const loaded=await readResultData(file);
   try {
     if(loaded.volume)throw Error("Choose a sampled surface plane, not a volume.");
@@ -20,25 +20,44 @@ export async function physicalPlane(file:File) {
 /** Select another verified native artifact. Never translate a solved plane mesh. */
 export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJob|undefined,current:File|undefined,onChoose:(file:File)=>void) {
   const {result}=useCFDResult(adapter,job,!!current);
-  const [busy,setBusy]=useState(false),[error,setError]=useState("");
-  const pending=useRef<AbortController|null>(null);
-  useEffect(()=>()=>pending.current?.abort(),[adapter,job?.id,current]);
-  const all=result?.artifacts.filter(a=>a.kind==="vtk")??[];
-  const name=(a:typeof all[number])=>a.name?.replace(/[^a-z0-9_.-]/gi,"-")??`${job?.id}-${a.id}.vtk`;
-  const match=/slice_([xyz])_(\d+)/i.exec(current?.name??"");
-  const stack=all.filter(a=>!match||new RegExp(`slice_${match[1]}_`,"i").test(name(a))).sort((a,b)=>name(a).localeCompare(name(b),undefined,{numeric:true}));
-  const index=stack.findIndex(a=>name(a)===current?.name);
-  const step=async(direction:-1|1)=>{
-    if(!adapter||!job||!current||busy||index<0)return;
-    const artifact=stack[index+direction];if(!artifact)return;
-    pending.current?.abort();const controller=new AbortController();pending.current=controller;setBusy(true);setError("");
+  const [task, setTask] = useState<{
+    adapter: RailwayCFDWorker; file: File; jobId: string; busy: boolean; error: string;
+  } | null>(null);
+  const activeTask = task?.adapter === adapter && task?.file === current && task?.jobId === job?.id ? task : null;
+  const busy = activeTask?.busy ?? false, error = activeTask?.error ?? "";
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => pending.current?.abort(), [adapter, job?.id, current]);
+  const all = result?.artifacts.filter(a => a.kind === "vtk") ?? [];
+  const name = (a: typeof all[number]) => a.name?.replace(/[^a-z0-9_.-]/gi, "-") ?? `${job?.id}-${a.id}.vtk`;
+  const match = /slice_([xyz])_(\d+)/i.exec(current?.name ?? "");
+  const stack = all.filter(a => !match || new RegExp(`slice_${match[1]}_`, "i").test(name(a)))
+    .sort((a, b) => name(a).localeCompare(name(b), undefined, { numeric: true }));
+  const index = stack.findIndex(a => name(a) === current?.name);
+  const step = async (direction: -1 | 1) => {
+    // Lock before the first await; two clicks in one React render cannot download twice.
+    if (!adapter || !job || !current || busy || (pending.current && !pending.current.signal.aborted) || index < 0) return;
+    const artifact = stack[index + direction];
+    if (!artifact) return;
+    const controller = new AbortController(); pending.current = controller;
+    const source = { adapter, file: current, jobId: job.id };
+    setTask({ ...source, busy: true, error: "" });
     try {
-      const before=await physicalPlane(current),file=await adapter.download(job,artifact,AbortSignal.any([controller.signal,AbortSignal.timeout(120000)])),after=await physicalPlane(file);
+      const before = await physicalPlane(current);
+      const file = await adapter.download(job, artifact, AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]));
+      const after = await physicalPlane(file);
       controller.signal.throwIfAborted();
-      if(before.axis!==after.axis||direction*(after.coordinate-before.coordinate)<=1e-9)throw Error("No adjacent sampled plane in this direction. Choose a different plane stack; result data has not been moved.");
+      if (before.axis !== after.axis || direction * (after.coordinate - before.coordinate) <= 1e-9)
+        throw Error("No adjacent sampled plane in this direction. Choose a different plane stack; result data has not been moved.");
       onChoose(file);
-    }catch(cause){if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Cannot load the adjacent plane.");}
-    finally{if(pending.current===controller)setBusy(false);}
+    } catch (cause) {
+      if (!controller.signal.aborted)
+        setTask({ ...source, busy: false, error: cause instanceof Error ? cause.message : "Cannot load the adjacent plane." });
+    } finally {
+      if (pending.current === controller) {
+        pending.current = null;
+        setTask(value => value?.adapter === adapter && value.file === current && value.jobId === job.id ? { ...value, busy: false } : value);
+      }
+    }
   };
-  return {step,busy,error,previous:index>0&&!busy,next:index>=0&&index<stack.length-1&&!busy};
+  return { step, busy, error, previous: index > 0 && !busy, next: index >= 0 && index < stack.length - 1 && !busy };
 }

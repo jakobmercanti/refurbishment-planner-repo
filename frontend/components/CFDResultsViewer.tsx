@@ -20,7 +20,7 @@ import { intersectResultPlane, resultProbeMesh, sampleResultPoint, type ProbeMes
 const EMPTY_FILES:File[]=[];
 interface Options { visible:boolean; opacity:number; wire:boolean; field:string; component:number; low:number; high:number; palette:string; mode:"slice"|"iso"; axis:number; index:number; iso:number }
 interface Layer { id:string; name:string; fields:ResultField[]; volume:boolean; dims:number[]; options:Options; status:string }
-export interface ResultContext { id:string; name:string; points:number[] }
+interface ResultContext { id:string; name:string; points:number[] }
 interface View { project:(point:ProbePosition)=>{x:number;y:number}|null; hit:(x:number,y:number)=>string|null; apply:(id:string,options:Options)=>Promise<void>; visibility:(id:string,visible:boolean)=>void; fit:()=>void; zoom:(factor:number)=>void; direction:(axis:number)=>void;
   pick:(id:string,x:number,y:number,field:string,component:number)=>ResultPointValue|null }
 const palettes:Record<string,number[][]>={coolwarm:[[.15,.3,.75],[.1,.8,.65],[.9,.25,.1]],viridis:[[.267,.005,.329],[.128,.567,.551],[.993,.906,.144]],grey:[[.1,.1,.1],[.5,.5,.5],[.95,.95,.95]]};

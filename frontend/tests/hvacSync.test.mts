@@ -1,9 +1,10 @@
+import { conventionalHvac } from "../lib/hvacHeating";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { hvacProject } from "./hvacFixtures";
 import { parseProject } from "../lib/projectDocument";
 import { commitHvacCFD, migrateHvac, resolveHvacVents } from "../lib/hvacDocument";
-import { hvacBoundaryPackage, resolveHvacScenario, conventionalHvac } from "../lib/hvacBridge";
+import { hvacBoundaryPackage, resolveHvacScenario } from "../lib/hvacBridge";
 import { ventSchema } from "../lib/climoptixDocument";
 import { createRoomUFH } from "../lib/heatingDesign";
 import { prepareWorkerSubmission } from "../lib/climoptixJobs";

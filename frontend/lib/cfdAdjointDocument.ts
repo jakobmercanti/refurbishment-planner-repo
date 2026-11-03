@@ -5,7 +5,7 @@ const hash = z.string().regex(/^[a-f0-9]{64}$/), id = z.string().regex(/^[\w:-]{
 const vector=z.tuple([finite,finite,finite]);
 const fixedPortSchema=z.object({ventId:id,name:z.string().min(1).max(120),role:z.enum(["supply","extract"]),supportId:z.string().regex(/^[\w:.-]{1,500}$/),shape:z.enum(["rectangle","circle"]),
   widthMm:finite.gt(0).max(10000),heightMm:finite.gt(0).max(10000),rotationDeg:finite.min(-360).max(360),centreUMm:length,centreVMm:length,originMm:vector,uAxis:vector,vAxis:vector,normal:vector}).strict();
-export const movementBoundsSchema = z.object({uMinMm:length,uMaxMm:length,vMinMm:length,vMaxMm:length}).strict()
+const movementBoundsSchema = z.object({uMinMm:length,uMaxMm:length,vMinMm:length,vMaxMm:length}).strict()
   .refine(b=>b.uMinMm<=b.uMaxMm&&b.vMinMm<=b.vMaxMm,"Movement minima must not exceed maxima.");
 export const adjointStudySchema = z.object({
   version:z.literal(1).default(1),id,name:z.string().trim().min(1).max(120),

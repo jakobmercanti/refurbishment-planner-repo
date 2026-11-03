@@ -114,3 +114,26 @@ export const CFD_SIMULATION_HELP: HelpStep[] = [
   ...CFD_PHASE_HELP.convergence,
   ...CFD_PHASE_HELP.results,
 ];
+
+export const CFD_WORKBENCH_HELP = [
+  {
+    heading: "Your 3D workspace",
+    text: "Use View to inspect the whole building, a room or a connected air volume. This does not change your simulation's seed room. Open and close the tabbed setup window from Toolbar or by right-clicking the background. Drag a titlebar to move a window and its edges to resize it.",
+  },
+  {
+    heading: "One shared building",
+    text: "Create a simulation and choose its seed room; preparation checks refresh automatically after committed changes. On phones and tablets, choose Simulations from Phase to create, group or select a simulation. On wider screens, use the Simulation selector and phase tabs. Thermal is inside Bounds; convergence is inside Solver → Monitor. Geometry, furniture and people come from the shared measured building in millimetres. File → Save includes simulations and their folders.",
+  },
+  {
+    heading: "Connectivity is explicit",
+    text: "Only permanent doorless passages and physical slab voids connect air regions. Doors and windows stop discovery at every open state. Their virtual caps can use an opening/pressure boundary; they are not automatically solid walls.",
+  },
+  {
+    heading: "Prepare, inspect, export",
+    text: "Choose global mesh settings in Domain, add Equipment, organize coloured surface groups in Bounds and review Physics. Solver contains Mesh, Run, Monitor and Post. Checks refresh automatically; Toolbar → Refresh checks is the manual retry. Preparation and Foamlib settings exports are handoffs, not runnable solver cases. Worker submission still performs its own fresh preflight.",
+  },
+  {
+    heading: "No simulated results",
+    text: "Without a connected worker, Mesh/Run stay disabled and no simulation results are computed. Connected jobs show only worker-reported progress. Imported real solver logs and VTK surface/slice files remain external, not verified results for this simulation. Counts are estimates. Review engineering assumptions before connecting a worker.",
+  },
+];

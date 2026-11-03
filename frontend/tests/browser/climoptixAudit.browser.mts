@@ -242,12 +242,11 @@ test("boundary search finds the room and surface names displayed to the user", a
 
 test("legacy VTK never wraps integer result values and accepts standard whitespace and empty cell blocks", async (t) => {
   const { ui } = await open(t);
-  await cfdWindow(ui, "Simulation");
-  await ui.getByRole("tab", { name: "Post-processing", exact: true }).click();
+  await cfdWindow(ui, "Imported results");
   const legacy =
     "# vtk DataFile Version 3.0\nSlice\nASCII\nDATASET POLYDATA\nPOINTS 4 float\n0 0 0 1 0 0 1 1 0 0 1 0\nPOLYGONS 1 5\n4 0 1 2 3\nPOINT_DATA 4\nSCALARS label long 1\nLOOKUP_TABLE default\n3000000000 3000000000 3000000000 3000000000";
   const load = (text) =>
-    ui.getByLabel("Open VTK result", { exact: true }).setInputFiles({
+    ui.getByLabel("Import result layers", { exact: true }).setInputFiles({
       name: "legacy.vtk",
       mimeType: "text/plain",
       buffer: Buffer.from(text),
@@ -257,21 +256,18 @@ test("legacy VTK never wraps integer result values and accepts standard whitespa
     name: "VTK results viewer",
     exact: true,
   });
-  await eventually(
-    () => result.innerText(),
-    (text) => /File not loaded|4 points/.test(text),
-  );
-  assert.match(await result.innerText(), /integer.*range/i);
+  await result.getByText("Plane controls", { exact: true }).click();
+  await result.getByRole("alert").waitFor();
+  assert.match(await result.getByRole("alert").innerText(), /integer.*range/i);
   assert.equal(await result.locator("canvas").count(), 0);
-  await result
-    .getByRole("button", { name: "Back to geometry", exact: true })
-    .click();
+  await ui.getByRole("tab", { name: "Summary & 3D", exact: true }).click();
   await load(
     legacy
       .replace("SCALARS label long", "SCALARS label double")
       .replace("POLYGONS 1 5", "VERTICES 0 0\nLINES 0 0\nPOLYGONS 1 5")
       .replaceAll(" ", "\t"),
   );
+  await result.getByText("Plane controls", { exact: true }).click();
   await result.getByText("4 points · 1 cell", { exact: true }).waitFor();
   assert.match(await result.locator("footer").innerText(), /3\.0000e\+9/);
 });

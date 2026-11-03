@@ -836,6 +836,23 @@ test("audit: a failed calculation in one study cannot show an error in another s
   );
 });
 
+test("a delayed thermal failure cannot attach to newer inputs in the same study", async t => {
+  const s = await harness.session(thermalProject()); t.after(() => s.close());
+  const ui = await open(s);
+  let held;
+  await s.context.route("**/climoptix/thermal-preview", route => { held = route; });
+  await ui.getByRole("button", { name: "Calculate & preview", exact: true }).click();
+  await eventually(() => !!held, Boolean);
+  await step(ui, "Weather / scenario");
+  const outdoor = ui.getByRole("spinbutton", { name: "Outdoor dry-bulb (°C)", exact: true });
+  await outdoor.fill("8"); await outdoor.press("Enter");
+  await eventually(s.saved, p => p.cfdScenarios[0].thermalEnvelope.weather.temperatureC === 8);
+  await held.fulfill({ status: 503, json: { detail: "Outdated thermal calculation failed." } });
+  await s.page.waitForLoadState("networkidle");
+  assert.doesNotMatch(await ui.innerText(), /Outdated thermal calculation failed/);
+  assert.equal(await ui.getByRole("button", { name: "Calculate & preview", exact: true }).isEnabled(), true);
+});
+
 test("audit: a delayed EPW import preserves newer edits on other steps", async (t) => {
   const s = await harness.session(thermalProject());
   t.after(() => s.close());

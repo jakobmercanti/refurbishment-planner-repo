@@ -10,7 +10,7 @@ const recordSchema = z.object({
     project: z.object({projectId:z.uuid()}).passthrough(), scenario:z.object({id:z.string()}).passthrough(),
   }).passthrough(),
 });
-export type PendingCFDSubmission = {input: string; request: CFDSubmission};
+type PendingCFDSubmission = {input: string; request: CFDSubmission};
 const prefix = "freefloorplan3d:cfd-pending:v1:";
 const key = (namespace:string, projectId:string) => `${prefix}${encodeURIComponent(namespace)}:${encodeURIComponent(projectId)}`;
 

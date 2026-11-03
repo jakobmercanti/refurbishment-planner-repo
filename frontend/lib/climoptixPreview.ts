@@ -103,7 +103,7 @@ export function patchPositions(
   return result;
 }
 
-export interface RefinementPreview {
+interface RefinementPreview {
   id: string;
   name: string;
   shape: "box" | "sphere" | "object";

@@ -5,7 +5,6 @@ import type { CFDScenario } from "./climoptixDocument";
 import { preparationRequestBody, type CFDReport } from "./climoptix";
 import type { ProjectDocument } from "./projectDocument";
 
-export const ADJOINT_UNAVAILABLE="Adjoint unavailable: this adapter has no validated fixed-mesh moving-vent boundary law or its adjoint. Ordinary simpleFoam jobs remesh; they cannot execute this study.";
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const readinessSchema=z.object({version:z.literal(1),kind:z.literal("AdjointPreparation"),studyId:z.string(),units:z.literal("mm"),
   state:z.enum(["configurationInvalid","adjointUnavailable"]),configurationReady:z.boolean(),canRun:z.literal(false),

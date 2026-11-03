@@ -153,7 +153,8 @@ export async function cfdWindow(ui, name) {
     if (await select.isVisible()) await select.selectOption(id);
     else await ui.getByRole("tablist", { name: "Climoptix setup", exact: true }).getByRole("tab", { name: text, exact: true }).click();
   } else {
-    await page.getByRole("button", { name: "Toolbar", exact: true }).click();
+    const toolbar = page.getByRole("button", { name: "Toolbar", exact: true });
+    if (await toolbar.getAttribute("aria-expanded") !== "true") await toolbar.click();
     await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitem", { name: aliases[name] ?? name, exact: true }).click();
   }
   if (name === "Thermal Envelope & Solar Conditions") await ui.getByRole("tab", { name: "Thermal", exact: true }).click();
@@ -164,7 +165,8 @@ export async function cfdWindow(ui, name) {
 
 export async function cfdRefresh(ui, wait = true) {
   const page = typeof ui.page === "function" ? ui.page() : ui;
-  await page.getByRole("button", { name: "Toolbar", exact: true }).click();
+  const toolbar = page.getByRole("button", { name: "Toolbar", exact: true });
+  if (await toolbar.getAttribute("aria-expanded") !== "true") await toolbar.click();
   const refresh = page.getByRole("menuitem", { name: "Refresh checks", exact: true });
   await eventually(() => refresh.isEnabled(), Boolean);
   const before = await ui.getAttribute("data-preparation-stamp");
