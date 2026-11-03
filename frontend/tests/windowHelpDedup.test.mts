@@ -8,11 +8,11 @@ import { windowHelpSteps } from "../lib/windowHelp.ts";
 test("nested help with the same body is removed even when its headings differ", () => {
   const steps = [{ heading: "Main", text: "The same guidance" }];
   const html = renderToStaticMarkup(createElement(WindowHelpScope, { title: "Parent", steps }, createElement(WindowHelpButton, { title: "Child", steps: [{ heading: "Different title", text: "The same guidance" }] })));
-  assert.equal(html, "");
+  assert.doesNotMatch(html, /<button/); assert.match(html, /The same guidance/);
 });
-test("different task guidance retains its help button", () => {
+test("different task guidance is retained for the parent guide", () => {
   const html = renderToStaticMarkup(createElement(WindowHelpScope, { title: "Parent", steps: [{ heading: "Main", text: "Overview" }] }, createElement(WindowHelpButton, { title: "Child", steps: [{ heading: "Child", text: "Specific guidance" }] })));
-  assert.match(html, /Help for Child/);
+  assert.doesNotMatch(html, /<button/); assert.match(html, /Specific guidance/);
 });
 
 test("temperature, comparison and results guides stay distinct from each other and review feedback",()=>{

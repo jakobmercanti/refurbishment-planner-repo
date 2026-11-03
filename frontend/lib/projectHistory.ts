@@ -9,6 +9,7 @@ function editKey(p: ProjectDocument) {
     ...f,
     content:{
       ...f.content,
+      heatingLayout: f.content.heatingLayout ? { ...f.content.heatingLayout, enabled: undefined } : undefined,
       rooms:f.content.rooms.map(room=>({...room,person_mockup:room.person_mockup??null})),
       floorplan:f.content.floorplan?{
         ...f.content.floorplan,

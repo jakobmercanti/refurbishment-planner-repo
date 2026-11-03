@@ -44,7 +44,7 @@ export function WindowHelpHost() {
   }, [request]);
   if (!request) return null;
   return createPortal(<div ref={container} className={`window-help-host ${compact ? "compact-workspace" : ""}`}><FloatingToolbar key={request.title} title={`Help — ${request.title}`} help={false} defaultPosition={{ x: 70, y: 80 }} initialSize={{ width: 540 }} maxHeight={650} bringToFront onClose={() => { activeRequest.current = null; setRequest(null); request.opener?.focus(); }}><article className="window-help-content" aria-label={`Help for ${request.title}`}>
-    {(request.steps ?? windowHelpSteps(request.title)).map(step => <section key={step.heading}><h3>{step.heading}</h3><p>{step.text}</p>{step.links && <ul>{step.links.map(link => <li key={link.url}><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></li>)}</ul>}</section>)}
+    {(request.steps ?? windowHelpSteps(request.title)).map((step, index) => <section key={`${step.heading}:${index}`}><h3>{step.heading}</h3><p>{step.text}</p>{step.links && <ul>{step.links.map(link => <li key={link.url}><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></li>)}</ul>}</section>)}
     <p>Drag the header to move this help window; drag an edge to resize. Drag to either side to preview attaching it, then release to dock. Window layout offers Maximise, Restore, docking and Float window. Maximise fills the app viewport and temporarily hides the application menu and other windows. Related help and dialogs remain available. Restore or close the maximised window to bring the previous layout and menu back. Close it or press Escape to return to the original window.</p>
   </article></FloatingToolbar></div>, request.opener.closest("dialog,[role=dialog][aria-modal=true]") ?? document.body);
 }

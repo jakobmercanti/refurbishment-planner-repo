@@ -3,6 +3,8 @@ import { conventionalHvac } from "@/lib/hvacHeating";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHvac } from "./HvacContext";
 import { EquipmentPanel } from "./ClimoptixEquipment";
+import { ventCenter } from "@/lib/climoptixPreview";
+import { saveHvacCalculations } from "@/lib/hvacExport";
 import { CFDNumber } from "./CFDFields";
 import { flowFromDisplay, flowToDisplay } from "@/lib/hvacCalculations";
 import { WindowHelpButton } from "./WindowHelpButton";
@@ -58,6 +60,14 @@ export function VentilationPanel() {
   useEffect(() => () => request.current?.abort(), []);
   const preview = useMemo(() => ({ ...newCFDScenario(project.projectId, "HVAC room preview"), id: "hvac-preview", seed: room ? { floorId: floor.id, roomId: room.id } : null, vents: devices.filter(d => d.enabled).map(d => d.vent) }), [project.projectId, floor.id, room, devices]);
   const input = preparationInput(project, preview), current = useRef(input);
+  const { ensureGeometry, geometryKey } = ctx;
+  const hostRoomId = room?.id;
+  useEffect(() => {
+    let cancelled = false;
+    if (hostRoomId) void ensureGeometry({ floorId: floor.id, roomId: hostRoomId }).then(report => { if (!cancelled && report) setChecked({ report, input: "hosts-only", geometryKey }); }).catch(e => { if (!cancelled) setError(hvacErrorMessage(e)); });
+    return () => { cancelled = true; };
+  }, [ensureGeometry, geometryKey, floor.id, hostRoomId]);
+
   useEffect(() => { current.current = input; }, [input]);
   const sourceStamp = JSON.stringify({ project, floorId: floor.id, roomId: room?.id, operatingId: operating.id }), latestStamp = useRef(sourceStamp);
   useEffect(() => { latestStamp.current = sourceStamp; }, [sourceStamp]);
@@ -132,19 +142,27 @@ export function VentilationPanel() {
     <p className={styles.note}>{devices.filter(d => d.vent.role === "supply").length} supply · {devices.filter(d => d.vent.role === "extract" && d.extractKind === "exhaust").length} extract · {devices.filter(d => d.extractKind === "return").length} return · {hvac.devices.length} in project. Other rooms remain saved.</p>
     <div className={`${styles.actions} ${styles.hvacToolbar}`}><button disabled={!ctx.canUndo} onClick={ctx.undo}>Undo HVAC</button><button disabled={!ctx.canRedo} onClick={ctx.redo}>Redo HVAC</button><button disabled={!room || busy} onClick={checkGeometry}>{busy ? "Checking…" : "Check room geometry"}</button></div>
     <details open><summary>Vents &amp; layout</summary>
-      <div className={styles.actionGrid}><button disabled={!room || hvac.devices.length >= 500} onClick={() => add("supply")}>Add supply inlet</button><button disabled={!room || hvac.devices.length >= 500} onClick={() => add("extract")}>Add extract/outlet</button><button disabled={!room || hvac.devices.length >= 500} onClick={() => add("extract", "return")}>Add return</button></div>
+      <div className={styles.actionGrid}><button disabled={!room || !report?.patches.some(p => p.hostable && p.host && p.roomId === room.id && p.floorId === floor.id) || hvac.devices.length >= 500} onClick={() => add("supply")}>Add supply inlet</button><button disabled={!room || !report?.patches.some(p => p.hostable && p.host && p.roomId === room.id && p.floorId === floor.id) || hvac.devices.length >= 500} onClick={() => add("extract")}>Add extract/outlet</button><button disabled={!room || !report?.patches.some(p => p.hostable && p.host && p.roomId === room.id && p.floorId === floor.id) || hvac.devices.length >= 500} onClick={() => add("extract", "return")}>Add return</button></div>
       {!devices.length && <p>Add an inlet, check the room geometry, then select its host face. Pressure outlets have no prescribed flow before CFD solving.</p>}
       <div className={styles.hvacList}>{devices.map((d, i) => <div key={d.vent.id} className={styles.hvacRow}>
         <button aria-pressed={selected === d.vent.id} onClick={() => setSelected(d.vent.id)}>{d.vent.name} · {d.enabled ? d.vent.role === "supply" ? "Supply" : d.extractKind : "Off"}{operating.ventOverrides[d.vent.id] ? " · Scenario override" : " · Design"}</button>
-        <div className={styles.actions}><button aria-label={`Duplicate ${d.vent.name}`} onClick={() => { const copy = structuredClone(hvac.devices.find(v => v.vent.id === d.vent.id)!); copy.vent.id = crypto.randomUUID(); copy.vent.name = `${copy.vent.name.slice(0, 114)} copy`; commit({ ...hvac, devices: [...hvac.devices, copy] }); setSelected(copy.vent.id); }}>Duplicate</button>
+        <div className={styles.actions}><button aria-label={`Edit ${d.vent.name}`} onClick={() => { setSelected(d.vent.id); ctx.editVent(d.vent.id); }}>Edit</button><button aria-label={`Duplicate ${d.vent.name}`} onClick={() => { const copy = structuredClone(hvac.devices.find(v => v.vent.id === d.vent.id)!); copy.vent.id = crypto.randomUUID(); copy.vent.name = `${copy.vent.name.slice(0, 114)} copy`; commit({ ...hvac, devices: [...hvac.devices, copy] }); setSelected(copy.vent.id); }}>Duplicate</button>
         <button disabled={i === 0} aria-label={`Move ${d.vent.name} up`} onClick={() => { const all = [...hvac.devices], a = all.findIndex(v => v.vent.id === d.vent.id), b = all.findIndex(v => v.vent.id === devices[i - 1].vent.id); [all[a], all[b]] = [all[b], all[a]]; commit({ ...hvac, devices: all }); }}>↑</button>
         <button aria-label={`Remove ${d.vent.name}`} onClick={() => { if (window.confirm(`Remove ${d.vent.name} from the shared design and all workbenches? You can Undo.`)) { commit(removeVent(hvac, d.vent.id)); if (selected === d.vent.id) setSelected(null); } }}>Remove</button></div>
       </div>)}</div>
+      <div className={styles.tableScroll}><table className={styles.hvacTable} aria-label="Vent positions"><thead><tr><th>Vent / host</th><th>X / Y / Z (mm)</th><th>Host U</th><th>Host V</th><th>Settings</th></tr></thead><tbody>{devices.map(d => {
+        const host = report?.patches.find(p => p.id === d.vent.host.patchId), canonical = hvac.devices.find(v => v.vent.id === d.vent.id)!;
+        const position = host?.host ? ventCenter(d.vent, host.host).map(n => n.toFixed(0)).join(" / ") : "Assign host";
+        const move = (patch: Partial<typeof canonical.vent.host>) => editVents({ ...preview, vents: [ { ...canonical.vent, host: { ...canonical.vent.host, ...patch } } ] });
+        return <tr key={d.vent.id}><td>{d.vent.name}<small>{host?.label ?? d.vent.host.patchId}</small></td><td>{position}</td><td><CFDNumber convert={false} label={`${d.vent.name} host U`} value={d.vent.host.u} onChange={u => move({ u })} /></td><td><CFDNumber convert={false} label={`${d.vent.name} host V`} value={d.vent.host.v} onChange={v => move({ v })} /></td><td><button aria-label={`Edit parameters for ${d.vent.name}`} onClick={() => ctx.editVent(d.vent.id)}>Edit</button></td></tr>;
+      })}</tbody></table></div>
       {selectedDevice && <>
         <label><input type="checkbox" checked={hvac.devices.find(d => d.vent.id === selected)?.enabled ?? true} onChange={e => commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === selected ? { ...d, enabled: e.target.checked } : d) })} />Enabled in design</label>
+        <div className={styles.ventEditor}>
         <EquipmentPanel scenario={{ ...preview, vents: devices.map(d => hvac.devices.find(v => v.vent.id === d.vent.id)!.vent) }} report={report} selected={`vent:${selected}`} onSelect={id => setSelected(id.replace(/^vent:/, ""))} onChange={editVents} onPick={() => { void preflight(); }} onEditSource={() => ctx.setTab("Heating")} editor placement checked={currentFaces} />
         {selectedDevice.vent.role === "supply" && <CFDNumber label="Outdoor-air fraction (0–1)" min={0} max={1} value={selectedDevice.outdoorAirFraction} onChange={outdoorAirFraction => commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === selected ? { ...d, outdoorAirFraction } : d) })} />}
         {selectedDevice.vent.role === "extract" && <label>Outlet air path<select aria-label="Outlet air path" value={selectedDevice.extractKind} onChange={e => commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === selected ? { ...d, extractKind: e.target.value as "exhaust" | "return" } : d) })}><option value="exhaust">Outdoor exhaust</option><option value="return">Return to air handler</option></select></label>}
+        </div>
         <details><summary>Scenario override · retain design flow and temperature</summary>
           <CFDNumber label={selectedDevice.vent.role === "supply" ? "Scenario supply temperature (°C)" : "Scenario backflow temperature (°C)"} value={selectedDevice.vent.temperatureK - 273.15} onChange={v => saveScenario({ ...operating, ventOverrides: { ...operating.ventOverrides, [selected!]: { ...operating.ventOverrides[selected!], temperatureK: v + 273.15 } } })} />
           <CFDNumber convert={false} label={`Scenario ${selectedDevice.vent.control === "volumeFlow" ? `volume flow (${flowUnit})` : selectedDevice.vent.control === "massFlow" ? "mass flow (kg/s)" : selectedDevice.vent.control === "velocity" ? "face velocity (m/s)" : "relative pressure (Pa)"}`} value={selectedDevice.vent.control === "volumeFlow" ? flowToDisplay(selectedDevice.vent.valueSI, flowUnit) : selectedDevice.vent.valueSI} onChange={value => saveScenario({ ...operating, ventOverrides: { ...operating.ventOverrides, [selected!]: { ...operating.ventOverrides[selected!], valueSI: selectedDevice.vent.control === "volumeFlow" ? flowFromDisplay(value, flowUnit) : value } } })} />
@@ -152,7 +170,7 @@ export function VentilationPanel() {
           <button onClick={() => { const overrides = { ...operating.ventOverrides }; delete overrides[selected!]; saveScenario({ ...operating, ventOverrides: overrides }); }}>Use design values</button>
         </details>
       </>}
-      {report && <p>{currentFaces ? "Geometry checked" : "Inputs changed — recheck geometry"}. Validated host placement and dragging are available in CFD.</p>}
+      {report && <p>{currentFaces ? "Geometry checked" : "Inputs changed — recheck geometry"}. Drag shared vents in the main 2D or 3D floorplan; edit exact host coordinates in the positions table.</p>}
       {room && <HvacVentPlan room={room} devices={devices} report={report} selected={selected} onSelect={setSelected} sourceStamp={sourceStamp} onMove={(id,u,v,baseline) => {
         if (baseline !== latestStamp.current) { setError("The project changed while dragging. Existing edits retained; retry the move."); return; }
         commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === id ? { ...d, vent: { ...d.vent, host: { ...d.vent.host, u, v } } } : d) });
@@ -172,19 +190,19 @@ export function VentilationPanel() {
       <p>Measured floor area × clear wall height; roof slope/void volume requires checked CFD geometry. Envelope U-values and adjacent temperatures come from Heating / Insulation. No legal compliance threshold is assumed.</p>
       {calculationError && <p role="alert">{calculationError}</p>}
       {result && <>
-        <div className={styles.metrics}><div><span>Total supply ACH</span><strong>{show(result.supplyACH)} h⁻¹</strong></div><div><span>Outdoor-air ACH</span><strong>{show(result.outdoorACH)} h⁻¹</strong></div></div>
-        <dl className={styles.hvacLedger}>{[
+        <div className={styles.tableScroll}><table className={styles.hvacTable} aria-label="Ventilation calculations"><thead><tr><th scope="col">Metric</th><th scope="col">Value</th></tr></thead><tbody>{[
+          ["Total supply ACH", `${show(result.supplyACH)} h⁻¹`], ["Outdoor-air ACH", `${show(result.outdoorACH)} h⁻¹`],
           ["Room volume", `${show(result.volumeM3)} m³`], ["Total supply", `${show(result.supplyM3S === null ? null : result.supplyM3S * 1000)} L/s`], ["Outdoor supply", `${show(result.outdoorM3S === null ? null : result.outdoorM3S * 1000)} L/s`], ["Recirculated supply", `${show(result.recirculatedM3S === null ? null : result.recirculatedM3S * 1000)} L/s`], ["Exhaust ACH", `${show(result.exhaustACH)} h⁻¹`], ["Return flow", `${show(result.returnM3S === null ? null : result.returnM3S * 1000)} L/s`],
           ["Target-ACH flow", `${show(result.targetFlowM3S * 1000)} L/s`], ["People + area outdoor design flow", `${show(result.occupancyFlowM3S * 1000)} L/s`], ["Supply sensible gain / loss", `${show(result.ventilationW, 0)} W`], ["Envelope gain / loss", `${show(result.conductionW, 0)} W`], ["Infiltration gain / loss", `${show(result.infiltrationW, 0)} W`], ["People / equipment / solar", `${show(result.peopleW, 0)} / ${show(result.equipmentW, 0)} / ${show(result.solarW, 0)} W`], ["Room-effective Heating", result.heatingKnown ? `${show(result.heatingW, 0)} W` : `Unknown (${show(result.heatingW, 0)} W known subtotal)`],
           ["Additional heating / cooling needed", `${show(result.requiredHeatingW, 0)} / ${show(result.requiredCoolingW, 0)} W`], ["Residual at setpoint (+ gain)", `${show(result.residualW, 1)} W`], ["Equilibrium with specified operation", `${show(result.equilibriumC)} °C`], ["Free-floating, mechanical systems off", `${show(result.freeFloatingC)} °C`], ["Required sensible supply", `${show(result.requiredFlowM3S === null ? null : result.requiredFlowM3S * 1000)} L/s`], ["Outdoor conditioning to chosen supply", `${show(result.freshAirConditioningW, 0)} W`],
-        ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        ].map(([label, value]) => <tr key={label}><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></div>
         <details><summary>Face velocity &amp; validation ({result.warnings.length})</summary>{result.streams.map(s => <p key={s.device.vent.id}>{s.device.vent.name}: free area {s.areaM2.toFixed(4)} m² · face velocity {show(s.faceVelocityMS)} m/s</p>)}{result.warnings.map(w => <p key={w} className={styles.warning}>{w}</p>)}</details>
       </>}
     </details>
     <details><summary>Advanced &amp; validation</summary><div className={styles.grid}><CFDNumber label="Air density (kg/m³)" value={operating.conditions.densityKgM3} onChange={densityKgM3 => conditions({ densityKgM3 })} /><CFDNumber label="Specific heat cp (J/kg K)" value={operating.conditions.cpJKgK} onChange={cpJKgK => conditions({ cpJKgK })} /></div><p>Supplies use positive prescribed flow. Extract and return are separate air paths. A pressure outlet has unknown flow. Recirculation never counts as outdoor fresh air. Solar/equipment values are scenario inputs; latent loads and humidity are not calculated. Fan energy requires a duct resistance model and is unavailable.</p>{hvac.migrationWarnings.map(w => <p key={w}>{w}</p>)}</details>
     {error && <p role="alert" className={styles.warning}>{error}</p>}
     <p role="status">{snapshot ? snapshotCurrent ? "Synced with CFD snapshot" : "CFD case outdated — inputs changed; create a new case" : "Live calculations · no CFD snapshot yet"}{calculatedInputs === sourceStamp ? " · Calculation inputs checked" : ""}</p>
-    <div className={styles.actionGrid}><button className={styles.primary} disabled={!room || busy} onClick={() => { setError(calculationError); if (!calculationError && result) setCalculatedInputs(sourceStamp); }}>Update calculations</button><button disabled={!room || busy} onClick={preflight}>Evaluate same configuration in CFD</button><button disabled={!result} onClick={() => downloadCFD(new Blob([JSON.stringify({ operating, result }, null, 2)], { type: "application/json" }), "hvac-conventional.json")}>Export calculations</button></div>
+    <div className={styles.actionGrid}><button className={styles.primary} disabled={!room || busy} onClick={() => { setError(calculationError); if (!calculationError && result) setCalculatedInputs(sourceStamp); }}>Update calculations</button><button disabled={!room || busy} onClick={preflight}>Evaluate in CFD</button><button disabled={!result} onClick={() => { void saveHvacCalculations({ operating, result }).catch(e => setError(hvacErrorMessage(e, "Could not save calculations."))); }}>Export calculations</button></div>
     {handoff && <details open aria-label="HVAC CFD preflight"><summary>CFD preflight · {operating.name}</summary>
       <p>New case: {handoff.scenario.name}. Existing runs are preserved. Connected volume: {handoff.report.domain.includedRoomIds.length} room(s), {handoff.report.domain.volumeM3.toFixed(2)} m³. Doors/windows stop discovery.</p>
       {handoff.report.domain.includedRoomIds.length !== 1 && <p className={styles.warning}>CFD includes connected rooms; the conventional calculation above evaluates this selected room only. Review additional loads and devices before solving.</p>}

@@ -69,13 +69,14 @@ export function heatingResults(rooms: readonly Room[], heating: HeatingProject) 
   const orphanIds = [...heating.radiators, ...heating.ufhZones, ...heating.exclusions].filter(e => !rooms.some(r => r.id === e.roomId));
   return { rooms: rows, heatLossW: rows.reduce((s, r) => s + r.demand.designW, 0), radiatorW: rows.reduce((s, r) => s + r.radiatorW, 0), ufhW: rows.reduce((s, r) => s + r.ufhW, 0), electricW: rows.reduce((s, r) => s + r.emitters.reduce((s, e) => s + e.electricalW, 0), 0), pipeM: heating.ufhCircuits.reduce((s, c) => s + calculateCircuitLength(c), 0), sufficient: rows.filter(r => r.status === "Sufficient").length, warnings: [...rows.flatMap(r => r.warnings.map(message => `${r.room.name}: ${message}`)), ...(orphanIds.length ? [`${orphanIds.length} heating objects reference removed rooms. Data retained, but capacity excluded; review the saved layout.`] : [])] };
 }
-export function regenerateHeatingRoom(room: Room, heating: HeatingProject) {
+export function regenerateHeatingRoom(room: Room, heating: HeatingProject, zoneId?: string) {
   const next = structuredClone(heating), changes: string[] = [];
-  for (const zone of next.ufhZones.filter(z => z.roomId === room.id)) {
+  for (const zone of next.ufhZones.filter(z => z.roomId === room.id && (!zoneId || z.zoneId === zoneId))) {
     const existing = next.ufhCircuits.filter(c => c.zoneId === zone.zoneId), manifold = next.manifolds.find(m => m.manifoldId === zone.manifoldId);
-    if (!manifold) { changes.push(`${room.name}: place/select a manifold first.`); continue; }
+    if (zoneId && existing.some(c => c.locked)) throw new Error("This zone contains locked circuits. Unlock them before applying changes. Existing routes were preserved.");
+    if (!manifold) { if (zoneId) throw new Error("Place/select a manifold first. Existing routes were preserved."); changes.push(`${room.name}: place/select a manifold first.`); continue; }
     const result = generateUFHLoops(room, zone, manifold, next.exclusions, existing);
-    if (!result.circuits.length) { changes.push(...result.warnings.map(w => `${room.name}: ${w}`)); continue; }
+    if (!result.circuits.length) { if (zoneId) throw new Error(result.warnings.join(" ") || "No valid routes could be generated. Existing routes were preserved."); changes.push(...result.warnings.map(w => `${room.name}: ${w}`)); continue; }
     next.ufhCircuits = [...next.ufhCircuits.filter(c => c.zoneId !== zone.zoneId), ...result.circuits];
     if (!existing.some(c => c.locked)) zone.geometryFingerprint = result.fingerprint;
     changes.push(`${room.name}: ${result.circuits.length} circuits (${result.circuits.map(c => `${calculateCircuitLength(c).toFixed(1)} m`).join(", ")}).`, ...result.warnings);

@@ -216,9 +216,9 @@ test("default UFH is usable, bend handles drag and circuit count regenerates wit
   await eventually(session.saved,p=>p?.heatingLayout?.ufhZones[0]?.runCountTarget===14 && p.heatingLayout.ufhCircuits.every(c=>c.spacingMm===p.heatingLayout.ufhZones[0].spacingMm));
   const importButton=panel.getByRole("button",{name:"Import UFH performance JSON",exact:true});
   const importBox=await importButton.boundingBox();assert.ok(importBox);
-  assert.ok(importBox.width>400);
+  const applyBox=await panel.getByRole("button",{name:"Apply spacing and circuit count",exact:true}).boundingBox(); assert.ok(Math.abs(importBox.width-applyBox.width)<2);
   await page.screenshot({path:"../.local-logs/heating-nov01-qa/ufh.png"});
-  await panel.getByRole("button",{name:"Help for Underfloor heating setup",exact:true}).click();
+  await panel.locator(".window-header-actions").getByRole("button",{name:"Help for Heating Layout",exact:true}).click();
   await page.getByText("What is a manifold?",{exact:true}).waitFor();
 });
 

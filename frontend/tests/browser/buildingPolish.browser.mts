@@ -53,7 +53,7 @@ test("large roof window can move vertically on a short desktop and still reach A
   assert.deepEqual(geometry(await session.saved()), before);
 });
 
-test("roof settings have compact heights, aligned help, four directions plus custom and nine finishes", async t => {
+test("roof settings have compact heights, consolidated help, four directions plus custom and nine finishes", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
   const before = geometry(await session.saved()), roof = await openRoof(page);
   assert.equal(await roof.getByRole("button", { name: "Preview exterior in 3D", exact: true }).count(), 0);
@@ -80,10 +80,8 @@ test("roof settings have compact heights, aligned help, four directions plus cus
     assert.ok(await roof.locator(".building-roof-preview canvas").isVisible());
   }
   await material.selectOption("TIMBER_SHINGLES");
-  const help = await roof.locator(".building-roof-form .window-help-button").evaluateAll(buttons => buttons.map(button => { const box = button.getBoundingClientRect(), style = getComputedStyle(button); return { right: box.right, width: box.width, height: box.height, background: style.backgroundColor, radius: style.borderRadius }; }));
-  assert.ok(help.length >= 4); assert.ok(help.every(button => Math.abs(button.right - help[0].right) < 1), JSON.stringify(help));
-  assert.equal(new Set(help.map(button => `${button.width}/${button.height}/${button.background}/${button.radius}`)).size, 1);
-  await roof.getByRole("button", { name: "Help for Roof materials & colour", exact: true }).click();
+  assert.equal(await roof.getByRole("button", { name: /^Help for/ }).count(), 1);
+  await roof.getByRole("button", { name: "Help for Roof & ceiling", exact: true }).click();
   await page.locator(".window-help-host").waitFor(); assert.match(await page.locator(".window-help-content").innerText(), /shingles|membrane/i);
   await page.keyboard.press("Tab"); assert.ok(await page.evaluate(() => !!document.activeElement?.closest(".window-help-host")));
   await page.keyboard.press("Escape"); assert.ok(await roof.isVisible());

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { cfdProject, realPreparation } from "../climoptixFixtures";
 import { realThermal } from "../thermalFixtures";
+import { resolveHvacVents } from "../../lib/hvacDocument";
 import { duplicateCFDScenario } from "../../lib/climoptixDocument";
 import { cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
 
@@ -108,12 +109,12 @@ test("equipment is a draggable CRUD list with a separate floating editor and unc
   const u = editor.getByRole("spinbutton", { name: "Host U (0–1)", exact: true }); await u.fill("0.75"); await u.press("Enter");
   await editor.getByRole("button", { name: "Done", exact: true }).click();
   await list.getByRole("button", { name: "Duplicate Supply A", exact: true }).click();
-  await eventually(saved, p => p.cfdScenarios[0].vents.length === 3);
+  await eventually(saved, p => resolveHvacVents(p, p.cfdScenarios[0]).length === 3);
   await editor.getByRole("button", { name: "Done", exact: true }).click();
   await list.getByRole("button", { name: "Reorder Supply A copy", exact: true }).press("ArrowUp");
-  await eventually(saved, p => p.cfdScenarios[0].objectGroups[0].memberIds[1] === `vent:${p.cfdScenarios[0].vents.find(v => v.name === "Supply A copy").id}`);
+  await eventually(saved, p => p.cfdScenarios[0].objectGroups[0].memberIds[1] === `vent:${resolveHvacVents(p, p.cfdScenarios[0]).find(v => v.name === "Supply A copy").id}`);
   await list.getByRole("button", { name: "Delete Extract B", exact: true }).click();
-  await eventually(saved, p => p.cfdScenarios[0].vents.length === 2);
+  await eventually(saved, p => resolveHvacVents(p, p.cfdScenarios[0]).length === 2);
   await list.getByRole("button", { name: "Edit Supply A copy", exact: true }).click();
   assert.equal(await u.inputValue(), "0.65");
   await screenshot(page, "equipment-editor");
@@ -163,7 +164,7 @@ test("boundary groups colour real 3D patches, transfer surfaces and apply physic
 test("phase navigation integrates Thermal in Bounds and residual monitoring in Solver, with compact adaptive fields", async t => {
   const { page, ui } = await open(t);
   const tabs = ui.getByRole("tablist", { name: "Climoptix setup", exact: true });
-  assert.deepEqual(await tabs.getByRole("tab").allTextContents(), ["Simulations", "Domain", "Objects", "Bounds", "Physics", "Solver", "Export", "Results"]);
+  assert.deepEqual(await tabs.getByRole("tab").allTextContents(), ["Simulations", "Domain", "Objects", "Bounds", "Physics", "Solver", "Optimisation", "Export", "Results"]);
   await cfdWindow(ui, "Domain");
   const floor = await ui.getByRole("combobox", { name: "Seed floor", exact: true }).boundingBox();
   const room = await ui.getByRole("combobox", { name: "Seed room", exact: true }).boundingBox();
@@ -186,7 +187,7 @@ test("phase navigation integrates Thermal in Bounds and residual monitoring in S
   await screenshot(page, "solver-monitor");
   await page.setViewportSize({ width: 390, height: 900 }); await page.emulateMedia({ colorScheme: "dark" });
   const phase = ui.getByRole("combobox", { name: "CFD phase", exact: true });
-  assert.equal(await phase.locator("option").count(), 8);
+  assert.equal(await phase.locator("option").count(), 9);
   for (const id of ["studies", "domain", "equipment", "boundaries", "physics", "mesh", "review"]) {
     await phase.selectOption(id);
     const panel = ui.locator(`#cfx-setup-panel-${id}`);

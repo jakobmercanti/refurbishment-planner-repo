@@ -119,13 +119,13 @@ test("a new multi-gang switch matches existing fittings at 50%, 100% and enlarge
   assert.deepEqual({...existingSaved,center:placed.center},placed);
 });
 
-test("room settings launchers share one wide row and two compact rows; every window still opens", async t => {
+test("room settings launchers use equal columns and two rows; every window still opens", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
   await menu(page, "Tools", "Heating Layout"); const heating = page.locator(".heating-layout-window");
   const buttons = heating.locator(".heating-settings-launcher");
   assert.equal(await buttons.count(), 3);
   const boxes = await buttons.evaluateAll(elements => elements.map(element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));
-  assert.ok(boxes.every(box => Math.abs(box.y - boxes[0].y) < 1), JSON.stringify(boxes));
+  assert.equal(new Set(boxes.map(box => Math.round(box.y))).size, 2, JSON.stringify(boxes));
   assert.ok(boxes.every(box => Math.abs(box.width - boxes[0].width) < 1));
   if(process.env.BROWSER_ARTIFACTS)await heating.screenshot({ path: process.env.BROWSER_ARTIFACTS + "/viewer-heating-wide.png" });
   for (const index of [0, 1, 2]) {

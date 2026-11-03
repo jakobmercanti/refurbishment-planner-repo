@@ -1,0 +1,50 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { newHeatingProject } from "../lib/heatingDocument";
+import { createRoomUFH, regenerateHeatingRoom } from "../lib/heatingDesign";
+import { withParallelRuns } from "../lib/ufhRunCount";
+import { ventUVAtPoint } from "../lib/ventPlacement";
+import { ventSchema } from "../lib/climoptixDocument";
+import { ventCenter } from "../lib/climoptixPreview";
+import type { Room } from "../lib/types";
+import { ProjectHistory } from "../lib/projectHistory";
+import { hvacProject } from "./hvacFixtures";
+const measure = (value: number) => ({ value, uncertainty_mm: 0, verified: true, source_type: "USER_MEASURED" });
+const room: Room = { id: "small", name: "Small room", version: 1, vertices: [{ x: 0, y: 0 }, { x: 3050, y: 0 }, { x: 3050, y: 2079 }, { x: 0, y: 2079 }], wall_height: measure(2400), wall_thickness: measure(100), openings: [], obstacles: [] };
+test("parallel run changes regenerate actual paths and leave sibling zones untouched", () => {
+  const heating = createRoomUFH(room, newHeatingProject()).heating, zone = heating.ufhZones[0];
+  const original = JSON.stringify(heating.ufhCircuits);
+  const sibling = { ...zone, zoneId: "sibling" }; heating.ufhZones.push(sibling);
+  const siblingCircuit = { ...structuredClone(heating.ufhCircuits[0]), zoneId: "sibling", circuitId: "sibling-circuit" }; heating.ufhCircuits.push(siblingCircuit);
+  heating.ufhZones[0] = withParallelRuns(room, zone, 12);
+  const result = regenerateHeatingRoom(room, heating, zone.zoneId).heating;
+  assert.equal(result.ufhZones[0].runCountTarget, 12);
+  assert.notEqual(JSON.stringify(result.ufhCircuits.filter(c => c.zoneId === zone.zoneId)), original);
+  assert.deepEqual(result.ufhCircuits.find(c => c.circuitId === "sibling-circuit"), siblingCircuit);
+});
+test("impossible parallel counts preserve radius and routes and generation reports failure", () => {
+  const heating = createRoomUFH(room, newHeatingProject()).heating, zone = heating.ufhZones[0], before = JSON.stringify(heating);
+  for (const count of [1, 12.5, 30, 301]) assert.throws(() => withParallelRuns(room, zone, count));
+  assert.equal(JSON.stringify(heating), before);
+  const invalid = structuredClone(heating); invalid.ufhZones[0].spacingMm = 50; invalid.ufhZones[0].minBendRadiusMm = 100;
+  assert.throws(() => regenerateHeatingRoom(room, invalid, zone.zoneId), /radius|spacing/i);
+  const locked = structuredClone(heating); locked.ufhCircuits[0].locked = true;
+  assert.throws(() => regenerateHeatingRoom(room, locked, zone.zoneId), /Unlock/);
+  assert.equal(JSON.stringify(heating), before);
+});
+test("wall and floor movement use millimetres and preserve the host plane and vent clearance", () => {
+  const vent = ventSchema.parse({ id: "v", name: "Supply", role: "supply", host: { patchId: "wall", u: .5, v: .5 } });
+  const wall = { originMm: [100, 200, 300] as [number, number, number], uAxis: [1, 0, 0] as [number, number, number], vAxis: [0, 0, 1] as [number, number, number], normal: [0, -1, 0] as [number, number, number], widthMm: 3000, heightMm: 2400, polygonsMm: [] };
+  const original = ventCenter(vent, wall), uv = ventUVAtPoint(vent, wall, [original[0] + 300, original[1] + 900, original[2]]);
+  assert.ok(uv); assert.ok(Math.abs(uv[0] - .6) < 1e-8); assert.equal(uv[1], .5);
+  const moved = ventCenter(vent, wall, ...uv); assert.equal(moved[1], original[1]); assert.equal(moved[2], original[2]);
+  const edge = ventUVAtPoint(vent, wall, [-10000, 200, -10000]); assert.ok(edge && edge[0] > 0 && edge[1] > 0);
+});
+test("opening Heating after a shared modelling edit does not consume its undo entry", () => {
+  const original = hvacProject(), edited = structuredClone(original), history = new ProjectHistory();
+  edited.hvac!.scenarios[0].conditions.roomC = 24;
+  history.record(original, edited, true, 1000);
+  const opened = structuredClone(edited); opened.heatingLayout!.enabled = true;
+  history.record(edited, opened, false, 2000);
+  assert.equal(history.past.length, 1); assert.deepEqual(history.undo(opened), original);
+});

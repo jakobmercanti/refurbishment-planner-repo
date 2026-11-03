@@ -1,21 +1,35 @@
 "use client";
+import { useEffect, useRef, useState } from "react";
 import { useHvac } from "./HvacContext";
-import { useHeatingLayout } from "./HeatingLayoutContext";
+import { activeFloor } from "@/lib/buildingDocument";
 import { ventCenter } from "@/lib/climoptixPreview";
+import { ventUVAtPoint } from "@/lib/ventPlacement";
+import type { CFDHost } from "@/lib/climoptix";
+import type { VentDevice } from "@/lib/hvacDocument";
 import type { Point2D } from "@/lib/types";
 
-/** Presentation-only projection of checked measured hosts; never used to determine fit. */
-export function HvacPlanMarkers({ toScreen }: { toScreen: (point: Point2D) => Point2D }) {
-  const ctx = useHvac(), heating = useHeatingLayout();
-  if (!ctx?.geometryReport || !ctx.project.hvac) return null;
-  return <g aria-label="Shared ventilation markers">{ctx.project.hvac.devices.filter(d => d.floorId === ctx.project.building?.activeFloorId).map(d => {
-    const host = ctx.geometryReport?.patches.find(p => p.id === d.vent.host.patchId)?.host;
-    if (!host) return null;
-    const center = ventCenter(d.vent, host), p = toScreen({ x: center[0], y: center[1] });
-    const select = () => { ctx.focusRoom(d, d.vent.id); ctx.setTab("Ventilation"); heating.open(); };
-    return <g key={d.vent.id} data-heating-interactive role="button" tabIndex={0} aria-label={`Select shared vent ${d.vent.name}`} onClick={select} onKeyDown={e => { if (["Enter", " "].includes(e.key)) { e.preventDefault(); select(); } }} style={{ cursor: "pointer" }}>
-      <circle cx={p.x} cy={p.y} r={ctx.selectedVentId === d.vent.id ? 10 : 7} fill={d.enabled ? "var(--deep)" : "var(--surface-muted)"} stroke="var(--ink)" strokeWidth={1.5} />
-      <title>{d.vent.name} · {d.vent.role} · X {center[0].toFixed(0)}, Y {center[1].toFixed(0)}, Z {center[2].toFixed(0)} mm. Edit host coordinates in Ventilation or drag in CFD.</title>
+/** Checked host projection; drafts commit once to the shared project on release. */
+export function HvacPlanMarkers({ toScreen, fromClient }: { toScreen: (point: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D }) {
+  const ctx = useHvac();
+  const [draft, setDraft] = useState<{ id: string; u: number; v: number } | null>(null), [error, setError] = useState("");
+  const drag = useRef<{ device: VentDevice; host: CFDHost; baseline: string; pointer: number; u: number; v: number } | null>(null);
+  const cancel = () => { drag.current = null; setDraft(null); };
+  useEffect(() => { const escape = (e: KeyboardEvent) => { if (e.key === "Escape") { drag.current = null; setDraft(null); } }; window.addEventListener("keydown", escape); return () => window.removeEventListener("keydown", escape); }, []);
+  if (!ctx?.project.hvac) return null;
+  const floorId = activeFloor(ctx.project).id;
+  return <g aria-label="Shared ventilation markers">{ctx.project.hvac.devices.filter(d => d.floorId === floorId).map(d => {
+    const host = ctx.geometryPatches.find(p => p.id === d.vent.host.patchId)?.host ?? ctx.geometryReport?.patches.find(p => p.id === d.vent.host.patchId)?.host; if (!host) return null;
+    const uv = draft?.id === d.vent.id ? draft : d.vent.host, center = ventCenter(d.vent, host, uv.u, uv.v), p = toScreen({ x: center[0], y: center[1] });
+    return <g key={d.vent.id} data-heating-interactive role="button" tabIndex={0} aria-label={`Select shared vent ${d.vent.name}`} style={{ cursor: "move", touchAction: "none" }}
+      onDoubleClick={e => { e.stopPropagation(); ctx.editVent(d.vent.id); }}
+      onKeyDown={e => { if (["Enter", " "].includes(e.key)) { e.preventDefault(); e.stopPropagation(); ctx.selectVent(d.vent.id); ctx.editVent(d.vent.id); } }}
+      onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); ctx.selectVent(d.vent.id); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = { device: d, host, baseline: JSON.stringify([ctx.geometryKey, d.vent]), pointer: e.pointerId, u: d.vent.host.u, v: d.vent.host.v }; }}
+      onPointerMove={e => { const active = drag.current, svg = e.currentTarget.ownerSVGElement; if (!active || active.pointer !== e.pointerId || !svg) return; e.preventDefault(); e.stopPropagation(); const point = fromClient(e.clientX, e.clientY, svg), old = ventCenter(active.device.vent, active.host); const uv = ventUVAtPoint(active.device.vent, active.host, [point.x, point.y, old[2]]); if (uv) { [active.u, active.v] = uv; setDraft({ id: active.device.vent.id, u: uv[0], v: uv[1] }); } }}
+      onPointerCancel={cancel} onLostPointerCapture={cancel}
+      onPointerUp={e => { const active = drag.current; if (!active || active.pointer !== e.pointerId) return; e.preventDefault(); e.stopPropagation(); cancel(); try { if (active.u !== active.device.vent.host.u || active.v !== active.device.vent.host.v) ctx.moveVent(active.device.vent.id, active.u, active.v, active.baseline); setError(""); } catch (cause) { setError(cause instanceof Error ? cause.message : "Vent move failed."); } if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); }}>
+      <rect x={p.x - 9} y={p.y - 7} width={18} height={14} rx={3} fill={d.enabled ? d.vent.role === "supply" ? "#277ab5" : "#ae5a26" : "#697987"} stroke={ctx.selectedVentId === d.vent.id ? "#ff7900" : "#fff"} strokeWidth={2} />
+      <path d={`M${p.x-5},${p.y-2}h10m-10,4h10`} stroke="white" strokeWidth={1.5} pointerEvents="none" />
+      <title>{d.vent.name} · {d.vent.role} · {center.map(n => n.toFixed(0)).join(", ")} mm. Drag to move; double click or Enter to edit. Escape cancels.</title>
     </g>;
-  })}</g>;
+  })}{error && <foreignObject x={10} y={10} width={360} height={70}><p role="alert" style={{ background: "var(--surface-raised)", color: "var(--ink)" }}>{error}</p></foreignObject>}</g>;
 }

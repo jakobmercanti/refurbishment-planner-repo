@@ -61,7 +61,7 @@ test("real preflight opens exact shared CFD case; CFD permanent and operating ed
   await panel.getByRole("button", { name: "Add supply inlet", exact: true }).click();
   await enter(panel, "Volume flow (L/s)", 100);
   await eventually(s.saved, p => p.hvac.devices[0]?.vent.host.patchId !== "unassigned");
-  await panel.getByRole("button", { name: "Evaluate same configuration in CFD", exact: true }).click();
+  await panel.getByRole("button", { name: "Evaluate in CFD", exact: true }).click();
   const preflight = panel.getByLabel("HVAC CFD preflight", { exact: true }); await preflight.waitFor();
   assert.match(await preflight.innerText(), /1000 W/);
   assert.match(await preflight.innerText(), /Thermal execution is not connected/);
@@ -119,7 +119,7 @@ for (const [label, width, height] of [["desktop", 1440, 1000], ["tablet", 820, 1
 
 test("unavailable preflight reports a real error and never fabricates a completed case", async t => {
   const s = await harness.session(hvacProject()); t.after(() => s.close()); await s.context.route("**/climoptix/prepare", route => route.fulfill({ status: 503, json: { detail: "Preparation unavailable" } }));
-  const panel = await openVentilation(s); await panel.getByRole("button", { name: "Evaluate same configuration in CFD", exact: true }).click();
+  const panel = await openVentilation(s); await panel.getByRole("button", { name: "Evaluate in CFD", exact: true }).click();
   await eventually(() => panel.getByRole("alert").innerText(), text => text.includes("Preparation unavailable"));
   assert.equal((await s.saved()).hvac.snapshots.length, 0); assert.equal(await panel.getByRole("button", { name: "Create new case & open in CFD", exact: true }).count(), 0);
 });

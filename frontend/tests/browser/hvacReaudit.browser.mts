@@ -41,10 +41,10 @@ test("switching rooms during preflight cannot publish a case for the previous ro
     entered(); await gate;
     try { await route.fulfill({ json: realPreparation(route.request().postDataJSON()) }); } catch { /* Expected when the room switch aborts this request. */ } finally { completed(); }
   });
-  await panel.getByRole("button", { name: "Evaluate same configuration in CFD", exact: true }).click(); await started;
+  await panel.getByRole("button", { name: "Evaluate in CFD", exact: true }).click(); await started;
   await panel.getByRole("combobox", { name: "Ventilation room", exact: true }).selectOption("room-1"); release(); await finished;
   assert.equal(await panel.getByLabel("HVAC CFD preflight", { exact: true }).count(), 0);
-  assert.equal(await panel.getByRole("button", { name: "Evaluate same configuration in CFD", exact: true }).isEnabled(), true);
+  assert.equal(await panel.getByRole("button", { name: "Evaluate in CFD", exact: true }).isEnabled(), true);
   assert.equal((await s.saved()).hvac.snapshots.length, 0);
 });
 

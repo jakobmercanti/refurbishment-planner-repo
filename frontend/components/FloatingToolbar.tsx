@@ -590,7 +590,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
       <span className="floating-toolbar-icon"><WindowIcon title={title} /></span>
       <strong>{title}</strong>
       {headerContent && <div className="floating-toolbar-header-content">{headerContent}</div>}
-      <div className="window-header-actions"><button type="button" className="floating-toolbar-minimize" aria-label={`Minimise ${title}`} title="Minimise window" onClick={minimize}>−</button><WindowDockActions title={title} docking={edgeDock} maximized={maximized} onMaximize={toggleMaximized} onMinimize={minimize} onDock={dockWindow} onFloat={floatWindow} />{help && <WindowHelpButton title={helpTitle} steps={helpSteps} />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
+      <div className="window-header-actions"><button type="button" className="floating-toolbar-minimize" aria-label={`Minimise ${title}`} title="Minimise window" onClick={minimize}>−</button><WindowDockActions title={title} docking={edgeDock} maximized={maximized} onMaximize={toggleMaximized} onMinimize={minimize} onDock={dockWindow} onFloat={floatWindow} />{help && <WindowHelpButton title={helpTitle} steps={helpSteps} primary />}<button type="button" className="floating-toolbar-close" aria-label={`Hide ${title}`} title={`Hide ${title}`} onClick={onClose}>×</button></div>
     </header>
     <div className="floating-toolbar-content" hidden={compact}><WindowHelpScope title={helpTitle} steps={helpSteps}>{children}</WindowHelpScope></div>
     {footer}

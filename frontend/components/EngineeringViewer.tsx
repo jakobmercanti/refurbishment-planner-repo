@@ -5,6 +5,7 @@ import { exposedCover, structuralFloorFootprint, polygonOf, subtractVoids } from
 import { CombinedBuildingRoof, BuildingSlab, shapesFromPolygons, TerraceCover } from "./BuildingSurfaces";
 import { wallEnvelope, wallThicknessMm as wallThickness } from "@/lib/wallEnvelope";
 import type { BuildingView } from "./BuildingControls";
+import { HvacSceneMarkers } from "./HvacSceneMarkers";
 import { MetalReflections } from "@/components/MetalReflections";
 
 import { LocalAssetScene } from "@/components/LocalAssetScene";
@@ -1482,6 +1483,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
     setPreviewPlacementId(placement?.id);
     setPreviewPlacementCandidate(null);
   }
+  const [hvacDragging, setHvacDragging] = useState(false);
   const floors=useMemo(()=>buildingProject?projectFloors(buildingProject):[],[buildingProject]);
   const currentFloor=buildingProject?activeFloor(buildingProject):undefined, elevationMm=currentFloor?.elevationMm??0;
   const wholeView=Boolean(buildingView?.whole),floorId=currentFloor?.id;
@@ -1719,7 +1721,8 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
       {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><PassiveBuildingFloor key={f.id} floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} wallMode={wallMode} toggles={toggles}/>)}
       {showRoof&&currentFloor&&above&&<ExposedFloorCover floor={floors.find(f=>f.id===currentFloor.id)!} above={above}/>}
       {wholeView&&<mesh rotation={[-Math.PI/2,0,0]} position={[roomTarget[0],sceneBounds.minZ*SCALE-.002,roomTarget[2]]} receiveShadow raycast={DISABLED_MESH_RAYCAST} userData={{buildingPresentation:true}}><planeGeometry args={[Math.max(20,roomSpan[0]*4),Math.max(20,roomSpan[2]*4)]}/><shadowMaterial transparent opacity={.18} depthWrite={false}/></mesh>}
-      <OrbitControls makeDefault mouseButtons={mouseButtons} enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
+      <HvacSceneMarkers floorIds={visibleFloors.map(f => f.id)} roomIds={renderedRooms.map(r => r.id)} whole={wholeView} onDragging={setHvacDragging} />
+      <OrbitControls makeDefault mouseButtons={mouseButtons} enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging && !hvacDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
       <CameraViewSync restoreView={restoreView} fallbackTarget={orbitTarget} stateRef={cameraStateRef} onRestored={onCameraViewRestored} />
     </>
   );
