@@ -40,13 +40,13 @@ test("native top tabs preserve Heating and canonical vent CRUD, units, validatio
   assert.equal((await s.saved()).hvac.devices[0].vent.valueSI, .1);
   await panel.getByRole("button", { name: "Duplicate Supply north", exact: true }).click();
   saved = await eventually(s.saved, p => p.hvac.devices.length === 2); assert.notEqual(saved.hvac.devices[1].vent.id, id);
-  s.page.once("dialog", d => d.accept()); await panel.getByRole("button", { name: "Remove Supply north copy", exact: true }).click();
+  await s.page.locator(".hvac-vent-editor").getByRole("button", { name: "Done", exact: true }).click(); await panel.getByRole("button", { name: "Delete Supply north copy", exact: true }).click();
   await eventually(s.saved, p => p.hvac.devices.length === 1);
   await panel.getByRole("button", { name: "Undo HVAC", exact: true }).click(); await eventually(s.saved, p => p.hvac.devices.length === 2);
   await panel.getByRole("button", { name: "Redo HVAC", exact: true }).click(); await eventually(s.saved, p => p.hvac.devices.length === 1);
   await panel.getByRole("tab", { name: "Heating", exact: true }).click(); await panel.getByRole("tab", { name: "Underfloor", exact: true }).waitFor();
   await panel.getByRole("tab", { name: "Ventilation", exact: true }).click();
-  await panel.getByRole("button", { name: "Supply north · Supply · Design", exact: true }).click();
+  await panel.getByRole("button", { name: "Select Supply north", exact: true }).click();
   assert.equal(await panel.getByRole("combobox", { name: "Flow display unit", exact: true }).inputValue(), "m³/h");
   await panel.getByRole("tab", { name: "Heating", exact: true }).click();
   assert.equal((await s.saved()).rooms[0].obstacles[0].heating_spec.ratedOutputW, 1000);
@@ -97,13 +97,13 @@ test("real preflight opens exact shared CFD case; CFD permanent and operating ed
 test("room filtering, scenario presets, saved identity and reload remain deterministic", async t => {
   const s = await harness.session(hvacProject()); t.after(() => s.close()); const panel = await openVentilation(s); await dismissOtherWindows(s.page);
   await panel.getByRole("button", { name: "Add return", exact: true }).click(); const saved = await eventually(s.saved, p => p.hvac.devices.length === 1); const id = saved.hvac.devices[0].vent.id;
-  await panel.getByRole("combobox", { name: "Ventilation room", exact: true }).selectOption("room-1"); assert.equal(await panel.getByRole("button", { name: "Remove Return 1", exact: true }).count(), 0);
-  await panel.getByRole("combobox", { name: "Ventilation room", exact: true }).selectOption("room-0"); await panel.getByRole("button", { name: "Remove Return 1", exact: true }).waitFor();
+  await panel.getByRole("combobox", { name: "Ventilation room", exact: true }).selectOption("room-1"); assert.equal(await panel.getByRole("button", { name: "Delete Return 1", exact: true }).count(), 0);
+  await panel.getByRole("combobox", { name: "Ventilation room", exact: true }).selectOption("room-0"); await panel.getByRole("button", { name: "Delete Return 1", exact: true }).waitFor();
   await panel.locator("summary").filter({ hasText: "Room air & design conditions" }).click();
   await panel.getByRole("combobox", { name: "New HVAC scenario preset", exact: true }).selectOption("Summer cooling");
   await eventually(s.saved, p => p.hvac.scenarios.some(op => op.name === "Summer cooling" && op.conditions.roomC === 25));
   await s.page.reload(); await s.page.getByRole("combobox", { name: "Selected floor", exact: true }).waitFor();
-  const reloaded = await openVentilation(s); await reloaded.getByRole("button", { name: "Remove Return 1", exact: true }).waitFor();
+  const reloaded = await openVentilation(s); await reloaded.getByRole("button", { name: "Delete Return 1", exact: true }).waitFor();
   assert.equal((await s.saved()).hvac.devices[0].vent.id, id);
 });
 

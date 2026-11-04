@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useHvac } from "./HvacContext";
 import { FloatingToolbar } from "./FloatingToolbar";
@@ -15,6 +15,8 @@ export function HvacVentEditor() {
   const ctx = useHvac()!, hvac = ctx.project.hvac;
   const device = hvac?.devices.find(d => d.vent.id === ctx.editVentId);
   const [error, setError] = useState("");
+  const [opener] = useState(() => typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  useEffect(() => () => { if (opener?.isConnected && opener.getClientRects().length) opener.focus({ preventScroll: true }); }, [opener]);
   const hosts = useHvacHostReport(device?.floorId, device?.roomId), report = hosts.report;
   if (!hvac || !device || typeof document === "undefined") return null;
   const scenario = { ...newCFDScenario(ctx.project.projectId, "Shared vent editor"), id: "hvac-editor", seed: { floorId: device.floorId, roomId: device.roomId }, vents: [device.vent] };

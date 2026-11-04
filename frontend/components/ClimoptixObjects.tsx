@@ -13,6 +13,7 @@ import { CFDConfirmAction } from "./CFDConfirmAction";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { useHvac } from "./HvacContext";
 import { hvacBoundaryPackage } from "@/lib/hvacBridge";
+import { EquipmentListRow, equipmentListStyles } from "./EquipmentListRow";
 
 export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChange, onAdd, onPick, onEditVent, onEditSource, renderObject, canAdd, canPlace, checked }: {
   scenario: CFDScenario; objects: CFDObject[]; selected: string | null; onSelect: (id: string) => void; onChange: (scenario: CFDScenario) => void;
@@ -45,7 +46,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     edit({ ...entry, id: copy.id, sourceId: copy.id.slice(copy.id.indexOf(":") + 1) });
   };
   const editingGroup = groups.find(g => editing?.type === "group" && g.id === editing.id);
-  return <div className="cfx-objects" data-cfx-collapse-root>
+  return <div className={`cfx-objects ${equipmentListStyles.collection}`} data-cfx-collapse-root>
     <header className="cfx-inline-toolbar"><h3>Objects &amp; occupants</h3><CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:groups.map(group=>group.id)))}/></header>
     <div className="cfx-inline-toolbar">
       <button onClick={onEditSource}>Edit source building &amp; assets</button>
@@ -96,19 +97,17 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
                   }}>Delete</button>
                 </div>
               </header>}>
-              {entry => <article className={`cfx-device-row${selected === (entry.type === "vent" ? entry.id : entry.sourceId) ? " selected" : ""}`}>
-                <button className="cfx-device-name" aria-label={`Select ${entry.name}`} onClick={() => onSelect(entry.type === "vent" ? entry.id : entry.sourceId)}><strong>{entry.name}</strong><small>{entry.detail}</small></button>
-                <div className="cfx-device-actions">
-                  <button aria-label={`Edit ${entry.name}`} onClick={() => edit(entry)}>Edit</button>
-                  <button aria-label={`Duplicate ${entry.name}`} title={sharedHeaters.has(entry.sourceId) ? "Duplicate measured heating devices in Heating, then they appear here automatically." : undefined} disabled={sharedHeaters.has(entry.sourceId) || entry.type === "object" && objects.find(o => o.id === entry.sourceId)?.roomId === "unresolved"} onClick={() => duplicate(entry, group.id)}>Duplicate</button>
-                  {sharedHeaters.has(entry.sourceId) ? <button onClick={() => editHeating(entry.sourceId)}>Edit in Heating</button> : <button className="cfx-danger" aria-label={`Delete ${entry.name}`} onClick={() => { onChange(deleteObjectEntry(scenario, entry)); if (editing?.id === entry.sourceId) setEditing(null); }}>Delete</button>}
-                </div>
-                <CFDRowMenu label={`Move ${entry.name}`}><label>Move to group<select aria-label={`Move ${entry.name} to group`} value={group.id} onChange={e => {
+              {entry => <EquipmentListRow name={entry.name} detail={entry.detail} selected={selected === (entry.type === "vent" ? entry.id : entry.sourceId)}
+                onSelect={() => onSelect(entry.type === "vent" ? entry.id : entry.sourceId)} onEdit={() => edit(entry)} onDuplicate={() => duplicate(entry, group.id)}
+                duplicateTitle={sharedHeaters.has(entry.sourceId) ? "Duplicate measured heating devices in Heating, then they appear here automatically." : undefined}
+                duplicateDisabled={sharedHeaters.has(entry.sourceId) || (entry.type === "vent" ? scenario.vents.length >= 500 : objects.find(o => o.id === entry.sourceId)?.roomId === "unresolved")}
+                onDelete={sharedHeaters.has(entry.sourceId) ? undefined : () => { onChange(deleteObjectEntry(scenario, entry)); if (editing?.id === entry.sourceId) setEditing(null); }}
+                alternateAction={<button onClick={() => editHeating(entry.sourceId)}>Edit in Heating</button>}
+                menu={<CFDRowMenu label={`Move ${entry.name}`}><label>Move to group<select aria-label={`Move ${entry.name} to group`} value={group.id} onChange={e => {
                   const target = groups.find(g => g.id === e.target.value)!;
                   onChange(moveObject(scenario, entry.id, target.id, objectMembers(target, groups, entries).length, objects));
                   setSelectedGroup(target.id); e.currentTarget.closest("details")!.open = false;
-                }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label></CFDRowMenu>
-              </article>}
+                }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label></CFDRowMenu>} />}
             </CFDReorderList>
           </section>;
         }}

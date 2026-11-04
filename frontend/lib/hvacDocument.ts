@@ -3,6 +3,7 @@ import { ventSchema, type CFDScenario, type CFDVent } from "./climoptixDocument"
 import type { ProjectDocument } from "./projectDocument";
 import { projectFloors } from "./buildingDocument";
 import { hasSharedSources, sharedCaseRooms, sharedRadiatorIds } from "./sharedSources";
+import { insertAtBoundary } from "./climoptixStudies";
 
 const id = z.string().regex(/^[\w:-]{1,150}$/);
 const finite = z.number().finite();
@@ -288,4 +289,23 @@ export function removeVent(hvac: HvacProject, id: string): HvacProject {
   for (const b of Object.values(next.bindings)) { b.deviceIds = b.deviceIds.filter(key => key !== id); delete b.overrides[id]; }
   for (const s of next.scenarios) delete s.ventOverrides[id];
   return hvacSchema.parse(next);
+}
+
+/** Reorder this room's shared devices without moving another room or changing CFD group membership. */
+export function reorderHvacRoomVents(project: ProjectDocument, floorId: string, roomId: string, id: string, boundary: number): ProjectDocument {
+  const hvac = project.hvac;
+  if (!hvac) return project;
+  const inRoom = (device: VentDevice) => device.floorId === floorId && device.roomId === roomId;
+  const roomDevices = hvac.devices.filter(inRoom).map(device => ({ device, id: device.vent.id }));
+  const ordered = insertAtBoundary(roomDevices, id, boundary);
+  if (ordered.every((d, i) => d.id === roomDevices[i]?.id)) return project;
+  let at = 0;
+  const devices = hvac.devices.map(d => inRoom(d) ? ordered[at++].device : d);
+  const rank = new Map(ordered.map((d, index) => [`vent:${d.id}`, index]));
+  const scenarios = project.cfdScenarios?.map(s => ({ ...s, objectGroups: s.objectGroups?.map(group => {
+    const members = group.memberIds.filter(key => rank.has(key)).sort((a, b) => rank.get(a)! - rank.get(b)!);
+    let index = 0;
+    return { ...group, memberIds: group.memberIds.map(key => rank.has(key) ? members[index++] : key) };
+  }) }));
+  return { ...project, hvac: hvacSchema.parse({ ...hvac, devices }), ...(scenarios ? { cfdScenarios: scenarios } : {}) };
 }

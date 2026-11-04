@@ -72,8 +72,8 @@ test("an existing case immediately includes conventional additions, return edits
   const importer = s.page.locator(".floating-toolbar").filter({ has: s.page.getByLabel("Move Import insulation & heating conditions", { exact: true }) });
   assert.equal(await importer.getByRole("button", { name: "Apply selected heating conditions", exact: true }).count(), 0);
   await importer.getByLabel("Shared HVAC devices", { exact: true }).getByRole("button", { name: "Open Ventilation", exact: true }).click();
-  await panel.getByRole("button", { name: "Remove Supply vent", exact: true }).waitFor();
-  assert.equal(await panel.getByRole("button", { name: "Remove Return 1", exact: true }).count(), 0);
+  await panel.getByRole("button", { name: "Delete Supply vent", exact: true }).waitFor();
+  assert.equal(await panel.getByRole("button", { name: "Delete Return 1", exact: true }).count(), 0);
 });
 
 test("conventional plan drag commits measured host coordinates, undo and Escape without stale copies", async t => {

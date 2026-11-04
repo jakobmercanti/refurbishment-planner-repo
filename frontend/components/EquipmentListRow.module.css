@@ -1,0 +1,28 @@
+.collection { container: equipment-list / inline-size; min-width:0; }
+/* Keep the same controls inside either workbench's local panel styles. */
+:global(body) .row.row.row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:var(--density-field-gap); min-width:0; padding:var(--density-row-padding); border:1px solid var(--line); border-radius:var(--radius-control); background:var(--panel); color:var(--ink); }
+:global(body) .row.row.row:global(.selected) { border-color:var(--focus-ring); }
+:global(body) .row.row.row .name { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; min-height:var(--density-control-min-height); padding:var(--density-control-padding-y) 8px; text-align:left; border:1px solid transparent; border-radius:var(--radius-control); background:transparent; color:inherit; font:650 calc(12px * var(--density-font-scale,1))/1.3 var(--font-sans); }
+:global(body) .row.row.row .name :is(strong,small) { display:block; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+:global(body) .row.row.row .name strong { font:inherit; }
+:global(body) .row.row.row .name small { color:var(--muted); opacity:1; font:500 calc(11px * var(--density-font-scale,1))/1.3 var(--font-sans); }
+:global(body) .row.row.row .actions.actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:1fr; align-items:stretch; width:270px; max-width:100%; gap:6px; grid-column:auto; grid-row:auto; }
+:global(body) .row.row.row .actions.actions > button { width:100%; min-width:0; height:100%; min-height:var(--density-control-min-height); padding:var(--density-control-padding-y) 4px; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--ui-button-background,var(--surface-muted)); color:var(--ui-button-text,var(--ink)); font:650 calc(12px * var(--density-font-scale,1))/1.3 var(--font-sans); white-space:normal; overflow-wrap:anywhere; }
+:global(body) .row.row.row .actions.actions > :global(.cfx-danger) { color:var(--fail); }
+:global(body) .row.row.row .actions.actions > button:hover:not(:disabled), :global(body) .collection.collection :global(.cfx-grip:hover:not(:disabled)) { background:var(--ui-button-hoverBackground); }
+:global(body) .row.row.row .name:hover { background:var(--surface-muted); }
+:global(body) .row.row.row button:disabled { opacity:.5; cursor:not-allowed; }
+:global(body) .row.row.row button:focus-visible, :global(body) .collection.collection :global(.cfx-grip:focus-visible) { outline:2px solid var(--focus-ring); outline-offset:2px; }
+:global(body) .collection.collection :global(.cfx-grip) { flex:0 0 32px; min-width:32px; min-height:var(--density-control-min-height); padding:var(--density-control-padding-y) 4px; cursor:grab; touch-action:none; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--ui-button-background,var(--surface-muted)); color:var(--ui-button-text,var(--ink)); font:650 calc(12px * var(--density-font-scale,1))/1.3 var(--font-sans); }
+:global(body) .collection.collection :global(.cfx-grip:active) { cursor:grabbing; }
+:global(body) .collection.collection :global(.cfx-insertion) { height:var(--density-field-gap); }
+:global(body) .collection.collection :global(.cfx-row-menu) { position:relative; min-width:0; padding:0; margin:0; border:0; overflow:visible; }
+:global(body) .collection.collection :global(.cfx-row-menu) > summary { min-height:var(--density-control-min-height); margin:0; }
+:global(body) .collection.collection :global(.cfx-row-menu-panel) { display:none; position:fixed; inset:auto; z-index:20002; width:min(260px,calc(100vw - 32px)); max-width:calc(100vw - 16px); overflow:auto; padding:8px; margin:0; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--panel); color:var(--ink); box-shadow:var(--ui-window-shadow); }
+:global(body) .collection.collection :global(.cfx-row-menu-panel:popover-open) { display:grid; gap:6px; }
+@container equipment-list (max-width:540px) {
+  :global(body) .row.row.row { grid-template-columns:minmax(0,1fr) auto; }
+  :global(body) .row.row.row .name { grid-column:1; grid-row:1; }
+  :global(body) .row.row.row .actions.actions { grid-column:1/-1; grid-row:2; justify-self:end; width:min(270px,100%); }
+  :global(body) .row.row.row > :global(.cfx-row-menu) { grid-column:2; grid-row:1; }
+}

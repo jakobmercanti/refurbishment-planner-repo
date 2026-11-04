@@ -25,7 +25,7 @@ async function open(s, tab = "Ventilation") {
 test("inline and separate editors change quantity without reusing pressure or scenario values", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close());
   const panel = await open(s);
-  await panel.getByRole("button", { name: /^Audit outlet ·/ }).click();
+  await panel.getByRole("button", { name: "Select Audit outlet", exact: true }).click();
   await panel.getByRole("combobox", { name: "Vent controlling quantity" }).selectOption("volumeFlow");
   let saved = await eventually(s.saved, p => p.hvac.devices[0].vent.control === "volumeFlow");
   assert.equal(saved.hvac.devices[0].vent.valueSI, .05);

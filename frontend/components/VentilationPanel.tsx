@@ -12,10 +12,14 @@ import { projectFloors } from "@/lib/buildingDocument";
 import { cfdScenarioSchema, newCFDScenario, ventSchema, type CFDScenario } from "@/lib/climoptixDocument";
 import { downloadCFD, preparationInput, preparationRevision, prepareCFD, type CFDReport } from "@/lib/climoptix";
 import { hvacBoundaryPackage, hvacControlLabel, hvacModelLabel, resolveHvacScenario, type HvacCfdBoundaryPackage } from "@/lib/hvacBridge";
-import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, updateVentDevice, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
+import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, reorderHvacRoomVents, updateVentDevice, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
 import { HvacVentPlan } from "./HvacVentPlan";
 import { useHvacHostReport } from "./useHvacHostReport";
 import { scrollWorkbenchToStart } from "@/lib/workbenchNavigation";
+import { EquipmentListRow, equipmentListStyles } from "./EquipmentListRow";
+import { CFDReorderList } from "./CFDReorderList";
+import { CFDRowMenu } from "./CFDRowMenu";
+import { duplicateObjectEntry, objectEntries } from "@/lib/climoptixObjectGroups";
 import styles from "./HeatingLayoutPanel.module.css";
 
 export function HeatingVentilationTabs({ children }: { children: ReactNode }) {
@@ -99,6 +103,19 @@ export function VentilationPanel() {
     const vent = ventSchema.parse({ id: crypto.randomUUID(), name: `${role === "supply" ? "Supply" : extractKind === "return" ? "Return" : "Extract"} ${hvac.devices.length + 1}`, role, control: role === "extract" ? "pressure" : "volumeFlow", valueSI: role === "extract" ? 0 : 0.05, temperatureK: operating.conditions.supplyC + 273.15, host: { patchId: host?.id ?? "unassigned" } });
     commit({ ...hvac, devices: [...hvac.devices, { vent, floorId: floor.id, roomId: room.id, outdoorAirFraction: 1, extractKind, enabled: true }] }); setSelected(vent.id);
   }
+  function moveVent(id: string, boundary: number) {
+    if (!room) return;
+    try {
+      const next = reorderHvacRoomVents({ ...project, hvac }, floor.id, room.id, id.replace(/^vent:/, ""), boundary);
+      if (next.hvac !== hvac) ctx.commit(next.hvac!, next.cfdScenarios);
+      setError("");
+    } catch (e) { setError(hvacErrorMessage(e)); }
+  }
+  // Include disabled devices in the same list, with their design geometry.
+  const listEntries = objectEntries({ ...preview, vents: devices.map(d => d.vent) }, []).map((entry, index) => {
+    const device = devices[index];
+    return { ...entry, detail: `${entry.detail}${!device.enabled ? " · Off" : device.extractKind === "return" ? " · Return" : ""}${operating.ventOverrides[entry.sourceId] ? " · Scenario override" : ""}` };
+  });
   let result: ReturnType<typeof conventionalHvac> | null = null, calculationError = "";
   try { if (room) result = conventionalHvac({ ...project, hvac }, operating); } catch (e) { calculationError = e instanceof Error ? e.message : "Calculation unavailable."; }
   const snapshot = hvac.snapshots.find(s => s.operatingScenarioId === operating.id);
@@ -138,12 +155,26 @@ export function VentilationPanel() {
     <details open><summary>Vents &amp; layout</summary>
       <div className={styles.actionGrid}><button disabled={!room || !report?.patches.some(p => p.hostable && p.host && p.roomId === room.id && p.floorId === floor.id) || hvac.devices.length >= 500} onClick={() => add("supply")}>Add supply inlet</button><button disabled={!room || !report?.patches.some(p => p.hostable && p.host && p.roomId === room.id && p.floorId === floor.id) || hvac.devices.length >= 500} onClick={() => add("extract")}>Add extract/outlet</button><button disabled={!room || !report?.patches.some(p => p.hostable && p.host && p.roomId === room.id && p.floorId === floor.id) || hvac.devices.length >= 500} onClick={() => add("extract", "return")}>Add return</button></div>
       {!devices.length && <p>Add an inlet, check the room geometry, then select its host face. Pressure outlets have no prescribed flow before CFD solving.</p>}
-      <div className={styles.hvacList}>{devices.map((d, i) => <div key={d.vent.id} className={styles.hvacRow}>
-        <button aria-pressed={selected === d.vent.id} onClick={() => setSelected(d.vent.id)}>{d.vent.name} · {d.enabled ? d.vent.role === "supply" ? "Supply" : d.extractKind : "Off"}{operating.ventOverrides[d.vent.id] ? " · Scenario override" : " · Design"}</button>
-        <div className={styles.actions}><button aria-label={`Edit ${d.vent.name}`} onClick={() => { setSelected(d.vent.id); ctx.editVent(d.vent.id); }}>Edit</button><button aria-label={`Duplicate ${d.vent.name}`} onClick={() => { const copy = structuredClone(hvac.devices.find(v => v.vent.id === d.vent.id)!); copy.vent.id = crypto.randomUUID(); copy.vent.name = `${copy.vent.name.slice(0, 114)} copy`; commit({ ...hvac, devices: [...hvac.devices, copy] }); setSelected(copy.vent.id); }}>Duplicate</button>
-        <button disabled={i === 0} aria-label={`Move ${d.vent.name} up`} onClick={() => { const all = [...hvac.devices], a = all.findIndex(v => v.vent.id === d.vent.id), b = all.findIndex(v => v.vent.id === devices[i - 1].vent.id); [all[a], all[b]] = [all[b], all[a]]; commit({ ...hvac, devices: all }); }}>↑</button>
-        <button aria-label={`Remove ${d.vent.name}`} onClick={() => { if (window.confirm(`Remove ${d.vent.name} from the shared design and all workbenches? You can Undo.`)) { commit(removeVent(hvac, d.vent.id)); if (selected === d.vent.id) setSelected(null); } }}>Remove</button></div>
-      </div>)}</div>
+      <div className={`${styles.hvacList} ${equipmentListStyles.collection}`}>
+        <CFDReorderList items={listEntries} label="Room vents" scope={`hvac-vents:${project.projectId}:${floor.id}:${room?.id}`} onMove={moveVent}>
+          {(entry, index) => <EquipmentListRow name={entry.name} detail={entry.detail} selected={selected === entry.sourceId} onSelect={() => setSelected(entry.sourceId)}
+            onEdit={() => { setSelected(entry.sourceId); ctx.editVent(entry.sourceId); }} duplicateDisabled={hvac.devices.length >= 500}
+            onDuplicate={() => {
+              const source = hvac.devices.find(d => d.vent.id === entry.sourceId)!;
+              const copy = duplicateObjectEntry({ ...preview, vents: hvac.devices.map(d => d.vent) }, entry, []);
+              if (!copy) return;
+              const vent = copy.scenario.vents.at(-1)!;
+              commit({ ...hvac, devices: [...hvac.devices, { ...source, vent }] }); setSelected(vent.id); ctx.editVent(vent.id);
+            }}
+            onDelete={() => { commit(removeVent(hvac, entry.sourceId)); if (selected === entry.sourceId) setSelected(null); }}
+            menu={<CFDRowMenu label={`Move ${entry.name}`}>
+              <button disabled={index === 0} onClick={() => moveVent(entry.id, 0)}>Move to top</button>
+              <button disabled={index === 0} onClick={() => moveVent(entry.id, index - 1)}>Move up</button>
+              <button disabled={index === listEntries.length - 1} onClick={() => moveVent(entry.id, index + 2)}>Move down</button>
+              <button disabled={index === listEntries.length - 1} onClick={() => moveVent(entry.id, listEntries.length)}>Move to bottom</button>
+            </CFDRowMenu>} />}
+        </CFDReorderList>
+      </div>
       <div className={styles.tableScroll}><table className={styles.hvacTable} aria-label="Vent positions"><thead><tr><th>Vent / host</th><th>X / Y / Z (mm)</th><th>Host U</th><th>Host V</th><th>Settings</th></tr></thead><tbody>{devices.map(d => {
         const host = report?.patches.find(p => p.id === d.vent.host.patchId), canonical = hvac.devices.find(v => v.vent.id === d.vent.id)!;
         const position = host?.host ? ventCenter(d.vent, host.host).map(n => n.toFixed(0)).join(" / ") : "Assign host";
@@ -165,7 +196,7 @@ export function VentilationPanel() {
         </details>
       </>}
       {hosts.loading && !currentFaces && <p role="status">Checking measured host faces…</p>}
-      {hosts.error && !currentFaces && <div><p role="alert" className={styles.warning}>{hosts.error}</p><button onClick={hosts.retry}>Retry host checks</button></div>}
+      {hosts.error && !currentFaces && <div>{hosts.error !== error && <p role="alert" className={styles.warning}>{hosts.error}</p>}<button onClick={hosts.retry}>Retry host checks</button></div>}
       {report && <p>{currentFaces ? "Geometry checked" : checked ? "Inputs changed — recheck geometry" : "Measured host faces ready"}. Drag shared vents in the main 2D or 3D floorplan; edit exact host coordinates in the positions table.</p>}
       {room && <HvacVentPlan room={room} devices={devices} report={report} selected={selected} onSelect={setSelected} sourceStamp={sourceStamp} onMove={(id,u,v,baseline) => {
         if (baseline !== latestStamp.current) { setError("The project changed while dragging. Existing edits retained; retry the move."); return; }

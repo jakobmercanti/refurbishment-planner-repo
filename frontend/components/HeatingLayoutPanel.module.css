@@ -19,8 +19,6 @@
 .panel p { margin:5px 0; line-height:1.5; }
 .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; align-items:end; }
 .hvacList { display:grid; gap:8px; max-height:260px; overflow:auto; margin-block:10px; }
-.hvacRow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; padding:6px; border:1px solid var(--line); border-radius:8px; }
-.hvacRow > button { text-align:left; overflow-wrap:anywhere; }
 .hvacPlan { display:block; width:100%; max-height:180px; margin-block:10px; border:1px solid var(--line); border-radius:8px; }
 .hvacPlan g { cursor:pointer; }
 .panel.hvacWorkbench { gap:var(--density-section-gap,6px); }
@@ -29,7 +27,6 @@
 .panel .hvacContext { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .panel .hvacToolbar { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:1fr; align-items:stretch; gap:8px; }
 .panel .hvacToolbar button { height:100%; min-width:0; min-height:var(--density-control-min-height); padding:var(--density-control-padding-y) 6px; line-height:1.2; }
-@container electrical-layout-window (max-width:480px) { .hvacRow { grid-template-columns:1fr; } }
 .roomPickerHeading { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .actions,.tabs { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
 .roomSettingsActions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:1fr; gap:8px; margin-top:10px; }
@@ -142,6 +139,7 @@
 .panel .hvacTable :is(th,td) { border:1px solid color-mix(in srgb,var(--ink) 30%,var(--line)); padding:6px 8px; text-align:left; font-weight:400; vertical-align:middle; }
 .panel .hvacTable thead th { background:var(--surface-muted); }
 .panel .hvacTable td:last-child { text-align:right; }
+.panel.panel .hvacTable td:last-child > button { min-width:48px; padding:5px 8px; white-space:nowrap; }
 .panel .hvacTable label { font-size:0; gap:0; }
 .panel .hvacTable input { min-width:65px; padding:5px; }
 .panel .hvacTable small { font-weight:400; }
