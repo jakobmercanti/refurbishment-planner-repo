@@ -7,8 +7,6 @@
 button.window-help-button { flex:0 0 auto; box-sizing:border-box; width:var(--window-icon-size)!important; height:var(--window-icon-size)!important; min-width:var(--window-icon-size)!important; min-height:var(--window-icon-size)!important; padding:0!important; border:1px solid var(--line); border-radius:var(--ui-button-radius,6px); background:var(--panel); color:var(--deep); font:700 16px/1 var(--font-sans); cursor:pointer; touch-action:manipulation; display:inline-grid; place-items:center; vertical-align:middle; }
 .window-header-actions>button:not(.window-help-button) { box-sizing:border-box; display:inline-grid; place-items:center; width:var(--window-icon-size); height:var(--window-icon-size); min-width:var(--window-icon-size); min-height:var(--window-icon-size); padding:0; line-height:1; flex:0 0 auto; }
 .window-help-button:hover, .window-help-button:focus-visible { background: var(--surface-muted); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.floating-toolbar summary:has(>.service-menu-help):not(.full-plan-overall-toggle) { display:flex; align-items:center; gap:8px; list-style:none; }
-.floating-toolbar summary>.service-menu-help { margin-left:auto; }
 .floating-toolbar-titlebar:has(.window-header-actions), .popup-titlebar:has(.window-header-actions) { grid-template-columns: 20px 18px minmax(0, 1fr) auto; }
 .compact-workspace .floating-toolbar-titlebar:has(.window-header-actions) { grid-template-columns: 18px minmax(0, 1fr) auto; }
 .window-help-host { display: contents; }

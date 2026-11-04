@@ -271,14 +271,14 @@ test("landscape touch tablets use selectors; guidance is in contextual help and 
     await thermal.innerText(),
     /Use Envelope → Advanced surface override/,
   );
-  await thermal
+  await page.locator(".cfx-setup-window")
     .getByRole("button", {
-      name: "Help for Thermal envelope help",
+      name: "Help for Climoptix CFD",
       exact: true,
     })
     .click();
   const thermalHelp = page.getByRole("article", {
-    name: "Help for Thermal envelope help",
+    name: "Help for Climoptix CFD",
     exact: true,
   });
   assert.match(
@@ -292,12 +292,12 @@ test("landscape touch tablets use selectors; guidance is in contextual help and 
   await phase.selectOption("mesh");
   await ui
     .getByRole("button", {
-      name: "Help for Mesh, Run & Post-processing",
+      name: "Help for Climoptix CFD",
       exact: true,
     })
     .click();
   const solverHelp = page.getByRole("article", {
-    name: "Help for Mesh, Run & Post-processing",
+    name: "Help for Climoptix CFD",
     exact: true,
   });
   assert.match(await solverHelp.innerText(), /not a runnable case/);

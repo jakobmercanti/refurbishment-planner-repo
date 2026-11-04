@@ -60,8 +60,8 @@ test("help consolidates fields, layers select together, results fill the panel, 
   const p = fixture(); p.heatingLayout = createRoomUFH(p.rooms[0], p.heatingLayout!).heating; p.heatingLayout.display.manifolds = true;
   const s = await harness.session(p); t.after(() => s.close()); const { page } = s, panel = await open(s);
   const setup = panel.locator("details").filter({ has: page.locator("summary", { hasText: /^Room setup/ }) }).first();
-  assert.equal(await setup.getByRole("button", { name: /^Help for/ }).count(), 1);
-  await setup.getByRole("button", { name: /^Help for/ }).click();
+  assert.equal(await setup.getByRole("button", { name: /^Help for/ }).count(), 0);
+  await panel.getByRole("button", { name: "Help for Heating Layout", exact: true }).click();
   await page.locator(".window-help-host").getByRole("heading", { name: "Room target temperature °C", exact: true }).waitFor(); await page.keyboard.press("Escape");
   await panel.getByRole("tab", { name: "System", exact: true }).click(); await expand(panel, "Canvas layers");
   const layerColumns = () => panel.getByRole("checkbox", { name: "demand", exact: true }).evaluate(e => getComputedStyle(e.parentElement.parentElement).gridTemplateColumns.split(" ").length);

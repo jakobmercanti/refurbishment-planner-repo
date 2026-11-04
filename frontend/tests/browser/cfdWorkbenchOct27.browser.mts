@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {resolveHvacVents} from '../../lib/hvacDocument';
 import {cfdProject,realDefaultSetup} from '../climoptixFixtures';
 import {cfdWindow,eventually,startBrowserHarness} from './harness.mjs';
 
@@ -177,7 +178,7 @@ test('main 3D plane selection and Up/Down replace sampled layers; visibility con
   await button(ui,'Previous 3D plane').click();await eventually(()=>plane.inputValue(),v=>v==='slice_Z_001.vtk');
   await cfdWindow(ui,'View properties');const controls=ui.getByLabel('CFD view properties',{exact:true});await controls.getByRole('checkbox',{name:'Only CFD result planes',exact:true}).check();assert.equal(await page.evaluate(()=>window.__octScene().scene.getObjectByName('cfd-building-context').visible),false);
   await controls.getByRole('checkbox',{name:'Show CFD result planes',exact:true}).uncheck();await eventually(()=>page.evaluate(()=>!!window.__octScene().scene.getObjectByName('verified-cfd-result')),v=>!v);
-  const viewWindow=ui.locator('.cfx-view-window');assert.ok((await viewWindow.boundingBox()).height<350);await shot(page,'view-properties');assert.deepEqual((await saved()).rooms,before.rooms);assert.deepEqual((await saved()).cfdScenarios[0].vents,before.cfdScenarios[0].vents);
+  const viewWindow=ui.locator('.cfx-view-window');assert.ok((await viewWindow.boundingBox()).height<350);await shot(page,'view-properties');assert.deepEqual((await saved()).rooms,before.rooms);const after=await saved();assert.deepEqual(resolveHvacVents(after,after.cfdScenarios[0]),resolveHvacVents(before,before.cfdScenarios[0]));
 });
 
 test('legacy comparison is a compact shared 2 by 2 viewport with collapsed floating controls',async t=>{

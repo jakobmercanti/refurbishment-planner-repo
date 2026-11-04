@@ -4,6 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { helpContentKey, WindowHelpButton, WindowHelpScope } from "../components/WindowHelpButton.tsx";
 import { windowHelpSteps } from "../lib/windowHelp.ts";
+import { CFD_SETUP_HELP } from "../lib/climoptixHelp.ts";
+import { mergeHelpSteps } from "../lib/windowHelpContent.ts";
 
 test("nested help with the same body is removed even when its headings differ", () => {
   const steps = [{ heading: "Main", text: "The same guidance" }];
@@ -13,6 +15,15 @@ test("nested help with the same body is removed even when its headings differ", 
 test("different task guidance is retained for the parent guide", () => {
   const html = renderToStaticMarkup(createElement(WindowHelpScope, { title: "Parent", steps: [{ heading: "Main", text: "Overview" }] }, createElement(WindowHelpButton, { title: "Child", steps: [{ heading: "Child", text: "Specific guidance" }] })));
   assert.doesNotMatch(html, /<button/); assert.match(html, /Specific guidance/);
+});
+
+test("main guides contain real room-target guidance and inactive CFD phases", () => {
+  const target = windowHelpSteps("Heating Layout").find(s => s.heading === "Room target temperature °C");
+  assert.match(target!.text, /room-type default/); assert.match(target!.text, /flow\/return/);
+  assert.notEqual(target!.text, "true");
+  for (const heading of ["Vent-position preparation", "Films and handoff", "Convergence monitor", "Choose the simulation volume"]) assert.ok(CFD_SETUP_HELP.some(s => s.heading === heading), heading);
+  const merged = mergeHelpSteps(CFD_SETUP_HELP, CFD_SETUP_HELP);
+  assert.equal(new Set(merged.map(s => JSON.stringify([s.text, s.links ?? []]))).size, merged.length);
 });
 
 test("temperature, comparison and results guides stay distinct from each other and review feedback",()=>{

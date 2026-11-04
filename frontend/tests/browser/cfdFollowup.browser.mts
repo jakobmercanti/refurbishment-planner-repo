@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test,{before,after} from 'node:test';
 import {cfdProject,realPreparation} from '../climoptixFixtures';
+import {resolveHvacVents} from '../../lib/hvacDocument';
 import {ventSchema} from '../../lib/climoptixDocument';
 import {thermalProject,realThermal} from '../thermalFixtures';
 import {thermalGainSchema} from '../../lib/thermalDocument';
@@ -9,6 +10,7 @@ import {cfdWindow,eventually,menu,startBrowserHarness} from './harness.mjs';
 let harness;
 before(async()=>{harness=await startBrowserHarness({climoptixEnabled:true});});
 after(async()=>{await harness?.close();});
+const sharedVents=p=>resolveHvacVents(p,p.cfdScenarios[0]);
 const button=(scope,name)=>scope.getByRole('button',{name,exact:true});
 
 test('Post accepts 250 planes on one axis and preserves that setting on save',async t=>{
@@ -105,7 +107,7 @@ test('Preferences dropdowns share the density button column and smaller bold typ
     const dropdowns=await dialog.locator('select').evaluateAll(nodes=>nodes.map(node=>{const b=node.getBoundingClientRect(),s=getComputedStyle(node);return{x:b.x,width:b.width,font:parseFloat(s.fontSize),weight:Number(s.fontWeight),radius:s.borderRadius,background:s.backgroundColor,border:s.borderColor};}));
     assert.equal(dropdowns.length,4);
     for(const field of dropdowns){assert.ok(Math.abs(field.x-column.x)<2,JSON.stringify({column,field}));assert.ok(Math.abs(field.width-dropdowns[0].width)<2);assert.equal(field.font,12);assert.ok(field.weight>=600);assert.equal(field.radius,dropdowns[0].radius);assert.equal(field.background,dropdowns[0].background);assert.equal(field.border,dropdowns[0].border);}
-    assert.ok(dropdowns[0].width<column.width-30);
+    assert.ok(Math.abs(dropdowns[0].width-column.width)<2);
     if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/followup-preferences-${width}.png`});
   }
 });
@@ -142,7 +144,7 @@ test('real pointer drags rehost both inlet and outlet across walls, floor and ce
   await button(page,'Hide View properties').click();await button(page,'Minimise Simulation setup').click();
   const center=(host,u)=>host.originMm.map((p,i)=>p+host.uAxis[i]*host.widthMm*u+host.vAxis[i]*host.heightMm*.5);
   for(const [index,initial] of scenario.vents.entries())for(const target of [other,floor,wall,roof]){
-    const vent=(await saved()).cfdScenarios[0].vents.find(v=>v.id===initial.id),source=report.patches.find(p=>p.id===vent.host.patchId);
+    const vent=sharedVents(await saved()).find(v=>v.id===initial.id),source=report.patches.find(p=>p.id===vent.host.patchId);
     const start=center(source.host,vent.host.u),end=center(target.host,index?.65:.35);
     await page.evaluate(({start,end,n1,n2})=>{
       const s=window.__followupScene(),middle=start.map((p,i)=>(p+end[i])/2000),eye=start.map((p,i)=>(p+end[i])/2000+8*(n1[i]+n2[i]));
@@ -155,8 +157,8 @@ test('real pointer drags rehost both inlet and outlet across walls, floor and ce
       return [p,q].map(point=>{point.project(s.camera);return{x:bounds.x+(point.x+1)*bounds.width/2,y:bounds.y+(1-point.y)*bounds.height/2};});
     },{id:vent.id,end});
     await page.mouse.move(points[0].x,points[0].y);await page.mouse.down();await page.mouse.move(points[1].x,points[1].y,{steps:15});await page.mouse.up();
-    await eventually(async()=>{const v=(await saved()).cfdScenarios[0].vents.find(v=>v.id===vent.id);return v.host.patchId;},id=>id===target.id,`${vent.role} must rehost to ${target.kind}`);
+    await eventually(async()=>{const v=sharedVents(await saved()).find(v=>v.id===vent.id);return v.host.patchId;},id=>id===target.id,`${vent.role} must rehost to ${target.kind}`);
   }
-  const final=await saved();assert.equal(final.cfdScenarios[0].vents.length,2);assert.deepEqual(final.rooms,originalRooms);
-  for(const original of scenario.vents){const moved={...final.cfdScenarios[0].vents.find(vent=>vent.id===original.id),host:undefined};assert.deepEqual(moved,{...original,host:undefined},'Rehosting changes only the host coordinates, not flow, thermal or device properties');}
+  const final=await saved();assert.equal(sharedVents(final).length,2);assert.deepEqual(final.rooms,originalRooms);
+  for(const original of scenario.vents){const moved={...sharedVents(final).find(vent=>vent.id===original.id),host:undefined};assert.deepEqual(moved,{...original,host:undefined},'Rehosting changes only the host coordinates, not flow, thermal or device properties');}
 });

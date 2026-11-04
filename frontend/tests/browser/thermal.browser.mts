@@ -476,16 +476,16 @@ test("thermal UI audit covers all steps, help, keyboard, resizing and light/dark
     );
     await layoutMatrix(ui, s.page, theme);
   }
-  await ui
+  await s.page.locator(".cfx-setup-window")
     .getByRole("button", {
-      name: "Help for Thermal envelope help",
+      name: "Help for Climoptix CFD",
       exact: true,
     })
     .click();
   assert.match(
     await s.page
       .getByRole("article", {
-        name: "Help for Thermal envelope help",
+        name: "Help for Climoptix CFD",
         exact: true,
       })
       .innerText(),

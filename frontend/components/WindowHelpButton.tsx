@@ -2,7 +2,7 @@
 import type { WindowHelpStep } from "@/lib/windowHelp";
 import { windowHelpSteps } from "@/lib/windowHelp";
 import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { collectedHelp } from "@/lib/windowHelpContent";
+import { collectedHelp, helpWindowFor } from "@/lib/windowHelpContent";
 import { WindowMaximizeButton } from "./WindowMaximizeButton";
 export const WINDOW_HELP_EVENT = "plannerbuild:window-help";
 const ParentHelp = createContext<string | null>(null);
@@ -16,7 +16,7 @@ export function WindowHelpButton({ title, steps, primary = false, section = fals
   const [header, setHeader] = useState(false);
   const [nested, setNested] = useState(false);
   useLayoutEffect(() => {
-    const element = marker.current, window = element?.closest(".floating-toolbar,dialog,[role='dialog'],.popup");
+    const element = marker.current, window = element ? helpWindowFor(element) : null;
     const inHeader = !!element?.closest(".window-header-actions,.popup-titlebar,.modal-header,.dialog-header") || !!(element && window?.querySelector("header,.floating-toolbar-titlebar")?.contains(element));
     if (inHeader) setHeader(true);
     else if (window && !primary && !section) setNested(true);
@@ -26,7 +26,7 @@ export function WindowHelpButton({ title, steps, primary = false, section = fals
     event.preventDefault(); event.stopPropagation();
     const button = event.currentTarget, summary = button.closest("summary");
     const scope = primary || button.closest(".window-header-actions")
-      ? button.closest(".floating-toolbar,dialog,[role='dialog'],.popup")
+      ? helpWindowFor(button)
       : button.closest("[data-window-help-owner]") ?? summary?.parentElement ?? button.closest("section,[role='dialog']");
     window.dispatchEvent(new CustomEvent(WINDOW_HELP_EVENT, { detail: { title, controls: [], steps: collectedHelp(scope, title, steps), opener: button } }));
   }}>?</button></>;

@@ -24,7 +24,7 @@ import { useHvac } from "./HvacContext";
 import { CFDPointProbeControls, CFDPointProbeValue, useCFDPointProbe } from "./CFDPointProbeControls";
 import { completedRunReference, terminalJob, workerInput } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
-import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP, CFD_WORKBENCH_HELP } from "@/lib/climoptixHelp";
+import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP, CFD_SETUP_HELP } from "@/lib/climoptixHelp";
 import { FloatingToolbar } from "./FloatingToolbar";
 import {
   ClimoptixWindowMenu,
@@ -794,9 +794,7 @@ export function ClimoptixWorkspace({
             <span className={`cfx-state ${status.toLowerCase()}`} title={`Simulation status: ${status}`}>{status}</span>
           </div>}
           helpTitle="Climoptix CFD"
-          helpSteps={[...CFD_PHASE_HELP[shownTab],
-            ...(shownTab === "mesh" && simulationTab === "monitor" ? CFD_PHASE_HELP.convergence : []),
-            ...(shownTab === "boundaries" && boundsTab === "thermal" ? CFD_PHASE_HELP.thermal : []), ...CFD_WORKBENCH_HELP]}
+          helpSteps={[...CFD_PHASE_HELP[shownTab], ...CFD_SETUP_HELP]}
           className="cfx-setup-window"
           defaultPosition={{ x: 20, y: 72 }}
           initialSize={{ width: 1000, height: 720 }}

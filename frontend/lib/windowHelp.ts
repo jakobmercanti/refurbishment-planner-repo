@@ -5,7 +5,7 @@ import { ENERGY_DISCLAIMER } from "./energyDocument";
 import { HEATING_DISCLAIMER } from "./heatingDocument";
 export interface WindowHelpStep { heading: string; text: string; links?: { label: string; url: string }[] }
 
-export const ROOM_TARGET_HELP = "true";
+export const ROOM_TARGET_HELP = "Heating method selects the room’s radiators, UFH or combination; None removes room heating after confirmation. The indoor design temperature for this room, in °C. This overrides the room-type default and is used with measured surfaces, ventilation and the external design temperature to calculate heat demand. It does not change the shared system flow/return temperatures.";
 
 const ventilationHelp: WindowHelpStep[] = [
   { heading: "Room and operating scenario", text: "Choose a measured room on the selected floor and an operating scenario. Other rooms retain their vents and conditions. Scenarios can override flow, temperature and enabled state while keeping the shared design. Reset scenario overrides restores design values." },
@@ -34,7 +34,7 @@ function taskWindowHelpSteps(title: string): WindowHelpStep[] {
   ];
   if (title === "CFD convergence") return [
     { heading: "Convergence monitor", text: "Select Monitor in Simulation setup, Convergence in Studies, or Open monitor in Solver → Run. On mobile/tablet choose Monitor from the Phase selector. The selected study controls the displayed history. Changing phases or closing the setup window does not clear the imported log." },
-    { heading: "Real logs, not simulated results", text: "No OpenFOAM worker is connected yet, so there is no live simulation stream. Import a real OpenFOAM text log (up to 8 MB) to plot initial residuals. The graph is logarithmic, clipped to 10⁻¹²–1 and decimated for readability. Repeated pressure corrections are retained. Residuals alone do not prove convergence or flow/energy conservation." },
+    { heading: "Real logs, not simulated results", text: "Imported logs are external records. Import a real OpenFOAM text log (up to 8 MB) to plot initial residuals. The graph is logarithmic, clipped to 10⁻¹²–1 and decimated for readability. Repeated pressure corrections are retained. Residuals alone do not prove convergence or flow/energy conservation." },
     { heading: "Study-specific and local", text: "The selected study controls which history is shown. The latest three imported study histories stay in this browser session while navigating; they are not saved in the project file. Clear log removes only that history and cancels any pending import for it. Download original log preserves the imported file unchanged. Imported data is external and unverified, not proof that this study ran." },
   ];
   if(/balustrade/i.test(title))return [

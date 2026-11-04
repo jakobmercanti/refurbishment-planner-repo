@@ -1,5 +1,7 @@
 import type { CFDWindowId } from "@/components/ClimoptixWindowMenu";
 
+import { THERMAL_HELP } from "./thermalHelp";
+
 type HelpStep = { heading: string; text: string };
 
 /** Contextual guidance lives in the native help window, not above editable data. */
@@ -72,7 +74,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   thermal: [
     {
       heading: "Thermal envelope",
-      text: "Choose source constructions, site/weather, gains and calculation assumptions, then Calculate & preview. The Thermal help button explains each step and its engineering assumptions. Preview is an envelope estimate, not a solved CFD result. Apply transfers a revision-bound thermal contract; stale or incomplete calculations cannot be applied. A future worker still needs validated thermal boundary/source adapters.",
+      text: "Choose source constructions, site/weather, gains and calculation assumptions, then Calculate & preview. The main window help includes each thermal step and its engineering assumptions. Preview is an envelope estimate, not a solved CFD result. Apply transfers a revision-bound thermal contract; stale or incomplete calculations cannot be applied. A future worker still needs validated thermal boundary/source adapters.",
     },
   ],
   convergence: [
@@ -137,3 +139,6 @@ export const CFD_WORKBENCH_HELP = [
     text: "Without a connected worker, Mesh/Run stay disabled and no simulation results are computed. Connected jobs show only worker-reported progress. Imported real solver logs and VTK surface/slice files remain external, not verified results for this simulation. Counts are estimates. Review engineering assumptions before connecting a worker.",
   },
 ];
+
+/** Complete guide stays available while individual phase panels are unmounted. */
+export const CFD_SETUP_HELP = [...Object.values(CFD_PHASE_HELP).flat(), ...CFD_SIMULATION_HELP, ...THERMAL_HELP, ...CFD_WORKBENCH_HELP];

@@ -4,9 +4,9 @@ import { windowHelpSteps } from '../lib/windowHelp';
 import { QUOTE_TEXT_LABELS } from '../lib/quoteHelp';
 
 const text=(title:string)=>windowHelpSteps(title).map(s=>`${s.heading}: ${s.text}`).join(' ');
-test('CFD convergence help describes the actual monitor, local lifetime and unavailable live connection',()=>{
+test('CFD convergence help describes the actual monitor, local lifetime and external log provenance',()=>{
  const help=text('CFD convergence');
- assert.match(help,/Solver → Run/);assert.match(help,/Phase selector/);assert.match(help,/No OpenFOAM worker/);
+ assert.match(help,/Solver → Run/);assert.match(help,/Phase selector/);assert.match(help,/Imported logs are external records/);
  assert.match(help,/latest three/);assert.match(help,/not saved in the project/);
  assert.match(help,/unverified/);assert.match(help,/Clear log/);
 });

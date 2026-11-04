@@ -3,6 +3,7 @@ import test,{before,after} from 'node:test';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {resolveHvacVents} from '../../lib/hvacDocument';
 import {cfdProject,realDefaultSetup} from '../climoptixFixtures';
 import {cfdWindow,eventually,startBrowserHarness} from './harness.mjs';
 
@@ -28,7 +29,8 @@ async function open(t,withVents=true){
   return{...s,ui,panel};
 }
 async function capture(panel){await button(panel,'Use current CFD setup').click();await panel.getByLabel('Saved optimisation configuration',{exact:true}).waitFor();}
-async function movable(panel,index=0){const port=panel.locator('.cfx-adjoint-port').nth(index);await port.locator('summary').click();await port.getByRole('checkbox',{name:'Move this port',exact:true}).check();return port;}
+async function movable(panel,index=0){const port=panel.locator('.cfx-adjoint-port').nth(index);if(!(await port.evaluate(e=>e.open)))await port.locator('summary').click();await port.getByRole('checkbox',{name:'Move this port',exact:true}).check();return port;}
+async function exportActions(panel){const section=panel.locator('details').filter({has:panel.page().locator('summary',{hasText:/^Run & export$/})});if(!(await section.evaluate(e=>e.open)))await section.locator(':scope > summary').click();}
 async function screenshot(page,name){if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/adjoint-${name}.png`});}
 
 test('capture, authoritative region validation, selection, accepted-step settings, export and reopen never move baseline vents',async t=>{
@@ -37,10 +39,10 @@ test('capture, authoritative region validation, selection, accepted-step setting
   assert.equal(await port.getByRole('button',{name:/Select .* in viewer/}).getAttribute('aria-pressed'),'true');
   const steps=panel.getByRole('spinbutton',{name:'Maximum accepted movement steps',exact:true});await steps.fill('5');await steps.press('Enter');
   await button(panel,'Validate setup').click();await eventually(()=>panel.innerText(),v=>v.includes('Configuration checks passed · adjoint unavailable'));
-  assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
-  const after=await saved();assert.deepEqual(after.rooms,before.rooms);assert.deepEqual(after.cfdScenarios[0].vents,before.cfdScenarios[0].vents);
+  await exportActions(panel);assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
+  const after=await saved();assert.deepEqual(after.rooms,before.rooms);assert.deepEqual(resolveHvacVents(after,after.cfdScenarios[0]),resolveHvacVents(before,before.cfdScenarios[0]));
   assert.equal(after.cfdScenarios[0].adjointStudies[0].strategy.maxAcceptedSteps,5);
-  const download=page.waitForEvent('download');await button(panel,'Export configuration JSON').click();
+  await exportActions(panel);const download=page.waitForEvent('download');await button(panel,'Export configuration JSON').click();
   const file=await download,chunks=[];for await(const chunk of await file.createReadStream())chunks.push(chunk);const data=JSON.parse(Buffer.concat(chunks).toString('utf8'));
   assert.equal(data.execution,'unavailable');assert.deepEqual(data.iterations,[]);assert.equal(data.readiness.canRun,false);assert.equal(data.study.strategy.maxAcceptedSteps,5);
   await panel.locator('h2').scrollIntoViewIfNeeded();await screenshot(page,'desktop');
@@ -52,16 +54,16 @@ test('capture, authoritative region validation, selection, accepted-step setting
   await page.setViewportSize({width:1440,height:1000});
   await page.reload();await page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');await cfdWindow(ui,'Adjoint Optimisation');
   assert.equal(await panel.getByRole('spinbutton',{name:'Maximum accepted movement steps',exact:true}).inputValue(),'5');
-  assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
+  await exportActions(panel);assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
 });
 test('infeasible footprints and unselected ports have clear repairs; invalid numeric input is not silently accepted',async t=>{
-  const {panel}=await open(t);await capture(panel);await button(panel,'Validate setup').click();
+  const {panel}=await open(t);await capture(panel);const firstPort=await movable(panel);await firstPort.getByRole('checkbox',{name:'Move this port',exact:true}).uncheck();await button(panel,'Validate setup').click();
   await eventually(()=>panel.innerText(),v=>v.includes('No inlet or outlet is selected for movement.'));
   const port=await movable(panel),minimum=port.getByRole('spinbutton',{name:'U minimum (mm)',exact:true});
   await minimum.fill('0');await minimum.press('Enter');await button(panel,'Validate setup').click();
   await eventually(()=>panel.innerText(),v=>v.includes('full swept footprint and clearance leave the support'));
   const steps=panel.getByRole('spinbutton',{name:'Maximum accepted movement steps',exact:true});await steps.fill('0');await steps.press('Enter');assert.ok(await panel.getByRole('alert').isVisible());assert.equal(await steps.inputValue(),'3');
-  await button(panel,'Run adjoint optimisation').isDisabled().then(assert.ok);
+  await exportActions(panel);await button(panel,'Run adjoint optimisation').isDisabled().then(assert.ok);
 });
 test('empty configuration, clone/remove confirmation, keyboard escape and responsive layouts',async t=>{
   const {page,panel}=await open(t,false);assert.match(await panel.innerText(),/No saved optimisation configurations/);await capture(panel);
@@ -82,7 +84,7 @@ test('physical setup edits invalidate saved baseline; service failures remain ac
   await ui.getByRole('checkbox',{name:'YZ slices (normal X)',exact:true}).check();
   const count=ui.getByRole('spinbutton',{name:'X plane count',exact:true});await count.fill('2');await count.press('Enter');
   await cfdWindow(ui,'Adjoint Optimisation');await eventually(()=>panel.innerText(),v=>v.includes('Baseline changed or current checks are pending.'));
-  assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
+  await exportActions(panel);assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
 });
 
 test('leaving a pending validation cancels it; reopening does not lock the tab or paint an obsolete readiness',async t=>{
@@ -114,10 +116,10 @@ test('ten requested steps save the chosen movement without falsely reporting sol
   const steps=panel.getByRole('spinbutton',{name:'Maximum accepted movement steps',exact:true});await steps.fill('10');await steps.press('Enter');
   const step=panel.getByRole('spinbutton',{name:'Initial translation step (mm)',exact:true});await step.fill('17');await step.press('Enter');
   await button(panel,'Validate setup').click();await eventually(()=>panel.innerText(),v=>v.includes('Configuration checks passed · adjoint unavailable'));
-  assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
-  const download=page.waitForEvent('download');await button(panel,'Export configuration JSON').click();
+  await exportActions(panel);assert.ok(await button(panel,'Run adjoint optimisation').isDisabled());
+  await exportActions(panel);const download=page.waitForEvent('download');await button(panel,'Export configuration JSON').click();
   const chunks=[];for await(const chunk of await(await download).createReadStream())chunks.push(chunk);const data=JSON.parse(Buffer.concat(chunks).toString('utf8'));
   assert.equal(data.study.strategy.maxAcceptedSteps,10);assert.equal(data.study.strategy.initialStepMm,17);
   assert.equal(data.readiness.canRun,false);assert.equal(data.execution,'unavailable');assert.deepEqual(data.iterations,[]);assert.equal(jobs,0);
-  const after=await saved();assert.deepEqual(after.rooms,before.rooms);assert.deepEqual(after.cfdScenarios[0].vents,before.cfdScenarios[0].vents);
+  const after=await saved();assert.deepEqual(after.rooms,before.rooms);assert.deepEqual(resolveHvacVents(after,after.cfdScenarios[0]),resolveHvacVents(before,before.cfdScenarios[0]));
 });

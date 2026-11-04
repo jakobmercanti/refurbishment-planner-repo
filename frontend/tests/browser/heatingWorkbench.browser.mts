@@ -41,15 +41,16 @@ async function segmentPoint(line, fraction=.5) {
   },fraction);
 }
 
-test("temperature, comparison and results question marks open specific help without toggling sections",async t=>{
+test("main Heating guide includes temperature, comparison and results help without repeated section buttons",async t=>{
  const session=await harness.session(fixture());t.after(()=>session.close());const {page}=session,panel=await heating(session);
  const before=JSON.stringify((await eventually(session.saved,p=>p.heatingLayout?.enabled)).heatingLayout);
  for(const [tab,section,heading] of [['System','Heating system temperatures','Set the water temperatures'],['System','Compare system temperatures','Compare without changing the design'],['Results','Heating results','Heat required and heat available']]){
   await panel.getByRole('tab',{name:tab,exact:true}).click();
-  const button=panel.getByRole('button',{name:'Help for '+section,exact:true});await button.waitFor();
-  const open=await button.evaluate(el=>el.closest('details').open);await button.click();
+  assert.equal(await panel.getByRole('button',{name:'Help for '+section,exact:true}).count(),0);
+  const detail=panel.locator('details').filter({has:page.locator('summary',{hasText:new RegExp('^'+section)})}).first(),open=await detail.evaluate(el=>el.open);
+  const button=panel.getByRole('button',{name:'Help for Heating Layout',exact:true});await button.click();
   const help=page.locator('.window-help-host .floating-toolbar-content');await help.getByRole('heading',{name:heading,exact:true}).waitFor();
-  await page.keyboard.press('Escape');assert.equal(await button.evaluate(el=>el.closest('details').open),open);
+  await page.keyboard.press('Escape');assert.equal(await detail.evaluate(el=>el.open),open);
  }
  assert.equal(JSON.stringify((await session.saved()).heatingLayout),before);
  await page.screenshot({path:'../.local-logs/heating-nov01-qa/section-help-buttons.png'});
@@ -68,7 +69,8 @@ test("manifold symbol and help explain supply, return and actual loop usage",asy
  await manifold.focus();await manifold.press('Enter');await page.getByRole('button',{name:'Restore Heating Layout',exact:true}).click();
  const edit=panel.locator('details').filter({has:page.getByRole('spinbutton',{name:'Loop connection capacity',exact:true})});
  await edit.getByText('1 of 12 loop connections used.',{exact:false}).waitFor();
- await edit.getByRole('button',{name:'Help for Edit manifold',exact:true}).click();
+ assert.equal(await edit.getByRole('button',{name:'Help for Edit manifold',exact:true}).count(),0);
+ await panel.getByRole('button',{name:'Help for Heating Layout',exact:true}).click();
  await help.getByRole('heading',{name:'Place and connect it',exact:true}).waitFor();
  await page.screenshot({path:'../.local-logs/heating-nov01-qa/manifold-help.png'});
 });

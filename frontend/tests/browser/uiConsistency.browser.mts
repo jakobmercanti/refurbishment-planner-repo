@@ -104,13 +104,14 @@ test("missing socket references can be removed and a replacement consumer unit r
   assert.match(await tester.getByRole('button',{name:/^Socket a/}).textContent(),/Radial connected/);
 });
 
-test("service section help never repeats the main guide or another section guide", async t => {
+test("service windows use one main guide without repeated section buttons", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
   for (const [entry, selector] of [["Full Electrical Layout module…", ".electrical-layout-window"], ["Heating Layout", ".heating-layout-window"], ["Energy & Insulation", ".energy-layout-window"]]) {
     await menu(page, "Tools", entry); const panel = page.locator(selector);
     await panel.locator(".floating-toolbar-titlebar .window-help-button").click();
     const help = page.locator(".window-help-host .floating-toolbar-content"); await help.waitFor();
     const main = (await help.locator("p").allTextContents()).join("\n"); await page.keyboard.press("Escape");
+    assert.equal(await panel.locator(".floating-toolbar-content .window-help-button:visible").count(), 0);
     const buttons = panel.locator(".service-menu-help:visible"); const seen = new Set([main]);
     for (let i = 0; i < await buttons.count(); i++) {
       await buttons.nth(i).click(); await help.waitFor(); const body = (await help.locator("p").allTextContents()).join("\n");

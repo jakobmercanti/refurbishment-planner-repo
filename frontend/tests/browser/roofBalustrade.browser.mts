@@ -64,7 +64,7 @@ test('opening checkbox offers five styles, persists their properties and shows g
   }
   await editor.getByRole('spinbutton',{name:'Balustrade height',exact:true}).fill('1200');await page.keyboard.press('Tab');
   await editor.getByRole('button',{name:'Apply opening',exact:true}).click();await eventually(s.saved,p=>p.building.floors.at(-1).openings[0].balustrade.heightMm===1200);
-  await editor.getByRole('button',{name:'Help for Opening balustrade',exact:true}).click();await page.locator('.window-help-content').waitFor();assert.match(await page.locator('.window-help-content').innerText(),/not.*certif|calibrat/i);await page.keyboard.press('Escape');
+  await editor.getByRole('button',{name:'Help for Floor properties',exact:true}).click();await page.locator('.window-help-content').waitFor();assert.match(await page.locator('.window-help-content').innerText(),/not.*certif|calibrat/i);await page.keyboard.press('Escape');
   await editor.getByRole('button',{name:'Hide Floor properties',exact:true}).click();await page.locator('.building-properties-window').getByRole('button',{name:'Hide Floors & building',exact:true}).click();
   await page.getByRole('button',{name:'3D',exact:true}).click();await page.locator('.viewer-shell > .stable-canvas-host canvas').waitFor();
   await page.getByRole('button',{name:'Show',exact:true}).click();await page.getByText('Wall display',{exact:true}).click();await page.getByRole('menuitemradio',{name:'Invisible walls',exact:true}).click();await page.keyboard.press('Escape');
@@ -85,7 +85,7 @@ test('combined roof controls stay usable in dark mode and on small screens',asyn
     await page.setViewportSize({width,height:900});await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
     const check=roof.getByRole('checkbox',{name:'Different roofs by room',exact:true});await check.scrollIntoViewIfNeeded();assert.ok(await check.isVisible());
     const field=roof.getByRole('combobox',{name:'Roof room',exact:true}),fieldBox=await field.boundingBox(),windowBox=await roof.boundingBox();assert.ok(fieldBox.x>=windowBox.x&&fieldBox.x+fieldBox.width<=windowBox.x+windowBox.width);
-    await roof.getByRole('button',{name:'Help for Room roof definitions',exact:true}).click();assert.match(await page.locator('.window-help-content').innerText(),/Optional room roofs/);await page.keyboard.press('Escape');
+    await roof.getByRole('button',{name:'Help for Roof & ceiling',exact:true}).click();assert.match(await page.locator('.window-help-content').innerText(),/Optional room roofs/);await page.keyboard.press('Escape');
     const apply=roof.getByRole('button',{name:'Apply roof & ceiling',exact:true});await apply.scrollIntoViewIfNeeded();assert.ok(await apply.isVisible());
     if(process.env.BROWSER_ARTIFACTS)await roof.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/room-roof-${theme}-${width}.png`});
   }
