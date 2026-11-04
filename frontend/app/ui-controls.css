@@ -20,7 +20,8 @@ body .catalogue-detail-dialog { --window-dialog-width: 720px; }
 body .floating-toolbar-content :is(button, summary) { text-overflow: clip; }
 body .floating-toolbar-content button:not(.colour-swatch, .color-swatch, .material-swatch) { white-space: normal; overflow-wrap: anywhere; }
 body .building-floor-bar { padding-left: 12px; }
-.floorplan-export-shortcut { position: absolute; top: 8px; left: 8px; z-index: 1950; min-height: var(--building-selector-height, 38px); padding: 6px 14px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); color: var(--ink); box-shadow: 0 3px 12px #14271f1f; font: 650 calc(12px * var(--density-font-scale, 1))/1.25 var(--font-sans); cursor: pointer; }
+/* Canvas controls stay below floating tool windows (stacked from 21). */
+.floorplan-export-shortcut { position: absolute; top: 8px; left: 8px; z-index: 19; min-height: var(--building-selector-height, 38px); padding: 6px 14px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); color: var(--ink); box-shadow: 0 3px 12px #14271f1f; font: 650 calc(12px * var(--density-font-scale, 1))/1.25 var(--font-sans); cursor: pointer; }
 .floorplan-export-shortcut + .building-floor-bar { max-width: calc(100% - 104px); }
 .floorplan-export-shortcut + .building-floor-bar .workspace-mode-control { min-width: 0; gap: 8px; }
 .floorplan-export-shortcut + .building-floor-bar select { min-width: 0; }

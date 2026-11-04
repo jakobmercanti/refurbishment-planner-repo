@@ -6,7 +6,7 @@ import { ClimoptixObjects } from "./ClimoptixObjects";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { objectGroups } from "@/lib/climoptixObjectGroups";
-import { assetOverrideSchema, ventSchema, type CFDScenario, type CFDVent } from "@/lib/climoptixDocument";
+import { assetOverrideSchema, changeVentControl, ventSchema, type CFDScenario, type CFDVent } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { CFDNumber, CFDText, Parameters, labelFor } from "./CFDFields";
 import { ventCenter } from "@/lib/climoptixPreview";
@@ -303,7 +303,7 @@ export function EquipmentPanel({
               aria-label="Vent controlling quantity"
               value={vent.control}
               onChange={(e) =>
-                edit({ ...vent, control: e.target.value as CFDVent["control"] })
+                edit(changeVentControl(vent, e.target.value as CFDVent["control"]))
               }
             >
               <option value="volumeFlow">Volume flow</option>
@@ -312,6 +312,7 @@ export function EquipmentPanel({
               <option value="pressure">Pressure (Pa)</option>
             </select>
           </label>
+          <small>Changing the quantity resets its value and clears saved flow overrides for this vent. Check the operating value below.</small>
           {vent.control === "volumeFlow" && (
             <label>
               Flow display unit

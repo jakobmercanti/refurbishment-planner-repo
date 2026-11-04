@@ -175,6 +175,13 @@ export const ventSchema = z
       });
   });
 export type CFDVent = z.infer<typeof ventSchema>;
+
+/** Quantities have different units; a control change must not reinterpret the old number. */
+export function changeVentControl(vent: CFDVent, control: CFDVent["control"]): CFDVent {
+  if (vent.control === control) return vent;
+  const initialValue = { volumeFlow: 0.05, massFlow: 0.06, velocity: 1, pressure: 0 };
+  return ventSchema.parse({ ...vent, control, valueSI: initialValue[control] });
+}
 export const assetOverrideSchema = z
   .object({
     objectId: id,

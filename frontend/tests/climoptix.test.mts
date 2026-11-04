@@ -289,3 +289,21 @@ test("preparation strips unrelated private layouts and rejects incomplete or inc
     globalThis.fetch = originalFetch;
   }
 });
+
+test("preparation deadlines cover stalled responses without masking caller cancellation", async t => {
+  const p = cfdProject(), scenario = p.cfdScenarios![0], deadline = new AbortController();
+  t.mock.method(AbortSignal, "timeout", () => deadline.signal);
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    const signal = options!.signal!;
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal.aborted) reject(signal.reason);
+      else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  });
+  const pending = prepareCFD("/api", p, scenario, "a".repeat(64));
+  deadline.abort(new DOMException("Deadline", "TimeoutError"));
+  await assert.rejects(pending, /took too long.*Retry checks/);
+  const caller = new AbortController(), reason = new DOMException("User cancelled", "AbortError");
+  caller.abort(reason);
+  await assert.rejects(prepareCFD("/api", p, scenario, "a".repeat(64), caller.signal), e => e === reason);
+});

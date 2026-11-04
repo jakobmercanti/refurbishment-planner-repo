@@ -12,8 +12,10 @@ import { projectFloors } from "@/lib/buildingDocument";
 import { cfdScenarioSchema, newCFDScenario, ventSchema, type CFDScenario } from "@/lib/climoptixDocument";
 import { downloadCFD, preparationInput, preparationRevision, prepareCFD, type CFDReport } from "@/lib/climoptix";
 import { hvacBoundaryPackage, hvacControlLabel, hvacModelLabel, resolveHvacScenario, type HvacCfdBoundaryPackage } from "@/lib/hvacBridge";
-import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
+import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, updateVentDevice, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
 import { HvacVentPlan } from "./HvacVentPlan";
+import { useHvacHostReport } from "./useHvacHostReport";
+import { scrollWorkbenchToStart } from "@/lib/workbenchNavigation";
 import styles from "./HeatingLayoutPanel.module.css";
 
 export function HeatingVentilationTabs({ children }: { children: ReactNode }) {
@@ -21,8 +23,8 @@ export function HeatingVentilationTabs({ children }: { children: ReactNode }) {
   if (!ctx) return children;
   return <div className={`${styles.panel} ${styles.hvacWorkbench}`}>
     <nav className={`${styles.tabs} ${styles.hvacTabs}`} role="tablist" aria-label="HVAC workbench">
-      {(["Heating", "Ventilation"] as const).map((tab, index) => <button key={tab} id={`hvac-tab-${tab}`} type="button" role="tab" aria-selected={ctx.tab === tab} aria-controls={`hvac-panel-${tab}`} tabIndex={ctx.tab === tab ? 0 : -1} onClick={() => ctx.setTab(tab)} onKeyDown={e => {
-        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); const next = e.key === "Home" ? "Heating" : e.key === "End" ? "Ventilation" : index === 0 ? "Ventilation" : "Heating"; ctx.setTab(next); document.getElementById(`hvac-tab-${next}`)?.focus(); }
+      {(["Heating", "Ventilation"] as const).map((tab, index) => <button key={tab} id={`hvac-tab-${tab}`} type="button" role="tab" aria-selected={ctx.tab === tab} aria-controls={`hvac-panel-${tab}`} tabIndex={ctx.tab === tab ? 0 : -1} onClick={e => { ctx.setTab(tab); scrollWorkbenchToStart(e.currentTarget); }} onKeyDown={e => {
+        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); const next = e.key === "Home" ? "Heating" : e.key === "End" ? "Ventilation" : index === 0 ? "Ventilation" : "Heating"; ctx.setTab(next); document.getElementById(`hvac-tab-${next}`)?.focus({ preventScroll: true }); scrollWorkbenchToStart(e.currentTarget); }
       }}>{tab}</button>)}
     </nav>
     <div role="tabpanel" id="hvac-panel-Heating" aria-labelledby="hvac-tab-Heating" hidden={ctx.tab !== "Heating"}><HeatingOperatingStatus />{children}</div>
@@ -54,38 +56,30 @@ export function VentilationPanel() {
   useEffect(() => { if (ctx.focus?.floorId === floor.id) queueMicrotask(() => setRoomId(ctx.focus!.roomId)); }, [ctx.focus, floor.id]);
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [calculatedInputs, setCalculatedInputs] = useState("");
-  const [checked, setChecked] = useState<{ report: CFDReport; input: string; geometryKey: string } | null>(null);
-  const [handoff, setHandoff] = useState<{ hvac: HvacProject; scenario: CFDScenario; pkg: HvacCfdBoundaryPackage; report: CFDReport; hash: string; sourceStamp: string } | null>(null);
+  const [checked, setChecked] = useState<{ report: CFDReport; input: string; geometryKey: string; apiUrl: string } | null>(null);
+  const [handoff, setHandoff] = useState<{ hvac: HvacProject; scenario: CFDScenario; pkg: HvacCfdBoundaryPackage; report: CFDReport; sourceStamp: string } | null>(null);
   const request = useRef<AbortController | null>(null);
-  useEffect(() => () => request.current?.abort(), []);
   const preview = useMemo(() => ({ ...newCFDScenario(project.projectId, "HVAC room preview"), id: "hvac-preview", seed: room ? { floorId: floor.id, roomId: room.id } : null, vents: devices.filter(d => d.enabled).map(d => d.vent) }), [project.projectId, floor.id, room, devices]);
   const input = preparationInput(project, preview), current = useRef(input);
-  const { ensureGeometry, geometryKey } = ctx;
-  const hostRoomId = room?.id;
-  useEffect(() => {
-    let cancelled = false;
-    if (hostRoomId) void ensureGeometry({ floorId: floor.id, roomId: hostRoomId }).then(report => { if (!cancelled && report) setChecked({ report, input: "hosts-only", geometryKey }); }).catch(e => { if (!cancelled) setError(hvacErrorMessage(e)); });
-    return () => { cancelled = true; };
-  }, [ensureGeometry, geometryKey, floor.id, hostRoomId]);
+  useEffect(() => () => request.current?.abort(), [input, ctx.apiUrl]);
+  const hosts = useHvacHostReport(floor.id, room?.id);
 
   useEffect(() => { current.current = input; }, [input]);
   const sourceStamp = JSON.stringify({ project, floorId: floor.id, roomId: room?.id, operatingId: operating.id }), latestStamp = useRef(sourceStamp);
   useEffect(() => { latestStamp.current = sourceStamp; }, [sourceStamp]);
-  const report = checked?.geometryKey === ctx.geometryKey ? checked.report : ctx.geometryReport, currentFaces = checked?.input === input;
+  const currentFaces = checked?.geometryKey === ctx.geometryKey && checked.apiUrl === ctx.apiUrl && checked.input === input;
+  const report = currentFaces ? checked.report : hosts.report;
   function commit(next: HvacProject) { try { ctx.commit(hvacSchema.parse(next)); setError(""); } catch (e) { setError(hvacErrorMessage(e)); } }
   function saveScenario(next: HvacOperatingScenario) { commit({ ...hvac, activeScenarioId: next.id, scenarios: [...hvac.scenarios.filter(s => s.id !== next.id), next] }); }
   function conditions(patch: Partial<HvacConditions>) { saveScenario({ ...operating, conditions: { ...operating.conditions, ...patch } }); }
   function editVents(next: CFDScenario) {
     try {
       const parsed = cfdScenarioSchema.parse(next);
-      const all = structuredClone(hvac);
+      let all = hvac;
       for (const vent of parsed.vents) {
         const existing = all.devices.find(d => d.vent.id === vent.id), host = report?.patches.find(p => p.id === vent.host.patchId);
-        if (existing) {
-          const flowChanged = existing.vent.valueSI !== vent.valueSI, temperatureChanged = existing.vent.temperatureK !== vent.temperatureK;
-          existing.vent = vent; if (host) { existing.roomId = host.roomId; existing.floorId = host.floorId; }
-          const op = all.scenarios.find(s => s.id === operating.id), override = op?.ventOverrides[vent.id];
-          if (override) { if (flowChanged) delete override.valueSI; if (temperatureChanged) delete override.temperatureK; if (!Object.keys(override).length) delete op!.ventOverrides[vent.id]; }
+        if (existing && (JSON.stringify(existing.vent) !== JSON.stringify(vent) || host && (existing.roomId !== host.roomId || existing.floorId !== host.floorId))) {
+          all = updateVentDevice(all, vent.id, { vent, ...(host ? { roomId: host.roomId, floorId: host.floorId } : {}) }, operating.id);
         }
       }
       commit(all);
@@ -95,8 +89,8 @@ export function VentilationPanel() {
     request.current?.abort(); const abort = new AbortController(); request.current = abort; setBusy(true); setError("");
     const captured = input;
     try { const revision = await preparationRevision(captured); const result = await prepareCFD(ctx.apiUrl, project, preview, revision, abort.signal);
-      if (!abort.signal.aborted && current.current === captured) { setChecked({ report: result, input: captured, geometryKey: ctx.geometryKey }); ctx.setGeometryReport(result); }
-    } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "Geometry checks unavailable."); }
+      if (!abort.signal.aborted && current.current === captured) { setChecked({ report: result, input: captured, geometryKey: ctx.geometryKey, apiUrl: ctx.apiUrl }); ctx.setGeometryReport(result); }
+    } catch (e) { if (!abort.signal.aborted && current.current === captured) setError(e instanceof Error ? e.message : "Geometry checks unavailable."); }
     finally { if (request.current === abort) setBusy(false); }
   }
   function add(role: "supply" | "extract", extractKind: "exhaust" | "return" = "exhaust") {
@@ -126,8 +120,8 @@ export function VentilationPanel() {
       const pkg = hvacBoundaryPackage(nextProject, scenario, prepared);
       nextHvac.bindings[scenario.id].scopeRooms = prepared.domain.regions.filter(r => r.included).map(r => ({ floorId: r.floorId, roomId: r.id }));
       nextHvac.bindings[scenario.id].scopeSeed = scenario.seed;
-      if (!abort.signal.aborted && latestStamp.current === sourceStamp) setHandoff({ hvac: nextHvac, scenario, pkg, report: prepared, hash, sourceStamp });
-    } catch (e) { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : "CFD preflight unavailable."); }
+      if (!abort.signal.aborted && latestStamp.current === sourceStamp) setHandoff({ hvac: nextHvac, scenario, pkg, report: prepared, sourceStamp });
+    } catch (e) { if (!abort.signal.aborted && latestStamp.current === sourceStamp) setError(e instanceof Error ? e.message : "CFD preflight unavailable."); }
     finally { if (request.current === abort) setBusy(false); }
   }
   const selectedDevice = devices.find(d => d.vent.id === selected);
@@ -170,7 +164,9 @@ export function VentilationPanel() {
           <button onClick={() => { const overrides = { ...operating.ventOverrides }; delete overrides[selected!]; saveScenario({ ...operating, ventOverrides: overrides }); }}>Use design values</button>
         </details>
       </>}
-      {report && <p>{currentFaces ? "Geometry checked" : "Inputs changed — recheck geometry"}. Drag shared vents in the main 2D or 3D floorplan; edit exact host coordinates in the positions table.</p>}
+      {hosts.loading && !currentFaces && <p role="status">Checking measured host faces…</p>}
+      {hosts.error && !currentFaces && <div><p role="alert" className={styles.warning}>{hosts.error}</p><button onClick={hosts.retry}>Retry host checks</button></div>}
+      {report && <p>{currentFaces ? "Geometry checked" : checked ? "Inputs changed — recheck geometry" : "Measured host faces ready"}. Drag shared vents in the main 2D or 3D floorplan; edit exact host coordinates in the positions table.</p>}
       {room && <HvacVentPlan room={room} devices={devices} report={report} selected={selected} onSelect={setSelected} sourceStamp={sourceStamp} onMove={(id,u,v,baseline) => {
         if (baseline !== latestStamp.current) { setError("The project changed while dragging. Existing edits retained; retry the move."); return; }
         commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === id ? { ...d, vent: { ...d.vent, host: { ...d.vent.host, u, v } } } : d) });

@@ -2,18 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { helpContentKey, WindowHelpButton, WindowHelpScope } from "../components/WindowHelpButton.tsx";
+import { WindowHelpButton, WindowHelpScope } from "../components/WindowHelpButton.tsx";
 import { windowHelpSteps } from "../lib/windowHelp.ts";
 import { CFD_SETUP_HELP } from "../lib/climoptixHelp.ts";
-import { mergeHelpSteps } from "../lib/windowHelpContent.ts";
+import { mergeHelpSteps, parseHelpSteps } from "../lib/windowHelpContent.ts";
+
+test("malformed metadata cannot poison the consolidated main guide", () => {
+  for (const value of [undefined, "invalid", "null", "{}", '[null]', '[{"heading":"Flow","text":"Help","links":{}}]', '[{"heading":"Flow","text":"Help","links":[null]}]']) assert.equal(parseHelpSteps(value), null);
+  const steps = [{ heading: "Flow", text: "Check the quantity", links: [{ label: "Guide", url: "https://example.org/guide" }] }];
+  assert.deepEqual(parseHelpSteps(JSON.stringify(steps)), steps);
+});
 
 test("nested help with the same body is removed even when its headings differ", () => {
   const steps = [{ heading: "Main", text: "The same guidance" }];
-  const html = renderToStaticMarkup(createElement(WindowHelpScope, { title: "Parent", steps }, createElement(WindowHelpButton, { title: "Child", steps: [{ heading: "Different title", text: "The same guidance" }] })));
+  const html = renderToStaticMarkup(createElement(WindowHelpScope, null, createElement(WindowHelpButton, { title: "Child", steps: [{ ...steps[0], heading: "Different title" }] })));
   assert.doesNotMatch(html, /<button/); assert.match(html, /The same guidance/);
 });
 test("different task guidance is retained for the parent guide", () => {
-  const html = renderToStaticMarkup(createElement(WindowHelpScope, { title: "Parent", steps: [{ heading: "Main", text: "Overview" }] }, createElement(WindowHelpButton, { title: "Child", steps: [{ heading: "Child", text: "Specific guidance" }] })));
+  const html = renderToStaticMarkup(createElement(WindowHelpScope, null, createElement(WindowHelpButton, { title: "Child", steps: [{ heading: "Child", text: "Specific guidance" }] })));
   assert.doesNotMatch(html, /<button/); assert.match(html, /Specific guidance/);
 });
 
@@ -28,7 +34,7 @@ test("main guides contain real room-target guidance and inactive CFD phases", ()
 
 test("temperature, comparison and results guides stay distinct from each other and review feedback",()=>{
  const titles=['Heating Layout','Heating Layout — Heating system temperatures','Heating Layout — Compare system temperatures','Heating Layout — Heating results','Heating Layout — Items to review (1)'];
- const keys=titles.map(title=>helpContentKey(windowHelpSteps(title)));
+ const keys=titles.map(title=>JSON.stringify(windowHelpSteps(title).map(step=>({text:step.text,links:step.links}))));
  assert.equal(new Set(keys).size,titles.length);
  assert.match(windowHelpSteps(titles[1]).map(s=>s.text).join(' '),/Flow.*Return/);
  assert.match(windowHelpSteps(titles[2]).map(s=>s.text).join(' '),/read-only comparison/);

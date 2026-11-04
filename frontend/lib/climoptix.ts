@@ -209,25 +209,31 @@ export async function prepareCFD(
   signal?: AbortSignal,
 ): Promise<CFDReport> {
   const body = preparationRequestBody(project, scenario, clientRevision);
-  const response = await fetch(`${apiUrl}/climoptix/prepare`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-    signal,
-  });
-  if (!response.ok) {
-    const detail: unknown = await response.json().catch(() => null);
-    throw new Error(
-      detail &&
-      typeof detail === "object" &&
-      "detail" in detail &&
-      typeof detail.detail === "string"
-        ? detail.detail
-        : "Climoptix preparation service is unavailable. Your scenario remains saved locally; no solver is connected.",
-    );
+  const deadline = AbortSignal.timeout(25000);
+  try {
+    const response = await fetch(`${apiUrl}/climoptix/prepare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
+    });
+    if (!response.ok) {
+      const detail: unknown = await response.json().catch(() => null);
+      throw new Error(
+        detail &&
+        typeof detail === "object" &&
+        "detail" in detail &&
+        typeof detail.detail === "string"
+          ? detail.detail
+          : "Climoptix preparation service is unavailable. Retry checks; your scenario remains saved locally.",
+      );
+    }
+    const raw: unknown = await response.json();
+    return parseCFDReport(raw, clientRevision);
+  } catch (error) {
+    if (deadline.aborted && !signal?.aborted) throw new Error("Preparation took too long. Retry checks; your scenario remains saved locally.");
+    throw error;
   }
-  const raw: unknown = await response.json();
-  return parseCFDReport(raw, clientRevision);
 }
 export function scenarioImport(input: unknown, projectId: string): CFDScenario {
   const parsed = cfdScenarioSchema.parse(input);

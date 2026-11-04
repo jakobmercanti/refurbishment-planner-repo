@@ -1,7 +1,7 @@
 .building-plan-stage { position:relative; flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; --building-selector-height:36px; --floating-toolbar-top-inset:calc(var(--building-selector-height) + 12px); }
 .building-plan-stage[hidden] { display:none; }
-/* Keep canvas-window shadows below the pinned selector; menus/dialogs stay above. */
-.building-floor-bar { position:absolute; top:8px; right:8px; display:flex; align-items:center; gap:6px; padding:4px; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--panel); color:var(--ink); font:500 calc(12px * var(--density-font-scale,1))/1.4 var(--font-sans),sans-serif; box-shadow:0 3px 12px rgba(20,39,31,.12); z-index:1950; max-width:calc(100% - 16px); }
+/* Above the canvas; floating editors and dialogs retain pointer priority. */
+.building-floor-bar { position:absolute; top:8px; right:8px; display:flex; align-items:center; gap:6px; padding:4px; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--panel); color:var(--ink); font:500 calc(12px * var(--density-font-scale,1))/1.4 var(--font-sans),sans-serif; box-shadow:0 3px 12px rgba(20,39,31,.12); z-index:19; max-width:calc(100% - 16px); }
 .building-floor-bar label { min-width:0; }
 .building-floor-bar .workspace-mode-control { gap:14px; }
 .building-floor-bar button { min-height:var(--control-height-normal); border:1px solid var(--line); border-radius:var(--ui-button-radius,7px); padding:7px 10px; background:var(--ui-button-background); color:var(--ui-button-text); font-family:var(--font-sans),sans-serif; font-size:calc(12px * var(--density-font-scale,1)); font-weight:650; line-height:1.3; cursor:pointer; }

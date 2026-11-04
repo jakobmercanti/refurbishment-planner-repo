@@ -40,8 +40,9 @@ export function HvacProvider({ children, onFocusFloor, ...value }: Omit<HvacCont
   // Hydraulic layouts/ratings do not define the measured host faces.
   for (const floor of geometrySource.floors ?? []) delete floor.heating;
   const geometryKey = JSON.stringify(geometrySource);
-  const setGeometryReport = useCallback((report: CFDReport) => setGeometry(previous => previous?.report === report && previous.key === geometryKey ? previous : { report, key: geometryKey }), [geometryKey, setGeometry]);
-  const geometryReport = geometry?.key === geometryKey ? geometry.report : null;
+  const sourceKey = JSON.stringify([value.apiUrl, geometryKey]);
+  const setGeometryReport = useCallback((report: CFDReport) => setGeometry(previous => previous?.report === report && previous.key === sourceKey ? previous : { report, key: sourceKey }), [sourceKey, setGeometry]);
+  const geometryReport = geometry?.key === sourceKey ? geometry.report : null;
   const { ensureGeometry, geometryPatches } = useHvacHosts(value.project, value.apiUrl, geometryKey);
   const [editVentId, editVent] = useState<string | null>(null);
   const moveVent: HvacContextValue["moveVent"] = (id, u, v, baseline) => {

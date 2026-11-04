@@ -73,6 +73,36 @@ export const hvacSchema = z.object({
 });
 export type HvacProject = z.infer<typeof hvacSchema>;
 export const newHvacProject = (): HvacProject => hvacSchema.parse({ version: 1, devices: [] });
+
+function clearVentOverride(overrides: Record<string, z.infer<typeof ventOperation>>, id: string, field: "valueSI" | "temperatureK") {
+  const override = overrides[id];
+  if (!override) return;
+  delete override[field];
+  if (!Object.keys(override).length) delete overrides[id];
+}
+
+/** Flow overrides share the design quantity. None can survive a change of units. */
+function clearVentFlowOverrides(hvac: HvacProject, id: string) {
+  for (const scenario of hvac.scenarios) clearVentOverride(scenario.ventOverrides, id, "valueSI");
+  for (const link of Object.values(hvac.bindings)) clearVentOverride(link.overrides, id, "valueSI");
+}
+
+/** Atomic permanent edit shared by the inline and floorplan vent editors. */
+export function updateVentDevice(hvac: HvacProject, id: string, patch: Partial<VentDevice>, operatingId?: string): HvacProject {
+  const next = structuredClone(hvac), device = next.devices.find(d => d.vent.id === id);
+  if (!device) throw new Error("The vent no longer exists. Select another vent.");
+  if (patch.vent && patch.vent.id !== id) throw new Error("A vent edit cannot change its ID.");
+  const before = device.vent;
+  const operating = operatingId !== undefined ? next.scenarios.find(s => s.id === operatingId)
+    : next.scenarios.find(s => s.id === next.activeScenarioId && s.floorId === device.floorId && s.roomId === device.roomId)
+      ?? next.scenarios.find(s => s.floorId === device.floorId && s.roomId === device.roomId);
+  Object.assign(device, patch);
+  if (device.vent.control !== before.control) clearVentFlowOverrides(next, id);
+  else if (device.vent.valueSI !== before.valueSI && operating) clearVentOverride(operating.ventOverrides, id, "valueSI");
+  if (device.vent.temperatureK !== before.temperatureK && operating) clearVentOverride(operating.ventOverrides, id, "temperatureK");
+  // Parse after removing obsolete overrides (e.g. pressure 0 Pa is not a valid flow).
+  return hvacSchema.parse(next);
+}
 export function hvacErrorMessage(cause: unknown, fallback = "Invalid HVAC inputs."): string {
   return cause instanceof z.ZodError ? cause.issues.slice(0, 3).map(issue => issue.message).join(" ") : cause instanceof Error ? cause.message : fallback;
 }
@@ -206,30 +236,26 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
         if (effective.valueSI !== v.valueSI || effective.temperatureK !== v.temperatureK) link.overrides[v.id] = { valueSI: v.valueSI, temperatureK: v.temperatureK };
       }
       else {
+        const quantityChanged = found.vent.control !== v.control;
+        if (quantityChanged) clearVentFlowOverrides(hvac, v.id);
         if (link.editMode === "override") {
-          found.vent = { ...v, valueSI: found.vent.valueSI, temperatureK: found.vent.temperatureK };
+          found.vent = { ...v, valueSI: quantityChanged ? v.valueSI : found.vent.valueSI, temperatureK: found.vent.temperatureK };
           if (operating) {
-            const flowChanged = prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
+            const flowChanged = quantityChanged || prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
             if (flowChanged || temperatureChanged) operating.ventOverrides[v.id] = { ...operating.ventOverrides[v.id], ...(flowChanged ? { valueSI: v.valueSI } : {}), ...(temperatureChanged ? { temperatureK: v.temperatureK } : {}) };
-            if (link.overrides[v.id]) {
-              if (flowChanged) delete link.overrides[v.id].valueSI;
-              if (temperatureChanged) delete link.overrides[v.id].temperatureK;
-              if (!Object.keys(link.overrides[v.id]).length) delete link.overrides[v.id];
-            }
+            if (flowChanged) clearVentOverride(link.overrides, v.id, "valueSI");
+            if (temperatureChanged) clearVentOverride(link.overrides, v.id, "temperatureK");
           }
           else link.overrides[v.id] = { ...link.overrides[v.id], valueSI: v.valueSI, temperatureK: v.temperatureK };
         } else {
-          const flowChanged = prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
+          const flowChanged = quantityChanged || prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
           found.vent = { ...v, valueSI: flowChanged ? v.valueSI : found.vent.valueSI, temperatureK: temperatureChanged ? v.temperatureK : found.vent.temperatureK };
           // Moving a device must never promote effective scenario values into
           // nameplate/design data. An explicit permanent operating edit clears
           // only the corresponding override, so the new value is visible.
           for (const overrides of [link.overrides, ...(operating ? [operating.ventOverrides] : [])]) {
-            if (overrides[v.id]) {
-              if (flowChanged) delete overrides[v.id].valueSI;
-              if (temperatureChanged) delete overrides[v.id].temperatureK;
-              if (!Object.keys(overrides[v.id]).length) delete overrides[v.id];
-            }
+            if (flowChanged) clearVentOverride(overrides, v.id, "valueSI");
+            if (temperatureChanged) clearVentOverride(overrides, v.id, "temperatureK");
           }
         }
         if (owner) { found.floorId = owner.floorId; found.roomId = owner.roomId; }

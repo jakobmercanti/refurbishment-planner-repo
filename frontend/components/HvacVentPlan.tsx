@@ -3,7 +3,8 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { Room } from "@/lib/types";
 import type { CFDHost, CFDReport } from "@/lib/climoptix";
 import type { VentDevice } from "@/lib/hvacDocument";
-import { snapVentUV, ventCenter } from "@/lib/climoptixPreview";
+import { ventCenter } from "@/lib/climoptixPreview";
+import { ventUVAtPoint } from "@/lib/ventPlacement";
 import styles from "./HeatingLayoutPanel.module.css";
 
 /** Plan edits are measured host-coordinate intent. The existing kernel validates cutouts. */
@@ -27,9 +28,7 @@ export function HvacVentPlan({ room, devices, report, selected, onSelect, source
     const pixel = svg.createSVGPoint(); pixel.x = event.clientX; pixel.y = event.clientY;
     const point = pixel.matrixTransform(matrix.inverse());
     const old = ventCenter(active.device.vent, active.host);
-    const delta = [point.x - active.host.originMm[0], point.y - active.host.originMm[1], old[2] - active.host.originMm[2]];
-    const dot = (axis: number[]) => delta.reduce((sum, value, i) => sum + value * axis[i], 0);
-    const uv = snapVentUV(active.device.vent, active.host, dot(active.host.uAxis) / active.host.widthMm, dot(active.host.vAxis) / active.host.heightMm);
+    const uv = ventUVAtPoint(active.device.vent, active.host, [point.x, point.y, old[2]]);
     if (!uv) return;
     [active.u, active.v] = uv; setDraft({ id: active.id, u: uv[0], v: uv[1] });
   }

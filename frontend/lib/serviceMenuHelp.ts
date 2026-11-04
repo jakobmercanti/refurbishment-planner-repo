@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from "react";
-import { helpWindowFor, mergeHelpSteps } from "./windowHelpContent";
+import { helpWindowFor, mergeHelpSteps, parseHelpSteps } from "./windowHelpContent";
 import { windowHelpSteps, type WindowHelpStep } from "./windowHelp";
 /** Retain service topics in the main window guide without manufacturing extra buttons. */
 export function useServiceMenuHelp(root: RefObject<HTMLElement | null>, windowTitle: string) {
@@ -17,7 +17,8 @@ export function useServiceMenuHelp(root: RefObject<HTMLElement | null>, windowTi
       }
       for (const marker of panel.querySelectorAll<HTMLElement>("[data-window-help-steps]")) {
         if (marker === bag || helpWindowFor(marker) !== panel) continue;
-        try { remembered.set(marker.dataset.windowHelpTopic ?? "", JSON.parse(marker.dataset.windowHelpSteps!)); } catch { /* Ignore malformed external metadata. */ }
+        const steps = parseHelpSteps(marker.dataset.windowHelpSteps);
+        if (steps) remembered.set(marker.dataset.windowHelpTopic ?? "", steps);
       }
       bag.dataset.windowHelpSteps = JSON.stringify(mergeHelpSteps(...remembered.values()));
     };
