@@ -5,6 +5,12 @@ import { exposedCover, structuralFloorFootprint, polygonOf, subtractVoids } from
 import { CombinedBuildingRoof, BuildingSlab, shapesFromPolygons, TerraceCover } from "./BuildingSurfaces";
 import { wallEnvelope, wallThicknessMm as wallThickness } from "@/lib/wallEnvelope";
 import type { BuildingView } from "./BuildingControls";
+import { useEnergyLayout } from "./EnergyLayoutContext";
+import { useHeatingLayout } from "./HeatingLayoutContext";
+import { energyElements, isInsulationSelectable } from "@/lib/energyCalculations";
+import { useHvac } from "./HvacContext";
+import { useServiceView } from "./ServiceViewContext";
+import { ServiceFloorLayer, ServiceFabricLayer } from "./ServiceSceneLayers";
 import { HvacSceneMarkers } from "./HvacSceneMarkers";
 import { MetalReflections } from "@/components/MetalReflections";
 
@@ -275,6 +281,7 @@ function WallPiece({
   outerEnd,
   wallLength,
   colour,
+  bodyColour = DEFAULT_WALL_COLOUR,
   wallMode,
   selected,
   paintOnly = false,
@@ -292,6 +299,7 @@ function WallPiece({
   outerEnd: Point2D;
   wallLength: number;
   colour: string;
+  bodyColour?: string;
   wallMode: WallViewMode;
   selected: boolean;
   paintOnly?: boolean;
@@ -347,6 +355,7 @@ function WallPiece({
       {children}
       {height > 0 && <>
       {!paintOnly && wallMode !== "CUTAWAY_2D" && <mesh
+        userData={{ serviceOccluder: wallMode !== "TRANSPARENT" }}
         castShadow={wallMode !== "TRANSPARENT"}
         receiveShadow
         position={[0, base * SCALE, 0]}
@@ -354,11 +363,12 @@ function WallPiece({
         onPointerDown={onSelect ? (event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey); } : undefined}
       >
         <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
-        <meshStandardMaterial color={DEFAULT_WALL_COLOUR} roughness={0.86} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
+        <meshStandardMaterial color={bodyColour} roughness={0.86} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>}
       {/* Paint is a thin overlay on the solid wall; shadow mapping it causes
           perspective self-shadow acne along the coplanar wall surfaces. */}
       <mesh
+        userData={{ serviceOccluder: wallMode !== "TRANSPARENT" }}
         position={[
           innerCentre.x * SCALE - vector.dy * paintOffset,
           (base + height / 2) * SCALE,
@@ -389,6 +399,7 @@ function WallWithOpenings({
   wallMode,
   selected,
   paintOnly = false,
+  thermalColour,
   onSelect,
 }: {
   index: number;
@@ -402,13 +413,14 @@ function WallWithOpenings({
   wallMode: WallViewMode;
   selected: boolean;
   paintOnly?: boolean;
+  thermalColour?: string;
   onSelect?: (additive: boolean) => void;
 }) {
   const vector = wallVector(start, end);
   const thickness = wallThickness(room, index);
   const [, , outerEnd, outerStart] = wallEnvelope({room,index,start,end,capStart,capEnd});
   const currentWallId = wallId(index);
-  const colour = room.finishes?.wall_colors?.[currentWallId] ?? DEFAULT_WALL_COLOUR;
+  const colour = thermalColour ?? room.finishes?.wall_colors?.[currentWallId] ?? DEFAULT_WALL_COLOUR;
   const openings = room.openings
     .filter((opening) => opening.parent_wall_id === currentWallId)
     .map((opening) => {
@@ -426,11 +438,11 @@ function WallWithOpenings({
   openings.forEach((opening) => {
     const passage=passageProfileForOpening(opening);
     const shoulder=passage?<group position={[(start.x+vector.dx*opening.profileSourceOffsetMm)*SCALE,opening.sill_height_mm*SCALE,-(start.y+vector.dy*opening.profileSourceOffsetMm)*SCALE]} rotation={[0,vector.angle,0]}>
-      <PassageSpandrel profile={passage} widthMm={opening.profileSourceWidthMm} heightMm={opening.height.value} fromMm={opening.offset_mm-opening.profileSourceOffsetMm} toMm={opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm} depthMm={thickness} colour={colour} solidColour={DEFAULT_WALL_COLOUR} wallMode={wallMode} paintOnly={paintOnly} selected={selected} onSelect={onSelect}/>
+      <PassageSpandrel profile={passage} widthMm={opening.profileSourceWidthMm} heightMm={opening.height.value} fromMm={opening.offset_mm-opening.profileSourceOffsetMm} toMm={opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm} depthMm={thickness} colour={colour} solidColour={thermalColour ?? DEFAULT_WALL_COLOUR} wallMode={wallMode} paintOnly={paintOnly} selected={selected} onSelect={onSelect}/>
       {!paintOnly&&<group position={[opening.profileSourceWidthMm*SCALE/2,0,0]}><PassageReveal profile={passage} width={opening.profileSourceWidthMm*SCALE} height={opening.height.value*SCALE} depth={thickness*SCALE} from={(opening.offset_mm-opening.profileSourceOffsetMm)*SCALE} to={(opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm)*SCALE} colour={resolvedPartColours({representation_key:typeof opening.metadata?.representation_key==="string"?opening.metadata.representation_key:undefined,color_hex:typeof opening.metadata?.color_hex==="string"?opening.metadata.color_hex:colour,component_colors:componentColoursFromMetadata(opening.metadata)}).reveal??colour} transparent={wallMode==="TRANSPARENT"}/></group>}
     </group>:null;
     pieces.push(
-      <WallPiece
+      <WallPiece bodyColour={thermalColour}
         key={`${opening.id}-before`}
         start={start}
         end={end}
@@ -451,7 +463,7 @@ function WallWithOpenings({
     );
     if (opening.sill_height_mm > 0) {
       pieces.push(
-        <WallPiece
+        <WallPiece bodyColour={thermalColour}
           key={`${opening.id}-below`}
           start={start}
           end={end}
@@ -473,7 +485,7 @@ function WallWithOpenings({
     }
     const top = opening.sill_height_mm + opening.height.value;
     pieces.push(
-      <WallPiece
+      <WallPiece bodyColour={thermalColour}
         key={`${opening.id}-above`}
         start={start}
         end={end}
@@ -495,7 +507,7 @@ function WallWithOpenings({
     cursor = opening.offset_mm + opening.width.value;
   });
   pieces.push(
-    <WallPiece
+    <WallPiece bodyColour={thermalColour}
       key={`${currentWallId}-after`}
       start={start}
       end={end}
@@ -1457,6 +1469,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   const dragCapture = useRef<{ target: { releasePointerCapture: (id: number)=>void }; pointerId: number } | null>(null);
   const orbitInteraction = useRef(false);
   const mouseButtons = useViewerNavigation();
+  const serviceView = useServiceView(), energy = useEnergyLayout(), heating = useHeatingLayout();
   const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const { events } = useThree();
   useEffect(() => {
@@ -1496,6 +1509,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
   const renderedRooms = useMemo(() => (wholeView?floors.find(f=>f.id===floorId)?.content.rooms??[]:sceneRooms?.length ? sceneRooms : room.vertices.length?[room]:[]).map(r=>clearHeight?{...r,wall_height:{...r.wall_height,value:!above&&buildingRoof&&buildingRoof.enabled!==false?minimumRoofHeight(roofForRoom(buildingRoof,r.id)):clearHeight}}:r), [room, sceneRooms,clearHeight,wholeView,floors,floorId,above,buildingRoof]);
+  const fabricRooms = useMemo(() => floors.find(f => f.id === floorId)?.content.rooms ?? (sceneRooms?.length ? sceneRooms : [room]), [floors, floorId, sceneRooms, room]);
   const activeFootprint=useMemo(()=>structuralFloorFootprint({rooms:renderedRooms,floorplan:null,assetInstances:[]}),[renderedRooms]);
   const multiRoom = renderedRooms.length > 1;
   const sceneBounds = useMemo(() => {
@@ -1512,6 +1526,8 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   const roomTarget = useMemo<VectorTuple>(() => {
     return [(sceneBounds.minX + sceneBounds.maxX) * SCALE / 2, (sceneBounds.minZ+sceneBounds.wallHeight/2) * SCALE, -(sceneBounds.minY + sceneBounds.maxY) * SCALE / 2];
   }, [sceneBounds]);
+  const fabricVisible = energy.windowOpen && energy.data.display.walls || heating.windowOpen && serviceView?.heatingFabricVisible;
+  const fabricElements = useMemo(() => fabricVisible ? energyElements(fabricRooms, heating.data, energy.data).filter(e => e.category === "wall" && isInsulationSelectable(e, fabricRooms)) : [], [fabricVisible, fabricRooms, heating.data, energy.data]);
   const renderedWalls = useMemo<RenderedWall[]>(
     () => {
       if (renderedRooms.length === 1) return buildIsolatedRoomWalls(renderedRooms[0]);
@@ -1550,7 +1566,9 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   function startDrag(event: ThreeEvent<PointerEvent>, sceneRoom: Room, obstacle: Obstacle) {
     if (event.button !== 0 || placement) return;
     event.stopPropagation();
-    onSelectionChange({ type: "ELEMENT", id: obstacle.id, roomId: sceneRoom.id });
+    const serviceAction = serviceView?.actions.current.selectObject?.(obstacle.id);
+    if (serviceAction === "consume") return;
+    if (!serviceAction) onSelectionChange({ type: "ELEMENT", id: obstacle.id, roomId: sceneRoom.id });
     const point = floorPoint(event);
     if (!point) return;
     (event.target as EventTarget & { setPointerCapture(pointerId: number): void }).setPointerCapture(event.pointerId);
@@ -1577,9 +1595,10 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
     event.stopPropagation();
     const candidate = dragCandidate.current;
     if (candidate?.roomId) {
+      serviceView?.actions.current.recordObjectMove?.(obstacle.id);
       if (onTransferObstacle) onTransferObstacle(candidate.obstacle,candidate.roomId);
       else onObstaclesChange(sceneRoom.obstacles.map(item=>item.id===obstacle.id?candidate.obstacle:item),sceneRoom.id);
-      onSelectionChange({type:"ELEMENT",id:obstacle.id,roomId:candidate.roomId});
+      if (!serviceView?.actions.current.ownsObject?.(obstacle.id)) onSelectionChange({type:"ELEMENT",id:obstacle.id,roomId:candidate.roomId});
     }
     const captured=dragCapture.current;
     dragCapture.current=null; dragCandidate.current=null;
@@ -1656,6 +1675,9 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
       {renderedWalls.map(({ room: wallRoom, index, start, end, sourceOffsetMm, sourceLengthMm, capStart, capEnd, paintOnly }) => {
         if (wallMode === "INVISIBLE") return null;
         const sceneInteractive = selectedCameraRigHandle === null && (multiRoom || wallRoom.id === room.id);
+        const prefix = wallRoom.id + "|wall:" + index;
+        const fabric = fabricElements.find(e => e.elementId === prefix || e.elementId.startsWith(prefix + ":"));
+        const thermalColour = fabric ? energy.windowOpen && serviceView?.energySelection.includes(fabric.elementId) ? "#1b81ef" : `hsl(${135 - Math.min(1, fabric.uValue / 2) * 130},60%,42%)` : undefined;
         const previewOpeningModel = previewPlacementCandidate?.openingModel;
         const previewOpening = previewOpeningModel?.room.id === wallRoom.id ? previewOpeningModel.opening : null;
         const wallRenderRoom = previewOpening && !wallRoom.openings.some(opening => opening.id === previewOpening.id)
@@ -1673,9 +1695,10 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
             capStart={capStart}
             capEnd={capEnd}
             paintOnly={paintOnly}
+            thermalColour={thermalColour}
             wallMode={wallMode}
             selected={sceneInteractive && selection?.type === "WALL" && selection.roomId === wallRoom.id && selection.ids.includes(wallId(index))}
-            onSelect={sceneInteractive ? (additive) => selectWall(wallRoom.id, wallId(index), additive) : undefined}
+            onSelect={sceneInteractive ? (additive) => { if (energy.windowOpen) { if (fabric) serviceView?.setEnergySelection(ids => additive ? ids.includes(fabric.elementId) ? ids.filter(id => id !== fabric.elementId) : [...ids, fabric.elementId] : [fabric.elementId]); } else selectWall(wallRoom.id, wallId(index), additive); } : undefined}
           />
         );
       })}
@@ -1721,6 +1744,8 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
       {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><PassiveBuildingFloor key={f.id} floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} wallMode={wallMode} toggles={toggles}/>)}
       {showRoof&&currentFloor&&above&&<ExposedFloorCover floor={floors.find(f=>f.id===currentFloor.id)!} above={above}/>}
       {wholeView&&<mesh rotation={[-Math.PI/2,0,0]} position={[roomTarget[0],sceneBounds.minZ*SCALE-.002,roomTarget[2]]} receiveShadow raycast={DISABLED_MESH_RAYCAST} userData={{buildingPresentation:true}}><planeGeometry args={[Math.max(20,roomSpan[0]*4),Math.max(20,roomSpan[2]*4)]}/><shadowMaterial transparent opacity={.18} depthWrite={false}/></mesh>}
+      <ServiceFabricLayer rooms={fabricRooms} displayRooms={renderedRooms} elevationMm={elevationMm} showRoof={showRoof} />
+      <ServiceFloorLayer elevationMm={elevationMm} />
       <HvacSceneMarkers floorIds={visibleFloors.map(f => f.id)} roomIds={renderedRooms.map(r => r.id)} whole={wholeView} onDragging={setHvacDragging} />
       <OrbitControls makeDefault mouseButtons={mouseButtons} enableDamping enableZoom={false} enableRotate minPolarAngle={0.01} maxPolarAngle={Math.PI - 0.01} enabled={!placement && !dragging && !personDragging && !hvacDragging} target={orbitTarget} onStart={() => { orbitInteraction.current = true; }} onChange={() => { if (orbitInteraction.current) onManualViewChange(); }} onEnd={() => { orbitInteraction.current = false; }} />
       <CameraViewSync restoreView={restoreView} fallbackTarget={orbitTarget} stateRef={cameraStateRef} onRestored={onCameraViewRestored} />
@@ -1823,6 +1848,7 @@ function ContextControls({ apiUrl, room, rooms, selection, onObstaclesChange, on
 }
 
 export function EngineeringViewer(props: ViewerProps) {
+  const hvac = useHvac(), serviceView = useServiceView();
   const onRenderCameraChange = props.onRenderCameraChange;
   const [lighting, setLighting] = useState<LightingSettings>(DEFAULT_LIGHTING);
   const [lightingExpanded, setLightingExpanded] = useState(false);
@@ -1907,6 +1933,7 @@ export function EngineeringViewer(props: ViewerProps) {
   }, []);
   const flip = (key: keyof Toggles) => setToggles((current) => ({ ...current, [key]: !current[key] }));
   const selectObject = (nextSelection: Selection) => {
+    hvac?.selectVent(null);
     setSelection(nextSelection);
     props.onOpeningSelected?.(nextSelection?.type === "OPENING" ? nextSelection : null);
     if (nextSelection?.type === "OPENING") { setPanelSelection(null); props.onElementSelected?.(null); return; }
@@ -1919,6 +1946,10 @@ export function EngineeringViewer(props: ViewerProps) {
     props.onElementSelected?.(null);
   };
   const clearSelection = () => {
+    hvac?.selectVent(null);
+    serviceView?.setEnergySelection([]);
+    serviceView?.setHeatingSelection(null);
+    serviceView?.actions.current.clear?.();
     setSelection(null);
     props.onOpeningSelected?.(null);
     setPanelSelection(null);
@@ -2064,7 +2095,7 @@ export function EngineeringViewer(props: ViewerProps) {
           {props.buildingView&&props.onBuildingViewChange&&<><ViewToggle label="All floors" active={props.buildingView.whole} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,whole:!props.buildingView!.whole});setFitViewRequest(v=>v+1);}}/><ViewToggle label="Roof" active={props.buildingView.roof&&(props.roofPreview??props.buildingProject?.building?.roof)?.enabled!==false} disabled={(props.roofPreview??props.buildingProject?.building?.roof)?.enabled===false} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,roof:!props.buildingView!.roof});setFitViewRequest(v=>v+1);}}/><button type="button" onClick={()=>{props.onExteriorView?.();setShowGrid(false);applyPreset("perspective");setFitViewRequest(v=>v+1);}}>Exterior view</button></>}
           <ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} />
           {(["elements", "openingImprints", "clearance"] as const).map((key) => (
-            <ViewToggle key={key} label={key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearance envelope" : "Elements"} active={toggles[key]} onToggle={() => flip(key)} />
+            <ViewToggle key={key} label={key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearances" : "Elements"} active={toggles[key]} onToggle={() => flip(key)} />
           ))}
         </div>
         <div className="viewer-view-control-group viewer-lighting-controls" role="group" aria-label="Lighting">
@@ -2213,7 +2244,7 @@ export function EngineeringViewer(props: ViewerProps) {
         </div>
       </FloatingToolbar>}
       {selectedObjectPanelVisible && panelSelection && panelRoom && <ContextControls key={`${props.toolbarLayoutResetKey}-${panelSelection.type}-${panelSelection.roomId}`} apiUrl={props.apiUrl} room={panelRoom} rooms={props.sceneRooms?.length ? props.sceneRooms : [props.room]} selection={panelSelection} onObstaclesChange={props.onObstaclesChange} onFinishesChange={props.onFinishesChange} dock={{ side: "RIGHT", slot: 2, slots: 3 }} layoutResetKey={props.toolbarLayoutResetKey} onClose={clearSelection} />}
-      <StableCanvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={() => { clearSelection(); setSelectedCameraRigHandle(null); }}>
+      <StableCanvas key={projection} orthographic={projection === "parallel"} shadows={{ type: THREE.PCFShadowMap }} gl={{ preserveDrawingBuffer: true }} camera={{ position: [4.6, 4.1, 4.8], fov: 38, zoom: 180, near: 0.01, far: 100 }} onPointerMissed={event => { if (event.button === 0) { clearSelection(); setSelectedCameraRigHandle(null); } }}>
         <Scene {...props} renderCamera={renderCamera ?? undefined} onRenderCameraChange={commitRenderCamera} lighting={lighting} toggles={toggles} preset={preset} projection={projection} selection={selection} onSelectionChange={selectObject} showGrid={showGrid} cameraResetKey={cameraResetKey} fitViewRequest={fitViewRequest} zoomPercent={zoomPercent} onManualViewChange={clearActivePreset} restoreView={projectionRestore} cameraStateRef={cameraStateRef} onCameraViewRestored={handleCameraViewRestored} onFitComplete={handleFitComplete} cameraRigVisible={cameraWindowOpen && cameraRigVisible} selectedCameraRigHandle={selectedCameraRigHandle} onCameraRigHandleSelect={selectCameraRigHandle} onOpenCameraProperties={openCameraProperties} />
         {cameraWindowOpen && renderCamera && <ReferenceCameraPreview ref={cameraPreviewRef} cameraState={renderCamera} canvasRef={cameraPreviewCanvasRef} active={cameraWindowOpen} onError={setCameraPreviewError} />}
         <WheelZoom onManualViewChange={clearActivePreset} />

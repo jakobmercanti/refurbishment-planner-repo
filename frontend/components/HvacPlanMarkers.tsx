@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useHvac } from "./HvacContext";
+import { useHvac, useHvacMarkersVisible } from "./HvacContext";
 import { activeFloor } from "@/lib/buildingDocument";
 import { ventCenter } from "@/lib/climoptixPreview";
 import { ventUVAtPoint } from "@/lib/ventPlacement";
@@ -11,16 +11,17 @@ import type { Point2D } from "@/lib/types";
 /** Checked host projection; drafts commit once to the shared project on release. */
 export function HvacPlanMarkers({ toScreen, fromClient }: { toScreen: (point: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D }) {
   const ctx = useHvac();
+  const visible = useHvacMarkersVisible();
   const [draft, setDraft] = useState<{ id: string; u: number; v: number } | null>(null), [error, setError] = useState("");
   const drag = useRef<{ device: VentDevice; host: CFDHost; baseline: string; pointer: number; u: number; v: number } | null>(null);
   const cancel = () => { drag.current = null; setDraft(null); };
   useEffect(() => { const escape = (e: KeyboardEvent) => { if (e.key === "Escape") { drag.current = null; setDraft(null); } }; window.addEventListener("keydown", escape); return () => window.removeEventListener("keydown", escape); }, []);
-  if (!ctx?.project.hvac) return null;
+  if (!visible || !ctx?.project.hvac) return null;
   const floorId = activeFloor(ctx.project).id;
   return <g aria-label="Shared ventilation markers">{ctx.project.hvac.devices.filter(d => d.floorId === floorId).map(d => {
     const host = ctx.geometryPatches.find(p => p.id === d.vent.host.patchId)?.host ?? ctx.geometryReport?.patches.find(p => p.id === d.vent.host.patchId)?.host; if (!host) return null;
     const uv = draft?.id === d.vent.id ? draft : d.vent.host, center = ventCenter(d.vent, host, uv.u, uv.v), p = toScreen({ x: center[0], y: center[1] });
-    return <g key={d.vent.id} data-heating-interactive role="button" tabIndex={0} aria-label={`Select shared vent ${d.vent.name}`} style={{ cursor: "move", touchAction: "none" }}
+    return <g key={d.vent.id} data-hvac-plan-vent data-heating-interactive role="button" tabIndex={0} aria-label={`Select shared vent ${d.vent.name}`} style={{ cursor: "move", touchAction: "none" }}
       onDoubleClick={e => { e.stopPropagation(); ctx.editVent(d.vent.id); }}
       onKeyDown={e => { if (["Enter", " "].includes(e.key)) { e.preventDefault(); e.stopPropagation(); ctx.selectVent(d.vent.id); ctx.editVent(d.vent.id); } }}
       onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); ctx.selectVent(d.vent.id); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId); drag.current = { device: d, host, baseline: JSON.stringify([ctx.geometryKey, d.vent]), pointer: e.pointerId, u: d.vent.host.u, v: d.vent.host.v }; }}

@@ -57,6 +57,10 @@ export function HvacProvider({ children, onFocusFloor, ...value }: Omit<HvacCont
   return <Context.Provider value={{ ...value, tab, setTab, selectedVentId, selectVent, geometryReport, setGeometryReport, geometryKey, geometryPatches, ensureGeometry, editVentId, editVent, moveVent, focus, focusRoom, heatingRequest, requestHeating: () => setHeatingRequest(n => n + 1), flowUnit, setFlowUnit }}>{children}</Context.Provider>;
 }
 export const useHvac = () => useContext(Context);
+export function useHvacMarkersVisible() {
+  const ctx = useHvac(), heating = useHeatingLayout();
+  return Boolean(ctx && (ctx.editVentId || heating.windowOpen && ctx.tab === "Ventilation"));
+}
 export function HvacNavigationBridge() {
   const ctx = useHvac(), heating = useHeatingLayout();
   const request = ctx?.heatingRequest ?? 0;

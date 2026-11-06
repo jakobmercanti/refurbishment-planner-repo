@@ -93,3 +93,15 @@ body .electrical-test-disclosure { display: none; }
   box-shadow: 0 4px 18px #10234526;
 }
 .heating-route-menu button { width: 100%; min-height: 30px; }
+/* A single gap for every sibling entry, including modern filled menu items. */
+body .software-menu { gap: 4px; }
+body .software-dropdown { display: flex; flex-direction: column; gap: 4px; }
+body .software-dropdown > * { margin-block: 0; }
+body .software-dropdown .toolbar-menu-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding-bottom: 4px; }
+body .software-dropdown button { margin: 0; }
+body .software-wall-setting > [role="menu"], body .software-view-setting > [role="group"] { display: flex; flex-direction: column; gap: 4px; }
+body :is(.toolbar-context-menu, .toolbar-context-submenu, .floorplan-context-menu, .cfx-context-menu, .cfx-row-menu-panel) { row-gap: 4px; }
+.service-window-target, .service-window-host { display: contents; }
+.service-window-host[hidden] { display: none; }
+.building-plan-stage:has(.service-window-host:not([hidden]) > .floorplan-add-elements-toolbar:not([hidden])) .viewer-add-elements-toolbar { display: none; }
+.service-fabric-label { border: 1px solid; border-radius: 5px; padding: 3px 5px; background: rgba(255,255,255,.94); color: #10233c; font-size: 10px; cursor: pointer; }

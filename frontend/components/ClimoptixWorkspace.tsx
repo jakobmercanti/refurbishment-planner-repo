@@ -154,7 +154,7 @@ export function ClimoptixWorkspace({
     setSetupFocus((value) => value + 1);
   };
   const [selected, setSelected] = useState<string | null>(null);
-  const selectObject = (id: string | null) => { setSelected(id); if (id?.startsWith("vent:")) hvacContext?.selectVent(id.slice(5)); if (id?.startsWith("refinement:")) setShowRefinements(true); };
+  const selectObject = (id: string | null) => { setSelected(id); hvacContext?.selectVent(id?.startsWith("vent:") ? id.slice(5) : null); if (id?.startsWith("refinement:")) setShowRefinements(true); };
   const [message, setMessage] = useState(""),
     [error, setError] = useState(""),
     [deleting, setDeleting] = useState<{

@@ -29,7 +29,7 @@ async function dragToMenu(page, window) {
   assert.equal(Math.round((await window.boundingBox()).width), Math.round(before.width), "Dragging must not resize the window");
 }
 
-test("service modules are 2D-only, including detached heating settings, without changing saved data", async t => {
+test("service modules and detached settings remain available in 3D without changing saved data", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
   await menu(page, "Tools", "Heating Layout");
   await page.getByRole("button", { name: "Building assumptions…", exact: true }).click();
@@ -38,10 +38,10 @@ test("service modules are 2D-only, including detached heating settings, without 
   await eventually(session.saved, value => value.heatingLayout?.enabled);
   const before = content(await session.saved());
   await page.getByRole("button", { name: "3D", exact: true }).click();
-  assert.equal(await detached.isVisible(), false, "Portalled module settings must not leak into the 3D viewer");
+  assert.equal(await detached.isVisible(), true, "The same detached settings remain available in the 3D viewer");
   await page.getByRole("button", { name: "Tools", exact: true }).click();
   const dropdown = page.locator(".software-dropdown");
-  assert.deepEqual(await dropdown.getByRole("button").allTextContents(), ["Save view…"]);
+  assert.deepEqual(await dropdown.getByRole("button").allTextContents(), ["Save view…", "Full Electrical Layout module…", "Heating Layout", "Ventilation", "Energy & Insulation"]);
   await page.keyboard.press("Escape");
   assert.deepEqual(content(await session.saved()), before, "Switching views is not a project edit");
   await page.getByRole("button", { name: "2D", exact: true }).click();
