@@ -1,13 +1,20 @@
 import type { CFDHost, CFDPatch, Vec3 } from "./climoptix";
 import type { CFDVent } from "./climoptixDocument";
-import { snapVentUV } from "./climoptixPreview";
+import { snapVentUV, ventCenter } from "./climoptixPreview";
 import { containsPoint } from "./elementPlacement";
+import type { Point2D } from "./types";
 
 /** Project a measured point onto a checked host; the kernel validates polygon cutouts. */
 export function ventUVAtPoint(vent: CFDVent, host: CFDHost, point: Vec3) {
   const delta = point.map((p, i) => p - host.originMm[i]);
   const dot = (axis: Vec3) => delta.reduce((sum, n, i) => sum + n * axis[i], 0);
   return snapVentUV(vent, host, dot(host.uAxis) / host.widthMm, dot(host.vAxis) / host.heightMm);
+}
+
+/** Translate the vent by the pointer displacement without changing its elevation. */
+export function ventUVFromPlanDrag(vent: CFDVent, host: CFDHost, start: Point2D, end: Point2D) {
+  const centre = ventCenter(vent, host);
+  return ventUVAtPoint(vent, host, [centre[0] + end.x - start.x, centre[1] + end.y - start.y, centre[2]]);
 }
 
 /** Match a rendered building hit to a checked host, including real polygon holes. */

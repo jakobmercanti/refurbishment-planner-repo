@@ -176,7 +176,6 @@ function PatchMesh({
   onPointerDown,
   onPointerMove,
   onPointerUp,
-  offset,
   colour,
   highlighted = false,
   outlines = false,
@@ -187,7 +186,6 @@ function PatchMesh({
   onPointerDown: (e: ThreeEvent<PointerEvent>) => void;
   onPointerMove: (e: ThreeEvent<PointerEvent>) => void;
   onPointerUp: (e: ThreeEvent<PointerEvent>) => void;
-  offset?: Vec3;
   colour?: string;
   highlighted?: boolean;
   outlines?: boolean;
@@ -207,7 +205,6 @@ function PatchMesh({
     <mesh
       name={patch.id}
       geometry={geometry}
-      position={offset ?? [0, 0, 0]}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -229,7 +226,6 @@ function VentIntent({
   vent,
   host,
   selected,
-  offset,
   onDown,
   onMove,
   onUp,
@@ -238,7 +234,6 @@ function VentIntent({
   vent: CFDVent;
   host: CFDPatch;
   selected: boolean;
-  offset?: Vec3;
   onDown: (e: ThreeEvent<PointerEvent>) => void;
   onMove: (e: ThreeEvent<PointerEvent>) => void;
   onUp: (e: ThreeEvent<PointerEvent>) => void;
@@ -265,7 +260,7 @@ function VentIntent({
   useEffect(() => () => geometry.dispose(), [geometry]);
   const direction = ventDirection(vent, host.host!);
   return (
-    <group position={offset ?? [0, 0, 0]}>
+    <group>
       <mesh
         name={`vent:${vent.id}`}
         userData={{ intentOnly: true }}
@@ -414,6 +409,12 @@ export function ClimoptixViewer({
     patch: CFDPatch;
     u: number;
     v: number;
+    pointer: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    grabU: number;
+    grabV: number;
   } | null>(null);
   useEffect(() => {
     const cancel = () => {
@@ -484,14 +485,20 @@ export function ClimoptixViewer({
     onSelect(patch.id);
     if (canMoveVents && vent) {
       const host = patches.find((p) => p.id === vent.host.patchId);
-      if (host?.host) {
+      const hit = host && hostLocation(host, millimetres(e.point));
+      if (host && hit && !dragRef.current) {
         dragRef.current = {
           id: vent.id,
           patch: host,
           u: vent.host.u,
           v: vent.host.v,
+          pointer: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          moved: false,
+          grabU: vent.host.u - hit[0],
+          grabV: vent.host.v - hit[1],
         };
-        setDrag({ id: vent.id, patch:host, u: vent.host.u, v: vent.host.v });
         (e.target as HTMLElement)?.setPointerCapture(e.pointerId);
       }
       return;
@@ -505,22 +512,28 @@ export function ClimoptixViewer({
   };
   const onMeshMove = (e: ThreeEvent<PointerEvent>) => {
     const current = dragRef.current;
-    if (!current?.patch.host) return;
+    if (!current?.patch.host || e.pointerId !== current.pointer) return;
     e.stopPropagation();
+    if (!current.moved && Math.hypot(e.clientX - current.startX, e.clientY - current.startY) < 4) return;
+    current.moved = true;
     const vent = scenario.vents.find(v => v.id === current.id);
     if(!vent)return;
+    const projectHit = (host: CFDPatch, point: Vector3) => {
+      const location = hostLocation(host, millimetres(point));
+      if (!location || !host.host) return null;
+      const sameHost = host.id === vent.host.patchId;
+      return snapVentUV(vent, host.host, location[0] + (sameHost ? current.grabU : 0), location[1] + (sameHost ? current.grabV : 0));
+    };
     // Captured-pointer events also contain real geometry intersections. Rehost
     // on the actual checked wall/floor/ceiling under the pointer, not forever
     // on the plane where the drag started. Geometry is never inferred from pixels.
     for(const hit of e.intersections){
       const host=patches.find(p=>p.id===hit.object.name&&p.host&&p.hostable&&["wall","floor","ceiling"].includes(p.kind));
       if(!host?.host)continue;
-      const location=hostLocation(host,millimetres(hit.point));
-      const uv=location&&snapVentUV(vent,host.host,...location);
+      const uv=projectHit(host,hit.point);
       if(!uv)continue;
       current.patch=host;current.u=uv[0];current.v=uv[1];
       setDrag({...current});
-      if(picking)onMoveVent(current.id,...uv,host.id);
       return;
     }
     const h = current.patch.host,
@@ -531,35 +544,23 @@ export function ClimoptixViewer({
       );
     const point = e.ray.intersectPlane(plane, new Vector3());
     if (!point) return;
-    const proposed = hostLocation(current.patch, millimetres(point));
-    const uv = proposed && vent ? snapVentUV(vent, h, ...proposed) : null;
+    const uv = projectHit(current.patch, point);
     if (uv) {
       current.u = uv[0];
       current.v = uv[1];
       setDrag({...current});
-      if (picking) onMoveVent(current.id, ...uv,current.patch.id);
     }
   };
   const onMeshUp = (e: ThreeEvent<PointerEvent>) => {
     const current = dragRef.current;
-    if (!current) return;
+    if (!current || current.pointer !== e.pointerId) return;
     e.stopPropagation();
     (e.target as HTMLElement)?.releasePointerCapture(e.pointerId);
     dragRef.current = null;
     setDrag(null);
-    onMoveVent(current.id, current.u, current.v,current.patch.id);
-  };
-  const dragOffset = (pid: string): Vec3 | undefined => {
-    if (!drag || `vent:${drag.id}` !== pid) return;
-    const vent = scenario.vents.find((v) => v.id === drag.id),
-      h = patches.find((p) => p.id === vent?.host.patchId)?.host;
-    if (!vent || !h) return;
-    const delta = h.uAxis.map(
-      (v, i) =>
-        v * h.widthMm * (drag.u - vent.host.u) +
-        h.vAxis[i] * h.heightMm * (drag.v - vent.host.v),
-    ) as Vec3;
-    return scene(delta);
+    const host = scenario.vents.find(vent => vent.id === current.id)?.host;
+    if (current.moved && host && (current.patch.id !== host.patchId || current.u !== host.u || current.v !== host.v))
+      onMoveVent(current.id, current.u, current.v, current.patch.id);
   };
   return (
     <section className="cfx-viewer" aria-label="Climoptix geometry viewer">
@@ -731,7 +732,6 @@ export function ClimoptixViewer({
                       p.id === selected ||
                       (p.kind === "object" && p.sourceId === selected)
                     }
-                    offset={dragOffset(p.id)}
                     colour={groupColours.get(p.id)}
                     highlighted={groupSelection.has(p.id)}
                     outlines={wallOutlines&&p.kind==="wall"}

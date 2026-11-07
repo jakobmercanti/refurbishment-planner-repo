@@ -41,15 +41,18 @@ async function segmentPoint(line, fraction=.5) {
   },fraction);
 }
 
-test("main Heating guide includes temperature, comparison and results help without repeated section buttons",async t=>{
+test("Heating main and section guides explain temperatures, comparisons and results",async t=>{
  const session=await harness.session(fixture());t.after(()=>session.close());const {page}=session,panel=await heating(session);
  const before=JSON.stringify((await eventually(session.saved,p=>p.heatingLayout?.enabled)).heatingLayout);
  for(const [tab,section,heading] of [['System','Heating system temperatures','Set the water temperatures'],['System','Compare system temperatures','Compare without changing the design'],['Results','Heating results','Heat required and heat available']]){
   await panel.getByRole('tab',{name:tab,exact:true}).click();
-  assert.equal(await panel.getByRole('button',{name:'Help for '+section,exact:true}).count(),0);
+  const sectionHelp=panel.getByRole('button',{name:'Help for '+section,exact:true});assert.equal(await sectionHelp.count(),1);
   const detail=panel.locator('details').filter({has:page.locator('summary',{hasText:new RegExp('^'+section)})}).first(),open=await detail.evaluate(el=>el.open);
+  const help=page.locator('.window-help-host .floating-toolbar-content');await sectionHelp.click();
+  await help.getByRole('heading',{name:heading,exact:true}).waitFor();
+  await page.keyboard.press('Escape');assert.equal(await detail.evaluate(el=>el.open),open);
   const button=panel.getByRole('button',{name:'Help for Heating Layout',exact:true});await button.click();
-  const help=page.locator('.window-help-host .floating-toolbar-content');await help.getByRole('heading',{name:heading,exact:true}).waitFor();
+  await help.getByRole('heading',{name:heading,exact:true}).waitFor();
   await page.keyboard.press('Escape');assert.equal(await detail.evaluate(el=>el.open),open);
  }
  assert.equal(JSON.stringify((await session.saved()).heatingLayout),before);
@@ -60,7 +63,7 @@ test("manifold symbol and help explain supply, return and actual loop usage",asy
  const project=fixture();project.heatingLayout=createRoomUFH(project.rooms[0],project.heatingLayout!).heating;
  const session=await harness.session(parseProject(project));t.after(()=>session.close());const {page}=session,panel=await heating(session);
  const manifold=page.getByRole('button',{name:'Heating manifold: Room 1 manifold',exact:true});
- await manifold.locator('text').getByText('Room 1 manifold · 1/12 loops',{exact:true}).waitFor();
+ await page.getByText('Room 1 manifold · 1/12 loops',{exact:true}).waitFor();
  const strokes=await manifold.locator('path').evaluateAll(paths=>paths.map(p=>p.getAttribute('stroke')));assert.deepEqual(strokes,['#c74b1d','#277ab5']);
  await panel.locator('.floating-toolbar-titlebar').getByRole('button',{name:'Help for Heating Layout',exact:true}).click();
  const help=page.locator('.window-help-host .floating-toolbar-content');await help.getByRole('heading',{name:'What is a manifold?',exact:true}).waitFor();
@@ -69,8 +72,8 @@ test("manifold symbol and help explain supply, return and actual loop usage",asy
  await manifold.focus();await manifold.press('Enter');await page.getByRole('button',{name:'Restore Heating Layout',exact:true}).click();
  const edit=panel.locator('details').filter({has:page.getByRole('spinbutton',{name:'Loop connection capacity',exact:true})});
  await edit.getByText('1 of 12 loop connections used.',{exact:false}).waitFor();
- assert.equal(await edit.getByRole('button',{name:'Help for Edit manifold',exact:true}).count(),0);
- await panel.getByRole('button',{name:'Help for Heating Layout',exact:true}).click();
+ const editHelp=edit.getByRole('button',{name:'Help for Edit manifold',exact:true});assert.equal(await editHelp.count(),1);
+ await editHelp.click();
  await help.getByRole('heading',{name:'Place and connect it',exact:true}).waitFor();
  await page.screenshot({path:'../.local-logs/heating-nov01-qa/manifold-help.png'});
 });

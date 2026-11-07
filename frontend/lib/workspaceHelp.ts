@@ -65,6 +65,14 @@ export function workspaceHelp(title:string):WindowHelpStep[]|null {
     step("Define the work","Enter a clear name, phase, room, start/end dates and the relevant trade. Review progress, status, costs and delivery information where offered. Unknown costs should stay unset rather than being treated as zero."),
     step("Check the programme","Review dependencies and timing before saving. Confirming saves this activity; Cancel leaves its draft unapplied. Changing programme dates does not change the floorplan geometry."),
   ];
+  const activitySection = /^(?:Add|Edit) activity — (.+)$/i.exec(title)?.[1];
+  if (activitySection) {
+    if (activitySection === "Actual timing") return [step("Record actual dates", "Enter when the work really started and finished. The planned dates stay in the programme so you can compare the two.")];
+    if (/^Dependencies\b/.test(activitySection)) return [step("Schedule predecessors", "Choose activities that must finish before this one can begin. Review the links in the Gantt chart. Circular links are rejected when you save.")];
+    if (/^Procurement/.test(activitySection)) return [step("Track deliveries", "Record the supplier and order reference. An order date and lead time calculate the expected delivery date, which you can override. Enter the actual arrival and delivery status when known.")];
+    if (activitySection === "Costs") return [step("Estimate and track costs", "Record estimated and actual cost separately in the entered currency. Leave unknown amounts blank. Dashboard totals group the saved costs by currency.")];
+    if (activitySection === "Notes") return [step("Keep activity notes", "Use notes to record decisions, assumptions and handover details for this activity. Save the activity to keep the notes in the programme.")];
+  }
   if(/PlannerBuild|Project programme|Activity register|Programme health|Quantit|Cost breakdown|Project dashboard/i.test(title))return [
     step("Plan the work","Use Gantt to add activities, set dates, review dependencies and track progress. Dashboard summarises the programme, measured quantities, entered costs and items needing review. Choose a detail card to inspect its source data."),
     step("Review rather than assume","Room quantities come from the saved plan. Dates, prices and progress are planning inputs, not verified completion or supplier commitments. Missing costs stay unknown. Quote Generator creates separate, editable customer quotations from selected project sources."),

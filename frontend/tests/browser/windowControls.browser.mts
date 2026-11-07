@@ -58,6 +58,7 @@ test("CFD maximise and restore preserve parameters, floating geometry and attach
   const docked = await window.boundingBox();
   await cfdWindow(ui, "View properties");
   const view = await layout(page, "View properties", "Dock right");
+  const sharedWidth = (await window.boundingBox()).width;
   await layout(page, "Simulation setup", "Maximise window");
   await eventually(() => window.getAttribute("data-edge-docked"), value => value === null);
   const max = await window.boundingBox();
@@ -67,7 +68,9 @@ test("CFD maximise and restore preserve parameters, floating geometry and attach
   await eventually(() => window.getAttribute("data-edge-docked"), value => value === "LEFT");
   assert.equal(await view.isVisible(), true);
   assert.equal(await page.locator(".topbar").isVisible(), true);
-  assert.ok(Math.abs((await window.boundingBox()).width - docked.width) < 2);
+  await eventually(() => window.boundingBox(), box => Math.abs(box.width - sharedWidth) < 2);
+  await layout(page, "View properties", "Float window");
+  await eventually(() => window.boundingBox(), box => Math.abs(box.width - docked.width) < 2);
   await eventually(saved, project => project.cfdScenarios[0].resources.cpu === 7);
 });
 
@@ -157,8 +160,8 @@ test("instructional insulation content lives in contextual help, not the editing
   const energy = panel(page, "Energy & Insulation");
   await energy.getByRole("tab", { name: "Openings", exact: true }).click();
   assert.doesNotMatch(await energy.innerText(), /Planning assumptions & limitations|Dimensions come from the floorplan|Use the tested whole-element/);
-  await energy.getByRole("button", { name: "Help for Select opening", exact: true }).click();
-  const help = panel(page, "Help — Energy & Insulation — Select opening");
+  await energy.getByRole("button", { name: "Help for Opening selection & performance", exact: true }).click();
+  const help = panel(page, "Help — Opening selection & performance");
   await help.getByRole("heading", { name: "Planning assumptions & limitations", exact: true }).waitFor();
   assert.match(await help.innerText(), /whole-element U-value/);
   await help.getByRole("button", { name: /^Hide Help/ }).click();

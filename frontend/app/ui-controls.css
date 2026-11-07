@@ -9,6 +9,8 @@ body .floating-toolbar-content :is(.tool-section, .selected-properties, .fixture
 body .cfx-setup-window > .floating-toolbar-content { padding: 0; }
 /* The standalone dialogs use the same density and gutters as floating tools. */
 :root body :is(.settings-dialog, .save-as-dialog, .floorplan-export-dialog, .catalogue-manager-modal, .catalogue-detail-dialog) { padding-inline: var(--window-side-padding); width: min(calc(var(--window-dialog-width, 470px) * var(--window-density-width)), calc(100vw - 32px)); }
+body .settings-dialog.account-dialog { --window-dialog-width: 720px; }
+body .settings-dialog.local-assets { --window-dialog-width: 980px; }
 body .floorplan-export-dialog { --window-dialog-width: 420px; }
 body .catalogue-manager-modal { --window-dialog-width: 760px; }
 body .catalogue-detail-dialog { --window-dialog-width: 720px; }
@@ -34,13 +36,13 @@ body select:not([multiple], [size]) {
 }
 /* Match the density shorthand's specificity so it cannot remove arrow space. */
 body :is(.floating-toolbar-content, .settings-dialog, .popup, [aria-modal="true"], .building-floor-bar, .topbar, .planner-build-screen) select:not([multiple], [size]) { padding-right: 32px !important; }
-body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace) details > summary:not(.cfx-row-menu > summary) { list-style: none; position: relative; padding-right: 28px; }
+body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace, .planner-build-screen) details > summary:not(.cfx-row-menu > summary) { list-style: none; position: relative; padding-right: 28px; }
 body summary::-webkit-details-marker { display: none; }
-body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace) details > summary:not(.cfx-row-menu > summary)::before { content: none !important; }
-body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace) details > summary:not(.cfx-row-menu > summary)::after {
+body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace, .planner-build-screen) details > summary:not(.cfx-row-menu > summary)::before { content: none !important; }
+body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace, .planner-build-screen) details > summary:not(.cfx-row-menu > summary)::after {
   content: ""; position: absolute; right: 7px; top: 50%; width: 16px; height: 16px; margin: 0; background: currentColor; mask: var(--ui-chevron) center / contain no-repeat; transform: translateY(-50%) rotate(-90deg); pointer-events: none;
 }
-body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace) details[open] > summary:not(.cfx-row-menu > summary)::after { transform: translateY(-50%); }
+body :is(.floating-toolbar-content, .popup-content, .settings-dialog, .software-dropdown, .cfx-workspace, .planner-build-screen) details[open] > summary:not(.cfx-row-menu > summary)::after { transform: translateY(-50%); }
 body :is(.fixture-section-toggle, .fixture-colours-toggle, .full-plan-overall-toggle, .catalogue-disclosure) > span[aria-hidden],
 body .fixture-cascading-chevron,
 body .annotation-arrow-end-chevron, body .marker-symbol-trigger-chevron, body .outline-menu-arrow {
@@ -96,6 +98,7 @@ body .electrical-test-disclosure { display: none; }
 /* A single gap for every sibling entry, including modern filled menu items. */
 body .software-menu { gap: 4px; }
 body .software-dropdown { display: flex; flex-direction: column; gap: 4px; }
+body .planner-workspace:not(.compact-workspace) > .topbar .software-dropdown { max-height: calc(100dvh - 84px); overflow-y: auto; overscroll-behavior: contain; }
 body .software-dropdown > * { margin-block: 0; }
 body .software-dropdown .toolbar-menu-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding-bottom: 4px; }
 body .software-dropdown button { margin: 0; }
@@ -105,7 +108,7 @@ body :is(.toolbar-context-menu, .toolbar-context-submenu, .floorplan-context-men
 .service-window-host[hidden] { display: none; }
 .building-plan-stage:has(.service-window-host:not([hidden]) > .floorplan-add-elements-toolbar:not([hidden])) .viewer-add-elements-toolbar { display: none; }
 body :is(.software-menu-item > button, .software-dropdown button, .toolbar-context-menu button, .toolbar-context-submenu button, .floorplan-context-menu button, .cfx-row-menu-panel button) { display:flex; align-items:center; line-height:1.3; }
-body :is(.software-dropdown, .floating-toolbar-content) details > summary:not(.cfx-row-menu > summary) { display:flex; align-items:center; min-height:36px; }
+body :is(.floating-toolbar-content, .pb-activity-dialog) details > summary:not(.cfx-row-menu > summary) { display:flex; align-items:center; min-height:36px; }
 body details > summary:has(> .menu-section-help) { padding-right:76px !important; }
 body details > summary > .menu-section-help { position:absolute; right:29px; top:50%; transform:translateY(-50%); width:32px; min-width:32px; height:32px; min-height:32px; padding:0; display:grid; place-items:center; }
 body details > summary > .menu-section-help::before { content:"?"; }
@@ -114,5 +117,5 @@ body .floating-toolbar[data-edge-docked="LEFT"] > .floating-toolbar-resize-right
 .cfx-study-row, .cfx-study-group, .cfx-group-heading, .cfx-study-actions { min-width:0; max-width:100%; box-sizing:border-box; }
 .cfx-study-row { grid-template-columns:minmax(0,1fr) minmax(0,auto) !important; }
 .cfx-study-row > .cfx-row-menu { grid-column:2; grid-row:1; min-width:0; }
-.cfx-study-actions { grid-column:1/-1; display:flex; flex-wrap:wrap; justify-content:flex-end; }
-.cfx-study-actions > button { flex:0 1 110px; min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.cfx-study-actions { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); justify-self:end; }
+.cfx-study-actions > button { min-width:0; max-width:100%; overflow-wrap:anywhere; }

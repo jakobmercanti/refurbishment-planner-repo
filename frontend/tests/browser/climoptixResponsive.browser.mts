@@ -75,7 +75,7 @@ test("mobile and tablet use a single phase selector; every available phase remai
         "boundaries",
         "physics",
         "mesh",
-        "review",
+        "adjoint",
         "results",
       ]) {
         await phase.selectOption(id);
@@ -142,7 +142,7 @@ test("mobile and tablet use a single phase selector; every available phase remai
     name: "Climoptix setup",
     exact: true,
   });
-  assert.deepEqual(await tabs.getByRole("tab").allTextContents(), ["Simulations", "Domain", "Objects", "Bounds", "Physics", "Solver", "Optimisation", "Export", "Results"]);
+  assert.deepEqual(await tabs.getByRole("tab").allTextContents(), ["Simulations", "Domain", "Objects", "Bounds", "Physics", "Solver", "Optimisation", "Results"]);
   assert.equal(
     await tabs
       .getByRole("tab", { name: "Solver", exact: true })

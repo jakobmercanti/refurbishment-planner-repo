@@ -22,22 +22,28 @@ async function open(s, tab = "Ventilation") {
   await panel.getByRole("tab", { name: tab, exact: true }).click(); return panel;
 }
 
-test("inline and separate editors change quantity without reusing pressure or scenario values", async t => {
+test("the separate vent editor changes quantity without reusing pressure or scenario values", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close());
   const panel = await open(s);
   await panel.getByRole("button", { name: "Select Audit outlet", exact: true }).click();
-  await panel.getByRole("combobox", { name: "Vent controlling quantity" }).selectOption("volumeFlow");
+  const quantity = { name: "Vent controlling quantity", exact: true };
+  assert.equal(await panel.getByRole("combobox", quantity).count(), 0);
+  const edit = panel.getByRole("button", { name: "Edit Audit outlet", exact: true });
+  await edit.click();
+  const editor = s.page.locator(".hvac-vent-editor");
+  await editor.getByRole("combobox", quantity).selectOption("volumeFlow");
   let saved = await eventually(s.saved, p => p.hvac.devices[0].vent.control === "volumeFlow");
   assert.equal(saved.hvac.devices[0].vent.valueSI, .05);
   for (const op of saved.hvac.scenarios) assert.deepEqual(op.ventOverrides["audit-vent"], { temperatureK: 310 });
-  await panel.getByRole("button", { name: "Edit Audit outlet", exact: true }).click();
-  const editor = s.page.locator(".hvac-vent-editor");
-  await editor.getByRole("combobox", { name: "Vent controlling quantity" }).selectOption("massFlow");
+  await editor.getByRole("button", { name: "Done", exact: true }).click();
+  await edit.click();
+  await editor.getByRole("combobox", quantity).selectOption("massFlow");
   saved = await eventually(s.saved, p => p.hvac.devices[0].vent.control === "massFlow");
   assert.equal(saved.hvac.devices[0].vent.valueSI, .06);
   assert.equal(await editor.getByRole("alert").count(), 0);
   await editor.getByRole("button", { name: "Done", exact: true }).click();
-  assert.equal(await panel.getByRole("combobox", { name: "Vent controlling quantity" }).inputValue(), "massFlow");
+  await edit.click();
+  assert.equal(await editor.getByRole("combobox", quantity).inputValue(), "massFlow");
 });
 
 test("failed host checks stop loading and both vent editors offer a working retry", async t => {
@@ -123,13 +129,13 @@ test("geometry failures from superseded inputs cannot attach to the current room
 test("malformed help metadata keeps one usable main guide", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close()); const panel = await open(s);
   await panel.evaluate(root => { const marker = document.createElement("span"); marker.hidden = true; marker.dataset.windowHelpTopic = "Broken metadata"; marker.dataset.windowHelpSteps = JSON.stringify([{ heading: "Broken", text: "Bad links", links: {} }]); root.appendChild(marker); });
-  assert.equal(await panel.locator(".window-help-button").count(), 1);
+  assert.equal(await panel.locator(".floating-toolbar-titlebar .window-help-button").count(), 1);
   await panel.getByRole("button", { name: "Help for Heating Layout", exact: true }).click();
   await s.page.locator(".window-help-host").getByRole("heading", { name: "Move and edit vents", exact: true }).waitFor();
   await s.page.keyboard.press("Escape");
 });
 
-test("the full vent editor retains one guide and readable controls at desktop and phone widths", async t => {
+test("the full vent editor retains its main and section guides and readable controls", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close()); const panel = await open(s);
   await panel.getByRole("button", { name: "Edit Audit outlet", exact: true }).click(); const editor = s.page.locator(".hvac-vent-editor");
   await eventually(() => editor.getByRole("combobox", { name: "Vent host face" }).locator("option").count(), n => n > 1);
@@ -143,11 +149,13 @@ test("the full vent editor retains one guide and readable controls at desktop an
         const r = control.getBoundingClientRect(), left = Math.max(r.left, windowBox.left), right = Math.min(r.right, windowBox.right), top = Math.max(r.top, windowBox.top), bottom = Math.min(r.bottom, windowBox.bottom);
         return left < right && top < bottom && !root.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2));
       }).map(control => control.className);
-      return { overflow: root.scrollWidth > root.clientWidth + 2, help: root.querySelectorAll(".window-help-button").length,
+      const sections = [...root.querySelectorAll(".menu-section-help")].map(button => button.parentElement);
+      return { overflow: root.scrollWidth > root.clientWidth + 2, help: root.querySelectorAll(".floating-toolbar-titlebar .window-help-button").length,
+        sectionHelp: sections.length > 0 && new Set(sections).size === sections.length,
         clipped: [...root.querySelectorAll("button")].filter(e => e.checkVisibility() && (e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 2)).map(e => e.textContent),
         blocker: hit === enabled ? null : hit?.outerHTML, obstructingControls };
     });
-    assert.deepEqual(result, { overflow: false, help: 1, clipped: [], blocker: null, obstructingControls: [] }, `${width}/${density}/${theme}`);
+    assert.deepEqual(result, { overflow: false, help: 1, sectionHelp: true, clipped: [], blocker: null, obstructingControls: [] }, `${width}/${density}/${theme}`);
     await editor.locator(".floating-toolbar-content").evaluate(e => e.scrollTo(0, 0));
     await s.page.screenshot({ path: `../.local-logs/audit3-qa/vent-editor-${width}.png` });
   }

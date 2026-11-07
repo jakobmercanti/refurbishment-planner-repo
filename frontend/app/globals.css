@@ -371,17 +371,18 @@ button { font: inherit; }
 .electrical-fixture.is-active:focus-visible .electrical-fixture-backplate { stroke: #075dad; stroke-width: 3; }
 .electrical-route-waypoint { fill: white; stroke: #1769aa; stroke-width: 2; vector-effect: non-scaling-stroke; cursor: move; pointer-events: all; }
 .electrical-fixture:focus-visible { outline: none; filter: drop-shadow(0 0 3px #1769aa); }
-.floorplan-fixture.electrical-fixture .electrical-gang-number { font: 700 9px var(--font-sans), sans-serif; fill: #071b38; stroke: none; }
+.electrical-gang-caption { cursor: pointer; }
+.electrical-gang-caption .electrical-gang-number { font: 700 9px var(--font-sans), sans-serif; fill: #071b38; stroke: none; }
 .floorplan-fixture.electrical-fixture .electrical-fitting-reference { font: 700 11px var(--font-sans), sans-serif; }
 .floorplan-fixture.electrical-fixture [data-electrical-gang] rect { stroke-dasharray: none; stroke-width: 1; cursor: pointer; }
 .floorplan-fixture.electrical-fixture .electrical-gang-hit { fill: transparent; stroke: none; }
-.floorplan-fixture.electrical-fixture .electrical-gang-badge { fill: #fff; stroke: #94a3b8; }
+.electrical-gang-caption .electrical-gang-badge { fill: #fff; stroke: #94a3b8; }
 .floorplan-fixture.electrical-fixture [data-state=on] .electrical-gang-hit { fill: #22c55e; }
-.floorplan-fixture.electrical-fixture [data-state=on] .electrical-gang-badge { fill: #15803d; }
-.floorplan-fixture.electrical-fixture [data-state=off] .electrical-gang-badge { fill: #475569; }
+.electrical-gang-caption[data-state=on] .electrical-gang-badge { fill: #15803d; }
+.electrical-gang-caption[data-state=off] .electrical-gang-badge { fill: #475569; }
 .floorplan-fixture.electrical-fixture [data-selected=true] .electrical-gang-hit { fill: #dbeafe; stroke: #075dad; stroke-width: 2; }
-.floorplan-fixture.electrical-fixture [data-selected=true] .electrical-gang-badge { fill: #075dad; stroke: #075dad; }
-.floorplan-fixture.electrical-fixture :is([data-state=on],[data-state=off],[data-selected=true]) .electrical-gang-number { fill: #fff; }
+.electrical-gang-caption[data-selected=true] .electrical-gang-badge { fill: #075dad; stroke: #075dad; }
+.electrical-gang-caption:is([data-state=on],[data-state=off],[data-selected=true]) .electrical-gang-number { fill: #fff; }
 [data-electrical-gang] { cursor: pointer; }
 [data-electrical-gang]:focus-visible { outline: none; filter: drop-shadow(0 0 3px #1769aa); }
 .electrical-switch-map-item { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
@@ -1033,8 +1034,6 @@ html[data-theme="dark"] body .catalogue-asset-preview .fixture-preview-fit-butto
 .pb-data-section { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .pb-data-section > summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 52px; padding: 8px 14px; background: var(--surface-muted); cursor: pointer; list-style: none; }
 .pb-data-section > summary::-webkit-details-marker { display: none; }
-.pb-data-section > summary::after { content: "＋"; flex: none; color: var(--muted); font-size: calc((15px) * var(--density-font-scale, 1)); }
-.pb-data-section[open] > summary::after { content: "−"; }
 .pb-data-section > summary > span { display: grid; gap: 2px; }
 .pb-data-section > summary strong { color: var(--deep); font-size: calc((13px) * var(--density-font-scale, 1)); }
 .pb-data-section > summary small { color: var(--muted); font-size: calc((9px) * var(--density-font-scale, 1)); text-align: right; }
@@ -2471,7 +2470,6 @@ button:disabled {
   .pb-dashboard-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pb-dashboard-overview-title { align-items: flex-start; flex-direction: column; gap: 3px; }
   .pb-upcoming-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pb-dashboard-section > summary { align-items: flex-start; }
   .pb-dashboard-section > summary small { max-width: 48%; }
   .pb-detail-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pb-dashboard-overlay { align-items: end; padding: 0; }

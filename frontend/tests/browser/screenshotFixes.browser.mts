@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { cfdProject } from "../climoptixFixtures";
 import { electricalAsset } from "../../lib/electricalAssets";
+import { resolveHvacVents } from "../../lib/hvacDocument";
 import { cfdWindow, eventually, menu, startBrowserHarness } from "./harness.mjs";
 
 let harness;
@@ -103,15 +104,18 @@ test("boundary folders edit only on request, drafts remain grouped, responsive s
   assert.ok(await frame(page).isVisible());
   await cfdWindow(ui, "Simulations"); await button(ui, "New simulation").click();
   await eventually(saved,p=>p.cfdScenarios.length===2);
-  const initialVents=(await saved()).cfdScenarios.at(-1).vents.length;
+  const initialProject = await saved();
+  const simulationId = initialProject.cfdScenarios.at(-1).id;
+  const scenarioFor = project => project.cfdScenarios.find(scenario => scenario.id === simulationId);
+  const initialVents = resolveHvacVents(initialProject, scenarioFor(initialProject)).length;
   await cfdWindow(ui, "Equipment");
   await button(ui, "+ Supply").click();
-  await eventually(saved, p => p.cfdScenarios.at(-1).vents.length === initialVents+1);
+  const updated = await eventually(saved, p => resolveHvacVents(p, scenarioFor(p)).length === initialVents + 1);
   const ventEditor = page.locator(".cfx-equipment-editor");
   // A factory-ready case already has checked hosts; a new vent should use one.
   assert.equal(await ventEditor.getByText(/Unassigned vent/).count(),0);
   assert.ok(await button(ventEditor,'Place this vent on face…').isVisible());
-  const stored=(await saved()).cfdScenarios.at(-1),vent=stored.vents.at(-1);
+  const stored = scenarioFor(updated), vent = resolveHvacVents(updated, stored).at(-1);
   assert.notEqual(vent.host.patchId,'unassigned');
   assert.ok(stored.objectGroups.some(group=>group.memberIds.includes(`vent:${vent.id}`)));
   await button(ventEditor, "Hide Edit equipment").click();
@@ -124,9 +128,10 @@ test("outside left clicks dismiss the background toolbar menu even over floating
   const method = heating.getByRole("combobox", { name: /^Heating method/ });
   const [a, b] = await Promise.all([temperature.boundingBox(), method.boundingBox()]);
   assert.ok(Math.abs(a.y - b.y) < 2, JSON.stringify({ a, b }));
-  const heading = heating.getByRole("button", { name: "Help for Selected room", exact: true });
   const room = heating.getByRole("combobox", { name: "Selected room", exact: true });
-  assert.ok((await heading.boundingBox()).x > (await room.boundingBox()).x + (await room.boundingBox()).width);
+  const system = heating.getByRole("button", { name: "System flow / return", exact: true });
+  const [picker, chip] = await Promise.all([room.boundingBox(), system.boundingBox()]);
+  assert.ok(chip.x >= picker.x + picker.width && Math.abs(picker.y - chip.y) < 2);
   await capture(page, "heating");
   const point = await page.evaluate(() => {
     const svg = document.querySelector(".floor-canvas"), box = svg.getBoundingClientRect();

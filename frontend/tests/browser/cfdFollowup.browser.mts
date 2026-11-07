@@ -156,6 +156,14 @@ test('real pointer drags rehost both inlet and outlet across walls, floor and ce
       mesh.geometry.computeBoundingSphere();const p=mesh.geometry.boundingSphere.center.clone().applyMatrix4(mesh.matrixWorld),q=p.clone().set(end[0]/1000,end[2]/1000,-end[1]/1000);
       return [p,q].map(point=>{point.project(s.camera);return{x:bounds.x+(point.x+1)*bounds.width/2,y:bounds.y+(1-point.y)*bounds.height/2};});
     },{id:vent.id,end});
+    if (target === other) {
+      await page.mouse.move(points[0].x, points[0].y); await page.mouse.down();
+      await page.mouse.move(points[0].x + 2, points[0].y); await page.mouse.up();
+      assert.deepEqual(sharedVents(await saved()).find(v => v.id === vent.id).host, vent.host);
+      await page.mouse.move(points[0].x, points[0].y); await page.mouse.down();
+      await page.mouse.move(points[1].x, points[1].y, { steps: 15 }); await page.keyboard.press("Escape"); await page.mouse.up();
+      assert.deepEqual(sharedVents(await saved()).find(v => v.id === vent.id).host, vent.host);
+    }
     await page.mouse.move(points[0].x,points[0].y);await page.mouse.down();await page.mouse.move(points[1].x,points[1].y,{steps:15});await page.mouse.up();
     await eventually(async()=>{const v=sharedVents(await saved()).find(v=>v.id===vent.id);return v.host.patchId;},id=>id===target.id,`${vent.role} must rehost to ${target.kind}`);
   }

@@ -348,7 +348,7 @@ function FloatingToolbarWindow({ title, headerContent, help = true, helpTitle = 
       if (restore?.side) edgeDock.attach(restore.side, restore.dockWidth);
       maximizeRestore.current = null;
     } else {
-      maximizeRestore.current = { side: edgeDock.side, dockWidth: panelRef.current?.getBoundingClientRect().width ?? size.width };
+      maximizeRestore.current = { side: edgeDock.side, dockWidth: edgeDock.requestedWidth ?? size.width };
       edgeDock.detach();
       setMaximized(true);
     }

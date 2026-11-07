@@ -123,13 +123,17 @@ export function ElectricalLayoutOverlay(props: Props) {
       const plateTop = -(Math.abs(Math.sin(angle)) * symbolWidth + Math.abs(Math.cos(angle)) * symbolDepth) / 2;
       const badgesTop = count > 1 ? Math.min(...Array.from({ length: count }, (_, i) => { const p = gangBadgePosition(count, i, symbolDepth);return p.x * Math.sin(angle) + p.y * Math.cos(angle) - 9; })) : plateTop;
       const referenceY = centre.y + Math.min(plateTop, badgesTop) - 13;
+      const stateY = centre.y + symbolDepth / 2 + 23;
       const connected = connectedFixtureIds.has(fixture.id);
       const classes = ["floorplan-fixture", "electrical-fixture", props.active ? "is-active" : "", readableSymbol ? "is-readable" : "", connected ? "is-connected" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
       return <g key={fixture.id} transform={`translate(${centre.x} ${centre.y}) scale(${symbolZoom}) translate(${-centre.x} ${-centre.y})`} data-electrical-interactive="true" data-plan-info={`${fixture.name}\n${count ? `${count}-gang switch: each rocker can control a separate light. Connect a gang to a light; use Check layout to test it.` : "Electrical fitting. Click to select; drag to move; right-click for editing options."}`} className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
         <title>{fixture.name}</title>
         {props.active && references[fixture.id] && labelAt(centre,<text className="electrical-circuit-label electrical-fitting-reference" pointerEvents="none" x={centre.x} y={referenceY} textAnchor="middle">{references[fixture.id]}</text>)}
-        {props.testing && Object.hasOwn(props.lightStates ?? {}, fixture.id) && <g className="electrical-test-state" pointerEvents="none"><circle cx={centre.x} cy={centre.y} r={Math.max(symbolWidth, symbolDepth) / 2 + 12} fill={props.lightStates?.[fixture.id] ? "#facc15" : "none"} fillOpacity="0.35" stroke={props.lightStates?.[fixture.id] ? "#a16207" : "#64748b"} strokeWidth="2" /><text className="electrical-circuit-label" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.lightStates?.[fixture.id] ? "On" : "Off"}</text></g>}
-        {props.testing && switchGangCount(fixture.representation_key) <= 1 && props.switchLabels?.[fixture.id] && <text className="electrical-circuit-label electrical-test-state" pointerEvents="none" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.switchLabels[fixture.id]}</text>}
+        {props.testing && Object.hasOwn(props.lightStates ?? {}, fixture.id) && <>
+          <circle className="electrical-test-state" pointerEvents="none" cx={centre.x} cy={centre.y} r={Math.max(symbolWidth, symbolDepth) / 2 + 12} fill={props.lightStates?.[fixture.id] ? "#facc15" : "none"} fillOpacity="0.35" stroke={props.lightStates?.[fixture.id] ? "#a16207" : "#64748b"} strokeWidth="2" />
+          {labelAt(centre, <text className="electrical-circuit-label electrical-test-state" pointerEvents="none" x={centre.x} y={stateY} textAnchor="middle">{props.lightStates?.[fixture.id] ? "On" : "Off"}</text>)}
+        </>}
+        {props.testing && count <= 1 && props.switchLabels?.[fixture.id] && labelAt(centre, <text className="electrical-circuit-label electrical-test-state" pointerEvents="none" x={centre.x} y={stateY} textAnchor="middle">{props.switchLabels[fixture.id]}</text>)}
         {readableSymbol && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>
           <rect className="electrical-fixture-hit-area" x={-hitWidth / 2} y={-hitDepth / 2} width={hitWidth} height={hitDepth} rx={Math.min(10, hitDepth / 3)} />
           {props.active && <rect className="electrical-fixture-backplate" x={-symbolWidth / 2 - 3} y={-symbolDepth / 2 - 3} width={symbolWidth + 6} height={symbolDepth + 6} rx={Math.min(8, symbolDepth / 3)} />}
@@ -143,16 +147,23 @@ export function ElectricalLayoutOverlay(props: Props) {
           const rockerWidth = bounds ? bounds.width * symbolWidth : symbolWidth / count - 2;
           const badge = gangBadgePosition(count, index, symbolDepth);
           const chosen = props.connecting && props.sourceId === fixture.id && props.sourceGang === gang;
+          const badgeState = props.testing ? state?.keys.length ? state.on ? "on" : "off" : "unconnected" : "connect";
+          const anchor = {
+            x: centre.x + symbolZoom * (badge.x * Math.cos(angle) - badge.y * Math.sin(angle)),
+            y: centre.y + symbolZoom * (badge.x * Math.sin(angle) + badge.y * Math.cos(angle)),
+          };
+          const caption = count > 1 && <g className="electrical-gang-caption" data-electrical-interactive="true" data-selected={chosen} data-state={badgeState}
+            transform={props.labelPortal ? `translate(${anchor.x} ${anchor.y})` : `translate(${badge.x} ${badge.y}) rotate(${fixture.rotation_deg})`}>
+            <rect className="electrical-gang-hit-area" style={{ fill: "transparent", stroke: "none", strokeDasharray: "none" }} x="-12" y="-12" width="24" height="24" />
+            <rect className="electrical-gang-badge" x={-GANG_BADGE_WIDTH / 2} y={-GANG_BADGE_HEIGHT / 2} width={GANG_BADGE_WIDTH} height={GANG_BADGE_HEIGHT} rx="4" />
+            <text className="electrical-gang-number" pointerEvents="none" x="0" y="3" textAnchor="middle">G{gang}</text>
+          </g>;
           const activate = () => { if (props.testing || props.connecting) props.onFixtureGangActivate?.(fixture, gang);else props.onFixtureActivate(fixture); };
-          return <g key={gang} data-electrical-gang={gang} data-selected={chosen} data-state={props.testing ? state?.keys.length ? state.on ? "on" : "off" : "unconnected" : "connect"} role="button" tabIndex={0} aria-label={`${fixture.name} · Gang ${gang}${props.testing ? ` · ${state?.label ?? "Not connected"}` : " · Connect this rocker"}`} onPointerDown={event => { event.preventDefault(); event.stopPropagation(); if (event.button === 0) activate(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); activate(); } }}>
+          return <g key={gang} data-electrical-gang={gang} data-selected={chosen} data-state={badgeState} role="button" tabIndex={0} aria-label={`${fixture.name} · Gang ${gang}${props.testing ? ` · ${state?.label ?? "Not connected"}` : " · Connect this rocker"}`} onPointerDown={event => { event.preventDefault(); event.stopPropagation(); if (event.button === 0) activate(); }} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); activate(); } }}>
             <title>{props.testing ? `Rocker ${gang}: ${state?.label ?? "Not connected"}. Operate only this rocker.` : `Connect ${references[fixture.id]} rocker ${gang}`}</title><rect className="electrical-gang-hit" x={x} y={bounds ? bounds.y * symbolDepth : -symbolDepth / 2} width={rockerWidth} height={bounds ? bounds.height * symbolDepth : symbolDepth} rx="4" fillOpacity="0.3" />
             {count > 1 && <path className="electrical-gang-leader" d={`M${x + rockerWidth / 2},${symbolDepth * .29} L${x + rockerWidth / 2},${symbolDepth / 2 + 5} L${badge.x},${badge.y - 9}`} fill="none" stroke="#64748b" strokeWidth="1" pointerEvents="none" />}
             <circle className="electrical-terminal-port" cx={count > 1 ? badge.x : 0} cy={count > 1 ? badge.y + 14 : symbolDepth / 2 + 4} r="2.5" fill="#071b38" stroke="white" strokeWidth="1" pointerEvents="none" />
-            <g className="electrical-gang-caption" style={count === 1 ? { display: "none" } : undefined} transform={`translate(${badge.x} ${badge.y}) rotate(${fixture.rotation_deg})`}>
-              <rect className="electrical-gang-hit-area" style={{ fill: "transparent", stroke: "none", strokeDasharray: "none" }} x="-12" y="-12" width="24" height="24" />
-              <rect className="electrical-gang-badge" x={-GANG_BADGE_WIDTH / 2} y={-GANG_BADGE_HEIGHT / 2} width={GANG_BADGE_WIDTH} height={GANG_BADGE_HEIGHT} rx="4" />
-              <text className="electrical-gang-number" pointerEvents="none" x="0" y="3" textAnchor="middle" fill={props.testing && state?.keys.length || chosen ? "#fff" : "#071b38"}>G{gang}</text>
-            </g>
+            {caption && labelAt(anchor, caption)}
           </g>;
         })}</g>}
       </g>;

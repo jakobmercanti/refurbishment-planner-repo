@@ -20,6 +20,7 @@ import { formatPlannerBuildArea, formatPlannerBuildLength } from "@/lib/plannerB
 import { ViewToggle } from "@/components/ViewToggle";
 import { PlannerBuildDashboard } from "@/components/PlannerBuildDashboard";
 import { canAddPlannerActivityInDemo, PLANNER_BUILD_DEMO_MAX_ACTIVITIES } from "@/lib/freeModuleDemo";
+import { useServiceMenuHelp } from "@/lib/serviceMenuHelp";
 
 export type { PlannerBuildView } from "@/lib/plannerBuildView";
 import type { PlannerBuildView } from "@/lib/plannerBuildView";
@@ -79,6 +80,9 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
   const rooms = project.rooms;
   const metrics = useMemo(() => calculatePlannerBuildMetrics(project), [project]);
   const [draft, setDraft] = useState<ActivityDraft | null>(null);
+  const activityDialog = useRef<HTMLElement>(null);
+  const activityTitle = draft?.activityId ? "Edit activity" : "Add activity";
+  useServiceMenuHelp(activityDialog, draft ? activityTitle : "");
   const [formError, setFormError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scale, setScale] = useState<GanttScale>("WEEK");
@@ -478,8 +482,8 @@ export function PlannerBuildWorkspace({ project, view, onQuotesChange, onSaveQuo
         </section>}
       </div>}
       {draft && <div className="pb-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setDraft(null); setFormError(""); } }}>
-        <section className="pb-activity-dialog" role="dialog" aria-modal="true" aria-labelledby="pb-activity-dialog-title">
-          <header><div><span className="pb-eyebrow">PlannerBuild · Schedule</span><h2 id="pb-activity-dialog-title">{draft.activityId ? "Edit activity" : "Add activity"}</h2></div><div className="window-header-actions"><WindowHelpButton title={draft.activityId ? "Edit activity" : "Add activity"} /><button type="button" className="pb-close-button" aria-label="Close activity editor" onClick={() => { setDraft(null); setFormError(""); }}>×</button></div></header>
+        <section ref={activityDialog} className="pb-activity-dialog" role="dialog" aria-modal="true" aria-labelledby="pb-activity-dialog-title">
+          <header><div><span className="pb-eyebrow">PlannerBuild · Schedule</span><h2 id="pb-activity-dialog-title">{activityTitle}</h2></div><div className="window-header-actions"><WindowHelpButton title={activityTitle} /><button type="button" className="pb-close-button" aria-label="Close activity editor" onClick={() => { setDraft(null); setFormError(""); }}>×</button></div></header>
           <form onSubmit={saveActivity}>
             <label className="pb-field"><span>Activity name <b>*</b></span><input autoFocus maxLength={200} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="e.g. Electrical first fix" /></label>
             <div className="pb-field-grid"><label className="pb-field"><span>Activity type</span><select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value as PlannerBuildActivityType })}>{PLANNER_BUILD_ACTIVITY_TYPES.map((type) => <option key={type} value={type}>{activityTypeLabel(type)}</option>)}</select></label><label className="pb-field"><span>Status</span><select value={draft.status} onChange={(event) => { const status = event.target.value as PlannerBuildActivity["status"]; const progress = status === "completed" ? 100 : status === "not_started" ? 0 : status === "in_progress" && draft.progress >= 100 ? 50 : draft.progress; setDraft({ ...draft, status, progress }); }}>{PLANNER_BUILD_ACTIVITY_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select></label></div>

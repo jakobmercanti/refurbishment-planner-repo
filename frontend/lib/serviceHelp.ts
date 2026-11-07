@@ -12,10 +12,14 @@ export function serviceHelp(title: string): WindowHelpStep[] | null {
   const menu = title.split(" — ").at(-1) ?? title;
   if (!title.includes(" — ") && !/underfloor heating setup|import UFH|heating element editor/i.test(title)) return null;
   const step = (heading: string, text: string) => ({ heading, text });
-  if (thermal && /^Select (wall|floor|roof|opening)$/i.test(menu)) return [
+  if (thermal && /^(Select opening|Opening selection & performance)$/i.test(menu)) return [
     step("Select construction", "Select the element on the plan or in this list. Dimensions come from the measured floorplan. Clicking empty plan space clears the selection; navigation gestures do not. Define layers edits a separate draft, saved only with Done."),
     step("Opening performance", "For openings use the tested whole-element U-value for the complete frame and glazing/door system. A simple layer stack does not capture frame or edge effects. Review the boundary, adjacent temperature and glazing g/SHGC rather than accepting an unverified rating."),
     step("Planning assumptions & limitations", ENERGY_DISCLAIMER),
+  ];
+  if (thermal && /^(Walls|Floors|Roofs) selection & construction$/i.test(menu)) return [
+    step("Choose a surface", "Select a surface from the list or plan. The summary shows measured area, the current U-value and estimated design heat loss."),
+    step("Edit construction", "Open Define layers to edit the selected surface in a draft, then choose Done to apply it. Check the active construction scenario before changing thickness or thermal properties."),
   ];
   if (heating && /^Heating system temperatures$/i.test(menu)) return [
     step("Set the water temperatures", "Flow is the temperature of water leaving the heat source for the emitters. Return is the cooler water coming back. The room target is the desired air temperature and is set separately in Room setup. Flow must be warmer than return for hydronic flow calculations."),

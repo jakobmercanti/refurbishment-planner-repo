@@ -148,6 +148,10 @@ test("Library imports and places a local GLB using the current free import form"
   const before = (await session.saved()).rooms;
   await menu(page, "Library", "My 3D models…");
   const library = page.getByRole("dialog", { name: "My 3D models", exact: true });
+  assert.ok((await library.boundingBox()).width >= 850);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await library.evaluate(el => el.getBoundingClientRect().right <= innerWidth && el.scrollWidth <= el.clientWidth + 2));
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await library.getByRole("combobox", { name: "Category", exact: true }).selectOption("custom");
   await library.getByRole("textbox", { name: "Subcategory", exact: true }).fill("Regression models");
   await library.getByRole("combobox", { name: "Format", exact: true }).selectOption("glb");

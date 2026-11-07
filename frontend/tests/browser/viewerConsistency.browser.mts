@@ -117,6 +117,13 @@ test("a new multi-gang switch matches existing fittings at 50%, 100% and enlarge
   const existingSaved = saved.rooms[0].obstacles.find(item=>item.id===placed.id);
   assert.ok(Math.hypot(existingSaved.center.x-placed.center.x,existingSaved.center.y-placed.center.y)<1e-8, "Adding a fitting must not move an existing wall-mounted switch");
   assert.deepEqual({...existingSaved,center:placed.center},placed);
+  await page.getByRole("button", { name: "3D", exact: true }).click();
+  const badge = page.locator('svg[aria-label="Service labels"] .electrical-gang-number').filter({ hasText: /^G1$/ }).first();
+  await badge.waitFor();
+  assert.ok(await badge.evaluate(el => {
+    const matrix = el.getScreenCTM();
+    return matrix && Math.abs(matrix.b) + Math.abs(matrix.c) < 1e-6;
+  }));
 });
 
 test("room settings launchers use equal columns and two rows; every window still opens", async t => {
@@ -167,4 +174,17 @@ test("Show wall display uses standard menu styling in both themes, styles, densi
     if(process.env.BROWSER_ARTIFACTS && style === "MODERN" && density === "comfortable")await page.screenshot({ path: `${process.env.BROWSER_ARTIFACTS}/viewer-show-${theme}-${width}.png` });
     await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
   }
+});
+
+test("an expanded Show menu stays scrollable in a short desktop viewport", async t => {
+  const session = await harness.session(fixture(), { viewport: { width: 1100, height: 300 } });
+  t.after(() => session.close());
+  const { page } = session;
+  await page.getByRole("button", { name: "3D", exact: true }).click();
+  await page.getByRole("button", { name: "Show", exact: true }).click();
+  const show = page.locator(".software-show-menu");
+  await show.locator(".software-wall-setting > summary").click();
+  assert.ok(await show.evaluate(el => el.getBoundingClientRect().bottom <= innerHeight && el.scrollHeight > el.clientHeight));
+  await show.getByRole("button", { name: /Show all roof/ }).scrollIntoViewIfNeeded();
+  assert.ok(await show.evaluate(el => el.scrollTop > 0));
 });

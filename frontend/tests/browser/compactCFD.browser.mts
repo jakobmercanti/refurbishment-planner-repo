@@ -271,3 +271,23 @@ test("Compact reduces shared Floorplan controls and Gantt rows while keeping dep
   await capture(page, "gantt-compact");
   assert.equal((await session.saved()).plannerBuild.activities[1].dependencyIds[0], "first");
 });
+
+test("PlannerBuild activity sections use shared chevrons and explain their own controls", async t => {
+  const session = await harness.session(cfdProject());
+  t.after(() => session.close());
+  const { page } = session;
+  await page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("PLANNERBUILD");
+  await page.getByRole("combobox", { name: "PlannerBuild view", exact: true }).selectOption("GANTT");
+  await page.getByRole("button", { name: "Add first activity", exact: true }).click();
+  await page.getByRole("button", { name: /Create custom activity/ }).click();
+  const editor = page.getByRole("dialog", { name: "Add activity", exact: true });
+  const summary = editor.locator(".pb-activity-details > summary").filter({ hasText: /^Costs$/ });
+  const costs = summary.locator("..");
+  assert.match(await summary.evaluate(el => getComputedStyle(el, "::after").maskImage), /image\/svg/);
+  const open = await costs.evaluate(el => el.open);
+  await summary.getByRole("button", { name: "Help for Costs", exact: true }).click();
+  await page.locator(".window-help-host").getByRole("heading", { name: "Estimate and track costs", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  assert.ok(await editor.isVisible());
+  assert.equal(await costs.evaluate(el => el.open), open);
+});

@@ -41,9 +41,14 @@ async function inspect(panel, label) {
     const actionGroups = [...root.querySelectorAll('[class*="_actionGrid"],[class*="_zoneActions"],[class*="_roomSettingsActions"],[class*="_hvacToolbar"],.cfx-device-actions,.cfx-adjoint-actions')];
     const unequal = actionGroups.map(group => [...group.querySelectorAll(":scope > button")].filter(visible)).filter(nodes => nodes.length > 1 && Math.max(...nodes.map(e => e.getBoundingClientRect().height)) - Math.min(...nodes.map(e => e.getBoundingClientRect().height)) > 1).map(nodes => nodes.map(e => e.textContent));
     const actions = actionGroups.flatMap(group => [...group.querySelectorAll(":scope > button")]).filter(visible);
-    return { unequal, help: [...root.querySelectorAll(".window-help-button")].filter(visible).length, chrome, clipped: actions.filter(e => e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 2).map(e => e.textContent), overflow: root.scrollWidth > root.clientWidth + 2 };
+    const help = [...root.querySelectorAll(".window-help-button")].filter(visible);
+    const mainHelp = help.filter(e => !e.classList.contains("menu-section-help")).length;
+    const sectionHelp = help.filter(e => e.classList.contains("menu-section-help"));
+    const uniqueSections = new Set(sectionHelp.map(e => e.parentElement));
+    return { unequal, mainHelp, duplicateHelp: sectionHelp.length - uniqueSections.size, chrome, clipped: actions.filter(e => e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 2).map(e => e.textContent), overflow: root.scrollWidth > root.clientWidth + 2 };
   });
-  assert.equal(report.help, 1, `${label}: one main help button`);
+  assert.equal(report.mainHelp, 1, `${label}: one main help button`);
+  assert.equal(report.duplicateHelp, 0, `${label}: one help button per section`);
   assert.ok(report.chrome.length >= 3 && report.chrome.every(([w, h]) => Math.abs(w - report.chrome[0][0]) < 1 && Math.abs(h - report.chrome[0][1]) < 1 && Math.abs(w - h) < 1), `${label}: ${JSON.stringify(report.chrome)}`);
   assert.deepEqual(report.unequal, [], `${label}: equal action heights`); assert.deepEqual(report.clipped, [], label); assert.equal(report.overflow, false, label);
 }

@@ -58,6 +58,7 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
         <div className={ui.scenarioActions}><label>New scenario name<input value={newScenarioName} maxLength={80} placeholder={`Upgrade ${data.scenarios.length + 1}`} onChange={e => setNewScenarioName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveScenario(); }} /></label><button type="button" onClick={saveScenario} disabled={data.scenarios.length >= 100}>Save as new scenario</button></div>
         {activeScenario && <div className={ui.scenarioActions}><label>Rename active scenario<input value={editableScenarioName} maxLength={80} onChange={e => setScenarioNameDraft({ id: activeScenario.scenarioId, text: e.target.value })} onBlur={renameScenario} onKeyDown={e => { if (e.key === "Enter") { e.currentTarget.blur(); } }} /></label><button type="button" onClick={renameScenario}>Save name</button><button type="button" onClick={() => { if (window.confirm(`Delete scenario “${activeScenario.name}”? Existing Building and other scenarios will be kept.`)) update(removeEnergyScenario(data, activeScenario.scenarioId)); }}>Delete scenario</button></div>}
       </section></details>
+      <details open><summary>{elementName === "opening" ? "Opening selection & performance" : `${activeTab} selection & construction`}</summary>
       <label className={ui.elementPicker}>Select {elementName}<select aria-label={`Select ${elementName}`} value={first?.elementId ?? ""} onChange={e => onSelect(e.target.value ? [e.target.value] : [])}><option value="">Select {elementName} on the plan or here…</option>{walls.map(e => <option key={e.elementId} value={e.elementId}>{e.label} · {e.boundary}</option>)}</select></label>
       {first && <div className={ui.constructionSection} key={first.elementId}>
         <div className={ui.wallSummary}>{activeScenario && <small>{scenarioOverride ? "This element has a construction override in this scenario." : "Inherited from Existing Building. Editing creates an override here only."}</small>}<div className={ui.wallMetrics}><span>{Number(shownThickness.toFixed(2))} mm</span><span>{first.areaM2.toFixed(1)} m²</span><span>{first.warnings.length || assigned?.uValue == null && (construction?.uValue == null || construction.estimated) ? "Estimated U" : "U"} {first.uValue.toFixed(3)} W/m²K</span><span>{Math.round(first.heatLossW)} W{construction?.uValue == null && assigned?.uValue == null ? " (estimated)" : ""}</span></div></div>
@@ -71,7 +72,7 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
           <p>{elementName} loss = U × {first.areaM2.toFixed(2)} m² × {first.deltaTK.toFixed(1)} K.</p>
         </details></>}
 
-      </div>}
+      </div>}</details>
     </>}
     {activeTab === "Results" && <>
       <h3>Overall results · {scenarioLabel}</h3><dl className={styles.totals}><dt>Overall heating loss</dt><dd>{(result.designW / 1000).toFixed(2)} kW</dd><dt>Floor area</dt><dd>{result.areaM2.toFixed(1)} m²</dd><dt>Heat-loss coefficient</dt><dd>{Math.round(result.coefficient.total)} W/K</dd><dt>Fabric target score</dt><dd>{score.score === null ? "Not set" : `${score.score}/100`}</dd><dt>Defined fabric coverage</dt><dd>{score.coveragePercent}%</dd></dl>
