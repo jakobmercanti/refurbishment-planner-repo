@@ -66,6 +66,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
     onOrder(scenarios.map(s => sameGroup(s.group, group.name) ? { ...s, group: destination!.name } : s), remaining);
   };
   return <div className="cfx-studies" data-cfx-collapse-root>
+    <details open><summary>Manage simulations</summary>
     <div className="cfx-study-tools">
       <button className="cfx-primary" onClick={() => { if (targetGroup) setCollapsed(v => new Set([...v].filter(id => id !== targetGroup.id))); onAdd(targetGroup?.name); }} disabled={resetting || scenarios.length >= 100}>New simulation</button>
       <button disabled={groups.length >= 100} onClick={() => {
@@ -90,6 +91,8 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
         onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onImport(file); }} /></label>
       </div>
     </div>}
+    </details>
+    <details open><summary>Simulation groups &amp; runs</summary>
     <div className="cfx-group-tree">
       <CFDReorderList items={groups} label="Simulation groups" scope={`simulation-groups:${project.projectId}`}
         onMove={(id, at) => onOrder(scenarios, insertAtBoundary(groups, id, at))}>
@@ -160,5 +163,6 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
         }}
       </CFDReorderList>
     </div>
+    </details>
   </div>;
 }

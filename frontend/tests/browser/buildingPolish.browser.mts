@@ -184,7 +184,16 @@ test("ceiling-only and full roof modes render the expected surfaces and follow w
 test("new outline warning is concise, keeps the safe default and makes destructive scope clear", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
   const before = geometry(await session.saved()); await page.getByRole("button", { name: "New outline", exact: true }).click();
-  await page.getByRole("dialog", { name: "New outline", exact: true }).getByRole("button", { name: "OK", exact: true }).click();
+  const outline = page.getByRole("dialog", { name: "New outline", exact: true });
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const box = await outline.boundingBox();
+    assert.ok(box && box.x >= 8 && box.x + box.width <= width - 8);
+    if (width === 1440) assert.ok(box.width >= 560);
+    const padding = await outline.locator(".popup-content").evaluate(node => parseFloat(getComputedStyle(node).paddingInlineStart));
+    assert.ok(padding >= 16);
+  }
+  await outline.getByRole("button", { name: "OK", exact: true }).click();
   const warning = page.getByRole("dialog", { name: "Replace current building?", exact: true });
   assert.ok((await warning.locator(".building-reset-summary").innerText()).split(/\s+/).length < 30);
   assert.match(await warning.innerText(), /all floors|every floor/i); assert.match(await warning.innerText(), /Undo/); assert.match(await warning.innerText(), /backup/i);

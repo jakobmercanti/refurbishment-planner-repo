@@ -1172,7 +1172,7 @@ export function ClimoptixWorkspace({
           </div>
         </FloatingToolbar>
       )}
-      {active && viewOpen && <FloatingToolbar title="View properties" className="cfx-view-window" defaultPosition={{ x: 900, y: 80 }}
+      {active && viewOpen && <FloatingToolbar title="View properties" className="cfx-view-window" defaultPosition={{ x: 900, y: 144 }}
         initialSize={{ width: 440 }} onClose={() => setViewOpen(false)} helpSteps={CFD_PHASE_HELP.view}>
         <div className="cfx-window-sections" data-cfx-collapse-root>
           <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>

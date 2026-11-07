@@ -16,7 +16,12 @@ let sessionRequest: Promise<void> | null = null;
 let pendingSessionRequestId: string | null = null;
 let sessionRevision = 0;
 let canRequestSessionFromTabs = true;
-let authRedirectInFlight: Promise<"recovery" | "session" | null> | null = null;
+export interface PendingAccountLink {
+  kind: "recovery" | "session";
+  email: string;
+  confirm(): AuthSession;
+}
+let authRedirectInFlight: Promise<PendingAccountLink | "recovery" | null> | null = null;
 
 // Share only between live same-origin tabs. Tokens remain in sessionStorage,
 // never in URLs, localStorage, or an opener on the external billing page.
@@ -31,7 +36,10 @@ function connectSessionTabs() {
       const session = event.data.session;
       if (session === null && event.data.type === "changed") { pendingSessionRequestId = null; saveSession(null, false); }
       else if (session && typeof session.access_token === "string" && typeof session.refresh_token === "string" &&
-        Number.isFinite(session.expires_at) && typeof session.user?.id === "string") saveSession(session, false);
+        Number.isFinite(session.expires_at) && typeof session.user?.id === "string") {
+        pendingSessionRequestId = null;
+        saveSession(session, false);
+      }
     }
   };
 }
@@ -161,7 +169,9 @@ export async function currentSession(): Promise<AuthSession | null> {
       .then((result) => {
         // Signing out in either tab must not be undone by an older network response.
         if (revision !== sessionRevision) return readStoredSession();
-        const updated = normalizeSession(result); saveSession(updated); return updated;
+        const updated = normalizeSession(result);
+        if (updated?.user.id !== session.user.id) { saveSession(null); return null; }
+        saveSession(updated); return updated;
       })
       .catch((error) => {
         if (revision !== sessionRevision) return readStoredSession();
@@ -177,19 +187,23 @@ export async function currentSession(): Promise<AuthSession | null> {
 }
 
 export async function signIn(email: string, password: string): Promise<AuthSession> {
+  const revision = sessionRevision;
   const result = await authRequest<Record<string, unknown>>("token?grant_type=password", { email: email.trim(), password });
   const session = normalizeSession(result);
   if (!session) throw new Error("Sign-in did not return a valid session.");
+  if (revision !== sessionRevision) throw new Error("The account session changed. Try signing in again.");
   sessionStorage.removeItem(RECOVERY_KEY);
   saveSession(session);
   return session;
 }
 
 export async function signUp(email: string, password: string): Promise<AuthSession | null> {
+  const revision = sessionRevision;
   const result = await authRequest<Record<string, unknown>>("signup?redirect_to=" + encodeURIComponent(accountRedirect()), { email: email.trim(), password });
   const session = normalizeSession(result);
   const user = result.user && typeof result.user === "object" ? result.user as Record<string, unknown> : result;
   if (!session && (typeof user.id !== "string" || !user.id)) throw new Error("The account service returned an unexpected response. Please try again.");
+  if (revision !== sessionRevision) throw new Error("The account session changed. Check your email or try signing in.");
   sessionStorage.removeItem(RECOVERY_KEY);
   saveSession(session);
   return session;
@@ -238,21 +252,22 @@ export async function updatePassword(password: string, expectedUserId?: string):
   sessionStorage.removeItem(RECOVERY_KEY);
 }
 
-export async function signOut(): Promise<void> {
+export async function signOut(expectedUserId?: string): Promise<void> {
   const session = readStoredSession();
+  if (expectedUserId && session?.user.id !== expectedUserId) return;
   saveSession(null);
   if (!session) return;
   try { await authRequest("logout", {}, session.access_token); } catch { /* local sign-out must still complete */ }
 }
 
-export async function acceptAuthRedirect(): Promise<"recovery" | "session" | null> {
+export async function acceptAuthRedirect(): Promise<PendingAccountLink | "recovery" | null> {
   // Strict Mode can initialize twice while the first lookup is pending. Consume
   // the link once and retain reset intent locally after its URL is cleaned.
   if (!authRedirectInFlight) authRedirectInFlight = consumeAuthRedirect().finally(() => { authRedirectInFlight = null; });
   return authRedirectInFlight;
 }
 
-async function consumeAuthRedirect(): Promise<"recovery" | "session" | null> {
+async function consumeAuthRedirect(): Promise<PendingAccountLink | "recovery" | null> {
   if (typeof window === "undefined") return null;
   if (!window.location.hash) {
     try {
@@ -279,26 +294,35 @@ async function consumeAuthRedirect(): Promise<"recovery" | "session" | null> {
     }
     return null;
   }
+  clearHash();
   let user: AuthSession["user"];
   const revision = sessionRevision;
   try { user = await authRequest<AuthSession["user"]>("user", undefined, accessToken); }
   catch (error) {
     if (error instanceof AuthRequestError && [400, 401, 403].includes(error.status)) {
-      clearHash(); sessionStorage.removeItem(RECOVERY_KEY);
+      sessionStorage.removeItem(RECOVERY_KEY);
       throw new AuthRequestError("This email link has expired or has already been used. Request a new password reset link below.", error.status, "recovery_link_invalid");
     }
+    if (type === "recovery") throw new AuthRequestError(error instanceof Error ? error.message : "Could not verify this link. Request a new password reset link.", 503, "recovery_link_invalid");
     throw error;
   }
   const expiresIn = Number(values.get("expires_in") ?? 3600);
   if (!Number.isFinite(expiresIn) || expiresIn <= 0 || expiresIn > 86400 || revision !== sessionRevision) {
-    clearHash(); sessionStorage.removeItem(RECOVERY_KEY);
+    sessionStorage.removeItem(RECOVERY_KEY);
     throw new AuthRequestError("This reset link is invalid or the account session changed. Request a new password reset link below.", 400, "recovery_link_invalid");
   }
   const session = normalizeSession({ access_token: accessToken, refresh_token: refreshToken, expires_in: expiresIn, user });
   if (!session) throw new AuthRequestError("This email link could not be verified. Request a new password reset link below.", 400, "recovery_link_invalid");
-  if (type === "recovery") sessionStorage.setItem(RECOVERY_KEY, JSON.stringify({ userId: session.user.id, expiresAt: session.expires_at }));
-  else sessionStorage.removeItem(RECOVERY_KEY);
-  saveSession(session);
-  clearHash();
-  return type === "recovery" ? "recovery" : "session";
+  if (!session.user.email) throw new AuthRequestError("This email link did not identify an account. Request a new link.", 400, "recovery_link_invalid");
+  const kind = type === "recovery" ? "recovery" : "session";
+  // An unsolicited fragment may contain tokens for someone else's account.
+  // Keep them out of browser storage and other tabs until the user confirms.
+  return { kind, email: session.user.email, confirm() {
+    if (revision !== sessionRevision || session.expires_at <= Date.now() / 1000)
+      throw new AuthRequestError("The email link expired or the account session changed. Request a new link.", 400, "recovery_link_invalid");
+    if (kind === "recovery") sessionStorage.setItem(RECOVERY_KEY, JSON.stringify({ userId: session.user.id, expiresAt: session.expires_at }));
+    else sessionStorage.removeItem(RECOVERY_KEY);
+    saveSession(session);
+    return session;
+  } };
 }

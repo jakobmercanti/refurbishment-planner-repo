@@ -375,6 +375,7 @@ export function ThermalEnvelopeWindow({
             ))}
           </nav>
           <div className="thermal-scroll" key={step}>
+            <details open><summary>{STEPS[step]}</summary>
             {error && (
               <p className="cfx-error" role="alert">
                 {error}
@@ -1655,6 +1656,7 @@ export function ThermalEnvelopeWindow({
                 )}
               </>
             )}
+            </details>
           </div>
           <footer className="thermal-footer">
             <div className="cfx-actions">

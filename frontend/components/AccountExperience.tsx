@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
-import { AUTH_SESSION_CHANGED, AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, updatePassword, type AuthSession } from "@/lib/commercialAuth";
+import { AUTH_SESSION_CHANGED, AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, storedAccountId, updatePassword, type AuthSession, type PendingAccountLink } from "@/lib/commercialAuth";
 import { PlansRedirect } from "@/components/PlansRedirect";
 import { UiTheme, type SoftwareUi } from "@/components/UiTheme";
 import type { PlanKey } from "@/lib/commercialCatalogue";
@@ -17,13 +17,14 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [recovery, setRecovery] = useState(false);
+  const [recovery, setRecovery] = useState<AuthSession["user"] | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [section, setSection] = useState<AccountSection>("account");
   const [pendingPlanKey, setPendingPlanKey] = useState<PlanKey | null>(null);
+  const [accountLink, setAccountLink] = useState<PendingAccountLink | null>(null);
   const [verificationNeeded, setVerificationNeeded] = useState(false);
   const [resendReadyAt, setResendReadyAt] = useState(0);
   const authForm = useRef<HTMLFormElement>(null);
@@ -79,34 +80,50 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   useEffect(() => {
     let mounted = true;
     void (async () => {
-      const redirect = await acceptAuthRedirect();
-      if (!mounted) return;
-      if (redirect === "recovery") { setRecovery(true); selectSection("account"); }
-      const current = await currentSession();
-      if (redirect === "recovery" && !current) throw new AuthRequestError("The password reset session has expired. Request a new password reset link below.", 401, "recovery_link_invalid");
+      const redirect = embedded ? null : await acceptAuthRedirect();
       if (!mounted) return;
       const requestedSection = embedded ? null : new URLSearchParams(window.location.search).get("tab");
       const requestedPlan = embedded ? null : new URLSearchParams(window.location.search).get("plan");
       if (requestedPlan === "starter" || requestedPlan === "pro" || requestedPlan === "studio") {
         setPendingPlanKey(requestedPlan);
       }
+      if (redirect && typeof redirect === "object") {
+        setAccountLink(redirect); selectSection("account"); setReady(true); return;
+      }
+      const recoveryAccount = redirect === "recovery" ? storedAccountId() : null;
+      const current = await currentSession();
+      if (!mounted) return;
+      if (redirect === "recovery" && (!current || current.user.id !== recoveryAccount)) throw new AuthRequestError("The password reset session has changed or expired. Request a new password reset link below.", 401, "recovery_link_invalid");
       if (redirect === "recovery") selectSection("account");
       else setSection(requestedSection === "plans" ? "plans" : "account");
-      if (redirect === "session" && !requestedPlan) { returnToPlanner(); return; }
       if (redirect !== "recovery" && current && requestedPlan) selectSection("plans");
       setSession(current);
-      setRecovery(redirect === "recovery");
+      setRecovery(redirect === "recovery" ? current?.user ?? null : null);
       if (redirect === "recovery") setNotice("Reset link verified.");
-      else if (redirect === "session") setNotice("Your email link is confirmed. You are signed in.");
       setReady(true);
     })().catch((cause) => {
       if (mounted) {
-        if ((cause instanceof AuthRequestError && cause.code === "recovery_link_invalid") || new URLSearchParams(window.location.hash.slice(1)).get("type") === "recovery") { setRecovery(false); setMode("reset"); selectSection("account"); }
+        if ((cause instanceof AuthRequestError && cause.code === "recovery_link_invalid") || new URLSearchParams(window.location.hash.slice(1)).get("type") === "recovery") { setRecovery(null); setMode("reset"); selectSection("account"); }
         setError(cause instanceof Error ? cause.message : "Account access is temporarily unavailable."); setReady(true);
       }
     });
     return () => { mounted = false; };
-  }, [embedded, selectSection, returnToPlanner]);
+  }, [embedded, selectSection]);
+
+  function confirmAccountLink() {
+    if (!accountLink) return;
+    try {
+      const confirmed = accountLink.confirm();
+      setSession(confirmed);
+      if (accountLink.kind === "recovery") {
+        setRecovery(confirmed.user); setNotice("Reset link verified.");
+      } else if (pendingPlanKey) selectSection("plans");
+      else returnToPlanner();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Request a new email link.");
+      setMode("reset");
+    } finally { setAccountLink(null); }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -117,10 +134,11 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       if (recovery) {
         if (password.length < 10) { setError("Use at least 10 characters for your new password."); return; }
         if (password !== confirmPassword) { setError("The passwords do not match. Enter the same new password twice."); return; }
-        await updatePassword(password, session?.user.id);
-        if (session?.user.email) setEmail(session.user.email);
-        await signOut();
-        setSession(null); setRecovery(false); setMode("signin"); selectSection("account");
+        await updatePassword(password, recovery.id);
+        if (recovery.email) setEmail(recovery.email);
+        await signOut(recovery.id);
+        if (!storedAccountId()) setSession(null);
+        setRecovery(null); setMode("signin"); selectSection("account");
         setPassword(""); setConfirmPassword(""); setNotice("Password changed. Sign in below with your new password.");
       } else if (mode === "signin") {
         const signedIn = await signIn(email, password);
@@ -141,7 +159,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       }
     } catch (cause) {
       if (recovery && cause instanceof AuthRequestError && [401, 403].includes(cause.status)) {
-        setRecovery(false); setMode("reset"); setPassword(""); setConfirmPassword("");
+        setRecovery(null); setMode("reset"); setPassword(""); setConfirmPassword("");
       }
       if (cause instanceof AuthRequestError && cause.code === "email_not_confirmed") setVerificationNeeded(true);
       setError(cause instanceof Error ? cause.message : "The account request could not be completed.");
@@ -163,11 +181,14 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   }
 
   async function leaveAccount() {
-    await signOut(); setSession(null); setRecovery(false); setMode("signin"); setPassword(""); setConfirmPassword(""); setNotice("You are signed out.");
+    await signOut(recovery?.id);
+    if (!storedAccountId()) { setSession(null); setNotice("You are signed out."); }
+    setRecovery(null); setMode("signin"); setPassword(""); setConfirmPassword("");
   }
 
   function startPasswordChange() {
-    selectSection("account"); setRecovery(true); setPassword(""); setConfirmPassword(""); setError(""); setNotice("");
+    if (!session) return;
+    selectSection("account"); setRecovery(session.user); setPassword(""); setConfirmPassword(""); setError(""); setNotice("");
   }
 
   const sectionTabs = <nav className="account-section-links" aria-label="Account links">
@@ -175,7 +196,15 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
     <a id="plans-section-tab" href={`${base}/plans/`} target="_blank" rel="noopener noreferrer">Open plans and billing <span aria-hidden="true">↗</span></a>
   </nav>;
 
-  const accountContent = <section className="commercial-card account-card">
+  const accountContent = accountLink ? <section className="commercial-card account-card">
+    <p className="commercial-eyebrow">ACCOUNT EMAIL LINK</p>
+    <h1>{accountLink.kind === "recovery" ? "Confirm password reset" : "Confirm your account"}</h1>
+    <p className="commercial-lede">Continue as <strong>{accountLink.email}</strong> if this is your account.</p>
+    <div className="account-form-actions">
+      <button className="commercial-primary" type="button" onClick={confirmAccountLink}>Continue</button>
+      <button className="commercial-secondary" type="button" onClick={returnToPlanner}>Cancel</button>
+    </div>
+  </section> : <section className="commercial-card account-card">
     <p className="commercial-eyebrow">{recovery || mode === "reset" ? "PASSWORD RESET" : "YOUR WORKSPACE"}</p>
     <h1>{recovery ? "Set a new password" : mode === "reset" ? "Reset your password" : session ? "Account ready" : pendingPlanKey ? "Sign in to continue" : "Sign in"}</h1>
     <p className="commercial-lede">{recovery ? "Enter your new password twice. Use at least 10 characters. After saving, you will be signed out so you can sign in with your new password."
@@ -197,7 +226,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       <>
         <form id={formId} ref={authForm} className="commercial-stack" onSubmit={submit}>
           {recovery ? <>
-            {session?.user.email && <p className="commercial-footnote">Changing the password for {session.user.email}.</p>}
+            {recovery.email && <p className="commercial-footnote">Changing the password for {recovery.email}.</p>}
             <label>New password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
             <label>Confirm new password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
           </> : <>
@@ -236,7 +265,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
   </section>;
 
   const content = <>
-    {!embedded && (!session || recovery || mode === "reset" || section === "plans") && sectionTabs}
+    {!embedded && !accountLink && (!session || recovery || mode === "reset" || section === "plans") && sectionTabs}
     {(embedded ? embeddedSection : section) === "account" ? <div id="account-section-panel" role="region" aria-label="Account details" className="account-tab-panel">
       {accountContent}
     </div> : <div id="plans-section-panel" role="region" aria-label="Plans and billing" className="account-tab-panel">

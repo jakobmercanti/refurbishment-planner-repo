@@ -5,7 +5,7 @@ import test, { before, after } from "node:test";
 import { cfdProject } from "../climoptixFixtures";
 import { duplicateCFDScenario } from "../../lib/climoptixDocument";
 import { parseProject } from "../../lib/projectDocument";
-import { cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
+import { cfdWindow, eventually, readProject, startBrowserHarness } from "./harness.mjs";
 
 let accounts, cfd;
 const settings = JSON.parse(await readFile(fileURLToPath(new URL("../../../data/software_settings.json", import.meta.url)), "utf8"));
@@ -50,6 +50,7 @@ for (const width of [1440, 390]) test(`account and recovery actions follow the p
   // A reset email opens a fresh document, rather than an in-page hash edit.
   await page.goto(accounts.origin + "/planner/404.html");
   await page.goto(accounts.origin + "/planner/account/#access_token=mock-layout&refresh_token=mock-refresh&expires_in=3600&type=recovery");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("heading", {name:"Set a new password",exact:true}).waitFor();
   const recovery = await rects(page.locator(".account-form-actions button"));
   assert.equal(recovery.length,2); assert.ok(Math.abs(recovery[0].w-recovery[1].w)<1); assert.equal(recovery[0].y,recovery[1].y);
@@ -63,7 +64,7 @@ for (const width of [1440, 390]) test(`account and recovery actions follow the p
   await capture(page, `password-reset-dark-${width}`);
 });
 
-test("ordinary sign-in returns to the unchanged saved floorplan, while explicit checkout retains its plan", async t => {
+test("ordinary sign-in opens the account workspace and preserves the guest floorplan, while checkout retains its plan", async t => {
   const project = cfdProject(); const s = await accounts.session(project); t.after(() => s.close());
   const {page, context} = s;
   const hydrated = await eventually(s.saved, p => p.rooms.every(room => room.wall_thickness_overrides_mm && room.person_mockup === null));
@@ -76,7 +77,10 @@ test("ordinary sign-in returns to the unchanged saved floorplan, while explicit 
   await page.goto(accounts.origin + "/planner/account/"); await signIn();
   await page.waitForURL(accounts.origin + "/planner/");
   await page.getByRole("combobox",{name:"Workspace",exact:true}).waitFor();
-  assert.equal((await s.saved()).projectId, project.projectId); assert.deepEqual(parseProject(await s.saved()).rooms, before);
+  const privateProject = await eventually(s.saved, p => !!p?.projectId);
+  assert.notEqual(privateProject.projectId, project.projectId);
+  const guestProject = await readProject(page, null);
+  assert.equal(guestProject.projectId, project.projectId); assert.deepEqual(parseProject(guestProject).rooms, before);
   await page.evaluate(() => sessionStorage.removeItem("freefloorplan3d:commercial-session:v1"));
   await page.goto(accounts.origin + "/planner/account/?plan=pro"); await signIn();
   const billing = button(page,"Open plans and billing"); await billing.waitFor();
@@ -96,6 +100,7 @@ test("compact simulation labels, separate boundary actions, full-width run contr
   await page.reload();
   await page.getByRole("combobox",{name:"Workspace",exact:true}).selectOption("CLIMOPTIX");
   const ui = page.locator(".cfx-workspace");
+  const setup = ui.locator(".cfx-setup-window");
   const add = ui.locator(".cfx-add-sim").first(); assert.equal(await add.innerText(),"+ sim");
   const heading = ui.locator('.cfx-study-group .cfx-list-header').first();
   assert.equal(await heading.locator('small').count(),0);
@@ -103,7 +108,7 @@ test("compact simulation labels, separate boundary actions, full-width run contr
   await cfdWindow(ui,'Domain');
   assert.ok((await ui.locator('.cfx-metrics').boundingBox()).height < 75);
   await cfdWindow(ui,'Physics');
-  await button(ui,'Collapse all').click();
+  await button(setup,'Collapse all').click();
   assert.equal(await ui.locator('.cfx-physics-panel details[open]').count(),0);
   await cfdWindow(ui,'Simulations');
   await eventually(() => button(ui,"Run Broken study").isEnabled(),Boolean);
@@ -125,13 +130,16 @@ test("compact simulation labels, separate boundary actions, full-width run contr
   await button(actions,"Hide Actions — Default surfaces").click();
   await cfdWindow(ui,"Solver"); await ui.getByRole("tab",{name:"Run",exact:true}).click();
   await button(ui,"Window layout for Simulation setup").click(); await page.getByRole("menuitem",{name:"Maximise window",exact:true}).click();
-  const run = ui.locator(".cfx-run-panel > .cfx-panel-actions"); const buttons = await rects(run.locator("button")); const box = await run.boundingBox();
-  assert.equal(buttons.length,5); assert.ok(Math.max(...buttons.map(b=>b.w))-Math.min(...buttons.map(b=>b.w))<1);
-  assert.ok(Math.abs(buttons[0].x-box.x)<1); assert.ok(Math.abs(buttons[4].x+buttons[4].w-box.x-box.width)<1);
+  const run = ui.locator(".cfx-run-panel .cfx-panel-actions"); const buttons = await rects(run.locator("button")); const box = await run.boundingBox();
+  assert.equal(buttons.length,3); assert.ok(Math.max(...buttons.map(b=>b.w))-Math.min(...buttons.map(b=>b.w))<1);
+  assert.ok(buttons.every(b=>b.y===buttons[0].y));
+  assert.ok(Math.abs(buttons[0].x-box.x)<1); assert.ok(Math.abs(buttons[2].x+buttons[2].w-box.x-box.width)<1);
   const status = ui.getByRole("region",{name:"OpenFOAM connection",exact:true});
   const reason = await status.locator(".cfx-worker-controls > p").boundingBox(); const controls = await status.locator(".cfx-inline-toolbar").boundingBox();
   assert.ok(Math.abs(reason.y+reason.height/2-controls.y-controls.height/2)<2);
-  await button(ui,"Collapse all").click(); assert.equal(await ui.locator(".cfx-run-panel details[open]").count(),0);
+  assert.equal(await button(setup,"Collapse all").count(),1);
+  await button(setup,"Collapse all").click(); assert.equal(await ui.locator(".cfx-run-panel details[open]").count(),0);
+  await button(setup,"Expand all").click();
   await capture(page,"solver-controls");
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth));

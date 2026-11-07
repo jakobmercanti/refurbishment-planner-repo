@@ -161,11 +161,9 @@ body .cfx-workspace .cfx-panel-actions {
   justify-content: end; gap: var(--density-section-gap); margin-bottom: var(--density-section-gap);
 }
 body .cfx-workspace .cfx-panel-actions > button { width: 100%; min-width: 0; white-space: normal; text-align: center; }
-body .cfx-workspace .cfx-run-panel > .cfx-panel-actions {
-  width: 100%; grid-auto-flow: row; grid-template-columns: repeat(5, minmax(0, 1fr));
+body .cfx-workspace .cfx-run-panel .cfx-panel-actions {
+  width: 100%; grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
 }
-body .cfx-workspace .cfx-run-panel > .cfx-panel-actions > .cfx-disclosure-actions { display:contents; }
-body .cfx-workspace .cfx-run-panel > .cfx-panel-actions > .cfx-disclosure-actions > button { width:100%; min-width:0; white-space:normal; text-align:center; }
 body .cfx-workspace .cfx-group-actions > .cfx-add-sim { white-space: nowrap; }
 body .cfx-workspace :is(.cfx-run-panel, .cfx-physics-panel) > details + details { margin-top: var(--density-section-gap); }
 body .cfx-workspace .cfx-transfer-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-right: calc(var(--density-control-min-height) + var(--density-section-gap)); }
@@ -200,7 +198,6 @@ body .cfx-workspace .cfx-placement-actions > button { width: 100%; }
   }
   body .cfx-workspace :is(.cfx-study-row, .cfx-device-row) > .cfx-row-menu { grid-column: 2; grid-row: 1; }
   body .cfx-workspace :is(.cfx-study-row, .cfx-device-row) > :is(.cfx-study-name, .cfx-device-name, .cfx-inline-name) { grid-column: 1; grid-row: 1; }
-  body .cfx-workspace .cfx-run-panel > .cfx-panel-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   body .cfx-workspace .cfx-study-row { grid-template-columns: minmax(0, 1fr) 28px; }
   body .cfx-workspace .cfx-study-name { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.25fr); gap: 4px 8px; }
   body .cfx-workspace .cfx-study-name small { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

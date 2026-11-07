@@ -29,6 +29,11 @@ test("recovery email shows the new-password form instead of the signed-in accoun
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "mock-new-access", refresh_token: "mock-new-refresh", expires_in: 3600, user }) });
   });
   await page.goto(harness.origin + "/planner/account/" + recoveryHash);
+  await page.getByRole("heading", { name: "Confirm password reset", exact: true }).waitFor();
+  await page.getByText(user.email, { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => sessionStorage.getItem("freefloorplan3d:commercial-session:v1")), null);
+  assert.equal(new URL(page.url()).hash, "", "Pending credentials must be removed from the URL");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("heading", { name: "Set a new password", exact: true }).waitFor();
   assert.equal(await page.getByRole("link", { name: "Open cloud workspace", exact: true }).count(), 0);
   assert.equal(new URL(page.url()).hash, "", "Accepted credentials must be removed from the URL");
@@ -49,6 +54,25 @@ test("recovery email shows the new-password form instead of the signed-in accoun
   await page.getByLabel("Password", { exact: true }).fill("Mock-New-Password-2026");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.waitForURL(harness.origin + "/planner/");
+});
+
+test("cancelling an unsolicited email link preserves the currently signed-in account", async t => {
+  const session = await harness.session(); t.after(() => session.close());
+  const { page, context } = session;
+  await page.goto(harness.origin + "/planner/404.html");
+  await page.evaluate(() => sessionStorage.setItem("freefloorplan3d:commercial-session:v1", JSON.stringify({
+    access_token: "mock-existing", refresh_token: "mock-refresh", expires_at: Date.now() / 1000 + 3600,
+    user: { id: "existing-user", email: "owner@example.invalid" },
+  })));
+  await context.route("**/planner/auth-api/user", route => route.fulfill({ json: user }));
+  await page.goto(harness.origin + "/planner/account/" + recoveryHash.replace("type=recovery", "type=magiclink"));
+  await page.getByRole("heading", { name: "Confirm your account", exact: true }).waitFor();
+  await page.getByText(user.email, { exact: true }).waitFor();
+  const account = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("freefloorplan3d:commercial-session:v1")!).user.id);
+  assert.equal(await account(), "existing-user");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.waitForURL(harness.origin + "/planner/");
+  assert.equal(await account(), "existing-user");
 });
 
 test("expired reset links explain how to request a new link rather than showing account ready", async t => {
@@ -86,4 +110,28 @@ test("the already-open signed-in account has a direct change-password action and
   assert.equal(updates, 1);
   assert.equal(await page.getByRole("button", { name: "Save new password", exact: true }).isEnabled(), true);
   assert.equal(await page.getByLabel("Confirm new password", { exact: true }).inputValue(), "Mock-New-Password-2026");
+});
+
+test("a password draft cannot be submitted for a different account after a tab switch", async t => {
+  const session = await harness.session(); t.after(() => session.close());
+  const { page, context } = session;
+  await page.goto(harness.origin + "/planner/404.html");
+  const stored = { access_token: "mock-access", refresh_token: "mock-refresh", expires_at: Date.now() / 1000 + 3600, user };
+  await page.evaluate(value => sessionStorage.setItem("freefloorplan3d:commercial-session:v1", JSON.stringify(value)), stored);
+  let updates = 0;
+  await context.route("**/planner/auth-api/user", route => { updates++; return route.fulfill({ json: user }); });
+  await page.goto(harness.origin + "/planner/account/");
+  await page.getByRole("button", { name: "Change password", exact: true }).click();
+  await page.getByLabel("New password", { exact: true }).fill("Mock-New-Password-2026");
+  await page.getByLabel("Confirm new password", { exact: true }).fill("Mock-New-Password-2026");
+  await page.evaluate(value => {
+    const channel = new BroadcastChannel("freefloorplan3d:account-tabs:v1");
+    channel.postMessage({ type: "changed", session: { ...value, user: { id: "another-user", email: "another@example.invalid" } } });
+    channel.close();
+  }, stored);
+  await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("freefloorplan3d:commercial-session:v1")!).user.id === "another-user");
+  await page.getByText(`Changing the password for ${user.email}.`, { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Save new password", exact: true }).click();
+  await page.getByText(/The signed-in account changed/).waitFor();
+  assert.equal(updates, 0);
 });

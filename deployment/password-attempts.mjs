@@ -58,13 +58,20 @@ export class PasswordAttempts {
         await this.storage.delete(stateKey);
         return response;
       }
-      if (![400, 401, 403].includes(response.status)) return response;
-      const details = await response.json().catch(() => null);
+      if (response.status !== 400) return response;
+      const details = await response.clone().json().catch(() => null);
       // This provider error occurs after the correct password was verified.
-      if (details?.error_code === 'email_not_confirmed')
+      if (details?.error_code === 'email_not_confirmed') {
+        await this.storage.delete(stateKey);
         return Response.json({ error_code: 'email_not_confirmed' }, { status: 400 });
-      const failures = (active?.failures ?? 0) + 1;
-      const until = failures >= MAX_FAILURES ? Date.now() + WINDOW_MS : active?.until ?? Date.now() + WINDOW_MS;
+      }
+      // Only a verified password rejection spends an attempt. A bad public key,
+      // a disabled provider, or an unexpected gateway response cannot lock a user out.
+      if (details?.error_code !== 'invalid_credentials') return response;
+      const now = Date.now();
+      const window = active?.until > now ? active : undefined;
+      const failures = (window?.failures ?? 0) + 1;
+      const until = failures >= MAX_FAILURES ? now + WINDOW_MS : window?.until ?? now + WINDOW_MS;
       await this.storage.setAlarm(until);
       await this.storage.put(stateKey, { failures, until });
       if (failures >= MAX_FAILURES) return locked(until);

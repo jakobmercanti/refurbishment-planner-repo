@@ -43,6 +43,7 @@ function RunPanel({
   const physics = scenario.physics;
   return (
     <div data-cfx-collapse-root className="cfx-run-panel">
+      <details open><summary>Solver actions</summary>
       <div className="cfx-panel-actions">
         <button className="cfx-primary" aria-label="Run solver"
           disabled={!connection?.canRun || connection.busy || scenario.archived}
@@ -50,8 +51,8 @@ function RunPanel({
           onClick={() => connection?.onRun()}>▶ Play</button>
         <button disabled={exportDisabled || exporting} onClick={onExport}>{exporting ? "Exporting…" : "Export OpenFOAM settings"}</button>
         <button onClick={onConvergence}>Open monitor</button>
-        <CFDCollapseAll />
       </div>
+      </details>
       {workerControls&&<details open><summary>Worker connection &amp; limits</summary>{workerControls}</details>}
       <details open><summary>Simulation &amp; resources</summary>
       <div className="cfx-grid">

@@ -3,6 +3,8 @@ import { MANIFOLD_HELP_STEPS, serviceHelp } from "./serviceHelp";
 import { workspaceHelp } from "./workspaceHelp";
 import { ENERGY_DISCLAIMER } from "./energyDocument";
 import { HEATING_DISCLAIMER } from "./heatingDocument";
+import { CFD_PHASE_HELP } from "./climoptixHelp";
+import { THERMAL_HELP } from "./thermalHelp";
 export interface WindowHelpStep { heading: string; text: string; links?: { label: string; url: string }[] }
 
 export const ROOM_TARGET_HELP = "Heating method selects the room’s radiators, UFH or combination; None removes room heating after confirmation. The indoor design temperature for this room, in °C. This overrides the room-type default and is used with measured surfaces, ventilation and the external design temperature to calculate heat demand. It does not change the shared system flow/return temperatures.";
@@ -11,10 +13,19 @@ const ventilationHelp: WindowHelpStep[] = [
   { heading: "Vent list", text: "Floorplan and CFD use the same selection row, dimensions and Edit, Duplicate and Delete controls. Drag a vent's grip, or focus it and use Arrow Up/Down, to reorder; Escape cancels a drag. Floorplan's Move menu also moves a vent to the top or bottom of its room list. Duplicate opens the new vent's editor for review. Floorplan Delete removes the shared device from linked workbenches; Undo restores it. Other rooms keep their devices, and CFD object groups retain their membership." },
   { heading: "Room and operating scenario", text: "Choose a measured room on the selected floor and an operating scenario. Other rooms retain their vents and conditions. Scenarios can override flow, temperature and enabled state while keeping the shared design. Reset scenario overrides restores design values." },
   { heading: "Vent role, shape and host", text: "Supply adds air; extract removes it. Extract can be outdoor exhaust or return to the air handler. Rectangle uses width and height; circle uses diameter. Select a checked measured host face, then set normalized Host U and V from 0 to 1. Coordinates and dimensions are saved in millimetres. Missing hosts require reassignment; they never become valid boundaries automatically." },
-  { heading: "Move and edit vents", text: "Vents appear in the main 2D and 3D floorplan after host checks. Drag a marker in 3D to move it onto another checked face. Wall vents retain their height when dragged in 2D. Press Escape to cancel. Open Edit to change U and V and read X, Y and Z in millimetres. Changes update the shared design and linked CFD cases. Use Undo to restore a move. Recheck geometry to validate openings, clearances and overlaps." },
+  { heading: "Move and edit vents", text: "Vents appear in the main 2D and 3D floorplan after host checks. In 2D, drag near another wall to snap the vent onto it at the same height. In 3D, drag onto another checked face. Press Escape to cancel. Open Edit to change U and V and read X, Y and Z in millimetres. Changes update the shared design and linked CFD cases. Use Undo to restore a move. Recheck geometry to validate openings, clearances and overlaps." },
   { heading: "Flow and thermal conditions", text: "Choose prescribed volume flow, mass flow, mean velocity or relative pressure. Changing quantity resets its value and clears flow overrides for this vent in every operating scenario and CFD case because their units have changed. Review the new operating value. Prescribed flows must be positive; switch a device off to disable it. A pressure outlet has unknown flow until solved. Supply temperature and outlet backflow temperature use the chosen units. Open-area fraction changes free area and face velocity. Yaw and pitch define imposed direction; turbulence and boundary-layer settings are engineering inputs." },
-  { heading: "Sensible balance and CFD", text: "The calculations table uses measured floor area and clear wall height, the selected operating conditions, Heating devices once, and Heating/Insulation envelope values. Unknown outputs remain unknown. Return and recirculated air do not count as outdoor fresh air. Evaluate in CFD prepares the same configuration for review before creating a linked case. Export calculations opens the system Save As picker where supported; Cancel leaves the project unchanged." },
+  { heading: "Sensible balance and CFD", text: "The calculations table uses measured floor area and clear wall height, the selected operating conditions, Heating devices once, and Heating/Insulation envelope values. Unknown outputs remain unknown. Return and recirculated air do not count as outdoor fresh air. Evaluate in CFD checks the current geometry, creates a linked case and opens it in the CFD workbench. Export calculations opens the system Save As picker where supported; Cancel leaves the project unchanged." },
 ];
+
+const thermalStepHelp: Record<string, string[]> = {
+  "Envelope & insulation": ["One construction source", "Films and handoff"],
+  "Location & sun": ["Location, weather and sun"],
+  "Weather / scenario": ["Explicit inputs", "Location, weather and sun"],
+  "Gains & ventilation": ["Gains and balance"],
+  "Modelling & advanced": ["Screening, not CFD", "Modelling defaults"],
+  "Review & apply": ["Apply, save and history"],
+};
 
 /** Task help, not generic window chrome instructions. Matching is shared across dialogs. */
 export function windowHelpSteps(title: string): WindowHelpStep[] {
@@ -28,6 +39,22 @@ export function windowHelpSteps(title: string): WindowHelpStep[] {
 }
 
 function taskWindowHelpSteps(title: string): WindowHelpStep[] {
+  if (title.startsWith("Simulation setup — ")) {
+    const section = title.slice("Simulation setup — ".length);
+    if (Object.hasOwn(thermalStepHelp, section)) return THERMAL_HELP.filter(step => thermalStepHelp[section].includes(step.heading));
+    if (section === "Manage simulations") return CFD_PHASE_HELP.studies.slice(0, 1);
+    if (section === "Simulation groups & runs") return CFD_PHASE_HELP.studies.slice(1);
+    if (section === "Seed & connected domain" || section === "Connectivity & passages") return CFD_PHASE_HELP.domain.slice(0, 1);
+    if (section === "Mesh settings") return CFD_PHASE_HELP.domain.slice(1);
+    if (section === "Boundary groups & surfaces") return CFD_PHASE_HELP.boundaries;
+    if (section === "Models & equations") return CFD_PHASE_HELP.physics;
+    if (section === "Solver actions") return [{ heading: "Run, export and monitor", text: "Play submits the current simulation to the connected worker after preparation checks. Export OpenFOAM settings downloads configuration for review. Open monitor shows the job and its solver log or lets you import a local log." }];
+    if (section === "Shared HVAC design & operation") return ventilationHelp;
+  }
+  if (title === "View properties — Geometry & result visibility") return CFD_PHASE_HELP.view;
+  if (title === "Online simulation folder — Folder navigation") return [{ heading: "Browse the verified archive", text: "Double-click a folder, or focus it and press Enter or Right Arrow. Up one folder returns to its parent. The path shows your current location in the archive." }];
+  if (title.startsWith("Online simulation folder — Files in this folder")) return [{ heading: "View and download files", text: "View opens a supported result mesh or plane in the viewer. Download saves the original file. Previous files and Next files page through large folders. Download anything you want to keep before the worker retention period expires." }];
+  if (title === "Import insulation & heating conditions — Source workbenches") return [{ heading: "Choose the source of thermal inputs", text: "Open the insulation import to use measured boundary assemblies. Open floorplan source workbenches to edit the building design. Applying these settings prepares a CFD case that needs a thermal-capable solver." }];
   if (title === "Coordinates") return [{ heading: "Edit measured corners", text: "Change an X or Y corner coordinate to update the drawing. Coordinates are in the selected display units and saved in millimetres. Review the affected wall lengths, openings and room boundary after editing; Undo restores an applied edit." }];
   if (/thermal materials/i.test(title)) return [
     { heading: "Shared material properties", text: "Materials are saved with the project and used by every construction referencing them. Individual layer overrides remain independent. Conductivity λ is a material property; resistance R = thickness / 1000 / λ. A tested/cavity R overrides λ. A full wall U-value includes all layers and surface resistances; a material has no universal U-value." },

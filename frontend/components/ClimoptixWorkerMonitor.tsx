@@ -78,7 +78,7 @@ export function ClimoptixWorkerMonitor({adapter, job, name, older, onVTK}: {
     <ClimoptixConvergence name={name} workerSource={`Authenticated worker · job ${job.id}${older ? " · older setup: not the current configuration" : " · pinned setup revision"}`}
       state={{file:null, samples:log.samples, truncated:log.truncated, reading:false, error:""}} onImport={() => {}} onClear={() => {}} />
     </details><details open><summary>Worker telemetry</summary><CFDWorkerTelemetry data={telemetry} result={result} jobId={job.id}/></details>
-    {result && <CFDResultFiles adapter={adapter} job={job} result={result} onVTK={onVTK}/>}
+    {result && <CFDResultFiles key={job.id} adapter={adapter} job={job} result={result} onVTK={onVTK}/>}
     <details><summary>Bounded native solver log</summary><pre className="cfx-native-log">{text.slice(-64000)}</pre></details>
   </section>;
 }

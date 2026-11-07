@@ -91,8 +91,20 @@ test("CFD phases use one window disclosure bar and contextual section help", asy
       for (const name of ["Collapse all", "Expand all"]) {
         assert.equal(await panel.getByRole("button", { name, exact: true }).count(), 1);
       }
+      if (phase === "Simulations") {
+        const add = panel.getByRole("button", { name: "New simulation", exact: true });
+        await panel.getByRole("button", { name: "Collapse all", exact: true }).click();
+        assert.equal(await add.isVisible(), false);
+        await panel.getByRole("button", { name: "Expand all", exact: true }).click();
+        assert.equal(await add.isVisible(), true);
+      }
       if (phase === "Boundaries") {
         await ui.getByRole("tab", { name: "Thermal", exact: true }).click(); await inspect(panel, `Thermal/${p.width}/${p.density}`, 0);
+        const refresh = panel.getByRole("button", { name: "Refresh envelope", exact: true });
+        await panel.getByRole("button", { name: "Collapse all", exact: true }).click();
+        assert.equal(await refresh.isVisible(), false);
+        await panel.getByRole("button", { name: "Expand all", exact: true }).click();
+        assert.equal(await refresh.isVisible(), true);
         const minimums = await panel.locator(".thermal-footer button").evaluateAll(nodes => nodes.filter(e => e.checkVisibility()).map(e => [parseFloat(getComputedStyle(e).minHeight), parseFloat(getComputedStyle(e).getPropertyValue("--density-control-min-height"))]));
         assert.ok(minimums.length && minimums.every(([a, b]) => Math.abs(a - b) < 1), JSON.stringify(minimums));
       }

@@ -4,7 +4,7 @@ import { AuthRequestError, acceptAuthRedirect, currentSession, resendVerificatio
 
 const sessionKey = "freefloorplan3d:commercial-session:v1";
 const storage = new Map<string, string>();
-const session = { access_token: "test-access", refresh_token: "test-refresh", expires_in: 3600, user: { id: "test-user" } };
+const session = { access_token: "test-access", refresh_token: "test-refresh", expires_in: 3600, user: { id: "test-user", email: "test@example.invalid" } };
 const globals = ["window", "sessionStorage", "navigator", "fetch"] as const;
 const savedGlobals = Object.fromEntries(globals.map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
 const envNames = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_BASE_PATH", "NEXT_PUBLIC_AUTH_REDIRECT_URL"];
@@ -197,11 +197,17 @@ test("recovery links are verified once, keep reset intent after hash removal and
   let requests = 0;
   globalThis.fetch = async (url, init) => {
     requests++; assert.equal(url, "/auth-api/user");
+    assert.equal(location.hash, "", "The URL is cleared before the provider lookup");
     assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer mock-recovery");
     return Response.json(session.user);
   };
-  assert.deepEqual(await Promise.all([acceptAuthRedirect(), acceptAuthRedirect()]), ["recovery", "recovery"]);
+  const [link, duplicate] = await Promise.all([acceptAuthRedirect(), acceptAuthRedirect()]);
+  assert.ok(link && typeof link === "object");
+  assert.equal(link, duplicate);
+  assert.equal(link.kind, "recovery"); assert.equal(link.email, session.user.email);
   assert.equal(requests, 1); assert.equal(location.hash, "");
+  assert.equal(storage.size, 0, "Opening a link does not adopt the verified session");
+  link.confirm();
   assert.equal(await acceptAuthRedirect(), "recovery");
   const marker = JSON.parse(storage.get(recoveryKey)!);
   assert.equal(marker.userId, session.user.id); assert.ok(marker.expiresAt > Date.now() / 1000);
@@ -252,4 +258,26 @@ test("password updates cannot silently change a different account after a sessio
   storage.set(sessionKey, JSON.stringify({ ...session, expires_at: Date.now() / 1000 + 3600 }));
   globalThis.fetch = async () => assert.fail("No password should be sent for a different account");
   await assert.rejects(updatePassword("not-a-real-password", "different-user"), /signed-in account changed/);
+});
+
+test("a late sign-in or email link cannot replace an account after sign-out", async () => {
+  recoveryLocation(recoveryHash.replace("type=recovery", "type=magiclink"));
+  globalThis.fetch = async () => Response.json(session.user);
+  const link = await acceptAuthRedirect();
+  assert.ok(link && typeof link === "object");
+  let complete: (response: Response) => void;
+  globalThis.fetch = () => new Promise(resolve => { complete = resolve; });
+  const signingIn = signIn(session.user.email, "mock-password");
+  await signOut();
+  complete!(Response.json(session));
+  await assert.rejects(signingIn, /account session changed/);
+  assert.throws(() => link.confirm(), /account session changed/);
+  assert.equal(storage.has(sessionKey), false);
+});
+
+test("a different account in a refresh response is discarded", async () => {
+  storage.set(sessionKey, JSON.stringify({ ...session, expires_at: 0 }));
+  globalThis.fetch = async () => Response.json({ ...session, user: { id: "different-user" } });
+  assert.equal(await currentSession(), null);
+  assert.equal(storage.has(sessionKey), false);
 });

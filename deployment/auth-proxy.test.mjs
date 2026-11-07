@@ -133,7 +133,7 @@ test('five failed password attempts are shared across case variants, IPs and sim
       providerCalls++;
       const input = JSON.parse(new TextDecoder().decode(init.body));
       assert.equal(input.email, input.email.trim().toLowerCase());
-      return input.password === 'correct' ? Response.json({ access_token: 'fixture' }) : Response.json({ message: 'provider details' }, { status: 400 });
+      return input.password === 'correct' ? Response.json({ access_token: 'fixture' }) : Response.json({ error_code: 'invalid_credentials', message: 'provider details' }, { status: 400 });
     };
     const attempts = await Promise.all(Array.from({ length: 8 }, (_, index) => login(index % 2 ? ' TEST@Example.invalid ' : 'test@example.invalid', `203.0.113.${index}`)));
     assert.equal(providerCalls, 5);
@@ -147,5 +147,24 @@ test('five failed password attempts are shared across case variants, IPs and sim
       for (let n = 0; n < 4; n++) assert.equal((await login('other@example.invalid')).status, 400);
       assert.equal((await login('other@example.invalid', undefined, 'correct')).status, 200);
     }
+  } finally { globalThis.fetch = previous; }
+});
+
+test('gateway errors do not exhaust the password allowance and a verified unconfirmed password resets it', async () => {
+  const environment = testEnv(), previous = globalThis.fetch;
+  const login = () => authProxy(request('/token?grant_type=password'), '/token', environment);
+  try {
+    for (const [status, code] of [[401, 'invalid_api_key'], [403, 'provider_disabled'], [400, 'validation_failed']]) {
+      globalThis.fetch = async () => Response.json({ error_code: code }, { status });
+      for (let n = 0; n < 5; n++) assert.equal((await login()).status, status);
+    }
+    const incorrect = async () => Response.json({ error_code: 'invalid_credentials' }, { status: 400 });
+    globalThis.fetch = incorrect;
+    for (let n = 0; n < 4; n++) assert.equal((await login()).status, 400);
+    globalThis.fetch = async () => Response.json({ error_code: 'email_not_confirmed' }, { status: 400 });
+    assert.equal((await (await login()).json()).error_code, 'email_not_confirmed');
+    globalThis.fetch = incorrect;
+    for (let n = 0; n < 4; n++) assert.equal((await login()).status, 400);
+    assert.equal((await login()).status, 429);
   } finally { globalThis.fetch = previous; }
 });
