@@ -11,10 +11,9 @@ export const CFD_WINDOWS = [
   { id: "physics", name: "Physics", tab: "Physics" },
   { id: "mesh", name: "Solver", tab: "Solver" },
   { id: "adjoint", name: "Optimisation", tab: "Optimisation" },
-  { id: "review", name: "Review & export", tab: "Export" },
   { id: "results", name: "Imported results", tab: "Results" },
 ] as const;
-export type CFDWindowId = (typeof CFD_WINDOWS)[number]["id"] | "view" | "thermal" | "convergence";
+export type CFDWindowId = (typeof CFD_WINDOWS)[number]["id"] | "view" | "thermal" | "convergence" | "review";
 
 /** The same menu content serves the application Toolbar and viewer context menu. */
 export function ClimoptixWindowMenu({

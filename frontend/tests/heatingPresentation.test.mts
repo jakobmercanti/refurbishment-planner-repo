@@ -76,7 +76,7 @@ test("a rotated heating element keeps its output label upright", () => {
   const heating = makeHeating(); heating.enabled = true; heating.radiators[0].rotationDeg = 180;
   const html = renderToStaticMarkup(createElement(HeatingLayoutOverlay, { data: heating, rooms: [room], selection: null, onSelect() {}, onChange() {}, toScreen: p => ({ x: p.x / 10, y: p.y / 10 }), fromClient: (x, y) => ({ x, y }), highlightedRoomId: null, draft: [] }));
   assert.match(html, /rotate\(180\)"[^>]*class="heating-emitter-symbol"/);
-  assert.match(html, /rotate\(-180\)/);
+  assert.match(html, /class="heating-emitter-symbol"[^>]*><rect[^>]*><\/rect><\/g><g transform="translate\([^"]+\)"><text[^>]*>\d+ W<\/text>/);
 });
 test("redesigned panel has structured room balance, expandable technical fields, no mode checkbox", () => {
   const data = makeHeating(); data.enabled = true;

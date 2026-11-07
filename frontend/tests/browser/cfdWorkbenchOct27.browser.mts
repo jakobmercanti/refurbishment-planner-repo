@@ -39,6 +39,13 @@ async function shot(page,name){if(process.env.BROWSER_ARTIFACTS)await page.scree
 
 test('whole workbench survey keeps every phase contained and category text readable at wide and narrow sizes',async t=>{
   const {page,ui}=await open(t);
+  const phases = ui.getByRole('tablist', { name: 'Climoptix setup', exact: true });
+  assert.equal(await phases.getByRole('tab', { name: 'Export', exact: true }).count(), 0);
+  await cfdWindow(ui, 'Review & export');
+  const resultTabs = ui.getByRole('tablist', { name: 'Results views', exact: true });
+  assert.equal(await resultTabs.getByRole('tab', { name: 'Review & files', exact: true }).getAttribute('aria-selected'), 'true');
+  await resultTabs.getByRole('tab', { name: 'Review & files', exact: true }).press('Home');
+  assert.equal(await resultTabs.getByRole('tab', { name: 'Summary & 3D', exact: true }).getAttribute('aria-selected'), 'true');
   const failures=[];
   for(const width of [1440,640,390]){
     await page.setViewportSize({width,height:1000});

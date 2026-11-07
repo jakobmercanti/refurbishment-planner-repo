@@ -2,7 +2,7 @@
 import type { ProjectDocument } from "@/lib/projectDocument";
 import { minimumRoofHeight, roofForRoom, activeFloor, buildingOf, projectFloors, type FloorOpening, type RoofConfiguration } from "@/lib/buildingDocument";
 import { exposedCover, structuralFloorFootprint, polygonOf, subtractVoids } from "@/lib/buildingGeometry";
-import { CombinedBuildingRoof, BuildingSlab, shapesFromPolygons, TerraceCover } from "./BuildingSurfaces";
+import { CombinedBuildingRoof, InternalFloorCeiling, BuildingSlab, shapesFromPolygons, TerraceCover } from "./BuildingSurfaces";
 import { wallEnvelope, wallThicknessMm as wallThickness } from "@/lib/wallEnvelope";
 import type { BuildingView } from "./BuildingControls";
 import { useEnergyLayout } from "./EnergyLayoutContext";
@@ -530,12 +530,12 @@ function WallWithOpenings({
 }
 
 type SceneFloor = ReturnType<typeof projectFloors>[number];
-function ExposedFloorCover({floor,above}:{floor:SceneFloor;above:SceneFloor}) {
+function ExposedFloorCover({floor,above,transparent}:{floor:SceneFloor;above:SceneFloor;transparent:boolean}) {
   const footprint=useMemo(()=>exposedCover(structuralFloorFootprint(floor.content),structuralFloorFootprint(above.content)),[floor.content,above.content]);
-  return <group position={[0,above.elevationMm*SCALE,0]}><TerraceCover footprint={footprint} thickness={above.slabThicknessMm}/></group>;
+  return <group position={[0,above.elevationMm*SCALE,0]}><TerraceCover footprint={footprint} thickness={above.slabThicknessMm} transparent={transparent}/></group>;
 }
-function PassiveBuildingFloor({floor,above,roof,showRoof,wallMode,toggles}:{floor:SceneFloor;above?:SceneFloor;roof?:RoofConfiguration;showRoof:boolean;wallMode:WallViewMode;toggles:Toggles}) {
-  const clear=above?above.elevationMm-above.slabThicknessMm-floor.elevationMm:roof?(roof.type==="STEPPED"?Math.min(roof.lowHeightMm,roof.highHeightMm):roof.lowHeightMm):floor.heightMm-floor.slabThicknessMm;
+function PassiveBuildingFloor({floor,above,roof,showRoof,interiorOnly=false,wallMode,toggles}:{floor:SceneFloor;above?:SceneFloor;roof?:RoofConfiguration;showRoof:boolean;interiorOnly?:boolean;wallMode:WallViewMode;toggles:Toggles}) {
+  const clear=above?above.elevationMm-above.slabThicknessMm-floor.elevationMm:roof&&roof.enabled!==false?minimumRoofHeight(roof):floor.heightMm-floor.slabThicknessMm;
   const rooms=useMemo(()=>floor.content.rooms.map(r=>({...r,wall_height:{...r.wall_height,value:roof&&roof.enabled!==false?minimumRoofHeight(roofForRoom(roof,r.id)):clear}})),[floor.content.rooms,clear,roof]);
   const walls=useMemo(()=>{const solids=rooms.length===1?buildIsolatedRoomWalls(rooms[0]):buildRenderedWalls(rooms);return [...solids,...buildSharedWallFinishFaces(rooms,solids)];},[rooms]);
   const footprint=useMemo(()=>structuralFloorFootprint(floor.content),[floor.content]);
@@ -545,8 +545,9 @@ function PassiveBuildingFloor({floor,above,roof,showRoof,wallMode,toggles}:{floo
     <SkirtingBoards walls={walls} wallMode={wallMode} defaultWallColour={DEFAULT_WALL_COLOUR}/>
     {rooms.map(r=><group key={r.id}><Floor room={r} selected={false} openings={floor.openings} includeSlab={false}/>{r.openings.map(o=><OpeningFixture key={o.id} room={r} opening={o} selected={false}/>)}{toggles.elements&&r.obstacles.map(o=><FixtureMesh key={o.id} obstacle={o} selected={false}/>)}{toggles.person&&r.person_mockup?.enabled&&<PersonMesh person={r.person_mockup} showClearance={false} collision={false} selected={false}/>}</group>)}
     <LocalAssetScene instances={floor.content.assetInstances}/>
-    {showRoof&&roof&&<CombinedBuildingRoof content={floor.content} roof={roof}/>}
-  </group>{showRoof&&above&&<ExposedFloorCover floor={floor} above={above}/>}</>;
+    {showRoof&&roof&&roof.enabled!==false&&<CombinedBuildingRoof content={floor.content} roof={roof} interiorOnly={interiorOnly} transparent={wallMode==="TRANSPARENT"}/>}
+    {showRoof&&interiorOnly&&(above||roof?.enabled===false)&&<InternalFloorCeiling footprint={above ? subtractVoids(footprint,above.openings) : footprint} heightMm={clear} transparent={wallMode==="TRANSPARENT"}/>}
+  </group>{showRoof&&!interiorOnly&&above&&<ExposedFloorCover floor={floor} above={above} transparent={wallMode==="TRANSPARENT"}/>}</>;
 }
 /** Display-only building reuse. CFD validity and air connectivity still come from the kernel. */
 export function ReadOnlyBuildingScene({ project, roomIds, showRoof = false, assets = true, wallMode="TRANSPARENT" }: {
@@ -1502,9 +1503,10 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   const wholeView=Boolean(buildingView?.whole),floorId=currentFloor?.id;
   const visibleFloors=useMemo(()=>wholeView?floors:floors.filter(f=>f.id===floorId),[floors,wholeView,floorId]);
   const buildingRoof=roofPreview??(buildingProject?buildingOf(buildingProject).roof:undefined),topFloor=floors.at(-1);
-  const showRoof=Boolean(buildingView?.roof&&buildingRoof?.enabled!==false);
+  const interiorOnly=Boolean(buildingView?.ceiling&&!buildingView.roof);
+  const showRoof=Boolean(interiorOnly||buildingView?.roof&&buildingRoof?.enabled!==false);
   const above=floors[floors.findIndex(f=>f.id===currentFloor?.id)+1];
-  const clearHeight=above?above.elevationMm-above.slabThicknessMm-elevationMm:buildingRoof?minimumRoofHeight(buildingRoof):currentFloor?currentFloor.heightMm-currentFloor.slabThicknessMm:undefined;
+  const clearHeight=above?above.elevationMm-above.slabThicknessMm-elevationMm:buildingRoof&&buildingRoof.enabled!==false?minimumRoofHeight(buildingRoof):currentFloor?currentFloor.heightMm-currentFloor.slabThicknessMm:undefined;
   const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevationMm*SCALE), [elevationMm]);
   const displayedObstacles = room.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
   const displayedPerson = previewPerson ?? room.person_mockup;
@@ -1737,12 +1739,13 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
       })}
       {currentFloor&&<BuildingSlab footprint={activeFootprint} openings={currentFloor.openings} thicknessMm={currentFloor.slabThicknessMm}/>}
       <LocalAssetScene instances={assetInstances??[]}/>
-      {showRoof&&currentFloor&&currentFloor.id===topFloor?.id&&buildingRoof&&<CombinedBuildingRoof content={floors.find(f=>f.id===currentFloor.id)!.content} roof={buildingRoof}/>}
+      {showRoof&&interiorOnly&&(above||buildingRoof?.enabled===false)&&<InternalFloorCeiling footprint={above ? subtractVoids(activeFootprint,above.openings) : activeFootprint} heightMm={clearHeight??room.wall_height.value} transparent={wallMode==="TRANSPARENT"}/>}
+      {showRoof&&currentFloor&&currentFloor.id===topFloor?.id&&buildingRoof?.enabled!==false&&buildingRoof&&<CombinedBuildingRoof content={floors.find(f=>f.id===currentFloor.id)!.content} roof={buildingRoof} interiorOnly={interiorOnly} transparent={wallMode==="TRANSPARENT"}/>}
       {showGrid && <group userData={{ editorOnly: true }}><Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} /></group>}
       {placement && <group userData={{ editorOnly: true }}><PlacementCursor elevationMm={elevationMm} key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} onPreviewCandidate={setPreviewPlacementCandidate} /></group>}
       </group>
-      {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><PassiveBuildingFloor key={f.id} floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} wallMode={wallMode} toggles={toggles}/>)}
-      {showRoof&&currentFloor&&above&&<ExposedFloorCover floor={floors.find(f=>f.id===currentFloor.id)!} above={above}/>}
+      {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><PassiveBuildingFloor key={f.id} floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} interiorOnly={interiorOnly} wallMode={wallMode} toggles={toggles}/>)}
+      {showRoof&&!interiorOnly&&currentFloor&&above&&<ExposedFloorCover floor={floors.find(f=>f.id===currentFloor.id)!} above={above} transparent={wallMode==="TRANSPARENT"}/>}
       {wholeView&&<mesh rotation={[-Math.PI/2,0,0]} position={[roomTarget[0],sceneBounds.minZ*SCALE-.002,roomTarget[2]]} receiveShadow raycast={DISABLED_MESH_RAYCAST} userData={{buildingPresentation:true}}><planeGeometry args={[Math.max(20,roomSpan[0]*4),Math.max(20,roomSpan[2]*4)]}/><shadowMaterial transparent opacity={.18} depthWrite={false}/></mesh>}
       <ServiceFabricLayer rooms={fabricRooms} displayRooms={renderedRooms} elevationMm={elevationMm} showRoof={showRoof} />
       <ServiceFloorLayer elevationMm={elevationMm} />
@@ -2092,7 +2095,7 @@ export function EngineeringViewer(props: ViewerProps) {
           {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={activePreset === view ? "active" : ""} aria-pressed={activePreset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
         </div>
         <div className="toggle-row" role="group" aria-label="3D visibility">
-          {props.buildingView&&props.onBuildingViewChange&&<><ViewToggle label="All floors" active={props.buildingView.whole} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,whole:!props.buildingView!.whole});setFitViewRequest(v=>v+1);}}/><ViewToggle label="Roof" active={props.buildingView.roof&&(props.roofPreview??props.buildingProject?.building?.roof)?.enabled!==false} disabled={(props.roofPreview??props.buildingProject?.building?.roof)?.enabled===false} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,roof:!props.buildingView!.roof});setFitViewRequest(v=>v+1);}}/><button type="button" onClick={()=>{props.onExteriorView?.();setShowGrid(false);applyPreset("perspective");setFitViewRequest(v=>v+1);}}>Exterior view</button></>}
+          {props.buildingView&&props.onBuildingViewChange&&<><ViewToggle label="All floors" active={props.buildingView.whole} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,whole:!props.buildingView!.whole});setFitViewRequest(v=>v+1);}}/><ViewToggle label="Internal ceiling" active={Boolean(props.buildingView.ceiling)} onToggle={()=>props.onBuildingViewChange!({...props.buildingView!,roof:false,ceiling:!props.buildingView!.ceiling})}/><ViewToggle label="All roof" active={props.buildingView.roof&&(props.roofPreview??props.buildingProject?.building?.roof)?.enabled!==false} disabled={(props.roofPreview??props.buildingProject?.building?.roof)?.enabled===false} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,roof:!props.buildingView!.roof,ceiling:false});setFitViewRequest(v=>v+1);}}/><button type="button" onClick={()=>{props.onExteriorView?.();setShowGrid(false);applyPreset("perspective");setFitViewRequest(v=>v+1);}}>Exterior view</button></>}
           <ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} />
           {(["elements", "openingImprints", "clearance"] as const).map((key) => (
             <ViewToggle key={key} label={key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearances" : "Elements"} active={toggles[key]} onToggle={() => flip(key)} />

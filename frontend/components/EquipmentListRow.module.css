@@ -23,6 +23,12 @@
 @container equipment-list (max-width:540px) {
   :global(body) .row.row.row { grid-template-columns:minmax(0,1fr) auto; }
   :global(body) .row.row.row .name { grid-column:1; grid-row:1; }
-  :global(body) .row.row.row .actions.actions { grid-column:1/-1; grid-row:2; justify-self:end; width:min(270px,100%); }
+  :global(body) .row.row.row .actions.actions {
+    grid-column:1/-1;
+    grid-row:2;
+    justify-self:end;
+    width:min(270px,100%);
+    grid-template-columns:repeat(auto-fit,minmax(min(72px,100%),1fr));
+  }
   :global(body) .row.row.row > :global(.cfx-row-menu) { grid-column:2; grid-row:1; }
 }

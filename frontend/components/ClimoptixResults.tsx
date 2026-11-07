@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { CFDReport } from "@/lib/climoptix";
 import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import type { RailwayCFDWorker } from "@/lib/railwayCFDWorker";
@@ -11,10 +11,16 @@ import { CFDCollapseAll } from "./CFDCollapseAll";
 import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import { CFD2DSlices } from "./CFD2DSlices";
 
-export function ClimoptixResults({adapter,job,name,older,report,initialFile,initialProvenance,onClose,onScene,sceneFiles=[],sceneError,onUnloadScene,active=true,projectId}:{
-  adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;name:string;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File)=>void;sceneFiles?:File[];sceneError?:string;onUnloadScene?:(file?:File)=>void;active?:boolean;projectId:string;
+const RESULT_VIEWS = [
+  ["summary", "Summary & 3D"],
+  ["slices", "2D Slices"],
+  ["review", "Review & files"],
+] as const;
+type ResultsView = (typeof RESULT_VIEWS)[number][0];
+
+export function ClimoptixResults({adapter,job,name,older,report,initialFile,initialProvenance,onClose,onScene,sceneFiles=[],sceneError,onUnloadScene,active=true,projectId,review,view:subview,onViewChange:setSubview}:{
+  adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;name:string;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File)=>void;sceneFiles?:File[];sceneError?:string;onUnloadScene?:(file?:File)=>void;active?:boolean;projectId:string;review:ReactNode;view:ResultsView;onViewChange:(view:ResultsView)=>void;
 }){
-  const [subview,setSubview]=useState<"summary"|"slices">("summary");
   const {result,error,missing,retry}=useCFDResult(adapter,job,active);
   const [files,setFiles]=useState<{file:File;verified:boolean}[]>(()=>initialFile?[{file:initialFile,verified:!!initialProvenance?.startsWith("Authenticated worker job")}]:[]);
   // Downloads may finish after a layer was removed or imported. Always merge
@@ -72,8 +78,16 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
     <div className="cfx-inline-toolbar"><h3>Results · {name}</h3><CFDCollapseAll/></div>
     <div className="cfx-segments cfx-results-tabs" role="tablist" aria-label="Results views" onKeyDown={event=>{
       if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
-      event.preventDefault();const next=event.key==="Home"?"summary":event.key==="End"?"slices":subview==="summary"?"slices":"summary";setSubview(next);event.currentTarget.querySelector<HTMLButtonElement>(`[data-view=${next}]`)?.focus();
-    }}>{([['summary','Summary & 3D'],['slices','2D Slices']] as const).map(([id,label])=><button key={id} id={`results-tab-${id}`} data-view={id} type="button" role="tab" aria-controls={`results-panel-${id}`} tabIndex={subview===id?0:-1} aria-selected={subview===id} onClick={()=>setSubview(id)}>{label}</button>)}</div>
+      event.preventDefault();
+      const index = RESULT_VIEWS.findIndex(([id]) => id === subview);
+      const last = RESULT_VIEWS.length - 1;
+      const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? last :
+        (index + (event.key === "ArrowRight" ? 1 : -1) + RESULT_VIEWS.length) % RESULT_VIEWS.length;
+      const [next] = RESULT_VIEWS[nextIndex];
+      setSubview(next);
+      event.currentTarget.querySelector<HTMLButtonElement>(`[data-view=${next}]`)?.focus();
+    }}>{RESULT_VIEWS.map(([id,label])=><button key={id} id={`results-tab-${id}`} data-view={id} type="button" role="tab" aria-controls={`results-panel-${id}`} tabIndex={subview===id?0:-1} aria-selected={subview===id} onClick={()=>setSubview(id)}>{label}</button>)}</div>
+    {subview==="review"&&<div id="results-panel-review" role="tabpanel" aria-labelledby="results-tab-review">{review}</div>}
     {subview==="slices"&&error&&<details open><summary>Result retrieval status</summary><div role="alert" className="cfx-error">Native result retrieval failed: {error}<button onClick={retry}>Retry loading results</button></div></details>}
     {subview==="slices"&&<div id="results-panel-slices" role="tabpanel" aria-labelledby="results-tab-slices"><CFD2DSlices key={`${adapter?.namespace}:${projectId}:${job?.id??"none"}`} adapter={adapter} projectId={projectId} currentJob={job} active={active} legacyViewer={planeViewer} forceNative={!!primary&&!primary.verified}/></div>}
     <div id="results-panel-summary" role="tabpanel" aria-labelledby="results-tab-summary" hidden={subview!=="summary"}>

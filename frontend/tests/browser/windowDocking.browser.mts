@@ -269,7 +269,7 @@ test("wall-layer property editor docks with an adaptive preview, preserves its d
   await layout(page, "Define wall layers", "Restore window");
   await layout(page, "Define wall layers", "Dock right");
   const box = await editor.boundingBox();
-  assert.ok(box.width <= 561);
+  assert.ok(box.width < (await page.viewportSize()).width - 300);
   assert.equal(await editor.locator('[role="group"]').first().textContent(), draft);
   assert.equal(await editor.locator(".popup-content").evaluate(element => element.scrollWidth > element.clientWidth + 2), false);
   const cancel = editor.getByRole("button", { name: "Cancel", exact: true });

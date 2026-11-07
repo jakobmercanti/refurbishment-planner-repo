@@ -75,7 +75,6 @@ const PHASES = [
   { id: "boundaries", label: "Boundaries" },
   { id: "physics", label: "Physics" },
   { id: "mesh", label: "Simulation" },
-  { id: "review", label: "Review & export" },
 ] as const;
 const EMPTY_SCENARIOS: CFDScenario[] = [];
 const ignoreSceneMetadata=()=>{};
@@ -124,6 +123,7 @@ export function ClimoptixWorkspace({
   useEffect(() => { if (openRequest) queueMicrotask(() => { setSelectedId(openRequest.id); setActiveTab("equipment"); setSetupOpen(true); setSetupFocus(n => n + 1); }); }, [openRequest]);
   const [viewTarget, setViewTarget] = useState<HTMLDivElement | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [resultsView,setResultsView] = useState<"summary"|"slices"|"review">("summary");
   const [boundsTab, setBoundsTab] = useState<"conditions" | "thermal">("conditions");
   const [issuesRequest, setIssuesRequest] = useState(0);
   const [boundaryGroup, setBoundaryGroup] = useState("all-surfaces");
@@ -149,7 +149,8 @@ export function ClimoptixWorkspace({
     if (id === "view") { setViewOpen(true); return; }
     if (id === "thermal") setBoundsTab("thermal");
     if (id === "convergence") setSimulationTab("monitor");
-    setActiveTab(id === "thermal" ? "boundaries" : id === "convergence" ? "mesh" : id);
+    if (id === "review" || id === "results") setResultsView(id === "review" ? "review" : "summary");
+    setActiveTab(id === "thermal" ? "boundaries" : id === "convergence" ? "mesh" : id === "review" ? "results" : id);
     setSetupOpen(true);
     setSetupFocus((value) => value + 1);
   };
@@ -885,7 +886,7 @@ export function ClimoptixWorkspace({
               ))}
             </div>
             {scenario && shownTab !== "results" && shownTab !== "adjoint" && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
-              showFailure={shownTab !== "review"} onIssues={() => reviewIssues()}
+              showFailure onIssues={() => reviewIssues()}
               onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} />}
             <section
               role="tabpanel"
@@ -1083,10 +1084,6 @@ export function ClimoptixWorkspace({
                           pending={jobs[scenario.id]?.submitting?"Checking & submitting…":jobs[scenario.id]?.dispatched?"Submission status unknown":undefined}/>}
                       />
                     )}
-                    {panel.id === "review" && <ClimoptixReview key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "review" ? jobs[scenario.id]?.error : undefined}
-                      onDismissFailure={() => { setError(""); if (error.startsWith("Changes not applied")) setEditorReset(x => x + 1); }}
-                      onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
-                      onRefresh={() => refreshPreparation()} onInspect={jump} />}
                   </section>
                 </section>
               ))}
@@ -1145,6 +1142,11 @@ export function ClimoptixWorkspace({
                 >
                   {active && (
                     <ClimoptixResults
+                      view={resultsView} onViewChange={setResultsView}
+                      review={<ClimoptixReview key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? jobs[scenario.id]?.error : undefined}
+                      onDismissFailure={() => { setError(""); if (error.startsWith("Changes not applied")) setEditorReset(x => x + 1); }}
+                      onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
+                      onRefresh={() => refreshPreparation()} onInspect={jump} />}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}
                       adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} name={scenario.name} report={activeReport}
                       projectId={project.projectId}

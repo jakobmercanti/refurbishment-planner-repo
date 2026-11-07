@@ -601,12 +601,12 @@ export default function Home() {
     if(!next.whole&&buildingView.whole&&currentFloor.id!==topFloor.id)next={...next,roof:false};
     setBuildingView(next);
   }
-  function previewExterior() { setOpeningTool(null);setSelectedFloorOpening(null);setMode("ANALYSIS");setWallMode("SOLID");setBuildingView(v=>({...v,whole:true,roof:true})); }
+  function previewExterior() { setOpeningTool(null);setSelectedFloorOpening(null);setMode("ANALYSIS");setWallMode("SOLID");setBuildingView(v=>({...v,whole:true,roof:true,ceiling:false})); }
   function startNewOutline(points:readonly {x:number;y:number}[]|null) {
     try {
       restoreBuildingUi(local.editBuilding(p=>resetBuildingOutline(p,points),true));
       setBuildingError("");setRoofPreview(null);
-      setBuildingView(v=>({...v,whole:false,roof:false}));
+      setBuildingView(v=>({...v,whole:false,roof:false,ceiling:false}));
     } catch(error) { setBuildingError(error instanceof Error?error.message:"Could not start a new outline."); }
   }
   function undoProject() { restoreBuildingUi(local.undo()); }

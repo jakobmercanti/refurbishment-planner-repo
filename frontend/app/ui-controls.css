@@ -104,4 +104,15 @@ body :is(.toolbar-context-menu, .toolbar-context-submenu, .floorplan-context-men
 .service-window-target, .service-window-host { display: contents; }
 .service-window-host[hidden] { display: none; }
 .building-plan-stage:has(.service-window-host:not([hidden]) > .floorplan-add-elements-toolbar:not([hidden])) .viewer-add-elements-toolbar { display: none; }
-.service-fabric-label { border: 1px solid; border-radius: 5px; padding: 3px 5px; background: rgba(255,255,255,.94); color: #10233c; font-size: 10px; cursor: pointer; }
+body :is(.software-menu-item > button, .software-dropdown button, .toolbar-context-menu button, .toolbar-context-submenu button, .floorplan-context-menu button, .cfx-row-menu-panel button) { display:flex; align-items:center; line-height:1.3; }
+body :is(.software-dropdown, .floating-toolbar-content) details > summary:not(.cfx-row-menu > summary) { display:flex; align-items:center; min-height:36px; }
+body details > summary:has(> .menu-section-help) { padding-right:76px !important; }
+body details > summary > .menu-section-help { position:absolute; right:29px; top:50%; transform:translateY(-50%); width:32px; min-width:32px; height:32px; min-height:32px; padding:0; display:grid; place-items:center; }
+body details > summary > .menu-section-help::before { content:"?"; }
+body .floating-toolbar .floating-toolbar-resize-left, body .floating-toolbar .floating-toolbar-resize-right { min-height:0; min-width:0; padding:0; z-index:30; }
+body .floating-toolbar[data-edge-docked="LEFT"] > .floating-toolbar-resize-right, body .floating-toolbar[data-edge-docked="RIGHT"] > .floating-toolbar-resize-left { display:block !important; width:8px; }
+.cfx-study-row, .cfx-study-group, .cfx-group-heading, .cfx-study-actions { min-width:0; max-width:100%; box-sizing:border-box; }
+.cfx-study-row { grid-template-columns:minmax(0,1fr) minmax(0,auto) !important; }
+.cfx-study-row > .cfx-row-menu { grid-column:2; grid-row:1; min-width:0; }
+.cfx-study-actions { grid-column:1/-1; display:flex; flex-wrap:wrap; justify-content:flex-end; }
+.cfx-study-actions > button { flex:0 1 110px; min-width:0; max-width:100%; overflow-wrap:anywhere; }

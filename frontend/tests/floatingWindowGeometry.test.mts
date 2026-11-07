@@ -88,8 +88,8 @@ test("an empty or compact docking layout reserves no viewer space", () => {
 
 test("a docked window uses the visible workspace, leaving exact canvas insets", () => {
   const layout = edgeDockLayout(bounds, [{ id: "mesh", side: "LEFT", width: 1000 }]);
-  assert.deepEqual(layout.boxes.mesh, { left: 38, top: 108, width: 560, height: 784 });
-  assert.equal(layout.left, 576);
+  assert.deepEqual(layout.boxes.mesh, { left: 38, top: 108, width: 1000, height: 784 });
+  assert.equal(layout.left, 1016);
   assert.equal(layout.right, 0);
   const right = edgeDockLayout(bounds, [{ id: "view", side: "RIGHT", width: 340 }]);
   assert.deepEqual(right.boxes.view, { left: 1122, top: 108, width: 340, height: 784 });

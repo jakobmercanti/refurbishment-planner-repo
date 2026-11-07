@@ -8,9 +8,11 @@ import type { HeatingSelection } from "./HeatingLayoutPanel";
 
 export interface ServiceSceneHost {
   svg: SVGSVGElement;
+  labels: SVGSVGElement;
   fromClient: (x: number, y: number) => Point2D;
   canPick: (x: number, y: number) => boolean;
 }
+export type ServiceLabelPortal = (anchor: Point2D, node: ReactNode) => ReactNode;
 export interface ServiceSceneActions {
   selectObject?: (id: string) => "edit" | "consume" | false;
   ownsObject?: (id: string) => boolean;

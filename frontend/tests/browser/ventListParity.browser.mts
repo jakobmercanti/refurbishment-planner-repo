@@ -39,7 +39,7 @@ async function presentation(root) {
       buttons: actions.map(b => { const s = getComputedStyle(b); return [s.fontSize, s.minHeight, s.padding, s.borderRadius]; }),
       equal: Math.max(...actions.map(b => b.getBoundingClientRect().height)) - Math.min(...actions.map(b => b.getBoundingClientRect().height)) < 1,
       clipped: actions.some(b => b.scrollWidth > b.clientWidth + 2 || b.scrollHeight > b.clientHeight + 2),
-      wrapped: actions.some(b => { const range = document.createRange(); range.selectNodeContents(b); return range.getClientRects().length > 1; }), overflow: e.scrollWidth > e.clientWidth + 2 };
+      widths: actions.map(b=>b.getBoundingClientRect().width), wrapped: actions.some(b => { const range = document.createRange(); range.selectNodeContents(b); return range.getClientRects().length > 1; }), overflow: e.scrollWidth > e.clientWidth + 2 };
   });
 }
 async function settledPresentation(root, page) {
@@ -50,19 +50,22 @@ async function settledPresentation(root, page) {
 
 test("Floorplan and CFD vent rows use the same format and responsive control sizes", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close());
-  for (const [width, density, theme] of [[1440, "comfortable", "light"], [768, "compact", "dark"], [390, "compact", "light"]] as const) {
+  for (const [width, density, theme] of [[1440, "comfortable", "light"], [768, "compact", "dark"], [390, "compact", "light"], [1440, "compact", "light"]] as const) {
     await s.page.setViewportSize({ width, height: 1000 });
-    await s.page.evaluate(({ density, theme }) => { document.documentElement.dataset.density = density; document.documentElement.dataset.theme = theme; }, { density, theme });
+    await s.page.evaluate(({ density, theme }) => { document.documentElement.dataset.density = density; document.documentElement.dataset.theme = theme; document.body.dataset.uiStyle = "modern"; }, { density, theme });
     const panel = await floorplan(s), list = panel.getByRole("list", { name: "Room vents", exact: true });
     assert.equal(await list.locator("[data-item-id]").count(), 3);
     const floorRow = row(list, "Supply A"); await floorRow.getByRole("button", { name: "Select Supply A", exact: true }).click(); await floorRow.scrollIntoViewIfNeeded();
-    const floor = await settledPresentation(floorRow, s.page);
-    assert.equal(floor.equal, true); assert.equal(floor.clipped, false); assert.equal(floor.wrapped, false); assert.equal(floor.overflow, false);
+    const { widths: floorWidths, ...floor } = await settledPresentation(floorRow, s.page);
+    assert.equal(floor.equal, true);
+    assert.equal(floor.clipped, false);
+    assert.equal(floor.wrapped, false, `${width}px, button widths ${floorWidths}`);
+    assert.equal(floor.overflow, false);
     assert.equal(await floorRow.getByRole("button", { name: "Delete Supply A", exact: true }).count(), 1);
     await s.page.screenshot({ path: `../.local-logs/vent-list-qa/floorplan-${width}.png` });
     const ui = await cfd(s), cfdRow = row(ui, "Supply A"); await cfdRow.getByRole("button", { name: "Select Supply A", exact: true }).click(); await cfdRow.scrollIntoViewIfNeeded();
-    const simulation = await settledPresentation(cfdRow, s.page);
-    assert.deepEqual(simulation, floor, `${width}/${density}/${theme}`);
+    const { widths: simulationWidths, ...simulation } = await settledPresentation(cfdRow, s.page);
+    assert.deepEqual(simulation, floor, `${width}/${density}/${theme}, CFD button widths ${simulationWidths}`);
     await s.page.screenshot({ path: `../.local-logs/vent-list-qa/cfd-${width}.png` });
   }
 });

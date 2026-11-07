@@ -135,6 +135,52 @@ test("3D wall modes form one keyboard-accessible exclusive submenu, independent 
   assert.deepEqual(geometry(await session.saved()), before);
 });
 
+test("ceiling-only and full roof modes render the expected surfaces and follow wall transparency", async t => {
+  const session = await harness.session(fixture());
+  t.after(() => session.close());
+  const { page } = session;
+  await page.addInitScript(() => {
+    window.__roofStores = [];
+    window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+      supportsFiber: true,
+      inject: () => 1,
+      onCommitFiberUnmount() {},
+      onCommitFiberRoot(_, root) {
+        if (typeof root.containerInfo?.getState === "function" && !window.__roofStores.includes(root.containerInfo)) {
+          window.__roofStores.push(root.containerInfo);
+        }
+      },
+    };
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "3D", exact: true }).click();
+  const surfaces = () => page.evaluate(() => {
+    const state = window.__roofStores.map(store => store.getState()).find(value => value.gl.domElement.closest(".viewer-shell"));
+    const result = [];
+    state?.scene.traverse(object => {
+      if (object.userData.buildingSurface) result.push({
+        kind: object.userData.buildingSurface,
+        transparent: object.material.transparent,
+        opacity: object.material.opacity,
+      });
+    });
+    return result;
+  });
+  const show = page.getByRole("button", { name: "Show", exact: true });
+  const options = page.locator(".software-show-menu");
+  await show.click();
+  await options.getByRole("button", { name: "Show internal roof only", exact: true }).click();
+  const internal = await eventually(surfaces, items => items.length > 0 && items.every(item => item.kind === "CEILING"));
+  assert.ok(internal.every(item => item.opacity === 1));
+  await show.click();
+  await options.getByRole("button", { name: /Show all roof/ }).click();
+  await eventually(surfaces, items => items.some(item => item.kind === "ROOF"));
+  await show.click();
+  await options.locator(".software-wall-setting > summary").click();
+  await options.getByRole("menuitemradio", { name: "Transparent walls", exact: true }).click();
+  await eventually(surfaces, items => items.some(item => item.kind === "ROOF") && items.every(item => item.transparent && item.opacity < 1));
+});
+
 test("new outline warning is concise, keeps the safe default and makes destructive scope clear", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
   const before = geometry(await session.saved()); await page.getByRole("button", { name: "New outline", exact: true }).click();

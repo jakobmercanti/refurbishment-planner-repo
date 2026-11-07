@@ -56,11 +56,39 @@ test("small room UFH applies valid parallel runs, rejects impossible bends, and 
   await page.screenshot({ path: "../.local-logs/hvac-ui-qa/ufh.png" });
 });
 
+test("changing a measured wall length regenerates UFH and project Undo restores both", async t => {
+  const project = fixture();
+  project.heatingLayout = createRoomUFH(project.rooms[0], project.heatingLayout!).heating;
+  const session = await harness.session(project);
+  t.after(() => session.close());
+  const { page } = session;
+  const before = await session.saved();
+  const wall = page.locator(".wall-interaction-line").first();
+  const center = await wall.evaluate((line: SVGLineElement) => {
+    const matrix = line.getScreenCTM()!;
+    const x = (line.x1.baseVal.value + line.x2.baseVal.value) / 2;
+    const y = (line.y1.baseVal.value + line.y2.baseVal.value) / 2;
+    const point = new DOMPoint(x, y).matrixTransform(matrix);
+    return { x: point.x, y: point.y };
+  });
+  await page.mouse.click(center.x, center.y, { button: "right" });
+  const apply = page.getByRole("menuitem", { name: "Apply wall length", exact: true });
+  const field = apply.locator("..").getByRole("spinbutton").first();
+  await field.fill("3800");
+  await apply.click();
+  const resized = await eventually(session.saved, p => p.rooms[0].vertices.some(point => point.x === 3800));
+  assert.notDeepEqual(resized.heatingLayout.ufhCircuits, before.heatingLayout.ufhCircuits);
+  assert.equal(resized.heatingLayout.ufhZones[0].spacingMm, before.heatingLayout.ufhZones[0].spacingMm);
+  await page.keyboard.press("Control+z");
+  const undone = await eventually(session.saved, p => JSON.stringify(p.rooms[0].vertices) === JSON.stringify(before.rooms[0].vertices));
+  assert.deepEqual(undone.heatingLayout.ufhCircuits, before.heatingLayout.ufhCircuits);
+});
+
 test("help consolidates fields, layers select together, results fill the panel, and manifold labels are opaque", async t => {
   const p = fixture(); p.heatingLayout = createRoomUFH(p.rooms[0], p.heatingLayout!).heating; p.heatingLayout.display.manifolds = true;
   const s = await harness.session(p); t.after(() => s.close()); const { page } = s, panel = await open(s);
   const setup = panel.locator("details").filter({ has: page.locator("summary", { hasText: /^Room setup/ }) }).first();
-  assert.equal(await setup.getByRole("button", { name: /^Help for/ }).count(), 0);
+  assert.equal(await setup.getByRole("button", { name: /^Help for/ }).count(), 1);
   await panel.getByRole("button", { name: "Help for Heating Layout", exact: true }).click();
   await page.locator(".window-help-host").getByRole("heading", { name: "Room target temperature °C", exact: true }).waitFor(); await page.keyboard.press("Escape");
   await panel.getByRole("tab", { name: "System", exact: true }).click(); await expand(panel, "Canvas layers");
@@ -78,13 +106,16 @@ test("help consolidates fields, layers select together, results fill the panel, 
   await page.locator(".window-help-host").getByRole("heading", { name: "Vent role, shape and host", exact: true }).waitFor();
 });
 
-test("vent table, independent editor, main 2D drag, undo and native Save As share canonical values", async t => {
+test("vent edits, main 2D drag, undo and native Save As share canonical values", async t => {
   const p = hvacProject(); p.hvac!.devices = [];
   const s = await harness.session(p); t.after(() => s.close()); const { page } = s, panel = await open(s, "Ventilation");
   const add = panel.getByRole("button", { name: "Add supply inlet", exact: true }); await eventually(() => add.isEnabled(), Boolean); await add.click();
   const first = await eventually(s.saved, p => p.hvac.devices.length === 1), device = first.hvac.devices[0]; assert.notEqual(device.vent.host.patchId, "unassigned");
-  const table = panel.getByRole("table", { name: "Vent positions", exact: true }); await number(table, `${device.vent.name} host U`, .35); await eventually(s.saved, p => p.hvac.devices[0].vent.host.u === .35);
+  assert.equal(await panel.getByRole("table", { name: "Vent positions", exact: true }).count(), 0);
+  assert.equal(await panel.getByRole("combobox", { name: "Vent host face", exact: true }).count(), 0);
   await panel.getByRole("button", { name: `Edit ${device.vent.name}`, exact: true }).click(); const editor = page.locator(".hvac-vent-editor"); await editor.waitFor();
+  await number(editor, "Host U (0–1)", .35);
+  await eventually(s.saved, p => p.hvac.devices[0].vent.host.u === .35);
   await number(editor, "Vent width (mm)", 260); await eventually(s.saved, p => p.hvac.devices[0].vent.widthMm === 260); await editor.getByRole("button", { name: "Done", exact: true }).click();
   const marker = page.getByRole("button", { name: `Select shared vent ${device.vent.name}`, exact: true }); await marker.waitFor();
   await panel.getByRole("button", { name: "Minimise Heating Layout", exact: true }).click();
@@ -103,20 +134,30 @@ test("vent table, independent editor, main 2D drag, undo and native Save As shar
 });
 
 test("main 3D floorplan shows and drags the shared vent and opens its editor", async t => {
-  const s = await harness.session(hvacProject()); t.after(() => s.close()); const { page } = s, panel = await open(s, "Ventilation");
+  const s = await harness.session(hvacProject()); t.after(() => s.close()); const { page } = s;
+  const panel = await open(s, "Ventilation");
   const add = panel.getByRole("button", { name: "Add supply inlet", exact: true }); await eventually(() => add.isEnabled(), Boolean); await add.click();
   const saved = await eventually(s.saved, p => p.hvac.devices.length === 1), device = saved.hvac.devices[0];
-  const hosts = panel.getByRole("combobox", { name: "Vent host face", exact: true });
+  await panel.getByRole("button", { name: `Edit ${device.vent.name}`, exact: true }).click();
+  const editor = page.locator(".hvac-vent-editor");
+  const hosts = editor.getByRole("combobox", { name: "Vent host face", exact: true });
+  await hosts.locator("option").filter({ hasText: /^Floor/ }).first().waitFor({ state: "attached" });
   const floorHost = await hosts.locator("option").filter({ hasText: /^Floor/ }).first().getAttribute("value"); await hosts.selectOption(floorHost);
-  await number(panel, "Vent width (mm)", 600); await number(panel, "Vent height (mm)", 600);
+  await number(editor, "Vent width (mm)", 600); await number(editor, "Vent height (mm)", 600);
+  await editor.getByRole("button", { name: "Done", exact: true }).click();
   await panel.locator(".floating-toolbar-close").click(); await page.getByRole("button", { name: "3D", exact: true }).click();
   await menu(page, "Tools", "Ventilation"); await page.getByRole("button", { name: "Minimise Heating Layout", exact: true }).click();
   await page.getByRole("button", { name: "Top", exact: true }).click();
   const label = page.locator(`[data-hvac-scene-vent="${device.vent.id}"]`); await label.waitFor({ state: "visible" });
+  const canvas = await page.locator(".viewer-shell canvas").boundingBox();
+  await page.mouse.click(canvas.x + 15, canvas.y + 15);
+  await eventually(() => label.getAttribute("data-selected"), value => value === "false");
   await page.screenshot({ path: "../.local-logs/hvac-ui-qa/3d-before.png" });
   const box = await label.boundingBox(), before = (await s.saved()).hvac.devices[0].vent.host;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 15, { steps: 10 }); await page.mouse.up();
-  await eventually(s.saved, p => JSON.stringify(p.hvac.devices[0].vent.host) !== JSON.stringify(before), "3D dragging must commit shared host coordinates");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+  await eventually(() => label.getAttribute("data-selected"), value => value === "true", "The vent must receive pointer down");
+  await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 15, { steps: 10 }); await page.mouse.up();
+  await eventually(async () => ({ host: (await s.saved()).hvac.devices[0].vent.host, error: await label.locator("..").getByRole("alert").allTextContents() }), value => JSON.stringify(value.host) !== JSON.stringify(before), "3D dragging must commit shared host coordinates");
   const after = await label.boundingBox(); await page.mouse.dblclick(after.x + after.width / 2, after.y + after.height / 2); await page.locator(".hvac-vent-editor").waitFor();
   await page.screenshot({ path: "../.local-logs/hvac-ui-qa/3d-vent.png" });
 });

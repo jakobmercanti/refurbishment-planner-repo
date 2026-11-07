@@ -2,17 +2,17 @@
 import { conventionalHvac } from "@/lib/hvacHeating";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHvac } from "./HvacContext";
-import { EquipmentPanel } from "./ClimoptixEquipment";
-import { ventCenter } from "@/lib/climoptixPreview";
+
+
 import { saveHvacCalculations } from "@/lib/hvacExport";
 import { CFDNumber } from "./CFDFields";
-import { flowFromDisplay, flowToDisplay } from "@/lib/hvacCalculations";
+
 import { WindowHelpButton } from "./WindowHelpButton";
 import { projectFloors } from "@/lib/buildingDocument";
-import { cfdScenarioSchema, newCFDScenario, ventSchema, type CFDScenario } from "@/lib/climoptixDocument";
+import { newCFDScenario, ventSchema, type CFDScenario } from "@/lib/climoptixDocument";
 import { downloadCFD, preparationInput, preparationRevision, prepareCFD, type CFDReport } from "@/lib/climoptix";
 import { hvacBoundaryPackage, hvacControlLabel, hvacModelLabel, resolveHvacScenario, type HvacCfdBoundaryPackage } from "@/lib/hvacBridge";
-import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, reorderHvacRoomVents, updateVentDevice, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
+import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, reorderHvacRoomVents, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
 import { HvacVentPlan } from "./HvacVentPlan";
 import { useHvacHostReport } from "./useHvacHostReport";
 import { scrollWorkbenchToStart } from "@/lib/workbenchNavigation";
@@ -76,19 +76,6 @@ export function VentilationPanel() {
   function commit(next: HvacProject) { try { ctx.commit(hvacSchema.parse(next)); setError(""); } catch (e) { setError(hvacErrorMessage(e)); } }
   function saveScenario(next: HvacOperatingScenario) { commit({ ...hvac, activeScenarioId: next.id, scenarios: [...hvac.scenarios.filter(s => s.id !== next.id), next] }); }
   function conditions(patch: Partial<HvacConditions>) { saveScenario({ ...operating, conditions: { ...operating.conditions, ...patch } }); }
-  function editVents(next: CFDScenario) {
-    try {
-      const parsed = cfdScenarioSchema.parse(next);
-      let all = hvac;
-      for (const vent of parsed.vents) {
-        const existing = all.devices.find(d => d.vent.id === vent.id), host = report?.patches.find(p => p.id === vent.host.patchId);
-        if (existing && (JSON.stringify(existing.vent) !== JSON.stringify(vent) || host && (existing.roomId !== host.roomId || existing.floorId !== host.floorId))) {
-          all = updateVentDevice(all, vent.id, { vent, ...(host ? { roomId: host.roomId, floorId: host.floorId } : {}) }, operating.id);
-        }
-      }
-      commit(all);
-    } catch (e) { setError(hvacErrorMessage(e, "Invalid vent inputs.")); }
-  }
   async function checkGeometry() {
     request.current?.abort(); const abort = new AbortController(); request.current = abort; setBusy(true); setError("");
     const captured = input;
@@ -141,8 +128,8 @@ export function VentilationPanel() {
     } catch (e) { if (!abort.signal.aborted && latestStamp.current === sourceStamp) setError(e instanceof Error ? e.message : "CFD preflight unavailable."); }
     finally { if (request.current === abort) setBusy(false); }
   }
-  const selectedDevice = devices.find(d => d.vent.id === selected);
-  const flowUnit = ctx.flowUnit ?? "L/s";
+
+
   return <section className={styles.panel} aria-label="Ventilation controls">
     <div className={styles.roomPickerHeading}><strong>Room ventilation</strong><WindowHelpButton title="Conventional HVAC" steps={[{ heading: "Shared devices", text: "Vents use one project identity in Heating/Ventilation and CFD. Permanent edits update both immediately. Scenario overrides retain design values. Face placement, dragging and obstruction checks use the existing CFD geometry editor." }, { heading: "Sensible zone balance", text: "Steady, well-mixed zone approximation: ACH = flow × 3600 / volume. Sensible gain = density × cp × flow × (supply − room). Envelope U×A, infiltration, gains and room-effective heating are counted once. Radiant exchange is lumped over the room, not instantly resolved in local air. Humidity, latent load, diffuser throw and compliance are outside this model." }]} /></div>
     <div className={`${styles.grid} ${styles.hvacContext}`}>
@@ -175,29 +162,9 @@ export function VentilationPanel() {
             </CFDRowMenu>} />}
         </CFDReorderList>
       </div>
-      <div className={styles.tableScroll}><table className={styles.hvacTable} aria-label="Vent positions"><thead><tr><th>Vent / host</th><th>X / Y / Z (mm)</th><th>Host U</th><th>Host V</th><th>Settings</th></tr></thead><tbody>{devices.map(d => {
-        const host = report?.patches.find(p => p.id === d.vent.host.patchId), canonical = hvac.devices.find(v => v.vent.id === d.vent.id)!;
-        const position = host?.host ? ventCenter(d.vent, host.host).map(n => n.toFixed(0)).join(" / ") : "Assign host";
-        const move = (patch: Partial<typeof canonical.vent.host>) => editVents({ ...preview, vents: [ { ...canonical.vent, host: { ...canonical.vent.host, ...patch } } ] });
-        return <tr key={d.vent.id}><td>{d.vent.name}<small>{host?.label ?? d.vent.host.patchId}</small></td><td>{position}</td><td><CFDNumber convert={false} label={`${d.vent.name} host U`} value={d.vent.host.u} onChange={u => move({ u })} /></td><td><CFDNumber convert={false} label={`${d.vent.name} host V`} value={d.vent.host.v} onChange={v => move({ v })} /></td><td><button aria-label={`Edit parameters for ${d.vent.name}`} onClick={() => ctx.editVent(d.vent.id)}>Edit</button></td></tr>;
-      })}</tbody></table></div>
-      {selectedDevice && <>
-        <label><input type="checkbox" checked={hvac.devices.find(d => d.vent.id === selected)?.enabled ?? true} onChange={e => commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === selected ? { ...d, enabled: e.target.checked } : d) })} />Enabled in design</label>
-        <div className={styles.ventEditor}>
-        <EquipmentPanel scenario={{ ...preview, vents: devices.map(d => hvac.devices.find(v => v.vent.id === d.vent.id)!.vent) }} report={report} selected={`vent:${selected}`} onSelect={id => setSelected(id.replace(/^vent:/, ""))} onChange={editVents} onPick={() => { void preflight(); }} onEditSource={() => ctx.setTab("Heating")} editor placement checked={currentFaces} />
-        {selectedDevice.vent.role === "supply" && <CFDNumber label="Outdoor-air fraction (0–1)" min={0} max={1} value={selectedDevice.outdoorAirFraction} onChange={outdoorAirFraction => commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === selected ? { ...d, outdoorAirFraction } : d) })} />}
-        {selectedDevice.vent.role === "extract" && <label>Outlet air path<select aria-label="Outlet air path" value={selectedDevice.extractKind} onChange={e => commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === selected ? { ...d, extractKind: e.target.value as "exhaust" | "return" } : d) })}><option value="exhaust">Outdoor exhaust</option><option value="return">Return to air handler</option></select></label>}
-        </div>
-        <details><summary>Scenario override · retain design flow and temperature</summary>
-          <CFDNumber label={selectedDevice.vent.role === "supply" ? "Scenario supply temperature (°C)" : "Scenario backflow temperature (°C)"} value={selectedDevice.vent.temperatureK - 273.15} onChange={v => saveScenario({ ...operating, ventOverrides: { ...operating.ventOverrides, [selected!]: { ...operating.ventOverrides[selected!], temperatureK: v + 273.15 } } })} />
-          <CFDNumber convert={false} label={`Scenario ${selectedDevice.vent.control === "volumeFlow" ? `volume flow (${flowUnit})` : selectedDevice.vent.control === "massFlow" ? "mass flow (kg/s)" : selectedDevice.vent.control === "velocity" ? "face velocity (m/s)" : "relative pressure (Pa)"}`} value={selectedDevice.vent.control === "volumeFlow" ? flowToDisplay(selectedDevice.vent.valueSI, flowUnit) : selectedDevice.vent.valueSI} onChange={value => saveScenario({ ...operating, ventOverrides: { ...operating.ventOverrides, [selected!]: { ...operating.ventOverrides[selected!], valueSI: selectedDevice.vent.control === "volumeFlow" ? flowFromDisplay(value, flowUnit) : value } } })} />
-          <label><input type="checkbox" checked={selectedDevice.enabled} onChange={e => saveScenario({ ...operating, ventOverrides: { ...operating.ventOverrides, [selected!]: { ...operating.ventOverrides[selected!], enabled: e.target.checked } } })} />Operating in this scenario</label>
-          <button onClick={() => { const overrides = { ...operating.ventOverrides }; delete overrides[selected!]; saveScenario({ ...operating, ventOverrides: overrides }); }}>Use design values</button>
-        </details>
-      </>}
       {hosts.loading && !currentFaces && <p role="status">Checking measured host faces…</p>}
       {hosts.error && !currentFaces && <div>{hosts.error !== error && <p role="alert" className={styles.warning}>{hosts.error}</p>}<button onClick={hosts.retry}>Retry host checks</button></div>}
-      {report && <p>{currentFaces ? "Geometry checked" : checked ? "Inputs changed — recheck geometry" : "Measured host faces ready"}. Drag shared vents in the main 2D or 3D floorplan; edit exact host coordinates in the positions table.</p>}
+      {report && <p>{currentFaces ? "Geometry checked" : checked ? "Inputs changed — recheck geometry" : "Measured host faces ready"}. Drag shared vents in the main 2D or 3D floorplan; use each vent’s Edit button for its host, coordinates and operating settings.</p>}
       {room && <HvacVentPlan room={room} devices={devices} report={report} selected={selected} onSelect={setSelected} sourceStamp={sourceStamp} onMove={(id,u,v,baseline) => {
         if (baseline !== latestStamp.current) { setError("The project changed while dragging. Existing edits retained; retry the move."); return; }
         commit({ ...hvac, devices: hvac.devices.map(d => d.vent.id === id ? { ...d, vent: { ...d.vent, host: { ...d.vent.host, u, v } } } : d) });

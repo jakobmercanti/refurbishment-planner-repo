@@ -279,7 +279,7 @@ body .cfx-workspace .cfx-thermal-import :is(.thermal-heading,.thermal-steps,.the
 body .cfx-workspace .cfx-inspector-plane { display:flex; align-items:center; gap:10px; flex:0 0 auto; padding:4px 8px; }
 body .cfx-workspace .cfx-inspector-plane select { flex:1; min-width:0; }
 body .cfx-workspace .cfx-disclosure-actions { display:inline-grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
-body .cfx-workspace .cfx-results-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); margin-bottom:12px; }
+body .cfx-workspace .cfx-results-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-bottom:12px; }
 body .cfx-workspace .cfx-probe-value { position:absolute; z-index:4; inset:12px auto auto 12px; max-width:calc(100% - 24px); padding:5px 8px; border-radius:var(--radius-control); background:var(--panel); color:var(--ink); font:700 12px/1.5 var(--font-sans); overflow-wrap:anywhere; pointer-events:none; }
 body .cfx-workspace .cfx-point-probe > .cfx-probe-value { position:static; }
 body .cfx-workspace .cfx-slice-stage { position:relative; min-width:0; }

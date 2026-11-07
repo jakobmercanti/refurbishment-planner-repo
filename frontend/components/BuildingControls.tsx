@@ -14,7 +14,7 @@ import { FloorProperties, OpeningProperties, RoofProperties } from "./BuildingPr
 import styles from "./HeatingLayoutPanel.module.css";
 
 export type FloorOpeningTool = "RECTANGLE"|"POLYGON"|null;
-export type BuildingView = { whole:boolean; roof:boolean; reference:boolean; snap:boolean };
+export type BuildingView = { whole:boolean; roof:boolean; ceiling?:boolean; reference:boolean; snap:boolean };
 export function BuildingControls({project,onEdit,onUndo,onRedo,canUndo,canRedo,units,in3D,view,onView,tool,onTool,keepOpeningSquare,onKeepOpeningSquare,onFinish,selectedOpening,onSelectOpening,onRoofPreview,error,onError,onExportFloorplan}: {
   project:ProjectDocument;onEdit:(fn:(p:ProjectDocument)=>ProjectDocument)=>void;onUndo:()=>void;onRedo:()=>void;canUndo:boolean;canRedo:boolean;units:DisplayUnits;in3D:boolean;
   view:BuildingView;onView:(v:BuildingView)=>void;tool:FloorOpeningTool;onTool:(t:FloorOpeningTool)=>void;onFinish:()=>void;selectedOpening:string|null;onSelectOpening:(id:string|null)=>void;

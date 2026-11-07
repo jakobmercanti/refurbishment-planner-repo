@@ -12,7 +12,9 @@ import { switchGangCount, type LightingSwitchGang } from "@/lib/electricalSimula
 import { DEFAULT_ELECTRICAL_DOCUMENTATION, type ElectricalLayoutData } from "@/lib/electricalLayout";
 import { electricalEndpointLabel, electricalFittingReferences } from "@/lib/electricalConnectionLabels";
 
+import type { ServiceLabelPortal } from "./ServiceViewContext";
 interface Props {
+  labelPortal?: ServiceLabelPortal;
   fixtures: Obstacle[];
   connections: ElectricalConnection[];
   circuits: ElectricalCircuit[];
@@ -49,6 +51,7 @@ interface Props {
 }
 
 export function ElectricalLayoutOverlay(props: Props) {
+  const labelAt = props.labelPortal ?? ((_anchor:Point2D,node:React.ReactNode)=>node);
   const symbolZoom = props.active ? props.zoom ?? 1 : 1;
   const fixtures = new Map(props.fixtures.map((fixture) => [fixture.id, fixture]));
   const circuits = new Map(props.circuits.map((circuit) => [circuit.id, circuit]));
@@ -90,7 +93,7 @@ export function ElectricalLayoutOverlay(props: Props) {
           const point = props.toScreen(waypoint);
           return <circle key={index} data-electrical-interactive="true" className="electrical-route-waypoint" cx={point.x} cy={point.y} r="7" onPointerDown={(event) => props.onWaypointPointerDown(event, connection, index)} onContextMenu={(event) => props.onWaypointContextMenu(event, connection, index)} />;
         })}
-        {label && <text data-electrical-interactive="true" className="electrical-circuit-label electrical-draggable-label" x={labelPoint.x} y={labelPoint.y - (connection.labelPosition ? 0 : 8)} textAnchor="middle" onPointerDown={event => props.onLabelPointerDown(event, connection)}><title>Drag to move this connection’s circuit label</title>{label}</text>}
+        {label && labelAt(labelPoint,<text data-electrical-interactive="true" className="electrical-circuit-label electrical-draggable-label" x={labelPoint.x} y={labelPoint.y - (connection.labelPosition ? 0 : 8)} textAnchor="middle" onPointerDown={event => props.onLabelPointerDown(event, connection)}><title>Drag to move this connection’s circuit label</title>{label}</text>)}
       </g>;
     })}
     {preview && <polyline className="electrical-connection-preview" points={polylinePoints(preview)} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}
@@ -124,7 +127,7 @@ export function ElectricalLayoutOverlay(props: Props) {
       const classes = ["floorplan-fixture", "electrical-fixture", props.active ? "is-active" : "", readableSymbol ? "is-readable" : "", connected ? "is-connected" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
       return <g key={fixture.id} transform={`translate(${centre.x} ${centre.y}) scale(${symbolZoom}) translate(${-centre.x} ${-centre.y})`} data-electrical-interactive="true" data-plan-info={`${fixture.name}\n${count ? `${count}-gang switch: each rocker can control a separate light. Connect a gang to a light; use Check layout to test it.` : "Electrical fitting. Click to select; drag to move; right-click for editing options."}`} className={classes} role="button" tabIndex={0} aria-label={`Electrical fitting: ${fixture.name}${connected ? ", connected" : ""}`} aria-pressed={selected} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); props.onFixtureActivate(fixture); } }} onPointerDown={(event) => props.onFixturePointerDown(event, fixture)} onContextMenu={(event) => props.onFixtureContextMenu(event, fixture)}>
         <title>{fixture.name}</title>
-        {props.active && references[fixture.id] && <text className="electrical-circuit-label electrical-fitting-reference" pointerEvents="none" x={centre.x} y={referenceY} textAnchor="middle">{references[fixture.id]}</text>}
+        {props.active && references[fixture.id] && labelAt(centre,<text className="electrical-circuit-label electrical-fitting-reference" pointerEvents="none" x={centre.x} y={referenceY} textAnchor="middle">{references[fixture.id]}</text>)}
         {props.testing && Object.hasOwn(props.lightStates ?? {}, fixture.id) && <g className="electrical-test-state" pointerEvents="none"><circle cx={centre.x} cy={centre.y} r={Math.max(symbolWidth, symbolDepth) / 2 + 12} fill={props.lightStates?.[fixture.id] ? "#facc15" : "none"} fillOpacity="0.35" stroke={props.lightStates?.[fixture.id] ? "#a16207" : "#64748b"} strokeWidth="2" /><text className="electrical-circuit-label" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.lightStates?.[fixture.id] ? "On" : "Off"}</text></g>}
         {props.testing && switchGangCount(fixture.representation_key) <= 1 && props.switchLabels?.[fixture.id] && <text className="electrical-circuit-label electrical-test-state" pointerEvents="none" x={centre.x} y={centre.y + symbolDepth / 2 + 23} textAnchor="middle">{props.switchLabels[fixture.id]}</text>}
         {readableSymbol && <g transform={`translate(${centre.x} ${centre.y}) rotate(${-fixture.rotation_deg})`}>

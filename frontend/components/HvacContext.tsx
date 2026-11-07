@@ -28,7 +28,7 @@ interface HvacContextValue {
   geometryPatches: CFDPatch[];
   ensureGeometry: (seed: { floorId: string; roomId: string }) => Promise<CFDReport | null>;
   editVentId: string | null; editVent: (id: string | null) => void;
-  moveVent: (id: string, u: number, v: number, baseline: string) => void;
+  moveVent: (id: string, u: number, v: number, baseline: string, patchId?: string) => void;
 
 }
 const Context = createContext<HvacContextValue | null>(null);
@@ -45,10 +45,12 @@ export function HvacProvider({ children, onFocusFloor, ...value }: Omit<HvacCont
   const geometryReport = geometry?.key === sourceKey ? geometry.report : null;
   const { ensureGeometry, geometryPatches } = useHvacHosts(value.project, value.apiUrl, geometryKey);
   const [editVentId, editVent] = useState<string | null>(null);
-  const moveVent: HvacContextValue["moveVent"] = (id, u, v, baseline) => {
+  const moveVent: HvacContextValue["moveVent"] = (id, u, v, baseline, patchId) => {
     const hvac = value.project.hvac, device = hvac?.devices.find(d => d.vent.id === id);
     if (!hvac || !device || JSON.stringify([geometryKey, device.vent]) !== baseline) throw new Error("Vent or room geometry changed while dragging. Retry the move.");
-    value.commit(hvacSchema.parse({ ...hvac, devices: hvac.devices.map(d => d.vent.id === id ? { ...d, vent: { ...d.vent, host: { ...d.vent.host, u, v } } } : d) }));
+    const patch = patchId ? [...geometryPatches, ...(geometryReport?.patches ?? [])].find(p => p.id === patchId && p.hostable && p.host) : null;
+    if (patchId && !patch) throw new Error("The target host is no longer available. Recheck geometry.");
+    value.commit(hvacSchema.parse({ ...hvac, devices: hvac.devices.map(d => d.vent.id === id ? { ...d, ...(patch ? {floorId:patch.floorId,roomId:patch.roomId}:{}), vent: { ...d.vent, host: { ...d.vent.host, u, v, ...(patch ? {patchId:patch.id}:{} ) } } } : d) }));
   };
   const [focus, setFocus] = useState<{ floorId: string; roomId: string } | null>(null);
   const focusRoom = (room: { floorId: string; roomId: string }, ventId?: string) => { selectVent(ventId ?? null); setFocus({ ...room }); onFocusFloor?.(room.floorId); };

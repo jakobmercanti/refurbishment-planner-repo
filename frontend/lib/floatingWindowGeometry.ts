@@ -61,7 +61,7 @@ export function edgeDockLayout(bounds: FloatingWindowBox, entries: WindowDockEnt
   const enabled = bounds.width >= 720 && bounds.height >= 280;
   if (!enabled) return { enabled, left: 0, right: 0, boxes };
   const sides = (["LEFT", "RIGHT"] as const).map(side => entries.filter(entry => entry.side === side));
-  const widths = sides.map(items => items.length ? Math.max(MIN_FLOATING_WINDOW_WIDTH, Math.min(560, bounds.width * .42, Math.max(...items.map(item => Number.isFinite(item.width) ? item.width : DEFAULT_FLOATING_WINDOW_WIDTH)))) : 0);
+  const widths = sides.map(items => items.length ? Math.max(MIN_FLOATING_WINDOW_WIDTH, Math.min(bounds.width - 240, bounds.width * .8, Math.max(...items.map(item => Number.isFinite(item.width) ? item.width : DEFAULT_FLOATING_WINDOW_WIDTH)))) : 0);
   // Two rails must still leave a usable view, including their outer/inner gaps.
   const minimumView = Math.min(320, bounds.width - 2 * (MIN_FLOATING_WINDOW_WIDTH + 16));
   const budget = bounds.width - minimumView - widths.filter(Boolean).length * 16;

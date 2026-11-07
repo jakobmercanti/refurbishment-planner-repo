@@ -144,5 +144,3 @@
 .panel .hvacTable input { min-width:65px; padding:5px; }
 .panel .hvacTable small { font-weight:400; }
 .panel .hvacList { gap:10px; margin-bottom:16px; }
-
-.ventEditor { margin-top:18px; display:grid; gap:10px; }

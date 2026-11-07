@@ -15,6 +15,7 @@ import type { QuoteDocument } from "./quoteDocument";
 import type { HeatingProject } from "./heatingDocument";
 import type { EnergyProject } from "./energyDocument";
 import { commitHeatingElements } from "./heatingElements";
+import { resizeHeatingRooms } from "./heatingRoomResize";
 import { ProjectHistory } from "./projectHistory";
 import { matchesProjectScope } from "./projectScope";
 import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
@@ -47,6 +48,10 @@ export function useLocalProject() {
     // feeding an unchanged snapshot back into the editor and starving autosave.
     if (Object.entries(changes).every(([key,value]) => JSON.stringify(p[key as keyof ProjectDocument]) === JSON.stringify(value))) return;
     let next = migrateHvac({ ...p, ...changes, updatedAt: new Date().toISOString() });
+    if (changes.rooms && next.heatingLayout) {
+      try { next = { ...next, heatingLayout: resizeHeatingRooms(p.rooms, next.rooms, next.heatingLayout) }; }
+      catch (cause) { const message = cause instanceof Error ? cause.message : "UFH could not follow this room edit.";setStatus(message);setRestore(p);setRevision(r=>r+1);return message; }
+    }
     if(changes.rooms&&next.building?.roof.roomOverrides){const ids=new Set(projectFloors(next).flatMap(f=>f.content.rooms.map(room=>room.id)));next={...next,building:{...next.building,roof:{...next.building.roof,roomOverrides:next.building.roof.roomOverrides.filter(item=>ids.has(item.roomId))}}};}
     history.current.record(p,next,forceHistory);
     refreshHistory();
@@ -58,7 +63,7 @@ export function useLocalProject() {
     const geometry=(plan:PersistedFloorplan|null,items:Room[])=>JSON.stringify([plan?.walls.map(w=>w.points)??[],items.map(r=>r.vertices)]);
     try{const floor=activeFloor(p);for(const opening of floor.openings)validateFloorOpening({...floorContent(p),floorplan,rooms},opening,floor.openings);if(geometry(p.floorplan,p.rooms)!==geometry(floorplan,rooms))validateFloorSupports(projectFloors({...p,floorplan,rooms}));}
     catch(error){const message=error instanceof Error?error.message:"Invalid slab geometry.";setStatus("Wall edit not saved. Previous geometry kept.");setRestore(p);setRevision(r=>r+1);return message;}
-    update({ floorplan, rooms });
+    return update({ floorplan, rooms });
   }, [update]);
   useEffect(() => {
     if (!project || JSON.stringify(project) === lastSaved.current) return;

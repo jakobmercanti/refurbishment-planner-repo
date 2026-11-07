@@ -128,7 +128,9 @@ test("objects, boundary groups, refinements and review tabs use compact independ
   await cfdWindow(ui, "Equipment");
   const heading = await ui.getByRole("heading", { name: "Objects & occupants", exact: true }).boundingBox();
   const sourceButton = await button(ui, "Edit source building & assets").boundingBox();
-  assert.ok(Math.abs(heading.y + heading.height / 2 - sourceButton.y - sourceButton.height / 2) < 3);
+  const supply = await button(ui, "+ Supply").boundingBox();
+  assert.ok(heading.y + heading.height <= sourceButton.y);
+  assert.ok(Math.abs(supply.y + supply.height / 2 - sourceButton.y - sourceButton.height / 2) < 3);
   await button(ui, "Add object group").click();
   const target = ui.getByRole("region", { name: "Object group Group", exact: true });
   await button(target, "Collapse object group Group").click();
@@ -147,7 +149,8 @@ test("objects, boundary groups, refinements and review tabs use compact independ
   await cfdWindow(ui, "Boundaries");
   const nav = await ui.getByRole("tablist", { name: "Boundary setup", exact: true }).boundingBox();
   const add = await button(ui, "Add boundary group").boundingBox(), find = await ui.getByRole("searchbox", { name: "Find a CFD patch" }).boundingBox();
-  assert.ok(Math.abs(nav.y - add.y) < 3 && Math.abs(add.y - find.y) < 3);
+  assert.ok(nav.y + nav.height <= add.y);
+  assert.ok(Math.abs(add.y + add.height / 2 - find.y - find.height / 2) < 3);
   await button(ui, "Add boundary group").click();
   assert.equal(await button(ui, "Hide Edit boundary group").count(), 0);
   await button(ui, "Actions for boundary group Group").click();

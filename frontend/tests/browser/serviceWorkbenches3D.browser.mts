@@ -83,6 +83,34 @@ test("all application menu siblings have a constant white gap in comfortable and
   }
 });
 
+test("a 3D vent drag snaps onto a different measured wall, with undo", async t => {
+  const p=fixture(),s=await harness.session(p);t.after(()=>s.close());const {page}=s;
+  await enter3D(page);await menu(page,"Tools","Ventilation");const panel=page.locator(".heating-layout-window");await minimise(panel,"Heating Layout");await walls(page,"Transparent walls");
+  const labels=page.locator("[data-hvac-scene-vent]").filter({visible:true});
+  await eventually(()=>labels.count(),n=>n>=2);
+  const first=labels.nth(0),second=labels.nth(1),id=await first.getAttribute("data-hvac-scene-vent"),targetId=await second.getAttribute("data-hvac-scene-vent");
+  const from=await first.boundingBox(),to=await second.boundingBox();
+  await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();await page.mouse.move(to.x+to.width/2,to.y+to.height/2,{steps:16});await page.mouse.up();
+  const target=p.hvac.devices.find(d=>d.vent.id===targetId).vent.host.patchId;
+  await eventually(s.saved,p=>p.hvac.devices.find(d=>d.vent.id===id).vent.host.patchId===target);
+  await restore(page,"Heating Layout");await panel.getByRole("button",{name:"Undo HVAC",exact:true}).click();
+  await eventually(s.saved,p=>p.hvac.devices.find(d=>d.vent.id===id).vent.host.patchId!==target);
+});
+
+test("heating text stays screen-facing in perspective and section help leaves the menu closed", async t=>{
+ const s=await harness.session(fixture());t.after(()=>s.close());const {page}=s;
+ await enter3D(page);await menu(page,"Tools","Heating Layout");const panel=page.locator(".heating-layout-window");
+ await panel.getByRole("tab",{name:"Results",exact:true}).click();
+ const section=panel.locator("details").filter({has:page.locator("summary",{hasText:/^Heating results/})}).first();
+ const help=section.locator(":scope > summary > button");await help.waitFor();const open=await section.getAttribute("open");await help.click();
+ await page.getByText("Heat required and heat available",{exact:true}).waitFor();assert.equal(await section.getAttribute("open"),open);
+ await page.getByRole("button",{name:"Hide Help — Heating results",exact:true}).click();await minimise(panel,"Heating Layout");
+ const card=page.getByLabel("Service labels",{exact:true}).locator(".heating-room-indicator");await card.waitFor();const parallel=await card.boundingBox();
+ await page.getByRole("button",{name:"Perspective",exact:true}).click();await page.waitForTimeout(350);
+ const perspective=await card.boundingBox();assert.ok(Math.abs(parallel.width-perspective.width)<1);assert.ok(Math.abs(parallel.height-perspective.height)<1);
+ await page.screenshot({path:"../.local-logs/services-3d-qa/screen-facing-labels.png"});
+});
+
 test("Heating keeps its live editor in 3D, creates UFH, draws pipes and retains changes when returning to 2D", async t => {
   const p = fixture(), s = await harness.session(p); t.after(() => s.close()); const { page } = s;
   await enter3D(page); await menu(page, "Tools", "Heating Layout"); const panel = page.locator(".heating-layout-window");
@@ -107,10 +135,10 @@ test("3D insulation selects real walls, uses the same U and W values, and applie
   const source = fixture(), s = await harness.session(source); t.after(() => s.close()); const { page } = s;
   await enter3D(page); await menu(page, "Tools", "Energy & Insulation"); const panel = page.locator(".energy-layout-window"); await panel.waitFor();
   await minimise(panel, "Energy & Insulation"); await walls(page, "Invisible walls");
-  const label = page.locator("[data-energy-scene-label]").filter({ visible: true }).first(); await label.waitFor();
+  const label = page.getByLabel("Service labels",{exact:true}).locator("text[data-energy-label]").filter({ visible: true }).first(); await label.waitFor();
   const labelText = await label.textContent();
   assert.match(labelText, /U [\d.]+ · \d+ W/);
-  assert.ok(energyElements(source.rooms, source.heatingLayout, source.energyLayout).some(e => `${e.label} · U ${e.uValue.toFixed(2)} · ${Math.round(e.heatLossW)} W` === (labelText)), "3D labels must use the same authoritative values as the plan");
+  assert.ok(energyElements(source.rooms, source.heatingLayout, source.energyLayout).some(e => labelText.includes(`${Math.round(e.heatLossW)} W`) && labelText.includes(e.uValue.toFixed(2))), "3D labels must use the same authoritative values as the plan");
   await label.click(); await restore(page, "Energy & Insulation");
   await panel.getByRole("button", { name: "Define wall layers", exact: true }).click();
   const editor = page.locator(".wall-layers-popup"), before = await eventually(s.saved, p => p.energyLayout.enabled);
