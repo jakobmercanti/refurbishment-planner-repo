@@ -26,6 +26,7 @@ import { completedRunReference, terminalJob, workerInput } from "@/lib/climoptix
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP, CFD_SETUP_HELP } from "@/lib/climoptixHelp";
 import { FloatingToolbar } from "./FloatingToolbar";
+import { CFDCollapseAll } from "./CFDCollapseAll";
 import {
   ClimoptixWindowMenu,
   CFD_WINDOWS,
@@ -806,7 +807,7 @@ export function ClimoptixWorkspace({
             setPicking(null);
           }}
         >
-          <div className="cfx-setup">
+          <div className="cfx-setup cfx-window-sections" data-cfx-collapse-root>
             <header className="cfx-setup-heading">
               <label className="cfx-phase-select">
                 <span className="cfx-phase-label">
@@ -885,6 +886,7 @@ export function ClimoptixWorkspace({
                 </button>
               ))}
             </div>
+            <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
             {scenario && shownTab !== "results" && shownTab !== "adjoint" && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
               showFailure onIssues={() => reviewIssues()}
               onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} />}
@@ -1172,10 +1174,16 @@ export function ClimoptixWorkspace({
       )}
       {active && viewOpen && <FloatingToolbar title="View properties" className="cfx-view-window" defaultPosition={{ x: 900, y: 80 }}
         initialSize={{ width: 440 }} onClose={() => setViewOpen(false)} helpSteps={CFD_PHASE_HELP.view}>
-        <div ref={setViewTarget} />
+        <div className="cfx-window-sections" data-cfx-collapse-root>
+          <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
+          <div ref={setViewTarget} />
+        </div>
       </FloatingToolbar>}
       {active&&scenario&&heatingImportOpen&&<CFDHeatingImport key={scenario.id} project={project} scenario={scenario} report={activeReport} checked={!stale&&!busy&&!error} onChange={change} onClose={()=>setHeatingImportOpen(false)} onInsulation={()=>{setHeatingImportOpen(false);openThermal();}} onEditSource={onEditBuilding}/>}
       {active&&!setupOpen&&mainResult&&mainResult.studyId===scenario?.id&&mainResult.jobId===jobs[scenario?.id??""]?.job?.id&&<FloatingToolbar title="Building result display" defaultPosition={{x:24,y:80}} initialSize={{width:380,height:390}} onClose={()=>{setMainResult(null);setMainResultLayers([]);}}>
+        <section className="cfx-window-sections" data-cfx-collapse-root>
+        <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
+        <details open><summary>Plane selection &amp; display</summary>
         <p>{mainResult.file.name} · verified worker plane · metres → scene coordinates.</p>
         <label>Loaded plane<select aria-label="Building 3D plane" value={mainResult.file.name} onChange={event=>{const next=mainResultLayers.find(item=>item.file.name===event.target.value);if(next){setMainResult(next);setMainResultField("");setMainResultMetadata({fields:[],error:""});}}}>{mainResultLayers.filter(item=>item.studyId===scenario?.id).map(item=><option key={item.file.name} value={item.file.name}>{item.file.name}</option>)}</select></label>
         {mainResult.input!==currentWorkerInput?<p className="cfx-error" role="alert">Setup changed. This pinned result is hidden to avoid overlaying a different building. Inspect the original job separately.</p>:<>
@@ -1187,8 +1195,11 @@ export function ClimoptixWorkspace({
         <p className="cfx-caption">Blue → red: {(mainResultMetadata.fields.find(field=>field.key===mainResultField)??mainResultMetadata.fields[0])?.range.map(value=>value.toPrecision(5)).join(" → ")}. U in m/s; native p in m²/s², not Pa. Geometry controls remain available.</p>
         </>}
         {mainResultMetadata.error&&<p className="cfx-error" role="alert">{mainResultMetadata.error}</p>}
+        </details><details open><summary>Manage loaded planes</summary>
         <div className="cfx-equal-actions"><button onClick={()=>{const next=mainResultLayers.filter(item=>item.file!==mainResult.file);setMainResultLayers(next);setMainResult(next.find(item=>item.studyId===scenario?.id)??null);setMainResultField("");setMainResultMetadata({fields:[],error:""});}}>Unload selected plane</button><button onClick={()=>{setMainResultLayers([]);setMainResult(null);}}>Unload all planes</button></div>
         <button onClick={()=>{setSetupOpen(true);openPhase("results");}}>Return to results</button>
+        </details>
+        </section>
       </FloatingToolbar>}
       {active && scenario && ventEditor?.studyId === scenario.id && scenario.vents.some(v => v.id === ventEditor.id) &&
         <FloatingToolbar title="Edit equipment" className="cfx-equipment-editor" initialSize={{ width: 620, height: 650 }}

@@ -1276,7 +1276,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   const [fixturePreview, setFixturePreview] = useState<Obstacle | null>(null);
   const [previewView3D, setPreviewView3D] = useState(serviceView?.in3D);
   if (previewView3D !== serviceView?.in3D) { setPreviewView3D(serviceView?.in3D);setFixturePreview(null); }
-  const [wallFixturePreview, setWallFixturePreview] = useState<Obstacle[]>([]);
+  const [wallDragAttachments, setWallDragAttachments] = useState<WallFixtureAttachment[] | null>(null);
   const [placementPoint, setPlacementPoint] = useState<Point2D | null>(null);
   const placementPress = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
@@ -1332,7 +1332,14 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   const storedRoom = projectRooms.find(room => room.source_floorplan_room_id === selectedRoom?.id);
   const fixtures = useMemo(() => storedRoom?.obstacles ?? (selectedRoom?.id === activeSourceRoomId ? currentFixtures : []), [activeSourceRoomId, currentFixtures, selectedRoom?.id, storedRoom?.obstacles]);
   const visibleFixtures = useMemo(() => [...projectRooms.filter(room => rooms.some(outline => outline.id === room.source_floorplan_room_id) && room.source_floorplan_room_id !== selectedRoom?.id).flatMap(room => room.obstacles), ...fixtures], [projectRooms, rooms, selectedRoom?.id, fixtures]);
-  const wallFixturePreviewById = useMemo(() => new Map(wallFixturePreview.map((fixture) => [fixture.id, fixture])), [wallFixturePreview]);
+  const wallFixturePreviewById = useMemo(() => {
+    if (!wallDragAttachments?.length) return new Map<string, Obstacle>();
+    const positioned = positionWallAttachedFixtures(visibleFixtures, wallDragAttachments, walls, (id, index) => {
+      const host = walls.find(wall => wall.id === id);
+      return host ? wallThicknessForSegment(host, index, wallThickness) : wallThickness;
+    });
+    return new Map(positioned.filter((fixture, index) => fixture !== visibleFixtures[index]).map(fixture => [fixture.id, fixture]));
+  }, [visibleFixtures, wallDragAttachments, walls, wallThickness]);
   const previewedFixture = useCallback((fixture: Obstacle) => fixturePreview?.id === fixture.id ? fixturePreview : wallFixturePreviewById.get(fixture.id) ?? fixture, [fixturePreview, wallFixturePreviewById]);
   const electricalFixtures = useMemo(() => visibleFixtures.map(previewedFixture).filter(isElectricalObstacle), [visibleFixtures, previewedFixture]);
   const electricalObjects = electricalFixtures.map((fixture) => ({ id: fixture.id, label: fixture.name, representation_key: fixture.representation_key }));
@@ -1536,26 +1543,16 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   const placementGeometry = useRef({ walls, openings, planRooms, viewerOpeningRoom });
   useEffect(() => { placementGeometry.current = { walls, openings, planRooms, viewerOpeningRoom }; }, [walls, openings, planRooms, viewerOpeningRoom]);
   const planPlacementWalls = useMemo(()=>walls.flatMap(wall=>wall.points.slice(0,-1).map((start,index)=>({start,end:wall.points[index+1],thickness:wallThicknessForSegment(wall,index,wallThickness)}))),[walls,wallThickness]);
-  const syncWallFixturePreview = useEffectEvent(() => {
-    const activeDrag = wallDrag.current ?? pointDrag.current;
-    if (!activeDrag?.fixtureAttachments.length) {
-      setWallFixturePreview((current) => current.length ? [] : current);
-      return;
-    }
-    const positioned = positionWallAttachedFixtures(visibleFixtures, activeDrag.fixtureAttachments, walls, (id, index) => { const host = walls.find(wall => wall.id === id); return host ? wallThicknessForSegment(host, index, wallThickness) : wallThickness; });
-    setWallFixturePreview(positioned.filter((fixture, index) => fixture !== visibleFixtures[index]));
-  });
-  useLayoutEffect(() => { syncWallFixturePreview(); }, [walls, fixtures]);
   useEffect(()=>{ onPlacementWallsChange?.(planPlacementWalls); },[onPlacementWallsChange,planPlacementWalls]);
   const placementCandidate = placement && placementPoint ? resolvePlacement(placement, placementPoint, planRooms,planPlacementWalls) : null;
   const planRoomsSignature = useMemo(() => JSON.stringify(planRooms), [planRooms]);
   const publishedPlanRooms = useRef("");
   const publishPlanRooms = useEffectEvent((next: Room[]) => onPlanRoomsChange?.(next));
   useEffect(() => {
-    if (!restored || publishedPlanRooms.current === planRoomsSignature) return;
+    if (!restored || wallDragAttachments || publishedPlanRooms.current === planRoomsSignature) return;
     publishedPlanRooms.current = planRoomsSignature;
     publishPlanRooms(planRooms);
-  }, [planRooms, planRoomsSignature, restored]);
+  }, [planRooms, planRoomsSignature, restored, wallDragAttachments]);
   function onFixturesChange(next: Obstacle[], preserveWallAttachment = false) {
     const draft = selectedRoomDraft();
     if (draft && !preserveWallAttachment) next = next.flatMap(obstacle => {
@@ -1682,12 +1679,12 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   }, [initialFloorplan]);
 
   useEffect(() => {
-    if (!restored) return;
+    if (!restored || wallDragAttachments) return;
     const roomFinishes = Object.fromEntries(planRooms.filter((room) => room.finishes).map((room) => [room.source_floorplan_room_id ?? room.id, room.finishes!]));
     const viewSettings: PersistedViewSettings = { showGrid, showMeasurements, showRoomNames, showWallThickness, showAnnotations, zoom, pan };
     const value: PersistedFloorplan = { walls, openings, measurements, annotations, dimensionOffsets, hiddenDimensions, canvasSize, rooms, selectedRoomId, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, roomFinishes, viewSettings };
     publishPersistedFloorplan(value, planRooms);
-  }, [annotations, canvasSize, dimensionOffsets, hiddenDimensions, measurements, openings, pan, planRooms, restored, rooms, selectedRoomId, showGrid, showMeasurements, showRoomNames, showWallThickness, showAnnotations, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, walls, zoom]);
+  }, [annotations, canvasSize, dimensionOffsets, hiddenDimensions, measurements, openings, pan, planRooms, restored, rooms, selectedRoomId, showGrid, showMeasurements, showRoomNames, showWallThickness, showAnnotations, snapEnabled, snapSize, squaredWalls, wallHeight, wallThickness, wallDragAttachments, walls, zoom]);
 
   useEffect(() => {
     if (!restored) return;
@@ -1851,7 +1848,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     setSelectedPoint(null);
     setSelectedOpeningId(null);
     setSelectedFixtureId(null);
-    setWallFixturePreview([]);
+    setWallDragAttachments(null);
     onElementSelected?.(null);
 
     if (value.fixturePositions && onPlanRoomsChange && projectRooms.length) {
@@ -2717,7 +2714,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     roomLabelDrag.current = null;
     placementPress.current = null;
     setFixturePreview(null);
-    setWallFixturePreview([]);
+    setWallDragAttachments(null);
     setDraggingRoomLabelId(null);
     setPlacementPoint(null);
     setLockedViewport(origin.lockedViewport);
@@ -3618,7 +3615,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
       return hostWall ? wallThicknessForSegment(hostWall, segmentIndex, wallThickness) : wallThickness;
     });
     pointDrag.current = { selection, before, fixtureAttachments };
-    setWallFixturePreview([]);
+    setWallDragAttachments(fixtureAttachments);
     setLockedViewport(viewport); setSelectedPoint(selection); setSelectedSegment(null); setSelectedOpeningId(null); setSelectedFixtureId(null); onElementSelected?.(null);
   }
 
@@ -3651,7 +3648,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     event.stopPropagation(); svg.setPointerCapture(event.pointerId);
     pendingOpeningRemap.current = null;
     wallDrag.current = { wallId: wall.id, segmentIndex: separatedEnd.segmentIndex, detachedPointIndices, keepDetachedPointIndices, fixtureAttachments, before, historyBefore, points: selectedWall.points.map((point) => ({ ...point })), pointerStart };
-    setWallFixturePreview([]);
+    setWallDragAttachments(fixtureAttachments);
     if (materialized.splitAlong.length || detachedPointIndices.length) {
       setWallsRespectingMeasurements(cloneWalls(before.walls)); setOpenings(cloneOpenings(before.openings)); setMeasurements(cloneMeasurements(before.measurements));
       setDimensionOffsets({ ...before.dimensionOffsets }); setHiddenDimensions([...before.hiddenDimensions]);
@@ -3794,7 +3791,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     if (pointDrag.current) persistWallAttachedFixturePositions(pointDrag.current.fixtureAttachments);
     pointDrag.current = null;
     wallDrag.current = null;
-    setWallFixturePreview([]);
+    setWallDragAttachments(null);
     openingDrag.current = null;
     measurementDrag.current = null;
     annotationDrag.current = null;
@@ -4256,7 +4253,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
       const before = active.historyBefore;
       wallDrag.current = null;
       pendingOpeningRemap.current = null;
-      setWallFixturePreview([]);
+      setWallDragAttachments(null);
       persistWallAttachedFixturePositions(active.fixtureAttachments);
       setLockedViewport(null);
       record(before);
@@ -4267,7 +4264,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     const before = active.before;
     pointDrag.current = null;
     pendingOpeningRemap.current = null;
-    setWallFixturePreview([]);
+    setWallDragAttachments(null);
     persistWallAttachedFixturePositions(active.fixtureAttachments);
     setLockedViewport(null);
     record(before);
@@ -5107,7 +5104,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     {liveStyleCss && <style data-floorplan-style={floorplanStyle} dangerouslySetInnerHTML={{ __html: liveStyleCss }} />}
     <PlanHoverHelp />
     <Popup open={outlineResetConfirm} title="Replace current building?" message="" className="building-reset-warning" confirmLabel="Delete contents & start" onConfirm={applyConfirmedOutline} onCancel={()=>{setOutlineResetConfirm(false);setOutlineMenuOpen(true);}}><div className="building-reset-message"><span className="building-reset-icon" aria-hidden="true">!</span><div><p className="building-reset-summary">All floors, rooms, placed items and service layouts will be cleared. Roof settings will reset.</p><p className="building-reset-note">Undo can restore them. Save a backup to keep a copy.</p></div></div></Popup>
-    <Popup open={outlineMenuOpen} title="New outline" message="" confirmLabel="OK" confirmDisabled={!pendingOutlineAction} onConfirm={confirmOutlineAction} onCancel={() => setOutlineMenuOpen(false)}>
+    <Popup open={outlineMenuOpen} title="New outline" className="new-outline-popup" message="" confirmLabel="OK" confirmDisabled={!pendingOutlineAction} onConfirm={confirmOutlineAction} onCancel={() => setOutlineMenuOpen(false)}>
       <div className="outline-menu-content">
         <p>Choose a starting shape. OK opens a separate warning. Your current building is kept until you confirm Delete contents &amp; start. Cancel keeps everything unchanged.</p>
         <div className="outline-menu-options" role="group" aria-label="Outline starting points">

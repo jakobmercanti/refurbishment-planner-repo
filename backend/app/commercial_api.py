@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from backend.app.commercial_entitlements import can_use_electrical_layout, can_use_planner_build
-from backend.app.r2_storage import R2Unavailable, r2_storage
+from backend.app.r2_storage import R2Unavailable, key_in_namespace, r2_storage
 from backend.app.stripe_gateway import PACK_KEYS, PLAN_KEYS, StripeUnavailable, stripe_gateway
 from backend.app.supabase_rest import InvalidAccessToken, SupabaseREST, SupabaseUnavailable, VerifiedUser, supabase_rest
 from database.catalog import SessionLocal
@@ -725,6 +725,8 @@ def finalize_asset_upload(asset_id: UUID, authorization: str | None = Header(def
         return {"asset_id": str(asset_id), "processing_status": current_status, "idempotent": True}
     if current_status != "uploading":
         raise HTTPException(status_code=409, detail="This asset upload is not awaiting completion.")
+    if not key_in_namespace(asset.get("original_object_key"), f"users/{user.id}/assets/{asset_id}/"):
+        raise HTTPException(status_code=404, detail="The uploaded object could not be found.")
     try:
         content, metadata = storage.get(str(asset["original_object_key"]), max_bytes=100 * 1024 * 1024)
     except (R2Unavailable, KeyError):
@@ -763,6 +765,8 @@ def asset_download(
     key = asset.get(key_field)
     if not key or (variant != "source" and asset.get("processing_status") != "ready"):
         raise HTTPException(status_code=409, detail="This asset is not ready for download.")
+    if not key_in_namespace(key, f"users/{user.id}/assets/{asset_id}/"):
+        raise HTTPException(status_code=404, detail="The requested asset could not be found.")
     try:
         signed = storage.presign("GET", str(key), expires_seconds=300)
     except (R2Unavailable, ValueError):
@@ -788,7 +792,7 @@ def delete_asset(asset_id: UUID, authorization: str | None = Header(default=None
         )
     keys = result.get("object_keys", [])
     for key in keys:
-        if not isinstance(key, str) or not key:
+        if not isinstance(key, str) or not key_in_namespace(key, f"users/{user.id}/assets/{asset_id}/"):
             continue
         try:
             storage.delete(key)
@@ -809,7 +813,7 @@ def download_local_project_asset(
         lambda: db.select(
             "asset_definitions",
             {
-                "select": "derived_object_key,name",
+                "select": "asset_id,derived_object_key,name",
                 "user_id": f"eq.{user.id}",
                 "local_asset_key": f"eq.{local_asset_key}",
                 "processing_status": "eq.ready",
@@ -817,7 +821,9 @@ def download_local_project_asset(
             },
         )
     )
-    if not isinstance(rows, list) or not rows or not rows[0].get("derived_object_key"):
+    if not isinstance(rows, list) or not rows or not key_in_namespace(
+        rows[0].get("derived_object_key"), f"users/{user.id}/assets/{rows[0].get('asset_id')}/"
+    ):
         raise HTTPException(status_code=404, detail="The project model is not available in the cloud yet.")
     try:
         signed = storage.presign("GET", str(rows[0]["derived_object_key"]), expires_seconds=300)
@@ -1214,6 +1220,8 @@ def get_render(render_id: UUID, authorization: str | None = Header(default=None)
     row = dict(rows[0])
     key = row.pop("output_object_key", None)
     if row.get("status") == "succeeded" and key:
+        if not key_in_namespace(key, f"users/{user.id}/renders/{render_id}/"):
+            raise HTTPException(status_code=404, detail="The render could not be found.")
         try:
             row["image_url"] = r2_storage().presign("GET", str(key), expires_seconds=300)
         except (R2Unavailable, ValueError):

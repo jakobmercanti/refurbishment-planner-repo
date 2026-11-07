@@ -40,3 +40,18 @@ def test_programmer_flag_is_required_and_loopback_only(monkeypatch):
     assert TestClient(app).put("/settings", json={}).status_code == 403
     monkeypatch.setenv("ENABLE_PROGRAMMER_TOOLS", "true")
     assert TestClient(app, client=("203.0.113.5", 1234)).put("/settings", json={}).status_code == 403
+
+
+def test_private_routes_default_to_closed_and_cannot_use_a_remote_forwarded_origin(monkeypatch):
+    monkeypatch.delenv("RENOVATION_FIT_PUBLIC")
+    monkeypatch.setenv("ENABLE_PROGRAMMER_TOOLS", "true")
+    client = TestClient(app)
+    for path in ("/docs", "/openapi.json", "/redoc", "/rooms", "/projects"):
+        assert client.get(path).status_code == 404
+    assert client.put("/settings", json={}).status_code == 403
+    private_response = client.get("/commercial/projects")
+    assert private_response.status_code == 401
+    assert private_response.headers["Cache-Control"] == "private, no-store"
+    monkeypatch.setenv("RENOVATION_FIT_PUBLIC", "false")
+    assert client.put("/settings", json={}, headers={"X-Forwarded-For": "203.0.113.8"}).status_code == 403
+    assert client.put("/settings", json={}, headers={"Origin": "https://other.example"}).status_code == 403

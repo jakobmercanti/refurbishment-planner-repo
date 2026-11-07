@@ -4,6 +4,13 @@ import worker from './planner-worker.mjs';
 import { PLANS_PAGE_VERSION } from './plans-page.mjs';
 
 const origin = 'https://www.freefloorplan3d.com';
+test('fixture admin pages are blocked before any asset lookup, including encoded paths', async () => {
+  const env = { ASSETS: { fetch: async () => assert.fail('Admin routes must never reach the asset store') } };
+  for (const path of ['fixture-studio/', '%66ixture-studio/', 'FIXTURE-STUDIO/', '%2566ixture-studio/']) {
+    const response = await worker.fetch(new Request(origin + '/planner/' + path), env);
+    assert.ok([400, 404].includes(response.status), path);
+  }
+});
 test('normal Plans uses the proven plain navigation without app assets or framework scripts', async () => {
   const response = await worker.fetch(new Request(origin + '/planner/plans/?plan=studio'), { ASSETS: { fetch: async () => { throw new Error('Must bypass planner assets'); } } });
   assert.equal(response.status, 200);

@@ -12,19 +12,19 @@ export function ventUVAtPoint(vent: CFDVent, host: CFDHost, point: Vec3) {
 }
 
 /** Translate the vent by the pointer displacement without changing its elevation. */
-export function ventUVFromPlanDrag(vent: CFDVent, host: CFDHost, start: Point2D, end: Point2D) {
+export function ventPointFromPlanDrag(vent: CFDVent, host: CFDHost, start: Point2D, end: Point2D): Vec3 {
   const centre = ventCenter(vent, host);
-  return ventUVAtPoint(vent, host, [centre[0] + end.x - start.x, centre[1] + end.y - start.y, centre[2]]);
+  return [centre[0] + end.x - start.x, centre[1] + end.y - start.y, centre[2]];
 }
 
 /** Match a rendered building hit to a checked host, including real polygon holes. */
-export function ventHostAtPoint(vent: CFDVent, patches: readonly CFDPatch[], point: Vec3) {
+export function ventHostAtPoint(vent: CFDVent, patches: readonly CFDPatch[], point: Vec3, toleranceMm = 8) {
   return patches.flatMap(patch => {
     const host = patch.host;
     if (!patch.hostable || !host || !["wall", "floor", "ceiling"].includes(patch.kind)) return [];
     const delta = point.map((n, i) => n - host.originMm[i]);
     const dot = (axis: Vec3) => delta.reduce((sum, n, i) => sum + n * axis[i], 0);
-    const distance = Math.abs(dot(host.normal)); if (distance > 8) return [];
+    const distance = Math.abs(dot(host.normal)); if (distance > toleranceMm) return [];
     const local = { x: dot(host.uAxis), y: dot(host.vAxis) };
     if (!host.polygonsMm.some(polygon => containsPoint(local, polygon[0].map(([x,y]) => ({x,y}))) && !polygon.slice(1).some(hole => containsPoint(local, hole.map(([x,y])=>({x,y})))))) return [];
     const uv = snapVentUV(vent, host, local.x / host.widthMm, local.y / host.heightMm);

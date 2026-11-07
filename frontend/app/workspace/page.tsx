@@ -9,6 +9,7 @@ import { currentSession, signOut, type AuthSession } from "@/lib/commercialAuth"
 import { projectRepository } from "@/lib/projectRepository";
 import { assetRepository } from "@/lib/assetRepository";
 import { parseProject, type AssetClassification, type ProjectDocument } from "@/lib/projectDocument";
+import { LocalAccountBoundary } from "@/components/LocalAccountBoundary";
 
 type Usage = { projects: number; assets: number; storage_bytes: number };
 type Summary = { plan: string; name: string; status: string; monthly_price_pence: number; storage_limit_bytes: number; project_limit: number; asset_limit: number; usage: Usage };
@@ -19,6 +20,10 @@ type Conflict = { local: ProjectDocument; remote: ProjectDocument; revision: num
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export default function WorkspacePage() {
+  return <LocalAccountBoundary><Workspace /></LocalAccountBoundary>;
+}
+
+function Workspace() {
   const router = useRouter();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);

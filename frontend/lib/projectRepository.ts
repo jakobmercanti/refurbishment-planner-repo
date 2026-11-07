@@ -1,4 +1,4 @@
-import { completed, localDatabase, requestValue } from "./localDatabase";
+import { completed, localDatabase, requestValue, usesGuestLocalStorage } from "./localDatabase";
 import { migrateProject, newProject, parseProject, type ProjectDocument } from "./projectDocument";
 import type { PersistedFloorplan } from "../components/FullFloorplanEditor";
 
@@ -20,7 +20,7 @@ export class LocalProjectRepository implements ProjectRepository {
     if (id) { try { return await this.getProject(id); } catch { const backup = await this.getBackup(id); if (backup) return backup; throw new Error("Saved project is damaged; original records have been preserved."); } }
     const project = newProject();
     // Explicit import of the historical v2 browser draft. Keep the original for recovery.
-    const legacy = localStorage.getItem("renovation-fit:complete-floorplan:v2");
+    const legacy = usesGuestLocalStorage() ? localStorage.getItem("renovation-fit:complete-floorplan:v2") : null;
     if (legacy) { project.floorplan = JSON.parse(legacy) as PersistedFloorplan; parseProject(project); }
     await this.saveProject(project);
     return project;

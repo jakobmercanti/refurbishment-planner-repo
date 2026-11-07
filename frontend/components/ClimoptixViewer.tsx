@@ -610,7 +610,7 @@ export function ClimoptixViewer({
       </div>
       {viewTarget &&
         createPortal(
-          <div className="cfx-inspector" aria-label="CFD view properties"><div className="cfx-view-checks">
+          <details open className="cfx-inspector" aria-label="CFD view properties"><summary>Geometry &amp; result visibility</summary><div className="cfx-view-checks">
             <label className="cfx-check">
               <input
                 type="checkbox"
@@ -651,7 +651,7 @@ export function ClimoptixViewer({
             <button type="button" onClick={() => setFit((x) => x + 1)}>
               Fit view
             </button>
-          </div>,
+          </details>,
           viewTarget,
         )}
       {!buildingScene && rooms.length > 0 && (

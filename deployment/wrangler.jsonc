@@ -14,6 +14,8 @@
     { "name": "ANALYTICS_RATE_LIMIT", "namespace_id": "9052602", "simple": { "limit": 30, "period": 60 } },
     { "name": "AUTH_RATE_LIMIT", "namespace_id": "9052603", "simple": { "limit": 30, "period": 60 } }
   ],
+  "durable_objects": { "bindings": [{ "name": "PASSWORD_ATTEMPTS", "class_name": "PasswordAttempts" }] },
+  "migrations": [{ "tag": "password-attempts-v1", "new_sqlite_classes": ["PasswordAttempts"] }],
   "assets": { "directory": "../frontend/out", "binding": "ASSETS", "run_worker_first": true, "html_handling": "none" },
   "routes": [
     { "pattern": "www.freefloorplan3d.com/planner", "zone_id": "b70e9c7623bf478b6d7d7ef776d83936" },

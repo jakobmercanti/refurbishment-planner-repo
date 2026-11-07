@@ -32,7 +32,7 @@ async function profile(page, p) {
     document.documentElement.style.setProperty("--font-sans", palette.typography.sans); document.documentElement.style.setProperty("--font-mono", palette.typography.controls);
   }, { profile: p, palette: palettes[p.style.toUpperCase()] });
 }
-async function inspect(panel, label) {
+async function inspect(panel, label, expectedMainHelp = 1) {
   const report = await panel.evaluate(root => {
     const owner = e => e.closest(".floating-toolbar,dialog,[role=dialog]");
     const visible = e => e.checkVisibility() && owner(e) === root;
@@ -47,7 +47,7 @@ async function inspect(panel, label) {
     const uniqueSections = new Set(sectionHelp.map(e => e.parentElement));
     return { unequal, mainHelp, duplicateHelp: sectionHelp.length - uniqueSections.size, chrome, clipped: actions.filter(e => e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 2).map(e => e.textContent), overflow: root.scrollWidth > root.clientWidth + 2 };
   });
-  assert.equal(report.mainHelp, 1, `${label}: one main help button`);
+  assert.equal(report.mainHelp, expectedMainHelp, `${label}: window help policy`);
   assert.equal(report.duplicateHelp, 0, `${label}: one help button per section`);
   assert.ok(report.chrome.length >= 3 && report.chrome.every(([w, h]) => Math.abs(w - report.chrome[0][0]) < 1 && Math.abs(h - report.chrome[0][1]) < 1 && Math.abs(w - h) < 1), `${label}: ${JSON.stringify(report.chrome)}`);
   assert.deepEqual(report.unequal, [], `${label}: equal action heights`); assert.deepEqual(report.clipped, [], label); assert.equal(report.overflow, false, label);
@@ -80,20 +80,19 @@ test("Heating, Ventilation, Energy and Electrical share one guide and consistent
   }
 });
 
-test("every CFD phase has uniform header controls and a complete main guide before other phases mount", async t => {
+test("CFD phases use one window disclosure bar and contextual section help", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close()); const { page } = s;
   await page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("CLIMOPTIX"); const ui = page.locator(".cfx-workspace");
   await cfdWindow(ui, "Simulations"); const panel = page.locator(".cfx-setup-window");
-  await panel.getByRole("button", { name: "Help for Climoptix CFD", exact: true }).click();
-  const help = page.locator(".window-help-host");
-  await help.getByRole("heading", { name: "Films and handoff", exact: true }).waitFor();
-  await help.getByRole("heading", { name: "Vent-position preparation", exact: true }).waitFor(); await page.keyboard.press("Escape");
   for (const p of profiles) {
     await profile(page, p);
     for (const phase of ["Simulations", "Domain", "Equipment", "Boundaries", "Physics", "Solver", "Optimisation", "Review & export", "Imported results"]) {
-      await cfdWindow(ui, phase); await inspect(panel, `CFD/${phase}/${p.width}/${p.density}`);
+      await cfdWindow(ui, phase); await inspect(panel, `CFD/${phase}/${p.width}/${p.density}`, 0);
+      for (const name of ["Collapse all", "Expand all"]) {
+        assert.equal(await panel.getByRole("button", { name, exact: true }).count(), 1);
+      }
       if (phase === "Boundaries") {
-        await ui.getByRole("tab", { name: "Thermal", exact: true }).click(); await inspect(panel, `Thermal/${p.width}/${p.density}`);
+        await ui.getByRole("tab", { name: "Thermal", exact: true }).click(); await inspect(panel, `Thermal/${p.width}/${p.density}`, 0);
         const minimums = await panel.locator(".thermal-footer button").evaluateAll(nodes => nodes.filter(e => e.checkVisibility()).map(e => [parseFloat(getComputedStyle(e).minHeight), parseFloat(getComputedStyle(e).getPropertyValue("--density-control-min-height"))]));
         assert.ok(minimums.length && minimums.every(([a, b]) => Math.abs(a - b) < 1), JSON.stringify(minimums));
       }

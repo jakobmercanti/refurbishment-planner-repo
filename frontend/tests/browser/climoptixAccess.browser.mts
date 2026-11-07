@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import { cfdProject } from "../climoptixFixtures";
-import { cfdWindow, eventually, startBrowserHarness } from "./harness.mjs";
+import { cfdWindow, eventually, readProject, startBrowserHarness, writeProject } from "./harness.mjs";
 
 let harness;
 before(async () => { harness = await startBrowserHarness(); });
@@ -13,6 +13,8 @@ const workspace = page => page.getByRole("combobox", {name:"Workspace", exact:tr
 const privateOption = page => workspace(page).locator('option[value="CLIMOPTIX"]');
 
 async function account(page, token: string | null, id = owner) {
+  if (token && !(await readProject(page, id))) await writeProject(page, cfdProject(), id);
+  const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
   await page.evaluate(({token,id}) => {
     if (token) sessionStorage.setItem("freefloorplan3d:commercial-session:v1", JSON.stringify({
       access_token:token, refresh_token:"test-refresh", expires_at:Math.floor(Date.now()/1000)+3600,
@@ -21,6 +23,8 @@ async function account(page, token: string | null, id = owner) {
     else sessionStorage.removeItem("freefloorplan3d:commercial-session:v1");
     window.dispatchEvent(new Event("freefloorplan3d:auth-session-changed"));
   }, {token,id});
+  await navigation;
+  await workspace(page).waitFor();
 }
 
 test("public Climoptix is discoverable but signed-out users must verify an account before compute access", async t => {
@@ -53,8 +57,9 @@ test("any verified free account can open setup without a ready solver; logout un
   const s = await harness.session(cfdProject()); t.after(() => s.close());
   await s.context.route("**/commercial/summary", route => route.fulfill({json:{plan:"free"}}));
   await s.context.route("**/climoptix/worker/capabilities", route => route.fulfill({json:capabilities}));
-  const before = JSON.stringify((await s.saved()).cfdScenarios);
+  const guest = await s.saved();
   await account(s.page, "test-enabled");
+  const before = JSON.stringify((await s.saved()).cfdScenarios);
   await eventually(() => privateOption(s.page).textContent(), text => text === "Climoptix CFD");
   await workspace(s.page).selectOption("CLIMOPTIX");
   await s.page.getByRole("region", {name:"Climoptix CFD workspace", exact:true}).waitFor();
@@ -63,7 +68,8 @@ test("any verified free account can open setup without a ready solver; logout un
   assert.equal(await workspace(s.page).inputValue(), "FLOORPLAN");
   assert.equal(await s.page.locator(".climoptix-screen").count(), 0);
   assert.equal(await s.page.getByRole("button", {name:"Return to Climoptix", exact:true}).count(), 0);
-  const after = (await s.saved()).cfdScenarios;
+  assert.equal((await s.saved()).projectId, guest.projectId);
+  const after = (await readProject(s.page, owner)).cfdScenarios;
   // Automatic preparation may update validation metadata, never editable data.
   for (const study of after) delete study.validation;
   const previous = JSON.parse(before); for (const study of previous) delete study.validation;

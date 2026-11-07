@@ -1,3 +1,5 @@
+import { passwordSignIn } from './password-attempts.mjs';
+
 const unavailable = 'Account services are temporarily unavailable. Please try again in a moment.';
 const json = (message, status) => Response.json({ message }, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
 
@@ -53,8 +55,9 @@ export async function authProxy(request, endpoint, env) {
       }
     }
     const forwarded = { apikey: key, 'Content-Type': 'application/json' };
-    if (authorization) forwarded.Authorization = authorization;
-    const response = await fetch(new URL('/auth/v1' + endpoint + url.search, upstream), {
+    if (authorization && (endpoint === '/user' || endpoint === '/logout')) forwarded.Authorization = authorization;
+    const password = endpoint === '/token' && url.searchParams.get('grant_type') === 'password';
+    const response = password ? await passwordSignIn(env, key, body) : await fetch(new URL('/auth/v1' + endpoint + url.search, upstream), {
       method: request.method, headers: forwarded, body, redirect: 'manual', signal: AbortSignal.timeout(15000),
     });
     if (response.status >= 300 && response.status < 400) return json(unavailable, 503);

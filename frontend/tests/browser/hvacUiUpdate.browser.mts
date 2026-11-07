@@ -82,6 +82,15 @@ test("changing a measured wall length regenerates UFH and project Undo restores 
   await page.keyboard.press("Control+z");
   const undone = await eventually(session.saved, p => JSON.stringify(p.rooms[0].vertices) === JSON.stringify(before.rooms[0].vertices));
   assert.deepEqual(undone.heatingLayout.ufhCircuits, before.heatingLayout.ufhCircuits);
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x, center.y - 42, { steps: 15 });
+  await page.waitForTimeout(1100); // Longer than the ordinary autosave delay.
+  assert.deepEqual((await session.saved()).rooms[0].vertices, before.rooms[0].vertices);
+  assert.deepEqual((await session.saved()).heatingLayout.ufhCircuits, before.heatingLayout.ufhCircuits);
+  await page.mouse.up();
+  const dragged = await eventually(session.saved, p => JSON.stringify(p.rooms[0].vertices) !== JSON.stringify(before.rooms[0].vertices));
+  assert.notDeepEqual(dragged.heatingLayout.ufhCircuits, before.heatingLayout.ufhCircuits);
 });
 
 test("help consolidates fields, layers select together, results fill the panel, and manifold labels are opaque", async t => {

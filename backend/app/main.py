@@ -18,7 +18,7 @@ from typing import Annotated, Any
 from urllib.parse import urljoin, urlparse
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from backend.app.aggregate_analytics import router as aggregate_analytics_router
 from backend.app.climoptix_api import router as climoptix_router
 from backend.app.commercial_api import router as commercial_api_router
-from backend.app.deployment import DeploymentBoundary
+from backend.app.deployment import DeploymentBoundary, local_request, public_deployment
 from backend.app.schemas import (
     CADResponse,
     CatalogueCategoryResponse,
@@ -597,10 +597,10 @@ def validate_placement(placement: Placement) -> Placement:
 
 
 @app.post("/fit-checks", response_model=FitResult, status_code=201)
-def run_fit_check(payload: FitRequest) -> FitResult:
+def run_fit_check(payload: FitRequest, request: Request) -> FitResult:
     result = check_fit(payload.room, payload.product, payload.placement)
     analysis_id = uuid4()
-    if os.getenv("RENOVATION_FIT_PUBLIC", "false").lower() != "true":
+    if not public_deployment() and local_request(request.scope):
         fit_results[analysis_id] = result
     return result
 

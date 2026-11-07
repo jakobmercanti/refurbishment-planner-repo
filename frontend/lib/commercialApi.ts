@@ -1,6 +1,7 @@
 "use client";
 
-import { currentSession } from "./commercialAuth";
+import { currentSession, storedAccountId } from "./commercialAuth";
+import { matchesLocalStorageAccount } from "./localDatabase";
 
 const baseUrl = (process.env.NEXT_PUBLIC_COMMERCIAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "/engineering-api").replace(/\/$/, "");
 
@@ -15,13 +16,17 @@ export async function commercialRequest<T>(path: string, init: RequestInit = {},
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  let account: string | null = null;
   if (requireAuth) {
     const session = await currentSession();
     if (!session) throw new CommercialApiError("Sign in to continue.", 401);
+    account = session.user.id;
+    if (!matchesLocalStorageAccount(account) || storedAccountId() !== account) throw new CommercialApiError("Account changed. Reopen your workspace.", 401);
     headers.set("Authorization", `Bearer ${session.access_token}`);
   }
-  const response = await fetch(`${baseUrl}/commercial${path}`, { ...init, signal: init.signal ?? AbortSignal.timeout(25_000), headers, cache: "no-store" });
+  const response = await fetch(`${baseUrl}/commercial${path}`, { ...init, signal: init.signal ?? AbortSignal.timeout(25_000), headers, cache: "no-store", redirect: "error", referrerPolicy: "no-referrer" });
   const result = await response.json().catch(() => ({})) as { detail?: unknown; message?: string };
+  if (requireAuth && storedAccountId() !== account) throw new CommercialApiError("Account changed. Reopen your workspace.", 401);
   if (!response.ok) {
     const detail = result.detail;
     const message = typeof detail === "string" ? detail : typeof detail === "object" && detail && "message" in detail && typeof detail.message === "string" ? detail.message : result.message ?? `Request failed (${response.status}).`;

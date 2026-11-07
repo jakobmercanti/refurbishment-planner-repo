@@ -91,9 +91,13 @@ function readStoredSession(): AuthSession | null {
         typeof value.expires_at !== "number" || typeof value.user?.id !== "string") return null;
     return value as AuthSession;
   } catch {
-    saveSession(null);
     return null;
   }
+}
+
+/** The browser-storage scope is frozen before opening a workspace. */
+export function storedAccountId(): string | null {
+  return readStoredSession()?.user.id ?? null;
 }
 
 async function authRequest<T>(path: string, body?: unknown, accessToken?: string, method = body === undefined ? "GET" : "POST"): Promise<T> {
@@ -123,7 +127,8 @@ async function authRequest<T>(path: string, body?: unknown, accessToken?: string
       const message = code === "email_not_confirmed" ? "This account needs email verification. Use Resend verification email below, then open the newest link."
         : code === "email_address_not_authorized" ? "Email delivery is not configured for this address. Please contact support; repeated requests will not help."
         : code === "over_email_send_rate_limit" ? "The email sending limit has been reached. Please wait before requesting another verification or reset email."
-        : response.status === 429 ? "Too many account requests. Please wait a little before trying again."
+        : code === "password_attempt_limit" ? "Too many sign-in attempts. Wait before trying again or request a password reset."
+        : response.status === 429 ? "Too many account requests. Please wait before trying again."
         : response.status >= 500 ? "Account services are temporarily unavailable. Please try again in a moment."
         : typeof known === "string" ? known.slice(0, 240) : "The account request could not be completed. Please try again.";
       throw new AuthRequestError(message, response.status, code);

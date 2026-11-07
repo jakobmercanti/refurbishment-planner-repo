@@ -1,7 +1,19 @@
 let connection: Promise<IDBDatabase> | undefined;
+let storageAccount: string | null | undefined;
+
+export function bindLocalStorageAccount(account: string | null): boolean {
+  if (storageAccount === undefined) storageAccount = account;
+  return storageAccount === account;
+}
+
+export const usesGuestLocalStorage = () => !storageAccount;
+export const matchesLocalStorageAccount = (account: string | null) => storageAccount === undefined || storageAccount === account;
+
 export function localDatabase(): Promise<IDBDatabase> {
   return connection ??= new Promise((resolve, reject) => {
-    const request = indexedDB.open("freefloorplan3d", 2);
+    if (storageAccount === undefined) storageAccount = null;
+    const name = storageAccount ? "freefloorplan3d:account:" + storageAccount : "freefloorplan3d";
+    const request = indexedDB.open(name, 2);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       if (event.oldVersion < 1) for (const name of ["projects", "backups", "assets", "meta"]) db.createObjectStore(name);

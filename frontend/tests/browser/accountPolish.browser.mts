@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { before, after } from 'node:test';
 import { cfdProject } from '../climoptixFixtures';
-import { eventually, startBrowserHarness } from './harness.mjs';
+import { eventually, readProject, startBrowserHarness } from './harness.mjs';
 
 let harness;
 before(async () => { harness = await startBrowserHarness(); });
@@ -40,7 +40,10 @@ for (const width of [1440, 390]) test(`Sign in opens the form immediately; a sin
   await password.press('Enter');
   await eventually(() => dialog.count(), count => count === 0);
   await page.getByRole('button', { name: 'Signed in · Pro', exact: true }).waitFor();
-  assert.equal(submissions, 1); assert.deepEqual((await saved()).rooms, rooms);
+  assert.equal(submissions, 1);
+  const privateProject = await eventually(saved, value => !!value?.projectId);
+  assert.notEqual(privateProject.projectId, persisted.projectId);
+  assert.deepEqual((await readProject(page, null)).rooms, rooms);
   assert.equal(new URL(page.url()).pathname, '/planner/');
   await page.getByRole('button', { name: 'Signed in · Pro', exact: true }).click();
   const ready=page.locator('.account-ready-actions');
@@ -48,6 +51,37 @@ for (const width of [1440, 390]) test(`Sign in opens the form immediately; a sin
   assert.equal(grid.length,4); assert.equal(grid[0].y,grid[1].y); assert.equal(grid[2].y,grid[3].y); assert.ok(grid[2].y>grid[0].y);
   for(const rect of grid) assert.ok(Math.abs(rect.w-grid[0].w)<1);
   const billing=ready.getByRole('link',{name:'Open plans and billing ↗',exact:true}); assert.equal(await billing.getAttribute('target'),'_blank');
+  await context.route('**/auth-api/logout', route => route.fulfill({ status: 204 }));
+  await ready.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await eventually(() => page.locator('.app-nav-entry').textContent(), value => value === 'Sign in');
+  await eventually(saved, value => value?.projectId === persisted.projectId);
+});
+
+test('switching browser accounts never opens the prior account project', async t => {
+  const { page, context, saved, close } = await harness.session(cfdProject());
+  t.after(close);
+  await context.route('**/commercial/summary', route => route.fulfill({ json: { plan: 'pro' } }));
+  const guest = await saved();
+  async function switchAccount(id) {
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+      page.evaluate(accountId => {
+        sessionStorage.setItem('freefloorplan3d:commercial-session:v1', JSON.stringify({
+          access_token: 'fixture-access', refresh_token: 'fixture-refresh',
+          expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: accountId },
+        }));
+        window.dispatchEvent(new Event('freefloorplan3d:auth-session-changed'));
+      }, id),
+    ]);
+    await page.getByRole('combobox', { name: 'Workspace', exact: true }).waitFor();
+    return eventually(saved, project => !!project?.projectId);
+  }
+  const accountA = '11111111-1111-4111-8111-111111111111', accountB = '22222222-2222-4222-8222-222222222222';
+  const a = await switchAccount(accountA), b = await switchAccount(accountB);
+  assert.notEqual(a.projectId, b.projectId);
+  assert.notEqual(guest.projectId, a.projectId);
+  assert.notEqual(guest.projectId, b.projectId);
+  assert.equal((await switchAccount(accountA)).projectId, a.projectId);
 });
 
 test('plan outages do not invent a Free plan and refresh recovers the verified plan', async t => {

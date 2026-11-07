@@ -13,7 +13,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import Request
+
+from backend.app.private_http import private_opener
+
+
+def key_in_namespace(key: object, prefix: str) -> bool:
+    return (
+        isinstance(key, str)
+        and key.startswith(prefix)
+        and len(key) > len(prefix)
+        and ".." not in key.split("/")
+        and "\\" not in key
+    )
 
 
 class R2Unavailable(RuntimeError):
@@ -34,7 +46,7 @@ class R2Storage:
         self.access_key = os.getenv("R2_ACCESS_KEY_ID", "").strip()
         self.secret_key = os.getenv("R2_SECRET_ACCESS_KEY", "").strip()
         self.endpoint = f"https://{self.account_id}.r2.cloudflarestorage.com" if self.account_id else ""
-        self.opener = build_opener(ProxyHandler({}))
+        self.opener = private_opener()
 
     @property
     def configured(self) -> bool:

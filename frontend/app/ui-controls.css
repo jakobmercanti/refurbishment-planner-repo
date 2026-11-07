@@ -119,3 +119,9 @@ body .floating-toolbar[data-edge-docked="LEFT"] > .floating-toolbar-resize-right
 .cfx-study-row > .cfx-row-menu { grid-column:2; grid-row:1; min-width:0; }
 .cfx-study-actions { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); justify-self:end; }
 .cfx-study-actions > button { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+body .popup.new-outline-popup { width:min(590px, calc(100vw - 24px)); }
+body .new-outline-popup :is(.popup-content, .popup-actions) { padding:16px 20px; }
+body .cfx-workspace .cfx-hvac-actions { grid-template-columns:repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.cfx-workspace .floating-toolbar .window-help-button:not(.menu-section-help) { display:none; }
+.cfx-window-sections .cfx-disclosure-actions:not(.cfx-window-disclosures) { display:none; }
+.cfx-window-disclosure-bar { display:flex; justify-content:flex-end; padding:6px 10px; }

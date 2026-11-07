@@ -5,6 +5,7 @@ import { hvacProject } from "../hvacFixtures";
 import { realPreparation } from "../climoptixFixtures";
 import { duplicateFloor, projectFloors, selectFloor } from "../../lib/buildingDocument";
 import { resolveHvacVents } from "../../lib/hvacDocument";
+import { newCFDScenario } from "../../lib/climoptixDocument";
 import { eventually, menu, startBrowserHarness, cfdWindow } from "./harness.mjs";
 
 let harness;
@@ -89,9 +90,18 @@ test("conventional plan drag commits measured host coordinates, undo and Escape 
   const editor = s.page.locator(".hvac-vent-editor");
   const host = editor.getByRole("combobox", { name: "Vent host face", exact: true });
   await eventually(() => host.innerText(), text => !text.includes("Missing host"));
+  const seed = { floorId: projectFloors(p)[0].id, roomId: p.rooms[0].id };
+  const report = realPreparation({ project: p, scenario: { ...newCFDScenario(p.projectId), seed }, clientRevision: "a".repeat(64) });
+  const horizontalWall = report.patches.find(patch => patch.kind === "wall" && patch.hostable
+    && patch.roomId === seed.roomId && Math.abs(patch.host?.uAxis[0] ?? 0) > .99)?.id;
+  assert.ok(horizontalWall, "The fixture must offer a horizontal wall host");
+  await host.selectOption(horizontalWall);
   await editor.getByRole("button", { name: "Done", exact: true }).click();
-  const before = await eventually(s.saved, p => p.hvac?.devices.length === 1);
-  const marker = panel.getByRole("button", { name: "Select Supply 1 in plan", exact: true }); await marker.scrollIntoViewIfNeeded();
+  const before = await eventually(s.saved, p => p.hvac?.devices[0]?.vent.host.patchId === horizontalWall);
+  assert.equal(await panel.getByLabel("Ventilation room plan", { exact: true }).count(), 0);
+  const marker = s.page.getByRole("button", { name: "Select shared vent Supply 1", exact: true });
+  await panel.getByRole("button", { name: "Minimise Heating Layout", exact: true }).click();
+  await marker.scrollIntoViewIfNeeded();
   let box = await marker.boundingBox();
   const grab = { x: box.x + box.width * .25, y: box.y + box.height / 2 };
   await s.page.mouse.move(grab.x, grab.y); await s.page.mouse.down(); await s.page.mouse.move(grab.x + 2, grab.y); await s.page.mouse.up();
@@ -101,6 +111,26 @@ test("conventional plan drag commits measured host coordinates, undo and Escape 
   assert.ok(Math.abs((await marker.boundingBox()).x - box.x - 12) < 1);
   await marker.scrollIntoViewIfNeeded(); box = await marker.boundingBox(); await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await s.page.mouse.down(); await s.page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2, { steps: 5 }); await s.page.keyboard.press("Escape"); await s.page.mouse.up();
   assert.deepEqual((await s.saved()).hvac.devices[0].vent.host, moved.hvac.devices[0].vent.host);
+  const target = await s.page.locator(".wall-interaction-line").evaluateAll(lines => {
+    const wall = lines.filter(line => Math.abs(line.x2.baseVal.value - line.x1.baseVal.value) < 1)
+      .sort((a, b) => a.x1.baseVal.value - b.x1.baseVal.value)[0];
+    if (!wall) throw new Error("Expected a perpendicular wall");
+    const point = new DOMPoint(wall.x1.baseVal.value, (wall.y1.baseVal.value + wall.y2.baseVal.value) / 2)
+      .matrixTransform(wall.getScreenCTM());
+    return { x: point.x, y: point.y };
+  });
+  box = await marker.boundingBox();
+  await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await s.page.mouse.down();
+  await s.page.mouse.move(target.x, target.y, { steps: 12 });
+  const preview = await marker.boundingBox();
+  assert.ok(Math.hypot(preview.x + preview.width / 2 - target.x, preview.y + preview.height / 2 - target.y) < 15,
+    JSON.stringify({ target, preview, start: box, host: moved.hvac.devices[0].vent.host }));
+  await s.page.mouse.up();
+  await eventually(async () => (await s.saved()).hvac.devices[0].vent.host, host => host.patchId !== moved.hvac.devices[0].vent.host.patchId);
+  await s.page.getByRole("button", { name: "Restore Heating Layout", exact: true }).click();
+  await panel.getByRole("button", { name: "Undo HVAC", exact: true }).click();
+  await eventually(s.saved, p => JSON.stringify(p.hvac.devices[0].vent.host) === JSON.stringify(moved.hvac.devices[0].vent.host));
   await panel.getByRole("button", { name: "Undo HVAC", exact: true }).click();
   await eventually(s.saved, p => JSON.stringify(p.hvac.devices[0].vent.host) === JSON.stringify(before.hvac.devices[0].vent.host));
 });

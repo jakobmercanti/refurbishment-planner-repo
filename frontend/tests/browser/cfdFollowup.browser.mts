@@ -44,9 +44,9 @@ test('Run matches Mesh; Post collapses every category; probe drags commit millim
   const colour=control=>control.evaluate(node=>({background:getComputedStyle(node).backgroundColor,color:getComputedStyle(node).color}));
   assert.deepEqual(await colour(ui.getByRole('button',{name:'Run Office airflow',exact:true})),await colour(ui.getByRole('button',{name:'Mesh Office airflow',exact:true})));
   await cfdWindow(ui,'Solver');await ui.getByRole('tab',{name:'Post-processing',exact:true}).click();
-  const post=ui.locator('.cfx-post-panel');await button(post,'Collapse all').click();
+  const post=ui.locator('.cfx-post-panel');await button(ui,'Collapse all').click();
   assert.equal(await post.locator('details[open]').count(),0);assert.equal(await post.getByRole('spinbutton').count(),0);assert.equal(await post.getByRole('checkbox').count(),0);
-  await button(post,'Expand all').click();assert.equal(await post.locator('details:not([open]):not(.cfx-row-menu)').count(),0);
+  await button(ui,'Expand all').click();assert.equal(await post.locator('details:not([open]):not(.cfx-row-menu)').count(),0);
   await button(page,'Minimise Simulation setup').click();
   const marker=ui.getByRole('button',{name:'Select probe 1 in 3D',exact:true});await marker.waitFor();
   const start=await marker.boundingBox(),camera=await page.evaluate(()=>window.__followupScene().camera.position.toArray());

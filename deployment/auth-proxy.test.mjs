@@ -1,12 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { authProxy } from './auth-proxy.mjs';
+import { PasswordAttempts } from './password-attempts.mjs';
 import worker from './planner-worker.mjs';
 
 const origin = 'https://www.freefloorplan3d.com';
-const env = { SUPABASE_URL: 'https://auth.example.test', AUTH_RATE_LIMIT: { limit: async () => ({ success: true }) } };
+const baseEnv = { SUPABASE_URL: 'https://auth.example.test', AUTH_RATE_LIMIT: { limit: async () => ({ success: true }) } };
+function testEnv() {
+  const objects = new Map();
+  return { ...baseEnv, PASSWORD_ATTEMPTS: { getByName(name) {
+    if (!objects.has(name)) {
+      const values = new Map();
+      const storage = { get: async key => values.get(key), put: async (key, value) => values.set(key, value),
+        delete: async key => values.delete(key), setAlarm: async () => {} };
+      const counter = new PasswordAttempts({ storage }, baseEnv);
+      objects.set(name, { fetch: (url, init) => counter.fetch(new Request(url, init)) });
+    }
+    return objects.get(name);
+  } } };
+}
+const env = testEnv();
 const request = (path, options = {}) => new Request(origin + '/planner/auth-api' + path, {
-  method: 'POST', body: '{}', ...options,
+  method: 'POST', body: path.includes('grant_type=password') ? JSON.stringify({ email: 'test@example.invalid', password: 'mock-password' }) : '{}', ...options,
   headers: { Origin: origin, apikey: 'sb_publishable_test', 'Content-Type': 'application/json', ...options.headers },
 });
 
@@ -17,7 +32,7 @@ test('production routes same-origin auth to the fixed provider, without forwardi
       assert.equal(String(url), env.SUPABASE_URL + '/auth/v1/token?grant_type=password');
       assert.equal(init.method, 'POST'); assert.equal(init.redirect, 'manual'); assert.ok(init.signal);
       assert.deepEqual(init.headers, { apikey: 'sb_publishable_test', 'Content-Type': 'application/json' });
-      assert.equal(new TextDecoder().decode(init.body), '{}');
+      assert.deepEqual(JSON.parse(new TextDecoder().decode(init.body)), { email: 'test@example.invalid', password: 'mock-password' });
       return Response.json({ access_token: 'mock-session' }, { headers: { 'Set-Cookie': 'unsafe=1', 'Cache-Control': 'public' } });
     };
     const response = await worker.fetch(request('/token?grant_type=password', { headers: { Cookie: 'private=1', Referer: 'https://private.example/' } }), env);
@@ -104,5 +119,33 @@ test('verification resend allows only signup email and preserves the safe accoun
     }
     const foreign = '/resend?redirect_to=https://evil.example/planner/account/';
     assert.equal((await authProxy(request(foreign), '/resend', env)).status, 400);
+  } finally { globalThis.fetch = previous; }
+});
+
+test('five failed password attempts are shared across case variants, IPs and simultaneous requests', async () => {
+  const environment = testEnv(), previous = globalThis.fetch;
+  let providerCalls = 0;
+  const login = (email, ip = '203.0.113.7', password = 'wrong') => authProxy(request('/token?grant_type=password', {
+    body: JSON.stringify({ email, password }), headers: { 'CF-Connecting-IP': ip },
+  }), '/token', environment);
+  try {
+    globalThis.fetch = async (_url, init) => {
+      providerCalls++;
+      const input = JSON.parse(new TextDecoder().decode(init.body));
+      assert.equal(input.email, input.email.trim().toLowerCase());
+      return input.password === 'correct' ? Response.json({ access_token: 'fixture' }) : Response.json({ message: 'provider details' }, { status: 400 });
+    };
+    const attempts = await Promise.all(Array.from({ length: 8 }, (_, index) => login(index % 2 ? ' TEST@Example.invalid ' : 'test@example.invalid', `203.0.113.${index}`)));
+    assert.equal(providerCalls, 5);
+    assert.deepEqual(attempts.map(result => result.status).sort(), [400, 400, 400, 400, 429, 429, 429, 429]);
+    const blocked = await login('test@example.invalid', '203.0.113.23', 'correct');
+    assert.equal(blocked.status, 429);
+    assert.ok(Number(blocked.headers.get('Retry-After')) > 0);
+    assert.equal((await blocked.json()).error_code, 'password_attempt_limit');
+    assert.equal(providerCalls, 5);
+    for (let round = 0; round < 2; round++) {
+      for (let n = 0; n < 4; n++) assert.equal((await login('other@example.invalid')).status, 400);
+      assert.equal((await login('other@example.invalid', undefined, 'correct')).status, 200);
+    }
   } finally { globalThis.fetch = previous; }
 });

@@ -8,7 +8,9 @@ import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import Request
+
+from backend.app.private_http import private_opener
 
 
 class StripeUnavailable(RuntimeError):
@@ -23,7 +25,7 @@ class StripeGateway:
     def __init__(self) -> None:
         self.secret = os.getenv("STRIPE_SECRET_KEY", "").strip()
         self.webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
-        self.opener = build_opener(ProxyHandler({}))
+        self.opener = private_opener()
 
     @property
     def configured(self) -> bool:

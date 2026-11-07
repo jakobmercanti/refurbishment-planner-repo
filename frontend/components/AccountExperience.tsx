@@ -202,7 +202,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
             <label>Confirm new password<input autoComplete="new-password" type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
           </> : <>
             <label>Email<input ref={emailInput} autoComplete="email" type="email" required disabled={busy} maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            {(mode === "signin" || mode === "signup") && <label>Password<input autoComplete={mode === "signup" ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} minLength={10} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
+            {(mode === "signin" || mode === "signup") && <label>Password<input autoComplete={mode === "signup" ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} minLength={mode === "signup" ? 10 : undefined} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
           </>}
           {!recovery && mode !== "reset" && <div className="commercial-tabs account-auth-tabs" role="group" aria-label="Account actions">
             {(["signin", "signup"] as const).map((value) => <button key={value} type={mode === value ? "submit" : "button"}

@@ -217,17 +217,6 @@ test("independent workbench saves level-coloured cuboids, run settings and named
   assert.equal(stored.cfdScenarios[0].physics.numerics.coupling, "PIMPLE");
   // Delay a real access check so an older PlannerBuild request finishes only
   // after the user has returned to Climoptix. No account traffic leaves the test.
-  await page.evaluate(() =>
-    sessionStorage.setItem(
-      "freefloorplan3d:commercial-session:v1",
-      JSON.stringify({
-        access_token: "browser-test-token",
-        refresh_token: "browser-test-refresh",
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-        user: { id: "browser-test-user" },
-      }),
-    ),
-  );
   let heldSummary;
   let summarySeen;
   const requested = new Promise<void>((resolve) => {

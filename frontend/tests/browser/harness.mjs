@@ -16,10 +16,15 @@ export async function eventually(read, condition, message = "Expected state was 
   assert.fail(message + ": " + JSON.stringify(value));
 }
 
-export async function readProject(page) {
-  return page.evaluate(async () => {
+export async function readProject(page, account) {
+  return page.evaluate(async explicitAccount => {
+    const userId = explicitAccount === undefined
+      ? JSON.parse(sessionStorage.getItem("freefloorplan3d:commercial-session:v1") ?? "null")?.user.id
+      : explicitAccount;
+    const name = userId ? "freefloorplan3d:account:" + userId : "freefloorplan3d";
+    if (!(await indexedDB.databases()).some(database => database.name === name)) return null;
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open("freefloorplan3d", 2);
+      const request = indexedDB.open(name, 2);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
@@ -31,7 +36,33 @@ export async function readProject(page) {
       const id = await get("meta", "current");
       return id ? await get("projects", id) : null;
     } finally { db.close(); }
-  });
+  }, account);
+}
+
+export async function writeProject(page, project, account) {
+  await page.evaluate(async ({ project, account }) => {
+    const userId = account === undefined
+      ? JSON.parse(sessionStorage.getItem("freefloorplan3d:commercial-session:v1") ?? "null")?.user.id
+      : account;
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(userId ? "freefloorplan3d:account:" + userId : "freefloorplan3d", 2);
+      request.onupgradeneeded = () => {
+        for (const store of ["projects", "backups", "assets", "meta", "electricalAttachments"])
+          if (!request.result.objectStoreNames.contains(store)) request.result.createObjectStore(store);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(["projects", "meta"], "readwrite");
+        transaction.objectStore("projects").put(project, project.projectId);
+        transaction.objectStore("meta").put(project.projectId, "current");
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+    } finally { db.close(); }
+  }, { project, account });
 }
 
 export async function startBrowserHarness({ climoptixEnabled = false } = {}) {
@@ -112,14 +143,7 @@ export async function startBrowserHarness({ climoptixEnabled = false } = {}) {
         await page.getByRole("combobox", { name: "Workspace", exact: true }).waitFor();
         await eventually(() => readProject(page), value => !!value?.projectId);
         await page.goto(origin + "/planner/404.html");
-        await page.evaluate(async value => {
-          const db = await new Promise(resolve => { const request = indexedDB.open("freefloorplan3d", 2); request.onsuccess = () => resolve(request.result); });
-          await new Promise((resolve, reject) => {
-            const transaction = db.transaction(["projects", "meta"], "readwrite");
-            transaction.objectStore("projects").put(value, value.projectId); transaction.objectStore("meta").put(value.projectId, "current");
-            transaction.oncomplete = resolve; transaction.onerror = () => reject(transaction.error);
-          }); db.close();
-        }, project);
+        await writeProject(page, project);
         await page.goto(origin + "/planner/");
         await page.getByRole("combobox", { name: "Selected floor", exact: true }).waitFor();
       }

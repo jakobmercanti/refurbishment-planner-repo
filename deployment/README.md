@@ -47,6 +47,35 @@ Local Next.js development rewrites the same `/auth-api/*` route to the configure
 public Supabase origin, so it does not require Cloudflare or a local secret key.
 The browser refuses account requests over plain HTTP except on loopback addresses;
 local Wi-Fi access to the free planner remains available without signing in.
+
+### Password attempts and workspace privacy
+
+Deploy the planner Worker with the `PASSWORD_ATTEMPTS` Durable Object binding
+and its SQLite migration from `wrangler.jsonc`. Five failed passwords for the
+same email within 15 minutes pause password sign-in for 15 minutes. The counter
+is shared across IP addresses and cleared by a successful sign-in before the
+limit. The Worker stores the attempt count and expiry, and account recovery
+remains available.
+
+The public Supabase Auth endpoint can be called independently of the planner.
+Apply `database/migrations/202611070001_password_attempts.sql` and register
+`public.planner_password_verification` under **Authentication → Hooks →
+Password Verification Attempt** to apply the same ceiling there. Hosted
+Supabase currently offers this hook on Teams and Enterprise. Verify the deployed
+hook with two dedicated test accounts and verify that a correct password is
+also blocked during the cooldown. [Supabase Auth Hooks](https://supabase.com/docs/guides/auth/auth-hooks)
+
+Signed-in local workspaces use separate browser databases for each account.
+Existing unscoped projects stay in the signed-out workspace. Export a
+`.floorplan3d` file while signed out and import it under your own account to
+move a project. Browser profiles and device access remain the boundary for
+browser storage. Private online projects, assets, renders and solver results
+use server-verified account ownership.
+
+Keep `RENOVATION_FIT_PUBLIC=true` on public API deployments. Development-only
+prototype and programmer routes require an explicit local setting and a
+loopback request. Set `ENABLE_PROGRAMMER_TOOLS=false` in deployed services.
+
 On the API set `AI_RENDERING_ENABLED=true` only after the dedicated worker has
 its OpenAI key, storage access and queue migrations. The API does not need that key.
 

@@ -1,10 +1,15 @@
 "use client";
 
 /** Change disclosures in this panel, without opening row-action menus. */
-export function CFDCollapseAll({onToggle}:{onToggle?:(open:boolean)=>void}) {
-  return <div className="cfx-disclosure-actions">{[false,true].map(open=><button key={String(open)} type="button" onClick={event => {
-    event.currentTarget.closest("[data-cfx-collapse-root]")?.querySelectorAll<HTMLDetailsElement>("details:not(.cfx-row-menu)")
-      .forEach(details => { details.open = open; });
+export function CFDCollapseAll({onToggle, wholeWindow = false}:{onToggle?:(open:boolean)=>void; wholeWindow?:boolean}) {
+  return <div className={`cfx-disclosure-actions${wholeWindow ? " cfx-window-disclosures" : ""}`}>{[false,true].map(open=><button key={String(open)} type="button" data-cfx-toggle={onToggle ? String(open) : undefined} onClick={event => {
+    const root = event.currentTarget.closest("[data-cfx-collapse-root]");
+    root?.querySelectorAll<HTMLDetailsElement>("details:not(.cfx-row-menu)").forEach(details => {
+      if (!details.closest("[hidden]")) details.open = open;
+    });
+    if (wholeWindow) root?.querySelectorAll<HTMLButtonElement>(`[data-cfx-toggle="${open}"]`).forEach(button => {
+      if (!button.closest("[hidden]")) button.click();
+    });
     onToggle?.(open);
   }}>{open?"Expand all":"Collapse all"}</button>)}</div>;
 }

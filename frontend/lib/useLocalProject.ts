@@ -78,7 +78,7 @@ export function useLocalProject() {
     const visibility = () => { if (document.visibilityState === "hidden") flush(); };
     const leave = (event: BeforeUnloadEvent) => { if (current.current && JSON.stringify(current.current) !== lastSaved.current) { flush(); event.preventDefault(); } };
     document.addEventListener("visibilitychange", visibility); window.addEventListener("beforeunload", leave);
-    return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("beforeunload", leave); };
+    return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("beforeunload", leave); flush(); };
   }, []);
   const generated = useCallback(async () => {
     const p = current.current; if (!p || p.generated) return;

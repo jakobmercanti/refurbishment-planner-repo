@@ -3,7 +3,8 @@
 import { z } from "zod";
 import { readBoundedResponse } from "./boundedResponse";
 import { MAX_SAMPLING_PLANES } from "./climoptixDocument";
-import { currentSession } from "./commercialAuth";
+import { currentSession, storedAccountId } from "./commercialAuth";
+import { matchesLocalStorageAccount } from "./localDatabase";
 import { workerTelemetrySchema } from "./cfdWorkerTelemetry";
 import { sliceDataSchema, sliceManifestSchema, type SliceRequest } from "./cfdSlices";
 import { checkedWorkerJob, workerJobSchema, type CFDSubmission, type CFDWorkerAdapter, type CFDWorkerJob } from "./climoptixJobs";
@@ -41,13 +42,16 @@ async function workerRequest(base: string, path: string, signal: AbortSignal, bo
   signal.throwIfAborted();
   const session = await currentSession(); signal.throwIfAborted();
   if (!session) throw new CFDWorkerError("Sign in with a verified account to use Climoptix's free simulations.", 401);
+  if (!matchesLocalStorageAccount(session.user.id) || storedAccountId() !== session.user.id)
+    throw new CFDWorkerError("Account changed. Reopen your workspace.", 401);
   const response = await fetch(`${base.replace(/\/$/, "")}/climoptix/worker${path}`, {
-    method: body === undefined ? "GET" : "POST", cache: "no-store", credentials: "omit",
+    method: body === undefined ? "GET" : "POST", cache: "no-store", credentials: "omit", redirect: "error", referrerPolicy: "no-referrer",
     signal: AbortSignal.any([signal, AbortSignal.timeout(max > 25 * 1024**2 ? 120000 : 25000)]),
     headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const data = await readBoundedResponse(response, response.ok ? max : 16384, "Worker response exceeded its size bound.");
+  if (storedAccountId() !== session.user.id) throw new CFDWorkerError("Account changed. Reopen your workspace.", 401);
   if (!response.ok) {
     let detail = `CFD worker request failed (${response.status}).`;
     try { const parsed = JSON.parse(new TextDecoder().decode(data)); if (typeof parsed.detail === "string") detail = parsed.detail.slice(0, 2000); } catch { /* fixed fallback */ }

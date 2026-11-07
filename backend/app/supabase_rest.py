@@ -7,9 +7,11 @@ import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.parse import urlencode, urlsplit
+from urllib.request import Request
 from uuid import UUID
+
+from backend.app.private_http import private_opener
 
 
 class SupabaseUnavailable(RuntimeError):
@@ -34,12 +36,20 @@ class VerifiedUser:
 
 class SupabaseREST:
     def __init__(self) -> None:
-        self.url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+        url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+        try:
+            target = urlsplit(url)
+            valid = target.scheme == "https" and target.hostname and not (
+                target.username or target.password or target.path or target.query or target.fragment
+            )
+        except ValueError:
+            valid = False
+        self.url = url if valid else ""
         self.publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
         self.service_key = (
             os.getenv("SUPABASE_SECRET_KEY", "").strip() or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         )
-        self.opener = build_opener(ProxyHandler({}))
+        self.opener = private_opener()
 
     @property
     def auth_configured(self) -> bool:
