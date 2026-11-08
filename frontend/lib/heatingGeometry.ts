@@ -80,6 +80,11 @@ function rectangularSpiral(boundary: Point2D[], spacing: number, margin: number)
   return [...supply, ...(distanceMm(a, bridge) > 0.01 && distanceMm(bridge, b) > 0.01 ? [bridge] : []), ...returning];
 }
 export type GeneratedUFH = { circuits: UFHCircuit[]; warnings: string[]; fingerprint: string };
+export function ufhLayoutCorners(room: Pick<Room, "vertices">, zone: UFHZone): [Point2D, Point2D] {
+  if (zone.layoutBoundsMm) return zone.layoutBoundsMm;
+  const xs = room.vertices.map(p => p.x), ys = room.vertices.map(p => p.y);
+  return [{ x: Math.min(...xs), y: Math.min(...ys) }, { x: Math.max(...xs), y: Math.max(...ys) }];
+}
 export function generateUFHLoops(room: Room, zone: UFHZone, manifold: HeatingManifold, exclusionList: readonly HeatingExclusion[], existing: readonly UFHCircuit[] = []): GeneratedUFH {
   const exclusions = exclusionList.filter(e => e.roomId === room.id).map(e => e.polygonMm), boundary = room.vertices, warnings: string[] = [], locked = existing.filter(c => c.zoneId === zone.zoneId && c.locked);
   const result = (circuits: UFHCircuit[]) => ({ circuits, warnings, fingerprint: geometryFingerprint(room, exclusionList.filter(e => e.roomId === room.id)) });
@@ -87,24 +92,34 @@ export function generateUFHLoops(room: Room, zone: UFHZone, manifold: HeatingMan
   if (locked.length) { warnings.push("Zone contains locked circuits. Unlock them explicitly before room regeneration; existing circuits retained."); return result(existing.filter(c => c.zoneId === zone.zoneId)); }
   if (zone.spacingMm < 2 * zone.minBendRadiusMm && zone.pattern === "Serpentine") { warnings.push("Spacing is below twice the requested bend radius. Increase spacing or use a validated alternative bend design."); return result([]); }
   const margin = zone.boundaryOffsetMm + zone.minBendRadiusMm;
-  const validPath = (p: Point2D[]) => p.slice(1).every((b, i) => pipeSegmentAllowed(p[i], b, boundary, exclusions, zone.boundaryOffsetMm));
+  const [lowCorner, highCorner] = ufhLayoutCorners(room, zone);
+  if (highCorner.x - lowCorner.x <= 2 * margin || highCorner.y - lowCorner.y <= 2 * margin) {
+    warnings.push("The UFH footprint is too small for its edge clearance and bend radius."); return result([]);
+  }
+  const inLayout = (p: Point2D) => p.x >= lowCorner.x - .01 && p.y >= lowCorner.y - .01 && p.x <= highCorner.x + .01 && p.y <= highCorner.y + .01;
+  const validPath = (p: Point2D[]) => p.every(inLayout) && p.slice(1).every((b, i) => pipeSegmentAllowed(p[i], b, boundary, exclusions, zone.boundaryOffsetMm));
   const paths: Point2D[][] = [];
   if (zone.pattern === "Spiral" && exclusions.length === 0) {
-    const spiral = rectangularSpiral(boundary, zone.spacingMm, margin), rounded = spiral && roundPipeCorners(spiral, zone.minBendRadiusMm);
+    const layout = zone.layoutBoundsMm ? [lowCorner, { x: highCorner.x, y: lowCorner.y }, highCorner, { x: lowCorner.x, y: highCorner.y }] : boundary;
+    const spiral = rectangularSpiral(layout, zone.spacingMm, margin), rounded = spiral && roundPipeCorners(spiral, zone.minBendRadiusMm);
     if (rounded && validPath(rounded)) paths.push(rounded);
   }
   let pattern: UFHCircuit["pattern"] = paths.length ? "Spiral" : "Serpentine";
   if (!paths.length) {
     if (zone.pattern === "Spiral") warnings.push("Spiral unavailable for this shape/exclusion/bend geometry; generated an explicit serpentine fallback.");
     if (zone.spacingMm < 2 * zone.minBendRadiusMm) { warnings.push("Serpentine fallback cannot satisfy the minimum bend radius at this spacing."); return result([]); }
-    const xs = boundary.map(p => p.x), ys = boundary.map(p => p.y), vertical = zone.orientation === "Vertical" || zone.orientation === "Auto" && Math.max(...ys) - Math.min(...ys) > Math.max(...xs) - Math.min(...xs);
+    const vertical = zone.orientation === "Vertical" || zone.orientation === "Auto" && highCorner.y - lowCorner.y > highCorner.x - lowCorner.x;
     const transform = (p: Point2D) => vertical ? { x: p.y, y: p.x } : p;
-    const shape = boundary.map(transform), holes = exclusions.map(p => p.map(transform)), low = Math.min(...shape.map(p => p.y)) + margin, high = Math.max(...shape.map(p => p.y)) - margin;
+    const shape = boundary.map(transform), holes = exclusions.map(p => p.map(transform));
+    const start = transform(lowCorner), end = transform(highCorner), low = start.y + margin, high = end.y - margin;
     const count = zone.runCountTarget ?? Math.floor((high - low) / zone.spacingMm) + 1; if (count > 600) { warnings.push("Zone is too large for one generation operation; split into smaller rooms/zones."); return result([]); }
     let current: Point2D[] = [];
     for (let row = 0; row < count; row++) {
-      const y = low + row * zone.spacingMm, spans = subtractIntervals(polygonIntervals(shape, y), holes.flatMap(h => polygonIntervals(h, y)));
-      for (const [lo, hi] of spans) {
+      const y = low + row * zone.spacingMm;
+      if (y > high + .01) break;
+      const spans = subtractIntervals(polygonIntervals(shape, y), holes.flatMap(h => polygonIntervals(h, y)));
+      for (const [aX, bX] of spans) {
+        const lo = Math.max(start.x, aX), hi = Math.min(end.x, bX);
         const a = transform({ x: lo + margin, y }), b = transform({ x: hi - margin, y });
         if (hi - lo <= 2 * margin || !pipeSegmentAllowed(a, b, boundary, exclusions, zone.boundaryOffsetMm)) continue;
         const run = row % 2 ? [b, a] : [a, b];

@@ -50,7 +50,7 @@ test("vents belong to the ventilation workbench in both views, respect walls, an
   assert.equal(await page.locator("[data-hvac-plan-vent]").count(), 0);
   await enter3D(page);
   assert.equal(await page.locator("[data-hvac-scene-vent]").count(), 0);
-  await menu(page, "Tools", "Ventilation"); const panel = page.locator(".heating-layout-window"); await panel.waitFor();
+  await menu(page, "Tools", "Heating & ventilation"); await page.locator(".heating-layout-window").getByRole("tab", { name: "Ventilation", exact: true }).click(); const panel = page.locator(".heating-layout-window"); await panel.waitFor();
   assert.equal(await page.getByRole("button", { name: "3D", exact: true }).getAttribute("aria-pressed"), "true");
   await minimise(panel, "Heating Layout");
   await walls(page, "Invisible walls");
@@ -65,7 +65,7 @@ test("vents belong to the ventilation workbench in both views, respect walls, an
   await restore(page, "Heating Layout"); await panel.getByRole("button", { name: "Hide Heating Layout", exact: true }).click();
   assert.equal(await labels.count(), 0);
   await page.getByRole("button", { name: "2D", exact: true }).click(); assert.equal(await page.locator("[data-hvac-plan-vent]").count(), 0);
-  await menu(page, "Tools", "Ventilation"); await page.locator("[data-hvac-plan-vent]").first().waitFor();
+  await menu(page, "Tools", "Heating & ventilation"); await page.locator(".heating-layout-window").getByRole("tab", { name: "Ventilation", exact: true }).click(); await page.locator("[data-hvac-plan-vent]").first().waitFor();
   await panel.getByRole("tab", { name: "Heating", exact: true }).click(); assert.equal(await page.locator("[data-hvac-plan-vent]").count(), 0);
   assert.deepEqual((await s.saved()).hvac.devices, p.hvac.devices);
 });
@@ -85,7 +85,7 @@ test("all application menu siblings have a constant white gap in comfortable and
 
 test("a 3D vent drag snaps onto a different measured wall, with undo", async t => {
   const p=fixture(),s=await harness.session(p);t.after(()=>s.close());const {page}=s;
-  await enter3D(page);await menu(page,"Tools","Ventilation");const panel=page.locator(".heating-layout-window");await minimise(panel,"Heating Layout");await walls(page,"Transparent walls");
+  await enter3D(page);await menu(page,"Tools","Heating & ventilation");const panel=page.locator(".heating-layout-window");await panel.getByRole("tab",{name:"Ventilation",exact:true}).click();await minimise(panel,"Heating Layout");await walls(page,"Transparent walls");
   const labels=page.locator("[data-hvac-scene-vent]").filter({visible:true});
   await eventually(()=>labels.count(),n=>n>=2);
   const first=labels.nth(0),second=labels.nth(1),id=await first.getAttribute("data-hvac-scene-vent"),targetId=await second.getAttribute("data-hvac-scene-vent");
@@ -99,7 +99,7 @@ test("a 3D vent drag snaps onto a different measured wall, with undo", async t =
 
 test("heating text stays screen-facing in perspective and section help leaves the menu closed", async t=>{
  const s=await harness.session(fixture());t.after(()=>s.close());const {page}=s;
- await enter3D(page);await menu(page,"Tools","Heating Layout");const panel=page.locator(".heating-layout-window");
+ await enter3D(page);await menu(page,"Tools","Heating & ventilation");const panel=page.locator(".heating-layout-window");
  await panel.getByRole("tab",{name:"Results",exact:true}).click();
  const section=panel.locator("details").filter({has:page.locator("summary",{hasText:/^Heating results/})}).first();
  const help=section.locator(":scope > summary > button");await help.waitFor();const open=await section.getAttribute("open");await help.click();
@@ -113,7 +113,7 @@ test("heating text stays screen-facing in perspective and section help leaves th
 
 test("Heating keeps its live editor in 3D, creates UFH, draws pipes and retains changes when returning to 2D", async t => {
   const p = fixture(), s = await harness.session(p); t.after(() => s.close()); const { page } = s;
-  await enter3D(page); await menu(page, "Tools", "Heating Layout"); const panel = page.locator(".heating-layout-window");
+  await enter3D(page); await menu(page, "Tools", "Heating & ventilation"); const panel = page.locator(".heating-layout-window");
   await panel.getByRole("tab", { name: "Underfloor", exact: true }).click();
   await panel.getByRole("button", { name: "Create room UFH", exact: true }).click();
   await eventually(s.saved, p => p.heatingLayout.ufhCircuits.length > 0);
@@ -155,7 +155,7 @@ test("3D insulation selects real walls, uses the same U and W values, and applie
 test("3D heating pipe drawing and corner editing use mm ray intersections and keyboard undo", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close()); const { page } = s;
   await enter3D(page); await page.getByRole("button", { name: "Perspective", exact: true }).click();
-  await menu(page, "Tools", "Heating Layout"); const panel = page.locator(".heating-layout-window");
+  await menu(page, "Tools", "Heating & ventilation"); const panel = page.locator(".heating-layout-window");
   await panel.getByRole("tab", { name: "System", exact: true }).click(); await panel.locator("summary").filter({ hasText: "Heating pipes & connections" }).click();
   await panel.getByRole("button", { name: "Draw heating pipe", exact: true }).click(); await minimise(panel, "Heating Layout");
   const layer = page.getByLabel("Interactive 3D service layer", { exact: true }); await layer.waitFor();
@@ -181,7 +181,7 @@ test("3D electrical controls create a closed ring, test individual sockets, and 
   await page.getByRole("button", { name: "2D", exact: true }).click();
   assert.equal(await page.locator(".floorplan-add-elements-toolbar").filter({ visible: true }).count(), 0, "Electrical opens the fitting catalogue only when requested");
   await page.getByRole("button", { name: "3D", exact: true }).click();
-  await panel.locator("summary").filter({ hasText: "Circuits (1)" }).click(); await panel.getByRole("button", { name: "Create socket routes", exact: true }).click(); await eventually(s.saved, p => p.electricalLayout.connections.length === 3);
+  await panel.locator("summary").filter({ hasText: "Circuits (1)" }).click(); await panel.getByRole("button", { name: /^Edit circuit / }).click(); await page.getByRole("dialog", { name: /^Edit circuit/ }).getByRole("button", { name: "Save and create socket routes", exact: true }).click(); await eventually(s.saved, p => p.electricalLayout.connections.length === 3);
   await panel.getByRole("button", { name: "Check layout", exact: true }).click(); const tester = page.locator(".electrical-lighting-test-window"); await tester.waitFor();
   const socket = page.getByLabel("Interactive 3D service layer", { exact: true }).getByRole("button", { name: "Electrical fitting: Socket b, connected", exact: true });
   await socket.focus(); await socket.press("Enter");

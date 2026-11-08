@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createRoomUFH, heatingResults } from "../lib/heatingDesign";
 import { newHeatingProject, parseHeatingProject } from "../lib/heatingDocument";
-import { resizeHeatingRooms } from "../lib/heatingRoomResize";
+import { queueHeatingRoomResize, refreshHeatingRoomResizes, resizeHeatingRooms, resizeUFHFootprint } from "../lib/heatingRoomResize";
+import { withParallelRuns } from "../lib/ufhRunCount";
 import { calculateCircuitLength, geometryFingerprint } from "../lib/heatingCalculations";
 import type { Room } from "../lib/types";
 
@@ -22,6 +23,33 @@ test("room resizing regenerates UFH with real spacing, new coverage and heat dem
  assert.ok(heatingResults([bigger],resized).rooms[0].demand.designW>heatingResults([room],heating).rooms[0].demand.designW);
  assert.ok(!heatingResults([bigger],resized).rooms[0].warnings.some(w=>/geometry.*changed/i.test(w)));
  assert.equal(resizeHeatingRooms([room],[{...room,name:"New name"}],heating),heating);
+});
+
+test("multiple room edits persist one deferred UFH refresh and add runs while retaining the required bend radius", () => {
+  const heating = createRoomUFH(room, newHeatingProject()).heating;
+  heating.ufhZones[0] = withParallelRuns(room, heating.ufhZones[0], 12);
+  const baseline = resizeHeatingRooms([{ ...room, vertices: room.vertices.map(p => ({ x: p.x * .99, y: p.y })) }], [room], heating);
+  const mid = { ...room, vertices: room.vertices.map(p => ({ x: p.x, y: p.y * 1.1 })) };
+  const bigger = { ...room, vertices: room.vertices.map(p => ({ x: p.x, y: p.y * 1.25 })) };
+  const pending = parseHeatingProject(queueHeatingRoomResize([mid], [bigger], queueHeatingRoomResize([room], [mid], baseline)));
+  assert.deepEqual(pending.ufhCircuits, baseline.ufhCircuits);
+  assert.deepEqual(pending.pendingRoomResize?.[room.id], room.vertices);
+  const result = refreshHeatingRoomResizes([bigger], pending);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.heating.pendingRoomResize, undefined);
+  assert.ok(result.heating.ufhZones[0].runCountTarget! > baseline.ufhZones[0].runCountTarget!);
+  assert.equal(result.heating.ufhZones[0].minBendRadiusMm, baseline.ufhZones[0].minBendRadiusMm);
+  assert.ok(result.heating.ufhZones[0].spacingMm >= 2 * baseline.ufhZones[0].minBendRadiusMm);
+});
+
+test("resizing a footprint regenerates all loops within the new bounds and keeps the opposite corner", () => {
+  const heating = createRoomUFH(room, newHeatingProject()).heating, zone = heating.ufhZones[0];
+  const bounds = [{ x: 450, y: 250 }, room.vertices[2]] as const;
+  const result = resizeUFHFootprint(room, heating, zone, [...bounds]);
+  assert.deepEqual(result.ufhZones[0].layoutBoundsMm, bounds);
+  assert.notDeepEqual(result.ufhCircuits[0].pathMm, heating.ufhCircuits[0].pathMm);
+  assert.ok(result.ufhCircuits.every(circuit => circuit.pathMm.every(p => p.x >= 450 && p.y >= 250)));
+  assert.ok(result.ufhCircuits.every(circuit => !circuit.manuallyEdited));
 });
 test("resizing one room preserves the other room, follows exclusions and room labels",()=>{
  const other={...room,id:"other",vertices:room.vertices.map(p=>({x:p.x+10000,y:p.y}))};

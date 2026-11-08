@@ -2,6 +2,7 @@
 import { conventionalHvac } from "@/lib/hvacHeating";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHvac } from "./HvacContext";
+import { useHeatingLayout } from "./HeatingLayoutContext";
 
 
 import { saveHvacCalculations } from "@/lib/hvacExport";
@@ -11,8 +12,9 @@ import { WindowHelpButton } from "./WindowHelpButton";
 import { projectFloors } from "@/lib/buildingDocument";
 import { newCFDScenario, ventSchema } from "@/lib/climoptixDocument";
 import { preparationInput, preparationRevision, prepareCFD, type CFDReport } from "@/lib/climoptix";
+import { snapVentUV } from "@/lib/climoptixPreview";
 import { hvacBoundaryPackage, resolveHvacScenario } from "@/lib/hvacBridge";
-import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, reorderHvacRoomVents, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
+import { hvacConditionsSchema, hvacErrorMessage, hvacSchema, newHvacProject, operatingVents, removeVent, reorderHvacRoomVents, roomOperatingScenario, type HvacConditions, type HvacOperatingScenario, type HvacProject } from "@/lib/hvacDocument";
 import { useHvacHostReport } from "./useHvacHostReport";
 import { scrollWorkbenchToStart } from "@/lib/workbenchNavigation";
 import { EquipmentListRow, equipmentListStyles } from "./EquipmentListRow";
@@ -23,6 +25,7 @@ import styles from "./HeatingLayoutPanel.module.css";
 
 export function HeatingVentilationTabs({ children }: { children: ReactNode }) {
   const ctx = useHvac();
+  const heating = useHeatingLayout();
   if (!ctx) return children;
   return <div className={`${styles.panel} ${styles.hvacWorkbench}`}>
     <nav className={`${styles.tabs} ${styles.hvacTabs}`} role="tablist" aria-label="HVAC workbench">
@@ -30,6 +33,7 @@ export function HeatingVentilationTabs({ children }: { children: ReactNode }) {
         if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); const next = e.key === "Home" ? "Heating" : e.key === "End" ? "Ventilation" : index === 0 ? "Ventilation" : "Heating"; ctx.setTab(next); document.getElementById(`hvac-tab-${next}`)?.focus({ preventScroll: true }); scrollWorkbenchToStart(e.currentTarget); }
       }}>{tab}</button>)}
     </nav>
+    {heating.resizeWarning && <div className={styles.warning} role="alert"><p>{heating.resizeWarning}</p><button type="button" onClick={heating.dismissResizeWarning}>Dismiss</button></div>}
     <div role="tabpanel" id="hvac-panel-Heating" aria-labelledby="hvac-tab-Heating" hidden={ctx.tab !== "Heating"}><HeatingOperatingStatus />{children}</div>
     <div role="tabpanel" id="hvac-panel-Ventilation" aria-labelledby="hvac-tab-Ventilation" hidden={ctx.tab !== "Ventilation"}>{ctx.tab === "Ventilation" && <VentilationPanel />}</div>
   </div>;
@@ -51,7 +55,7 @@ export function VentilationPanel() {
   const [roomId, setRoomId] = useState(ctx.focus?.floorId === floor.id ? ctx.focus.roomId : floor.content.rooms[0]?.id ?? "");
   const room = floor.content.rooms.find(r => r.id === roomId) ?? floor.content.rooms[0];
   const fallback = useMemo<HvacOperatingScenario>(() => ({ id: crypto.randomUUID(), name: "Nominal operation", floorId: floor.id, roomId: room?.id ?? "unassigned", conditions: hvacConditionsSchema.parse({ outdoorC: floor.content.heatingLayout?.buildingSettings.externalDesignTemperatureC ?? -3 }), ventOverrides: {}, heaterOverrides: {} }), [floor.id, floor.content.heatingLayout?.buildingSettings.externalDesignTemperatureC, room?.id]);
-  const operating = hvac.scenarios.find(s => s.id === hvac.activeScenarioId && s.floorId === floor.id && s.roomId === room?.id) ?? hvac.scenarios.find(s => s.floorId === floor.id && s.roomId === room?.id) ?? fallback;
+  const operating = roomOperatingScenario(hvac, floor.id, room?.id ?? "") ?? fallback;
   const devices = operatingVents(hvac, operating).filter(d => d.floorId === floor.id && d.roomId === room?.id);
   const selected = ctx.selectedVentId, setSelected = ctx.selectVent;
   const selectedRoomId = hvac.devices.find(d => d.vent.id === selected && d.floorId === floor.id)?.roomId;
@@ -84,8 +88,12 @@ export function VentilationPanel() {
   }
   function add(role: "supply" | "extract", extractKind: "exhaust" | "return" = "exhaust") {
     if (!room) return;
-    const host = report?.patches.find(p => p.roomId === room.id && p.floorId === floor.id && p.hostable && p.host);
-    const vent = ventSchema.parse({ id: crypto.randomUUID(), name: `${role === "supply" ? "Supply" : extractKind === "return" ? "Return" : "Extract"} ${hvac.devices.length + 1}`, role, control: role === "extract" ? "pressure" : "volumeFlow", valueSI: role === "extract" ? 0 : 0.05, temperatureK: operating.conditions.supplyC + 273.15, host: { patchId: host?.id ?? "unassigned" } });
+    let vent = ventSchema.parse({ id: crypto.randomUUID(), name: `${role === "supply" ? "Supply" : extractKind === "return" ? "Return" : "Extract"} ${hvac.devices.length + 1}`, role, control: role === "extract" ? "pressure" : "volumeFlow", valueSI: role === "extract" ? 0 : 0.05, temperatureK: operating.conditions.supplyC + 273.15, host: { patchId: "unassigned" } });
+    const hosts = report?.patches.filter(p => p.roomId === room.id && p.floorId === floor.id && p.hostable && p.host) ?? [];
+    for (const patch of [...hosts.filter(p => p.kind === "wall"), ...hosts.filter(p => p.kind === "ceiling")]) {
+      const uv = snapVentUV(vent, patch.host!, 0.5, 0.5);
+      if (uv) { vent = { ...vent, host: { patchId: patch.id, u: uv[0], v: uv[1] } }; break; }
+    }
     commit({ ...hvac, devices: [...hvac.devices, { vent, floorId: floor.id, roomId: room.id, outdoorAirFraction: 1, extractKind, enabled: true }] }); setSelected(vent.id);
   }
   function moveVent(id: string, boundary: number) {

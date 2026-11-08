@@ -9,7 +9,6 @@ import { newCFDScenario } from "@/lib/climoptixDocument";
 import { hvacConditionsSchema, hvacErrorMessage, updateVentDevice, type HvacOperatingScenario, type VentDevice } from "@/lib/hvacDocument";
 import { useHvacHostReport } from "./useHvacHostReport";
 import { flowFromDisplay, flowToDisplay } from "@/lib/hvacCalculations";
-import { ventCenter } from "@/lib/climoptixPreview";
 import styles from "./HeatingLayoutPanel.module.css";
 
 /** The same canonical vent editor opens from either floorplan viewer or the workbench. */
@@ -49,8 +48,6 @@ export function HvacVentEditor() {
     ...operating.ventOverrides,
     [device.vent.id]: { ...override, ...patch },
   });
-  const host = report?.patches.find(p=>p.id===device.vent.host.patchId)?.host;
-  const position = host ? ventCenter(device.vent,host).map(n=>n.toFixed(0)).join(" / ") : "Assign a host face";
   const apply = (patch: Partial<VentDevice>) => {
     try {
       ctx.commit(updateVentDevice(hvac, device.vent.id, patch)); setError("");
@@ -61,10 +58,9 @@ export function HvacVentEditor() {
       <label><input type="checkbox" checked={device.enabled} onChange={e => apply({ enabled: e.target.checked })} />Enabled in design</label>
       {hosts.loading && <p role="status">Checking measured host faces…</p>}
       {hosts.error && <div><p role="alert" className={styles.warning}>{hosts.error}</p><button onClick={hosts.retry}>Retry host checks</button></div>}
-      <EquipmentPanel scenario={scenario} report={report} selected={`vent:${device.vent.id}`} onSelect={() => {}} onChange={next => { const vent = next.vents[0], host = report?.patches.find(p => p.id === vent.host.patchId); apply({ vent, ...(host ? { floorId: host.floorId, roomId: host.roomId } : {}) }); }} onPick={() => {}} onEditSource={() => {}} editor placement checked={false} />
-      {device.vent.role === "supply" ? <CFDNumber label="Outdoor-air fraction (0–1)" min={0} max={1} value={device.outdoorAirFraction} onChange={outdoorAirFraction => apply({ outdoorAirFraction })} /> : <label>Outlet air path<select aria-label="Outlet air path" value={device.extractKind} onChange={e => apply({ extractKind: e.target.value as "exhaust" | "return" })}><option value="exhaust">Outdoor exhaust</option><option value="return">Return to air handler</option></select></label>}
-      <p aria-label="Vent position in millimetres">X / Y / Z (mm): {position}</p>
-      <details><summary>Operating scenario overrides</summary>
+      <EquipmentPanel scenario={scenario} report={report} selected={`vent:${device.vent.id}`} onSelect={() => {}} onChange={next => { const vent = next.vents[0], host = report?.patches.find(p => p.id === vent.host.patchId); apply({ vent, ...(host ? { floorId: host.floorId, roomId: host.roomId } : {}) }); }} onPick={() => {}} onEditSource={() => {}} editor placement checked={false} editorDone={() => ctx.editVent(null)}
+        ventFlowFields={device.vent.role === "supply" ? <CFDNumber label="Outdoor-air fraction (0–1)" min={0} max={1} value={device.outdoorAirFraction} onChange={outdoorAirFraction => apply({ outdoorAirFraction })} /> : <label>Outlet air path<select aria-label="Outlet air path" value={device.extractKind} onChange={e => apply({ extractKind: e.target.value as "exhaust" | "return" })}><option value="exhaust">Outdoor exhaust</option><option value="return">Return to air handler</option></select></label>}
+        editorSections={<details><summary>Operating scenario overrides</summary>
         <p>These inputs apply to {operating.name}; design values are retained.</p>
         <CFDNumber label={device.vent.role === "supply" ? "Scenario supply temperature (°C)" : "Scenario backflow temperature (°C)"} value={(override.temperatureK??device.vent.temperatureK)-273.15} onChange={value=>operation({temperatureK:value+273.15})}/>
         <CFDNumber convert={false} label={`Scenario ${flowLabel}`} value={control==="volumeFlow"?flowToDisplay(override.valueSI??device.vent.valueSI,flowUnit):override.valueSI??device.vent.valueSI} onChange={value=>operation({valueSI:control==="volumeFlow"?flowFromDisplay(value,flowUnit):value})}/>
@@ -74,10 +70,8 @@ export function HvacVentEditor() {
           delete overrides[device.vent.id];
           saveOverrides(overrides);
         }}>Use design values</button>
-      </details>
-      <p>Edits update the shared design in Heating/Ventilation and linked CFD cases. Recheck geometry before CFD export or execution.</p>
+      </details>} />
       {error && <p role="alert" className={styles.warning}>{error}</p>}
-      <button onClick={() => ctx.editVent(null)}>Done</button>
     </div>
   </FloatingToolbar>, document.body);
 }

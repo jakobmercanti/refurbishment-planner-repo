@@ -152,6 +152,11 @@ test("catalogue asset viewer is bounded and operable in light/dark and narrow la
   for(const theme of ["light","dark"])for(const width of [1440,390]){
     await page.setViewportSize({width,height:900});await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
     const box=await dialog.boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width+1&&box.y>=0&&box.y+box.height<=901,JSON.stringify({theme,width,box}));
+    if (width === 1440) {
+      const left = await dialog.locator(".catalogue-object-properties").boundingBox();
+      const right = await dialog.locator(".catalogue-asset-preview").boundingBox();
+      assert.ok(box.width > 1100 && Math.abs(left.width - right.width) < 2, JSON.stringify({ box, left, right }));
+    }
     const slider=dialog.getByRole("slider",{name:"Preview zoom",exact:true});await slider.scrollIntoViewIfNeeded();await slider.fill("1.4");assert.equal(await slider.inputValue(),"1.4");
     await dialog.getByRole("button",{name:"Fit",exact:true}).click();assert.equal(await slider.inputValue(),"1");
     const layout=dialog.locator('.catalogue-object-layout'),scrollBefore=await layout.evaluate(e=>e.scrollTop),canvas=await dialog.locator('.fixture-preview canvas').boundingBox();

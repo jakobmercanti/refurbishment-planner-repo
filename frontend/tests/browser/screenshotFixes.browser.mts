@@ -123,7 +123,7 @@ test("boundary folders edit only on request, drafts remain grouped, responsive s
 
 test("outside left clicks dismiss the background toolbar menu even over floating UI; Heating fields align and fullscreen restores", async t => {
   const { page } = await open(t);
-  await menu(page, "Tools", "Heating Layout"); const heating = page.locator(".heating-layout-window");
+  await menu(page, "Tools", "Heating & ventilation"); const heating = page.locator(".heating-layout-window");
   const temperature = heating.getByRole("spinbutton", { name: "Room target temperature °C", exact: true });
   const method = heating.getByRole("combobox", { name: /^Heating method/ });
   const [a, b] = await Promise.all([temperature.boundingBox(), method.boundingBox()]);

@@ -17,7 +17,7 @@ function fixture() {
   return p;
 }
 async function open(s, tab = "Ventilation") {
-  await menu(s.page, "Tools", "Heating Layout");
+  await menu(s.page, "Tools", "Heating & ventilation");
   const panel = s.page.locator(".heating-layout-window");
   await panel.getByRole("tab", { name: tab, exact: true }).click(); return panel;
 }

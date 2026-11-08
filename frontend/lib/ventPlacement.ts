@@ -31,3 +31,28 @@ export function ventHostAtPoint(vent: CFDVent, patches: readonly CFDPatch[], poi
     return uv ? [{ patch, uv, distance }] : [];
   }).sort((a,b)=>a.distance-b.distance)[0] ?? null;
 }
+
+/** Resolve a 2D drop against measured room-facing hosts, including sloped ceilings. */
+export function ventHostFromPlan(vent: CFDVent, patches: readonly CFDPatch[], point: Vec3, wallTolerance: (patch: CFDPatch) => number, preserveWallHeight: boolean) {
+  const walls = patches.filter(patch => patch.kind === "wall" && patch.hostable && patch.host);
+  const wallHits = walls.flatMap(patch => {
+    const host = patch.host!;
+    const dx = point[0] - host.originMm[0], dy = point[1] - host.originMm[1];
+    const distance = Math.abs(dx * host.normal[0] + dy * host.normal[1]);
+    const along = dx * host.uAxis[0] + dy * host.uAxis[1];
+    const toleranceMm = wallTolerance(patch);
+    if (distance > toleranceMm || along < -toleranceMm || along > host.widthMm + toleranceMm) return [];
+    const height = preserveWallHeight ? (point[2] - host.originMm[2]) / (host.vAxis[2] * host.heightMm) : 0.5;
+    const uv = snapVentUV(vent, host, along / host.widthMm, height);
+    return uv ? [{ patch, uv, distance }] : [];
+  }).sort((a, b) => a.distance - b.distance);
+  if (wallHits[0]) return wallHits[0];
+  for (const patch of patches) {
+    const host = patch.host;
+    if (patch.kind !== "ceiling" || !patch.hostable || !host || Math.abs(host.normal[2]) < 1e-6) continue;
+    const z = host.originMm[2] - ((point[0] - host.originMm[0]) * host.normal[0] + (point[1] - host.originMm[1]) * host.normal[1]) / host.normal[2];
+    const hit = ventHostAtPoint(vent, [patch], [point[0], point[1], z]);
+    if (hit) return hit;
+  }
+  return null;
+}

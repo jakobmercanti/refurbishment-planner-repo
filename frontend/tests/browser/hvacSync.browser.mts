@@ -20,7 +20,7 @@ async function dismiss(page) {
   }
 }
 async function heating(s, tab = "Heating") {
-  await dismiss(s.page); await menu(s.page, "Tools", "Heating Layout");
+  await dismiss(s.page); await menu(s.page, "Tools", "Heating & ventilation");
   const panel = s.page.locator(".heating-layout-window");
   await panel.getByRole("tab", { name: tab, exact: true }).click(); return panel;
 }

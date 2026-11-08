@@ -1,6 +1,6 @@
 import type { Point2D, Room } from "./types";
 import type { UFHZone } from "./heatingDocument";
-import { roundPipeCorners } from "./heatingGeometry";
+import { roundPipeCorners, ufhLayoutCorners } from "./heatingGeometry";
 
 const sub = (a: Point2D, b: Point2D) => ({ x: a.x - b.x, y: a.y - b.y });
 const len = (p: Point2D) => Math.hypot(p.x, p.y);
@@ -93,9 +93,10 @@ export function editUFHBend(path: readonly Point2D[], index: number, at: Point2D
 }
 
 export function parallelRunCount(room: Room, zone: UFHZone) {
-  const xs = room.vertices.map(p => p.x), ys = room.vertices.map(p => p.y);
-  const vertical = zone.orientation === "Vertical" || zone.orientation === "Auto" && Math.max(...ys) - Math.min(...ys) > Math.max(...xs) - Math.min(...xs);
-  const span = vertical ? Math.max(...xs) - Math.min(...xs) : Math.max(...ys) - Math.min(...ys);
+  const [a, b] = ufhLayoutCorners(room, zone);
+  const width = b.x - a.x, depth = b.y - a.y;
+  const vertical = zone.orientation === "Vertical" || zone.orientation === "Auto" && depth > width;
+  const span = vertical ? width : depth;
   const available = span - 2 * (zone.boundaryOffsetMm + zone.minBendRadiusMm);
   return { available, count: zone.runCountTarget ?? Math.max(2, Math.floor(available / zone.spacingMm) + 1) };
 }

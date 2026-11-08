@@ -155,6 +155,7 @@ export function BoundariesPanel({
   onSelectGroup,
   checked,
   navigation,
+  sharedCapture,
   actions,
 }: {
   project: ProjectDocument;
@@ -167,6 +168,7 @@ export function BoundariesPanel({
   onSelectGroup: (id: string) => void;
   checked: boolean;
   navigation?: ReactNode;
+  sharedCapture?: ReactNode;
   actions?: ReactNode;
 }) {
   const [search, setSearch] = useState(""),
@@ -219,6 +221,7 @@ export function BoundariesPanel({
   return (
     <section className="cfx-boundaries-panel" data-cfx-collapse-root>
       <header className="cfx-inline-toolbar">{navigation}{actions}<CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:collections.map(group=>group.id)))}/></header>
+      {sharedCapture}
       <details open><summary>Boundary groups &amp; surfaces</summary>
       <div className="cfx-inline-toolbar cfx-boundary-tools">
         <button disabled={collections.length >= 100} onClick={() => newGroup()}>Add boundary group</button>

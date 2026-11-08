@@ -886,10 +886,12 @@ export function ClimoptixWorkspace({
                 </button>
               ))}
             </div>
-            <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
+            <div className="cfx-setup-status-row">
             {scenario && shownTab !== "results" && shownTab !== "adjoint" && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
               showFailure onIssues={() => reviewIssues()}
               onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} />}
+            <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
+            </div>
             <section
               role="tabpanel"
               id="cfx-setup-panel-studies"
@@ -972,17 +974,11 @@ export function ClimoptixWorkspace({
                     )}
                     {panel.id === "boundaries" && (
                       <>
-                        {project.hvac?.bindings[scenario.id] && <SharedBoundaryCapture report={activeReport} checked={!stale && !busy} />}
-                        {scenario.thermalSnapshots?.length ? (
-                          <p className="cfx-notice">
-                            Thermal handoff stored ·{" "}
-                            {thermalStale
-                              ? "refresh to verify current sources"
-                              : "current source revision"}
-                            . Contract only, not executed.
-                          </p>
-                        ) : null}
                         <BoundariesPanel
+                          sharedCapture={<>
+                            {project.hvac?.bindings[scenario.id] && <SharedBoundaryCapture report={activeReport} checked={!stale && !busy} />}
+                            {!!scenario.thermalSnapshots?.length && <p className="cfx-notice">Thermal handoff stored · {thermalStale ? "refresh to verify current sources" : "current source revision"}. Contract only, not executed.</p>}
+                          </>}
                           actions={<button onClick={()=>setHeatingImportOpen(true)}>Import insulation &amp; heating conditions</button>}
                           project={project}
                           navigation={boundsTab === "conditions" ? boundsNavigation : undefined}

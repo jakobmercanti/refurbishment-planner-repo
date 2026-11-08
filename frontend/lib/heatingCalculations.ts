@@ -226,4 +226,9 @@ export function snapRadiatorToWall(r: HeatingRadiator, room: Room, point: Point2
   const edge = room.vertices.map((a, index) => { const b = room.vertices[(index + 1) % room.vertices.length]; return { index, a, b, ...projectOnSegment(mounted.center, a, b) }; }).filter(edge => { const angle = Math.atan2(edge.b.y - edge.a.y, edge.b.x - edge.a.x) - mounted.rotation_deg * Math.PI / 180; return Math.abs(Math.sin(angle)) < 1e-6; }).sort((a, b) => a.distance - b.distance)[0];
   return { ...r, wallIndex: edge.index, positionAlongWallMm: edge.t * distanceMm(edge.a, edge.b), positionMm: mounted.center, rotationDeg: -mounted.rotation_deg };
 }
-export function geometryFingerprint(room: Room, exclusions: readonly { polygonMm: Point2D[] }[]) { return JSON.stringify([room.vertices, exclusions.map(e => e.polygonMm)]).length + ":" + JSON.stringify([room.vertices, exclusions.map(e => e.polygonMm)]).split("").reduce((s, c) => Math.imul(s ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261); }
+export function geometryFingerprint(room: Pick<Room, "vertices">, exclusions: readonly { polygonMm: Point2D[] }[]) {
+  const geometry = JSON.stringify([room.vertices, exclusions.map(e => e.polygonMm)]);
+  let hash = 2166136261;
+  for (let index = 0; index < geometry.length; index++) hash = Math.imul(hash ^ geometry.charCodeAt(index), 16777619) >>> 0;
+  return `${geometry.length}:${hash}`;
+}

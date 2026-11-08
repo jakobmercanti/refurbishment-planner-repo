@@ -46,6 +46,7 @@ import { openingCatalogueCategoryLabel, openingCatalogueDefaultDimensions } from
 import { isHeatingElement } from "@/lib/heatingElements";
 import { ADD_TO_PLAN_MODES, type AddToPlanMode } from "@/lib/addToPlanModes";
 import { ElectricalLayoutPanel, type ElectricalDisplayOptions } from "@/components/ElectricalLayoutPanel";
+import { ElectricalCircuitEditor } from "@/components/ElectricalCircuitEditor";
 import { ElectricalLightingTest } from "@/components/ElectricalLightingTest";
 import { simulateLighting, switchGangCount, lightingSwitchGangs } from "@/lib/electricalSimulation";
 import { isSocket, testSocketCircuits } from "@/lib/socketCircuits";
@@ -1193,6 +1194,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
   const [electricalDefaults, setElectricalDefaults] = useState(DEFAULT_ELECTRICAL_CONNECTION);
   const [electricalDisplay, setElectricalDisplay] = useState<ElectricalDisplayOptions>({ symbols: true, connections: true, circuitLabels: false });
   const [activeElectricalCircuitId, setActiveElectricalCircuitId] = useState<string | null>(electricalLayout.circuits[0]?.id ?? null);
+  const [electricalCircuitEditorId, setElectricalCircuitEditorId] = useState<string | null>(null);
+  const editingElectricalCircuit = electricalLayout.circuits.find(item => item.id === electricalCircuitEditorId);
   const selectedElectricalCircuitId = electricalLayout.circuits.some((item) => item.id === activeElectricalCircuitId)
     ? activeElectricalCircuitId
     : electricalLayout.circuits[0]?.id ?? null;
@@ -1977,8 +1980,8 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     applyElectricalLayout({ ...electricalLayout, circuits: [...electricalLayout.circuits, circuit] });
     setActiveElectricalCircuitId(circuit.id);
   }
-  function updateElectricalCircuit(id: string, patch: Partial<ElectricalCircuit>) {
-    applyElectricalLayout({ ...electricalLayout, circuits: electricalLayout.circuits.map((item) => item.id === id ? { ...item, ...patch } : item) });
+  function saveElectricalCircuit(draft: ElectricalCircuit, routes?: ElectricalConnection[]) {
+    applyElectricalLayout({ ...electricalLayout, circuits: electricalLayout.circuits.map(item => item.id === draft.id ? draft : item), connections: routes ?? electricalLayout.connections });
   }
   function deleteElectricalCircuit(id: string) {
     if (electricalLayout.circuits.length <= 1 || !electricalLayout.circuits.some((item) => item.id === id)) return;
@@ -2164,6 +2167,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
     }
   }
   function closeElectricalWindow() {
+    setElectricalCircuitEditorId(null);
     setDismissedElectricalLayoutWindowRequest(electricalLayoutWindowRequest);
     setElectricalAddElementsOpen(false);
     onCancelPlacement?.();
@@ -5300,7 +5304,7 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
                 </g>
               );
             })}
-            {(energy.windowOpen ? [] : visibleFixtures).filter((fixture) => !isElectricalObstacle(fixture) && !(heating.data.enabled && isHeatingElement(fixture))).map((storedFixture) => {
+            {(energy.windowOpen ? [] : visibleFixtures).filter((fixture) => !isElectricalObstacle(fixture) && !(heating.data.enabled && heating.data.display.radiators && heating.data.radiators.some(r => r.radiatorId === fixture.id && planRooms.some(room => room.id === r.roomId)))).map((storedFixture) => {
               const fixture = previewedFixture(storedFixture);
               const width = fixture.dimensions.width.value; const depth = fixture.dimensions.depth.value;
               const topLeft = toScreen({ x: fixture.center.x - width / 2, y: fixture.center.y + depth / 2 }); const bottomRight = toScreen({ x: fixture.center.x + width / 2, y: fixture.center.y - depth / 2 });
@@ -5479,7 +5483,6 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
         onLoadLayout={() => void browseElectricalLayoutFile()}
         fileBusy={electricalFileBusy}
         onSchedule={() => setElectricalScheduleOpen(true)}
-        onConnectionsChange={connections => applyElectricalLayout({ ...electricalLayout, connections })}
         onCheckout={() => { setElectricalConnecting(false); setElectricalSourceId(null); setElectricalPointer(null); setSelectedElectricalConnectionId(null); setLightingSwitchPositions({}); setTestedSocketId(null); setLightingTestOpen(true); }}
         onFinishConnection={() => { setSelectedElectricalConnectionId(null); setElectricalWaypointContextMenu(null); setElectricalConnectionContextMenu(null); }}
         crossings={wireCrossings}
@@ -5502,10 +5505,11 @@ export function FullFloorplanEditor({ initialFloorplan, onPersistFloorplan, onNe
         activeCircuitId={selectedElectricalCircuitId}
         onActiveCircuitChange={setActiveElectricalCircuitId}
         onCreateCircuit={createElectricalCircuit}
-        onUpdateCircuit={updateElectricalCircuit}
+        onEditCircuit={setElectricalCircuitEditorId}
         onDeleteCircuit={deleteElectricalCircuit}
       />
     </FloatingToolbar>}
+    {electricalWindowOpen && editingElectricalCircuit && <ElectricalCircuitEditor key={editingElectricalCircuit.id} circuit={editingElectricalCircuit} objects={electricalObjects} connections={electricalLayout.connections} onSave={saveElectricalCircuit} onClose={() => setElectricalCircuitEditorId(null)} />}
     <input ref={electricalLoadInput} type="file" hidden accept=".electricallayout,application/zip" onChange={event => { void inspectElectricalLayoutFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
     {pendingElectricalImport && typeof document !== "undefined" && createPortal(<div onKeyDown={event => { event.stopPropagation(); if (event.key === "Escape") { event.preventDefault(); closeElectricalLoad(); } }}><Popup open title="Load electrical layout" message="" confirmLabel={electricalFileBusy ? "Replacing…" : "Replace layout"} confirmDisabled={electricalFileBusy} onCancel={closeElectricalLoad} onConfirm={() => void applyElectricalImport()}>
       <p>Do you want to replace the current layout?</p><p><strong>{pendingElectricalImport.fileName}</strong></p><p>Only electrical fittings, circuits and connections are replaced. Your floorplan and other modules are kept. You can Undo this change.</p>

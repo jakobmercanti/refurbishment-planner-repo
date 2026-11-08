@@ -10,7 +10,7 @@ before(async () => { harness = await startBrowserHarness({ climoptixEnabled: tru
 after(async () => { await harness?.close(); });
 async function openVentilation(session) {
   await dismissOtherWindows(session.page);
-  await menu(session.page, "Tools", "Heating Layout");
+  await menu(session.page, "Tools", "Heating & ventilation");
   const panel = session.page.locator(".heating-layout-window");
   await panel.getByRole("tab", { name: "Ventilation", exact: true }).click();
   return panel;

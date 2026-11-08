@@ -18,7 +18,7 @@ async function dismiss(page) {
     await buttons.nth(i).click();
   }
 }
-async function ventilation(s) { await dismiss(s.page); await menu(s.page, "Tools", "Heating Layout"); const panel = s.page.locator(".heating-layout-window"); await panel.getByRole("tab", { name: "Ventilation", exact: true }).click(); return panel; }
+async function ventilation(s) { await dismiss(s.page); await menu(s.page, "Tools", "Heating & ventilation"); const panel = s.page.locator(".heating-layout-window"); await panel.getByRole("tab", { name: "Ventilation", exact: true }).click(); return panel; }
 async function number(panel, label, value) { const field = panel.getByRole("spinbutton", { name: label, exact: true }); await field.fill(String(value)); await field.press("Enter"); }
 async function details(panel, label) { const summary = panel.locator("summary").filter({ hasText: label }).first(); if (!(await summary.evaluate(e => e.closest("details").open))) await summary.click(); }
 
@@ -127,8 +127,16 @@ test("conventional plan drag commits measured host coordinates, undo and Escape 
   assert.ok(Math.hypot(preview.x + preview.width / 2 - target.x, preview.y + preview.height / 2 - target.y) < 15,
     JSON.stringify({ target, preview, start: box, host: moved.hvac.devices[0].vent.host }));
   await s.page.mouse.up();
-  await eventually(async () => (await s.saved()).hvac.devices[0].vent.host, host => host.patchId !== moved.hvac.devices[0].vent.host.patchId);
+  const rehosted = await eventually(async () => (await s.saved()).hvac.devices[0].vent.host, host => host.patchId !== moved.hvac.devices[0].vent.host.patchId && host.patchId.includes("wall"));
+  box = await marker.boundingBox();
+  await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await s.page.mouse.down();
+  await s.page.mouse.move(target.x + 65, target.y, { steps: 12 });
+  await s.page.mouse.up();
+  await eventually(async () => (await s.saved()).hvac.devices[0].vent.host, host => host.patchId.includes("ceiling"));
   await s.page.getByRole("button", { name: "Restore Heating Layout", exact: true }).click();
+  await panel.getByRole("button", { name: "Undo HVAC", exact: true }).click();
+  await eventually(s.saved, p => JSON.stringify(p.hvac.devices[0].vent.host) === JSON.stringify(rehosted));
   await panel.getByRole("button", { name: "Undo HVAC", exact: true }).click();
   await eventually(s.saved, p => JSON.stringify(p.hvac.devices[0].vent.host) === JSON.stringify(moved.hvac.devices[0].vent.host));
   await panel.getByRole("button", { name: "Undo HVAC", exact: true }).click();

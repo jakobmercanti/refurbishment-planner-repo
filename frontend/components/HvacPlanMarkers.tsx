@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useHvac, useHvacMarkersVisible } from "./HvacContext";
 import { activeFloor } from "@/lib/buildingDocument";
 import { ventCenter } from "@/lib/climoptixPreview";
-import { ventHostAtPoint, ventPointFromPlanDrag, ventUVAtPoint } from "@/lib/ventPlacement";
+import { ventHostFromPlan, ventPointFromPlanDrag } from "@/lib/ventPlacement";
 import type { CFDHost } from "@/lib/climoptix";
 import type { VentDevice } from "@/lib/hvacDocument";
 import type { Point2D } from "@/lib/types";
@@ -18,9 +18,9 @@ export function HvacPlanMarkers({ toScreen, fromClient }: { toScreen: (point: Po
   const cancel = () => { drag.current = null; setDraft(null); };
   useEffect(() => { const escape = (e: KeyboardEvent) => { if (e.key === "Escape") { drag.current = null; setDraft(null); } }; window.addEventListener("keydown", escape); return () => window.removeEventListener("keydown", escape); }, []);
   if (!visible || !ctx?.project.hvac) return null;
-  const floorId = activeFloor(ctx.project).id;
+  const floor = activeFloor(ctx.project), floorId = floor.id;
+  const rooms = new Map(ctx.project.rooms.map(room => [room.id, room]));
   const faces = new Map([...(ctx.geometryReport?.patches ?? []), ...ctx.geometryPatches].filter(p => p.floorId === floorId).map(p => [p.id, p]));
-  const walls = [...faces.values()].filter(p => p.kind === "wall");
   return <g aria-label="Shared ventilation markers">{ctx.project.hvac.devices.filter(d => d.floorId === floorId).map(d => {
     const host = faces.get(d.vent.host.patchId)?.host;
     if (!host) return null;
@@ -45,12 +45,11 @@ export function HvacPlanMarkers({ toScreen, fromClient }: { toScreen: (point: Po
         const vent = active.device.vent, at = fromClient(e.clientX, e.clientY, svg);
         const near = fromClient(e.clientX + 14, e.clientY, svg);
         const point = ventPointFromPlanDrag(vent, active.host, active.start, at);
-        const match = faces.get(vent.host.patchId)?.kind === "wall"
-          ? ventHostAtPoint(vent, walls, point, Math.hypot(near.x - at.x, near.y - at.y))
-          : null;
-        const uv = match?.uv ?? ventUVAtPoint(vent, active.host, point);
-        if (!uv) return;
-        const next = { id: vent.id, patchId: match?.patch.id ?? vent.host.patchId, u: uv[0], v: uv[1] };
+        const candidates = [...faces.values()].sort((a, b) => Number(b.roomId === active.device.roomId) - Number(a.roomId === active.device.roomId));
+        const tolerance = Math.hypot(near.x - at.x, near.y - at.y);
+        const match = ventHostFromPlan(vent, candidates, point, patch => Math.max(tolerance, (rooms.get(patch.roomId)?.wall_thickness.value ?? 0) / 2 + 8), faces.get(vent.host.patchId)?.kind === "wall");
+        if (!match) { active.position = null; setDraft(null); return; }
+        const next = { id: vent.id, patchId: match.patch.id, u: match.uv[0], v: match.uv[1] };
         active.position = next;
         setDraft(next);
       }}

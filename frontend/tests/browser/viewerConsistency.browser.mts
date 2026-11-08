@@ -31,7 +31,7 @@ async function dragToMenu(page, window) {
 
 test("service modules and detached settings remain available in 3D without changing saved data", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
-  await menu(page, "Tools", "Heating Layout");
+  await menu(page, "Tools", "Heating & ventilation");
   await page.getByRole("button", { name: "Building assumptions…", exact: true }).click();
   const detached = page.locator(".floating-toolbar").filter({ has: page.locator('.floating-toolbar-titlebar', { hasText: "Heating — Building assumptions" }) });
   await detached.waitFor();
@@ -56,7 +56,7 @@ test("free windows can reach the menu edge in both viewers while docked headers 
   const selector = await page.locator('.building-floor-bar').boundingBox(), docked = await add.boundingBox();
   assert.ok(docked.y >= selector.y + selector.height, "Automatic docking must retain the floor-selector gutter");
   await dragToMenu(page, add);
-  await menu(page, "Tools", "Heating Layout"); await dragToMenu(page, page.locator(".heating-layout-window"));
+  await menu(page, "Tools", "Heating & ventilation"); await dragToMenu(page, page.locator(".heating-layout-window"));
   await page.getByRole("button", { name: "3D", exact: true }).click();
   await dragToMenu(page, page.locator('.floating-toolbar').filter({ has: page.locator('.floating-toolbar-titlebar', { hasText: "View properties" }) }).filter({ visible: true }));
 });
@@ -128,7 +128,7 @@ test("a new multi-gang switch matches existing fittings at 50%, 100% and enlarge
 
 test("room settings launchers use equal columns and two rows; every window still opens", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
-  await menu(page, "Tools", "Heating Layout"); const heating = page.locator(".heating-layout-window");
+  await menu(page, "Tools", "Heating & ventilation"); const heating = page.locator(".heating-layout-window");
   const buttons = heating.locator(".heating-settings-launcher");
   assert.equal(await buttons.count(), 3);
   const boxes = await buttons.evaluateAll(elements => elements.map(element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));

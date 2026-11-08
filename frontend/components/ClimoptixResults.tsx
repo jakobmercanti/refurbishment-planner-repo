@@ -76,7 +76,7 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
   const planeViewer=(embedded=false)=>primary&&inspectorOpen?<ClimoptixVTKViewer compact embedded={embedded} file={primary.file} provenance={provenance} viewMode="2d" onClose={closeInspector} onRemoveFile={removePlane} toolbar={<>{planeSelection}{fileError&&<p className="cfx-error" role="alert">{fileError}</p>}{stack.error&&<p className="cfx-error" role="alert">{stack.error}</p>}</>} onPlaneStep={direction=>void stack.step(direction)} previousPlane={stack.previous} nextPlane={stack.next}/>:<div className="cfx-notice">{planeSelection}<button disabled={!primary} onClick={()=>setInspectorOpen(true)}>Show plane viewer</button></div>;
   return <section className="cfx-results" data-cfx-collapse-root aria-label="Simulation results and downloads">
     <div className="cfx-inline-toolbar"><h3>Results · {name}</h3><CFDCollapseAll/></div>
-    <div className="cfx-segments cfx-results-tabs" role="tablist" aria-label="Results views" onKeyDown={event=>{
+    <div className="cfx-simulation-tabs cfx-results-tabs" role="tablist" aria-label="Results views" onKeyDown={event=>{
       if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
       event.preventDefault();
       const index = RESULT_VIEWS.findIndex(([id]) => id === subview);

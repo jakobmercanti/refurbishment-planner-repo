@@ -25,7 +25,7 @@ function fixture() {
   p.heatingLayout=newHeatingProject();p.energyLayout=newEnergyProject();p.building=defaultBuilding(p);
   return parseProject(p);
 }
-async function heating(session) { await menu(session.page,"Tools","Heating Layout"); return session.page.locator(".heating-layout-window"); }
+async function heating(session) { await menu(session.page,"Tools","Heating & ventilation"); return session.page.locator(".heating-layout-window"); }
 async function equalWidths(locator) {
   const boxes=await locator.evaluateAll(els=>els.map(e=>e.getBoundingClientRect().width));
   assert.ok(boxes.length>=2 && Math.max(...boxes)-Math.min(...boxes)<2,JSON.stringify(boxes));
@@ -40,6 +40,19 @@ async function segmentPoint(line, fraction=.5) {
     point.x=a.x+(b.x-a.x)*t;point.y=a.y+(b.y-a.y)*t;const p=point.matrixTransform(el.getScreenCTM());return {x:p.x,y:p.y};
   },fraction);
 }
+
+test("room heating reset has a padded dialog with regular-weight body text",async t=>{
+  const session=await harness.session(fixture());t.after(()=>session.close());
+  const panel=await heating(session);
+  await panel.getByRole('button',{name:'Reset',exact:true}).click();
+  const dialog=session.page.getByRole('dialog',{name:'Reset room heating?'});
+  assert.ok((await dialog.boundingBox())!.width>=560);
+  const body=await dialog.locator('.popup-content p').evaluate(element=>({weight:getComputedStyle(element).fontWeight,padding:getComputedStyle(element.parentElement!).paddingInlineStart}));
+  assert.equal(body.weight,'400');
+  assert.ok(parseFloat(body.padding)>=20);
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  await dialog.waitFor({state:'hidden'});
+});
 
 test("Heating main and section guides explain temperatures, comparisons and results",async t=>{
  const session=await harness.session(fixture());t.after(()=>session.close());const {page}=session,panel=await heating(session);
@@ -196,17 +209,18 @@ test("default UFH is usable, bend handles drag and circuit count regenerates wit
   assert.match(await panel.textContent(),/Manifold design 40\/30°C/);
   assert.doesNotMatch(await panel.textContent(),/no complete rating grid|surface-temperature data missing|Output flow not set/);
   await panel.getByRole("button",{name:/^Room 1-01 ·/}).click();
-  const handles=page.locator('[data-ufh-handle="position"]');await handles.first().waitFor();
-  assert.equal(await handles.count(),await page.locator('[data-ufh-handle="radius"]').count());
-  assert.ok(await handles.count()<before.length/4);
+  const handles=page.locator('[data-ufh-handle="footprint"]');await handles.first().waitFor();
+  assert.equal(await handles.count(),2);
+  assert.ok(await page.locator('[data-ufh-handle="radius"]').count()<before.length/4);
   // Header minimise exposes the plan without changing its coordinates.
   await panel.getByRole("button",{name:"Minimise Heating Layout",exact:true}).click();
   const otherWindows=page.locator('.floating-toolbar:not(.heating-layout-window) .floating-toolbar-close:visible');
   while(await otherWindows.count()) await otherWindows.first().click();
   const handle=handles.first(), box=await handle.boundingBox();assert.ok(box);
-  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2-12,box.y+box.height/2,{steps:8});await page.mouse.up();
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+12,box.y+box.height/2,{steps:8});await page.mouse.up();
   const changed=await eventually(session.saved,p=>JSON.stringify(p?.heatingLayout?.ufhCircuits[0]?.pathMm)!==JSON.stringify(before));
-  assert.ok(changed.heatingLayout.ufhCircuits[0].manuallyEdited);
+  assert.ok(changed.heatingLayout.ufhZones[0].layoutBoundsMm);
+  assert.equal(changed.heatingLayout.ufhCircuits[0].manuallyEdited,false);
   await page.getByRole("button",{name:"Restore Heating Layout",exact:true}).click();
   const count=panel.getByRole("spinbutton",{name:"Requested circuit count",exact:true});await count.fill("2");await count.press("Tab");
   const radiators=JSON.stringify((await session.saved()).heatingLayout.radiators);

@@ -15,7 +15,7 @@ import type { QuoteDocument } from "./quoteDocument";
 import type { HeatingProject } from "./heatingDocument";
 import type { EnergyProject } from "./energyDocument";
 import { commitHeatingElements } from "./heatingElements";
-import { resizeHeatingRooms } from "./heatingRoomResize";
+import { queueHeatingRoomResize } from "./heatingRoomResize";
 import { ProjectHistory } from "./projectHistory";
 import { matchesProjectScope } from "./projectScope";
 import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
@@ -42,18 +42,15 @@ export function useLocalProject() {
     });
     return () => { cancelled = true; };
   }, [replace]);
-  const update = useCallback((changes: Partial<ProjectDocument>, forceHistory = false) => {
+  const update = useCallback((changes: Partial<ProjectDocument>, forceHistory = false, recordHistory = true) => {
     const p = current.current; if (!p) return;
     // An empty floor publishes a fresh [] when the editor is restored. Avoid
     // feeding an unchanged snapshot back into the editor and starving autosave.
     if (Object.entries(changes).every(([key,value]) => JSON.stringify(p[key as keyof ProjectDocument]) === JSON.stringify(value))) return;
     let next = migrateHvac({ ...p, ...changes, updatedAt: new Date().toISOString() });
-    if (changes.rooms && next.heatingLayout) {
-      try { next = { ...next, heatingLayout: resizeHeatingRooms(p.rooms, next.rooms, next.heatingLayout) }; }
-      catch (cause) { const message = cause instanceof Error ? cause.message : "UFH could not follow this room edit.";setStatus(message);setRestore(p);setRevision(r=>r+1);return message; }
-    }
+    if (changes.rooms && next.heatingLayout) next = { ...next, heatingLayout: queueHeatingRoomResize(p.rooms, next.rooms, next.heatingLayout) };
     if(changes.rooms&&next.building?.roof.roomOverrides){const ids=new Set(projectFloors(next).flatMap(f=>f.content.rooms.map(room=>room.id)));next={...next,building:{...next.building,roof:{...next.building.roof,roomOverrides:next.building.roof.roomOverrides.filter(item=>ids.has(item.roomId))}}};}
-    history.current.record(p,next,forceHistory);
+    if (recordHistory) history.current.record(p,next,forceHistory);
     refreshHistory();
     current.current = next; setProject(next);
   }, [refreshHistory]);
@@ -122,9 +119,9 @@ export function useLocalProject() {
       }
     } catch (cause) { setStatus("Local save failed. Download a backup."); throw cause; }
   }, [update]);
-  const setHeatingLayout = useCallback((heatingLayout: HeatingProject) => {
+  const setHeatingLayout = useCallback((heatingLayout: HeatingProject, refreshedResize = false) => {
     const p = current.current; if (!p) return;
-    const next = commitHeatingElements(heatingLayout, p.rooms); update(next); return next.rooms;
+    const next = commitHeatingElements(heatingLayout, p.rooms); update(next, false, !refreshedResize); return next.rooms;
   }, [update]);
   const setEnergyLayout = useCallback((energyLayout: EnergyProject) => update({ energyLayout }), [update]);
   const setHvac = useCallback((hvac: HvacProject, scenarios?: CFDScenario[], scope?: string) => {

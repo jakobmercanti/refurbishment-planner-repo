@@ -56,7 +56,7 @@ async function inspect(panel, label, expectedMainHelp = 1) {
 test("Heating, Ventilation, Energy and Electrical share one guide and consistent controls across styles and densities", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close()); const { page } = s;
   for (const [entry, selector] of [["Heating Layout", ".heating-layout-window"], ["Energy & Insulation", ".energy-layout-window"], ["Full Electrical Layout module…", ".electrical-layout-window"]]) {
-    await profile(page, profiles[0]); await menu(page, "Tools", entry); const panel = page.locator(selector);
+    await profile(page, profiles[0]); await menu(page, "Tools", entry === "Heating Layout" ? "Heating & ventilation" : entry); const panel = page.locator(selector);
     for (const p of profiles) {
       await profile(page, p);
       const tabs = entry === "Heating Layout" ? ["Room setup", "Heating elements", "Underfloor", "System", "Results", "Ventilation"] : [null];
@@ -93,6 +93,13 @@ test("CFD phases use one window disclosure bar and contextual section help", asy
       }
       if (phase === "Simulations") {
         const add = panel.getByRole("button", { name: "New simulation", exact: true });
+        if (p.width === 1440) {
+          const readiness = panel.locator(".cfx-workbench-status");
+          const status = (await readiness.boundingBox())!;
+          const collapse = (await panel.getByRole("button", { name: "Collapse all", exact: true }).boundingBox())!;
+          assert.ok(collapse.y >= status.y && collapse.y < status.y + status.height);
+          assert.notEqual(await readiness.evaluate(el => getComputedStyle(el).backgroundColor), await panel.locator(".cfx-setup-status-row").evaluate(el => getComputedStyle(el).backgroundColor));
+        }
         await panel.getByRole("button", { name: "Collapse all", exact: true }).click();
         assert.equal(await add.isVisible(), false);
         await panel.getByRole("button", { name: "Expand all", exact: true }).click();
@@ -122,7 +129,7 @@ test("Preferences uses the reclaimed help column and real room-target guidance r
     assert.ok(widths.every(([a, b]) => Math.abs(a - b) < 1), JSON.stringify(widths));
   }
   await settings.getByRole("button", { name: "Done", exact: true }).click(); await profile(page, profiles[0]);
-  await menu(page, "Tools", "Heating Layout"); const panel = page.locator(".heating-layout-window");
+  await menu(page, "Tools", "Heating & ventilation"); const panel = page.locator(".heating-layout-window");
   await panel.getByRole("tab", { name: "Results", exact: true }).click(); await panel.getByRole("button", { name: "Help for Heating Layout", exact: true }).click();
   const body = await page.locator(".window-help-host").innerText(); assert.match(body, /room-type default/); assert.doesNotMatch(body, /\ntrue\n/);
 });

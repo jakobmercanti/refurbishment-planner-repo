@@ -4,7 +4,6 @@ import type { ElectricalCircuit, ElectricalConnection, ElectricalConnectionDefau
 import { switchGangCount } from "@/lib/electricalSimulation";
 import { electricalEndpointLabel, electricalFittingReferences, electricalGangConnections } from "@/lib/electricalConnectionLabels";
 import type { ElectricalCrossing } from "@/lib/electricalCrossings";
-import { SocketCircuitControls } from "./SocketCircuitControls";
 
 export interface ElectricalDisplayOptions { symbols: boolean; connections: boolean; circuitLabels: boolean }
 export interface ElectricalObjectOption { id: string; label: string; representation_key?: string | null }
@@ -26,8 +25,7 @@ type Props = {
   connections: ElectricalConnection[]; selectedConnectionId: string | null; onSelectConnection: (id: string) => void;
   onUpdateConnection: (id: string, patch: Partial<ElectricalConnection>) => void; onDeleteConnection: (id: string) => void;
   circuits: ElectricalCircuit[]; activeCircuitId: string | null; onActiveCircuitChange: (id: string) => void;
-  onCreateCircuit: () => void; onUpdateCircuit: (id: string, patch: Partial<ElectricalCircuit>) => void; onDeleteCircuit: (id: string) => void;
-  onConnectionsChange?: (connections: ElectricalConnection[]) => void;
+  onCreateCircuit: () => void; onEditCircuit: (id: string) => void; onDeleteCircuit: (id: string) => void;
 };
 
 export function ElectricalLayoutPanel(p: Props) {
@@ -128,17 +126,10 @@ export function ElectricalLayoutPanel(p: Props) {
     <details className="electrical-layout-section" open={Boolean(p.selectedConnectionId)}><summary>Circuits ({p.circuits.length})</summary>
       {p.circuits.length ? <ul className="electrical-connection-list electrical-circuit-list">{p.circuits.map((item) => <li className="electrical-circuit-row" key={item.id}>
         <button type="button" className={`electrical-circuit-select ${item.id === activeCircuitId ? "selected" : ""}`} aria-pressed={item.id === activeCircuitId} onClick={() => p.onActiveCircuitChange(item.id)}><span className="electrical-circuit-name"><i style={{ backgroundColor: item.color }} aria-hidden="true" />{item.name}</span><small>{item.id === activeCircuitId ? "Selected for new connections" : "Select for new connections"}</small></button>
-        {p.circuits.length > 1 && <button type="button" className="electrical-connection-action delete electrical-circuit-delete" aria-label={`Delete circuit ${item.name}`} title={`Delete ${item.name}`} onClick={() => p.onDeleteCircuit(item.id)}>Delete</button>}
+        <div className="electrical-circuit-row-actions"><button type="button" className="review-style-button" aria-label={`Edit circuit ${item.name}`} onClick={() => p.onEditCircuit(item.id)}>Edit</button>
+        {p.circuits.length > 1 && <button type="button" className="electrical-connection-action delete electrical-circuit-delete" aria-label={`Delete circuit ${item.name}`} title={`Delete ${item.name}`} onClick={() => p.onDeleteCircuit(item.id)}>Delete</button>}</div>
       </li>)}</ul> : <p className="electrical-layout-empty">No circuits yet.</p>}
-      {circuit && <div className="electrical-circuit-edit">
-        <label key={circuit.id + circuit.name} className="field"><span>Name</span><input defaultValue={circuit.name} maxLength={100} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); event.currentTarget.blur(); } }} onBlur={(e) => { const value = e.target.value.trim(); if (value && value !== circuit.name) p.onUpdateCircuit(circuit.id, { name: value }); else if (!value) e.currentTarget.value = circuit.name; }} /></label>
-        <label className="field"><span>Colour</span><input aria-label="Circuit colour" type="color" value={circuit.color} onChange={(e) => p.onUpdateCircuit(circuit.id, { color: e.target.value })} /></label>
-        <div className="electrical-circuit-edit-actions">
-          <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>
-        </div>
-      </div>}
-      {!circuit && <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>}
-      {circuit && p.onConnectionsChange && <SocketCircuitControls key={`socket-${circuit.id}`} circuit={circuit} objects={p.objects} connections={p.connections} onUpdate={patch => p.onUpdateCircuit(circuit.id, patch)} onConnectionsChange={p.onConnectionsChange} />}
+      <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>
       {circuit && connectionGroup(circuit.id)}
     </details>
   </div>;

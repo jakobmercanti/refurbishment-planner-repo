@@ -23,7 +23,7 @@ function fixture() {
 }
 async function floorplan(s) {
   await s.page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("FLOORPLAN");
-  await menu(s.page, "Tools", "Heating Layout"); const panel = s.page.locator(".heating-layout-window");
+  await menu(s.page, "Tools", "Heating & ventilation"); const panel = s.page.locator(".heating-layout-window");
   await panel.getByRole("tab", { name: "Ventilation", exact: true }).click(); return panel;
 }
 async function cfd(s) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot, parseEngineeringUnits, subscribeEngineeringUnits } from "@/lib/appPreferences";
 import { ClimoptixObjects } from "./ClimoptixObjects";
 import { WindowHelpButton } from "./WindowHelpButton";
@@ -26,6 +26,9 @@ export function EquipmentPanel({
   editor = false,
   checked = true,
   placement = false,
+  editorDone,
+  ventFlowFields,
+  editorSections,
 }: {
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -38,6 +41,9 @@ export function EquipmentPanel({
   editor?: boolean;
   checked?: boolean;
   placement?: boolean;
+  editorDone?: () => void;
+  ventFlowFields?: ReactNode;
+  editorSections?: ReactNode;
 }) {
   const hvacContext = useHvac();
   const unitPreference = useSyncExternalStore(subscribeEngineeringUnits, getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot);
@@ -186,7 +192,7 @@ export function EquipmentPanel({
     <>
       {editor && vent && (
         <section className="cfx-card cfx-vent-settings" data-cfx-collapse-root>
-          <header className="cfx-inline-toolbar"><h3>Vent settings</h3><CFDCollapseAll/></header>
+          <header className="cfx-inline-toolbar"><h3>Vent settings</h3><CFDCollapseAll wholeWindow={!!editorDone}/>{editorDone && <button type="button" onClick={editorDone}>Done</button>}</header>
           <details open><summary>Position &amp; size</summary>
           <CFDText
             label="Vent name"
@@ -249,7 +255,7 @@ export function EquipmentPanel({
           {!placement && <button disabled={!hosts.length} onClick={() => onPick(vent.role, vent.id)}>Place this vent on face…</button>}
           {placement && (() => {
             const host = hosts.find(p => p.id === vent.host.patchId)?.host;
-            return host ? <output aria-label="Live vent coordinates" className="cfx-notice">Position (mm): {ventCenter(vent, host).map((v, axis) => `${["X", "Y", "Z"][axis]} ${v.toFixed(1)}`).join(" · ")}</output> : <p>Choose a host face in the 3D view.</p>;
+            return host ? <output aria-label="Live vent coordinates" className="cfx-notice cfx-vent-coordinates">Position (mm): {ventCenter(vent, host).map((v, axis) => `${["X", "Y", "Z"][axis]} ${v.toFixed(1)}`).join(" · ")}</output> : <p>Choose a host face in the viewer.</p>;
           })()}
           <div className="cfx-grid">
             <CFDNumber
@@ -297,6 +303,7 @@ export function EquipmentPanel({
           </div>
           </details>
           <details open><summary>Flow &amp; thermal conditions</summary>
+          {ventFlowFields}
           <label>
             Controlling quantity
             <select
@@ -396,6 +403,7 @@ export function EquipmentPanel({
             />
             <small className="cfx-caption">Optimization: metadata only</small>
           </details>
+          {editorSections}
         </section>
       )}
     </>

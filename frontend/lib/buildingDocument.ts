@@ -109,7 +109,7 @@ function copyContent(content: FloorContent, includeAssets: boolean): FloorConten
   collect(copy);
   const remapString = (s: string) => ids.get(s) ?? [...ids].reduce((v, [old, next]) => v.startsWith(old + "|") || v.startsWith(old + ":") ? next + v.slice(old.length) : v, s);
   const reference=(key:string)=>identity.has(key)||/Ids?$/.test(key)||key==="obstacle_id"||key==="source_floorplan_room_id"||key==="hiddenDimensions";
-  const records=new Set(["dimensionOffsets","roomFinishes","labelPositions","roomIndicatorPositions"]);
+  const records=new Set(["dimensionOffsets","roomFinishes","labelPositions","roomIndicatorPositions","pendingRoomResize"]);
   const remap = (v: unknown,key=""): unknown => typeof v === "string" ? reference(key)?remapString(v):v : Array.isArray(v) ? v.map(x=>remap(x,key)) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k,x]) => [records.has(key)?remapString(k):k, remap(x,k)])) : v;
   const next = remap(copy) as FloorContent;
   if (!includeAssets) { next.rooms = next.rooms.map(r => ({ ...r, obstacles: [], person_mockup: null })); next.assetInstances = []; next.electricalLayout = undefined; next.heatingLayout = undefined; next.energyLayout = undefined; }

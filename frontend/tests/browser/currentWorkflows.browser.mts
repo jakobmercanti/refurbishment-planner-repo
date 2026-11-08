@@ -87,6 +87,23 @@ test("wall-adjacent thin heating symbols can be picked above wall hit areas with
   assert.deepEqual(wire((await session.saved()).rooms), wire(before));
 });
 
+test("vertical heating fittings remain visible in 2D with or without the heating overlay", async t => {
+  const project = fixture();
+  const placed = project.rooms[0].obstacles[0];
+  assert.ok(placed);
+  project.rooms[0].obstacles[0] = { ...placed, representation_key: "furniture-radiator-vertical-2-1000", dimensions: { ...placed.dimensions, height: { ...placed.dimensions.height, value: 1600 } } };
+  const session = await harness.session(project); t.after(() => session.close()); const { page } = session;
+  await page.locator(`[data-fixture-id="${placed.id}"]`).waitFor();
+  await menu(page, "Tools", "Heating & ventilation");
+  await page.locator(".heating-emitter-symbol").waitFor();
+  const panel = page.locator(".heating-layout-window");
+  await panel.getByRole("tab", { name: "System", exact: true }).click();
+  await panel.getByText("Canvas layers", { exact: true }).click();
+  await panel.getByRole("checkbox", { name: "radiators", exact: true }).uncheck();
+  await page.locator(`[data-fixture-id="${placed.id}"]`).waitFor();
+  assert.equal(await page.locator(".heating-emitter-symbol").count(), 0);
+});
+
 test("insulation draft Cancel, Apply and Undo keep exact wall geometry while lowering U", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
   await menu(page, "Tools", "Energy & Insulation"); const panel = page.locator(".energy-layout-window"), editor = page.locator(".wall-layers-popup");
@@ -94,7 +111,13 @@ test("insulation draft Cancel, Apply and Undo keep exact wall geometry while low
   await eventually(() => panel.innerText(), value => /Estimated U 0.300/.test(value));
   await eventually(session.saved, value => value.energyLayout?.enabled === true);
   const before = await session.saved();
-  await panel.getByRole("button", { name: "Define wall layers" }).click(); await editor.getByRole("button", { name: "Add layer", exact: true }).click();
+  assert.equal(await panel.getByText(/Layer key · outside/).count(), 0);
+  await panel.getByRole("button", { name: "Define wall layers" }).click();
+  const columns = await editor.locator(".appearance-popup-grid > div").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().width));
+  assert.ok(Math.abs(columns[0] - columns[1]) < 2, JSON.stringify(columns));
+  await editor.getByText("Calculation details & wall properties", { exact: true }).click();
+  await editor.getByRole("spinbutton", { name: "Overall wall thickness mm", exact: true }).waitFor();
+  await editor.getByRole("button", { name: "Add layer", exact: true }).click();
   assert.match(await editor.innerText(), /Estimated U: 0.224/); await editor.getByRole("button", { name: "Cancel", exact: true }).click();
   assert.deepEqual((await session.saved()).energyLayout, before.energyLayout);
   await panel.getByRole("button", { name: "Define wall layers" }).click();
@@ -106,7 +129,7 @@ test("insulation draft Cancel, Apply and Undo keep exact wall geometry while low
   await panel.getByRole("button", { name: "Undo", exact: true }).click();
   await eventually(() => panel.innerText(), value => /Estimated U 0.300/.test(value));
   assert.deepEqual(geometry(await session.saved()), geometry(before));
-  await page.reload(); await menu(page, "Tools", "Heating Layout");
+  await page.reload(); await menu(page, "Tools", "Heating & ventilation");
   await page.getByRole("button", { name: "Help for Heating Layout", exact: true }).click();
   assert.match(await page.locator(".window-help-host").innerText(), /not mains cold water/);
 });

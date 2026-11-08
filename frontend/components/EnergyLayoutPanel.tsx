@@ -5,10 +5,9 @@ import type { Room } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
 import { type ConstructionAssembly, type EnergyProject, type ElementAssignment } from "@/lib/energyDocument";
 import { calculateAssemblyUValue, energyResults, scenarioAssignments, type EnergyElement } from "@/lib/energyCalculations";
-import { assemblyThickness, createElementAssemblyDraft, fabricTargetScore, resizeAssembly, setWallAssembly, wallThicknessForElement } from "@/lib/energyWallConstruction";
+import { assemblyThickness, createElementAssemblyDraft, fabricTargetScore, wallThicknessForElement } from "@/lib/energyWallConstruction";
 import { buildEnergyPdf } from "@/lib/energyExport";
 import { ReportExportPreview, type ReportPreviewOptions } from "./ReportExportPreview";
-import { WallLayersPreview } from "./WallLayersPreview";
 import styles from "./HeatingLayoutPanel.module.css";
 import ui from "./EnergyLayoutPanel.module.css";
 import { NumberField } from "./EnergyNumberField";
@@ -45,7 +44,6 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
   const openLayerEditor = () => { if (first) { const draft = createElementAssemblyDraft(data, first, shownThickness); setEditor({ source: data, draft: draft.data, element: first, thickness: shownThickness, assembly: draft.assembly }); } };
   const saveScenario = () => { try { update(saveEnergyScenarioAs(data, newScenarioName || `Upgrade ${data.scenarios.length + 1}`));setNewScenarioName(""); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save scenario."); } };
   const renameScenario = () => { if (!activeScenario || editableScenarioName === activeScenario.name) return;try { update(renameEnergyScenario(data, activeScenario.scenarioId, editableScenarioName));setScenarioNameDraft(null); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not rename scenario.");setScenarioNameDraft(null); } };
-  const edit = (a: ConstructionAssembly, draft = data) => { if (!first) return;const total = assemblyThickness(a);if (total < 1 || total > 2000) { setError("Overall wall thickness must be between 1 and 2000 mm.");return; }update(setWallAssembly(draft, first, { ...a, directUValue: null })); };
   const makeReport = useCallback((options: ReportPreviewOptions) => buildEnergyPdf(rooms, heating, data, projectName, options), [rooms, heating, data, projectName]);
   return <div className={styles.panel + " " + ui.panel} role="region" aria-label="Energy & Insulation controls">
     <div className={ui.summaryRow}><p className={ui.buildingSummary}><strong>Overall heating loss: {(result.designW / 1000).toFixed(2)} kW</strong> · H {Math.round(result.coefficient.total)} W/K</p><div className={styles.actions}><button onClick={onUndo} disabled={!canUndo}>Undo</button><button onClick={onRedo} disabled={!canRedo}>Redo</button></div></div>
@@ -64,13 +62,7 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
         <div className={ui.wallSummary}>{activeScenario && <small>{scenarioOverride ? "This element has a construction override in this scenario." : "Inherited from Existing Building. Editing creates an override here only."}</small>}<div className={ui.wallMetrics}><span>{Number(shownThickness.toFixed(2))} mm</span><span>{first.areaM2.toFixed(1)} m²</span><span>{first.warnings.length || assigned?.uValue == null && (construction?.uValue == null || construction.estimated) ? "Estimated U" : "U"} {first.uValue.toFixed(3)} W/m²K</span><span>{Math.round(first.heatLossW)} W{construction?.uValue == null && assigned?.uValue == null ? " (estimated)" : ""}</span></div></div>
         {elementName === "opening" && <div className={styles.grid}><NumberField label="Opening overall U W/m²K" value={assigned?.uValue ?? null} min={.001} max={10} onChange={uValue => editOpeningPerformance({ uValue })} />{first.category === "window" && <NumberField label="Glazing g / SHGC (0–1)" value={assigned?.solarGainValue ?? null} min={0} max={1} onChange={solarGainValue => editOpeningPerformance({ solarGainValue })} />}</div>}
         {elementName === "opening" && <><label>Opening boundary<select value={assigned?.boundary ?? "Auto"} onChange={e => editOpeningPerformance({ boundary: e.target.value as ElementAssignment["boundary"] })}>{["Auto", "External", "Heated", "Unheated", "Adiabatic"].map(value => <option key={value}>{value}</option>)}</select></label><NumberField label="Opening adjacent temperature °C" value={assigned?.adjacentTemperatureC ?? null} min={-50} max={40} onChange={adjacentTemperatureC => editOpeningPerformance({ adjacentTemperatureC: adjacentTemperatureC ?? undefined })} /></>}
-        {elementName !== "opening" && <><button className={`${styles.primary} ${ui.defineLayers}`} onClick={openLayerEditor}>Define {elementName} layers <span aria-hidden>›</span></button>
-        <WallLayersPreview assembly={assembly ?? { assemblyId: first.elementId, name: first.label, category: first.category, rsi: first.category === "roof" ? .10 : first.category === "floor" ? .17 : .13, rse: .04, directUValue: null, notes: "", layers: [{ layerId: "undefined-wall", materialId: "undefined-wall", thicknessMm: shownThickness, resistanceOverride: null, position: "Within", upgrade: false, colorHex: "#c4b09b" }] }} materials={data.materials} />
-        <details><summary>{elementName === "wall" ? "Wall thickness" : "Construction thickness"} & shared heating calculation</summary>
-          <NumberField label={`Overall ${elementName} thickness mm`} value={shownThickness} min={1} max={2000} onChange={v => { if (v) { const draft = createElementAssemblyDraft(data, first, shownThickness); edit(resizeAssembly(draft.assembly, v), draft.data); } }} />
-          <p>{assembly ? construction?.method : `No composition defined. U ${first.uValue.toFixed(2)} is a Heating Layout assumption, not a layer calculation.`}</p>
-          <p>{elementName} loss = U × {first.areaM2.toFixed(2)} m² × {first.deltaTK.toFixed(1)} K.</p>
-        </details></>}
+        {elementName !== "opening" && <button className={`${styles.primary} ${ui.defineLayers}`} onClick={openLayerEditor}>Define {elementName} layers <span aria-hidden>›</span></button>}
 
       </div>}</details>
     </>}

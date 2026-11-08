@@ -20,14 +20,13 @@ const assembly = newAssembly({ name: "Test wall", category: "wall", materials: [
 function panel(data = energy) {
   return renderToStaticMarkup(createElement(EnergyLayoutPanel, { rooms: [room], data, heating, selectedIds: [element.elementId], onChange() {}, onHeatingChange() {}, onSelect() {}, onUndo() {}, onRedo() {}, canUndo: false, canRedo: false, projectName: "Test" }));
 }
-test("main energy preview precedes expandable thickness guidance without inline layer controls", () => {
+test("the main energy panel keeps the element summary and opens a dedicated layer editor", () => {
   const html = panel(setWallAssembly(energy, element, assembly));
   assert.match(html, /Energy &amp; Insulation controls/);
-  assert.ok(html.indexOf("Wall composition preview") < html.indexOf("Wall thickness &amp; shared heating calculation"));
   assert.match(html, /Define wall layers/);
   assert.doesNotMatch(html, /Layer 1 material|Layer 1 thickness mm|Find minimum additional insulation/);
   assert.doesNotMatch(html, /Planning assumptions &amp; limitations|How the score is calculated|Drag to rotate/);
-  assert.match(html, /<details><summary>Layer key · outside → inside/);
+  assert.doesNotMatch(html, /Wall composition preview|Wall thickness &amp; shared heating calculation|Layer key · outside → inside/);
 });
 
 test("clearing insulation selection leaves no implied first wall or edit controls", () => {
@@ -47,11 +46,11 @@ test("relocated insulation guidance remains available in contextual help with of
   assert.match(windowHelpSteps("Heating Layout").map(step => step.text).join(" "), /qualified heating professional/);
   assert.match(windowHelpSteps("Thermal materials").map(step => step.text).join(" "), /no universal U-value/);
 });
-test("undefined walls show a visible preview without claiming a calculated U-value", () => {
+test("undefined walls show their estimated U-value and offer the layer editor", () => {
   const html = panel();
-  assert.match(html, /Wall composition preview/); assert.match(html, /Estimated U 0.300/);
+  assert.match(html, /Define wall layers/); assert.match(html, /Estimated U 0.300/);
   assert.doesNotMatch(html, /Calculated U|U 4.667/);
-  assert.doesNotMatch(html, /No layers defined yet/); assert.match(html, /Heating Layout assumption/);
+  assert.doesNotMatch(html, /Wall composition preview|No layers defined yet/);
 });
 
 test("floor and roof insulation use independently assigned construction and distinct plan controls", () => {

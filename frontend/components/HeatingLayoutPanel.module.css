@@ -90,6 +90,7 @@
 .panel.panel .tabs button { min-width:0; border-radius:8px 8px 0 0; border-bottom:0; margin-bottom:-1px; padding-inline:4px; background:var(--surface-muted); }
 .panel.panel .tabs button[aria-selected=true] { background:var(--surface-raised,#fff); color:var(--ink); border-color:var(--line); border-bottom:1px solid var(--surface-raised,#fff); }
 .count { color:var(--muted,#526b80); font-size:11px; font-weight:500; }
+.panel summary > .count { margin-inline-start:var(--density-section-gap); }
 .panel details.instructions { background:var(--surface-muted); }
 .review { border-left:3px solid #d8932c!important; }
 .panel ul { margin:8px 0 2px; padding-left:20px; display:grid; gap:6px; }

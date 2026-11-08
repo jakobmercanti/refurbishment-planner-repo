@@ -9,18 +9,62 @@ import type { HeatingSelection } from "./HeatingLayoutPanel";
 import { heatingPipeLengthM, moveHeatingRouteSegment, refreshHeatingPipeEndpoints } from "@/lib/heatingPipes";
 import { EditableHeatingPath } from "./EditableHeatingPath";
 import { editUFHBend, ufhBendControls } from "@/lib/ufhBendControls";
-import { pipeSegmentAllowed } from "@/lib/heatingGeometry";
+import { pipeSegmentAllowed, ufhLayoutCorners } from "@/lib/heatingGeometry";
+import { resizeUFHFootprint } from "@/lib/heatingRoomResize";
+import type { UFHZone } from "@/lib/heatingDocument";
 import type { ServiceLabelPortal } from "./ServiceViewContext";
+import { useHvac } from "./HvacContext";
+import { activeFloor } from "@/lib/buildingDocument";
+import { conventionalHvac } from "@/lib/hvacHeating";
+import { hvacConditionsSchema, roomOperatingScenario } from "@/lib/hvacDocument";
 interface Props { labelPortal?:ServiceLabelPortal; onPipeDraftChange?: (path: Point2D[]) => void; pipePointer?: Point2D | null; zoom?: number; connecting?: boolean; onConnect?: (id: string) => void; pipeDraft?: Point2D[]; data: HeatingProject; rooms: Room[]; selection: HeatingSelection; onSelect: (s: HeatingSelection) => void; onChange: (p: HeatingProject) => void; toScreen: (p: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D; highlightedRoomId: string | null; draft: Point2D[]; }
 type Drag = { bend?: number; bendMode?: "POSITION" | "RADIUS"; source: HeatingProject; before: HeatingProject; kind: "radiator" | "manifold" | "exclusion" | "circuit" | "roomIndicator"; id: string; pathKey?: "pathMm" | "supplyPathMm" | "returnPathMm"; index?: number; segment?: boolean; start: Point2D; };
 export function HeatingLayoutOverlay(props: Props) {
   const [preview, setPreview] = useState<HeatingProject | null>(null);
   const [editError, setEditError] = useState("");
+  const [footprintPreview, setFootprintPreview] = useState<[Point2D, Point2D] | null>(null);
+  const footprintDrag = useRef<{ pointerId: number; source: HeatingProject; room: Room; zone: UFHZone; index: 0 | 1; bounds: [Point2D, Point2D]; moved: boolean } | null>(null);
   const drag = useRef<Drag | null>(null), latest = useRef<HeatingProject | null>(null), data = preview ?? props.data;
   const results = useMemo(() => heatingResults(props.rooms, props.data), [props.rooms, props.data]);
+  const hvac = useHvac(), ventilationProject = hvac?.tab === "Ventilation" ? hvac.project : null;
+  const airResults = useMemo(() => {
+    const layout = ventilationProject?.hvac;
+    if (!ventilationProject || !layout) return null;
+    const floor = activeFloor(ventilationProject);
+    return new Map(props.rooms.map(room => {
+      const operating = roomOperatingScenario(layout, floor.id, room.id) ?? {
+        id: "plan-summary", name: "Nominal operation", floorId: floor.id, roomId: room.id,
+        conditions: hvacConditionsSchema.parse({ outdoorC: props.data.buildingSettings.externalDesignTemperatureC }), ventOverrides: {}, heaterOverrides: {},
+      };
+      try { return [room.id, conventionalHvac(ventilationProject, operating)] as const; }
+      catch { return [room.id, null] as const; }
+    }));
+  }, [ventilationProject, props.rooms, props.data.buildingSettings.externalDesignTemperatureC]);
   const labelAt = props.labelPortal ?? ((_anchor:Point2D,node:React.ReactNode)=>node);
   const screenPath = (p: Point2D[]) => p.map(props.toScreen).map(p => `${p.x},${p.y}`).join(" ");
   const pointFromEvent = (event: ReactPointerEvent<SVGElement> | ReactMouseEvent<SVGElement>) => props.fromClient(event.clientX, event.clientY, event.currentTarget.ownerSVGElement!);
+  function moveFootprint(event: ReactPointerEvent<SVGElement>) {
+    const active = footprintDrag.current;
+    if (!active || event.pointerId !== active.pointerId) return;
+    event.stopPropagation();
+    const at = pointFromEvent(event), [min, max] = ufhLayoutCorners(active.room, { ...active.zone, layoutBoundsMm: undefined });
+    const [a, b] = active.bounds, span = 2 * (active.zone.boundaryOffsetMm + active.zone.minBendRadiusMm) + 1;
+    const clamp = (value: number, lo: number, hi: number) => Math.max(lo, Math.min(value, hi));
+    active.bounds = active.index === 0
+      ? [{ x: clamp(at.x, min.x, b.x - span), y: clamp(at.y, min.y, b.y - span) }, b]
+      : [a, { x: clamp(at.x, a.x + span, max.x), y: clamp(at.y, a.y + span, max.y) }];
+    active.moved = true;
+    setFootprintPreview(active.bounds);
+  }
+  function cancelFootprint() { footprintDrag.current = null; setFootprintPreview(null); }
+  function finishFootprint(event: ReactPointerEvent<SVGElement>) {
+    const active = footprintDrag.current;
+    if (!active || event.pointerId !== active.pointerId) return;
+    event.stopPropagation(); cancelFootprint();
+    if (!active.moved || active.source !== props.data) return;
+    try { props.onChange(resizeUFHFootprint(active.room, active.source, active.zone, active.bounds)); setEditError(""); }
+    catch (cause) { setEditError(cause instanceof Error ? cause.message : "Could not resize the UFH footprint."); }
+  }
   function begin(event: ReactPointerEvent<SVGElement>, value: Omit<Drag, "before" | "start" | "source">) {
     if (event.button !== 0) return; event.preventDefault(); event.stopPropagation();
     // preventDefault retains the previous form focus; explicitly return keyboard actions to the canvas.
@@ -69,20 +113,33 @@ export function HeatingLayoutOverlay(props: Props) {
         {props.highlightedRoomId === row.room.id && row.demand.surfaces.filter(s => s.edgeIndex !== undefined && s.lossW > 0).map(s => <line key={s.key} x1={props.toScreen(s.startMm!).x} y1={props.toScreen(s.startMm!).y} x2={props.toScreen(s.endMm!).x} y2={props.toScreen(s.endMm!).y} stroke="#dd791d" strokeWidth="5" opacity=".65" />)}
     </g>)}
     {data.display.exclusions && data.exclusions.map(ex => <g key={ex.exclusionId} data-plan-info="Underfloor heating exclusion: no heated pipe should enter this area. Click to select; drag its corners to edit."><polygon points={screenPath(ex.polygonMm)} fill="url(#heating-exclusion-hatch)" fillOpacity=".5" stroke="#a15f22" strokeWidth="2" onPointerDown={e => begin(e, { kind: "exclusion", id: ex.exclusionId })} style={{ cursor: "move" }} />{props.selection?.id === ex.exclusionId && ex.polygonMm.map((p, i) => <circle key={i} cx={props.toScreen(p).x} cy={props.toScreen(p).y} r="5" fill="white" stroke="#a15f22" onPointerDown={e => begin(e, { kind: "exclusion", id: ex.exclusionId, index: i })} />)}</g>)}
-    {data.ufhCircuits.map(c => <g key={c.circuitId} data-plan-info={`${c.name}\nUnderfloor heating loop · ${calculateCircuitLength(c).toFixed(1)} m. Click to select; use position/radius handles for tube bends. Drag lead corners or double-click a lead to add a point.`}>
+    {data.ufhCircuits.map(c => <g key={c.circuitId} data-plan-info={`${c.name}\nUnderfloor heating loop · ${calculateCircuitLength(c).toFixed(1)} m. Select it to resize the whole footprint or adjust a bend radius. Drag lead corners or double-click a lead to add a point.`}>
       {(["pathMm", "supplyPathMm", "returnPathMm"] as const).map(key => {
         if (!(key === "pathMm" ? data.display.loops : data.display.tails)) return null;
         const path = c[key], selected = props.selection?.id === c.circuitId, colour = key === "returnPathMm" ? "#277ab5" : "#d76824";
         return <g key={key}><polyline points={screenPath(path)} fill="none" stroke={selected ? "#f2b644" : colour} strokeWidth={selected ? 3 : 1.8} strokeDasharray={key === "returnPathMm" ? "5 3" : undefined} pointerEvents="none" />
           <polyline points={screenPath(path)} fill="none" stroke="transparent" strokeWidth="10" onDoubleClick={key === "pathMm" ? undefined : e => insert(e, c.circuitId, key)} onPointerDown={e => { props.onSelect({ kind: "circuit", id: c.circuitId });if (e.shiftKey && key !== "pathMm") { const p = pointFromEvent(e), nearest = path.slice(1).map((b, i) => ({ i, distance: projectOnSegment(p, path[i], b).distance })).sort((a, b) => a.distance - b.distance)[0];if (nearest) begin(e, { kind: "circuit", id: c.circuitId, index: nearest.i, pathKey: key, segment: true }); }else e.stopPropagation(); }} style={{ cursor: c.locked ? "pointer" : "move" }} />
-          {selected && !c.locked && (key === "pathMm" ? ufhBendControls(path, data.ufhZones.find(z => z.zoneId === c.zoneId)?.minBendRadiusMm ?? 50, c.spacingMm).bends.map((bend, index) => <g key={index} data-ufh-bend={index}>{(["POSITION", "RADIUS"] as const).map(mode => {
-            const p = props.toScreen(mode === "POSITION" ? bend.position : bend.radiusHandle);
-            return <circle key={mode} role="button" tabIndex={0} aria-label={"UFH bend "+(index+1)+" "+(mode === "POSITION" ? "position" : "radius")} data-ufh-handle={mode.toLowerCase()} cx={p.x} cy={p.y} r={mode === "POSITION" ? 5 : 4} fill={mode === "POSITION" ? "white" : "#ffc765"} stroke="#8b4319" strokeWidth={2} style={{cursor:"move"}} onPointerDown={e => begin(e, { kind:"circuit",id:c.circuitId,pathKey:key,bend:index,bendMode:mode })}><title>{mode === "POSITION" ? "Move this tube end along the runs" : "Drag to change this bend radius"}</title></circle>;
-          })}</g>) : path.map((p,index) => key === "supplyPathMm" && index === 0 || key === "returnPathMm" && index === path.length - 1 ? null : <circle key={index} cx={props.toScreen(p).x} cy={props.toScreen(p).y} r={4} fill="white" stroke="#b55419" onPointerDown={e => begin(e,{kind:"circuit",id:c.circuitId,pathKey:key,index})} />))}
+          {selected && !c.locked && (key === "pathMm" ? ufhBendControls(path, data.ufhZones.find(z => z.zoneId === c.zoneId)?.minBendRadiusMm ?? 50, c.spacingMm).bends.map((bend, index) => {
+            const p = props.toScreen(bend.radiusHandle);
+            return <circle key={index} role="button" tabIndex={0} aria-label={`UFH bend ${index + 1} radius`} data-ufh-handle="radius" cx={p.x} cy={p.y} r={4} fill="#ffc765" stroke="#8b4319" strokeWidth={2} style={{ cursor: "move" }} onPointerDown={e => begin(e, { kind: "circuit", id: c.circuitId, pathKey: key, bend: index, bendMode: "RADIUS" })}><title>Drag to change this bend radius</title></circle>;
+          }) : path.map((p,index) => index === 0 || index === path.length - 1 ? null : <circle key={index} cx={props.toScreen(p).x} cy={props.toScreen(p).y} r={4} fill="white" stroke="#b55419" onPointerDown={e => begin(e,{kind:"circuit",id:c.circuitId,pathKey:key,index})} />))}
         </g>;
       })}
       {data.display.labels && labelAt(props.toScreen(c.pathMm[0]), <text x={props.toScreen(c.pathMm[0]).x + 7} y={props.toScreen(c.pathMm[0]).y - 7} fill="#8b4319" fontSize="10" pointerEvents="none">{c.name} · {calculateCircuitLength(c).toFixed(1)} m{c.locked ? " (locked)" : ""}</text>)}
     </g>)}
+    {data.display.loops && (() => {
+      const circuit = props.selection?.kind === "circuit" ? data.ufhCircuits.find(item => item.circuitId === props.selection?.id) : null;
+      const zone = circuit && data.ufhZones.find(item => item.zoneId === circuit.zoneId);
+      const room = zone && props.rooms.find(item => item.id === zone.roomId);
+      if (!zone || !room || data.ufhCircuits.some(item => item.zoneId === zone.zoneId && item.locked)) return null;
+      const bounds = ufhLayoutCorners(room, zone), points = (footprintPreview ?? bounds).map(props.toScreen);
+      return <g aria-label="UFH footprint handles">
+        <rect x={Math.min(points[0].x, points[1].x)} y={Math.min(points[0].y, points[1].y)} width={Math.abs(points[0].x - points[1].x)} height={Math.abs(points[0].y - points[1].y)} fill="none" stroke="#a54b23" strokeDasharray="5 4" pointerEvents="none" />
+        {([0, 1] as const).map(index => <circle key={index} role="button" tabIndex={0} aria-label={`Resize UFH footprint corner ${index + 1}`} data-ufh-handle="footprint" cx={points[index].x} cy={points[index].y} r={7} fill="white" stroke="#a54b23" strokeWidth={2} style={{ cursor: "move", touchAction: "none" }}
+          onPointerDown={event => { if (event.button !== 0) return; event.stopPropagation(); event.preventDefault(); event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId); footprintDrag.current = { pointerId: event.pointerId, source: props.data, room, zone, index, bounds, moved: false }; }}
+          onPointerMove={moveFootprint} onPointerUp={finishFootprint} onPointerCancel={cancelFootprint} onLostPointerCapture={cancelFootprint} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); cancelFootprint(); } }}><title>Drag to resize the whole underfloor layout</title></circle>)}
+      </g>;
+    })()}
     {data.pipes.map(pipe => <g key={pipe.pipeId} className="heating-pipe" data-plan-info={pipe.name+": drag route segments or corners; double-click to insert a corner; right-click a corner to delete."}><EditableHeatingPath label={pipe.name} path={pipe.pathMm} toScreen={props.toScreen} fromClient={props.fromClient} onSelect={() => props.onSelect({kind:"pipe",id:pipe.pipeId})} onChange={pathMm => props.onChange(refreshHeatingPipeEndpoints({...props.data,pipes:props.data.pipes.map(p => p.pipeId === pipe.pipeId ? {...p,pathMm} : p)}))} selected={props.selection?.id === pipe.pipeId} locked={pipe.locked} fixedStart={Boolean(pipe.fromId)} fixedEnd={Boolean(pipe.toId)} square={data.forceOrthogonalRouting === true} colour={pipe.kind === "Supply" ? "#c74b1d" : "#2377b2"} dashed={pipe.kind === "Return"} />{data.display.labels && labelAt(props.toScreen(pipe.pathMm[0]), <text x={props.toScreen(pipe.pathMm[0]).x+8} y={props.toScreen(pipe.pathMm[0]).y+15} pointerEvents="none" fill="#713413" fontSize={10}>{pipe.name} · {heatingPipeLengthM(pipe.pathMm).toFixed(1)} m</text>)}</g>)}
     {data.display.radiators && results.rooms.flatMap(row => row.emitters.map(({ radiator, outputW, estimated }) => {
       const r = data.radiators.find(r => r.radiatorId === radiator.radiatorId) ?? radiator;
@@ -96,6 +153,15 @@ export function HeatingLayoutOverlay(props: Props) {
     {props.draft.length > 0 && <polyline points={screenPath(props.draft)} stroke="#b45c24" strokeWidth="2" fill="none" pointerEvents="none" />}
     {results.rooms.map(row => {
       const pts = row.room.vertices.map(props.toScreen), savedPosition = data.roomIndicatorPositions?.[row.room.id], label = savedPosition ? props.toScreen(savedPosition) : { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+      if (ventilationProject) {
+        const air = airResults?.get(row.room.id);
+        return <g key={row.room.id} pointerEvents="none">{labelAt(label, <g className="ventilation-room-indicator" transform={`translate(${label.x},${label.y + 37}) scale(${.76 * (props.zoom ?? 1)})`} aria-label={`Ventilation summary: ${row.room.name}`}>
+          <rect x="-120" y="-32" width="240" height="77" rx="10" fill="#f0f7ff" stroke="#277ab5" />
+          <text x="0" y="-14" textAnchor="middle" fill="#24334b" fontSize="11" fontWeight="700">{row.room.name}</text>
+          <text x="0" y="5" textAnchor="middle" fill="#24334b" fontSize="11">Supply air changes: {air?.supplyACH == null ? "Unknown" : `${air.supplyACH.toFixed(2)} h⁻¹`}</text>
+          <text x="0" y="25" textAnchor="middle" fill="#24334b" fontSize="11">Predicted temperature: {air?.equilibriumC == null ? "Unknown" : `${air.equilibriumC.toFixed(1)} °C`}</text>
+        </g>)}</g>;
+      }
       const balance = heatingRoomBalance(row), green = balance.tone === "sufficient", red = balance.tone === "insufficient";
       const colour = green ? "#15803d" : red ? "#b91c1c" : "#a16207", background = green ? "#f0fdf4" : red ? "#fff1f2" : "#fffbeb";
       return <g key={row.room.id} pointerEvents="none">

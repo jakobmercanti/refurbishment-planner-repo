@@ -6,7 +6,7 @@ import { eventually, menu, startBrowserHarness } from "./harness.mjs";
 let harness;
 before(async () => { harness = await startBrowserHarness({ climoptixEnabled: true }); });
 after(async () => { await harness?.close(); });
-async function open(s, tab) { await menu(s.page, "Tools", "Heating Layout"); const panel = s.page.locator(".heating-layout-window"); await panel.getByRole("tab", { name: tab, exact: true }).click(); return panel; }
+async function open(s, tab) { await menu(s.page, "Tools", "Heating & ventilation"); const panel = s.page.locator(".heating-layout-window"); await panel.getByRole("tab", { name: tab, exact: true }).click(); return panel; }
 async function number(panel, name, value) { const input = panel.getByRole("spinbutton", { name, exact: true }); await input.fill(String(value)); await input.press("Enter"); }
 test("the separate vent editor changes the current operation and preserves independent scenario overrides", async t => {
   const p = hvacProject(), op = p.hvac!.scenarios[0], id = "shared-editor-vent";

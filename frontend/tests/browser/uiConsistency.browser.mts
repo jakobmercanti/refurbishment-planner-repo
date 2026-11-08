@@ -65,8 +65,12 @@ test("socket ring generation persists, individual plan testing works, broken ret
   await menu(page, "Tools", "Full Electrical Layout module…");
   const panel = page.locator(".electrical-layout-window");
   await panel.locator("summary").filter({ hasText: "Circuits (1)" }).click();
-  assert.equal(await panel.getByRole("button", { name: "Create socket routes", exact: true }).count(), 1);
-  await panel.getByRole("button", { name: "Create socket routes", exact: true }).click();
+  assert.equal(await panel.getByLabel("Circuit type", { exact: true }).count(), 0);
+  await panel.getByRole("button", { name: /^Edit circuit / }).click();
+  const editor = page.getByRole("dialog", { name: /^Edit circuit/ });
+  await editor.getByLabel("Notes", { exact: true }).fill("Kitchen outlets");
+  await editor.getByRole("button", { name: "Save and create socket routes", exact: true }).click();
+  await editor.waitFor({ state: "hidden", timeout: 3000 }).catch(async () => assert.fail(await editor.innerText()));
   await eventually(session.saved, value => value?.electricalLayout?.connections.length === 4);
   await panel.getByRole("button", { name: "Check layout", exact: true }).click();
   const tester = page.locator(".electrical-lighting-test-window");
@@ -79,6 +83,7 @@ test("socket ring generation persists, individual plan testing works, broken ret
   await page.screenshot({ path: "../.local-logs/ui-nov01-qa/socket-ring.png" });
   await tester.getByRole("button", { name: "Hide Electrical layout test", exact: true }).click();
   const saved = await session.saved(); const connection = saved.electricalLayout.connections.at(-1);
+  assert.equal(saved.electricalLayout.circuits[0].description, "Kitchen outlets");
   await panel.locator("summary").filter({ hasText: "Connections (4)" }).click();
   const row = panel.locator(".electrical-connection-row").last();
   await row.getByRole("button", { name: /^Delete connection/ }).click();
@@ -92,10 +97,13 @@ test("missing socket references can be removed and a replacement consumer unit r
   const session=await harness.session(parseProject(project));t.after(()=>session.close());const {page}=session;
   await menu(page,'Tools','Full Electrical Layout module…');const panel=page.locator('.electrical-layout-window');
   await panel.locator('summary').filter({hasText:'Circuits (1)'}).click();
-  const board=panel.getByRole('combobox',{name:'Consumer unit',exact:true});
+  await panel.getByRole('button',{name:/^Edit circuit /}).click();
+  const editor=page.getByRole('dialog',{name:/^Edit circuit/});
+  const board=editor.getByRole('combobox',{name:'Consumer unit',exact:true});
   assert.match(await board.locator('option:checked').textContent(),/Missing consumer unit/);
-  await panel.getByRole('button',{name:'Remove missing socket from circuit',exact:true}).click();
-  await board.selectOption('board');await panel.getByRole('button',{name:'Create socket routes',exact:true}).click();
+  await editor.getByRole('button',{name:'Remove missing socket from circuit',exact:true}).click();
+  await board.selectOption('board');await editor.getByRole('button',{name:'Save and create socket routes',exact:true}).click();
+  await editor.waitFor({ state: "hidden", timeout: 3000 }).catch(async () => assert.fail(await editor.innerText()));
   const saved=await eventually(session.saved,p=>p?.electricalLayout?.connections.length===1);
   assert.deepEqual(saved.electricalLayout.circuits[0].socketIds,['a']);
   assert.deepEqual([saved.electricalLayout.connections[0].fromId,saved.electricalLayout.connections[0].toId],['board','a']);
@@ -175,7 +183,7 @@ test("modern electrical selector stays clickable and changes the fitting; list h
 
 test("Heating adds and deletes shared construction scenarios inside the submenu", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
-  await menu(page, "Tools", "Heating Layout"); const panel = page.locator(".heating-layout-window");
+  await menu(page, "Tools", "Heating & ventilation"); const panel = page.locator(".heating-layout-window");
   const addElement = panel.getByRole("button", { name: "Add element", exact: true }).first();
   assert.equal(await addElement.evaluate(el => el.scrollHeight > el.clientHeight + 1), false);
   assert.equal(await addElement.evaluate(el => { const range = document.createRange(); range.selectNodeContents(el); return range.getClientRects().length; }), 1);
@@ -196,7 +204,7 @@ test("Heating adds and deletes shared construction scenarios inside the submenu"
   assert.equal(await remove.isDisabled(), true);
   await section.getByRole("button", { name: "Add scenario", exact: true }).click();
   const automatic = await eventually(session.saved, value => value?.energyLayout?.scenarios[0]?.name === "Upgrade 1");
-  await page.reload(); await menu(page, "Tools", "Heating Layout");
+  await page.reload(); await menu(page, "Tools", "Heating & ventilation");
   await panel.locator("summary").filter({ hasText: "Construction scenario · Upgrade 1" }).click();
   assert.equal(await panel.getByRole("combobox", { name: "Load construction scenario", exact: true }).inputValue(), automatic.energyLayout.activeScenarioId);
 });

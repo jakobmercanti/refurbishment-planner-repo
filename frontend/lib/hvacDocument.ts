@@ -309,3 +309,7 @@ export function reorderHvacRoomVents(project: ProjectDocument, floorId: string, 
   }) }));
   return { ...project, hvac: hvacSchema.parse({ ...hvac, devices }), ...(scenarios ? { cfdScenarios: scenarios } : {}) };
 }
+export function roomOperatingScenario(hvac: HvacProject, floorId: string, roomId: string) {
+  const scenarios = hvac.scenarios.filter(scenario => scenario.floorId === floorId && scenario.roomId === roomId);
+  return scenarios.find(scenario => scenario.id === hvac.activeScenarioId) ?? scenarios[0];
+}
