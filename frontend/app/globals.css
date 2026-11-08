@@ -606,7 +606,7 @@ button { font: inherit; }
 .catalogue-detail-pictures { display: flex; flex-wrap: wrap; gap: 8px; }
 .catalogue-detail-pictures img { width: 110px; height: 82px; object-fit: cover; border: 1px solid var(--line); border-radius: 6px; }
 .catalogue-object-backdrop { position: fixed; z-index: 2200; inset: 0; padding: 14px; backdrop-filter: blur(4px); }
-.catalogue-object-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(1440px, calc(100vw - 32px)); height: min(900px, calc(100dvh - 28px)); max-height: calc(100dvh - 28px); padding: 0; overflow: hidden; background: var(--panel); color: var(--ink); }
+.catalogue-object-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: min(940px, calc(100dvh - 28px)); max-height: calc(100dvh - 28px); padding: 0; overflow: hidden; background: var(--panel); color: var(--ink); }
 .catalogue-object-dialog > .catalogue-form-heading { margin: 0; padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--surface-muted, var(--panel)); }
 .catalogue-object-dialog .catalogue-form-heading h3 { margin: 4px 0; overflow-wrap: anywhere; }
 .catalogue-object-dialog > .catalogue-form-actions { margin: 0; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--panel); }
@@ -633,7 +633,7 @@ html[data-theme="dark"] body .catalogue-asset-preview .fixture-preview-fit-butto
 .catalogue-cfd-info { flex: none; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-muted, var(--panel)); font-size: calc(9px * var(--density-font-scale, 1)); }
 .catalogue-cfd-info p { margin: 5px 0; color: var(--muted); }
 .catalogue-cfd-info a { display: inline-block; padding: 5px 0; color: var(--deep); font-weight: 650; }
-.catalogue-cfd-info summary { padding: 5px 0; cursor: pointer; }
+.catalogue-cfd-info summary { min-height: 26px; display: flex; align-items: center; font-weight: 650; cursor: pointer; }
 .catalogue-cfd-info ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.5; }
 @media (max-width: 900px) {
   .catalogue-object-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); height: calc(100dvh - 16px); }

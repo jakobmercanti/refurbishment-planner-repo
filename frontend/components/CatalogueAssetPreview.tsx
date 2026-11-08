@@ -56,13 +56,15 @@ export function CatalogueAssetPreview({ item, apiUrl }: { item: CatalogueItem; a
     {mode === "DETAIL" || result.mesh ? <FixturePreview key={`${item.id}:${mode}`} obstacle={obstacle} appearanceControls>
       {mode === "CFD" && result.mesh ? <CfdProxyMesh mesh={result.mesh} /> : item.stl_base64 ? <StlFixture obstacle={obstacle} {...size} colour={item.color_hex} fallback={procedural} /> : procedural}
     </FixturePreview> : <div className="catalogue-preview-status" role={result.error ? "alert" : "status"}>{result.error ?? "Loading simplified CFD surface…"}</div>}
-    {mode === "CFD" && result.mesh && <div className="catalogue-cfd-info">
-      <strong>{result.mesh.label}</strong><p>Closed surface · {result.mesh.triangles.length} triangles · millimetres</p>
+    {mode === "CFD" && result.mesh ? <details className="catalogue-cfd-info">
+      <summary>CFD details · {result.mesh.label}</summary>
+      <p>Closed surface · {result.mesh.triangles.length} triangles · millimetres</p>
       <p>Outline marks the asset origin; it is not exported.{baseClearance > 0 && <> Underside: {baseClearance.toLocaleString("en-GB", { maximumFractionDigits: 1 })} mm above origin. Check mounting height.</>}</p>
       {result.mesh.geometry_revision && <p>Geometry revision {result.mesh.geometry_revision}</p>}
       <a href={`${endpoint}.stl`} download>Download CFD STL (mm)</a>
-      <details><summary>CFD assumptions &amp; limitations</summary><ul>{result.mesh.assumptions.map(note => <li key={note}>{note}</li>)}</ul></details>
-    </div>}
-    <p className="catalogue-preview-disclaimer">{mode === "CFD" ? "Generic CFD input—not a simulation result. Review airflow paths and mesh settings." : "Illustrative model. Measured dimensions—not the preview—determine fit."}</p>
+      <p><strong>CFD assumptions &amp; limitations</strong></p>
+      <ul>{result.mesh.assumptions.map(note => <li key={note}>{note}</li>)}</ul>
+      <p>Review airflow paths and mesh settings before using this simplified obstruction in a simulation.</p>
+    </details> : mode === "DETAIL" && <p className="catalogue-preview-disclaimer">Measured dimensions determine fit. The model is illustrative.</p>}
   </section>;
 }

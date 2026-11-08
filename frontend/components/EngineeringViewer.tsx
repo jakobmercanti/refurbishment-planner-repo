@@ -108,7 +108,7 @@ interface SaveFilePickerOptions {
 type SaveFilePicker = (options?: SaveFilePickerOptions) => Promise<SaveFileHandle>;
 
 interface ViewerProps extends PlacementProps {
-  buildingProject?:ProjectDocument; buildingView?:BuildingView; onBuildingViewChange?:(view:BuildingView)=>void; onExteriorView?:()=>void; roofPreview?:RoofConfiguration;
+  buildingProject?:ProjectDocument; buildingView?:BuildingView; onBuildingViewChange?:(view:BuildingView)=>void; roofPreview?:RoofConfiguration;
   assetInstances?: AssetInstance[];
   apiUrl: string;
   room: Room;
@@ -2095,7 +2095,7 @@ export function EngineeringViewer(props: ViewerProps) {
           {(["top", "bottom", "left", "right"] as CameraView[]).map((view) => <button key={view} type="button" className={activePreset === view ? "active" : ""} aria-pressed={activePreset === view} onClick={() => applyPreset(view)}>{view[0].toUpperCase() + view.slice(1)}</button>)}
         </div>
         <div className="toggle-row" role="group" aria-label="3D visibility">
-          {props.buildingView&&props.onBuildingViewChange&&<><ViewToggle label="All floors" active={props.buildingView.whole} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,whole:!props.buildingView!.whole});setFitViewRequest(v=>v+1);}}/><ViewToggle label="Internal ceiling" active={Boolean(props.buildingView.ceiling)} onToggle={()=>props.onBuildingViewChange!({...props.buildingView!,roof:false,ceiling:!props.buildingView!.ceiling})}/><ViewToggle label="All roof" active={props.buildingView.roof&&(props.roofPreview??props.buildingProject?.building?.roof)?.enabled!==false} disabled={(props.roofPreview??props.buildingProject?.building?.roof)?.enabled===false} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,roof:!props.buildingView!.roof,ceiling:false});setFitViewRequest(v=>v+1);}}/><button type="button" onClick={()=>{props.onExteriorView?.();setShowGrid(false);applyPreset("perspective");setFitViewRequest(v=>v+1);}}>Exterior view</button></>}
+          {props.buildingView&&props.onBuildingViewChange&&<><ViewToggle label="All floors" active={props.buildingView.whole} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,whole:!props.buildingView!.whole});setFitViewRequest(v=>v+1);}}/><ViewToggle label="Internal ceiling" active={Boolean(props.buildingView.ceiling)} onToggle={()=>props.onBuildingViewChange!({...props.buildingView!,roof:false,ceiling:!props.buildingView!.ceiling})}/><ViewToggle label="All roof" active={props.buildingView.roof&&(props.roofPreview??props.buildingProject?.building?.roof)?.enabled!==false} disabled={(props.roofPreview??props.buildingProject?.building?.roof)?.enabled===false} onToggle={()=>{props.onBuildingViewChange!({...props.buildingView!,roof:!props.buildingView!.roof,ceiling:false});setFitViewRequest(v=>v+1);}}/></>}
           <ViewToggle label="Grid" active={showGrid} onToggle={() => setShowGrid((current) => !current)} />
           {(["elements", "openingImprints", "clearance"] as const).map((key) => (
             <ViewToggle key={key} label={key === "openingImprints" ? "Opening imprint" : key === "clearance" ? "Clearances" : "Elements"} active={toggles[key]} onToggle={() => flip(key)} />

@@ -107,6 +107,15 @@ test("vertical heating fittings remain visible in 2D with or without the heating
 test("insulation draft Cancel, Apply and Undo keep exact wall geometry while lowering U", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
   await menu(page, "Tools", "Energy & Insulation"); const panel = page.locator(".energy-layout-window"), editor = page.locator(".wall-layers-popup");
+  await panel.getByRole("tab", { name: "Roofs", exact: true }).click();
+  const roofPicker = (await panel.getByRole("combobox", { name: "Select roof", exact: true }).boundingBox())!;
+  const roofMetrics = (await panel.locator('[class*="_wallMetrics"]').boundingBox())!;
+  assert.ok(roofMetrics.y - roofPicker.y - roofPicker.height >= 6);
+  const roofPreview = panel.getByRole("region", { name: "Roof composition preview" }).getByRole("button", { name: "Live element preview" });
+  await roofPreview.locator("canvas").waitFor();
+  await roofPreview.click();
+  assert.equal(await roofPreview.getAttribute("aria-expanded"), "true");
+  await panel.getByRole("tab", { name: "Walls", exact: true }).click();
   await panel.getByRole("combobox", { name: "Select wall", exact: true }).selectOption("room-a|wall:3");
   await eventually(() => panel.innerText(), value => /Estimated U 0.300/.test(value));
   await eventually(session.saved, value => value.energyLayout?.enabled === true);
@@ -115,6 +124,18 @@ test("insulation draft Cancel, Apply and Undo keep exact wall geometry while low
   await panel.getByRole("button", { name: "Define wall layers" }).click();
   const columns = await editor.locator(".appearance-popup-grid > div").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().width));
   assert.ok(Math.abs(columns[0] - columns[1]) < 2, JSON.stringify(columns));
+  const form = editor.locator(".appearance-popup-form"), preview = editor.locator(".appearance-popup-preview");
+  await preview.locator("canvas").waitFor();
+  assert.equal(await preview.locator("details").count(), 0);
+  await form.getByText("Layer key · outside → inside", { exact: true }).click();
+  assert.ok(await form.locator("details[open] ol").isVisible());
+  await form.getByText("Find minimum additional insulation", { exact: true }).click();
+  const spacing = await form.getByText("Find minimum additional insulation", { exact: true }).locator("..").evaluate(details => {
+    const material = details.querySelector("select")!.getBoundingClientRect();
+    const conductivity = details.querySelector("input")!.closest("label")!.getBoundingClientRect();
+    return conductivity.top - material.bottom;
+  });
+  assert.ok(spacing >= 6);
   await editor.getByText("Calculation details & wall properties", { exact: true }).click();
   await editor.getByRole("spinbutton", { name: "Overall wall thickness mm", exact: true }).waitFor();
   await editor.getByRole("button", { name: "Add layer", exact: true }).click();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { CFDObject } from "@/lib/climoptix";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import { DEFAULT_OBJECT_GROUP, deleteObjectEntry, duplicateObjectEntry, moveObject, objectEntries, objectGroups, objectMembers, type CFDObjectEntry } from "@/lib/climoptixObjectGroups";
@@ -31,9 +31,16 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
   const groups = objectGroups(scenario, objects), entries = objectEntries(scenario, objects);
   const [selectedGroup, setSelectedGroup] = useState(DEFAULT_OBJECT_GROUP);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const groupList = useRef<HTMLDetailsElement>(null);
   const [editing, setEditing] = useState<{ type: "object" | "group"; id: string } | null>(null);
   const [error, setError] = useState("");
   const currentGroup = groups.find(g => g.id === selectedGroup) ?? groups[0];
+  const addVent = (role: "supply" | "extract") => {
+    const groupId = currentGroup?.id ?? DEFAULT_OBJECT_GROUP;
+    if (groupList.current) groupList.current.open = true;
+    setCollapsed(previous => new Set([...previous].filter(id => id !== groupId)));
+    onAdd(role, groupId);
+  };
   const edit = (entry: CFDObjectEntry) => {
     onSelect(entry.type === "vent" ? `vent:${entry.sourceId}` : entry.sourceId);
     if (entry.type === "vent") onEditVent?.(entry.sourceId); else setEditing({ type: "object", id: entry.sourceId });
@@ -47,11 +54,12 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
   };
   const editingGroup = groups.find(g => editing?.type === "group" && g.id === editing.id);
   return <div className={`cfx-objects ${equipmentListStyles.collection}`} data-cfx-collapse-root>
-    <header className="cfx-inline-toolbar"><h3>Objects &amp; occupants</h3><CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:groups.map(group=>group.id)))}/></header>
     <div className="cfx-inline-toolbar">
+      <h3>Objects &amp; occupants</h3>
+      <CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:groups.map(group=>group.id)))}/>
       <button onClick={onEditSource}>Edit source building &amp; assets</button>
-      <button disabled={!canAdd} onClick={() => onAdd("supply", currentGroup?.id ?? DEFAULT_OBJECT_GROUP)}>+ Supply</button>
-      <button disabled={!canAdd} onClick={() => onAdd("extract", currentGroup?.id ?? DEFAULT_OBJECT_GROUP)}>+ Extract</button>
+      <button disabled={!canAdd} onClick={() => addVent("supply")}>+ Supply</button>
+      <button disabled={!canAdd} onClick={() => addVent("extract")}>+ Extract</button>
       <button disabled={!canPlace} title={!canPlace ? "Choose a seed room in Domain and resolve preparation checks to obtain validated host faces" : undefined} onClick={onPick}>Place on face…</button>
       <button disabled={groups.length >= 100} onClick={() => {
         const group = { id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name)), memberIds: [] };
@@ -67,7 +75,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     </div>
     {!canPlace && canAdd && <p className="cfx-caption" role="status">Supply / Extract can be added as drafts now. Face placement needs a seed room in Domain and validated host geometry; assign a host in Edit before running.</p>}
     {error && <p className="cfx-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></p>}
-    <details open><summary>Groups &amp; objects</summary><div className="cfx-group-tree">
+    <details ref={groupList} open><summary>Groups &amp; objects</summary><div className="cfx-group-tree">
       <CFDReorderList items={groups} label="Object groups" scope={`object-groups:${scenario.id}`} onMove={(id, at) => onChange({ ...scenario, objectGroups: insertAtBoundary(groups, id, at) })}>
         {group => {
           const members = objectMembers(group, groups, entries);

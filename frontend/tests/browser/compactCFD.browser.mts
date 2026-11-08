@@ -129,7 +129,7 @@ test("objects, boundary groups, refinements and review tabs use compact independ
   const heading = await ui.getByRole("heading", { name: "Objects & occupants", exact: true }).boundingBox();
   const sourceButton = await button(ui, "Edit source building & assets").boundingBox();
   const supply = await button(ui, "+ Supply").boundingBox();
-  assert.ok(heading.y + heading.height <= sourceButton.y);
+  assert.ok(heading.x < sourceButton.x && Math.abs(heading.y + heading.height / 2 - sourceButton.y - sourceButton.height / 2) < 3);
   assert.ok(Math.abs(supply.y + supply.height / 2 - sourceButton.y - sourceButton.height / 2) < 3);
   await button(ui, "Add object group").click();
   const target = ui.getByRole("region", { name: "Object group Group", exact: true });

@@ -5,7 +5,7 @@ import { withLayerColours } from "./energyLayerColours";
 import { assignEnergyElements, calculateAssemblyUValue, scenarioAssignments, type EnergyElement } from "./energyCalculations";
 
 export { LAYER_COLOURS } from "./energyLayerColours";
-export const assemblyThickness = (a: ConstructionAssembly) => a.layers.reduce((s, l) => s + l.thicknessMm, 0);
+export const assemblyThickness = (a: Pick<ConstructionAssembly, "layers">) => a.layers.reduce((s, l) => s + l.thicknessMm, 0);
 
 /** Opening the editor must not replace an unknown build-up with invented concrete.
  * Preserve the effective whole-element R; measured thickness is presentation only

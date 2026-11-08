@@ -49,6 +49,9 @@ test("vents belong to the ventilation workbench in both views, respect walls, an
   const p = fixture(), s = await harness.session(p); t.after(() => s.close()); const { page } = s;
   assert.equal(await page.locator("[data-hvac-plan-vent]").count(), 0);
   await enter3D(page);
+  const viewProperties = page.getByLabel("3D view properties", { exact: true });
+  await viewProperties.getByRole("button", { name: /^All roof:/ }).waitFor();
+  assert.equal(await viewProperties.getByRole("button", { name: /Exterior view/i }).count(), 0);
   assert.equal(await page.locator("[data-hvac-scene-vent]").count(), 0);
   await menu(page, "Tools", "Heating & ventilation"); await page.locator(".heating-layout-window").getByRole("tab", { name: "Ventilation", exact: true }).click(); const panel = page.locator(".heating-layout-window"); await panel.waitFor();
   assert.equal(await page.getByRole("button", { name: "3D", exact: true }).getAttribute("aria-pressed"), "true");

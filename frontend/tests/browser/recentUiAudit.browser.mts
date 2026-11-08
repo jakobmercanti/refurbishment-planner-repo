@@ -93,6 +93,10 @@ test("CFD phases use one window disclosure bar and contextual section help", asy
       }
       if (phase === "Simulations") {
         const add = panel.getByRole("button", { name: "New simulation", exact: true });
+        const management = panel.locator(".cfx-studies > details");
+        assert.equal(await management.count(), 1);
+        assert.equal(await management.evaluate(el => getComputedStyle(el).borderTopWidth), "1px");
+        assert.equal(await management.locator(".cfx-group-tree").count(), 1);
         if (p.width === 1440) {
           const readiness = panel.locator(".cfx-workbench-status");
           const status = (await readiness.boundingBox())!;
@@ -104,6 +108,13 @@ test("CFD phases use one window disclosure bar and contextual section help", asy
         assert.equal(await add.isVisible(), false);
         await panel.getByRole("button", { name: "Expand all", exact: true }).click();
         assert.equal(await add.isVisible(), true);
+      }
+      if (phase === "Imported results" && p.width === 1440) {
+        const heading = (await panel.getByRole("heading", { name: /^Results ·/ }).boundingBox())!;
+        const collapse = (await panel.getByRole("button", { name: "Collapse all", exact: true }).boundingBox())!;
+        const tabs = (await panel.getByRole("tablist", { name: "Results views" }).boundingBox())!;
+        assert.ok(heading.x < collapse.x && heading.y >= collapse.y && heading.y + heading.height <= collapse.y + collapse.height);
+        assert.ok(tabs.y >= collapse.y + collapse.height && tabs.y - collapse.y - collapse.height < 16);
       }
       if (phase === "Boundaries") {
         await ui.getByRole("tab", { name: "Thermal", exact: true }).click(); await inspect(panel, `Thermal/${p.width}/${p.density}`, 0);
@@ -118,6 +129,25 @@ test("CFD phases use one window disclosure bar and contextual section help", asy
     }
   }
   await page.screenshot({ path: "../.local-logs/ui-nov04-qa/cfd-phone.png" });
+});
+
+test("adding a vent reveals its selected object group above Shared HVAC", async t => {
+  const s = await harness.session(fixture()); t.after(() => s.close()); const { page } = s;
+  await page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("CLIMOPTIX");
+  const ui = page.locator(".cfx-workspace");
+  await cfdWindow(ui, "Equipment");
+  const objects = ui.locator(".cfx-objects");
+  const shared = ui.getByLabel("Shared HVAC devices", { exact: true });
+  assert.ok(await objects.evaluate((el, other) => el.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING, await shared.elementHandle()));
+  await objects.getByRole("button", { name: "Add object group", exact: true }).click();
+  const target = objects.getByRole("region", { name: "Object group Group", exact: true });
+  await target.getByRole("button", { name: "Collapse object group Group", exact: true }).click();
+  await objects.getByText("Groups & objects", { exact: true }).click();
+  await objects.getByRole("button", { name: "+ Supply", exact: true }).click();
+  await target.getByRole("button", { name: "Collapse object group Group", exact: true }).waitFor();
+  const added = target.getByRole("button", { name: "Select Supply vent", exact: true });
+  await added.waitFor();
+  assert.equal(await added.getAttribute("aria-pressed"), "true");
 });
 
 test("Preferences uses the reclaimed help column and real room-target guidance remains accessible after changing tabs", async t => {

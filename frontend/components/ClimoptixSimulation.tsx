@@ -357,8 +357,7 @@ export function ClimoptixSimulation({
 }) {
   return (
     <>
-      {jobProgress}
-      <div className="cfx-inline-toolbar">
+      <div className="cfx-inline-toolbar cfx-solver-nav">
       <div
         className="cfx-simulation-tabs"
         role="tablist"
@@ -405,6 +404,7 @@ export function ClimoptixSimulation({
       </div>
       <WindowHelpButton title="Mesh, Run & Post-processing" steps={CFD_SIMULATION_HELP} />
       </div>
+      {jobProgress}
       <section
         role="tabpanel"
         id="cfx-panel-mesh"

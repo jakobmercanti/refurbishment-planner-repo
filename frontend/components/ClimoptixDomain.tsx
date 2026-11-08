@@ -4,7 +4,6 @@ import { meshPreset, type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { projectFloors } from "@/lib/buildingDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
-import { CFDCollapseAll } from "./CFDCollapseAll";
 import { CFDNumber, Parameters, labelFor } from "./CFDFields";
 
 export function DomainPanel({
@@ -22,7 +21,6 @@ export function DomainPanel({
     floor = floors.find((f) => f.id === scenario.seed?.floorId) ?? floors[0];
   return (
     <section data-cfx-collapse-root className="cfx-domain-panel">
-      <div className="cfx-inline-toolbar"><h3>Domain</h3><CFDCollapseAll/></div>
       <details open><summary>Seed &amp; connected domain</summary>
       <div className="cfx-grid cfx-domain-seed">
       <label>

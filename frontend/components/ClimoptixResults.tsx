@@ -7,7 +7,6 @@ import type { RailwayCFDWorker } from "@/lib/railwayCFDWorker";
 import { useCFDResult } from "./useCFDResult";
 import { CFDResultFiles } from "./CFDResultFiles";
 import { ClimoptixVTKViewer } from "./ClimoptixVTKViewer";
-import { CFDCollapseAll } from "./CFDCollapseAll";
 import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import { CFD2DSlices } from "./CFD2DSlices";
 
@@ -18,8 +17,8 @@ const RESULT_VIEWS = [
 ] as const;
 type ResultsView = (typeof RESULT_VIEWS)[number][0];
 
-export function ClimoptixResults({adapter,job,name,older,report,initialFile,initialProvenance,onClose,onScene,sceneFiles=[],sceneError,onUnloadScene,active=true,projectId,review,view:subview,onViewChange:setSubview}:{
-  adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;name:string;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File)=>void;sceneFiles?:File[];sceneError?:string;onUnloadScene?:(file?:File)=>void;active?:boolean;projectId:string;review:ReactNode;view:ResultsView;onViewChange:(view:ResultsView)=>void;
+export function ClimoptixResults({adapter,job,older,report,initialFile,initialProvenance,onClose,onScene,sceneFiles=[],sceneError,onUnloadScene,active=true,projectId,review,view:subview,onViewChange:setSubview}:{
+  adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File)=>void;sceneFiles?:File[];sceneError?:string;onUnloadScene?:(file?:File)=>void;active?:boolean;projectId:string;review:ReactNode;view:ResultsView;onViewChange:(view:ResultsView)=>void;
 }){
   const {result,error,missing,retry}=useCFDResult(adapter,job,active);
   const [files,setFiles]=useState<{file:File;verified:boolean}[]>(()=>initialFile?[{file:initialFile,verified:!!initialProvenance?.startsWith("Authenticated worker job")}]:[]);
@@ -75,7 +74,6 @@ export function ClimoptixResults({adapter,job,name,older,report,initialFile,init
   const planeSelection=<label className="cfx-inspector-plane">Plane to inspect<select aria-label="Plane to inspect" disabled={planeBusy||stack.busy} value={primary?.file.name??""} onChange={event=>{const value=event.target.value;if(value.startsWith("artifact:"))loadPlane(value.slice(9));else{setPlane(value);setInspectorOpen(true);}}}><option value="" disabled>Choose a plane…</option>{files.map(item=><option key={item.file.name} value={item.file.name}>{item.file.name.replace(`${job?.id}-`,"")}</option>)}{result&&<optgroup label="Verified worker planes">{result.artifacts.filter(item=>item.kind==="vtk").map(item=><option key={item.id} value={`artifact:${item.id}`}>{item.name??item.id}</option>)}</optgroup>}</select></label>;
   const planeViewer=(embedded=false)=>primary&&inspectorOpen?<ClimoptixVTKViewer compact embedded={embedded} file={primary.file} provenance={provenance} viewMode="2d" onClose={closeInspector} onRemoveFile={removePlane} toolbar={<>{planeSelection}{fileError&&<p className="cfx-error" role="alert">{fileError}</p>}{stack.error&&<p className="cfx-error" role="alert">{stack.error}</p>}</>} onPlaneStep={direction=>void stack.step(direction)} previousPlane={stack.previous} nextPlane={stack.next}/>:<div className="cfx-notice">{planeSelection}<button disabled={!primary} onClick={()=>setInspectorOpen(true)}>Show plane viewer</button></div>;
   return <section className="cfx-results" data-cfx-collapse-root aria-label="Simulation results and downloads">
-    <div className="cfx-inline-toolbar"><h3>Results · {name}</h3><CFDCollapseAll/></div>
     <div className="cfx-simulation-tabs cfx-results-tabs" role="tablist" aria-label="Results views" onKeyDown={event=>{
       if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
       event.preventDefault();

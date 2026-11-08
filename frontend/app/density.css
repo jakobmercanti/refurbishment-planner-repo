@@ -276,7 +276,7 @@ body .cfx-workspace .cfx-thermal-import :is(.thermal-heading,.thermal-steps,.the
 body .cfx-workspace .cfx-inspector-plane { display:flex; align-items:center; gap:10px; flex:0 0 auto; padding:4px 8px; }
 body .cfx-workspace .cfx-inspector-plane select { flex:1; min-width:0; }
 body .cfx-workspace .cfx-disclosure-actions { display:inline-grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--density-section-gap); }
-body .cfx-workspace .cfx-results-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-bottom:12px; }
+body .cfx-workspace .cfx-results-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-bottom:var(--density-section-gap); }
 body .cfx-workspace .cfx-probe-value { position:absolute; z-index:4; inset:12px auto auto 12px; max-width:calc(100% - 24px); padding:5px 8px; border-radius:var(--radius-control); background:var(--panel); color:var(--ink); font:700 12px/1.5 var(--font-sans); overflow-wrap:anywhere; pointer-events:none; }
 body .cfx-workspace .cfx-point-probe > .cfx-probe-value { position:static; }
 body .cfx-workspace .cfx-slice-stage { position:relative; min-width:0; }
@@ -341,11 +341,10 @@ body .cfx-workspace .cfx-inline-toolbar > h3 { margin:0; flex:1 1 auto; }
 body .cfx-workspace .cfx-disclosure-actions { margin-left:auto; }
 body .cfx-workspace details:not(.cfx-row-menu) > summary { font:650 calc(13px * var(--density-font-scale,1))/1.45 var(--font-sans); }
 body .cfx-workspace .cfx-domain-panel > details { margin-block:10px; padding:12px; border:1px solid var(--line); border-radius:var(--radius-panel); }
-body .cfx-workspace .cfx-results > .cfx-inline-toolbar { margin-bottom:12px; }
 body .cfx-workspace .cfx-physics-panel > .cfx-inline-toolbar { flex-wrap:nowrap; }
 body .cfx-workspace .cfx-objects > .cfx-inline-toolbar { justify-content:flex-start; flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
 body .cfx-workspace .cfx-objects > .cfx-inline-toolbar > button { flex:0 0 auto; }
-body .cfx-workspace :is(.cfx-mesh-panel,.cfx-boundaries-panel,.cfx-objects,.cfx-review [role=tabpanel],.cfx-vent-settings,.cfx-boundary-fields,.cfx-heating-import-panel) > details { margin-block:10px; padding:var(--density-window-padding); border:1px solid var(--line); border-radius:var(--radius-panel); }
+body .cfx-workspace :is(.cfx-studies,.cfx-mesh-panel,.cfx-boundaries-panel,.cfx-objects,.cfx-review [role=tabpanel],.cfx-vent-settings,.cfx-boundary-fields,.cfx-heating-import-panel) > details { margin-block:10px; padding:var(--density-window-padding); border:1px solid var(--line); border-radius:var(--radius-panel); }
 body .cfx-workspace .cfx-review > header { display:flex; flex-wrap:wrap; }
 body .cfx-workspace .cfx-review > header .cfx-segments { flex:1 1 320px; }
 body .cfx-workspace .cfx-transfer-actions { grid-template-columns:repeat(2,minmax(0,1fr)); padding:0; }

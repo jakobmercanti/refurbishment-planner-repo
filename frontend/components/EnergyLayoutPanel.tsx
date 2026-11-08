@@ -12,6 +12,7 @@ import styles from "./HeatingLayoutPanel.module.css";
 import ui from "./EnergyLayoutPanel.module.css";
 import { NumberField } from "./EnergyNumberField";
 import { WallLayersEditor } from "./WallLayersEditor";
+import { WallLayersPreview } from "./WallLayersPreview";
 import { removeEnergyScenario, renameEnergyScenario, saveEnergyScenarioAs } from "@/lib/energyScenarios";
 
 export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingChange, selectedIds, onSelect, onUndo, onRedo, canUndo, canRedo, projectName }: { rooms: Room[]; data: EnergyProject; heating: HeatingProject; onChange: (data: EnergyProject) => void; onHeatingChange: (data: HeatingProject) => void; selectedIds: string[]; onSelect: (ids: string[]) => void; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string }) {
@@ -62,7 +63,13 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
         <div className={ui.wallSummary}>{activeScenario && <small>{scenarioOverride ? "This element has a construction override in this scenario." : "Inherited from Existing Building. Editing creates an override here only."}</small>}<div className={ui.wallMetrics}><span>{Number(shownThickness.toFixed(2))} mm</span><span>{first.areaM2.toFixed(1)} m²</span><span>{first.warnings.length || assigned?.uValue == null && (construction?.uValue == null || construction.estimated) ? "Estimated U" : "U"} {first.uValue.toFixed(3)} W/m²K</span><span>{Math.round(first.heatLossW)} W{construction?.uValue == null && assigned?.uValue == null ? " (estimated)" : ""}</span></div></div>
         {elementName === "opening" && <div className={styles.grid}><NumberField label="Opening overall U W/m²K" value={assigned?.uValue ?? null} min={.001} max={10} onChange={uValue => editOpeningPerformance({ uValue })} />{first.category === "window" && <NumberField label="Glazing g / SHGC (0–1)" value={assigned?.solarGainValue ?? null} min={0} max={1} onChange={solarGainValue => editOpeningPerformance({ solarGainValue })} />}</div>}
         {elementName === "opening" && <><label>Opening boundary<select value={assigned?.boundary ?? "Auto"} onChange={e => editOpeningPerformance({ boundary: e.target.value as ElementAssignment["boundary"] })}>{["Auto", "External", "Heated", "Unheated", "Adiabatic"].map(value => <option key={value}>{value}</option>)}</select></label><NumberField label="Opening adjacent temperature °C" value={assigned?.adjacentTemperatureC ?? null} min={-50} max={40} onChange={adjacentTemperatureC => editOpeningPerformance({ adjacentTemperatureC: adjacentTemperatureC ?? undefined })} /></>}
-        {elementName !== "opening" && <button className={`${styles.primary} ${ui.defineLayers}`} onClick={openLayerEditor}>Define {elementName} layers <span aria-hidden>›</span></button>}
+        {elementName !== "opening" && <>
+          <button className={`${styles.primary} ${ui.defineLayers}`} onClick={openLayerEditor}>Define {elementName} layers <span aria-hidden>›</span></button>
+          <WallLayersPreview compact assembly={assembly ?? {
+            assemblyId: first.elementId, category: first.category,
+            layers: [{ layerId: "existing", materialId: "existing", thicknessMm: shownThickness, resistanceOverride: null, position: "Within", upgrade: false, colorHex: "#c4b09b" }],
+          }} />
+        </>}
 
       </div>}</details>
     </>}

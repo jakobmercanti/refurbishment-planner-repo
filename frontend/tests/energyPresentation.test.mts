@@ -26,7 +26,8 @@ test("the main energy panel keeps the element summary and opens a dedicated laye
   assert.match(html, /Define wall layers/);
   assert.doesNotMatch(html, /Layer 1 material|Layer 1 thickness mm|Find minimum additional insulation/);
   assert.doesNotMatch(html, /Planning assumptions &amp; limitations|How the score is calculated|Drag to rotate/);
-  assert.doesNotMatch(html, /Wall composition preview|Wall thickness &amp; shared heating calculation|Layer key · outside → inside/);
+  assert.match(html, /Wall composition preview/);
+  assert.doesNotMatch(html, /Wall thickness &amp; shared heating calculation|Layer key · outside → inside/);
 });
 
 test("clearing insulation selection leaves no implied first wall or edit controls", () => {
@@ -50,7 +51,7 @@ test("undefined walls show their estimated U-value and offer the layer editor", 
   const html = panel();
   assert.match(html, /Define wall layers/); assert.match(html, /Estimated U 0.300/);
   assert.doesNotMatch(html, /Calculated U|U 4.667/);
-  assert.doesNotMatch(html, /Wall composition preview|No layers defined yet/);
+  assert.match(html, /Wall composition preview/);
 });
 
 test("floor and roof insulation use independently assigned construction and distinct plan controls", () => {
@@ -61,6 +62,7 @@ test("floor and roof insulation use independently assigned construction and dist
     data = setWallAssembly(data, e, newAssembly({ name: category, category, materials: [["pir-tw55", category === "floor" ? 100 : 150]] }));
     const html = renderToStaticMarkup(createElement(EnergyLayoutPanel, { rooms: [room], data, heating, selectedIds: [e.elementId], onChange() {}, onHeatingChange() {}, onSelect() {}, onUndo() {}, onRedo() {}, canUndo: false, canRedo: false, projectName: "Test" }));
     assert.match(html, new RegExp(`Define ${category} layers`));
+    assert.match(html, new RegExp(`${category} composition preview`, "i"));
     assert.match(html, /Construction scenarios/);
     assert.doesNotMatch(html, /<details[^>]* open=""[^>]*><summary>Construction scenarios/);
   }
@@ -73,7 +75,7 @@ test("floor and roof insulation use independently assigned construction and dist
   assert.match(html, /Floor insulation/); assert.match(html, /Roof insulation/);
 });
 test("dedicated preview uses the exact fittings viewer zoom/Fit shell, not compact expansion", () => {
-  const html = renderToStaticMarkup(createElement(WallLayersPreview, { assembly, materials: energy.materials, appearanceControls: true }));
+  const html = renderToStaticMarkup(createElement(WallLayersPreview, { assembly }));
   assert.match(html, /Preview zoom controls/); assert.match(html, />Fit<\/button>/);
   assert.doesNotMatch(html, /Click to enlarge|fixture-preview-compact/);
 });

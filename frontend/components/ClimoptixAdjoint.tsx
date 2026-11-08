@@ -7,7 +7,6 @@ import { downloadCFD, type CFDReport } from "@/lib/climoptix";
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import { CFDNumber, CFDText } from "./CFDFields";
-import { CFDCollapseAll } from "./CFDCollapseAll";
 import { CFDConfirmAction } from "./CFDConfirmAction";
 
 export function ClimoptixAdjoint({project,scenario,report,revision,checked,apiUrl,active,selected,baselineRunId,workerConnected,onSelect,onChange,onNavigate}:{
@@ -49,7 +48,6 @@ export function ClimoptixAdjoint({project,scenario,report,revision,checked,apiUr
   const patchPort=(id:string,patch:Partial<AdjointStudy["ports"][number]>)=>{if(study)save({...study,ports:study.ports.map(p=>p.ventId===id?{...p,...patch}:p)});};
   const busy=pending?.key===key&&!pending.signal.aborted&&active;
   return <section className="cfx-adjoint" data-cfx-collapse-root aria-label="Adjoint optimisation preparation">
-    <header className="cfx-inline-toolbar"><h2>Optimisation</h2><CFDCollapseAll/></header>
     {error?.key===key&&<p role="alert" className="cfx-error cfx-adjoint-feedback">{error.message}</p>}
     <details open><summary>Start here</summary><p>1. Capture your setup. 2. Choose vents and movement limits. 3. Validate the layout.</p>
     <p className="cfx-notice" role="note">Layout checks are available now. Automated vent movement requires an adjoint worker that is not yet implemented; changing default values will not enable it.</p>

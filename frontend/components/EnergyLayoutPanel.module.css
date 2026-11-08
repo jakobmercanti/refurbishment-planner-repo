@@ -12,6 +12,7 @@
 .scenarioPanel > section { display:grid; gap:8px; padding-top:8px; }
 .scenarioPanel { display:grid; gap:0; border:1px solid var(--line); border-radius:10px; padding:var(--density-row-padding) var(--density-window-padding); background:var(--surface-muted); }
 .elementPicker > select { font-weight:700; }
+.elementPicker + .constructionSection { margin-top:var(--density-section-gap); }
 .scenarioPanel > div:first-child { display:grid; gap:2px; }
 .scenarioActions { display:grid; grid-template-columns:minmax(160px,1fr) auto; gap:8px; align-items:end; }
 .scenarioActions:has(>button+button) { grid-template-columns:minmax(160px,1fr) auto auto; }
@@ -33,8 +34,10 @@
 .startingComposition { margin-bottom:0; }
 .startingComposition > :global(div) { margin-top:14px; margin-bottom:4px; gap:10px; }
 .editorPreview :global(.wall-layers-preview-editor) { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
-.editorPreview :global(.wall-layers-preview-editor > details) { font-size: 11px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; max-height: 100px; overflow: auto; }
 .editorPreview :global(.fixture-preview) { min-height: 300px; }
+.insulationFields { display:grid; gap:var(--density-section-gap); }
+.insulationFields > p { margin:0; }
+.insulationFields > button { justify-self:start; }
 .popup .layer { padding: var(--density-row-padding) var(--density-window-padding); }
 .layer { border:1px solid var(--line); border-radius:10px; }
 .layerList { display:grid; }

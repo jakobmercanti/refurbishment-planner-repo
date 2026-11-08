@@ -3,7 +3,7 @@ import { Fragment, useMemo, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { Popup } from "./Popup";
 import { withLayerColours } from "@/lib/energyLayerColours";
-import { WallLayersPreview } from "./WallLayersPreview";
+import { WallLayerKey, WallLayersPreview } from "./WallLayersPreview";
 import { NumberField } from "./EnergyNumberField";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { CONSTRUCTION_TEMPLATES, newAssembly, type ConstructionAssembly, type ConstructionLayer, type EnergyProject } from "@/lib/energyDocument";
@@ -101,16 +101,17 @@ export function WallLayersEditor({ source, initialAssembly, element: first, room
           <details><summary className={ui.layerHelpSummary}>Find minimum additional insulation<WindowHelpButton title="Minimum additional insulation" steps={[
             { heading: "Choose the target", text: "Choose an insulation material and a target U-value or element power loss at the design temperature. The conductivity applies to the added insulation only, not other elements or the library. A power target needs a positive area and temperature difference." },
             { heading: "Apply and review", text: "The result is a mathematical minimum for this serial-layer model, rounded up to 1 mm. Apply explicitly, choose an available product thickness, and confirm moisture, fire and installation suitability. Targets are project choices, not regulatory approval. A retained estimated baseline still needs verification." },
-          ]} /></summary><label>Insulation material<select value={materialId} onChange={e => { setMaterialId(e.target.value);setInsulationLambda(null); }}>{data.materials.filter(m => m.category === "Insulation").map(m => <option key={m.materialId} value={m.materialId}>{m.name}</option>)}</select></label>
+          ]} /></summary><div className={ui.insulationFields}><label>Insulation material<select value={materialId} onChange={e => { setMaterialId(e.target.value);setInsulationLambda(null); }}>{data.materials.filter(m => m.category === "Insulation").map(m => <option key={m.materialId} value={m.materialId}>{m.name}</option>)}</select></label>
           <NumberField label="Selected insulation conductivity λ W/mK" value={chosenLambda} min={.001} max={20} onChange={setInsulationLambda} /><label>Target type<select value={targetMode} onChange={e => setTargetMode(e.target.value)}><option>U-value</option><option>Element power loss</option></select></label>
           {targetMode === "U-value" ? <NumberField label={`Target ${category} U W/m²K`} value={data.targets[category]} min={.001} max={10} onChange={v => { if (v) update({ ...data, targets: { ...data.targets, [category]: v } }); }} /> : <NumberField label={`Target ${category} power loss W at design temperature`} value={powerTarget} min={.1} max={100000} onChange={v => { if (v) setPowerTarget(v); }} />}
           <p>{suggested === null ? "Complete the construction layers and insulation λ. A power target needs positive area and temperature difference." : suggested === 0 ? "This construction already meets your target." : `Minimum additional insulation: ${suggested} mm (λ ${chosenLambda}); target U ${targetU?.toFixed(3)} W/m²K.`}</p>
-          <button disabled={!suggested || assembly.layers.length >= 100 || assemblyThickness(assembly) + suggested > 2000} onClick={() => { if (suggested) edit({ ...assembly, layers: [...assembly.layers, { layerId: crypto.randomUUID(), materialId, thicknessMm: suggested, lambdaOverride: chosenLambda, resistanceOverride: null, position: "Inside", upgrade: true, colorHex: "#e9c844" }] }); }}>Apply suggested insulation</button></details>
+          <button disabled={!suggested || assembly.layers.length >= 100 || assemblyThickness(assembly) + suggested > 2000} onClick={() => { if (suggested) edit({ ...assembly, layers: [...assembly.layers, { layerId: crypto.randomUUID(), materialId, thicknessMm: suggested, lambdaOverride: chosenLambda, resistanceOverride: null, position: "Inside", upgrade: true, colorHex: "#e9c844" }] }); }}>Apply suggested insulation</button></div></details>
+          <WallLayerKey assembly={assembly} materials={data.materials} />
         </>
       </div>
       <div className={"appearance-popup-preview " + ui.editorPreview}>
         <div className="appearance-preview-heading"><strong>Live preview</strong><span>Updates as you edit</span></div>
-        <WallLayersPreview assembly={assembly} materials={data.materials} />
+        <WallLayersPreview assembly={assembly} />
       </div>
     </div>
   </Popup></div>, document.body);

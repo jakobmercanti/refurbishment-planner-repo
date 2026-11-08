@@ -91,8 +91,6 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
         onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onImport(file); }} /></label>
       </div>
     </div>}
-    </details>
-    <details open><summary>Simulation groups &amp; runs</summary>
     <div className="cfx-group-tree">
       <CFDReorderList items={groups} label="Simulation groups" scope={`simulation-groups:${project.projectId}`}
         onMove={(id, at) => onOrder(scenarios, insertAtBoundary(groups, id, at))}>

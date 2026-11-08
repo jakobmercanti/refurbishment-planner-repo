@@ -119,6 +119,13 @@ test("large catalogue dialog keeps information left and orbit/zoom/CFD controls 
     await dialog.getByRole("button",{name:"CFD shape",exact:true}).click();
     await dialog.locator('.catalogue-cfd-info').waitFor();await dialog.locator('.fixture-preview canvas').waitFor();
     assert.equal(await dialog.getByRole("button",{name:"CFD shape",exact:true}).getAttribute("aria-pressed"),"true");
+    const details = dialog.locator(".catalogue-cfd-info");
+    const download = dialog.getByRole("link",{name:"Download CFD STL (mm)",exact:true});
+    assert.equal(await download.isVisible(),false);
+    const collapsedHeight = (await dialog.locator(".fixture-preview").boundingBox()).height;
+    await details.locator("summary").click();
+    assert.equal(await download.isVisible(),true);
+    assert.ok((await dialog.locator(".fixture-preview").boundingBox()).height < collapsedHeight);
     assert.match(await dialog.locator('.catalogue-cfd-info').innerText(),/triangles/);
     assert.match(await dialog.locator('.catalogue-cfd-info').innerText(),/origin; it is not exported/);
     if(realMeshes){
@@ -127,7 +134,8 @@ test("large catalogue dialog keeps information left and orbit/zoom/CFD controls 
       if(Math.min(...mesh.vertices_mm.map(point=>point[2]))>0)
         assert.match(await dialog.locator('.catalogue-cfd-info').innerText(),/Underside:.*mm above origin. Check mounting height/);
     }
-    assert.ok((await dialog.getByRole("link",{name:"Download CFD STL (mm)",exact:true}).getAttribute("href")).endsWith(`/${item.id}/cfd.stl`));
+    assert.ok((await download.getAttribute("href")).endsWith(`/${item.id}/cfd.stl`));
+    await details.locator("summary").click();
     // Repeated clicks must not strand the current mesh in a loading state.
     await dialog.getByRole("button",{name:"CFD shape",exact:true}).click();assert.ok(await dialog.locator('.fixture-preview canvas').isVisible());
     if(item.id==="qa-table"){

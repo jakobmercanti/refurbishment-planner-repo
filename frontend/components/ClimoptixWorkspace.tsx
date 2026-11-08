@@ -887,10 +887,11 @@ export function ClimoptixWorkspace({
               ))}
             </div>
             <div className="cfx-setup-status-row">
-            {scenario && shownTab !== "results" && shownTab !== "adjoint" && <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
-              showFailure onIssues={() => reviewIssues()}
-              onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} />}
-            <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
+              {scenario && shownTab !== "results" && shownTab !== "adjoint" ? <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
+                showFailure onIssues={() => reviewIssues()}
+                onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} /> :
+                <h2>{shownTab === "results" && scenario ? `Results · ${scenario.name}` : CFD_WINDOWS.find(item => item.id === shownTab)?.tab}</h2>}
+              <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
             </div>
             <section
               role="tabpanel"
@@ -958,8 +959,7 @@ export function ClimoptixWorkspace({
                       />
                     )}
                     {panel.id === "equipment" && (
-                      <><SharedHvacCFD scenario={scenario} report={activeReport} checked={!stale && !busy} onEditSource={onEditBuilding} />
-                      <EquipmentPanel
+                      <><EquipmentPanel
                         checked={!stale}
                         scenario={scenario}
                         report={activeReport}
@@ -970,6 +970,7 @@ export function ClimoptixWorkspace({
                         onEditSource={onEditBuilding}
                         onEditVent={id => setVentEditor({ studyId: scenario.id, id })}
                       />
+                      <SharedHvacCFD scenario={scenario} report={activeReport} checked={!stale && !busy} onEditSource={onEditBuilding} />
                       </>
                     )}
                     {panel.id === "boundaries" && (
@@ -1146,7 +1147,7 @@ export function ClimoptixWorkspace({
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
                       onRefresh={() => refreshPreparation()} onInspect={jump} />}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}
-                      adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} name={scenario.name} report={activeReport}
+                      adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} report={activeReport}
                       projectId={project.projectId}
                       active={shownTab === "results" && setupOpen}
                       older={!!jobs[scenario.id]?.job && jobs[scenario.id].input !== currentWorkerInput}
