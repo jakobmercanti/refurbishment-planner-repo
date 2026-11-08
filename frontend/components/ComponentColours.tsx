@@ -11,17 +11,17 @@ import { FixturePreview } from "@/components/FixturePreview";
 import type { Obstacle } from "@/lib/types";
 
 /** The same database-driven part picker is used by both element windows. */
-export function ComponentColours({ source, onChange, onMaterialsChange, onAppearanceChange, compact = false, previewObstacle, dimensionsContent, onResetDimensions }: { source: ColourSource; onChange: (colours: Record<string, string>) => void; onMaterialsChange?: (materials: Record<string, string>) => void; onAppearanceChange?: (colours: Record<string, string>, materials: Record<string, string>) => void; compact?: boolean; previewObstacle?: Obstacle; dimensionsContent?: ReactNode; onResetDimensions?: () => void }) {
+export function ComponentColours({ source, onChange, onMaterialsChange, onAppearanceChange, compact = false, previewObstacle, dimensionsContent, onResetDimensions, onDone, captureDimensions, displayName }: { source: ColourSource; onChange: (colours: Record<string, string>) => void; onMaterialsChange?: (materials: Record<string, string>) => void; onAppearanceChange?: (colours: Record<string, string>, materials: Record<string, string>) => void; compact?: boolean; previewObstacle?: Obstacle; dimensionsContent?: ReactNode; onResetDimensions?: () => void; onDone?: () => boolean; captureDimensions?: () => () => void; displayName?: string }) {
   const [expanded, setExpanded] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [selected, setSelected] = useState("");
   const [customFinishOverride, setCustomFinishOverride] = useState("");
-  const snapshot = useRef<{ colours: Record<string, string>; materials: Record<string, string> } | null>(null);
+  const snapshot = useRef<{ colours: Record<string, string>; materials: Record<string, string>; restoreDimensions?: () => void } | null>(null);
   const id = useId();
   const parts = colourPartsFor(source);
   const editableColours = Object.fromEntries(Object.entries(source.component_colors ?? {}).filter(([key]) => key !== GLASS_PART_ID));
   const sourceRecord = source as ColourSource & { id?: string; model_id?: string; name?: string };
-  const appearanceObjectName = (previewObstacle?.name ?? sourceRecord.name)?.replace(/^Default /i, "").trim();
+  const appearanceObjectName = (displayName ?? previewObstacle?.name ?? sourceRecord.name)?.replace(/^Default /i, "").trim();
   const sourceIdentity = `${sourceRecord.id ?? sourceRecord.model_id ?? ""}|${source.representation_key ?? ""}|${source.fixture_kind ?? ""}|${source.color_hex ?? ""}`;
   const [selectedSourceIdentity, setSelectedSourceIdentity] = useState(sourceIdentity);
   if (selectedSourceIdentity !== sourceIdentity) {
@@ -77,14 +77,16 @@ export function ComponentColours({ source, onChange, onMaterialsChange, onAppear
   }
 
   function openEditor() {
-    snapshot.current = { colours: { ...editableColours }, materials: { ...source.component_materials } };
+    snapshot.current = { colours: { ...editableColours }, materials: { ...source.component_materials }, restoreDimensions: captureDimensions?.() };
     setEditorOpen(true);
   }
 
   function closeEditor(commit: boolean) {
+    if (commit && onDone && !onDone()) return;
     if (!commit) setCustomFinishOverride("");
     if (!commit && snapshot.current) {
       updateAppearance(snapshot.current.colours, snapshot.current.materials);
+      snapshot.current.restoreDimensions?.();
     }
     snapshot.current = null;
     setEditorOpen(false);

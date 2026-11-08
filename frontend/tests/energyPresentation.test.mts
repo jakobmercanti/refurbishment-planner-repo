@@ -9,6 +9,7 @@ import { newAssembly, newEnergyProject } from "../lib/energyDocument";
 import { newHeatingProject } from "../lib/heatingDocument";
 import { energyElements } from "../lib/energyCalculations";
 import { setWallAssembly } from "../lib/energyWallConstruction";
+import { numberedOpeningNames } from "../lib/openingNames";
 import { windowHelpSteps } from "../lib/windowHelp";
 import type { Room } from "../lib/types";
 
@@ -17,6 +18,15 @@ const room: Room = { id: "room", name: "Living room", version: 1, vertices: [{ x
 const heating = newHeatingProject(), energy = newEnergyProject();
 const element = energyElements([room], heating, energy)[0];
 const assembly = newAssembly({ name: "Test wall", category: "wall", materials: [["brick-english-red", 100], ["pir-tw55", 50]] });
+test("physical opening names are unique by type and shared by both room-side records", () => {
+  assert.deepEqual([...numberedOpeningNames([
+    { id: "first", kind: "WINDOW" },
+    { id: "first", kind: "WINDOW" },
+    { id: "passage", kind: "DOOR", representationKey: "door-opening-chamfered" },
+    { id: "door", kind: "DOOR" },
+    { id: "second", kind: "WINDOW" },
+  ])], [["first", "Window 1"], ["passage", "Passage 1"], ["door", "Door 1"], ["second", "Window 2"]]);
+});
 function panel(data = energy) {
   return renderToStaticMarkup(createElement(EnergyLayoutPanel, { rooms: [room], data, heating, selectedIds: [element.elementId], onChange() {}, onHeatingChange() {}, onSelect() {}, onUndo() {}, onRedo() {}, canUndo: false, canRedo: false, projectName: "Test" }));
 }

@@ -171,6 +171,27 @@ test("instructional insulation content lives in contextual help, not the editing
   await capture(page, "help-maximised");
 });
 
+test("stacked insulation controls keep a consistent gap in both UI densities", async t => {
+  const { page } = await open(t);
+  await menu(page, "Tools", "Energy & Insulation");
+  const energy = panel(page, "Energy & Insulation");
+  await energy.getByRole("tab", { name: "Results", exact: true }).click();
+  for (const title of ["Edit project U-value targets used in the score", "Shared heating design assumptions"]) {
+    const summary = energy.getByText(title, { exact: true });
+    if (!await summary.locator("..").evaluate(details => details.open)) await summary.click();
+    for (const density of ["comfortable", "compact"]) {
+      await page.evaluate(value => { document.documentElement.dataset.density = value; }, density);
+      const { expected, gaps } = await summary.locator("..").evaluate(details => {
+        const fields = [...details.querySelectorAll(":scope > label")];
+        const expected = parseFloat(getComputedStyle(details).getPropertyValue("--density-section-gap"));
+        const gaps = fields.slice(1).map((field, index) => field.getBoundingClientRect().top - fields[index].getBoundingClientRect().bottom);
+        return { expected, gaps };
+      });
+      assert.ok(gaps.length && gaps.every(gap => Math.abs(gap - expected) < 1), JSON.stringify({ title, density, expected, gaps }));
+    }
+  }
+});
+
 test("mobile windows can maximise without docking, and modal windows maximise without losing modality", async t => {
   const { page } = await open(t, { hasTouch: true, viewport: { width: 390, height: 844 } });
   await page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("CLIMOPTIX");

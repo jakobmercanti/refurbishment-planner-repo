@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { Room } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
 import { type ConstructionAssembly, type EnergyProject, type ElementAssignment } from "@/lib/energyDocument";
-import { calculateAssemblyUValue, energyResults, scenarioAssignments, type EnergyElement } from "@/lib/energyCalculations";
+import { calculateAssemblyUValue, energyResults, insulationPassages, scenarioAssignments, type EnergyElement } from "@/lib/energyCalculations";
 import { assemblyThickness, createElementAssemblyDraft, fabricTargetScore, wallThicknessForElement } from "@/lib/energyWallConstruction";
 import { buildEnergyPdf } from "@/lib/energyExport";
 import { ReportExportPreview, type ReportPreviewOptions } from "./ReportExportPreview";
@@ -15,15 +15,19 @@ import { WallLayersEditor } from "./WallLayersEditor";
 import { WallLayersPreview } from "./WallLayersPreview";
 import { removeEnergyScenario, renameEnergyScenario, saveEnergyScenarioAs } from "@/lib/energyScenarios";
 
-export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingChange, selectedIds, onSelect, onUndo, onRedo, canUndo, canRedo, projectName }: { rooms: Room[]; data: EnergyProject; heating: HeatingProject; onChange: (data: EnergyProject) => void; onHeatingChange: (data: HeatingProject) => void; selectedIds: string[]; onSelect: (ids: string[]) => void; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string }) {
+export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingChange, selectedIds, onSelect, onAddOpening, onEditOpening, openingNames, onUndo, onRedo, canUndo, canRedo, projectName }: { rooms: Room[]; data: EnergyProject; heating: HeatingProject; onChange: (data: EnergyProject) => void; onHeatingChange: (data: HeatingProject) => void; selectedIds: string[]; onSelect: (ids: string[]) => void; onAddOpening?: (kind: "DOOR" | "WINDOW") => void; onEditOpening?: (id: string) => void; openingNames?: ReadonlyMap<string, string>; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string }) {
   const [tab, setTab] = useState<"Walls" | "Floors" | "Roofs" | "Openings" | "Results">("Walls"), [error, setError] = useState(""), [reportOpen, setReportOpen] = useState(false);
   const [newScenarioName, setNewScenarioName] = useState(""), [scenarioNameDraft, setScenarioNameDraft] = useState<{ id: string; text: string } | null>(null);
   const [resultsSelection, setResultsSelection] = useState<string | undefined>();
   const [editor, setEditor] = useState<{ source: EnergyProject; draft: EnergyProject; assembly: ConstructionAssembly; element: EnergyElement; thickness: number } | null>(null);
   const result = useMemo(() => energyResults(rooms, heating, data), [rooms, heating, data]);
+  const passages = useMemo(() => insulationPassages(rooms), [rooms]);
   const categories = { Walls: "wall", Floors: "floor", Roofs: "roof", Openings: "window" } as const;
   const selected = result.elements.find(e => selectedIds.includes(e.elementId));
-  const category = selected?.category ?? (tab === "Results" ? "wall" : categories[tab]);
+  const selectedPassage = passages.find(passage => selectedIds.includes(passage.elementId));
+  const selectedOpening = (selected?.elementId ?? selectedPassage?.elementId)?.split("|opening:")[1];
+  const openingLabel = (id: string) => openingNames?.get(id.split("|opening:")[1]);
+  const category = selected?.category ?? (selectedPassage ? "door" : tab === "Results" ? "wall" : categories[tab]);
   const activeTab = tab === "Results" && resultsSelection === selectedIds[0] ? tab : category === "floor" ? "Floors" : category === "roof" ? "Roofs" : ["window", "door"].includes(category) ? "Openings" : "Walls";
   const walls = result.elements.filter(e => (["window", "door"].includes(category) ? ["window", "door"].includes(e.category) : e.category === category) && (isInsulationSelectable(e) || selectedIds.includes(e.elementId))), first = selected, assignments = scenarioAssignments(data);
   const elementName = category === "floor" ? "floor" : category === "roof" ? "roof" : ["window", "door"].includes(category) ? "opening" : "wall";
@@ -48,7 +52,7 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
   const makeReport = useCallback((options: ReportPreviewOptions) => buildEnergyPdf(rooms, heating, data, projectName, options), [rooms, heating, data, projectName]);
   return <div className={styles.panel + " " + ui.panel} role="region" aria-label="Energy & Insulation controls">
     <div className={ui.summaryRow}><p className={ui.buildingSummary}><strong>Overall heating loss: {(result.designW / 1000).toFixed(2)} kW</strong> · H {Math.round(result.coefficient.total)} W/K</p><div className={styles.actions}><button onClick={onUndo} disabled={!canUndo}>Undo</button><button onClick={onRedo} disabled={!canRedo}>Redo</button></div></div>
-    <div className={ui.sectionNav}><div className={`${styles.tabs} ${ui.energyTabs}`} role="tablist" aria-label="Energy & Insulation tabs">{(["Walls", "Floors", "Roofs", "Openings", "Results"] as const).map(t => <button key={t} role="tab" aria-selected={t === activeTab} onClick={() => { setTab(t); if (t === "Results") setResultsSelection(selectedIds[0]); if (t !== "Results") { const target = result.elements.find(e => e.category === categories[t] || t === "Openings" && e.category === "door"); onSelect(target ? [target.elementId] : []); } }}>{t}</button>)}</div></div>
+    <div className={ui.sectionNav}><div className={`${styles.tabs} ${ui.energyTabs}`} role="tablist" aria-label="Energy & Insulation tabs">{(["Walls", "Floors", "Roofs", "Openings", "Results"] as const).map(t => <button key={t} role="tab" aria-selected={t === activeTab} onClick={() => { setTab(t); if (t === "Results") setResultsSelection(selectedIds[0]); else { const target = result.elements.find(e => e.category === categories[t] || t === "Openings" && e.category === "door") ?? (t === "Openings" ? passages[0] : undefined); onSelect(target ? [target.elementId] : []); } }}>{t}</button>)}</div></div>
     {error && <p role="alert" className={styles.warning}>{error}</p>}
     {activeTab !== "Results" && <>
       <details className={ui.scenarioPanel}><summary>Construction scenarios · {scenarioLabel}</summary><section aria-label="Construction scenarios">
@@ -58,7 +62,13 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
         {activeScenario && <div className={ui.scenarioActions}><label>Rename active scenario<input value={editableScenarioName} maxLength={80} onChange={e => setScenarioNameDraft({ id: activeScenario.scenarioId, text: e.target.value })} onBlur={renameScenario} onKeyDown={e => { if (e.key === "Enter") { e.currentTarget.blur(); } }} /></label><button type="button" onClick={renameScenario}>Save name</button><button type="button" onClick={() => { if (window.confirm(`Delete scenario “${activeScenario.name}”? Existing Building and other scenarios will be kept.`)) update(removeEnergyScenario(data, activeScenario.scenarioId)); }}>Delete scenario</button></div>}
       </section></details>
       <details open><summary>{elementName === "opening" ? "Opening selection & performance" : `${activeTab} selection & construction`}</summary>
-      <label className={ui.elementPicker}>Select {elementName}<select aria-label={`Select ${elementName}`} value={first?.elementId ?? ""} onChange={e => onSelect(e.target.value ? [e.target.value] : [])}><option value="">Select {elementName} on the plan or here…</option>{walls.map(e => <option key={e.elementId} value={e.elementId}>{e.label} · {e.boundary}</option>)}</select></label>
+      {elementName === "opening" && onAddOpening && <div className={`${styles.grid} ${ui.openingActions}`}>
+        <button type="button" onClick={() => onAddOpening("DOOR")}>Add door or passage…</button>
+        <button type="button" onClick={() => onAddOpening("WINDOW")}>Add window…</button>
+      </div>}
+      <label className={ui.elementPicker}>Select {elementName}<select aria-label={`Select ${elementName}`} value={first?.elementId ?? selectedPassage?.elementId ?? ""} onChange={e => onSelect(e.target.value ? [e.target.value] : [])}><option value="">Select {elementName} on the plan or here…</option>{walls.map(e => <option key={e.elementId} value={e.elementId}>{elementName === "opening" && openingLabel(e.elementId) ? `${openingLabel(e.elementId)} · ${e.roomName}` : e.label} · {e.boundary}</option>)}{elementName === "opening" && passages.map(passage => <option key={passage.elementId} value={passage.elementId}>{openingLabel(passage.elementId) ?? passage.label}</option>)}</select></label>
+      {selectedOpening && onEditOpening && <button className={ui.editOpening} type="button" onClick={() => onEditOpening(selectedOpening)}>Edit selected opening…</button>}
+      {selectedPassage && <p>Open passage with no solid infill.</p>}
       {first && <div className={ui.constructionSection} key={first.elementId}>
         <div className={ui.wallSummary}>{activeScenario && <small>{scenarioOverride ? "This element has a construction override in this scenario." : "Inherited from Existing Building. Editing creates an override here only."}</small>}<div className={ui.wallMetrics}><span>{Number(shownThickness.toFixed(2))} mm</span><span>{first.areaM2.toFixed(1)} m²</span><span>{first.warnings.length || assigned?.uValue == null && (construction?.uValue == null || construction.estimated) ? "Estimated U" : "U"} {first.uValue.toFixed(3)} W/m²K</span><span>{Math.round(first.heatLossW)} W{construction?.uValue == null && assigned?.uValue == null ? " (estimated)" : ""}</span></div></div>
         {elementName === "opening" && <div className={styles.grid}><NumberField label="Opening overall U W/m²K" value={assigned?.uValue ?? null} min={.001} max={10} onChange={uValue => editOpeningPerformance({ uValue })} />{first.category === "window" && <NumberField label="Glazing g / SHGC (0–1)" value={assigned?.solarGainValue ?? null} min={0} max={1} onChange={solarGainValue => editOpeningPerformance({ solarGainValue })} />}</div>}

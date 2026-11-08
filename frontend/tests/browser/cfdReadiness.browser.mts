@@ -1,12 +1,56 @@
 import assert from 'node:assert/strict';
 import test, { before, after } from 'node:test';
-import { cfdProject } from '../climoptixFixtures';
+import { cfdProject, realPreparation } from '../climoptixFixtures';
+import { ventSchema } from '../../lib/climoptixDocument';
 import { realThermal } from '../thermalFixtures';
 import { cfdWindow, eventually, startBrowserHarness } from './harness.mjs';
 
 let harness;
 before(async () => { harness = await startBrowserHarness({ climoptixEnabled: true }); });
 after(async () => { await harness?.close(); });
+
+test("compact CFD diagnostics highlight a vent and thermal surface without changing tabs", async t => {
+  const project = cfdProject();
+  const scenario = project.cfdScenarios[0];
+  const report = realPreparation({ project, scenario, clientRevision: "a".repeat(64) });
+  const host = report.patches.find(patch => patch.kind === "wall" && patch.hostable && patch.host);
+  assert.ok(host);
+  scenario.vents = [ventSchema.parse({ id: "test-vent-id", name: "Test supply", role: "supply", host: { patchId: host.id } })];
+  const session = await harness.session(project, { viewport: { width: 1700, height: 1000 } });
+  t.after(() => session.close());
+  await session.context.route("**/climoptix/prepare", async route => {
+    const report = realPreparation(route.request().postDataJSON());
+    const floor = report.patches.find(patch => patch.kind === "floor");
+    assert.ok(floor);
+    report.diagnostics.unshift(
+      { severity: "warning", code: "test-vent", message: "Check the supply clearance.", repair: "Move it away from the corner.", group: "vents", objectId: "test-vent-id" },
+      { severity: "warning", code: "test-floor", message: "Check the floor U-value.", repair: "Review floor construction.", group: "boundaries", objectId: `${floor.id}:thermal:ground:floor` },
+    );
+    await route.fulfill({ json: report });
+  });
+  const { page } = session, ui = page.locator(".cfx-workspace"), viewport = ui.locator(".cfx-viewport");
+  await page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("CLIMOPTIX");
+  await eventually(() => ui.getAttribute("data-preparation-state"), state => state === "checked");
+  const status = ui.getByLabel("Simulation readiness", { exact: true });
+  assert.ok((await status.boundingBox()).width < 630);
+  await status.getByRole("button", { name: "Review issues", exact: true }).click();
+  const warnings = ui.getByRole("tab", { name: "Warnings & checks", exact: true });
+  const vent = ui.locator(".cfx-diagnostic-row").filter({ hasText: "Check the supply clearance." });
+  const floor = ui.locator(".cfx-diagnostic-row").filter({ hasText: "Check the floor U-value." });
+  assert.ok((await vent.boundingBox()).height < 100);
+  assert.doesNotMatch(await vent.innerText(), /test-vent-id/);
+  await vent.hover();
+  await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === "Test supply");
+  await floor.hover();
+  await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value !== null && value !== "Test supply");
+  assert.equal(await warnings.getAttribute("aria-selected"), "true");
+  await warnings.hover();
+  await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === null);
+  await vent.getByRole("button", { name: "Inspect Test supply", exact: true }).focus();
+  await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === "Test supply");
+  await warnings.focus();
+  await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === null);
+});
 
 test('shared invalid-input feedback stays singular when returning to Thermal and links to issues', async t => {
   const session = await harness.session(cfdProject()); t.after(() => session.close());

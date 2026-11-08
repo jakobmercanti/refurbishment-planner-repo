@@ -61,6 +61,23 @@ function geometry(opening: FloorPlanOpeningGraphic, wallStart: Point2D, wallEnd:
   return { wallLength, unit, startModel, endModel, start, end, tangent, perpendicular, modelNormal };
 }
 
+export function InsulationOpeningOutline({ opening, wallStart, wallEnd, toScreen, wallThicknessScreen, selected, name, onSelect, onPointerDown }: Pick<OpeningProps, "opening" | "wallStart" | "wallEnd" | "toScreen" | "wallThicknessScreen" | "selected" | "onPointerDown"> & { name: string; onSelect?: () => void }) {
+  const shape = geometry(opening, wallStart, wallEnd, toScreen);
+  if (!shape) return null;
+  const { start, end, perpendicular } = shape;
+  const halfDepth = Math.max(5, (wallThicknessScreen ?? 10) / 2);
+  const points = ([start, end, end, start]).map((point, index) => {
+    const offset = index < 2 ? halfDepth : -halfDepth;
+    return `${point.x + perpendicular.x * offset},${point.y + perpendicular.y * offset}`;
+  }).join(" ");
+  return <polygon points={points} data-insulation-opening={opening.id} data-energy-interactive={onSelect ? "true" : undefined}
+    fill={selected ? "#a6d5ff" : "#e0efff"} stroke="#096dcc" strokeWidth={selected ? 3 : 2} vectorEffect="non-scaling-stroke"
+    role={onSelect ? "button" : undefined} tabIndex={onSelect ? 0 : undefined} aria-label={name} aria-pressed={onSelect ? Boolean(selected) : undefined}
+    pointerEvents={onSelect ? "auto" : "none"} style={onSelect ? { cursor: "grab", touchAction: "none" } : undefined}
+    onPointerDown={onPointerDown}
+    onKeyDown={onSelect && (event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); onSelect(); } })} />;
+}
+
 export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, roomCentre, toScreen, displayUnits, selected = false, wallThicknessScreen, onPointerDown, onContextMenu }: OpeningProps) {
   const shape = geometry(opening, wallStart, wallEnd, toScreen);
   if (!shape) return null;

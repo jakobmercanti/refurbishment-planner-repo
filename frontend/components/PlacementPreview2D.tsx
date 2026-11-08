@@ -9,10 +9,10 @@ import { isElectricalObstacle } from "@/lib/electricalLayout";
 import { isHeatingElement } from "@/lib/heatingElements";
 import { heatingPlanSize } from "@/lib/heatingPresentation";
 
-export function PlacementPreview2D({ request, point, candidate, toScreen, units, electricalMode = false, heatingMode = false, zoom = 1 }: { request: PlacementRequest; point: Point2D; candidate: PlacementCandidate | null; toScreen: (point: Point2D)=>Point2D; units: DisplayUnits; electricalMode?: boolean; heatingMode?: boolean; zoom?: number }) {
+export function PlacementPreview2D({ request, point, candidate, toScreen, units, electricalMode = false, heatingMode = false, insulationMode = false, zoom = 1 }: { request: PlacementRequest; point: Point2D; candidate: PlacementCandidate | null; toScreen: (point: Point2D)=>Point2D; units: DisplayUnits; electricalMode?: boolean; heatingMode?: boolean; insulationMode?: boolean; zoom?: number }) {
   const obstacle=candidate?.obstacle??{...request.obstacle,center:point};
   const center=toScreen(obstacle.center), origin=toScreen({x:0,y:0}), extents=toScreen({x:obstacle.dimensions.width.value,y:obstacle.dimensions.depth.value});
-  const footprintWidth=Math.abs(extents.x-origin.x),footprintDepth=Math.abs(extents.y-origin.y),colour=candidate?"#18775b":"#ba3d38";
+  const footprintWidth=Math.abs(extents.x-origin.x),footprintDepth=Math.abs(extents.y-origin.y),colour=candidate?(insulationMode?"#096dcc":"#18775b"):"#ba3d38";
   const heating = !request.opening && isHeatingElement(obstacle);
   const { width, depth, zoom: symbolZoom } = !request.opening && isElectricalObstacle(obstacle)
     ? electricalPlanPresentation(obstacle.representation_key, footprintWidth, footprintDepth, electricalMode, zoom)

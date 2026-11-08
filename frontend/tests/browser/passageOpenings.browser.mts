@@ -17,8 +17,8 @@ function fixture(){
   p.floorplan={walls:[{id:"outer",points:outer},{id:"partition",points:[{x:4000,y:0},{x:4000,y:3600}]}],rooms:p.rooms.map((r,i)=>({id:r.source_floorplan_room_id,sourceWallId:"outer",sourceWallIds:["outer","partition"],name:r.name,vertices:r.vertices,colourIndex:i})),roomFinishes:{},openings:[],measurements:[],annotations:[],dimensionOffsets:{},hiddenDimensions:[],canvasSize:{width:1100,height:700},selectedRoomId:"passage-outline-0",wallHeight:2600,wallThickness:150,squaredWalls:true,snapEnabled:true,snapSize:50,viewSettings:{zoom:1,pan:{x:0,y:0},showRoomNames:true,showMeasurements:true,showWallThickness:true,showAnnotations:true,showGrid:true}};
   p.building=defaultBuilding(p);return parseProject(p);
 }
-async function session(){
-  const s=await harness.session(fixture());
+async function session(options = {}){
+  const s=await harness.session(fixture(), options);
   await s.page.route(/\/catalog\/items(?:\?.*)?$/,route=>{
     const query=new URL(route.request().url()).searchParams;
     return route.fulfill({json:catalogue.filter(item=>(!query.get("category_id")||item.category_id===query.get("category_id"))&&(!query.get("subcategory")||item.subcategory===query.get("subcategory")))});
@@ -37,16 +37,99 @@ async function choose(page,model,initial=false){
   await add.locator(`[data-passage-profile="${model.profile}"]`).waitFor();
   return add;
 }
-async function partitionPoint(page){
-  return page.locator('.full-plan-svg, svg[aria-label="Interactive complete building floorplan"]').first().evaluate(svg=>{
+async function partitionPoint(page,fraction=.5){
+  return page.locator('.full-plan-svg, svg[aria-label="Interactive complete building floorplan"]').first().evaluate((svg, fraction)=>{
     const box=svg.getBoundingClientRect(),matrix=svg.getScreenCTM();
     const walls=[...svg.querySelectorAll('.wall-interaction-line')].map(line=>{
       const a=new DOMPoint(Number(line.getAttribute("x1")),Number(line.getAttribute("y1"))).matrixTransform(matrix),b=new DOMPoint(Number(line.getAttribute("x2")),Number(line.getAttribute("y2"))).matrixTransform(matrix);
-      return {x:(a.x+b.x)/2,y:(a.y+b.y)/2,vertical:Math.abs(a.x-b.x)<1,length:Math.abs(a.y-b.y)};
+      return {x:a.x+(b.x-a.x)*fraction,y:a.y+(b.y-a.y)*fraction,vertical:Math.abs(a.x-b.x)<1,length:Math.abs(a.y-b.y)};
     }).filter(line=>line.vertical&&line.length>60).sort((a,b)=>Math.abs(a.x-(box.x+box.width/2))-Math.abs(b.x-(box.x+box.width/2)));
     if(!walls.length)throw Error("The shared partition is missing");return {x:walls[0].x,y:walls[0].y};
-  });
+  }, fraction);
 }
+
+test("Insulation keeps both opening placement paths active and shows selectable blue outlines", async t => {
+  const s = await session({ viewport: { width: 1900, height: 1050 } });
+  t.after(() => s.close());
+  const { page } = s;
+  const add = await choose(page, models.find(model => model.profile === "CHAMFERED"), true);
+  await menu(page, "Tools", "Energy & Insulation");
+  const energy = page.locator(".energy-layout-window");
+  await energy.getByRole("button", { name: "Window layout for Energy & Insulation", exact: true }).click();
+  await page.getByRole("menu", { name: "Energy & Insulation window layout" }).getByRole("menuitem", { name: "Dock left", exact: true }).click();
+  await energy.getByRole("tab", { name: "Openings", exact: true }).click();
+  const selector = energy.getByRole("combobox", { name: "Select opening", exact: true });
+  const preview = page.locator(".placement-preview");
+  const start = async (name, fraction = .5) => {
+    await add.getByRole("button", { name, exact: true }).click();
+    const at = await partitionPoint(page, fraction);
+    await page.mouse.move(at.x, at.y);
+    await eventually(() => preview.locator("text").textContent({ timeout: 500 }), text => text === "Click to place");
+    assert.equal(await preview.locator("rect[stroke='#096dcc']").count(), 1);
+    return at;
+  };
+  await start("Add opening");
+  await page.keyboard.press("Escape");
+  await preview.waitFor({ state: "hidden" });
+  assert.equal((await s.saved()).floorplan.openings.length, 0);
+  const first = await start("Add opening");
+  await page.mouse.click(first.x, first.y);
+  const saved = await eventually(s.saved, project => project.floorplan.openings.length === 1);
+  assert.equal(saved.floorplan.openings[0].representationKey, "door-opening-chamfered");
+  const passage = page.getByRole("button", { name: "Passage 1", exact: true });
+  assert.equal(await passage.getAttribute("stroke"), "#096dcc");
+  await passage.focus(); await passage.press("Enter");
+  assert.ok((await selector.inputValue()).endsWith(saved.floorplan.openings[0].id));
+  assert.equal(await energy.getByRole("spinbutton", { name: "Opening overall U W/m²K", exact: true }).count(), 0);
+
+  await energy.getByRole("button", { name: "Add window…", exact: true }).click();
+  assert.equal(await add.getByRole("combobox", { name: "Add to plan", exact: true }).inputValue(), "WINDOW");
+  const cancelled = await start("Add window", .22);
+  await page.mouse.click(cancelled.x, cancelled.y, { button: "right" });
+  await preview.waitFor({ state: "hidden" });
+  const second = await start("Add window", .22);
+  await page.mouse.click(second.x, second.y);
+  const complete = await eventually(s.saved, project => project.floorplan.openings.length === 2);
+  assert.deepEqual(complete.floorplan.openings.map(opening => opening.kind), ["DOOR", "WINDOW"]);
+  const windowOutline = page.getByRole("button", { name: "Window 1", exact: true });
+  await windowOutline.click();
+  assert.ok((await selector.inputValue()).endsWith(complete.floorplan.openings[1].id));
+  await energy.getByRole("spinbutton", { name: "Opening overall U W/m²K", exact: true }).waitFor();
+  assert.match(await selector.locator("option:checked").textContent(), /^Window 1 ·/);
+  await energy.getByRole("button", { name: "Edit selected opening…", exact: true }).click();
+  await add.getByRole("button", { name: "Update window", exact: true }).waitFor();
+  await add.getByRole("button", { name: /Appearance & dimensions/ }).click();
+  const appearance = page.getByRole("dialog", { name: "Appearance & dimensions", exact: true });
+  await appearance.getByRole("heading", { name: "Window 1", exact: true }).waitFor();
+  const width = appearance.getByRole("spinbutton", { name: /^Width/ });
+  await width.fill("900");
+  await appearance.getByRole("button", { name: "Done", exact: true }).click();
+  await appearance.getByRole("alert").filter({ hasText: "overlaps another door or window" }).waitFor();
+  await width.fill("700");
+  await appearance.getByRole("button", { name: "Done", exact: true }).click();
+  await eventually(async () => (await s.saved()).floorplan.openings[1]?.width, value => value === 700);
+  const resized = await s.saved();
+  assert.ok(resized.rooms.every(room => room.openings.find(opening => opening.id === complete.floorplan.openings[1].id)?.width.value === 700));
+  await add.getByRole("button", { name: /Appearance & dimensions/ }).click();
+  await appearance.getByRole("spinbutton", { name: /^Height/ }).fill("8000");
+  await appearance.getByRole("button", { name: "Done", exact: true }).click();
+  await appearance.getByRole("alert").filter({ hasText: "must fit within the wall height" }).waitFor();
+  await appearance.getByRole("button", { name: "Cancel", exact: true }).click();
+  const box = await windowOutline.boundingBox();
+  const destination = await partitionPoint(page, .78);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(destination.x, destination.y, { steps: 10 });
+  assert.equal((await s.saved()).floorplan.openings[1].offset, resized.floorplan.openings[1].offset);
+  await page.mouse.up();
+  await eventually(s.saved, project => Math.abs(project.floorplan.openings[1].offset - resized.floorplan.openings[1].offset) > 500);
+  assert.match(await selector.locator("option:checked").textContent(), /^Window 1 ·/);
+  await page.keyboard.press("Control+z");
+  await eventually(s.saved, project => project.floorplan.openings[1]?.offset === resized.floorplan.openings[1].offset);
+  await energy.getByRole("button", { name: "Hide Energy & Insulation", exact: true }).click();
+  assert.equal(await page.locator("[data-insulation-opening]").count(), 0);
+  assert.ok(await page.locator(".passage-opening-symbol").isVisible());
+});
 
 test("Doors → Openings exposes all six wall-section previews in Add elements and the catalogue",async t=>{
   const s=await session();t.after(()=>s.close());const {page}=s;

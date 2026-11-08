@@ -12,6 +12,7 @@ import { useRailwayCFDWorker } from "./useRailwayCFDWorker";
 import { ClimoptixWorkerMonitor } from "./ClimoptixWorkerMonitor";
 import { CFDWorkerConnection } from "./CFDWorkerConnection";
 import { CFDWorkbenchStatus } from "./CFDWorkbenchStatus";
+import { diagnosticTarget } from "@/lib/climoptixDiagnostics";
 import { CFDJobProgress } from "./CFDJobProgress";
 import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import type { SceneResultMetadata } from "./CFDSceneResult";
@@ -156,6 +157,7 @@ export function ClimoptixWorkspace({
     setSetupFocus((value) => value + 1);
   };
   const [selected, setSelected] = useState<string | null>(null);
+  const [highlightedDiagnostic, setHighlightedDiagnostic] = useState<string | null>(null);
   const selectObject = (id: string | null) => { setSelected(id); hvacContext?.selectVent(id?.startsWith("vent:") ? id.slice(5) : null); if (id?.startsWith("refinement:")) setShowRefinements(true); };
   const [message, setMessage] = useState(""),
     [error, setError] = useState(""),
@@ -544,7 +546,10 @@ export function ClimoptixWorkspace({
     const object = objectId
       ? activeReport?.objects.find((v) => v.id === objectId)
       : undefined;
-    if (objectId) setSelected(device ? `vent:${objectId}` : objectId);
+    if (objectId && scenario) {
+      const target = diagnosticTarget(objectId, scenario, activeReport);
+      selectObject(device ? `vent:${objectId}` : target?.refinementId ? `refinement:${target.refinementId}` : target?.patchIds?.[0] ?? objectId);
+    }
     if (device || object) {
       openPhase("equipment");
       return;
@@ -721,6 +726,8 @@ export function ClimoptixWorkspace({
           onViewSettings={setViewOpen}
           stale={stale}
           selected={selected}
+          diagnosticHighlight={setupOpen && shownTab === "results" && resultsView === "review" && scenario && !stale
+            ? diagnosticTarget(highlightedDiagnostic, scenario, activeReport) : undefined}
           onSelect={(id) => {
             selectObject(id);
             if (!id) return;
@@ -1145,7 +1152,7 @@ export function ClimoptixWorkspace({
                       review={<ClimoptixReview key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? jobs[scenario.id]?.error : undefined}
                       onDismissFailure={() => { setError(""); if (error.startsWith("Changes not applied")) setEditorReset(x => x + 1); }}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
-                      onRefresh={() => refreshPreparation()} onInspect={jump} />}
+                      onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}
                       adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} report={activeReport}
                       projectId={project.projectId}

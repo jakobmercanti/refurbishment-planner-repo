@@ -30,6 +30,7 @@ import { projectFloors } from "@/lib/buildingDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDPatch, CFDReport, Vec3 } from "@/lib/climoptix";
 import type { CFDScenario, CFDVent } from "@/lib/climoptixDocument";
+import type { DiagnosticTarget } from "@/lib/climoptixDiagnostics";
 import type { BoundaryDisplayGroup } from "@/lib/climoptixGroups";
 import {
   thermalColour,
@@ -104,6 +105,7 @@ interface Props {
   onViewSettings: (open: boolean) => void;
   stale: boolean;
   selected: string | null;
+  diagnosticHighlight?: DiagnosticTarget;
   onSelect: (id: string | null) => void;
   picking: CFDVent | boolean;
   onHostPick: (patchId: string, u: number, v: number) => void;
@@ -222,6 +224,26 @@ function PatchMesh({
     </group>
   );
 }
+const ISSUE_COLOUR = "#ffaf35";
+
+function DiagnosticSurface({ positions }: { positions: number[] }) {
+  const geometry = useMemo(() => {
+    const surface = new BufferGeometry();
+    surface.setAttribute("position", new Float32BufferAttribute(positions, 3));
+    return surface;
+  }, [positions]);
+  const outline = useMemo(() => new EdgesGeometry(geometry), [geometry]);
+  useEffect(() => () => { geometry.dispose(); outline.dispose(); }, [geometry, outline]);
+  return <group>
+    <mesh geometry={geometry} renderOrder={10} raycast={() => {}}>
+      <meshBasicMaterial color={ISSUE_COLOUR} transparent opacity={.45} depthTest={false} depthWrite={false} side={DoubleSide} />
+    </mesh>
+    <lineSegments geometry={outline} renderOrder={11} raycast={() => {}}>
+      <lineBasicMaterial color={ISSUE_COLOUR} depthTest={false} depthWrite={false} />
+    </lineSegments>
+  </group>;
+}
+
 function VentIntent({
   vent,
   host,
@@ -301,6 +323,7 @@ export function ClimoptixViewer({
   onViewSettings,
   stale,
   selected,
+  diagnosticHighlight,
   onSelect,
   picking,
   onHostPick,
@@ -463,6 +486,19 @@ export function ClimoptixViewer({
   ];
   const displayPatches = allDisplayPatches.filter((p) => visibleRooms.has(p.roomId));
   const refinements = refinementPreviews(scenario, report);
+  const issuePatches = diagnosticHighlight && new Set([
+    ...(diagnosticHighlight.patchIds ?? []),
+    ...allDisplayPatches.filter(p => p.sourceId === diagnosticHighlight.objectId || p.roomId === diagnosticHighlight.roomId).map(p => p.id),
+  ]);
+  const issueObject = diagnosticHighlight?.objectId ? prepared?.objects.find(object => object.id === diagnosticHighlight.objectId) : undefined;
+  const issuePatchPositions = issuePatches ? [...issuePatches].flatMap(id => positions.get(id) ?? basePositions.get(id) ?? []) : [];
+  const issuePositions = !issuePatchPositions.length && issueObject
+    ? issueObject.triangles.flatMap(triangle => triangle.flatMap(index => scene(issueObject.verticesMm[index])))
+    : issuePatchPositions;
+  const issueVent = scenario.vents.find(vent => vent.id === diagnosticHighlight?.ventId);
+  const issueHost = issueVent && patches.find(patch => patch.id === issueVent.host.patchId)?.host;
+  const issueVentPoints = issueVent && issueHost ? ventFootprint(issueVent, issueHost).map(scene) : [];
+  const issueRefinement = refinements.find(region => region.id === diagnosticHighlight?.refinementId);
   const refinementLegend = [
     ...new Map(refinements.map((region) => [region.level, region.cellMm])),
   ].sort(([a], [b]) => a - b);
@@ -681,6 +717,7 @@ export function ClimoptixViewer({
         data-visible-rooms={viewScope.rooms.join(",")}
         data-scope={viewScope.id}
         data-geometry-source={buildingScene ? "validated" : "project-display"}
+        data-diagnostic-highlight={issuePositions.length || issueVentPoints.length || issueRefinement ? diagnosticHighlight?.label : undefined}
         data-boundary-groups={JSON.stringify(boundaryGroups.map(g => ({ id: g.id, colour: g.colour, patchIds: g.patchIds })))}
       >
         {probeValue}
@@ -900,6 +937,13 @@ export function ClimoptixViewer({
                     ),
                 )}
               </group>
+              {!!issuePositions.length && <DiagnosticSurface positions={issuePositions} />}
+              {!!issueVentPoints.length && <Line points={[...issueVentPoints, issueVentPoints[0]]} color={ISSUE_COLOUR} lineWidth={4} depthTest={false} depthWrite={false} renderOrder={11} raycast={() => {}} />}
+              {issueRefinement && <mesh position={scene(issueRefinement.centerMm)} renderOrder={11} raycast={() => {}}>
+                {issueRefinement.shape === "sphere" ? <sphereGeometry args={[issueRefinement.sizeMm[0] * .0005, 12, 8]} /> :
+                  <boxGeometry args={[issueRefinement.sizeMm[0] * .001, issueRefinement.sizeMm[2] * .001, issueRefinement.sizeMm[1] * .001]} />}
+                <meshBasicMaterial color={ISSUE_COLOUR} wireframe depthTest={false} depthWrite={false} />
+              </mesh>}
               {resultOverlay&&<CFDSceneResult {...resultOverlay} onSelect={()=>onSelectResultFile?.(resultOverlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:resultOverlay.file,x,y});}:undefined}/>}
               {additionalResultOverlays?.map(overlay=><CFDSceneResult key={overlay.file.name} {...overlay} onSelect={()=>onSelectResultFile?.(overlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:overlay.file,x,y});}:undefined}/>)}
             </Bounds>

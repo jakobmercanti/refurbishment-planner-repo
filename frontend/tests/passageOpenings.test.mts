@@ -70,7 +70,7 @@ test("arch voids affect wall quantities, not door purchases or extra skirting ca
 test("a doorless passage to a colder space cannot be presented as a verified sealed-door heat-loss result",()=>{
   const results=heatingResults([room()],newHeatingProject()).rooms[0];
   assert.equal(results.capacityComparisonValid,false);assert.equal(results.status,"Not verified");
-  assert.ok(results.warnings.some(w=>w.startsWith("Open passage ")));
+  assert.ok(results.warnings.some(w=>w.startsWith("Passage 1: air transfer to a colder space")));
   assert.equal(heatingRoomBalance(results).headline,"Heat loss needs checking");
   assert.ok(!results.demand.surfaces.some(s=>s.key==="opening:passage"));
 });

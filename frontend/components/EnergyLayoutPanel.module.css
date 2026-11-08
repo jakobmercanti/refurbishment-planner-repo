@@ -12,6 +12,8 @@
 .scenarioPanel > section { display:grid; gap:8px; padding-top:8px; }
 .scenarioPanel { display:grid; gap:0; border:1px solid var(--line); border-radius:10px; padding:var(--density-row-padding) var(--density-window-padding); background:var(--surface-muted); }
 .elementPicker > select { font-weight:700; }
+.openingActions { margin-bottom:var(--density-section-gap); }
+.editOpening { width:100%; margin-block:var(--density-section-gap); }
 .elementPicker + .constructionSection { margin-top:var(--density-section-gap); }
 .scenarioPanel > div:first-child { display:grid; gap:2px; }
 .scenarioActions { display:grid; grid-template-columns:minmax(160px,1fr) auto; gap:8px; align-items:end; }

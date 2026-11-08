@@ -325,6 +325,19 @@
 .cfx-diagnostic.warning {
   border-left-color: var(--verify);
 }
+.cfx-diagnostic-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--density-section-gap);
+  padding: 6px 9px;
+  margin-top: var(--density-field-gap);
+}
+.cfx-diagnostic-row:is(:hover, :focus-within) { background: var(--surface-muted); }
+.cfx-diagnostic-copy { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.cfx-diagnostic-copy > strong { font-size: calc(9px * var(--density-font-scale, 1)); color: var(--muted); }
+.cfx-diagnostic-copy > p { font-weight: 650; line-height: 1.35; }
+.cfx-diagnostic-copy > small { line-height: 1.35; }
+.cfx-diagnostic-filters > select { width: auto; flex: 0 1 185px; min-width: 0; }
 .cfx-viewer {
   min-width: 0;
   min-height: 0;

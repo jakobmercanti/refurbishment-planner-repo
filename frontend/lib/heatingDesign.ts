@@ -4,6 +4,7 @@ import { calculateRoomHeatLoss, calculateRadiatorOutput, calculateElectricEmitte
 import { activeUFHAreaM2, generateUFHLoops, validateCircuitGeometry } from "./heatingGeometry";
 import { REFERENCE_RADIATORS, REFERENCE_UFH_DATASETS, referenceUFHSettings, referenceRadiatorForRoom, type ReferenceRadiator } from "./heatingCatalogue";
 import { withHeatingElements } from "./heatingElements";
+import { numberedOpeningNames } from "./openingNames";
 
 export function newHeatingRadiator(room: Room, technology: HeatingRadiator["emitterTechnology"] = "Hydronic"): HeatingRadiator {
   return snapRadiatorToWall({ radiatorId: crypto.randomUUID(), roomId: room.id, manufacturer: "", model: "User reference radiator", category: "Type 22", emitterTechnology: technology, widthMm: 1000, heightMm: 600, depthMm: 100, positionMm: room.vertices[0], rotationDeg: 0, ratedOutputW: null, ratedDeltaTK: 50, exponent: 1.3, electricalInputW: 0, fanMode: "Normal", manufacturerPerformanceData: [], locked: false }, room, room.vertices[0]);
@@ -34,11 +35,11 @@ export function createRoomUFH(room: Room, heating: HeatingProject, systemIndex =
   const item = next.manifolds.find(m=>m.manifoldId===manifold!.manifoldId)!; item.ports = Math.min(50, Math.max(item.ports, usedPorts));
   return { heating: next, changes: generated.changes };
 }
-export function heatingResults(rooms: readonly Room[], heating: HeatingProject) {
+export function heatingResults(rooms: readonly Room[], heating: HeatingProject, openingNames: ReadonlyMap<string, string> = numberedOpeningNames(rooms.flatMap(room => room.openings))) {
   if (!heating.radiators.length) heating = withHeatingElements(heating, rooms);
   const { flowTemperatureC: flow, returnTemperatureC: returning } = heating.heatingSystem;
   const rows = rooms.map(room => {
-    const demand = calculateRoomHeatLoss(room, rooms, heating), settings = thermalRoom(room, heating), warnings: string[] = [];
+    const demand = calculateRoomHeatLoss(room, rooms, heating, openingNames), settings = thermalRoom(room, heating), warnings: string[] = [];
     const emitters = heating.radiators.filter(r => r.roomId === room.id).map(r => ({ radiator: r, ...calculateRadiatorOutput(r, flow, returning, demand.targetC, heating.estimateRoomTemperatureOutput ?? true), warnings: radiatorPlacementWarnings(r, room) }));
     const zones = heating.ufhZones.filter(z => z.roomId === room.id).map(zone => {
       const exclusions = heating.exclusions.filter(e => e.roomId === room.id), activeAreaM2 = activeUFHAreaM2(room.vertices, exclusions.map(e => e.polygonMm));
@@ -60,11 +61,11 @@ export function heatingResults(rooms: readonly Room[], heating: HeatingProject) 
     const radiatorW = emitters.reduce((s, e) => s + (e.outputW ?? 0), 0), ufhW = zones.reduce((s, z) => s + (z.outputW ?? 0), 0), capacityW = radiatorW + ufhW;
     const capacityEstimated = emitters.some(e => e.radiator.category !== "Boiler" && (e.radiator.estimatedOutput || e.estimated)) || zones.some(z => z.performance?.surfaceEstimated);
     const capacityNeedsReview = emitters.some(e => e.radiator.category !== "Boiler" && (e.outputW === null || e.radiator.emitterTechnology !== "Electric" && flow <= returning)) || zones.some(z => !z.performance || z.performance.surfaceTemperatureC === null || z.performance.overLimit || (z.zone.designFlowC ?? flow) <= (z.zone.designReturnC ?? returning) || z.zone.geometryFingerprint !== geometryFingerprint(room, heating.exclusions.filter(e => e.roomId === room.id)) || z.circuits.some(c => c.warnings.some(w => /crosses room boundary|exceeds preferred maximum/i.test(w)))) || zones.length > 1;
-    const passageNeedsReview = demand.warnings.some(w => w.startsWith("Open passage "));
+    const passageNeedsReview = demand.openPassageWarnings.length > 0;
     const unknown = capacityEstimated || capacityNeedsReview || passageNeedsReview;
     const status = unknown || demand.warnings.some(w => w.startsWith("Energy ")) ? "Not verified" : capacityW >= demand.designW ? "Sufficient" : capacityW >= demand.designW * 0.9 ? "Marginal" : "Insufficient";
     if (settings.selectedEmitterType !== "None" && capacityW < demand.designW) warnings.push(`Known emitter output ${Math.round(capacityW)} W is below the room requirement ${Math.round(demand.designW)} W${capacityNeedsReview ? "; unresolved output data is excluded" : ""}.`);
-    return { room, settings, demand, emitters, zones, radiatorW, ufhW, capacityW, capacityEstimated, capacityComparisonValid: !capacityNeedsReview && !passageNeedsReview, coveragePercent: demand.designW ? capacityW / demand.designW * 100 : 0, status, warnings: [...warnings, ...demand.warnings.filter(w => w.startsWith("Energy ") || w.startsWith("Open passage ")), ...emitters.flatMap(e => e.warnings), ...zones.flatMap(z => [...z.warnings, ...z.circuits.flatMap(c => c.warnings)])] };
+    return { room, settings, demand, emitters, zones, radiatorW, ufhW, capacityW, capacityEstimated, capacityComparisonValid: !capacityNeedsReview && !passageNeedsReview, coveragePercent: demand.designW ? capacityW / demand.designW * 100 : 0, status, warnings: [...warnings, ...demand.warnings.filter(w => w.startsWith("Energy ")), ...demand.openPassageWarnings, ...emitters.flatMap(e => e.warnings), ...zones.flatMap(z => [...z.warnings, ...z.circuits.flatMap(c => c.warnings)])] };
   });
   const orphanIds = [...heating.radiators, ...heating.ufhZones, ...heating.exclusions].filter(e => !rooms.some(r => r.id === e.roomId));
   return { rooms: rows, heatLossW: rows.reduce((s, r) => s + r.demand.designW, 0), radiatorW: rows.reduce((s, r) => s + r.radiatorW, 0), ufhW: rows.reduce((s, r) => s + r.ufhW, 0), electricW: rows.reduce((s, r) => s + r.emitters.reduce((s, e) => s + e.electricalW, 0), 0), pipeM: heating.ufhCircuits.reduce((s, c) => s + calculateCircuitLength(c), 0), sufficient: rows.filter(r => r.status === "Sufficient").length, warnings: [...rows.flatMap(r => r.warnings.map(message => `${r.room.name}: ${message}`)), ...(orphanIds.length ? [`${orphanIds.length} heating objects reference removed rooms. Data retained, but capacity excluded; review the saved layout.`] : [])] };

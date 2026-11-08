@@ -29,7 +29,7 @@ function liesOnWallSegment(point: { x: number; y: number }, wall: PlacementWall)
 }
 
 export function ViewerOpeningEditor({
-  kind, room, apiUrl, displayUnits, onRoomChange, onBeginPlacement, onEditOpening, placementWalls = [], refreshKey = 0,
+  kind, room, apiUrl, displayUnits, onRoomChange, onBeginPlacement, onEditOpening, placementWalls = [], refreshKey = 0, openingNames,
 }: {
   kind: OpeningKind;
   room: Room;
@@ -40,6 +40,7 @@ export function ViewerOpeningEditor({
   onEditOpening: (selection: { id: string; roomId: string }) => void;
   placementWalls?: PlacementWall[];
   refreshKey?: number;
+  openingNames?: ReadonlyMap<string, string>;
 }) {
   const [items, setItems] = useState<CatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -323,8 +324,8 @@ export function ViewerOpeningEditor({
       <button type="button" className="fixture-section-toggle" aria-expanded={listExpanded} onClick={() => setListExpanded(value => !value)}><span><strong>Elements list</strong></span><span aria-hidden>{listExpanded ? "−" : "›"}</span></button>
       {listExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">
         {room.openings.map(opening => {
-          const item = items.find(candidate => candidate.id === opening.metadata?.catalogue_item_id);
-          const name = item?.name.replace(/^Default /i, "") ?? `${opening.kind === "WINDOW" ? "Window" : "Door"} · Wall ${Number(opening.parent_wall_id.split("-")[1])}`;
+
+          const name = openingNames?.get(opening.id) ?? `${opening.kind === "WINDOW" ? "Window" : "Door"} · Wall ${Number(opening.parent_wall_id.split("-")[1])}`;
           return <div key={opening.id}>
             <span className={`opening-chip ${opening.kind.toLowerCase()}`}>{opening.kind}</span><small title={name}>{name} · {formatLength(opening.width.value, displayUnits)}</small>
             <button type="button" className="edit-opening" onClick={() => onEditOpening({ id: opening.id, roomId: room.id })}>Edit</button>

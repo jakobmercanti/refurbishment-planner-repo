@@ -12,7 +12,7 @@ import type { CatalogueItem, Opening, Room } from "@/lib/types";
 import { UNIT_LABEL, type DisplayUnits } from "@/lib/units";
 
 /** Edits openings in imported standalone rooms, which have no full-plan wall record. */
-export function RoomOpeningEditor({ room, opening, items, units, onChange }: { room: Room; opening: Opening; items: CatalogueItem[]; units: DisplayUnits; onChange: (room: Room) => void }) {
+export function RoomOpeningEditor({ room, opening, items, units, onChange, displayName }: { displayName?: string; room: Room; opening: Opening; items: CatalogueItem[]; units: DisplayUnits; onChange: (room: Room) => void }) {
   const [draft, setDraft] = useState(opening);
   const [error, setError] = useState("");
   const variants = items.filter(item => item.fixture_kind === draft.kind);
@@ -56,7 +56,7 @@ export function RoomOpeningEditor({ room, opening, items, units, onChange }: { r
       <label className="field"><span>Hinge side</span><select disabled={draft.door_type === "DOUBLE"} value={draft.hinge_side ?? "START"} onChange={event => setDraft({ ...draft, hinge_side: event.target.value as "START" | "END" })}><option value="START">Wall start</option><option value="END">Wall end</option></select></label>
       <label className="field"><span>Direction</span><select value={draft.opens_inward === false ? "OUT" : "IN"} onChange={event => setDraft({ ...draft, opens_inward: event.target.value === "IN" })}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label>
     </>}
-    <ComponentColours compact dimensionsContent={dimensionsContent} onResetDimensions={resetDimensions} previewObstacle={openingPreviewObstacle({ item, kind: draft.kind === "WINDOW" ? "WINDOW" : "DOOR", doorType: draft.door_type, width: draft.width.value, height: draft.height.value, colorHex: colour, componentColors: componentColoursFromMetadata(draft.metadata) })} source={{ ...item, representation_key: typeof draft.metadata?.representation_key === "string" ? draft.metadata.representation_key : item?.representation_key, fixture_kind: draft.kind, color_hex: colour, component_colors: componentColoursFromMetadata(draft.metadata) }} onChange={component_colors => metadata({ component_colors })} />
+    <ComponentColours compact displayName={displayName} dimensionsContent={dimensionsContent} onResetDimensions={resetDimensions} previewObstacle={openingPreviewObstacle({ item, kind: draft.kind === "WINDOW" ? "WINDOW" : "DOOR", doorType: draft.door_type, width: draft.width.value, height: draft.height.value, colorHex: colour, componentColors: componentColoursFromMetadata(draft.metadata) })} source={{ ...item, representation_key: typeof draft.metadata?.representation_key === "string" ? draft.metadata.representation_key : item?.representation_key, fixture_kind: draft.kind, color_hex: colour, component_colors: componentColoursFromMetadata(draft.metadata) }} onChange={component_colors => metadata({ component_colors })} />
     {error && <p role="alert" className="inline-error">{error}</p>}
     <button type="button" className="primary-small" onClick={save}>Update {draft.kind.toLowerCase()}</button>
     <button type="button" onClick={() => onChange({ ...room, version: room.version + 1, openings: room.openings.filter(other => other.id !== opening.id) })}>Remove {draft.kind.toLowerCase()}</button>

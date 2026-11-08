@@ -5,6 +5,8 @@ import type { HeatingProject } from "./heatingDocument";
 import { thermalElementId, type BuildingThermalOverrides } from "./buildingThermalModel";
 import type { ConstructionAssembly, ConstructionLayer, EnergyCategory, EnergyProject, ElementAssignment, ThermalMaterial } from "./energyDocument";
 import { RETAINED_RESISTANCE_MATERIAL } from "./energyDocument";
+import { passageProfileForOpening } from "./passageOpenings";
+import { numberedOpeningNames } from "./openingNames";
 
 export function calculateLayerResistance(layer: ConstructionLayer, materials: readonly ThermalMaterial[]): number | null {
   if (layer.resistanceOverride !== null) return layer.resistanceOverride;
@@ -56,6 +58,16 @@ export function resolveThermalOverrides(data: EnergyProject, rooms: readonly Roo
 export function withEnergyFabric(heating: HeatingProject, energy: EnergyProject, rooms: readonly Room[], scenarioId: string | null = energy.activeScenarioId): HeatingProject { return { ...heating, thermalOverrides: resolveThermalOverrides(energy, rooms, scenarioId) }; }
 export function withoutDerivedFabric(heating: HeatingProject): HeatingProject { const { thermalOverrides, ...stored } = heating;void thermalOverrides;return stored; }
 export type EnergyElement = { elementId: string; roomId: string; roomName: string; label: string; category: EnergyCategory; areaM2: number; uValue: number; heatLossW: number; boundary: string; deltaTK: number; startMm?: Point2D; endMm?: Point2D; geometrySignature?: string; warnings: string[] };
+/** Include doorless passages in the picker without assigning them a fabric U-value. */
+export function insulationPassages(rooms: readonly Room[]) {
+  const names = numberedOpeningNames(rooms.flatMap(room => room.openings));
+  const seen = new Set<string>();
+  return rooms.flatMap(room => room.openings.flatMap(opening => {
+    if (seen.has(opening.id) || !passageProfileForOpening(opening)) return [];
+    seen.add(opening.id);
+    return [{ elementId: thermalElementId(room.id, `opening:${opening.id}`), label: names.get(opening.id) ?? "Passage" }];
+  }));
+}
 /** Presentation policy only: shared heated/adiabatic walls retain their thermal data. */
 export function isInsulationSelectable(e: EnergyElement, rooms?: readonly Room[]) {
   if (e.category !== "wall") return true;

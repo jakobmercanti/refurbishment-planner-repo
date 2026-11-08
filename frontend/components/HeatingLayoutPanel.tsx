@@ -28,7 +28,7 @@ import { scrollWorkbenchToStart } from "@/lib/workbenchNavigation";
 
 export type HeatingSelection = { kind: "radiator" | "manifold" | "circuit" | "exclusion" | "pipe"; id: string } | null;
 export type HeatingTool = "MANIFOLD" | "EXCLUSION" | "PIPE" | "CONNECT" | null;
-interface Props { onHeatLossSurfacesChange?: (visible: boolean) => void; energy?: EnergyProject; onEnergyChange?: (data: EnergyProject) => void; apiUrl: string; onAdd: () => void; onFinishPipe: () => void; pipePointCount: number; rooms: Room[]; data: HeatingProject; onChange: (data: HeatingProject) => void; selection: HeatingSelection; onSelect: (selection: HeatingSelection) => void; onHighlightRoom: (roomId: string) => void; onTool: (tool: HeatingTool) => void; tool: HeatingTool; onFinishExclusion: () => void; exclusionPointCount: number; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string; }
+interface Props { openingNames?: ReadonlyMap<string, string>; onHeatLossSurfacesChange?: (visible: boolean) => void; energy?: EnergyProject; onEnergyChange?: (data: EnergyProject) => void; apiUrl: string; onAdd: () => void; onFinishPipe: () => void; pipePointCount: number; rooms: Room[]; data: HeatingProject; onChange: (data: HeatingProject) => void; selection: HeatingSelection; onSelect: (selection: HeatingSelection) => void; onHighlightRoom: (roomId: string) => void; onTool: (tool: HeatingTool) => void; tool: HeatingTool; onFinishExclusion: () => void; exclusionPointCount: number; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string; }
 const watt = (value: number | null | undefined) => value === null || value === undefined ? "Not set" : `${Math.round(value).toLocaleString()} W`;
 const temperatures = [["Traditional boiler", 75, 65], ["Condensing boiler", 65, 55], ["Lower-temperature boiler", 55, 45], ["Heat pump", 45, 40], ["Heat pump 40/35", 40, 35], ["Low-temperature heat pump", 35, 30]] as const;
 function NumberField({ label, value, onChange, min, max, step = "any", help }: { label: string; value: number | null; onChange: (n: number | null) => void; min?: number; max?: number; step?: string | number; help?: string }) {
@@ -36,7 +36,7 @@ function NumberField({ label, value, onChange, min, max, step = "any", help }: {
   return <label>{help ? <span>{label}<WindowHelpButton title={label} steps={[{ heading: label, text: help }]} /></span> : label}<input aria-label={label} type="number" step={step} min={min} max={max} value={draft?.baseline === value ? draft.text : value ?? ""} placeholder="Not set" onBlur={() => setDraft(null)} onChange={e => { setDraft({ baseline: value, text: e.target.value });if (!e.target.value) { onChange(null); return; } const number = Number(e.target.value);if (Number.isFinite(number) && (min === undefined || number >= min) && (max === undefined || number <= max)) onChange(number); }} /></label>;
 }
 export function HeatingLayoutPanel(props: Props) {
-  const { rooms, data, onChange, selection } = props;
+  const { rooms, data, onChange, selection, openingNames } = props;
   const hvac = useHvac(), focusedRoomId = rooms.find(r => r.id === hvac?.focus?.roomId)?.id;
   const [tab, setTab] = useState(selection?.kind === "radiator" ? "Radiators" : selection && ["circuit", "manifold", "exclusion"].includes(selection.kind) ? "UFH" : "Heat Loss"), [roomId, setRoomId] = useState(rooms[0]?.id ?? ""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   useEffect(() => { if (focusedRoomId) queueMicrotask(() => setRoomId(focusedRoomId)); }, [focusedRoomId, hvac?.focus]);
@@ -63,7 +63,7 @@ export function HeatingLayoutPanel(props: Props) {
   useEffect(() => { latestInputs.current = { data, rooms }; }, [data, rooms]);
   useEffect(() => () => { worker.current?.terminate(); if (workerTimer.current) clearTimeout(workerTimer.current); }, []);
   const room = rooms.find(r => r.id === roomId) ?? rooms[0], settings = room ? thermalRoom(room, data) : null;
-  const results = useMemo(() => heatingResults(rooms, data), [rooms, data]), row = results.rooms.find(r => r.room.id === room?.id);
+  const results = useMemo(() => heatingResults(rooms, data, openingNames), [rooms, data, openingNames]), row = results.rooms.find(r => r.room.id === room?.id);
   const balance = row ? heatingRoomBalance(row) : null;
   const coveredRooms = results.rooms.filter(r => heatingRoomBalance(r).tone === "sufficient").length;
   function change(next: HeatingProject) { try { onChange(parseHeatingProject(next));setError(""); } catch (e) { setError(e instanceof Error ? e.message : "Invalid heating settings."); } }
