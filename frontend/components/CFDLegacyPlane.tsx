@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import type { RailwayCFDWorker } from "@/lib/railwayCFDWorker";
 import { useCFDResult } from "./useCFDResult";
-import { CFDFloatingControls } from "./CFDFloatingControls";
+import { CFDViewerControls } from "./CFDViewerControls";
 import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import { CFDResultsViewer } from "./CFDResultsViewer";
 
@@ -30,7 +30,7 @@ export function CFDLegacyPlane({adapter,job,active}:{adapter:RailwayCFDWorker|nu
     {artifact&&!file&&!failure&&<p role="status">Loading verified comparison plane…</p>}
     {file&&!visible&&<button onClick={()=>setVisible(true)}>Show comparison plane</button>}</>;
   return <div className="cfx-legacy-plane">
-    {(!file||!visible)&&<CFDFloatingControls label="Plane selection">{selectionControl}</CFDFloatingControls>}
+    {(!file||!visible)&&<CFDViewerControls label="Plane selection">{selectionControl}</CFDViewerControls>}
     {stack.error&&<p role="alert" className="cfx-error">{stack.error}</p>}
     {file&&visible&&<CFDResultsViewer compact embedded toolbar={selectionControl} onPlaneStep={direction=>void stack.step(direction)} previousPlane={stack.previous} nextPlane={stack.next} file={file} viewMode="2d" provenance={`Authenticated worker job ${job?.id} · p in m²/s², not Pa`} onClose={()=>setVisible(false)} onRemoveFile={()=>setVisible(false)}/>}
   </div>;

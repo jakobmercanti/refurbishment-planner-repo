@@ -126,8 +126,8 @@ export function ElectricalLayoutPanel(p: Props) {
     <details className="electrical-layout-section" open={Boolean(p.selectedConnectionId)}><summary>Circuits ({p.circuits.length})</summary>
       {p.circuits.length ? <ul className="electrical-connection-list electrical-circuit-list">{p.circuits.map((item) => <li className="electrical-circuit-row" key={item.id}>
         <button type="button" className={`electrical-circuit-select ${item.id === activeCircuitId ? "selected" : ""}`} aria-pressed={item.id === activeCircuitId} onClick={() => p.onActiveCircuitChange(item.id)}><span className="electrical-circuit-name"><i style={{ backgroundColor: item.color }} aria-hidden="true" />{item.name}</span><small>{item.id === activeCircuitId ? "Selected for new connections" : "Select for new connections"}</small></button>
-        <div className="electrical-circuit-row-actions"><button type="button" className="review-style-button" aria-label={`Edit circuit ${item.name}`} onClick={() => p.onEditCircuit(item.id)}>Edit</button>
-        {p.circuits.length > 1 && <button type="button" className="electrical-connection-action delete electrical-circuit-delete" aria-label={`Delete circuit ${item.name}`} title={`Delete ${item.name}`} onClick={() => p.onDeleteCircuit(item.id)}>Delete</button>}</div>
+        <div className="electrical-circuit-row-actions"><button type="button" className="electrical-connection-action" aria-label={`Edit circuit ${item.name}`} onClick={() => p.onEditCircuit(item.id)}>Edit</button>
+        {p.circuits.length > 1 && <button type="button" className="electrical-connection-action delete" aria-label={`Delete circuit ${item.name}`} title={`Delete ${item.name}`} onClick={() => p.onDeleteCircuit(item.id)}>Delete</button>}</div>
       </li>)}</ul> : <p className="electrical-layout-empty">No circuits yet.</p>}
       <button type="button" className="review-style-button electrical-new-circuit" onClick={p.onCreateCircuit}>New circuit</button>
       {circuit && connectionGroup(circuit.id)}

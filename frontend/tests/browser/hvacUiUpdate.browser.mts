@@ -135,6 +135,7 @@ test("vent edits, main 2D drag, undo and native Save As share canonical values",
   assert.equal(await panel.getByRole("table", { name: "Vent positions", exact: true }).count(), 0);
   assert.equal(await panel.getByRole("combobox", { name: "Vent host face", exact: true }).count(), 0);
   await panel.getByRole("button", { name: `Edit ${device.vent.name}`, exact: true }).click(); const editor = page.locator(".hvac-vent-editor"); await editor.waitFor();
+  await editor.getByRole("checkbox", { name: "Advanced mode" }).check();
   await number(editor, "Host U (0–1)", .35);
   await eventually(s.saved, p => p.hvac.devices[0].vent.host.u === .35);
   await number(editor, "Vent width (mm)", 260); await eventually(s.saved, p => p.hvac.devices[0].vent.widthMm === 260); await editor.getByRole("button", { name: "Done", exact: true }).click();
@@ -162,6 +163,7 @@ test("main 3D floorplan shows and drags the shared vent and opens its editor", a
   const saved = await eventually(s.saved, p => p.hvac.devices.length === 1), device = saved.hvac.devices[0];
   await panel.getByRole("button", { name: `Edit ${device.vent.name}`, exact: true }).click();
   const editor = page.locator(".hvac-vent-editor");
+  await editor.getByRole("checkbox", { name: "Advanced mode" }).check();
   const hosts = editor.getByRole("combobox", { name: "Vent host face", exact: true });
   await hosts.locator("option").filter({ hasText: /^Floor/ }).first().waitFor({ state: "attached" });
   const floorHost = await hosts.locator("option").filter({ hasText: /^Floor/ }).first().getAttribute("value"); await hosts.selectOption(floorHost);

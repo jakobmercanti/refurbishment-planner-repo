@@ -60,6 +60,7 @@ test("failed host checks stop loading and both vent editors offer a working retr
   assert.equal(await editor.getByText("Checking measured host faces…", { exact: true }).count(), 0);
   failing = false;
   await editor.getByRole("button", { name: "Retry host checks", exact: true }).click();
+  await editor.getByRole("checkbox", { name: "Advanced mode" }).check();
   await eventually(() => editor.getByRole("combobox", { name: "Vent host face" }).locator("option").count(), n => n > 1);
   assert.equal(await editor.getByRole("alert").count(), 0);
   await editor.getByRole("button", { name: "Done", exact: true }).click();
@@ -138,6 +139,7 @@ test("malformed help metadata keeps one usable main guide", async t => {
 test("the full vent editor retains its main and section guides and readable controls", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close()); const panel = await open(s);
   await panel.getByRole("button", { name: "Edit Audit outlet", exact: true }).click(); const editor = s.page.locator(".hvac-vent-editor");
+  await editor.getByRole("checkbox", { name: "Advanced mode" }).check();
   await eventually(() => editor.getByRole("combobox", { name: "Vent host face" }).locator("option").count(), n => n > 1);
   await mkdir("../.local-logs/audit3-qa", { recursive: true });
   for (const [width, density, theme] of [[1440, "comfortable", "dark"], [390, "compact", "light"]] as const) {

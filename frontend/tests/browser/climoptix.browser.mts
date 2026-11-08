@@ -74,6 +74,7 @@ test("Climoptix shares the building, prepares real connected surfaces and saves 
   await ui.getByRole("button", { name: "+ Supply", exact: true }).click();
   await ui.getByRole("region", { name: "Equipment editor", exact: true }).getByRole("button", { name: "Done", exact: true }).click();
   await ui.getByRole("button", { name: "+ Extract", exact: true }).click();
+  await ui.getByRole("region", { name: "Equipment editor", exact: true }).getByRole("checkbox", { name: "Advanced mode" }).check();
   await ui
     .getByRole("spinbutton", { name: "Host U (0–1)", exact: true })
     .fill("0.75");
@@ -457,6 +458,7 @@ test("vents can be picked and dragged in the full-size 3D viewer without changin
   const source = JSON.stringify((await s.saved()).rooms);
   await cfdWindow(ui, "Equipment");
   await ui.getByRole("button", { name: "+ Supply", exact: true }).click();
+  await ui.getByRole("region", { name: "Equipment editor", exact: true }).getByRole("checkbox", { name: "Advanced mode" }).check();
   const host = ui.getByRole("combobox", {
     name: "Vent host face",
     exact: true,

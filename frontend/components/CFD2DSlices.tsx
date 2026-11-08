@@ -10,7 +10,7 @@ import { CFDNumber } from "./CFDFields";
 import { CFDPointProbeControls,useCFDPointProbe } from "./CFDPointProbeControls";
 import { CFDSlicePlot,resetSliceView,type SliceView } from "./CFDSlicePlot";
 import { useSliceData,useSliceManifest,useSliceRuns } from "./useCFDSlices";
-import { CFDFloatingControls } from "./CFDFloatingControls";
+import { CFDViewerControls } from "./CFDViewerControls";
 import { CFDViewerFrame } from "./CFDViewerFrame";
 import { CFDLegacyPlane } from "./CFDLegacyPlane";
 
@@ -103,7 +103,7 @@ export function CFD2DSlices({adapter,projectId,currentJob,active,legacyViewer,fo
     </details>}
     {a.unsupported||forceNative?<><details><summary>Native plane data availability</summary><p className="cfx-notice">{forceNative?"Imported plane files · simulation provenance and physical units are unverified.":"This service has no indexed slice API. Displaying this simulation’s verified native plane files instead. No new solve is needed."}{compare?" Cross-run deltas require the updated worker and proxy; they are not calculated by this legacy viewer.":""}</p></details>
       {compare?<>
-      <details open><summary>Comparison plots · 2 × 2</summary><CFDViewerFrame label="2D comparison viewer"><CFDFloatingControls label="Comparison controls"><details className="cfx-comparison-run-controls"><summary>Comparison run selection</summary><label>Option<select aria-label="Option run" value={state.option} onChange={event=>changeRun("option",event.target.value)}><option value="">Choose a different run…</option>{runs.runs.filter(run=>run.operation!=="mesh"&&run.phase==="Completed"&&run.id!==state.baseline).map(run=><option key={run.id} value={run.id}>{runLabel(run)}</option>)}</select></label>{runs.error&&<p role="alert" className="cfx-error">{runs.error}</p>}</details></CFDFloatingControls><div className="cfx-slice-grid-scroll"><div className="cfx-slice-grid compare cfx-legacy-comparison">
+      <details open><summary>Comparison plots · 2 × 2</summary><CFDViewerFrame label="2D comparison viewer"><CFDViewerControls label="Comparison controls"><details className="cfx-comparison-run-controls"><summary>Comparison run selection</summary><label>Option<select aria-label="Option run" value={state.option} onChange={event=>changeRun("option",event.target.value)}><option value="">Choose a different run…</option>{runs.runs.filter(run=>run.operation!=="mesh"&&run.phase==="Completed"&&run.id!==state.baseline).map(run=><option key={run.id} value={run.id}>{runLabel(run)}</option>)}</select></label>{runs.error&&<p role="alert" className="cfx-error">{runs.error}</p>}</details></CFDViewerControls><div className="cfx-slice-grid-scroll"><div className="cfx-slice-grid compare cfx-legacy-comparison">
         <section className="cfx-slice-pane" data-slice-pane="baseline"><header><strong>Baseline · current simulation</strong></header>{legacyViewer?.(true)}</section>
         <section className="cfx-slice-pane" data-slice-pane="option"><header><strong>Option · {runs.runs.find(run=>run.id===state.option)?.name??(state.option?`Run ${state.option.slice(0,8)}`:"choose run")}</strong></header><CFDLegacyPlane key={state.option} adapter={adapter} job={runs.runs.find(run=>run.id===state.option)} active={active}/></section>
         <section className="cfx-slice-pane cfx-slice-inspector" data-slice-pane="inspector"><header><strong>Comparison information</strong></header><p>Native planes can be inspected independently in 2D. Pan and zoom never rotate the plane. Check their field ranges and physical plane positions before visual comparison.</p></section>
@@ -111,20 +111,7 @@ export function CFD2DSlices({adapter,projectId,currentJob,active,legacyViewer,fo
       </div></div></CFDViewerFrame></details></>:legacyViewer?.(false)}
     </>:<>
     <details open><summary>Slice plots{compare?" · 2 × 2":""}</summary><CFDViewerFrame label="2D slice plots">
-    {request&&!data&&!grid.error&&<p role="status">Sampling selected physical plane…</p>}
-    <div className="cfx-slice-grid-scroll" data-cfx-probe-surface>
-    <div className={`cfx-slice-grid${compare?" compare":""}${state.focus!=="all"?" focused":""}`}>
-      {pane("baseline",`${compare?"Baseline":"Run"} — ${am?.name??"choose run"} · ${quantity} · ${state.axis} ${plane?probeNumber(plane.coordinate):"—"} m · iteration ${plane?.time??"—"}`,invalidShared?null:data?.a)}
-      {compare&&pane("option",`Option — ${bm?.name??"choose run"} · ${quantity} · ${state.axis} ${option?probeNumber(option.coordinate):"—"} m · iteration ${option?.time??"—"}`,invalidShared?null:data?.b)}
-      {compare&&(state.focus==="all"||state.focus==="inspector")&&<section className="cfx-slice-pane cfx-slice-inspector" data-slice-pane="inspector" aria-label="Comparison statistics">
-      <header><strong>Comparison statistics</strong><button type="button" onClick={()=>patch({focus:state.focus==="inspector"?"all":"inspector"})}>{state.focus==="inspector"?"Show all panes":"Focus inspector"}</button></header>
-      {compare&&<div aria-label="Delta statistics"><h4>Common valid sample statistics</h4><p>Coverage {fmt(data?.statistics?data.statistics.coverage*100:null)}% of union rectangle · {fmt(data?.statistics?.commonAreaM2)} m²</p><p>Minimum {fmt(data?.statistics?.min)} · maximum {fmt(data?.statistics?.max)} · area-weighted mean {fmt(data?.statistics?.mean)} · RMS {fmt(data?.statistics?.rms)} {data?.deltaUnit}</p><p>{data?.statistics?.valid??0} valid / {data?.statistics?.missing??0} masked grid samples. Uniform cell-centre quadrature; convergence with grid resolution is not guaranteed at boundaries.</p></div>}
-      {data?.notes.map(note=><p key={note} className="cfx-caption">{note}</p>)}
-      </section>}
-      {compare&&pane("delta",`Delta — ${data?.definition??"Option − Baseline"} · ${actualField?.name??"field"} [${data?.deltaUnit??"—"}] · ${state.axis} ${plane?probeNumber(plane.coordinate):"—"} m`,invalidDelta||!quantitative?null:data?.delta)}
-    </div>
-    </div>
-    <CFDFloatingControls label="Slice controls">
+    <CFDViewerControls label="Slice controls">
     <div className="cfx-inline-toolbar"><button type="button" onClick={()=>setRetry(n=>n+1)}>Refresh slice data</button><label className="cfx-check"><input type="checkbox" checked={linked} onChange={e=>{setLinked(e.target.checked);setViews({});}}/>Link plot pan/zoom</label><button type="button" onClick={()=>{setView(resetSliceView);setViews({});}}>Reset plot views</button>{state.focus!=="all"&&<button type="button" onClick={()=>patch({focus:"all"})}>Show all panes</button>}</div>
     <details><summary>Runs, fields &amp; physical plane</summary>
     <div className="cfx-slice-controls">
@@ -162,7 +149,20 @@ export function CFD2DSlices({adapter,projectId,currentJob,active,legacyViewer,fo
     <details><summary>Point probing (V / Esc)</summary><CFDPointProbeControls probe={probe}/><div className="cfx-slice-controls"><label>Probe interaction<select aria-label="Probe interaction" value={hover?"hover":"pin"} onChange={e=>setHover(e.target.value==="hover")}><option value="pin">Click to pin / replace</option><option value="hover">Hover (80 ms debounce)</option></select></label><button type="button" onClick={()=>{patch({point:null});recordProbe(null,"Probe cleared. Pick another point.");}}>Clear picked point</button></div>
       {state.point&&!point&&<p className="cfx-notice">Saved probe is off the displayed plane and is hidden. Pick a point on this plane.</p>}
       <p className="cfx-caption">V toggles point mode; Esc exits. A click replaces the value shown inside the plot. Drag pans without probing; arrow keys browse planes.</p></details>
-    </CFDFloatingControls>
+    </CFDViewerControls>
+    {request&&!data&&!grid.error&&<p role="status">Sampling selected physical plane…</p>}
+    <div className="cfx-slice-grid-scroll" data-cfx-probe-surface>
+    <div className={`cfx-slice-grid${compare?" compare":""}${state.focus!=="all"?" focused":""}`}>
+      {pane("baseline",`${compare?"Baseline":"Run"} — ${am?.name??"choose run"} · ${quantity} · ${state.axis} ${plane?probeNumber(plane.coordinate):"—"} m · iteration ${plane?.time??"—"}`,invalidShared?null:data?.a)}
+      {compare&&pane("option",`Option — ${bm?.name??"choose run"} · ${quantity} · ${state.axis} ${option?probeNumber(option.coordinate):"—"} m · iteration ${option?.time??"—"}`,invalidShared?null:data?.b)}
+      {compare&&(state.focus==="all"||state.focus==="inspector")&&<section className="cfx-slice-pane cfx-slice-inspector" data-slice-pane="inspector" aria-label="Comparison statistics">
+      <header><strong>Comparison statistics</strong><button type="button" onClick={()=>patch({focus:state.focus==="inspector"?"all":"inspector"})}>{state.focus==="inspector"?"Show all panes":"Focus inspector"}</button></header>
+      {compare&&<div aria-label="Delta statistics"><h4>Common valid sample statistics</h4><p>Coverage {fmt(data?.statistics?data.statistics.coverage*100:null)}% of union rectangle · {fmt(data?.statistics?.commonAreaM2)} m²</p><p>Minimum {fmt(data?.statistics?.min)} · maximum {fmt(data?.statistics?.max)} · area-weighted mean {fmt(data?.statistics?.mean)} · RMS {fmt(data?.statistics?.rms)} {data?.deltaUnit}</p><p>{data?.statistics?.valid??0} valid / {data?.statistics?.missing??0} masked grid samples. Uniform cell-centre quadrature; convergence with grid resolution is not guaranteed at boundaries.</p></div>}
+      {data?.notes.map(note=><p key={note} className="cfx-caption">{note}</p>)}
+      </section>}
+      {compare&&pane("delta",`Delta — ${data?.definition??"Option − Baseline"} · ${actualField?.name??"field"} [${data?.deltaUnit??"—"}] · ${state.axis} ${plane?probeNumber(plane.coordinate):"—"} m`,invalidDelta||!quantitative?null:data?.delta)}
+    </div>
+    </div>
     </CFDViewerFrame></details>
     <details><summary>Export numeric data &amp; provenance</summary><div className="cfx-equal-actions"><button type="button" disabled={!data?.a} onClick={()=>{if(data)downloadCFD(new Blob([sliceCSV(data,option)],{type:"text/csv"}),"cfd-slice-option-minus-baseline.csv");}}>Download slice / delta CSV</button><button type="button" disabled={!data} onClick={()=>{if(data)downloadCFD(new Blob([JSON.stringify({data,settings:state,baseline:am,option:bm,probe:probe.mode?picked.data:null},null,2)],{type:"application/json"}),"cfd-slice-provenance.json");}}>Download comparison metadata</button></div><p className="cfx-caption">CSV includes both run/asset IDs, separate Baseline and Option physical sample coordinates, mask, sign, units and method. JSON includes the exact numerical raster, legends and provenance. Plot PNG downloads include displayed title, axes and colour scale.</p></details>
     </>}

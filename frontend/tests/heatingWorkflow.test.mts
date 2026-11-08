@@ -49,5 +49,5 @@ test("insulation pairs named floor/roof rows in one movable table",()=>{
 test("contextual help covers UFH import, room assumptions and electrical controls",()=>{
  assert.match(windowHelpSteps("Underfloor heating setup").map(v=>v.text).join(" "),/Create room UFH/);
  assert.match(windowHelpSteps("Heating — Pipe spacing mm").map(v=>v.text).join(" "),/bend radius|twice that radius/);
- assert.match(windowHelpSteps("Full Electrical Layout module — New connection defaults").map(v=>v.text).join(" "),/perpendicularly/);
+ assert.match(windowHelpSteps("Electrical Layout module — New connection defaults").map(v=>v.text).join(" "),/perpendicularly/);
 });

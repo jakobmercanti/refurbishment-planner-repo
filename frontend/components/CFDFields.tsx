@@ -209,12 +209,12 @@ function ParameterArray({ name, values, onChange }: { name: string; values: unkn
     <CFDVector label={label} value={values} onChange={onChange} /></fieldset>;
   const remove = (index: number) => onChange(values.filter((_, at) => at !== index));
   return <fieldset className="cfx-wide"><legend>{probes ? "Probe positions (mm)" : label}</legend>
-    {values.map((entry, index) => <div key={index} className={probes ? "cfx-probe-row" : "cfx-list-row"}
+    {values.map((entry, index) => <div key={index} className={probes ? "cfx-probe-row" : polygon ? "cfx-list-row cfx-movement-point" : "cfx-list-row"}
       role={probes ? "group" : undefined} aria-label={probes ? `Probe ${index + 1}` : undefined}>
       {numeric(entry) ? probes
         ? entry.map((number, axis) => <CFDNumber key={axis} label={`Probe ${index + 1} ${["X", "Y", "Z"][axis]} (mm)`} value={number}
           onChange={next => onChange(replaceAt(values, index, replaceAt(entry, axis, next)))} />)
-        : <div className="cfx-grid">{entry.map((number, axis) => <CFDNumber key={axis} label={`${label} ${index + 1}.${axis + 1}`} value={number}
+        : <div className="cfx-grid">{entry.map((number, axis) => <CFDNumber key={axis} label={polygon ? `Point ${index + 1} ${axis === 0 ? "U" : "V"}` : `${label} ${index + 1}.${axis + 1}`} value={number}
           onChange={next => onChange(replaceAt(values, index, replaceAt(entry, axis, next)))} />)}</div>
         : entry && typeof entry === "object" ? <Parameters value={entry as Record<string, unknown>}
           onChange={next => onChange(replaceAt(values, index, next))} prefix={`${label} ${index + 1} `} /> : null}
@@ -223,8 +223,8 @@ function ParameterArray({ name, values, onChange }: { name: string; values: unkn
     </div>)}
     {polygon && values.length > 0 && <button onClick={() => onChange([])}>Clear movement region</button>}
     {probes && <CFDConfirmAction title="Clear all probes?" disabled={!values.length} description="Remove all monitoring positions from this simulation. Undo can restore them." onConfirm={() => onChange([])} />}
-    <button disabled={probes && values.length >= 1000} onClick={() => onChange(polygon && !values.length
+    <button disabled={probes && values.length >= 1000 || polygon && values.length >= 100} onClick={() => onChange(polygon && !values.length
       ? [[.2, .2], [.8, .2], [.8, .8], [.2, .8]] : [...values, polygon ? [.5, .1] : [0, 0, 0]])}>
-      {probes ? "Add probe" : `Add ${label.toLowerCase()}`}</button>
+      {probes ? "Add probe" : polygon ? values.length ? "Add point" : "Define movement region" : `Add ${label.toLowerCase()}`}</button>
   </fieldset>;
 }

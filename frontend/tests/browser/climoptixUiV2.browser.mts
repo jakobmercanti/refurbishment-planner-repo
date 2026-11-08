@@ -106,6 +106,7 @@ test("equipment is a draggable CRUD list with a separate floating editor and unc
   assert.equal(await list.locator("[data-item-id]").count(), 1);
   await ui.getByRole("button", { name: "+ Extract", exact: true }).click();
   await rename("Extract B");
+  await editor.getByRole("checkbox", { name: "Advanced mode" }).check();
   const u = editor.getByRole("spinbutton", { name: "Host U (0–1)", exact: true }); await u.fill("0.75"); await u.press("Enter");
   await editor.getByRole("button", { name: "Done", exact: true }).click();
   await list.getByRole("button", { name: "Duplicate Supply A", exact: true }).click();

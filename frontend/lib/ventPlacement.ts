@@ -32,6 +32,27 @@ export function ventHostAtPoint(vent: CFDVent, patches: readonly CFDPatch[], poi
   }).sort((a,b)=>a.distance-b.distance)[0] ?? null;
 }
 
+/** Numeric placement accepts rounding to a millimetre without silently clamping to an edge. */
+export function ventHostAtCoordinates(vent: CFDVent, patches: readonly CFDPatch[], point: Vec3): CFDVent["host"] | null {
+  if (!point.every(Number.isFinite)) return null;
+  const current = patches.find(patch => patch.id === vent.host.patchId);
+  const fits = (patch: CFDPatch) => {
+    const hit = ventHostAtPoint(vent, [patch], point, 1);
+    if (!hit || !patch.host) return null;
+    const centre = ventCenter(vent, patch.host, ...hit.uv);
+    return Math.hypot(...centre.map((value, axis) => value - point[axis])) <= 1
+      ? { patchId: patch.id, u: hit.uv[0], v: hit.uv[1] } : null;
+  };
+  const onCurrent = current && fits(current);
+  if (onCurrent) return onCurrent;
+  for (const patch of patches) {
+    if (patch === current) continue;
+    const host = fits(patch);
+    if (host) return host;
+  }
+  return null;
+}
+
 /** Resolve a 2D drop against measured room-facing hosts, including sloped ceilings. */
 export function ventHostFromPlan(vent: CFDVent, patches: readonly CFDPatch[], point: Vec3, wallTolerance: (patch: CFDPatch) => number, preserveWallHeight: boolean) {
   const walls = patches.filter(patch => patch.kind === "wall" && patch.hostable && patch.host);

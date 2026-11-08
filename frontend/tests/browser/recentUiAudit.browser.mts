@@ -55,7 +55,7 @@ async function inspect(panel, label, expectedMainHelp = 1) {
 
 test("Heating, Ventilation, Energy and Electrical share one guide and consistent controls across styles and densities", async t => {
   const s = await harness.session(fixture()); t.after(() => s.close()); const { page } = s;
-  for (const [entry, selector] of [["Heating Layout", ".heating-layout-window"], ["Energy & Insulation", ".energy-layout-window"], ["Full Electrical Layout module…", ".electrical-layout-window"]]) {
+  for (const [entry, selector] of [["Heating Layout", ".heating-layout-window"], ["Energy & Insulation", ".energy-layout-window"], ["Electrical Layout module…", ".electrical-layout-window"]]) {
     await profile(page, profiles[0]); await menu(page, "Tools", entry === "Heating Layout" ? "Heating & ventilation" : entry); const panel = page.locator(selector);
     for (const p of profiles) {
       await profile(page, p);

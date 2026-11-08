@@ -203,7 +203,7 @@ export function buildPlanComparison(plans: CommercialPlan[]): PlanComparisonSect
     {
       title: "Other",
       rows: [
-        { label: "Full Electrical Layout module", values: value(() => "Included"), help: "electrical" },
+        { label: "Electrical Layout module", values: value(() => "Included"), help: "electrical" },
         { label: "Heating Layout module", values: value(() => "Included"), help: "heating" },
         { label: "Energy & Insulation / EPC retrofit planning", values: value(() => "Included"), help: "energy" },
         { label: "Full PlannerBuild project-planning module", values: value((plan) => includesPlannerBuild(plan.plan_key) ? "Included" : "Not included") },

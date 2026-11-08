@@ -41,13 +41,13 @@ test("service modules and detached settings remain available in 3D without chang
   assert.equal(await detached.isVisible(), true, "The same detached settings remain available in the 3D viewer");
   await page.getByRole("button", { name: "Tools", exact: true }).click();
   const dropdown = page.locator(".software-dropdown");
-  assert.deepEqual(await dropdown.getByRole("button").allTextContents(), ["Save view…", "Full Electrical Layout module…", "Heating Layout", "Ventilation", "Energy & Insulation"]);
+  assert.deepEqual(await dropdown.getByRole("button").allTextContents(), ["Save view…", "Electrical Layout module…", "Heating & ventilation", "Energy & Insulation"]);
   await page.keyboard.press("Escape");
   assert.deepEqual(content(await session.saved()), before, "Switching views is not a project edit");
   await page.getByRole("button", { name: "2D", exact: true }).click();
   await page.locator(".heating-layout-window").waitFor();
   await page.getByRole("button", { name: "Tools", exact: true }).click();
-  for (const name of ["Full Electrical Layout module…", "Heating Layout", "Energy & Insulation"]) assert.ok(await dropdown.getByRole("button", { name, exact: true }).isVisible());
+  for (const name of ["Electrical Layout module…", "Heating & ventilation", "Energy & Insulation"]) assert.ok(await dropdown.getByRole("button", { name, exact: true }).isVisible());
 });
 
 test("free windows can reach the menu edge in both viewers while docked headers keep their selector gutter", async t => {
@@ -69,14 +69,14 @@ test("a new multi-gang switch matches existing fittings at 50%, 100% and enlarge
   const session = await harness.session(parseProject(project)); t.after(() => session.close()); const { page } = session;
   const catalogue = [{ id: asset.key, name: asset.name, category_id: "electric", category_name: "Electrical", subcategory: asset.subcategory, fixture_kind: "FURNITURE", representation_key: asset.key, width_mm: asset.width, depth_mm: asset.depth, height_mm: asset.height, color_hex: "#fffdf8", is_default: true, active: true, plan_shape: "RECTANGLE", supplier: "Regression fixture", sku: "test", description: "", images: [], supplier_editable: false, created_at: "2026-10-19T00:00:00Z", updated_at: "2026-10-19T00:00:00Z" }];
   await page.route("**/catalog/items", route => route.fulfill({ json: catalogue }));
-  await page.reload(); await menu(page, "Tools", "Full Electrical Layout module…");
+  await page.reload(); await menu(page, "Tools", "Electrical Layout module…");
   const electrical = page.locator('.electrical-layout-window:not(.heating-layout-window)'), title = await electrical.locator('.floating-toolbar-titlebar').boundingBox();
   await page.mouse.move(title.x + 140, title.y + title.height / 2); await page.mouse.down(); await page.mouse.move(148, title.y + title.height / 2, { steps: 12 }); await page.mouse.up();
   // This test measures symbols on the original canvas. Reaching the left edge
   // now intentionally docks; explicitly float again to retain that setup.
   if (await electrical.getAttribute("data-edge-docked")) {
-    await electrical.getByRole("button", { name: "Window layout for Full Electrical Layout module", exact: true }).click();
-    await page.getByRole("menu", { name: "Full Electrical Layout module window layout", exact: true }).getByRole("menuitem", { name: "Float window", exact: true }).click();
+    await electrical.getByRole("button", { name: "Window layout for Electrical Layout module", exact: true }).click();
+    await page.getByRole("menu", { name: "Electrical Layout module window layout", exact: true }).getByRole("menuitem", { name: "Float window", exact: true }).click();
   }
   await electrical.getByRole("button", { name: "Add electrical fitting…", exact: true }).click();
   const fittings = page.getByRole("region", { name: "Add fittings", exact: true });

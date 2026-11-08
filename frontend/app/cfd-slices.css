@@ -20,8 +20,7 @@ body .cfx-workspace .cfx-slice-pane > header strong { overflow-wrap:anywhere; di
 body .cfx-workspace .cfx-slice-pane > header button { flex:0 0 auto; width:110px; }
 body .cfx-workspace .cfx-slice-pane canvas { display:block; width:100%; height:390px; color:var(--ink); background:var(--paper); touch-action:none; }
 body .cfx-workspace .cfx-slice-pane canvas[data-probing] { cursor:crosshair; }
-body .cfx-workspace .cfx-slice-pane footer { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; padding:8px; }
-body .cfx-workspace .cfx-slice-pane footer button { min-width:0; width:100%; white-space:normal; }
+body .cfx-workspace .cfx-slice-pane .cfx-plot-actions { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
 body .cfx-workspace .cfx-slices > details { min-width:0; border:1px solid var(--line); border-radius:var(--radius-panel); padding:var(--density-window-padding); }
 body .cfx-workspace .cfx-slices fieldset { min-width:0; border:1px solid var(--line); border-radius:var(--radius-panel); }
 body .cfx-workspace .cfx-slices summary { cursor:pointer; font-weight:700; }
@@ -47,7 +46,8 @@ body .cfx-workspace .cfx-legacy-comparison .cfx-result-open-actions { grid-templ
 /* A shared split viewport, not four nested inspector windows. */
 body .cfx-workspace .cfx-slice-grid { height:clamp(440px,64dvh,780px); margin:0; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:var(--radius-panel); overflow:hidden; }
 body .cfx-workspace .cfx-slice-grid.compare:not(.focused) { min-width:560px; grid-template-rows:repeat(2,minmax(0,1fr)); }
-body .cfx-workspace .cfx-slice-pane { position:relative; border:0; border-radius:0; display:grid; grid-template-rows:auto minmax(0,1fr); min-height:0; }
+body .cfx-workspace .cfx-slice-grid.compare:has(.cfx-viewer-controls[open]) { height:max(660px,64dvh); }
+body .cfx-workspace .cfx-slice-pane { position:relative; border:0; border-radius:0; display:grid; grid-template-rows:auto minmax(140px,1fr) auto auto; min-height:0; overflow:auto; }
 body .cfx-workspace .cfx-slice-pane > header { min-height:30px; padding:4px 8px; }
 body .cfx-workspace .cfx-slice-pane > header strong { min-height:0; line-height:1.4; -webkit-line-clamp:1; font-size:12px; }
 body .cfx-workspace .cfx-slice-stage { min-height:0; height:100%; }
@@ -56,8 +56,8 @@ body .cfx-workspace .cfx-slice-inspector { overflow:auto; padding:8px; display:b
 body .cfx-workspace .cfx-slice-inspector > header { margin:-8px -8px 8px; }
 body .cfx-workspace .cfx-legacy-comparison :is(.cfx-legacy-plane,.cfx-vtk-viewer,.cfx-viewer-frame,.cfx-vtk-canvas) { height:100%; min-height:0; padding:0; margin:0; }
 body .cfx-workspace .cfx-legacy-comparison .cfx-vtk-canvas { flex:1 1 auto; }
-body .cfx-workspace .cfx-slices .cfx-viewer-frame > .cfx-floating-controls { left:10px; right:auto; }
-body .cfx-workspace .cfx-slices .cfx-viewer-frame > .cfx-floating-controls > summary { margin-left:0; }
+body .cfx-workspace .cfx-slice-pane > .cfx-viewer-controls { margin:4px 8px 8px; }
+body .cfx-workspace .cfx-slice-pane > .cfx-caption { margin:4px 8px; }
 body .cfx-workspace .cfx-comparison-run-controls { margin-block:8px!important; }
 body .cfx-workspace .cfx-viewer-frame:fullscreen .cfx-slice-grid { height:calc(100dvh - 40px); }
 body .cfx-workspace .cfx-viewer-frame:fullscreen .cfx-slice-pane canvas { height:100%!important; }

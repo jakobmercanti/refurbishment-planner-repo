@@ -70,7 +70,7 @@ test("live catalogue values override fallback without gating electrical module a
   assert.equal(catalogue.packs.length, 0);
 });
 
-test("comparison table includes the Full Electrical Layout module on every plan and PlannerBuild on Studio+", () => {
+test("comparison table includes the Electrical Layout module on every plan and PlannerBuild on Studio+", () => {
   const sections = buildPlanComparison(FALLBACK_PLANS);
   const row = (sectionName: string, label: string) => {
     const section = sections.find((item) => item.title === sectionName);
@@ -85,7 +85,7 @@ test("comparison table includes the Full Electrical Layout module on every plan 
     assert.deepEqual(row("Other", label), { free: "Included", starter: "Included", pro: "Included", studio: "Included" });
   }
   assert.ok(!sections.some((section) => /render/i.test(section.title)));
-  assert.deepEqual(row("Other", "Full Electrical Layout module"), { free: "Included", starter: "Included", pro: "Included", studio: "Included" });
+  assert.deepEqual(row("Other", "Electrical Layout module"), { free: "Included", starter: "Included", pro: "Included", studio: "Included" });
   assert.deepEqual(row("Other", "Full PlannerBuild project-planning module"), { free: "Not included", starter: "Not included", pro: "Not included", studio: "Included" });
 
 });

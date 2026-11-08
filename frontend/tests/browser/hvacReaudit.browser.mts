@@ -57,6 +57,7 @@ test("an existing case immediately includes conventional additions, return edits
   await panel.getByRole("button", { name: "Add return", exact: true }).click();
   await panel.getByRole("button", { name: "Edit Return 1", exact: true }).click();
   const ventEdit = s.page.locator(".hvac-vent-editor");
+  await ventEdit.getByRole("checkbox", { name: "Advanced mode" }).check();
   await details(ventEdit, "Operating scenario overrides");
   await number(ventEdit, "Scenario relative pressure (Pa)", -12);
   await eventually(s.saved, p => Object.values(p.hvac.scenarios[0].ventOverrides).some(o => o.valueSI === -12));
@@ -88,6 +89,7 @@ test("conventional plan drag commits measured host coordinates, undo and Escape 
   await panel.getByRole("button", { name: "Add supply inlet", exact: true }).click();
   await panel.getByRole("button", { name: "Edit Supply 1", exact: true }).click();
   const editor = s.page.locator(".hvac-vent-editor");
+  await editor.getByRole("checkbox", { name: "Advanced mode" }).check();
   const host = editor.getByRole("combobox", { name: "Vent host face", exact: true });
   await eventually(() => host.innerText(), text => !text.includes("Missing host"));
   const seed = { floorId: projectFloors(p)[0].id, roomId: p.rooms[0].id };

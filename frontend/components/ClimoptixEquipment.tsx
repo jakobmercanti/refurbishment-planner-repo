@@ -7,12 +7,43 @@ import { WindowHelpButton } from "./WindowHelpButton";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { objectGroups } from "@/lib/climoptixObjectGroups";
 import { assetOverrideSchema, changeVentControl, ventSchema, type CFDScenario, type CFDVent } from "@/lib/climoptixDocument";
-import type { CFDReport } from "@/lib/climoptix";
+import type { CFDPatch, CFDReport, Vec3 } from "@/lib/climoptix";
 import { CFDNumber, CFDText, Parameters, labelFor } from "./CFDFields";
 import { ventCenter } from "@/lib/climoptixPreview";
+import { ventHostAtCoordinates } from "@/lib/ventPlacement";
 import { useHvac } from "./HvacContext";
 import { hvacBoundaryPackage } from "@/lib/hvacBridge";
 import type { FlowUnit } from "@/lib/cfdUnits";
+
+function VentPositionFields({ vent, hosts, position, onChange }: {
+  vent: CFDVent;
+  hosts: readonly CFDPatch[];
+  position: Vec3 | null;
+  onChange: (host: CFDVent["host"]) => void;
+}) {
+  const [draft, setDraft] = useState(() => position?.map(value => String(Number(value.toFixed(2)))) ?? ["", "", ""]);
+  const [error, setError] = useState("");
+  return <form className="cfx-vent-position" onSubmit={event => {
+    event.preventDefault();
+    const point = draft.map(value => value.trim() ? Number(value) : NaN) as Vec3;
+    const host = ventHostAtCoordinates(vent, hosts, point);
+    if (!host) { setError("Enter a centre on a measured wall, floor or ceiling with room for this vent."); return; }
+    onChange(host);
+    setError("");
+  }}>
+    <div className="cfx-grid cfx-three cfx-vent-axes">
+      {["X", "Y", "Z"].map((axis, index) => <label key={axis}>{axis} (mm)
+        <input type="number" step="any" required aria-label={`Vent ${axis} (mm)`} value={draft[index]}
+          onChange={event => { setError(""); setDraft(draft.map((value, i) => i === index ? event.target.value : value)); }} />
+      </label>)}
+    </div>
+    <div className="cfx-vent-position-actions">
+      <small>Enter the centre on a wall, floor or ceiling. Z is height above the building origin.</small>
+      <button type="submit" disabled={!hosts.length}>Apply position</button>
+    </div>
+    {error && <p role="alert" className="cfx-error">{error}</p>}
+  </form>;
+}
 
 export function EquipmentPanel({
   scenario,
@@ -42,12 +73,13 @@ export function EquipmentPanel({
   checked?: boolean;
   placement?: boolean;
   editorDone?: () => void;
-  ventFlowFields?: ReactNode;
+  ventFlowFields?: (advanced: boolean) => ReactNode;
   editorSections?: ReactNode;
 }) {
   const hvacContext = useHvac();
   const unitPreference = useSyncExternalStore(subscribeEngineeringUnits, getEngineeringUnitsSnapshot, getServerEngineeringUnitsSnapshot);
   const [flowOverride, setFlowUnit] = useState<string | null>(null);
+  const [advanced, setAdvanced] = useState(false);
   const flowUnit = hvacContext?.flowUnit ?? flowOverride ?? parseEngineeringUnits(unitPreference).cfdFlowUnit ?? "L/s";
   const selectedObjectId =
     report?.patches.find((p) => p.kind === "object" && p.id === selected)
@@ -56,6 +88,8 @@ export function EquipmentPanel({
     scenario.vents.find((v) => `vent:${v.id}` === selected) ??
     scenario.vents[0];
   const hosts = report?.patches.filter((p) => p.hostable && p.host) ?? [];
+  const hostFrame = hosts.find(p => p.id === vent?.host.patchId)?.host;
+  const position = vent && hostFrame ? ventCenter(vent, hostFrame) : null;
   const edit = (v: CFDVent) =>
     onChange({
       ...scenario,
@@ -192,7 +226,7 @@ export function EquipmentPanel({
     <>
       {editor && vent && (
         <section className="cfx-card cfx-vent-settings" data-cfx-collapse-root>
-          <header className="cfx-inline-toolbar"><h3>Vent settings</h3><CFDCollapseAll wholeWindow={!!editorDone}/>{editorDone && <button type="button" onClick={editorDone}>Done</button>}</header>
+          <header className="cfx-inline-toolbar"><label className="cfx-check cfx-vent-advanced"><input type="checkbox" checked={advanced} onChange={event => setAdvanced(event.target.checked)} />Advanced mode</label><CFDCollapseAll wholeWindow={!!editorDone}/>{editorDone && <button type="button" onClick={editorDone}>Done</button>}</header>
           <details open><summary>Position &amp; size</summary>
           <CFDText
             label="Vent name"
@@ -225,7 +259,7 @@ export function EquipmentPanel({
               </select>
             </label>
           </div>
-          <label>
+          {advanced && <label>
             Host face
             <select
               aria-label="Vent host face"
@@ -250,24 +284,11 @@ export function EquipmentPanel({
                 </option>
               ))}
             </select>
-          </label>
-          {!hosts.some(h => h.id === vent.host.patchId) && <p className="cfx-notice" role="status">Unassigned vent · choose a seed room in Domain and resolve preparation checks, then select a validated host face here. This draft cannot be submitted or exported as a runnable case.</p>}
+          </label>}
+          {!hostFrame && <p className="cfx-notice" role="status">Vent has no measured mounting surface. Drag it onto a surface, enter a position, or use Advanced mode to choose a host face.</p>}
           {!placement && <button disabled={!hosts.length} onClick={() => onPick(vent.role, vent.id)}>Place this vent on face…</button>}
-          {placement && (() => {
-            const host = hosts.find(p => p.id === vent.host.patchId)?.host;
-            return host ? <output aria-label="Live vent coordinates" className="cfx-notice cfx-vent-coordinates">Position (mm): {ventCenter(vent, host).map((v, axis) => `${["X", "Y", "Z"][axis]} ${v.toFixed(1)}`).join(" · ")}</output> : <p>Choose a host face in the viewer.</p>;
-          })()}
+          <VentPositionFields key={`${vent.id}:${vent.host.patchId}:${position?.join(",")}`} vent={vent} hosts={hosts} position={position} onChange={host => edit({ ...vent, host })} />
           <div className="cfx-grid">
-            <CFDNumber
-              label="Host U (0–1)"
-              value={vent.host.u}
-              onChange={(u) => edit({ ...vent, host: { ...vent.host, u } })}
-            />
-            <CFDNumber
-              label="Host V (0–1)"
-              value={vent.host.v}
-              onChange={(v) => edit({ ...vent, host: { ...vent.host, v } })}
-            />
             {vent.shape === "rectangle" ? (
               <>
                 <CFDNumber
@@ -288,6 +309,16 @@ export function EquipmentPanel({
                 onChange={(diameterMm) => edit({ ...vent, diameterMm })}
               />
             )}
+            {advanced && <><CFDNumber
+              label="Host U (0–1)"
+              value={vent.host.u}
+              onChange={(u) => edit({ ...vent, host: { ...vent.host, u } })}
+            />
+            <CFDNumber
+              label="Host V (0–1)"
+              value={vent.host.v}
+              onChange={(v) => edit({ ...vent, host: { ...vent.host, v } })}
+            />
             <CFDNumber
               label="Vent rotation (°)"
               value={vent.rotationDeg}
@@ -299,11 +330,11 @@ export function EquipmentPanel({
               onChange={(openAreaFraction) =>
                 edit({ ...vent, openAreaFraction })
               }
-            />
+            /></>}
           </div>
           </details>
           <details open><summary>Flow &amp; thermal conditions</summary>
-          {ventFlowFields}
+          {ventFlowFields?.(advanced)}
           <label>
             Controlling quantity
             <select
@@ -320,6 +351,7 @@ export function EquipmentPanel({
             </select>
           </label>
           <small>Changing the quantity resets its value and clears saved flow overrides for this vent. Check the operating value below.</small>
+          <div className="cfx-grid cfx-vent-flow-row">
           {vent.control === "volumeFlow" && (
             <label>
               Flow display unit
@@ -355,19 +387,20 @@ export function EquipmentPanel({
               })
             }
           />
+          </div>
           <div className="cfx-grid">
             <CFDNumber
               label="Supply / inflow temperature (K)"
               value={vent.temperatureK}
               onChange={(temperatureK) => edit({ ...vent, temperatureK })}
             />
-            <CFDNumber
+            {advanced && <CFDNumber
               label="Inflow CO₂ (ppm)"
               value={vent.co2Ppm}
               onChange={(co2Ppm) => edit({ ...vent, co2Ppm })}
-            />
+            />}
           </div>
-          {derived && (
+          {advanced && derived && (
             <p className="cfx-notice">
               Actual {derived.actualAreaM2.toPrecision(4)} m² · effective{" "}
               {derived.effectiveAreaM2.toPrecision(4)} m²
@@ -377,7 +410,7 @@ export function EquipmentPanel({
             </p>
           )}
           </details>
-          <details>
+          {advanced && <details className="cfx-vent-expert">
             <summary>
               Jet, discharge, grouping &amp; placement constraints
             </summary>
@@ -398,12 +431,25 @@ export function EquipmentPanel({
                 "valueSI",
                 "temperatureK",
                 "co2Ppm",
+                "optimization",
               ]}
               onChange={(v) => edit(v as CFDVent)}
             />
-            <small className="cfx-caption">Optimization: metadata only</small>
-          </details>
-          {editorSections}
+            <details className="cfx-vent-optimisation">
+              <summary>Optimisation</summary>
+              <label className="cfx-check"><input type="checkbox" checked={vent.optimization.locked}
+                onChange={event => edit({ ...vent, optimization: { ...vent.optimization, locked: event.target.checked } })} />Lock position for future optimisation</label>
+              <div className="cfx-grid">
+                <CFDNumber label="Maximum displacement (mm)" value={vent.optimization.maxDisplacementMm} min={0}
+                  onChange={maxDisplacementMm => edit({ ...vent, optimization: { ...vent.optimization, maxDisplacementMm } })} />
+                <CFDNumber label="Minimum vent spacing (mm)" value={vent.optimization.minSpacingMm} min={0}
+                  onChange={minSpacingMm => edit({ ...vent, optimization: { ...vent.optimization, minSpacingMm } })} />
+              </div>
+              <Parameters value={vent.optimization} omit={["locked", "maxDisplacementMm", "minSpacingMm"]}
+                onChange={optimization => edit({ ...vent, optimization: optimization as CFDVent["optimization"] })} />
+            </details>
+          </details>}
+          {advanced && editorSections}
         </section>
       )}
     </>

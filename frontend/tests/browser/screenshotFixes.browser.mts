@@ -158,7 +158,7 @@ test("pendant schematic and newly placed preview share zoom scaling without chan
   project.rooms[0].obstacles = [{ id: "existing-pendant", name: asset.name, representation_key: asset.key, model_id: asset.key, kind: "BOX", fixture_kind: "FURNITURE", center: { x: 2000, y: 3000 }, rotation_deg: 0, base_z_mm: 1500, verified: false, dimensions }];
   const { page, saved } = await open(t, project);
   await page.route("**/catalog/items", route => route.fulfill({ json: [{ id: asset.key, name: asset.name, category_id: "electric", category_name: "Electrical", subcategory: asset.subcategory, fixture_kind: "FURNITURE", representation_key: asset.key, width_mm: asset.width, depth_mm: asset.depth, height_mm: asset.height, color_hex: "#fffdf8", is_default: true, active: true, plan_shape: "RECTANGLE", supplier: "Regression fixture", sku: "test", description: "", images: [], supplier_editable: false, created_at: "2026-10-19T00:00:00Z", updated_at: "2026-10-19T00:00:00Z" }] }));
-  await page.reload(); await menu(page, "Tools", "Full Electrical Layout module…");
+  await page.reload(); await menu(page, "Tools", "Electrical Layout module…");
   const window = page.locator(".electrical-layout-window:not(.heating-layout-window)");
   const bar = await window.locator(".floating-toolbar-titlebar").boundingBox();
   await page.mouse.move(bar.x + 140, bar.y + 20); await page.mouse.down();

@@ -179,7 +179,7 @@ test("3D electrical controls create a closed ring, test individual sockets, and 
   p.rooms[0].obstacles.push(...objects);
   p.electricalLayout = { ...DEFAULT_ELECTRICAL_LAYOUT, circuits: [{ id: "sockets", name: "Sockets", color: "#287fb8", socketTopology: "RING", consumerUnitId: "board", socketIds: ["a", "b"] }] };
   const s = await harness.session(p); t.after(() => s.close()); const { page } = s;
-  await enter3D(page); await menu(page, "Tools", "Full Electrical Layout module…"); const panel = page.locator(".electrical-layout-window:not(.heating-layout-window)");
+  await enter3D(page); await menu(page, "Tools", "Electrical Layout module…"); const panel = page.locator(".electrical-layout-window:not(.heating-layout-window)");
   assert.equal(await page.getByRole("button", { name: "3D", exact: true }).getAttribute("aria-pressed"), "true");
   await page.getByRole("button", { name: "2D", exact: true }).click();
   assert.equal(await page.locator(".floorplan-add-elements-toolbar").filter({ visible: true }).count(), 0, "Electrical opens the fitting catalogue only when requested");

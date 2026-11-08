@@ -78,7 +78,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
         onClick={e => onClear(e.currentTarget)}>Clear all</button>
       <CFDConfirmAction label={resetting ? "Preparing defaults…" : "Restore default"} title="Restore the default workbench?" confirmLabel="Restore default"
         disabled={resetting || scenarios.some(s => busy(s) || entries[s.id]?.dispatched)}
-        description="Back up all CFD simulations and folders, then replace them with one General group and one runnable coarse-mesh simulation with opposing inlet/outlet vents and adiabatic walls. Measured geometry is kept. No job is started. Undo restores the previous workbench."
+        description="Back up the workbench, then replace its simulations with one starter case. Its inlet and outlet replace the shared vents in the checked rooms and appear in Ventilation too. Undo restores the previous simulations and vents."
         onConfirm={onReset} />
       <label className="cfx-check"><input type="checkbox" checked={showArchived} onChange={e => onShowArchived(e.target.checked)} />Archived</label>
       <div className="cfx-history"><button disabled={!canUndo} onClick={onUndo}>Undo</button><button disabled={!canRedo} onClick={onRedo}>Redo</button></div>

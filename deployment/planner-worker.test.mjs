@@ -21,7 +21,7 @@ test('normal Plans uses the proven plain navigation without app assets or framew
   assert.ok(!html.includes('/_next/'));
   assert.ok(html.includes('Continue with Studio'));
   assert.ok(html.includes('Compare plans'));
-  assert.ok(html.match(/data-plan="free"[\s\S]*?<li>Full Electrical Layout module<\/li>/));
+  assert.ok(html.match(/data-plan="free"[\s\S]*?<li>Electrical Layout module<\/li>/));
   assert.ok(html.includes('No account is required for these local tools.'));
   assert.ok(html.includes('<li>Heating Layout module</li>'));
   assert.ok(html.includes('<li>Energy &amp; Insulation / EPC retrofit planning</li>'));

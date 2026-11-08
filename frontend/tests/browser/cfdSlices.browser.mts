@@ -27,25 +27,36 @@ async function open(t,options={},axisOnly?:string){
   const slices=ui.getByRole('region',{name:'2D CFD slice results',exact:true});assert.equal(await slices.getByRole('combobox',{name:'Slice run',exact:true}).count(),0);await eventually(()=>slices.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),v=>v===(axisOnly==='X'?'[10.5,10.5]':'[10,10]'));
   return{...s,ui,slices};
 }
-async function compare(s){await button(s,'Compare Runs').click();await s.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.option);await eventually(()=>s.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),v=>v==='[10,12]');}
+const sliceControls = slices => slices.locator('.cfx-viewer-frame > .cfx-viewer-controls').first();
+async function compare(s){await button(s,'Compare Runs').click();await sliceControls(s).locator(':scope > summary').click();await s.getByText('Runs, fields & physical plane',{exact:true}).click();await s.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.option);await eventually(()=>s.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),v=>v==='[10,12]');}
 async function screenshot(page,name){if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/slices-${name}.png`});}
 
-test('floating split viewport keeps indexed deltas correct, anchors picked values and browses with Up/Down',async t=>{
+test('docked slice controls stay clear of plots while indexed deltas and probe values stay correct',async t=>{
   const {page,ui,slices,saved}=await open(t),before=await saved();
-  const controls=slices.locator('.cfx-viewer-frame > .cfx-floating-controls').first();assert.equal(await controls.getAttribute('open'),null);
+  const controls=sliceControls(slices);assert.equal(await controls.getAttribute('open'),null);
   await button(slices,'Compare Runs').click();await controls.locator(':scope > summary').click();await slices.getByText('Runs, fields & physical plane',{exact:true}).click();
   await slices.getByRole('combobox',{name:'Option run',exact:true}).selectOption(fixture.option);await eventually(()=>slices.locator('[data-slice-pane=baseline] canvas').getAttribute('data-limits'),v=>v==='[10,12]');
-  await controls.locator(':scope > summary').click();const grid=slices.locator('.cfx-slice-grid.compare');assert.ok((await grid.boundingBox()).height<800);
+  const grid=slices.locator('.cfx-slice-grid.compare');
+  const controlsBox=await controls.boundingBox(), gridBox=await grid.boundingBox();
+  assert.ok(controlsBox && gridBox && controlsBox.y + controlsBox.height <= gridBox.y + 1);
+  await controls.locator(':scope > summary').click();
+  const baseline=slices.locator('[data-slice-pane=baseline]');
+  const paneControls=baseline.locator('.cfx-viewer-controls');
+  await paneControls.locator(':scope > summary').click();
+  const plotBox=await baseline.locator('canvas').boundingBox(), paneControlsBox=await paneControls.boundingBox();
+  assert.ok(plotBox && paneControlsBox && plotBox.y + plotBox.height <= paneControlsBox.y + 1);
+  await paneControls.locator(':scope > summary').click();
+  assert.ok((await grid.boundingBox()).height<800);
   const canvas=slices.locator('[data-slice-pane=baseline] canvas');await canvas.scrollIntoViewIfNeeded();await canvas.focus();await page.keyboard.press('v');const box=await canvas.boundingBox();await page.mouse.click(box.x+box.width/2,box.y+box.height/2-15);
   const readout=slices.locator('[data-slice-pane=baseline] output');await eventually(()=>readout.getAttribute('data-probe-value'),v=>v==='10');await eventually(()=>slices.locator('[data-slice-pane=delta] output').getAttribute('data-probe-value'),v=>v==='2');assert.equal(await readout.locator('.cfx-picked-dot').count(),1);
   await canvas.focus();await page.keyboard.press('ArrowUp');await eventually(()=>slices.getByLabel('Available physical plane',{exact:true}).locator('option:checked').textContent(),v=>v?.includes('0.8'));await page.keyboard.press('ArrowDown');await eventually(()=>slices.getByLabel('Available physical plane',{exact:true}).locator('option:checked').textContent(),v=>v?.includes('0.5'));
-  const frame=slices.getByLabel('2D slice plots',{exact:true});await button(frame,'Expand viewer').click();await eventually(()=>page.evaluate(()=>!!document.fullscreenElement),Boolean);assert.ok((await grid.boundingBox()).height<=(await page.viewportSize()).height);await screenshot(page,'floating-fullscreen');await button(frame,'Restore viewer').click();
+  const frame=slices.getByLabel('2D slice plots',{exact:true});await button(frame,'Expand viewer').click();await eventually(()=>page.evaluate(()=>!!document.fullscreenElement),Boolean);assert.ok((await grid.boundingBox()).height<=(await page.viewportSize()).height);await screenshot(page,'docked-fullscreen');await button(frame,'Restore viewer').click();
   await page.keyboard.press('Escape');assert.deepEqual((await saved()).rooms,before.rooms);await button(ui,'Collapse all').click();assert.equal(await slices.getByRole('combobox').count(),0);
 });
 
-test('audited floating controls preserve signed X/Y/Z deltas, vector and percent definitions and CSV provenance',async t=>{
+test('docked controls preserve signed X/Y/Z deltas, vector and percent definitions and CSV provenance',async t=>{
   const {page,slices}=await open(t);await button(slices,'Compare Runs').click();
-  const controls=slices.locator('.cfx-viewer-frame > .cfx-floating-controls').first();await controls.locator(':scope > summary').click();
+  const controls=sliceControls(slices);await controls.locator(':scope > summary').click();
   await slices.getByText('Runs, fields & physical plane',{exact:true}).click();
   await slices.getByLabel('Baseline run',{exact:true}).selectOption(fixture.gradientBaseline);await slices.getByLabel('Option run',{exact:true}).selectOption(fixture.gradientOption);await slices.getByLabel('Vector quantity',{exact:true}).selectOption('0');
   await slices.getByText('Visual settings & delta legend',{exact:true}).click();

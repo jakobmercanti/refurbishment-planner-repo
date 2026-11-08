@@ -35,12 +35,28 @@ test("permanent quantity edits atomically discard incompatible values in every o
   assert.doesNotThrow(() => hvacSchema.parse(next));
 });
 
-test("same-quantity permanent edits preserve independent scenario and case overrides", () => {
-  const { hvac, vent, op } = fixture("volumeFlow");
-  const next = updateVentDevice(hvac, vent.id, { vent: { ...vent, valueSI: .4, temperatureK: 300 } }, op.id);
+test("permanent ventilation edits supersede the same fields in all linked scenarios and cases", () => {
+  const { hvac, vent } = fixture("volumeFlow");
+  const next = updateVentDevice(hvac, vent.id, { vent: { ...vent, valueSI: .4, temperatureK: 300 } });
   assert.deepEqual(next.scenarios[0].ventOverrides[vent.id], { enabled: true });
-  assert.deepEqual(next.scenarios[1].ventOverrides[vent.id], { valueSI: .2, temperatureK: 310, enabled: true });
-  assert.equal(Object.values(next.bindings)[0].overrides[vent.id].valueSI, .3);
+  assert.deepEqual(next.scenarios[1].ventOverrides[vent.id], { enabled: true });
+  assert.equal(Object.values(next.bindings)[0].overrides[vent.id], undefined);
+  assert.equal(updateVentDevice(next, vent.id, { enabled: false }).scenarios[0].ventOverrides[vent.id], undefined);
+});
+
+test("CFD restore replaces only the shared vents in the checked domain and clears their overrides", () => {
+  const { project, hvac, scenario, vent, op } = fixture();
+  const outside = { ...hvac.devices[0], roomId: "other-room", vent: { ...vent, id: "other-vent" } };
+  hvac.devices.push(outside);
+  const starter = { ...scenario, id: "restored-study", vents: [{ ...vent, widthMm: 800 }] };
+  const scope = { scenarioId: starter.id, rooms: [{ floorId: op.floorId, roomId: op.roomId }], replaceVents: true };
+  assert.throws(() => commitHvacCFD(project, [starter]), /conflicts with a shared design ID/);
+  const next = commitHvacCFD(project, [starter], scope);
+  assert.deepEqual(next.hvac!.devices.find(device => device.vent.id === outside.vent.id), outside);
+  assert.equal(next.hvac!.devices.find(device => device.vent.id === vent.id)?.vent.widthMm, 800);
+  assert.ok(next.hvac!.scenarios.every(operation => operation.ventOverrides[vent.id] === undefined));
+  assert.deepEqual(resolveHvacVents(next, next.cfdScenarios![0]), starter.vents);
+  assert.equal(project.hvac!.devices[0].vent.widthMm, vent.widthMm);
 });
 
 test("invalid or stale edits cannot mutate the shared document", () => {

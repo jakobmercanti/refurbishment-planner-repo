@@ -51,7 +51,9 @@ import {
 import {
   downloadCFD,
   defaultCFDSetup,
+  prepareCFD,
   preparationInput,
+  preparationRevision,
   openfoamSettings,
   scenarioImport,
 } from "@/lib/climoptix";
@@ -366,10 +368,15 @@ export function ClimoptixWorkspace({
     const controller = new AbortController(); defaultAbort.current = controller;
     setResetting(true); setError(""); setMessage("Checking measured geometry and preparing a starter ventilation setup…");
     const stamp = (p: ProjectDocument) => JSON.stringify([preparationInput(p, original),
-      p.cfdScenarios?.map(s => ({ ...s, validation: undefined, updatedAt: undefined })), p.cfdSimulationGroups]);
+      p.cfdScenarios?.map(s => ({ ...s, validation: undefined, updatedAt: undefined })), p.cfdSimulationGroups,
+      p.hvac?.devices, p.hvac?.scenarios, p.hvac?.bindings]);
     const captured = adding ? preparationInput(project, original) : stamp(project);
     try {
       const next = await defaultCFDSetup(apiUrl, project, original, controller.signal);
+      const revision = await preparationRevision(preparationInput(project, next));
+      const report = await prepareCFD(apiUrl, project, next, revision, controller.signal);
+      const rooms = report.domain.regions.filter(region => region.included).map(region => ({ floorId: region.floorId, roomId: region.id }));
+      if (!rooms.length || report.validation.errors) throw new Error("The starter setup failed its geometry checks. The shared vents were kept.");
       const now = current.current;
       if (now.project.projectId !== project.projectId || (!adding && stamp(now.project) !== captured) || (adding && preparationInput(now.project, original) !== captured))
         throw new Error("The building or simulation changed during reset. Nothing was replaced; try again.");
@@ -387,11 +394,14 @@ export function ClimoptixWorkspace({
         downloadCFD(new Blob([JSON.stringify(now.project, null, 2)], { type: "application/json" }), `${now.project.name}-before-restore.project.json`);
         now.scenarios.forEach(s => clearLog(s.id));
       }
-      onChange(adding ? [...now.scenarios, next] : [{ ...next, group: "General" }], true,
-        adding ? undefined : [{ id: crypto.randomUUID(), name: "General" }]);
+      const hasDesign = adding && now.project.hvac?.devices.some(device => rooms.some(room => room.floorId === device.floorId && room.roomId === device.roomId));
+      const starter = { ...next, vents: hasDesign ? [] : next.vents.map(vent => ({ ...vent, id: `${next.id}:${vent.id}` })) };
+      onChange(adding ? [...now.scenarios, starter] : [{ ...starter, group: "General" }], true,
+        adding ? undefined : [{ id: crypto.randomUUID(), name: "General" }],
+        { scenarioId: next.id, rooms, replaceVents: !adding });
       setSelectedId(next.id); setSelected(null); setVentEditor(null); setRefinementEditor(null); setPicking(null);
       setEditorReset(value => value + 1); openPhase("studies");
-      setMessage("Starter ventilation ready for fresh checks: opposing inlet/outlet, adiabatic walls and a serial laminar setup. Play starts the connected worker; it does not fabricate results.");
+      setMessage(hasDesign ? "New simulation linked to the shared vents in this domain." : "Starter setup saved with a shared inlet and outlet. Review the checks before running.");
     } catch (reason) { if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "Default reset failed. Nothing was replaced."); setMessage(""); } }
     finally { if (defaultAbort.current === controller) { defaultAbort.current = null; setResetting(false); } }
   };

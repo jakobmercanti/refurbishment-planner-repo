@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CFDFloatingControls } from "./CFDFloatingControls";
+import { CFDViewerControls } from "./CFDViewerControls";
 import { downloadCFD } from "@/lib/climoptix";
 import { probeNumber } from "@/lib/cfdPointProbe";
 import { inPlaneAxes, slicePlotQuantity, type SliceData, type defaultLegend } from "@/lib/cfdSlices";
@@ -71,6 +71,13 @@ export function CFDSlicePlot({title,kind,axis,physicalCoordinate,data,values,leg
       {probing&&readout&&<output className={`cfx-probe-value${point&&readout.value!==null?" cfx-probe-anchored":""}`} style={point&&readout.value!==null?{left:imageX+(point[a]-lowX)*factor,top:imageY+imageHeight-(point[b]-lowY)*factor}:undefined} role="status" aria-label="Picked result value" data-probe-value={readout.value??undefined} data-probe-position={point?JSON.stringify(point):undefined}>{point&&readout.value!==null&&<i className="cfx-picked-dot" aria-hidden/>}{readout.value===null?"Click the plane to read its value. Esc exits.":`${readout.label} = ${probeNumber(readout.value)}${readout.unit?` ${readout.unit}`:""}`}</output>}
     </div>
     {!hasValues&&<p className="cfx-caption">{data?"No comparable numeric samples in this pane.":"Choose a ready numeric plane. Loading never reuses an earlier selection's contours."}</p>}
-    <CFDFloatingControls label={`${kind} controls`}><button type="button" onClick={onFocus}>{focus?"Show all panes":`Focus ${kind}`}</button><footer><button type="button" onClick={()=>onView({...view,zoom:Math.min(12,view.zoom*1.4)})}>Zoom in {kind}</button><button type="button" onClick={()=>onView({...view,zoom:Math.max(.5,view.zoom/1.4)})}>Zoom out {kind}</button><button type="button" disabled={!hasValues} onClick={()=>{canvas.current?.toBlob(blob=>{if(blob)downloadCFD(blob,`cfd-${kind}.png`);});}}>Download {kind} PNG</button></footer></CFDFloatingControls>
+    <CFDViewerControls label={`${kind[0].toUpperCase()}${kind.slice(1)} controls`}>
+      <div className="cfx-plot-actions">
+        <button type="button" onClick={onFocus}>{focus?"Show all panes":`Focus ${kind}`}</button>
+        <button type="button" aria-label={`Zoom in ${kind}`} onClick={()=>onView({...view,zoom:Math.min(12,view.zoom*1.4)})}>Zoom in</button>
+        <button type="button" aria-label={`Zoom out ${kind}`} onClick={()=>onView({...view,zoom:Math.max(.5,view.zoom/1.4)})}>Zoom out</button>
+        <button type="button" aria-label={`Download ${kind} PNG`} disabled={!hasValues} onClick={()=>{canvas.current?.toBlob(blob=>{if(blob)downloadCFD(blob,`cfd-${kind}.png`);});}}>Download PNG</button>
+      </div>
+    </CFDViewerControls>
   </section>;
 }

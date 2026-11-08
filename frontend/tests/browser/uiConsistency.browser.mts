@@ -60,9 +60,40 @@ test("compact windows shrink without clipped actions and keep resize targets", a
   await page.screenshot({ path: "../.local-logs/ui-nov01-qa/compact.png" });
 });
 
+test("circuit row actions stay equal and single-line when the window shrinks", async t => {
+  const project = fixture();
+  project.electricalLayout!.circuits.push({ id: "lighting", name: "Lighting with a long circuit label", color: "#282fb8" });
+  const session = await harness.session(parseProject(project));
+  t.after(() => session.close());
+  const { page } = session;
+  await menu(page, "Tools", "Electrical Layout module…");
+  const panel = page.locator(".electrical-layout-window");
+  await panel.locator("summary").filter({ hasText: "Circuits (2)" }).click();
+  const row = panel.locator(".electrical-circuit-row").last();
+  const sizes = () => row.locator("button").evaluateAll(buttons => buttons.map(button => {
+    const bounds = button.getBoundingClientRect();
+    const text = document.createRange();
+    text.selectNodeContents(button);
+    return { width: bounds.width, font: getComputedStyle(button).font, lines: text.getClientRects().length };
+  }));
+  const before = await sizes();
+  const rail = await panel.locator(".floating-toolbar-resize-right").boundingBox();
+  assert.ok(rail);
+  await page.mouse.move(rail.x + rail.width / 2, rail.y + 24);
+  await page.mouse.down();
+  await page.mouse.move(rail.x + rail.width / 2 - 110, rail.y + 24, { steps: 6 });
+  await page.mouse.up();
+  const after = await sizes();
+  assert.ok(after[0].width < before[0].width - 50);
+  assert.equal(after[1].width, before[1].width);
+  assert.equal(after[1].width, after[2].width);
+  assert.equal(after[1].font, after[2].font);
+  assert.deepEqual(after.slice(1).map(button => button.lines), [1, 1]);
+});
+
 test("socket ring generation persists, individual plan testing works, broken returns fail", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
-  await menu(page, "Tools", "Full Electrical Layout module…");
+  await menu(page, "Tools", "Electrical Layout module…");
   const panel = page.locator(".electrical-layout-window");
   await panel.locator("summary").filter({ hasText: "Circuits (1)" }).click();
   assert.equal(await panel.getByLabel("Circuit type", { exact: true }).count(), 0);
@@ -95,7 +126,7 @@ test("socket ring generation persists, individual plan testing works, broken ret
 test("missing socket references can be removed and a replacement consumer unit restores a radial",async t=>{
   const project=fixture();project.electricalLayout!.circuits[0]={...project.electricalLayout!.circuits[0],socketTopology:'RADIAL',consumerUnitId:'missing-board',socketIds:['a','missing-socket']};
   const session=await harness.session(parseProject(project));t.after(()=>session.close());const {page}=session;
-  await menu(page,'Tools','Full Electrical Layout module…');const panel=page.locator('.electrical-layout-window');
+  await menu(page,'Tools','Electrical Layout module…');const panel=page.locator('.electrical-layout-window');
   await panel.locator('summary').filter({hasText:'Circuits (1)'}).click();
   await panel.getByRole('button',{name:/^Edit circuit /}).click();
   const editor=page.getByRole('dialog',{name:/^Edit circuit/});
@@ -114,7 +145,7 @@ test("missing socket references can be removed and a replacement consumer unit r
 
 test("service windows use one main guide and one contextual guide per main section", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
-  for (const [entry, selector] of [["Full Electrical Layout module…", ".electrical-layout-window"], ["Heating Layout", ".heating-layout-window"], ["Energy & Insulation", ".energy-layout-window"]]) {
+  for (const [entry, selector] of [["Electrical Layout module…", ".electrical-layout-window"], ["Heating Layout", ".heating-layout-window"], ["Energy & Insulation", ".energy-layout-window"]]) {
     await menu(page, "Tools", entry); const panel = page.locator(selector);
     await panel.locator(".floating-toolbar-titlebar .window-help-button").click();
     const help = page.locator(".window-help-host .floating-toolbar-content"); await help.waitFor();
@@ -163,9 +194,11 @@ test("small-screen Export and Floor controls do not overlap", async t => {
 });
 
 test("modern electrical selector stays clickable and changes the fitting; list has a top gutter", async t => {
-  const session = await harness.session(fixture()); t.after(() => session.close()); const { page, context } = session;
+  const project = fixture();
+  project.rooms[0].obstacles[1].name = "Double socket with a long catalogue description";
+  const session = await harness.session(project); t.after(() => session.close()); const { page, context } = session;
   await context.route("**/catalog/items", route => route.fulfill({ json: ["single", "double"].map((type, index) => ({ id: `switch-${type}`, category_id: "electric", category_name: "Electric", fixture_kind: "FURNITURE", subcategory: "Switches", name: `${index ? "Double" : "Single"} rocker switch`, supplier: "Default", sku: type, width_mm: 86, depth_mm: 12, height_mm: 86, color_hex: "#a6adb1", description: "", is_default: true, representation_key: `electrical-switch-${type}` })) }));
-  await menu(page, "Tools", "Full Electrical Layout module…");
+  await menu(page, "Tools", "Electrical Layout module…");
   await page.locator(".electrical-layout-window").getByRole("button", { name: "Add electrical fitting…", exact: true }).click();
   await page.evaluate(() => { document.body.dataset.uiStyle = "modern"; });
   const editor = page.locator(".element-add-editor:visible");
@@ -178,6 +211,9 @@ test("modern electrical selector stays clickable and changes the fitting; list h
   await editor.locator(".fixture-list article").first().scrollIntoViewIfNeeded();
   const header = await editor.getByRole("button", { name: "Elements list", exact: true }).boundingBox(), first = await editor.locator(".fixture-list article").first().boundingBox();
   assert.ok(header && first && first.y - header.y - header.height >= 7);
+  for (const edit of await editor.locator(".fixture-list .edit-fixture").all()) {
+    assert.equal(await edit.evaluate(button => { const text = document.createRange(); text.selectNodeContents(button); return text.getClientRects().length; }), 1);
+  }
   await page.screenshot({ path: "../.local-logs/ui-nov01-qa/electrical-selector-modern.png" });
 });
 

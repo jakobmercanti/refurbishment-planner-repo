@@ -94,6 +94,7 @@ test("real preflight opens exact shared CFD case; CFD permanent and operating ed
   assert.match(await panel.innerText(), /Scenario override/); assert.match(await panel.innerText(), /CFD case outdated/);
   const snapBefore = JSON.stringify((await s.saved()).hvac.snapshots[0]);
   await panel.getByRole("button", { name: "Edit Supply 1", exact: true }).click();
+  await vent.getByRole("checkbox", { name: "Advanced mode" }).check();
   await eventually(() => vent.getByRole("combobox", { name: "Vent host face", exact: true }).innerText(), value => !value.includes("Missing host"));
   await enter(vent, "Vent width (mm)", 600); await eventually(s.saved, p => p.hvac.devices[0].vent.widthMm === 600);
   assert.equal(JSON.stringify((await s.saved()).hvac.snapshots[0]), snapBefore);

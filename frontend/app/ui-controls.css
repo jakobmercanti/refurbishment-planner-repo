@@ -142,12 +142,29 @@ body .cfx-workspace .cfx-solver-nav { margin-top:0; }
 body .cfx-workspace :is(.cfx-studies,.cfx-objects) > :first-child { margin-top:0; }
 .cfx-results > [role=tabpanel]:not([hidden]) { padding:var(--density-section-gap); border:1px solid var(--line); border-radius:var(--radius-panel); }
 .cfx-results :is([role=tabpanel], [aria-label="Worker artifacts"]) > details:not(.cfx-row-menu) { border:1px solid var(--line); border-radius:var(--radius-panel); }
-.cfx-vent-coordinates { display:block; margin-block:var(--density-section-gap); }
-.hvac-vent-editor .cfx-vent-settings > header { display:flex; flex-wrap:wrap; align-items:center; gap:var(--density-section-gap); }
-.hvac-vent-editor .cfx-vent-settings > header > h3 { margin-inline-end:auto; }
+.cfx-vent-settings > header { display:flex; flex-wrap:wrap; align-items:center; gap:var(--density-section-gap); }
+.cfx-vent-settings .cfx-vent-advanced { margin-inline-end:auto; }
 .hvac-vent-editor .cfx-disclosure-actions { display:flex; flex-wrap:wrap; gap:var(--density-section-gap); }
+.cfx-vent-settings .cfx-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--density-section-gap); }
+body .cfx-vent-settings .cfx-vent-axes { grid-template-columns:repeat(3,minmax(0,1fr)); }
+body .cfx-vent-settings .cfx-vent-flow-row:has(> :only-child) { grid-template-columns:minmax(0,1fr); }
+.cfx-vent-settings :is(label,input,select) { min-width:0; }
+.cfx-vent-position { display:grid; gap:var(--density-section-gap); }
+.cfx-vent-position-actions { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:var(--density-section-gap); }
+.cfx-vent-position-actions > small { flex:1 1 14rem; color:var(--muted); }
+.cfx-vent-position-actions > button { flex:0 0 auto; }
+.cfx-vent-expert > .cfx-grid > label:has(input[maxlength="2000"]) { grid-column:1/-1; }
+.cfx-vent-optimisation > .cfx-check { margin-block-end:var(--density-section-gap); }
+.cfx-vent-optimisation fieldset { display:grid; gap:var(--density-section-gap); min-width:0; }
+.cfx-vent-optimisation fieldset > button { justify-self:start; }
+.cfx-vent-optimisation .cfx-movement-point { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:var(--density-section-gap); }
 body .popup:is(.heating-reset-dialog, .electrical-circuit-dialog) { width:min(620px, calc(100vw - 24px)); }
 body :is(.heating-reset-dialog, .electrical-circuit-dialog) :is(.popup-content, .popup-actions) { padding:18px 24px; }
 body .heating-reset-dialog .popup-content p { font-weight:400; }
 .electrical-circuit-dialog .popup-content { display:grid; gap:var(--density-section-gap); }
-.electrical-circuit-row-actions { display:flex; align-items:center; gap:var(--density-section-gap); }
+.electrical-circuit-row-actions { display:grid; grid-auto-flow:column; grid-auto-columns:5rem; align-items:center; gap:var(--density-section-gap); }
+body .electrical-circuit-list .electrical-circuit-row-actions > button { width:100%; min-width:0; white-space:nowrap; overflow-wrap:normal; }
+body .element-add-editor .elements-list-content .fixture-list article { grid-template-columns:minmax(0,1fr) auto auto; }
+body .element-add-editor .elements-list-content .fixture-list :is(.edit-fixture,.remove-fixture) {
+  width:auto; min-width:var(--density-control-min-height); height:auto; white-space:nowrap; overflow-wrap:normal;
+}

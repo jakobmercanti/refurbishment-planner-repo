@@ -75,7 +75,7 @@ export const hvacSchema = z.object({
 export type HvacProject = z.infer<typeof hvacSchema>;
 export const newHvacProject = (): HvacProject => hvacSchema.parse({ version: 1, devices: [] });
 
-function clearVentOverride(overrides: Record<string, z.infer<typeof ventOperation>>, id: string, field: "valueSI" | "temperatureK") {
+function clearVentOverride(overrides: Record<string, z.infer<typeof ventOperation>>, id: string, field: keyof z.infer<typeof ventOperation>) {
   const override = overrides[id];
   if (!override) return;
   delete override[field];
@@ -83,31 +83,28 @@ function clearVentOverride(overrides: Record<string, z.infer<typeof ventOperatio
 }
 
 /** Flow overrides share the design quantity. None can survive a change of units. */
-function clearVentFlowOverrides(hvac: HvacProject, id: string) {
-  for (const scenario of hvac.scenarios) clearVentOverride(scenario.ventOverrides, id, "valueSI");
-  for (const link of Object.values(hvac.bindings)) clearVentOverride(link.overrides, id, "valueSI");
+function clearSharedVentOverride(hvac: HvacProject, id: string, field: keyof z.infer<typeof ventOperation>) {
+  for (const scenario of hvac.scenarios) clearVentOverride(scenario.ventOverrides, id, field);
+  for (const link of Object.values(hvac.bindings)) clearVentOverride(link.overrides, id, field);
 }
 
 /** Atomic permanent edit shared by the inline and floorplan vent editors. */
-export function updateVentDevice(hvac: HvacProject, id: string, patch: Partial<VentDevice>, operatingId?: string): HvacProject {
+export function updateVentDevice(hvac: HvacProject, id: string, patch: Partial<VentDevice>): HvacProject {
   const next = structuredClone(hvac), device = next.devices.find(d => d.vent.id === id);
   if (!device) throw new Error("The vent no longer exists. Select another vent.");
   if (patch.vent && patch.vent.id !== id) throw new Error("A vent edit cannot change its ID.");
-  const before = device.vent;
-  const operating = operatingId !== undefined ? next.scenarios.find(s => s.id === operatingId)
-    : next.scenarios.find(s => s.id === next.activeScenarioId && s.floorId === device.floorId && s.roomId === device.roomId)
-      ?? next.scenarios.find(s => s.floorId === device.floorId && s.roomId === device.roomId);
+  const before = device.vent, wasEnabled = device.enabled;
   Object.assign(device, patch);
-  if (device.vent.control !== before.control) clearVentFlowOverrides(next, id);
-  else if (device.vent.valueSI !== before.valueSI && operating) clearVentOverride(operating.ventOverrides, id, "valueSI");
-  if (device.vent.temperatureK !== before.temperatureK && operating) clearVentOverride(operating.ventOverrides, id, "temperatureK");
+  if (device.vent.control !== before.control || device.vent.valueSI !== before.valueSI) clearSharedVentOverride(next, id, "valueSI");
+  if (device.vent.temperatureK !== before.temperatureK) clearSharedVentOverride(next, id, "temperatureK");
+  if (device.enabled !== wasEnabled) clearSharedVentOverride(next, id, "enabled");
   // Parse after removing obsolete overrides (e.g. pressure 0 Pa is not a valid flow).
   return hvacSchema.parse(next);
 }
 export function hvacErrorMessage(cause: unknown, fallback = "Invalid HVAC inputs."): string {
   return cause instanceof z.ZodError ? cause.issues.slice(0, 3).map(issue => issue.message).join(" ") : cause instanceof Error ? cause.message : fallback;
 }
-export interface HvacDomainScope { scenarioId: string; rooms: { floorId: string; roomId: string }[] }
+export interface HvacDomainScope { scenarioId: string; rooms: { floorId: string; roomId: string }[]; replaceVents?: boolean }
 
 /** Idempotent shared-source reconciliation, including cases created before HVAC setup. */
 export function migrateHvac(project: ProjectDocument): ProjectDocument {
@@ -173,8 +170,13 @@ export function resolveHvacVents(project: ProjectDocument, scenario: CFDScenario
 /** The shared project command boundary for CFD edits, drags, duplication and optimiser moves. */
 export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[], domain?: HvacDomainScope, copiedFrom?: Record<string, string>): ProjectDocument {
   let next = migrateHvac(project);
-  if (!next.hvac) return migrateHvac({ ...project, cfdScenarios: scenarios });
-  const hvac = structuredClone(next.hvac);
+  if (!next.hvac && !domain) return migrateHvac({ ...project, cfdScenarios: scenarios });
+  const previousHvac = next.hvac ?? newHvacProject();
+  const hvac = structuredClone(previousHvac);
+  if (domain?.replaceVents) {
+    const ids = new Set(hvac.devices.filter(device => domain.rooms.some(room => room.floorId === device.floorId && room.roomId === device.roomId)).map(device => device.vent.id));
+    removeVentDevices(hvac, ids);
+  }
   const radiators = sharedRadiatorIds(next);
   for (const [copyId, sourceId] of Object.entries(copiedFrom ?? {})) {
     if (project.cfdScenarios?.some(s => s.id === copyId) || !scenarios.some(s => s.id === copyId)) continue;
@@ -198,7 +200,7 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
     if (old && s === old) return s;
     const removed = before.filter(v => !s.vents.some(v2 => v2.id === v.id));
     const operating = hvac.scenarios.find(op => op.id === link.operatingScenarioId);
-    const baselineOperation = next.hvac!.scenarios.find(op => op.id === link.operatingScenarioId);
+    const baselineOperation = previousHvac.scenarios.find(op => op.id === link.operatingScenarioId);
     if (operating && baselineOperation) {
       const c = baselineOperation.conditions;
       operating.conditions = hvacConditionsSchema.parse({ ...operating.conditions,
@@ -218,9 +220,7 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
       }
       else {
         deleted.add(v.id);
-        hvac.devices = hvac.devices.filter(d => d.vent.id !== v.id);
-        for (const b of Object.values(hvac.bindings)) { b.deviceIds = b.deviceIds.filter(id => id !== v.id); delete b.overrides[v.id]; }
-        for (const op of hvac.scenarios) delete op.ventOverrides[v.id];
+        removeVentDevices(hvac, new Set([v.id]));
       }
     }
     for (const v of s.vents) {
@@ -238,33 +238,32 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
       }
       else {
         const quantityChanged = found.vent.control !== v.control;
-        if (quantityChanged) clearVentFlowOverrides(hvac, v.id);
+        const flowChanged = quantityChanged || prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
+        if (quantityChanged) {
+          clearSharedVentOverride(hvac, v.id, "valueSI");
+          clearVentOverride(link.overrides, v.id, "valueSI");
+        }
         if (link.editMode === "override") {
           found.vent = { ...v, valueSI: quantityChanged ? v.valueSI : found.vent.valueSI, temperatureK: found.vent.temperatureK };
           if (operating) {
-            const flowChanged = quantityChanged || prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
             if (flowChanged || temperatureChanged) operating.ventOverrides[v.id] = { ...operating.ventOverrides[v.id], ...(flowChanged ? { valueSI: v.valueSI } : {}), ...(temperatureChanged ? { temperatureK: v.temperatureK } : {}) };
             if (flowChanged) clearVentOverride(link.overrides, v.id, "valueSI");
             if (temperatureChanged) clearVentOverride(link.overrides, v.id, "temperatureK");
           }
-          else link.overrides[v.id] = { ...link.overrides[v.id], valueSI: v.valueSI, temperatureK: v.temperatureK };
+          else if (flowChanged || temperatureChanged) link.overrides[v.id] = { ...link.overrides[v.id], ...(flowChanged ? { valueSI: v.valueSI } : {}), ...(temperatureChanged ? { temperatureK: v.temperatureK } : {}) };
         } else {
-          const flowChanged = quantityChanged || prior?.valueSI !== v.valueSI, temperatureChanged = prior?.temperatureK !== v.temperatureK;
           found.vent = { ...v, valueSI: flowChanged ? v.valueSI : found.vent.valueSI, temperatureK: temperatureChanged ? v.temperatureK : found.vent.temperatureK };
-          // Moving a device must never promote effective scenario values into
-          // nameplate/design data. An explicit permanent operating edit clears
-          // only the corresponding override, so the new value is visible.
-          for (const overrides of [link.overrides, ...(operating ? [operating.ventOverrides] : [])]) {
-            if (flowChanged) clearVentOverride(overrides, v.id, "valueSI");
-            if (temperatureChanged) clearVentOverride(overrides, v.id, "temperatureK");
-          }
+          // Geometry-only edits preserve operating values. A permanent edit
+          // replaces that field in every linked view of the shared device.
+          if (flowChanged) clearSharedVentOverride(hvac, v.id, "valueSI");
+          if (temperatureChanged) clearSharedVentOverride(hvac, v.id, "temperatureK");
         }
         if (owner) { found.floorId = owner.floorId; found.roomId = owner.roomId; }
       }
       if (!link.deviceIds.includes(v.id)) link.deviceIds.push(v.id);
     }
     const order = s.objectGroups?.flatMap(g => g.memberIds.filter(id => id.startsWith("vent:")).map(id => id.slice(5))) ?? s.vents.map(v => v.id);
-    const rank = new Map(next.hvac!.devices.map((d, i) => [d.vent.id, i]));
+    const rank = new Map(previousHvac.devices.map((d, i) => [d.vent.id, i]));
     const beforeOrder = old?.objectGroups?.flatMap(g => g.memberIds.filter(id => id.startsWith("vent:")).map(id => id.slice(5)).sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity))) ?? before.map(v => v.id);
     if (link.editMode === "design" && JSON.stringify(order) !== JSON.stringify(beforeOrder)) {
       const ids = new Set(order), ordered = order.flatMap(id => hvac.devices.filter(d => d.vent.id === id));
@@ -285,10 +284,17 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
 
 export function removeVent(hvac: HvacProject, id: string): HvacProject {
   const next = structuredClone(hvac);
-  next.devices = next.devices.filter(d => d.vent.id !== id);
-  for (const b of Object.values(next.bindings)) { b.deviceIds = b.deviceIds.filter(key => key !== id); delete b.overrides[id]; }
-  for (const s of next.scenarios) delete s.ventOverrides[id];
+  removeVentDevices(next, new Set([id]));
   return hvacSchema.parse(next);
+}
+
+function removeVentDevices(hvac: HvacProject, ids: ReadonlySet<string>) {
+  hvac.devices = hvac.devices.filter(d => !ids.has(d.vent.id));
+  for (const link of Object.values(hvac.bindings)) {
+    link.deviceIds = link.deviceIds.filter(id => !ids.has(id));
+    for (const id of ids) delete link.overrides[id];
+  }
+  for (const scenario of hvac.scenarios) for (const id of ids) delete scenario.ventOverrides[id];
 }
 
 /** Reorder this room's shared devices without moving another room or changing CFD group membership. */

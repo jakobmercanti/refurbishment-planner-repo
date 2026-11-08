@@ -327,7 +327,6 @@ button { font: inherit; }
 .electrical-circuit-list { max-height: 145px; }
 .electrical-circuit-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 4px; }
 .electrical-circuit-row > .electrical-circuit-select { min-width: 0; text-align: left; }
-.electrical-circuit-row > .electrical-circuit-delete { min-width: 48px; }
 .electrical-circuit-connections { margin: 8px 0 0 10px; border-color: #d8e3eb; background: #f4f8fb; }
 .electrical-circuit-connections > summary { font-size: calc((9px) * var(--density-font-scale, 1)); }
 .electrical-circuit-name { display: flex; align-items: center; gap: 7px; }

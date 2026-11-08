@@ -12,7 +12,7 @@ import { CFDNumber } from "./CFDFields";
 import { CFDPointProbeControls, CFDPointProbeValue, useCFDPointProbe } from "./CFDPointProbeControls";
 import { useViewerContextMenu } from "@/lib/viewerNavigation";
 import type { ReactNode } from "react";
-import { CFDFloatingControls } from "./CFDFloatingControls";
+import { CFDViewerControls } from "./CFDViewerControls";
 import { CFDViewerFrame } from "./CFDViewerFrame";
 import { CFDPlaneContextMenu, type PlaneMenu } from "./CFDPlaneContextMenu";
 import { intersectResultPlane, resultProbeMesh, sampleResultPoint, type ProbeMesh, type ProbePosition, type ResultPointValue } from "@/lib/cfdPointProbe";
@@ -204,7 +204,7 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
       <div ref={host} className="cfx-vtk-surface"/>
       <CFDPointProbeValue probe={probe} anchor={anchor} native={!!provenance?.startsWith("Authenticated worker job")}/>
     </div>
-    <CFDFloatingControls label="Plane controls">
+    <CFDViewerControls label="Plane controls">
     {toolbar}
     {onPlaneStep&&<div className="cfx-inline-toolbar"><button disabled={!previousPlane} onClick={()=>onPlaneStep(-1)}>Previous plane</button><button disabled={!nextPlane} onClick={()=>onPlaneStep(1)}>Next plane</button></div>}
     <div className="cfx-viewer-bottom-actions"><CFDPointProbeControls probe={probe}/><button onClick={onClose}>Hide plane viewer</button></div>
@@ -235,7 +235,7 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
     </details></div>
     <footer><span role="status">{loading?"Loading result layers…":layer?.status??"File not loaded"}</span>{field&&<span>{layer?.volume&&layer.options.mode==="iso"?<><i style={{background:"#ff7900"}}/>{field.name} = {layer.options.iso} · file units</>:<><i className="cfx-colour-scale" style={{background:`linear-gradient(to right, ${(palettes[layer?.options.palette??"coolwarm"]??palettes.coolwarm).map(rgb=>`rgb(${rgb.map(value=>Math.round(value*255)).join(",")})`).join(", ")})`}}/>{field.name}: {layer?.options.low.toPrecision(5)} → {layer?.options.high.toPrecision(5)} · file units</>}</span>}
       <button onClick={()=>downloadCFD(files[Number(active)]??file,(files[Number(active)]??file).name)}>Download full original data</button></footer>
-    </CFDFloatingControls>
+    </CFDViewerControls>
     <CFDPlaneContextMenu menu={planeMenu} onClose={()=>setPlaneMenu(null)} onDelete={picked=>onRemoveFile?.(picked)}/>
     </CFDViewerFrame>
   </section>;

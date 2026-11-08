@@ -245,6 +245,7 @@ test("real 3D selection only highlights orange without moving the camera; face p
   assert.ok(candidate, "An existing planar host must be reachable for an actual pointer placement");
   await page.mouse.click(candidate.x, candidate.y);
   const placement = page.getByRole('region',{name:'Vent placement editor',exact:true});
+  await placement.getByRole('checkbox',{name:'Advanced mode'}).check();
   await eventually(() => placement.getByRole('combobox',{name:'Vent host face',exact:true}).inputValue(), value => value === candidate.hostId);
   const second = await eventually(() => findHost(wallIds.filter(id => id !== candidate.hostId)), Boolean);
   await page.mouse.click(second.x, second.y);
@@ -268,9 +269,10 @@ test("real 3D selection only highlights orange without moving the camera; face p
     const p=s.controls.target.clone().set(center[0]/1000,center[2]/1000,-center[1]/1000).project(s.camera);
     return {x:box.x+(p.x+1)*box.width/2,y:box.y+(1-p.y)*box.height/2};
   },center);
-  const beforeDrag=await placement.getByLabel('Live vent coordinates').innerText();
+  const coordinates=()=>placement.getByRole('spinbutton',{name:/^Vent [XYZ] \(mm\)$/}).evaluateAll(inputs=>inputs.map(input=>input.value).join(','));
+  const beforeDrag=await coordinates();
   await page.mouse.move(hit.x,hit.y); await page.mouse.down(); await page.mouse.move(hit.x+60,hit.y+15,{steps:8});
-  await eventually(()=>placement.getByLabel('Live vent coordinates').innerText(),text=>text!==beforeDrag,'Dragging must update coordinates before pointer release');
+  await eventually(coordinates,text=>text!==beforeDrag,'Dragging must update coordinates before pointer release');
   await page.mouse.up();
   assert.notEqual(await uInput.inputValue(),'.65');
   const footer=ui.locator('.cfx-placement-actions');

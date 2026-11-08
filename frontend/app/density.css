@@ -371,12 +371,10 @@ body .cfx-workspace .cfx-adjoint h2 { font-size:15px; margin:0; }
 body .cfx-workspace .cfx-adjoint > details { margin:0; }
 body .cfx-workspace .cfx-adjoint-actions { display:flex; gap:8px; flex-wrap:nowrap; overflow-x:auto; }
 body .cfx-workspace .cfx-adjoint-actions > button { flex:1 0 140px; }
-body .cfx-workspace .cfx-viewer-frame { position:relative; gap:0; padding:0; }
-body .cfx-workspace .cfx-viewer-expand { position:absolute; right:10px; bottom:10px; z-index:7; }
-body .cfx-workspace .cfx-floating-controls { position:absolute; top:10px; right:10px; z-index:8; margin:0!important; padding:0!important; border:0!important; max-width:calc(100% - 20px); }
-body .cfx-workspace .cfx-floating-controls > summary { display:block; width:max-content; margin-left:auto; padding:7px 12px; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--panel); box-shadow:0 2px 8px #0002; cursor:pointer; }
-body .cfx-workspace .cfx-floating-controls-body { width:min(560px,calc(100vw - 80px)); max-width:100%; max-height:55dvh; overflow:auto; padding:12px; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--panel); box-shadow:0 8px 24px #0002; }
-body .cfx-workspace .cfx-floating-controls:not([open]) > .cfx-floating-controls-body { display:none; }
+body .cfx-workspace .cfx-viewer-frame { position:relative; gap:var(--density-section-gap); padding:0; }
+body .cfx-workspace .cfx-viewer-expand { display:flex; justify-content:flex-end; }
+body .cfx-workspace .cfx-viewer-controls { margin:0; min-width:0; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--surface-muted); }
+body .cfx-workspace .cfx-viewer-controls-body { display:grid; gap:var(--density-section-gap); padding:var(--density-window-padding); min-width:0; }
 body .cfx-workspace .cfx-probe-value.cfx-probe-anchored { padding:4px 7px; margin-left:10px; transform:translateY(-50%); max-width:280px; overflow:visible; font-size:12px; }
 body .cfx-workspace .cfx-picked-dot { position:absolute; top:50%; left:-13px; width:6px; height:6px; border-radius:50%; background:#000; transform:translateY(-50%); box-shadow:0 0 0 1px #fff8; }
 @container cfx-setup (max-width:640px) {

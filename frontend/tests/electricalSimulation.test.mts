@@ -69,7 +69,7 @@ test("label anchors and gang assignments survive normalization and JSON roundtri
   assert.equal(bad.connections[0].labelPosition, undefined); assert.equal(bad.connections[0].fromSwitchGang, undefined);
 });
 test("window help explains electrical checkout and each specialist workflow", () => {
-  assert.match(JSON.stringify(windowHelpSteps("Full Electrical Layout module")), /press Enter/);
+  assert.match(JSON.stringify(windowHelpSteps("Electrical Layout module")), /press Enter/);
   assert.match(JSON.stringify(windowHelpSteps("Lighting layout test")), /Two-way/);
   assert.match(JSON.stringify(windowHelpSteps("Electrical BOM & schedule")), /order quantities/);
   assert.match(JSON.stringify(windowHelpSteps("Energy & Insulation")), /not an official EPC/);

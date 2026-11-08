@@ -83,10 +83,11 @@ test('temperature and dimensional preferences update CFD inputs while storage st
   const changed=await eventually(saved,p=>p.cfdScenarios[0].vents[0].temperatureK===298.15&&p.cfdScenarios[0].vents[0].widthMm===600);
   const before=structuredClone(changed.cfdScenarios[0].vents);
   await button(editor,'Place this vent on face…').click(); const placement=ui.getByRole('region',{name:'Vent placement editor',exact:true});
+  await placement.getByRole('checkbox',{name:'Advanced mode'}).check();
   const host=placement.getByRole('combobox',{name:'Vent host face',exact:true});
   await host.selectOption({index:1}); const u=placement.getByRole('spinbutton',{name:'Host U (0–1)',exact:true}); await u.fill('.4'); await u.press('Enter');
   await placement.getByRole('status').getByText(/Changes are a preview/).count();
-  assert.ok(await placement.getByLabel('Live vent coordinates').isVisible());
+  assert.ok(await placement.getByRole('spinbutton',{name:'Vent Z (mm)',exact:true}).isVisible());
   assert.equal(await ui.locator('.cfx-setup-window').isVisible(),false);
   assert.deepEqual((await saved()).cfdScenarios[0].vents,before);
   await button(ui.locator('.cfx-placement-editor'),'Cancel').click(); assert.deepEqual((await saved()).cfdScenarios[0].vents,before);
