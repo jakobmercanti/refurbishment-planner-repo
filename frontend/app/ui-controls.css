@@ -1,6 +1,6 @@
 /* Content gutters are independent of the unchanged five-pixel resize targets. */
 :root { --window-side-padding: 5px; --window-density-width: 1; }
-:root[data-density="compact"] { --window-side-padding: 3px; --window-density-width: .86; }
+:root[data-density="compact"] { --window-side-padding: 3px; --window-density-width: .8; }
 body :is(.floating-toolbar-content, .popup-content, .local-assets-content, .settings-content, .settings-sections, .cfx-setup-panel, .thermal-body) {
   padding-inline: var(--window-side-padding);
 }
@@ -10,6 +10,7 @@ body .cfx-setup-window > .floating-toolbar-content { padding: 0; }
 /* The standalone dialogs use the same density and gutters as floating tools. */
 :root body :is(.settings-dialog, .save-as-dialog, .floorplan-export-dialog, .catalogue-manager-modal, .catalogue-detail-dialog) { padding-inline: var(--window-side-padding); width: min(calc(var(--window-dialog-width, 470px) * var(--window-density-width)), calc(100vw - 32px)); }
 body .settings-dialog.account-dialog { --window-dialog-width: 720px; }
+body .settings-dialog.preferences-dialog { --window-dialog-width: 740px; --window-side-padding: clamp(14px, 3vw, 26px); }
 body .settings-dialog.local-assets { --window-dialog-width: 980px; }
 body .floorplan-export-dialog { --window-dialog-width: 420px; }
 body .catalogue-manager-modal { --window-dialog-width: 760px; }
@@ -74,6 +75,14 @@ body .electrical-test-disclosure { display: none; }
 .socket-test-list { display: grid; gap: 6px; }
 .socket-test-list > button { display: grid; gap: 3px; text-align: left; }
 .heating-surface-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.heating-plan-active:not(.insulation-layout-active) .electrical-architecture-layer { filter:none; opacity:1; }
+.heating-plan-active .electrical-architecture-layer > :not(.plan-wall-fabric,.opening-symbol,[data-heating-fixture]) { filter:grayscale(1); opacity:.3; }
+.heating-plan-active .plan-wall-fabric .wall-body { stroke:#9c5426; }
+.heating-plan-active .plan-wall-fabric .wall-line { stroke:#edbd8c; }
+.heating-plan-active .opening-symbol { color:#145a91 !important; }
+.heating-plan-active .opening-symbol .opening-gap { stroke:#dceefc; }
+.heating-plan-active .opening-symbol :is(.opening-jamb,.door-leaf,.door-swing,.door-closed-line,.window-frame,.window-projecting-frame,.window-core,.window-pane) { stroke:#2277ae; }
+.heating-plan-active [data-heating-fixture] { color:#a54b23; filter:drop-shadow(0 0 2px #e18a43); }
 .report-preview-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
 .report-preview-options > label { display: grid; gap: 5px; }
 .report-preview-options > label:has(input[type=checkbox]) { grid-column: 1 / -1; display: flex; align-items: center; }

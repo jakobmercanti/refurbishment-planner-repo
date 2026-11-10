@@ -6,7 +6,7 @@ import { useHeatingLayout } from "./HeatingLayoutContext";
 
 
 import { saveHvacCalculations } from "@/lib/hvacExport";
-import { CFDNumber } from "./CFDFields";
+import { CFDNumber, CFDText } from "./CFDFields";
 
 import { WindowHelpButton } from "./WindowHelpButton";
 import { projectFloors } from "@/lib/buildingDocument";
@@ -178,7 +178,8 @@ export function VentilationPanel() {
       {report && <p>{currentFaces ? "Geometry checked" : checked ? "Inputs changed — recheck geometry" : "Measured host faces ready"}. Drag shared vents in the main 2D or 3D floorplan; use each vent’s Edit button for its host, coordinates and operating settings.</p>}
     </details>
     <details><summary>Room air &amp; design conditions</summary>
-      <label>Scenario name<input maxLength={100} value={operating.name} onChange={e => { if (e.target.value.trim()) saveScenario({ ...operating, name: e.target.value }); }} /></label>
+      <div className={styles.roomAirFields}>
+      <CFDText key={operating.id} label="Scenario name" maxLength={100} value={operating.name} onChange={name => saveScenario({ ...operating, name })} />
       <label>New editable starting point<select aria-label="New HVAC scenario preset" value="" onChange={e => { const name = e.target.value; saveScenario({ ...operating, id: crypto.randomUUID(), name, conditions: { ...operating.conditions, ...(name === "Summer cooling" ? { outdoorC: 32, roomC: 25, supplyC: 16 } : name === "Winter heating" ? { outdoorC: -3, roomC: 20, supplyC: 30 } : name === "High occupancy" ? { occupants: 10 } : {}) } }); }}><option value="" disabled>Create scenario…</option>{["Nominal operation", "High occupancy", "Summer cooling", "Winter heating", "Custom"].map(n => <option key={n}>{n}</option>)}</select></label>
       <div className={styles.grid}>{([
         ["roomC", "Room setpoint (°C)"], ["outdoorC", "Outdoor dry bulb (°C)"], ["supplyC", "Required-flow supply temperature (°C)"],
@@ -186,6 +187,7 @@ export function VentilationPanel() {
       ] as const).map(([key, label]) => <CFDNumber key={key} label={label} value={operating.conditions[key]} onChange={v => conditions({ [key]: v })} />)}</div>
       <label><input type="checkbox" checked={operating.conditions.includeHeating} onChange={e => conditions({ includeHeating: e.target.checked })} />Include enabled Heating devices once</label>
       <button onClick={() => saveScenario({ ...operating, ventOverrides: {}, heaterOverrides: {} })}>Reset scenario overrides</button>
+      </div>
     </details>
     <details open><summary>Calculations · live well-mixed sensible balance</summary>
       <p>Measured floor area × clear wall height; roof slope/void volume requires checked CFD geometry. Envelope U-values and adjacent temperatures come from Heating / Insulation. No legal compliance threshold is assumed.</p>

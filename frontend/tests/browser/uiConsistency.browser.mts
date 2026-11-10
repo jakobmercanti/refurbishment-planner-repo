@@ -145,7 +145,7 @@ test("missing socket references can be removed and a replacement consumer unit r
 
 test("service windows use one main guide and one contextual guide per main section", async t => {
   const session = await harness.session(fixture()); t.after(() => session.close()); const { page } = session;
-  for (const [entry, selector] of [["Electrical Layout module…", ".electrical-layout-window"], ["Heating Layout", ".heating-layout-window"], ["Energy & Insulation", ".energy-layout-window"]]) {
+  for (const [entry, selector] of [["Electrical Layout module…", ".electrical-layout-window"], ["Heating & ventilation", ".heating-layout-window"], ["Energy & Insulation", ".energy-layout-window"]]) {
     await menu(page, "Tools", entry); const panel = page.locator(selector);
     await panel.locator(".floating-toolbar-titlebar .window-help-button").click();
     const help = page.locator(".window-help-host .floating-toolbar-content"); await help.waitFor();

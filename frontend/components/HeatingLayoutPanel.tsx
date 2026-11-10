@@ -152,7 +152,7 @@ export function HeatingLayoutPanel(props: Props) {
       <div className={styles.balanceHeading}><strong>{row.room.name}</strong><strong className={styles.balanceHeadline} title={`${balance.headline} — ${balance.detail}`}>{balance.tone === "sufficient" ? "✓ " : "! "}{balance.headline}</strong><small>{row.demand.areaM2.toFixed(1)} m² · Target {row.demand.targetC}°C</small></div>
       <div className={styles.metrics}>
         <div><span>Heat required</span><strong>{watt(row.demand.designW)}</strong></div>
-        <div><span>Heat available{balance.estimated ? " · estimated" : ""}</span><strong>{balance.capacityText}</strong></div>
+        <div><span>Heat available</span><strong title={balance.estimated ? "Includes estimated output" : undefined}>{balance.capacityText}</strong></div>
       </div>
     </section>}
     <nav role="tablist" aria-label="Heating sections" className={styles.tabs}>{[["Heat Loss", "Room setup"], ["Radiators", "Heating elements"], ["UFH", "Underfloor"], ["System", "System"], ["Results", "Results"]].map(([name, label], index, tabs) => <button key={name} id={`heating-tab-${index}`} role="tab" aria-selected={tab === name} aria-controls="heating-section-panel" tabIndex={tab === name ? 0 : -1} onClick={e => { setTab(name); scrollWorkbenchToStart(e.currentTarget); }} onKeyDown={e => {

@@ -27,6 +27,16 @@
   --density-row-padding: 5px;
 }
 
+:root[data-density="compact"] {
+  --density-font-scale: .92;
+  --toolbar-control-gap: 5px;
+  --density-window-padding: 6px;
+  --density-section-gap: 5px;
+  --density-control-min-height: 26px;
+  --density-control-padding-y: 2px;
+  --density-control-padding-x: 6px;
+}
+
 .planner-workspace {
   font-size: calc(16px * var(--density-font-scale));
 }
@@ -45,6 +55,10 @@ body :is(.floating-toolbar-content, .settings-dialog, .popup, [aria-modal="true"
   height: auto;
   padding-block: var(--density-control-padding-y);
   line-height: 1.25;
+}
+:root[data-density="compact"] body :is(.floating-toolbar-content, .settings-dialog, .popup, [aria-modal="true"], .software-dropdown, .building-floor-bar, .topbar, .planner-build-screen)
+  :is(button, .cfx-file):not(.window-header-actions button, .window-help-button, .floating-toolbar-resize, .colour-swatch, .color-swatch, .material-swatch, .fixture-section-toggle, .fixture-colours-toggle, .full-plan-overall-toggle, .catalogue-disclosure) {
+  padding-inline: min(var(--density-control-padding-x), 2vw);
 }
 body :is(.floating-toolbar-content, .settings-dialog, .popup, [aria-modal="true"], .software-dropdown, .building-floor-bar, .planner-build-screen)
   :is(select, input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="hidden"])) {
@@ -296,6 +310,7 @@ body .cfx-workspace .cfx-result-open-actions { grid-template-columns:repeat(2,mi
 body .settings-dialog .settings-engineering-units { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:12px; }
 body .settings-dialog :is(.settings-navigation,.settings-engineering-units) label { display:grid; gap:6px; font:600 calc(12px * var(--density-font-scale,1))/1.4 var(--font-sans,Arial,sans-serif); }
 body .settings-dialog select { width:100%; min-width:0; height:34px; margin:0; padding:6px 8px; border:1px solid var(--line); border-radius:var(--radius-control,8px); background:var(--surface-muted); color:var(--ink); font:650 12px/1.3 var(--font-sans,Arial,sans-serif); }
+:root[data-density="compact"] body .settings-dialog select { font-size:calc(12px * var(--density-font-scale)); }
 body .settings-dialog .settings-engineering-units small { grid-column:1/-1; font-size:12px; }
 body .cfx-setup-window .floating-toolbar-header-content select { min-height:30px; height:30px; margin-block:0; padding-block:3px; }
 @media(max-width:640px) {

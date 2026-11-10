@@ -45,10 +45,30 @@ async function inspect(panel, label, expectedMainHelp = 1) {
     const mainHelp = help.filter(e => !e.classList.contains("menu-section-help")).length;
     const sectionHelp = help.filter(e => e.classList.contains("menu-section-help"));
     const uniqueSections = new Set(sectionHelp.map(e => e.parentElement));
-    return { unequal, mainHelp, duplicateHelp: sectionHelp.length - uniqueSections.size, chrome, clipped: actions.filter(e => e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 2).map(e => e.textContent), overflow: root.scrollWidth > root.clientWidth + 2 };
+    const missingFieldHelp = [];
+    for (const button of sectionHelp) {
+      const labels = [...button.closest("details").querySelectorAll("input[aria-label], select[aria-label], textarea[aria-label]")]
+        .filter(e => owner(e) === root && !e.closest("summary,.cfx-row-menu,[aria-hidden='true']"))
+        .map(e => e.getAttribute("aria-label")).filter(label => /\p{L}/u.test(label));
+      if (!labels.length) continue;
+      let headings = [];
+      // Observe the real guide content while keeping the help overlay closed during layout checks.
+      const dispatch = window.dispatchEvent;
+      window.dispatchEvent = function (event) {
+        if (event instanceof CustomEvent && event.type === "plannerbuild:window-help") {
+          headings = event.detail.steps.map(step => step.heading);
+          return true;
+        }
+        return dispatch.call(this, event);
+      };
+      try { button.click(); } finally { window.dispatchEvent = dispatch; }
+      missingFieldHelp.push(...labels.filter(label => !headings.includes(label.trim().replace(/\s+/g, " "))));
+    }
+    return { unequal, mainHelp, duplicateHelp: sectionHelp.length - uniqueSections.size, missingFieldHelp, chrome, clipped: actions.filter(e => e.scrollWidth > e.clientWidth + 2 || e.scrollHeight > e.clientHeight + 2).map(e => e.textContent), overflow: root.scrollWidth > root.clientWidth + 2 };
   });
   assert.equal(report.mainHelp, expectedMainHelp, `${label}: window help policy`);
   assert.equal(report.duplicateHelp, 0, `${label}: one help button per section`);
+  assert.deepEqual(report.missingFieldHelp, [], `${label}: each named field appears in its section guide`);
   assert.ok(report.chrome.length >= 3 && report.chrome.every(([w, h]) => Math.abs(w - report.chrome[0][0]) < 1 && Math.abs(h - report.chrome[0][1]) < 1 && Math.abs(w - h) < 1), `${label}: ${JSON.stringify(report.chrome)}`);
   assert.deepEqual(report.unequal, [], `${label}: equal action heights`); assert.deepEqual(report.clipped, [], label); assert.equal(report.overflow, false, label);
 }

@@ -63,9 +63,14 @@
 .panel .exportActions > button { width: 100%; min-width: 0; }
 .panel button.fullWidth { display: block; width: 100%; margin-block: 10px; }
 .panel details.elementCard { padding: 0; }
-.panel summary.elementSelect { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 60px; padding: 9px 30px 9px 10px; background: var(--surface-muted); }
-.panel summary.elementSelect > span:first-child { display: grid; gap: 4px; min-width: 0; }
-.panel .elementNotes { padding: 10px; }
+.panel summary.elementSelect { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:42px; padding:5px 30px 5px 10px; background:var(--surface-muted); font-size:calc(11px * var(--density-font-scale)); line-height:1.3; }
+.panel details.elementCard[open] > summary { margin-bottom:0; }
+.panel summary.elementSelect > span:first-child { display:grid; gap:2px; min-width:0; }
+.panel .elementNotes { padding:6px 10px; }
+.panel .elementNotes p { margin:0; font-size:calc(11px * var(--density-font-scale)); }
+.roomAirFields { display:grid; gap:10px; }
+.roomAirFields > .grid { margin-top:0; }
+.roomAirFields > button { justify-self:start; }
 .panel.panel .toolbar button { width:100%; min-height:var(--density-control-min-height,34px); height:var(--density-control-min-height,34px); padding:4px 6px; line-height:1.1; box-sizing:border-box; font-size:calc(11px * var(--density-font-scale,1)); }
 .systemChip strong { white-space:nowrap; flex-shrink:0; }
 .roomPicker { display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:10px; align-items:end; }
@@ -94,11 +99,11 @@
 .panel details.instructions { background:var(--surface-muted); }
 .review { border-left:3px solid #d8932c!important; }
 .panel ul { margin:8px 0 2px; padding-left:20px; display:grid; gap:6px; }
-.elementList { display:grid; gap:8px; }
+.elementList { display:grid; gap:12px; }
 .elementCard { min-width:0; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
 .elementCard[data-selected=true] { border-color:var(--deep); box-shadow:0 0 0 1px var(--deep); }
 .elementSelect > span:first-child { display:grid; gap:4px; min-width:0; overflow-wrap:anywhere; }
-.elementOutput { flex-shrink:0; display:grid; gap:3px; text-align:right; font-size:15px; }
+.elementOutput { flex-shrink:0; display:grid; gap:2px; text-align:right; font-size:calc(12px * var(--density-font-scale)); }
 .elementOutput small { max-width:140px; }
 .editor { display:grid; gap:9px; padding:11px; border:1px solid var(--line); border-radius:10px; }
 .empty { text-align:center; padding:20px; background:var(--surface-muted); border:1px dashed var(--line); border-radius:10px; }

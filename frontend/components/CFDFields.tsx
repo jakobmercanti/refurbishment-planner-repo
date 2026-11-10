@@ -89,11 +89,18 @@ export function CFDText({
         aria-label={label}
         maxLength={maxLength}
         value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          if (e.target.value.trim()) onChange(e.target.value);
+        onChange={event => setDraft(event.target.value)}
+        onBlur={event => {
+          const next = event.currentTarget.value.trim();
+          setDraft(value);
+          if (next && next !== value) onChange(next);
         }}
-        onBlur={() => setDraft(value)}
+        onKeyDown={event => {
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        }}
       />
     </label>
   );

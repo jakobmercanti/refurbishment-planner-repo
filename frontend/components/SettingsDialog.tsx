@@ -18,7 +18,7 @@ export function SettingsDialog({ open, preferences, onChange, onClose }: Setting
   if (!open) return null;
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <section className="settings-dialog preferences-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <header>
           <div><span className="eyebrow">Application settings</span><h2 id="settings-title">Preferences</h2></div>
           <div className="window-header-actions"><WindowHelpButton title="Preferences" /><button type="button" className="modal-close" onClick={onClose} aria-label="Close settings">×</button></div>
