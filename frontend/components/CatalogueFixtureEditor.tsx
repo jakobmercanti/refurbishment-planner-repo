@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { STAIRCASE_MODELS } from "@/lib/architecturalModels";
 import { ComponentColours } from "@/components/ComponentColours";
+import { WindowHelpSectionHeader } from "@/components/WindowHelpButton";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { EditableNumberInput } from "@/components/EditableNumberInput";
 import { FixturePreview } from "@/components/FixturePreview";
@@ -317,8 +318,10 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
         else setDraft(next);
       }} />
       <section className="fixture-add-section" aria-label="Position">
+        <WindowHelpSectionHeader title="Position">
         <button type="button" className="fixture-section-toggle" aria-expanded={positionExpanded} onClick={() => setPositionExpanded(current => !current)}><span><strong>Position</strong><small>{positionSummary}</small></span><span aria-hidden>{positionExpanded ? "−" : "›"}</span></button>
-        {positionExpanded && <div className="fixture-section-content">
+        </WindowHelpSectionHeader>
+        <div className="fixture-section-content" data-window-help-body hidden={!positionExpanded}>
       {isHeatingElement(value) && <button type="button" onClick={() => heatingLayout.editRadiator(value.id)}>Edit heating element…</button>}
           {stairModel && <label className="field"><span>Floor-to-floor rise {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput units={displayUnits} minMm={1} valueMm={value.dimensions.height.value * Math.max(...stairModel.steps.map(step => step.top)) / stairModel.height} onMmChange={rise => change({ ...value, verified: false, dimensions: { ...value.dimensions, height: { ...value.dimensions.height, value: rise * stairModel.height / Math.max(...stairModel.steps.map(step => step.top)), verified: false, source_type: "USER_MEASURED" } } })} /><small>Stretches the flight and guarding together. Overall height below includes guarding.</small></label>}
           {baseHeightRelevant && <label className="field"><span>{cabinet ? "Mounting height above floor" : "Base height above floor"} {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput units={displayUnits} minMm={0} valueMm={value.base_z_mm} onMmChange={base_z_mm => change({ ...value, base_z_mm })} /></label>}
@@ -340,7 +343,7 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
             {!requiresWallMount(value) && <label className="field"><span>Rotation °</span><EditableNumberInput value={value.rotation_deg} onValueChange={rotation_deg => change({ ...value, rotation_deg })} /></label>}
           </div></div>
           {requiresWallMount(value) ? <p>Wall-mounted · position snaps to the nearest wall and orientation follows it.</p> : <label className="fixture-lock-switch"><input type="checkbox" checked={value.wall_lock ?? DEFAULT_OBSTACLE_WALL_LOCK} onChange={event => { const wallLock = event.target.checked; setWallLockPreference(wallLock); change({ ...value, wall_lock: wallLock }); }} /><span>Keep next to wall</span></label>}
-        </div>}
+        </div>
       </section>
       {mountingError && <p role="alert">{mountingError}</p>}
       <button className="fixture-save" disabled={!!error} onClick={() => {
@@ -361,7 +364,9 @@ export function CatalogueFixtureEditor({ room, displayUnits, onChange, apiUrl, r
       }}>{existing ? "Done" : value.person_spec?.support ? "Add person on furniture" : "Add element"}</button>
     </>}
     {listedRoomObstacles.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
+      <WindowHelpSectionHeader title="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={elementsListExpanded} onClick={() => setElementsListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{elementsListExpanded ? "−" : "›"}</span></button>
+      </WindowHelpSectionHeader>
       {elementsListExpanded && <div className="fixture-section-content elements-list-content"><div className="fixture-list">{listedRoomObstacles.map(item => <article key={item.id} data-element-id={item.id} className={item.id === editingId ? "editing" : ""}>
         <strong title={item.name}>{item.name}</strong><button className="edit-fixture" onClick={() => { if (isHeatingElement(item)) { heatingLayout.editRadiator(item.id); return; } const product = items.find(p => p.id === item.model_id); if (product && isRoomFixture(product)) { setMacroCategory(macroCategoryForCategoryId(product.category_id)); setCategory(electrical ? product.subcategory : product.category_id); setObjectId(product.id); } setWallLockPreference(item.wall_lock ?? false); setEditingId(item.id); onElementSelected?.({ id: item.id, roomId: room.id }); }}>Edit</button>
         <button className="remove-fixture" aria-label={`Remove ${item.name}`} onClick={() => { onChange(room.obstacles.filter(p => p.id !== item.id)); if (item.id === editingId) { setEditingId(null); onEditEnd?.(); } }}>×</button>

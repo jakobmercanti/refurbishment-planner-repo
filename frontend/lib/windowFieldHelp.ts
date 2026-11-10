@@ -1,6 +1,35 @@
 const descriptions: Record<string, string> = {
   "scenario name": "Give the room operating scenario a descriptive name, such as Winter morning. Spaces are allowed. Press Enter or leave the field to save it.",
   "new editable starting point": "Choose a preset to create a separate scenario with starting assumptions. Review the resulting inputs for your room.",
+  "new hvac scenario preset": "Choose a preset to create a separate scenario with starting assumptions. Review the resulting inputs for your room.",
+  "default thickness": "Enter the measured wall thickness to use where a wall has no individual thickness override. Press Enter to review and apply it.",
+  "grid size": "Distance between snap points in the displayed length unit. Match the precision needed for the layout. Existing coordinates stay in place when the interval changes.",
+  "snap to grid": "Snap edited or newly drawn points to the grid interval. Turn this off to place a point between grid lines.",
+  "keep walls squared": "Constrain wall drawing and edits to right angles where the tool supports it. Turn it off for angled walls.",
+  "edit measurements": "Select and adjust dimension annotations on the plan. To resize a wall, use the wall length control on the selected wall.",
+  "parent wall": "Choose the measured wall segment that carries this opening. The opening uses that wall's direction and local offset.",
+  "offset": "Distance along the host wall from its start to the first edge of the opening. Use the measured distance and allow enough room for the full opening width.",
+  "hinge side": "Choose which end of a single door opening carries the hinge, using the parent wall's start and end as references.",
+  "direction": "Choose whether the door leaf swings into or out of the room. Check that its swing clears nearby walls and elements.",
+  "base height above floor": "Vertical distance from the current floor to the underside of the placed item. Enter zero for a floor-standing item.",
+  "mounting height above floor": "Height from the current floor to the bottom of the mounted element. Measure it at the planned fixing position.",
+  "floor-to-floor rise": "Vertical distance between finished floors connected by the stairs. Changing it scales the stair flight and guarding height.",
+  "gap above lower element": "Vertical clearance between the top of the lower item and the bottom of the upper item. Match width and align above adds this gap to the lower item's top elevation.",
+  "lower element": "Choose the placed cabinet or appliance that sets the horizontal alignment and mounting height of the upper element.",
+  "match width and align above": "Use the lower element's width, rotation and alignment. Set the new base height to the lower element's top height plus the entered gap.",
+  "keep next to wall": "Keep the element against a nearby wall as it moves. Elements that require wall mounting are already constrained.",
+  "rotation": "Plan angle of the element in degrees. Use the intended angle, or let a wall-mounted element follow its wall.",
+  "light intensity": "Set the overall brightness of the 3D preview as a percentage. Use the default to compare finishes under the same view settings.",
+  "shadow strength": "Set the contrast of shadows in the 3D preview. Zero suppresses them and higher values make them darker.",
+  "light direction": "Azimuth of the preview light, measured clockwise from the top of the floorplan. 0° and 360° are the same direction.",
+  "light elevation": "Angle of the preview light above the horizon. A lower angle produces longer shadows. 90° places the light directly overhead.",
+  "reset lighting": "Restore all four preview-light settings to their defaults.",
+  "open selection in 3d": "Frame the selected room or full floorplan in the 3D view.",
+  "drawing style": "Choose how linework, fills and labels appear in the exported preview. The geometry and dimensions remain the same.",
+  "file format": "Choose the export file type. Where offered, PDF is suitable for printing, PNG keeps image detail without compression loss, and JPG makes a smaller image.",
+  "include “made with freefloorplan3d.com”": "Add the FreeFloorplan3D credit to the exported drawing.",
+  "inside surface resistance rsi": "Thermal resistance of the air film on the room side. Use the value appropriate to the direction of heat flow and add it to the layer resistances.",
+  "outside surface resistance rse": "Thermal resistance of the air film on the outer side. Add it to the layer resistances unless the starting whole-element value already includes it.",
   "room setpoint": "The indoor air temperature you want to maintain. Use the room's heating or cooling design target. The heat balance compares each air and fabric temperature with this value.",
   "outdoor dry bulb": "The outdoor air temperature before humidity effects. Use the measured or design-weather temperature for the time being modelled. It drives infiltration and outdoor air conditioning.",
   "required-flow supply temperature": "The proposed supply air temperature for the required-flow calculation. The model divides the sensible load by air density × specific heat × the supply-to-room temperature difference. Each existing vent keeps its own inflow temperature.",
@@ -124,8 +153,10 @@ const descriptions: Record<string, string> = {
 
 export function fieldDescription(label: string) {
   const full = label.toLowerCase().replace(/…$/, "").trim();
-  const key = full.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+(°[cfk]|w\/m²k|mm|m|w)$/, "");
-  if (descriptions[full] || descriptions[key]) return descriptions[full] ?? descriptions[key];
+  const key = full.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+(°[cfk]?|w\/m²k|mm|cm|m|in|ft|w)$/, "");
+  if (Object.hasOwn(descriptions, full)) return descriptions[full];
+  if (Object.hasOwn(descriptions, key)) return descriptions[key];
+  if (/^include ["“]made with freefloorplan3d\.com/.test(full)) return descriptions["include “made with freefloorplan3d.com”"];
   if (/\bu[- ]?value\b|\btarget [ur]\b/.test(key) && /w\/m²k|u[- ]value/.test(full)) return "Use a measured, tested or design U-value for the complete element. A lower value means less heat transfer for the same area and temperature difference.";
   if (/\bconductivity\b/.test(key)) return "Use the material's design conductivity in W/(m·K). Divide layer thickness in metres by this value to find the layer's thermal resistance.";
   if (/\b(width|depth|thickness|height|diameter|length)\b/.test(key) && /\((mm|cm|m|in|ft)\)/.test(full)) return `Use the measured or specified ${key} in the displayed unit. Check it against the source drawing or product dimensions.`;

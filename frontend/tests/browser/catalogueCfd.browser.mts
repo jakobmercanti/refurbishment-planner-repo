@@ -105,6 +105,23 @@ async function assertFitContrast(dialog){
   });assert.ok(contrast>=4.5,`Fit must remain legible on the neutral preview stage: ${contrast}`);
 }
 
+test("catalogue help covers preview tools and the download in a closed section", async t => {
+  const s = await session();
+  t.after(() => s.close());
+  const { page } = s;
+  const dialog = await openAsset(page, objects[0]);
+  await dialog.getByRole("button", { name: "CFD shape", exact: true }).click();
+  await dialog.locator(".catalogue-cfd-info").waitFor();
+  assert.equal(await dialog.getByRole("link", { name: "Download CFD STL (mm)", exact: true }).isVisible(), false);
+  await dialog.getByRole("button", { name: "Help for Catalogue entry details", exact: true }).click();
+  const guide = page.getByRole("article", { name: "Help for Catalogue entry details", exact: true });
+  for (const name of ["Asset", "CFD shape", "Preview zoom", "Fit", "Download CFD STL (mm)"]) {
+    await guide.getByRole("heading", { name, exact: true }).first().waitFor();
+  }
+  await page.keyboard.press("Escape");
+  assert.equal(await dialog.getByRole("link", { name: "Download CFD STL (mm)", exact: true }).isVisible(), false);
+});
+
 test("large catalogue dialog keeps information left and orbit/zoom/CFD controls right; every profile renders",async t=>{
   const s=await session();t.after(()=>s.close());const{page}=s;
   for(const item of objects){

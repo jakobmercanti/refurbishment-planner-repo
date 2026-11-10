@@ -15,6 +15,10 @@ button.window-help-button { flex:0 0 auto; box-sizing:border-box; width:var(--wi
 .window-help-content h3 { margin: 12px 0 5px; font-size: 15px; }
 .window-help-content p { margin: 0 0 12px; overflow-wrap:anywhere; }
 .window-help-content li { overflow-wrap: anywhere; }
+.window-help-disclosure-header { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.window-help-disclosure-header > button:first-child { flex: 1; min-width: 0; }
+[data-window-help-body][hidden] { display: none !important; }
+.viewer-lighting-fields { display: grid; gap: inherit; }
 .electrical-mode-row { display: flex; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
 .electrical-mode-row .electrical-mode-toggle { flex: 1; border: 0; padding: 0; background: transparent; }
 .electrical-mode-row > button { flex: 0 0 auto; }

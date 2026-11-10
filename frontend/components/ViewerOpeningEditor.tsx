@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ComponentColours } from "@/components/ComponentColours";
+import { WindowHelpSectionHeader } from "@/components/WindowHelpButton";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { OpeningPreview, openingPreviewObstacle } from "@/components/OpeningPreview";
 import { doorModel } from "@/lib/doorModels";
@@ -300,10 +301,12 @@ export function ViewerOpeningEditor({
           onChange={setComponentColours} />
         {previewItem && <OpeningPreview item={previewItem} kind={kind} doorType={previewDoorType} width={previewingHover ? previewItem.width_mm : width} height={previewingHover ? openingCatalogueDefaultDimensions(previewItem).height : height} colorHex={previewingHover ? previewItem.color_hex : colour} componentColors={previewingHover ? {} : componentColours} />}
         <section className="fixture-add-section" aria-label="Position">
+          <WindowHelpSectionHeader title="Position">
           <button type="button" className="fixture-section-toggle" aria-expanded={positionExpanded} onClick={() => setPositionExpanded(value => !value)}>
             <span><strong>Position</strong><small>{wallChoice === "AUTO" ? "Choose a wall in the 3D view" : `Wall ${Number(wallChoice.split("-")[1])} · Offset ${formatLength(offset, displayUnits)}`}</small></span><span aria-hidden>{positionExpanded ? "−" : "›"}</span>
           </button>
-          {positionExpanded && <div className="fixture-section-content">
+          </WindowHelpSectionHeader>
+          <div className="fixture-section-content" data-window-help-body hidden={!positionExpanded}>
             <div className="coordinate-fields opening-fields">
               <label className="field"><span>Parent wall</span><select value={wallChoice} onChange={event => setWallChoice(event.target.value)}><option value="AUTO">Choose in 3D view</option>{room.vertices.map((_, index) => { const id = `wall-${String(index + 1).padStart(3, "0")}`; return <option key={id} value={id}>Wall {index + 1}</option>; })}</select></label>
               {wallChoice !== "AUTO" && <label className="field"><span>Offset {UNIT_LABEL[displayUnits]}</span><DisplayNumberInput minMm={0} valueMm={offset} units={displayUnits} onMmChange={setOffset} /></label>}
@@ -312,7 +315,7 @@ export function ViewerOpeningEditor({
               <label className="field"><span>Hinge side</span><select disabled={doorType === "DOUBLE"} value={hingeSide} onChange={event => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label>
               <label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={event => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label>
             </div>}
-          </div>}
+          </div>
         </section>
         {error && <p className="inline-error" role="alert">{error}</p>}
         <button type="button" className="primary-small" onClick={beginPlacement}>Add {passageProfileForKey(selected?.representation_key) ? "opening" : kind === "DOOR" ? "door" : "window"}</button>
@@ -321,7 +324,9 @@ export function ViewerOpeningEditor({
     {loading && <p>Loading object catalogue…</p>}
     {!loading && !catalogueError && !categories.length && <p>No {kind === "DOOR" ? "door" : "window"} models are available in the catalogue.</p>}
     {room.openings.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
+      <WindowHelpSectionHeader title="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={listExpanded} onClick={() => setListExpanded(value => !value)}><span><strong>Elements list</strong></span><span aria-hidden>{listExpanded ? "−" : "›"}</span></button>
+      </WindowHelpSectionHeader>
       {listExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">
         {room.openings.map(opening => {
 

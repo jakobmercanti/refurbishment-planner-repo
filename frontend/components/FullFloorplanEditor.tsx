@@ -5,7 +5,7 @@ import type { FloorContent, FloorOpening, RoofConfiguration } from "@/lib/buildi
 import { snapToFloorReference, validateWallRunsOnFloor } from "@/lib/buildingGeometry";
 import { roomMeasurement } from "@/lib/roomMeasurement";
 import { exported } from "@/lib/analytics";
-import { WindowHelpButton } from "@/components/WindowHelpButton";
+import { WindowHelpButton, WindowHelpSectionHeader } from "@/components/WindowHelpButton";
 import { RoomOpeningEditor } from "@/components/RoomOpeningEditor";
 import { createPortal } from "react-dom";
 import { useServiceView, ServiceWindow } from "./ServiceViewContext";
@@ -4622,16 +4622,20 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     {previewOpeningCatalogueItem && <OpeningPreview item={previewOpeningCatalogueItem} kind={openingKind} doorType={previewOpeningDoorType} width={previewOpeningWidth} height={previewOpeningHeight} colorHex={previewOpeningColour} componentColors={previewOpeningComponentColours} />}
     {openingCatalogueError && <p className="inline-error">{openingCatalogueError}</p>}
     <section className="fixture-add-section" aria-label="Position">
+      <WindowHelpSectionHeader title="Position">
       <button type="button" className="fixture-section-toggle" aria-expanded={openingPositionExpanded} onClick={() => setOpeningPositionExpanded((current) => !current)}><span><strong>Position</strong><small>{openingPositionSummary}</small></span><span aria-hidden>{openingPositionExpanded ? "−" : "›"}</span></button>
-      {openingPositionExpanded && <div className="fixture-section-content">
+      </WindowHelpSectionHeader>
+      <div className="fixture-section-content" data-window-help-body hidden={!openingPositionExpanded}>
         <div className="coordinate-fields opening-fields"><label className="field"><span>Parent wall</span><select value={openingParent} onChange={(event) => setOpeningParent(event.target.value)}><option value="">Select a wall…</option>{segmentOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
         <label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label></div>
         {openingKind === "DOOR" && !passageProfileForKey(activeOpeningCatalogueItem?.representation_key) && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
-      </div>}
+      </div>
     </section>
     {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={() => saveOpening()}>{selectedOpeningId ? `Update ${passageProfileForKey(activeOpeningCatalogueItem?.representation_key) ? "opening" : openingKind.toLowerCase()}` : `Add ${passageProfileForKey(activeOpeningCatalogueItem?.representation_key) ? "opening" : openingKind.toLowerCase()}`}</button></div>
     {openings.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
+      <WindowHelpSectionHeader title="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={openingListExpanded} onClick={() => setOpeningListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{openingListExpanded ? "−" : "›"}</span></button>
+      </WindowHelpSectionHeader>
       {openingListExpanded && <div className="fixture-section-content elements-list-content"><div className="full-opening-list">{openings.map(opening => { const item = catalogueItemForOpening(opening), passage = passageProfileForKey(opening.representationKey ?? item?.representation_key); return <div key={opening.id} className={selectedOpeningId === opening.id ? "editing" : ""}><span className={`opening-chip ${opening.kind.toLowerCase()}`}>{passage ? "Opening" : opening.kind}</span><small title={item?.name}>{openingName(opening.id)} · {formatLength(opening.width, displayUnits)}</small><button className="edit-opening" type="button" onClick={() => selectOpeningForEdit(opening)}>Edit</button><button aria-label={`Remove ${passage ? "opening" : opening.kind.toLowerCase()}`} onClick={() => deleteOpeningById(opening.id)}>×</button></div>; })}</div></div>}
     </section>}
     </>}
@@ -5319,8 +5323,10 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
           {roomActionError && <p className="inline-error" role="alert">{roomActionError}</p>}
 <div className="button-grid editor-history-row"><button title="Undo last operation (Ctrl+Z)" onClick={undo} disabled={canProjectUndo !== undefined ? !canProjectUndo&&!energyUndo.current.length&&!heatingUndo.current.length&&!((electricalMode || electricalScheduleOpen)&&electricalUndo.current.length) : (!energyUndo.current.length && !heatingUndo.current.length && !history.length && !((electricalMode || electricalScheduleOpen) && electricalUndo.current.length))}>↶ Undo</button><button title="Redo last operation (Ctrl+Y)" onClick={redo} disabled={canProjectRedo !== undefined ? !canProjectRedo&&!energyRedo.current.length&&!heatingRedo.current.length&&!((electricalMode || electricalScheduleOpen)&&electricalRedo.current.length) : (!energyRedo.current.length && !heatingRedo.current.length && !future.length && !((electricalMode || electricalScheduleOpen) && electricalRedo.current.length))}>↷ Redo</button></div>
           <div className={`full-plan-overall-properties${overallPropertiesExpanded ? " expanded" : ""}`}>
+            <WindowHelpSectionHeader title="Overall properties">
             <button type="button" className="full-plan-overall-toggle" aria-expanded={overallPropertiesExpanded} onClick={() => setOverallPropertiesExpanded((current) => !current)}><strong>Overall properties</strong><span aria-hidden>{overallPropertiesExpanded ? "−" : "+"}</span></button>
-            {overallPropertiesExpanded && <div className="full-plan-overall-content">
+            </WindowHelpSectionHeader>
+            <div className="full-plan-overall-content" data-window-help-body hidden={!overallPropertiesExpanded}>
               <div className="coordinate-fields room-measurements">
                 <label className="field"><span>Default thickness ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={defaultWallThicknessInput ?? wallThickness} units={displayUnits} onMmChange={setDefaultWallThicknessInput} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); requestDefaultWallThickness(); } }} /></label>
               </div>
@@ -5330,7 +5336,7 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
                 <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => setSquaredWalls(event.target.checked)} /><span>Keep walls squared</span></label>
                 <label className="check-row measurement-edit-toggle"><input type="checkbox" checked={measurementEditEnabled} onChange={(event) => { setMeasurementEditEnabled(event.target.checked); setMeasurementDraft([]); setSelectedMeasurement(null); setMeasurementContextMenu(null); setTool(event.target.checked ? "MEASURE" : "SELECT"); }} /><span>Edit measurements</span></label>
               </div>
-            </div>}
+            </div>
           </div>
           {measurementEditEnabled && selectedMeasurement && <div className="selected-properties measurement-properties"><div className="tool-heading"><h2>Selected measurement</h2></div><p className="tool-note">Drag this measurement on the drawing, right-click it for actions, or remove it.</p><button className="danger-button" onClick={deleteSelectedMeasurement}>Delete measurement</button></div>}
           {tool === "SELECT" && selectedSegment && selectedWall && <div className="selected-properties">

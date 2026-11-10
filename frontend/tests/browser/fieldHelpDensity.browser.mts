@@ -112,3 +112,95 @@ test("pass two: Compact shrinks the UI and typing spaces works in both HVAC and 
   await name.press("Enter");
   await eventually(s.saved, p => p.hvac.devices.some(d => d.vent.name === "North supply grille"));
 });
+
+test("main guides include actions and tabs outside disclosures", async t => {
+  const s = await harness.session(hvacProject());
+  t.after(() => s.close());
+  const { page } = s;
+  await menu(page, "Settings", "Preferences…");
+  const preferences = page.getByRole("dialog", { name: "Preferences", exact: true });
+  const preferencesHelp = await sectionHelp(page, preferences, "Preferences");
+  for (const name of ["System", "Light", "Dark", "Compact", "Comfortable", "Millimetres",
+    "3D navigation", "Default currency", "Temperature units", "CFD volume flow units",
+    "Confirm before opening another project", "Done"]) {
+    assert.ok(await preferencesHelp.getByRole("heading", { name, exact: true }).count(), name);
+  }
+  await page.keyboard.press("Escape");
+  await exactButton(preferences, "Done").click();
+
+  await exactButton(page, "Export floorplan").click();
+  const exportDialog = page.locator(".floorplan-export-dialog");
+  const exportHelp = await sectionHelp(page, exportDialog, "Floorplan export");
+  for (const name of ["Drawing style", "File format", "Save as PDF", "Cancel"]) {
+    assert.ok(await exportHelp.getByRole("heading", { name, exact: true }).count(), name);
+  }
+  assert.equal(await exportHelp.getByRole("heading", { name: "3D navigation", exact: true }).count(), 0);
+  await page.keyboard.press("Escape");
+  await exactButton(exportDialog, "Cancel").click();
+
+  await menu(page, "Tools", "Heating & ventilation");
+  const heating = page.locator(".heating-layout-window");
+  const heatingHelp = await sectionHelp(page, heating, "Heating Layout");
+  for (const name of ["Heating", "Ventilation", "Heating elements", "Room setup", "Add element"]) {
+    assert.ok(await heatingHelp.getByRole("heading", { name, exact: true }).count(), name);
+  }
+  await page.keyboard.press("Escape");
+});
+
+test("quote generation and closed simulation action menus have scoped help", async t => {
+  const s = await harness.session(hvacProject());
+  t.after(() => s.close());
+  const { page } = s;
+  const workspace = page.getByRole("combobox", { name: "Workspace", exact: true });
+  await workspace.selectOption("PLANNERBUILD");
+  await page.getByRole("combobox", { name: "PlannerBuild view", exact: true }).selectOption("QUOTE");
+  const quote = page.getByRole("region", { name: "Quote Generator", exact: true });
+  await exactButton(quote, "Generate from project").click();
+  const generation = await sectionHelp(page, quote, "Quote — Generate from project");
+  await generation.getByRole("heading", { name: "Cancel generation", exact: true }).waitFor();
+  assert.equal(await generation.getByRole("heading", { name: "New quote", exact: true }).count(), 0);
+  await page.keyboard.press("Escape");
+
+  await workspace.selectOption("CLIMOPTIX");
+  const cfd = page.locator(".cfx-workspace");
+  await cfdWindow(cfd, "Simulations");
+  const manage = await sectionHelp(page, cfd, "Manage simulations");
+  for (const name of ["Rename", "Duplicate simulation", "Archive", /^Move .+ to group$/]) {
+    assert.ok(await manage.getByRole("heading", { name, exact: typeof name === "string" }).count(), String(name));
+  }
+});
+
+test("closed custom disclosures have complete local guides in 2D and 3D", async t => {
+  const s = await harness.session(hvacProject());
+  t.after(() => s.close());
+  const { page } = s;
+  const build = page.locator(".full-plan-build-toolbar");
+  assert.equal(await exactButton(build, "Overall properties").getAttribute("aria-expanded"), "false");
+  const overall = await sectionHelp(page, build, "Overall properties");
+  for (const name of [/^Default thickness/, /^Grid size/, "Snap to grid", "Keep walls squared", "Edit measurements"]) {
+    assert.ok(await overall.getByRole("heading", { name, exact: typeof name === "string" }).count(), String(name));
+  }
+  await page.keyboard.press("Escape");
+  assert.equal(await exactButton(build, "Overall properties").getAttribute("aria-expanded"), "false");
+
+  const openings = page.getByRole("combobox", { name: "Add to plan", exact: true });
+  await openings.selectOption("WINDOW");
+  const add = page.locator(".floating-toolbar").filter({ has: openings });
+  const position = await sectionHelp(page, add, "Position");
+  assert.ok(await position.getByRole("heading", { name: "Parent wall", exact: true }).count());
+  assert.match(await position.innerText(), /Distance along the host wall from its start/);
+  await page.keyboard.press("Escape");
+
+  await exactButton(page, "3D").click();
+  const view = page.locator(".floating-toolbar").filter({ has: exactButton(page, "Help for Lighting") });
+  assert.equal(await exactButton(view, "Lighting").getAttribute("aria-expanded"), "false");
+  const lighting = await sectionHelp(page, view, "Lighting");
+  for (const name of ["Light intensity", "Shadow strength", "Light direction", "Light elevation", "Reset lighting"]) {
+    assert.equal(await lighting.getByRole("heading", { name, exact: true }).count(), 1, name);
+  }
+  assert.equal(await lighting.getByRole("heading", { name: "Open selection in 3D", exact: true }).count(), 0);
+  await page.keyboard.press("Escape");
+  const rooms = await sectionHelp(page, view, "Room selector");
+  assert.ok(await rooms.getByRole("heading", { name: "Room", exact: true }).count());
+  assert.ok(await rooms.getByRole("heading", { name: "Open selection in 3D", exact: true }).count());
+});

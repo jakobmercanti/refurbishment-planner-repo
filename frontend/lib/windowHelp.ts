@@ -41,6 +41,14 @@ export function windowHelpSteps(title: string): WindowHelpStep[] {
 }
 
 function taskWindowHelpSteps(title: string): WindowHelpStep[] {
+  if (title === "Elements list") return [
+    { heading: "Edit", text: "Open the selected element’s controls. You can adjust its dimensions, appearance or position using the options supported by that item." },
+    { heading: "Remove", text: "Use the × button on the relevant row to remove the placed element from the project. The original catalogue item remains available." },
+  ];
+  if (title === "Overall properties") return [{ heading: "Drawing defaults and constraints", text: "Set the default wall thickness and control snapping, right-angle drawing and measurement editing for the floorplan." }];
+  if (title === "Position") return [{ heading: "Locate the element", text: "Wall-mounted elements follow their host wall. Freestanding elements use the plan coordinates and rotation. The fields shown depend on the element you are editing." }];
+  if (title === "Lighting") return [{ heading: "Preview lighting", text: "Adjust the illumination and shadows in the 3D view. The controls change the preview only." }];
+  if (title === "Room selector") return [{ heading: "Choose what to inspect", text: "Switch between the complete floorplan and a specific room. The selection changes what the viewer shows." }];
   if (title.startsWith("Simulation setup — ")) {
     const section = title.slice("Simulation setup — ".length);
     if (Object.hasOwn(thermalStepHelp, section)) return THERMAL_HELP.filter(step => thermalStepHelp[section].includes(step.heading));

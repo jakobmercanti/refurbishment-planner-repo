@@ -48,6 +48,7 @@ import { buildWallFinishUpdates, type WallPaintScope } from "@/lib/wallFinishes"
 import { buildSharedWallFinishFaces, buildIsolatedRoomWalls, buildRenderedWalls, type RenderedWall } from "@/lib/wallRendering";
 import type { MaterialCollection, Obstacle, Opening, PersonMockup, Point2D, Room, RoomFinishes, TilePattern, WallViewMode } from "@/lib/types";
 import { filledToolbarDock, FloatingToolbar, positionedToolbarDock, type ToolbarDock } from "@/components/FloatingToolbar";
+import { WindowHelpSectionHeader } from "@/components/WindowHelpButton";
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { ViewToggle } from "@/components/ViewToggle";
 import { VIEWER_TOOLBARS, type ToolbarId, type ToolbarVisibility } from "@/lib/toolbars";
@@ -2102,10 +2103,12 @@ export function EngineeringViewer(props: ViewerProps) {
           ))}
         </div>
         <div className="viewer-view-control-group viewer-lighting-controls" role="group" aria-label="Lighting">
+          <WindowHelpSectionHeader title="Lighting">
           <button type="button" className="viewer-lighting-toggle" aria-expanded={lightingExpanded} onClick={() => setLightingExpanded((current) => !current)}>
             <strong>Lighting</strong><span aria-hidden>{lightingExpanded ? "−" : "+"}</span>
           </button>
-          {lightingExpanded && <>{([
+          </WindowHelpSectionHeader>
+          <div className="viewer-lighting-fields" data-window-help-body hidden={!lightingExpanded}>{([
             { key: "intensity", label: "Light intensity", min: 0, max: 200, unit: "%" },
             { key: "shadows", label: "Shadow strength", min: 0, max: 100, unit: "%" },
             { key: "direction", label: "Light direction", min: 0, max: 360, unit: "°" },
@@ -2119,13 +2122,15 @@ export function EngineeringViewer(props: ViewerProps) {
           </label>)}
 
           <button type="button" className="review-style-button" onClick={() => setLighting({ ...DEFAULT_LIGHTING })}>Reset lighting</button>
-          </>}
+          </div>
         </div>
         <div className="viewer-view-control-group viewer-room-selector-controls" role="group" aria-label="Room selector">
+          <WindowHelpSectionHeader title="Room selector">
           <button type="button" className="viewer-room-selector-toggle" aria-expanded={roomSelectorExpanded} onClick={() => setRoomSelectorExpanded((current) => !current)}>
             <strong>Room selector</strong><span aria-hidden>{roomSelectorExpanded ? "−" : "+"}</span>
           </button>
-          {roomSelectorExpanded && <div className="viewer-room-selector-content">
+          </WindowHelpSectionHeader>
+          <div className="viewer-room-selector-content" data-window-help-body hidden={!roomSelectorExpanded}>
             <label>Room
               <select value={props.roomSelection} onChange={(event) => props.onRoomSelectionChange(event.target.value)}>
                 <option value={props.fullFloorplanSelection}>Full floorplan</option>
@@ -2133,7 +2138,7 @@ export function EngineeringViewer(props: ViewerProps) {
               </select>
             </label>
             <button className="review-style-button" type="button" onClick={props.onOpenRoomSelection}>Open selection in 3D</button>
-          </div>}
+          </div>
         </div>
         <div className="viewer-view-control-group viewer-camera-entry" role="group" aria-label="Reference camera">
           <button type="button" aria-expanded={cameraWindowOpen} onClick={openCameraWindow}>Camera</button>
