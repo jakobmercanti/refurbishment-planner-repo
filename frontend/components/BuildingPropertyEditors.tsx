@@ -21,7 +21,7 @@ export function FloorProperties({project,floorId,units,adding=false,onCommit,onC
   const number=(label:string,key:"elevationMm"|"heightMm"|"slabThicknessMm")=><label>{label} ({UNIT_LABEL[units]})<DisplayNumberInput units={units} aria-label={label} valueMm={draft[key]} onMmChange={v=>setEdits(current=>({...current,[key]:v}))}/></label>;
   return <div className={styles.panel}>
     <label>Floor name<input aria-label="Floor name" maxLength={100} value={draft.name} onChange={e=>{const name=e.target.value;setEdits(current=>({...current,name}));}}/></label>
-    <div className={styles.grid}>{number("Floor elevation","elevationMm")}{number("Floor-to-floor height","heightMm")}{number("Floor slab thickness","slabThicknessMm")}<div className="building-clear-height">Clear height below slab<strong>{formatLength(draft.heightMm-nextSlab,units)}</strong></div></div>
+    <div className={styles.grid}>{number("Floor elevation","elevationMm")}{number("Floor-to-floor height","heightMm")}{number("Floor slab thickness","slabThicknessMm")}<label>Clear height below slab<input readOnly value={formatLength(draft.heightMm-nextSlab,units)} data-field-help="Floor-to-floor height minus the thickness of the slab above. Updates as you edit the floor dimensions." /></label></div>
     {!result.success&&<p role="alert" className={styles.warning}>{result.error.issues.map(i=>i.message).join(" ")}</p>}
     <div className="building-editor-footer"><button onClick={onCancel}>Cancel</button><button className={`${styles.primary} primary`} disabled={!result.success} onClick={()=>{if(result.success)onCommit(result.data);}}>{adding?"Add floor":"Apply floor properties"}</button></div>
   </div>;

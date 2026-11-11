@@ -27,7 +27,7 @@ body[data-ui-style="modern"] .software-wall-setting > summary {
   background: var(--control-bg) !important;
   color: var(--control-text) !important;
   border-color: var(--control-border) !important;
-  border-radius: var(--ui-button-radius) !important;
+  border-radius: var(--planner-button-radius) !important;
   font-family: var(--font-sans) !important;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 

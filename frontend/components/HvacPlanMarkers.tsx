@@ -47,7 +47,10 @@ export function HvacPlanMarkers({ toScreen, fromClient }: { toScreen: (point: Po
         const point = ventPointFromPlanDrag(vent, active.host, active.start, at);
         const candidates = [...faces.values()].sort((a, b) => Number(b.roomId === active.device.roomId) - Number(a.roomId === active.device.roomId));
         const tolerance = Math.hypot(near.x - at.x, near.y - at.y);
-        const match = ventHostFromPlan(vent, candidates, point, patch => Math.max(tolerance, (rooms.get(patch.roomId)?.wall_thickness.value ?? 0) / 2 + 8), faces.get(vent.host.patchId)?.kind === "wall");
+        const match = ventHostFromPlan(vent, candidates, point, tolerance, patch => {
+          const room = rooms.get(patch.roomId);
+          return room?.wall_thickness_overrides_mm?.[patch.sourceId] ?? room?.wall_thickness.value ?? 0;
+        }, faces.get(vent.host.patchId)?.kind === "wall");
         if (!match) { active.position = null; setDraft(null); return; }
         const next = { id: vent.id, patchId: match.patch.id, u: match.uv[0], v: match.uv[1] };
         active.position = next;

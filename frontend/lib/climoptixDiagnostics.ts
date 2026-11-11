@@ -10,6 +10,34 @@ export type DiagnosticTarget = {
   refinementId?: string;
 };
 
+const technicalId = /\b(?:reveal:|opening:)?[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}\b/gi;
+
+/** Report references stay unchanged. Only the names shown in the warnings list are shortened. */
+export function diagnosticCopy(
+  diagnostic: CFDReport["diagnostics"][number],
+  target: DiagnosticTarget | undefined,
+  scenario: CFDScenario,
+  report: CFDReport | null,
+  openingNames: ReadonlyMap<string, string>,
+) {
+  const { message, repair } = diagnostic;
+  const sourceName = target?.label;
+  const vent = target?.ventId ? scenario.vents.find(item => item.id === target.ventId) : undefined;
+  const prefix = vent?.role === "supply" ? "inlet" : vent?.role === "extract" ? "outlet" : "return";
+  const openingId = sourceName?.match(/(?:reveal|opening):([^\s·]+)/)?.[1]
+    ?? report?.patches.find(patch => target?.patchIds?.includes(patch.id) && openingNames.has(patch.sourceId))?.sourceId;
+  const openingName = openingId && openingNames.get(openingId);
+  const shortName = vent ? `${prefix}_${scenario.vents.filter(item => item.role === vent.role).indexOf(vent) + 1}`
+    : openingName ? openingName.toLowerCase().replaceAll(" ", "_")
+    : openingId ? "Opening" : sourceName?.replace(technicalId, "Surface");
+  const compactMessage = sourceName && message.startsWith(`${sourceName}: `) ? message.slice(sourceName.length + 2) : message;
+  return {
+    label: shortName,
+    message: compactMessage.replace(technicalId, () => shortName ?? "the affected element"),
+    repair: repair.replace(technicalId, () => shortName ?? "the affected element"),
+  };
+}
+
 export function diagnosticTarget(id: string | null, scenario: CFDScenario, report: CFDReport | null): DiagnosticTarget | undefined {
   if (!id) return;
   const vent = scenario.vents.find(item => item.id === id);

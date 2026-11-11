@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { realPreparation, cfdProject } from "./climoptixFixtures";
 import { preparationRequestBody } from "../lib/climoptix";
 import { ventSchema } from "../lib/climoptixDocument";
-import { ventHostAtCoordinates, ventHostAtPoint } from "../lib/ventPlacement";
+import { ventHostAtCoordinates, ventHostAtPoint, ventHostFromPlan } from "../lib/ventPlacement";
 import { ventCenter } from "../lib/climoptixPreview";
 import { containsPoint } from "../lib/elementPlacement";
 
@@ -31,6 +31,16 @@ test("vent rehosting matches checked walls, floor and ceiling in measured millim
   assert.equal(numeric?.patchId, patch.id);
   assert.ok(Math.abs(numeric.u - u) < .001 && Math.abs(numeric.v - v) < .001);
   assert.equal(ventHostAtCoordinates(vent, [patch], ventCenter(vent, host, .001, v)), null);
+  if (kind === "wall") {
+    const centre = ventCenter(vent, host, u, v);
+    const dropped = (offset: number): [number, number, number] => [
+      centre[0] + offset * host.normal[0], centre[1] + offset * host.normal[1], centre[2],
+    ];
+    const placed = ventHostFromPlan(vent, [patch], dropped(250), 24, () => 300, true);
+    assert.equal(placed?.patch.id, patch.id);
+    assert.ok(Math.abs(placed.uv[1] - v) < .001);
+    assert.equal(ventHostFromPlan(vent, [patch], dropped(-250), 24, () => 300, true), null);
+  }
  }
  assert.equal(ventHostAtPoint(vent,report.patches,[1e8,1e8,1e8]),null);
  const floor=report.patches.find(p=>p.kind==="floor"&&p.host)!;

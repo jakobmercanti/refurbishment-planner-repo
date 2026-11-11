@@ -177,3 +177,32 @@ body .element-add-editor .elements-list-content .fixture-list article { grid-tem
 body .element-add-editor .elements-list-content .fixture-list :is(.edit-fixture,.remove-fixture) {
   width:auto; min-width:var(--density-control-min-height); height:auto; white-space:nowrap; overflow-wrap:normal;
 }
+:root { --planner-button-radius: max(3px, calc(var(--ui-button-radius) - 3px)); }
+
+/* Swatches, resize handles and tab strips retain their specialised shapes. */
+body button:where(:not([role=tab], .floating-toolbar-resize, .finish-palette button, .tile-palette-presets button, .pb-colour-presets button, .catalogue-material-entry, .color-swatch, .colour-swatch, .material-swatch)) {
+  border-radius: var(--planner-button-radius) !important;
+}
+body :is(.floating-canvas-navigation, .floating-view-controls, .cfx-view-window .floating-toolbar-content) button {
+  font-weight: 500;
+}
+body .building-level-actions > button { white-space: nowrap; overflow-wrap: normal; }
+
+.planner-control-tooltip {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  box-sizing: border-box;
+  max-width: min(340px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow: hidden;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--planner-button-radius);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 4px 14px rgb(8 24 44 / 16%);
+  font: 500 12px/1.4 var(--font-sans), sans-serif;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}

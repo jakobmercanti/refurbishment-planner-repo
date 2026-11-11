@@ -22,7 +22,10 @@ export function helpLabelText(node: Node): string {
 
 function referenceText(control: Element, attribute: "aria-labelledby" | "aria-describedby") {
   return (control.getAttribute(attribute) ?? "").split(/\s+/)
-    .map(id => id && control.ownerDocument.getElementById(id)?.textContent?.trim()).filter(Boolean).join(" ");
+    .map(id => {
+      const node = id ? control.ownerDocument.getElementById(id) : null;
+      return node?.getAttribute("role") === "tooltip" ? "" : node?.textContent?.trim();
+    }).filter(Boolean).join(" ");
 }
 
 function controlLabel(control: HTMLElement) {
@@ -63,6 +66,17 @@ function defaultControlGuide(control: HTMLElement, label: string): string {
   return `Enter ${label} for the current item. Use the value from the relevant project or source record.`;
 }
 
+export function controlHelp(control: HTMLElement, includeChoices = true): WindowHelpStep | undefined {
+  const heading = controlLabel(control);
+  if (!heading || !/\p{L}/u.test(heading)) return;
+  const context = referenceText(control, "aria-describedby");
+  const fallback = !includeChoices && control instanceof HTMLSelectElement
+    ? `Choose ${heading} from the available options.`
+    : defaultControlGuide(control, heading);
+  const guide = control.dataset.fieldHelp || fieldDescription(heading) || control.title || context || fallback;
+  return { heading, text: context && !guide.includes(context) ? `${guide} ${context}` : guide };
+}
+
 /** Read controls even when a native disclosure is closed. Never include input values. */
 export function windowFieldHelp(scope: Element): WindowHelpStep[] {
   const owner = helpWindowFor(scope);
@@ -71,12 +85,8 @@ export function windowFieldHelp(scope: Element): WindowHelpStep[] {
     if (helpWindowFor(control) !== owner || control.closest(excludedControl)) continue;
     if (control.matches("summary") && control.parentElement === scope) continue;
     if (control.closest(".window-help-disclosure-header")?.parentElement === scope) continue;
-    const label = controlLabel(control);
-    if (!label || !/\p{L}/u.test(label)) continue;
-    const guide = control.getAttribute("data-field-help") || fieldDescription(label) || defaultControlGuide(control, label);
-    const context = referenceText(control, "aria-describedby");
-    const text = context && !guide.includes(context) ? `${guide} ${context}` : guide;
-    fields.set(`${label}: ${text}`, { heading: label, text });
+    const guide = controlHelp(control);
+    if (guide) fields.set(`${guide.heading}: ${guide.text}`, guide);
   }
   return [...fields.values()];
 }

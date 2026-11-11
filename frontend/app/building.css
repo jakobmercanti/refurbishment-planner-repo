@@ -23,8 +23,9 @@
 .building-level-item[data-drop=after] { box-shadow:inset 0 -3px var(--accent); }
 .building-level-description { display:grid; min-width:0; gap:4px; text-align:left; overflow-wrap:anywhere; }
 .building-level-description small { color:var(--ink); opacity:1; }
-.building-level-actions { display:flex; justify-content:flex-end; gap:6px; }
-.building-level-actions>button { min-height:32px; padding:4px 8px; }
+.building-level-actions { display:grid; grid-template-columns:repeat(3, minmax(0, 72px)); gap:6px; width:228px; max-width:100%; }
+.building-level-actions>button { min-height:32px; min-width:0; padding:4px 5px; white-space:nowrap; }
+.building-roof-entry .building-level-actions > button:last-child { grid-column:3; }
 .building-level-icon { display:grid; place-items:center; color:var(--deep); }
 .building-properties-window .floating-toolbar-content .building-level-item button.building-level-select { --control-bg:transparent; --control-text:var(--ink); --control-hover-bg:var(--surface-muted); --control-hover-text:var(--ink); border:0; background:transparent; color:var(--ink); padding:3px 0; min-height:32px; }
 .building-properties-window .building-level-item .building-drag-handle { width:28px; min-width:28px; min-height:32px; padding:0; cursor:grab; font-size:19px; touch-action:none; }
@@ -96,7 +97,6 @@ body[data-ui-style="modern"] .building-section>.full-plan-overall-toggle:hover {
 .floor-opening-name { fill:var(--deep); stroke:var(--panel); stroke-width:2px; paint-order:stroke; font:600 9px var(--font-sans); }
 .floor-opening-handle { fill:var(--panel); stroke:var(--accent); stroke-width:2; cursor:crosshair; touch-action:none; }
 .building-opening-properties { display:grid; gap:10px; border-top:1px solid var(--line); padding-top:10px; }
-.building-clear-height { display:grid; align-content:start; gap:10px; }
 .building-editor-footer { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding-top:8px; }
 .building-roof-finish { display:grid; gap:10px; margin-block:6px; padding-block:10px; border-block:1px solid var(--line); }
 .building-roof-section-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -109,7 +109,10 @@ body[data-ui-style="modern"] .building-section>.full-plan-overall-toggle:hover {
 .building-reset-warning .popup-content .building-reset-summary { font-weight:650; line-height:1.5; }
 .building-reset-warning .popup-content .building-reset-note { margin-top:9px; color:var(--muted); font-size:.9em; }
 .building-reset-warning .popup-actions button.primary { --control-bg:var(--fail); --control-text:var(--paper); --control-border:var(--fail); --control-hover-bg:color-mix(in srgb,var(--fail) 85%,var(--ink)); --control-hover-text:var(--paper); --control-hover-border:var(--control-hover-bg); background:var(--fail); border-color:var(--fail); color:var(--paper); }
-@container building-manager (max-width:430px) { .building-level-actions { grid-column:2/-1; display:grid; grid-auto-flow:column; grid-auto-columns:1fr; }.building-level-item { grid-template-columns:28px minmax(0,1fr); }.building-roof-entry .building-level-actions { grid-template-columns:1fr 1fr; } }
+@container building-manager (max-width:400px) {
+  .building-level-item { grid-template-columns:28px minmax(0,1fr); }
+  .building-level-actions { grid-column:2/-1; justify-self:end; }
+}
 .building-vertices { display:grid; gap:10px; max-height:280px; overflow:auto; }
 .roof-plan-indicator { stroke:var(--accent); stroke-width:1.5; stroke-dasharray:7 4; opacity:.8; }
 .roof-plan-indicator text { stroke:none; fill:var(--accent); font:600 9px var(--font-sans); }

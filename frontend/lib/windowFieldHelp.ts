@@ -1,4 +1,16 @@
 const descriptions: Record<string, string> = {
+  "annotate": "Open the drawing annotation tools to add text, symbols and leaders to the current floor.",
+  "room names": "Show or hide the room names drawn on the current floor.",
+  "measurements": "Show or hide dimension lines and measured distances on the drawing.",
+  "wall thickness: visible": "Hide the drawn wall thickness on the floorplan.",
+  "wall thickness: hidden": "Show the drawn wall thickness on the floorplan.",
+  "annotations": "Show or hide the text, symbols and leaders added to the drawing.",
+  "grid": "Show or hide the drawing grid.",
+  "coordinates table": "Open or close the table of measured floorplan coordinates.",
+  "electrical symbols": "Show or hide electrical fittings on the current floor.",
+  "circuit labels": "Show or hide circuit names on the routes. Drag a label to reposition it without changing the route.",
+  "collapse all": "Close the collapsible sections in the current view.",
+  "expand all": "Open the collapsible sections in the current view.",
   "scenario name": "Give the room operating scenario a descriptive name, such as Winter morning. Spaces are allowed. Press Enter or leave the field to save it.",
   "new editable starting point": "Choose a preset to create a separate scenario with starting assumptions. Review the resulting inputs for your room.",
   "new hvac scenario preset": "Choose a preset to create a separate scenario with starting assumptions. Review the resulting inputs for your room.",
@@ -153,7 +165,7 @@ const descriptions: Record<string, string> = {
 
 export function fieldDescription(label: string) {
   const full = label.toLowerCase().replace(/…$/, "").trim();
-  const key = full.replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+(°[cfk]?|w\/m²k|mm|cm|m|in|ft|w)$/, "");
+  const key = full.replace(/: (visible|hidden)$/, "").replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+(°[cfk]?|w\/m²k|mm|cm|m|in|ft|w)$/, "");
   if (Object.hasOwn(descriptions, full)) return descriptions[full];
   if (Object.hasOwn(descriptions, key)) return descriptions[key];
   if (/^include ["“]made with freefloorplan3d\.com/.test(full)) return descriptions["include “made with freefloorplan3d.com”"];

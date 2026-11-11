@@ -333,10 +333,10 @@
   margin-top: var(--density-field-gap);
 }
 .cfx-diagnostic-row:is(:hover, :focus-within) { background: var(--surface-muted); }
-.cfx-diagnostic-copy { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.cfx-diagnostic-copy { display: grid; min-width: 0; gap: 2px; }
+.cfx-diagnostic-copy > :is(strong, p) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cfx-diagnostic-copy > strong { font-size: calc(9px * var(--density-font-scale, 1)); color: var(--muted); }
 .cfx-diagnostic-copy > p { font-weight: 650; line-height: 1.35; }
-.cfx-diagnostic-copy > small { line-height: 1.35; }
 .cfx-diagnostic-filters > select { width: auto; flex: 0 1 185px; min-width: 0; }
 .cfx-viewer {
   min-width: 0;
@@ -905,9 +905,8 @@
 @container cfx-setup (max-width: 460px) {
   .cfx-setup .cfx-grid:not(.cfx-three), .cfx-physics-fields { grid-template-columns: minmax(0, 1fr); }
 }
-.cfx-bound-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
-.cfx-review-failure { padding: var(--density-window-padding); border: 1px solid var(--fail); border-radius: var(--radius-control); }
-.cfx-review-failure > p { color: var(--fail); overflow-wrap: anywhere; }
+.cfx-bound-tabs { display: grid; flex: 0 1 340px; width: min(340px, 100%); grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; border-bottom: 1px solid var(--line); }
+.cfx-workspace .cfx-bound-tabs > button { width: 100%; }
 .cfx-input-failure { color: var(--fail); overflow-wrap: anywhere; margin-bottom: var(--density-section-gap); }
 .cfx-probe-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: var(--density-field-gap); padding-block: var(--density-row-padding); }
 .cfx-probe-row + .cfx-probe-row { border-top: 1px solid var(--line); }
@@ -1118,9 +1117,9 @@
   display: flex;
   flex-direction: column;
 }
-.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) { display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; gap: 0; }
-.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) > button { border-radius: 0; margin: 0; box-shadow: none; border: 0; padding-inline: 12px; }
-.cfx-workspace :is(.cfx-segments, .cfx-bound-tabs) > button[aria-selected="true"] { background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); box-shadow: none; }
+.cfx-workspace .cfx-segments { display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; gap: 0; }
+.cfx-workspace .cfx-segments > button { border-radius: 0; margin: 0; box-shadow: none; border: 0; padding-inline: 12px; }
+.cfx-workspace .cfx-segments > button[aria-selected="true"] { background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); box-shadow: none; }
 .cfx-boundary-tools input { min-width: 150px; flex: 1 1 200px; }
 .cfx-objects > * + * { margin-top: var(--density-section-gap); }
 .cfx-objects .cfx-device-row { grid-template-columns: minmax(0, 1fr) auto auto; flex: 1; }

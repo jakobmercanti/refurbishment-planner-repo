@@ -1792,6 +1792,17 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
         commitActiveDraft();
         return;
       }
+      if (event.key === "Escape" && electricalMode && !event.defaultPrevented && !electricalConnecting &&
+          !electricalCircuitEditorId && !lightingTestOpen && !pendingElectricalImport &&
+          !electricalConnectionContextMenu && !electricalWaypointContextMenu &&
+          (electricalLabelDrag.current || electricalWaypointDrag.current || electricalSegmentDrag.current || selectedElectricalConnectionId)) {
+        event.preventDefault();
+        electricalLabelDrag.current = null;
+        electricalWaypointDrag.current = null;
+        electricalSegmentDrag.current = null;
+        setSelectedElectricalConnectionId(null);
+        return;
+      }
       if (event.key === "Escape" && (placement || fixtureDrag.current || tool !== "SELECT" || annotationPanelOpen || addRoomPanelOpen || outlineMenuOpen || lShapePickerOpen)) {
         event.preventDefault();
         cancelActiveEditorInteractionEvent();
@@ -1800,7 +1811,7 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     };
     window.addEventListener("keydown", finishActiveTool);
     return () => window.removeEventListener("keydown", finishActiveTool);
-  }, [serviceView?.active, serviceView?.in3D, heating.windowOpen, electricalWindowOpen, addRoomPanelOpen, annotationPanelOpen, annotationTextDialog, annotationTool, calibrating, electricalConnecting, electricalMode, energy.windowOpen, lShapePickerOpen, markerDialog, openingPlacementInInsulation, outlineMenuOpen, outlineResetConfirm, placement, selectedAnnotationId, selectedElectricalConnectionId, selectedFixtureId, tool]);
+  }, [serviceView?.active, serviceView?.in3D, heating.windowOpen, electricalWindowOpen, addRoomPanelOpen, annotationPanelOpen, annotationTextDialog, annotationTool, calibrating, electricalConnecting, electricalMode, electricalCircuitEditorId, lightingTestOpen, pendingElectricalImport, electricalConnectionContextMenu, electricalWaypointContextMenu, energy.windowOpen, lShapePickerOpen, markerDialog, openingPlacementInInsulation, outlineMenuOpen, outlineResetConfirm, placement, selectedAnnotationId, selectedElectricalConnectionId, selectedFixtureId, tool]);
 
   useEffect(() => {
     if (!contextMenu && !measurementContextMenu && !openingContextMenu && !openingMeasurementContextMenu && !fixtureContextMenu && !fixtureMeasurementContextMenu && !annotationContextMenu && !electricalWaypointContextMenu && !electricalConnectionContextMenu && !toolbarContextMenu) return;
@@ -2091,12 +2102,13 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     const from = electricalFixtureById.get(connection.fromId)?.center, to = electricalFixtureById.get(connection.toId)?.center;
     if (!svg || !from || !to) return;
     const points = electricalPlanRoutes.get(connection.id)!;
-    const screen = toScreen(points[Math.floor(points.length / 2)]);
-    const bounds = svg.getBoundingClientRect(), view = svg.viewBox.baseVal;
-    const initial = svg.closest("[data-service-scene]") ? points[Math.floor(points.length / 2)] : floorPlanFromClient(bounds.left + (screen.x - view.x) * bounds.width / view.width, bounds.top + (screen.y - 8 - view.y) * bounds.height / view.height, svg, activeViewport);
+    const initial = svg.closest("[data-service-scene]") ? connection.labelPosition ?? points[Math.floor(points.length / 2)] : {
+      x: activeViewport.minX + (event.currentTarget.x.baseVal.getItem(0).value - activeViewport.offsetX) / activeViewport.scale,
+      y: activeViewport.maxY - (event.currentTarget.y.baseVal.getItem(0).value - activeViewport.offsetY) / activeViewport.scale,
+    };
     recordElectricalUndo();
     setSelectedElectricalConnectionId(connection.id);
-    electricalLabelDrag.current = { connectionId: connection.id, start: floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport), anchor: connection.labelPosition ?? initial };
+    electricalLabelDrag.current = { connectionId: connection.id, start: floorPlanFromClient(event.clientX, event.clientY, svg, activeViewport), anchor: initial };
     (svg.getAttribute("aria-label")==="Service labels"?event.currentTarget:svg).setPointerCapture(event.pointerId);
   }
   function openElectricalConnectionContextMenu(event: ReactMouseEvent<SVGPolylineElement>, connection: ElectricalConnection) {
@@ -5363,10 +5375,10 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
             <div className="full-plan-overall-content" data-window-help-body hidden={!overallPropertiesExpanded}>
               <div className="coordinate-fields room-measurements">
                 <label className="field"><span>Default thickness ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput minMm={1} maxMm={2000} valueMm={defaultWallThicknessInput ?? wallThickness} units={displayUnits} onMmChange={setDefaultWallThicknessInput} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); requestDefaultWallThickness(); } }} /></label>
+                <label className="field snap-size-control"><span>Grid size ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput aria-label={`Grid size (${UNIT_LABEL[displayUnits]})`} minMm={1} valueMm={snapSize} units={displayUnits} onMmChange={setSnapSize} /></label>
               </div>
               <div className="plan-constraint-controls">
-                <label className="snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to grid</span></label>
-                <label className="field snap-size-control"><span>Grid size ({UNIT_LABEL[displayUnits]})</span><DisplayNumberInput aria-label={`Grid size (${UNIT_LABEL[displayUnits]})`} minMm={1} valueMm={snapSize} units={displayUnits} onMmChange={setSnapSize} /></label>
+                <label className="check-row snap-control-row"><input type="checkbox" checked={snapEnabled} onChange={(event) => setSnapEnabled(event.target.checked)} /><span>Snap to grid</span></label>
                 <label className="check-row square-walls-control"><input type="checkbox" checked={squaredWalls} onChange={(event) => setSquaredWalls(event.target.checked)} /><span>Keep walls squared</span></label>
                 <label className="check-row measurement-edit-toggle"><input type="checkbox" checked={measurementEditEnabled} onChange={(event) => { setMeasurementEditEnabled(event.target.checked); setMeasurementDraft([]); setSelectedMeasurement(null); setMeasurementContextMenu(null); setTool(event.target.checked ? "MEASURE" : "SELECT"); }} /><span>Edit measurements</span></label>
               </div>

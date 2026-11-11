@@ -13,6 +13,20 @@ import { DEFAULT_ELECTRICAL_DOCUMENTATION, type ElectricalLayoutData } from "@/l
 import { electricalEndpointLabel, electricalFittingReferences } from "@/lib/electricalConnectionLabels";
 
 import type { ServiceLabelPortal } from "./ServiceViewContext";
+
+type ScreenBounds = { left: number; right: number; top: number; bottom: number };
+
+function clearLabelBaseline(point: Point2D, label: string, fixtures: readonly ScreenBounds[]) {
+  const halfWidth = Array.from(label).length * 5 + 4;
+  // Convert each fixture into a forbidden interval for the text baseline.
+  // Include the text halo and a gap on both sides.
+  const intervals = fixtures.filter(box => point.x + halfWidth > box.left && point.x - halfWidth < box.right)
+    .map(box => ({ top: box.top - 8, bottom: box.bottom + 17 })).sort((a, b) => a.top - b.top);
+  let below = point.y, above = point.y;
+  for (const span of intervals) if (below > span.top && below < span.bottom) below = span.bottom;
+  for (const span of intervals.toReversed()) if (above > span.top && above < span.bottom) above = span.top;
+  return point.y - above <= below - point.y ? above : below;
+}
 interface Props {
   labelPortal?: ServiceLabelPortal;
   fixtures: Obstacle[];
@@ -61,6 +75,12 @@ export function ElectricalLayoutOverlay(props: Props) {
   const terminal = (connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => electricalPlanEndpoint(connection, side, fixture, props.toScreen, props.active && props.showSymbols, symbolZoom);
   const layout = { forceOrthogonalRouting: props.forceOrthogonalRouting, connections: props.connections, circuits: props.circuits, documentation: DEFAULT_ELECTRICAL_DOCUMENTATION, junctions: props.junctions };
   const routeOptions = electricalPlanRouteOptions(props.fixtures, props.toScreen, props.active && props.showSymbols, symbolZoom);
+  const labelObstacles = props.showLabels && props.showSymbols && !props.labelPortal
+    ? Array.from(routeOptions.bounds?.values() ?? [], box => {
+      const a = props.toScreen({ x: box.left, y: box.top });
+      const b = props.toScreen({ x: box.right, y: box.bottom });
+      return { left: Math.min(a.x, b.x), right: Math.max(a.x, b.x), top: Math.min(a.y, b.y), bottom: Math.max(a.y, b.y) };
+    }) : [];
   const routes = props.routes ?? (props.showConnections ? routeElectricalConnections(layout, props.fixtures, routeOptions) : new Map<string, Point2D[]>());
   const crossings = props.showConnections ? electricalCrossings(layout, props.fixtures, terminal, routeOptions, routes) : [];
   const previewConnection: ElectricalConnection = { ...props.defaults, id: "preview", fromId: props.sourceId ?? "", toId: "preview-target", circuitId: props.activeCircuitId, fromSwitchGang: props.sourceGang, waypoints: [] };
@@ -84,6 +104,8 @@ export function ElectricalLayoutOverlay(props: Props) {
       const path = polylinePoints(points);
       const label = props.showLabels ? connection.label || circuit?.name : undefined;
       const labelPoint = props.toScreen(connection.labelPosition ?? points[Math.floor(points.length / 2)]);
+      const baseline = { x: labelPoint.x, y: labelPoint.y - (connection.labelPosition ? 0 : 8) };
+      const labelY = label && labelObstacles.length ? clearLabelBaseline(baseline, label, labelObstacles) : baseline.y;
       return <g key={connection.id} data-connection-id={connection.id} data-plan-info={`${electricalEndpointLabel(connection, "from", namedFittings, references)} → ${electricalEndpointLabel(connection, "to", namedFittings, references)}\nSchematic ${connection.type.toLowerCase()} connection. Click to edit routing or add corners. Drawing lengths are not physical cable lengths.`} className={selected ? "electrical-connection selected" : "electrical-connection"}>
         <title>{electricalEndpointLabel(connection, "from", namedFittings, references)} → {electricalEndpointLabel(connection, "to", namedFittings, references)}</title>
         {selected && <polyline points={path} fill="none" stroke="#f59e0b" strokeWidth={electricalStrokeWidth(connection.width) + 4} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" pointerEvents="none" />}
@@ -93,7 +115,7 @@ export function ElectricalLayoutOverlay(props: Props) {
           const point = props.toScreen(waypoint);
           return <circle key={index} data-electrical-interactive="true" className="electrical-route-waypoint" cx={point.x} cy={point.y} r="7" onPointerDown={(event) => props.onWaypointPointerDown(event, connection, index)} onContextMenu={(event) => props.onWaypointContextMenu(event, connection, index)} />;
         })}
-        {label && labelAt(labelPoint,<text data-electrical-interactive="true" className="electrical-circuit-label electrical-draggable-label" x={labelPoint.x} y={labelPoint.y - (connection.labelPosition ? 0 : 8)} textAnchor="middle" onPointerDown={event => props.onLabelPointerDown(event, connection)}><title>Drag to move this connection’s circuit label</title>{label}</text>)}
+        {label && labelAt(labelPoint,<text data-electrical-interactive="true" className="electrical-circuit-label electrical-draggable-label" x={labelPoint.x} y={labelY} textAnchor="middle" onPointerDown={event => props.onLabelPointerDown(event, connection)}><title>Drag to move this connection’s circuit label</title>{label}</text>)}
       </g>;
     })}
     {preview && <polyline className="electrical-connection-preview" points={polylinePoints(preview)} fill="none" stroke={props.defaults.color} strokeWidth={electricalStrokeWidth(props.defaults.width)} strokeDasharray={electricalDashArray(props.defaults.lineStyle)} vectorEffect="non-scaling-stroke" pointerEvents="none" />}

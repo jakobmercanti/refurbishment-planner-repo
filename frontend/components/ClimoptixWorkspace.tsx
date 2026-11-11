@@ -85,6 +85,7 @@ const ignoreSceneMetadata=()=>{};
 
 interface Props {
   openRequest?: { id: string; nonce: string } | null;
+  openingNames: ReadonlyMap<string, string>;
   active: boolean;
   project: ProjectDocument;
   apiUrl: string;
@@ -103,6 +104,7 @@ interface Props {
 }
 export function ClimoptixWorkspace({
   openRequest,
+  openingNames,
   active,
   project,
   apiUrl,
@@ -1159,8 +1161,7 @@ export function ClimoptixWorkspace({
                   {active && (
                     <ClimoptixResults
                       view={resultsView} onViewChange={setResultsView}
-                      review={<ClimoptixReview key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? jobs[scenario.id]?.error : undefined}
-                      onDismissFailure={() => { setError(""); if (error.startsWith("Changes not applied")) setEditorReset(x => x + 1); }}
+                      review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? jobs[scenario.id]?.error : undefined}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
                       onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}

@@ -5,16 +5,17 @@ import { downloadCFD, preparationPackage, preparationSummary, type CFDReport } f
 import type { CFDScenario } from "@/lib/climoptixDocument";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { CFDCollapseAll } from "./CFDCollapseAll";
-import { diagnosticTarget } from "@/lib/climoptixDiagnostics";
+import { diagnosticCopy, diagnosticTarget } from "@/lib/climoptixDiagnostics";
 
 const TABS = [["review", "Simulation review"], ["warnings", "Warnings & checks"], ["transfer", "Import / export"]] as const;
 
-export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onDismissFailure, onChange, onImport, onExport, onError, onRefresh, onInspect, onHighlight, issuesRequest = 0, submissionError, workerConnected=false }: {
+export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onChange, onImport, onExport, onError, onRefresh, onInspect, onHighlight, openingNames, issuesRequest = 0, submissionError, workerConnected=false }: {
   scenario: CFDScenario; report: CFDReport | null; revision: string; stale: boolean; blocked: boolean;
+  openingNames: ReadonlyMap<string, string>;
   onChange: (scenario: CFDScenario) => void; onImport: (file: File) => void; onExport: () => void;
   onError: (message: string) => void; onRefresh: () => void; onInspect: (id: string, group: string) => void;
   onHighlight: (id: string | null) => void;
-  failure?: string; onDismissFailure?: () => void;
+  failure?: string;
   issuesRequest?: number;
   submissionError?: string;
   workerConnected?:boolean;
@@ -56,10 +57,6 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
       ]} />
       <CFDCollapseAll/>
     </header>
-    {failure && <div className="cfx-review-failure" role="alert"><p>{failure}</p>
-      {failure.startsWith("Changes not applied") && <button onClick={onDismissFailure}>Keep saved values</button>}
-      <small>Checks and preparation exports remain blocked until this is resolved. Use Refresh checks in Review or Warnings to retry.</small>
-    </div>}
     <section role="tabpanel" id={`${prefix}-panel-review`} aria-labelledby={`${prefix}-review`} hidden={tab !== "review"}>
       <div className="cfx-inline-toolbar">
         <strong>{scenario.name}</strong>
@@ -101,15 +98,20 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
       {diagnostics.map((d, index) => {
         const target = diagnosticTarget(d.objectId, scenario, report);
         const connected = workerConnected && d.message.includes("No CFD mesher");
+        const copy = diagnosticCopy(d, target, scenario, report, openingNames);
+        const message = connected ? "Geometry preparation only. Native results appear in Solver → Monitor after the worker finishes." : copy.message;
+        const nextStep = connected ? "Use the connected worker controls to submit a job." : copy.repair;
+        const nextStepId = d.objectId ? undefined : `${prefix}-diagnostic-${index}`;
         return <article className={`cfx-diagnostic cfx-diagnostic-row ${d.severity}`} key={`${d.code}:${d.objectId}:${index}`}
           onPointerEnter={() => setHovered(target ? d.objectId : null)} onPointerLeave={() => setHovered(null)}
-          onFocus={() => setFocused(target ? d.objectId : null)} onBlur={() => setFocused(null)}>
-          <div className="cfx-diagnostic-copy">
-            <strong>{d.severity === "error" ? "Blocking" : d.severity === "warning" ? "Warning" : "Info"} · {d.group}{target && ` · ${target.label}`}</strong>
-            <p>{connected ? "Geometry preparation only. Native results appear in Solver → Monitor after the worker finishes." : d.message}</p>
-            <small>{connected ? "Use the connected worker controls to submit a job." : d.repair}</small>
+          onFocus={() => setFocused(target ? d.objectId : null)} onBlur={() => setFocused(null)}
+          tabIndex={d.objectId ? undefined : 0} aria-describedby={nextStepId}>
+          <div className="cfx-diagnostic-copy" title={`${message}\n${nextStep}`}>
+            <strong>{d.severity === "error" ? "Blocking" : d.severity === "warning" ? "Warning" : "Info"} · {d.group}{copy.label && ` · ${copy.label}`}</strong>
+            <p>{message}</p>
           </div>
-          {d.objectId && <button aria-label={target ? `Inspect ${target.label}` : "Inspect settings"} onClick={() => { clearHighlight(); onInspect(d.objectId!, d.group); }}>Inspect</button>}
+          {d.objectId && <button aria-label={copy.label ? `Inspect ${copy.label}` : "Inspect settings"} data-field-help={`${message} ${nextStep}`} onClick={() => { clearHighlight(); onInspect(d.objectId!, d.group); }}>Inspect</button>}
+          {nextStepId && <span id={nextStepId} hidden>{nextStep}</span>}
         </article>;
       })}
       {!report ? <p>No validation report yet.</p> : !diagnostics.length ? <p>No diagnostics for this filter.</p> : null}

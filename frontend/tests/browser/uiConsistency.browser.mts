@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { newProject, parseProject } from "../../lib/projectDocument";
 import { defaultBuilding } from "../../lib/buildingDocument";
-import { DEFAULT_ELECTRICAL_LAYOUT } from "../../lib/electricalLayout";
+import { DEFAULT_ELECTRICAL_CONNECTION, DEFAULT_ELECTRICAL_LAYOUT } from "../../lib/electricalLayout";
 import { eventually, menu, startBrowserHarness } from "./harness.mjs";
 
 let harness;
@@ -30,6 +30,86 @@ test("floating Export uses the floorplan dialog and is restricted to Floorplan 2
   await page.waitForFunction(() => !document.querySelector(".floorplan-export-shortcut"));
   await page.getByRole("button", { name: "2D", exact: true }).click();
   await page.getByRole("button", { name: "Export floorplan", exact: true }).waitFor();
+});
+
+test("control tooltips explain the hovered field and the floorplan controls stay aligned", async t => {
+  const session = await harness.session(fixture());
+  t.after(() => session.close());
+  const { page } = session;
+  const build = page.locator(".full-plan-build-toolbar");
+  const annotate = build.getByRole("button", { name: "Annotate", exact: true });
+  const view = page.getByRole("button", { name: /^Room names:/ });
+  const style = locator => locator.evaluate(el => ({ radius: getComputedStyle(el).borderTopLeftRadius, weight: getComputedStyle(el).fontWeight }));
+  assert.equal((await style(annotate)).radius, (await style(view)).radius);
+  assert.equal((await style(view)).weight, "500");
+  await annotate.hover();
+  const tooltip = page.getByRole("tooltip");
+  await tooltip.waitFor();
+  assert.match(await tooltip.textContent(), /add text, symbols and leaders/);
+  await build.getByRole("button", { name: "Overall properties", exact: true }).click();
+  const thickness = build.getByLabel(/^Default thickness/), grid = build.getByLabel(/^Grid size/);
+  assert.ok(Math.abs((await thickness.boundingBox()).y - (await grid.boundingBox()).y) < 1);
+  await grid.hover();
+  await tooltip.waitFor();
+  assert.match(await tooltip.textContent(), /Distance between snap points/);
+  await page.keyboard.press("Escape");
+  await tooltip.waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "Manage floors and building", exact: true }).click();
+  const manager = page.locator(".building-properties-window");
+  const [roofEdit, floorEdit, roofDelete, floorDelete] = await Promise.all(
+    ["Edit roof", "Edit Ground Floor", "Delete roof", "Delete Ground Floor"].map(name => manager.getByRole("button", { name, exact: true }).boundingBox()),
+  );
+  assert.equal(roofEdit.x, floorEdit.x);
+  assert.equal(roofDelete.x, floorDelete.x);
+  await manager.getByRole("button", { name: "+ Floor", exact: true }).click();
+  const editor = page.locator(".building-floor-editor-window");
+  const clear = editor.getByLabel("Clear height below slab", { exact: true });
+  const slab = editor.getByRole("spinbutton", { name: "Floor slab thickness", exact: true });
+  assert.equal((await clear.boundingBox()).y, (await slab.boundingBox()).y);
+  await slab.fill("300");
+  await slab.press("Enter");
+  assert.match(await clear.inputValue(), /2300/);
+});
+
+test("circuit labels avoid socket symbols and editing exits on Done or Escape", async t => {
+  const project = fixture();
+  const socket = project.rooms[0].obstacles.find(item => item.id === "a");
+  project.electricalLayout.connections = [{
+    ...DEFAULT_ELECTRICAL_CONNECTION, id: "route-a", fromId: "board", toId: "a", circuitId: "sockets",
+    waypoints: [], label: "Kitchen sockets", labelPosition: socket.center,
+  }];
+  project.building = defaultBuilding(project);
+  const session = await harness.session(parseProject(project));
+  t.after(() => session.close());
+  const { page } = session;
+  await menu(page, "Tools", "Electrical Layout module…");
+  const panel = page.locator(".electrical-layout-window");
+  await panel.locator("summary").filter({ hasText: /^Display$/ }).click();
+  const [symbols, routes] = await Promise.all(["Electrical symbols", "Connections"].map(name => panel.getByRole("checkbox", { name, exact: true }).boundingBox()));
+  assert.equal(symbols.y, routes.y);
+  assert.ok(symbols.x < routes.x);
+  await panel.getByRole("checkbox", { name: "Circuit labels", exact: true }).check();
+  const label = page.locator(".electrical-draggable-label").filter({ hasText: "Kitchen sockets" });
+  const plate = page.getByRole("button", { name: "Electrical fitting: Socket a, connected", exact: true }).locator(".electrical-fixture-backplate");
+  for (const zoom of [false, true]) {
+    if (zoom) await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+    const [a, b] = await Promise.all([label.boundingBox(), plate.boundingBox()]);
+    assert.ok(a && b && (a.y + a.height < b.y || b.y + b.height < a.y));
+  }
+  await panel.locator("summary").filter({ hasText: /^Circuits \(1\)$/ }).click();
+  await panel.locator("summary").filter({ hasText: /^Connections \(1\)$/ }).click();
+  const row = panel.locator(".electrical-connection-row");
+  const edit = row.getByRole("button", { name: /^Edit connection/ });
+  const done = row.getByRole("button", { name: /^Done editing connection/ });
+  await edit.click();
+  await panel.getByLabel("Optional label", { exact: true }).fill("Kitchen ring");
+  await done.click();
+  await edit.waitFor();
+  await eventually(session.saved, value => value.electricalLayout.connections[0].label === "Kitchen ring");
+  await edit.click();
+  await page.keyboard.press("Escape");
+  await edit.waitFor();
+  assert.equal(await row.getByRole("button", { name: /^Select connection/ }).getAttribute("aria-pressed"), "false");
 });
 
 test("compact windows shrink without clipped actions and keep resize targets", async t => {

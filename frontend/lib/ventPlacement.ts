@@ -54,19 +54,21 @@ export function ventHostAtCoordinates(vent: CFDVent, patches: readonly CFDPatch[
 }
 
 /** Resolve a 2D drop against measured room-facing hosts, including sloped ceilings. */
-export function ventHostFromPlan(vent: CFDVent, patches: readonly CFDPatch[], point: Vec3, wallTolerance: (patch: CFDPatch) => number, preserveWallHeight: boolean) {
+export function ventHostFromPlan(vent: CFDVent, patches: readonly CFDPatch[], point: Vec3, toleranceMm: number, wallThicknessMm: (patch: CFDPatch) => number, preserveWallHeight: boolean) {
   const walls = patches.filter(patch => patch.kind === "wall" && patch.hostable && patch.host);
   const wallHits = walls.flatMap(patch => {
     const host = patch.host!;
     const dx = point[0] - host.originMm[0], dy = point[1] - host.originMm[1];
-    const distance = Math.abs(dx * host.normal[0] + dy * host.normal[1]);
+    const faceOffset = dx * host.normal[0] + dy * host.normal[1];
+    // The checked host is the room-facing surface. The drawn wall extends
+    // outward from that face, so the entire visible strip is a snap target.
+    const distance = Math.max(-faceOffset, faceOffset - wallThicknessMm(patch), 0);
     const along = dx * host.uAxis[0] + dy * host.uAxis[1];
-    const toleranceMm = wallTolerance(patch);
     if (distance > toleranceMm || along < -toleranceMm || along > host.widthMm + toleranceMm) return [];
     const height = preserveWallHeight ? (point[2] - host.originMm[2]) / (host.vAxis[2] * host.heightMm) : 0.5;
     const uv = snapVentUV(vent, host, along / host.widthMm, height);
-    return uv ? [{ patch, uv, distance }] : [];
-  }).sort((a, b) => a.distance - b.distance);
+    return uv ? [{ patch, uv, distance, faceDistance: Math.abs(faceOffset) }] : [];
+  }).sort((a, b) => a.distance - b.distance || a.faceDistance - b.faceDistance);
   if (wallHits[0]) return wallHits[0];
   for (const patch of patches) {
     const host = patch.host;

@@ -22,11 +22,18 @@ type Props = {
   status?: string | null; currentCount: number; defaults: ElectricalConnectionDefaults;
   onDefaultsChange: (value: ElectricalConnectionDefaults) => void; display: ElectricalDisplayOptions;
   onDisplayChange: (value: ElectricalDisplayOptions) => void; objects: ElectricalObjectOption[];
-  connections: ElectricalConnection[]; selectedConnectionId: string | null; onSelectConnection: (id: string) => void;
+  connections: ElectricalConnection[]; selectedConnectionId: string | null; onSelectConnection: (id: string | null) => void;
   onUpdateConnection: (id: string, patch: Partial<ElectricalConnection>) => void; onDeleteConnection: (id: string) => void;
   circuits: ElectricalCircuit[]; activeCircuitId: string | null; onActiveCircuitChange: (id: string) => void;
   onCreateCircuit: () => void; onEditCircuit: (id: string) => void; onDeleteCircuit: (id: string) => void;
 };
+
+function revealSelectedGroup(element: HTMLDetailsElement | null) {
+  if (!element) return;
+  element.open = true;
+  const list = element.closest<HTMLDetailsElement>(".electrical-circuits");
+  if (list) list.open = true;
+}
 
 export function ElectricalLayoutPanel(p: Props) {
   const circuit = p.circuits.find((item) => item.id === p.activeCircuitId) ?? p.circuits[0] ?? null;
@@ -48,14 +55,15 @@ export function ElectricalLayoutPanel(p: Props) {
       p.onActiveCircuitChange(circuitId);
       p.onSelectConnection(id);
     };
-    return <details className="electrical-layout-section electrical-circuit-connections" open={Boolean(selected)} key={circuitId}>
+    return <details className="electrical-layout-section electrical-circuit-connections" ref={selected ? revealSelectedGroup : undefined} key={circuitId}>
       <summary>{title}</summary>
       {groupedConnections.length ? <ul className="electrical-connection-list">{groupedConnections.map((item) => {
         const from = electricalEndpointLabel(item, "from", p.objects, references);
         const to = electricalEndpointLabel(item, "to", p.objects, references);
+        const editing = item.id === selected?.id;
         return <li className="electrical-connection-row" key={item.id}>
           <button type="button" className={item.id === p.selectedConnectionId ? "selected" : ""} aria-pressed={item.id === p.selectedConnectionId} aria-label={`Select connection from ${from} to ${to}`} onClick={() => selectConnection(item.id)}><span>{from} → {to}</span><small>{types.find(([value]) => value === item.type)?.[1]}</small></button>
-          <button type="button" className="electrical-connection-action" aria-label={`Edit connection from ${from} to ${to}`} title="Edit connection" onClick={() => selectConnection(item.id)}>Edit</button>
+          <button type="button" className="electrical-connection-action" aria-label={`${editing ? "Done editing" : "Edit"} connection from ${from} to ${to}`} data-field-help={editing ? "Finish editing and clear the selection. Your changes are already saved to the layout." : "Select the route and open its connection settings."} onClick={() => editing ? p.onSelectConnection(null) : selectConnection(item.id)}>{editing ? "Done" : "Edit"}</button>
           <button type="button" className="electrical-connection-action delete" aria-label={`Delete connection from ${from} to ${to}`} title="Delete connection" onClick={() => p.onDeleteConnection(item.id)}>Delete</button>
         </li>;
       })}</ul> : <p className="electrical-layout-empty">No connections in this circuit yet.</p>}
@@ -123,7 +131,7 @@ export function ElectricalLayoutPanel(p: Props) {
       <label><input type="checkbox" checked={p.display.connections} onChange={(e) => p.onDisplayChange({ ...p.display, connections: e.target.checked })} /> Connections</label>
       <label><input type="checkbox" checked={p.display.circuitLabels} onChange={(e) => p.onDisplayChange({ ...p.display, circuitLabels: e.target.checked })} /> Circuit labels</label>
     </div></details>
-    <details className="electrical-layout-section" open={Boolean(p.selectedConnectionId)}><summary>Circuits ({p.circuits.length})</summary>
+    <details className="electrical-layout-section electrical-circuits"><summary>Circuits ({p.circuits.length})</summary>
       {p.circuits.length ? <ul className="electrical-connection-list electrical-circuit-list">{p.circuits.map((item) => <li className="electrical-circuit-row" key={item.id}>
         <button type="button" className={`electrical-circuit-select ${item.id === activeCircuitId ? "selected" : ""}`} aria-pressed={item.id === activeCircuitId} onClick={() => p.onActiveCircuitChange(item.id)}><span className="electrical-circuit-name"><i style={{ backgroundColor: item.color }} aria-hidden="true" />{item.name}</span><small>{item.id === activeCircuitId ? "Selected for new connections" : "Select for new connections"}</small></button>
         <div className="electrical-circuit-row-actions"><button type="button" className="electrical-connection-action" aria-label={`Edit circuit ${item.name}`} onClick={() => p.onEditCircuit(item.id)}>Edit</button>

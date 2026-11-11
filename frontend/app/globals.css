@@ -320,7 +320,7 @@ button { font: inherit; }
 .electrical-layout-grid input[type="color"] { width: 100%; min-height: 30px; padding: 3px; }
 .electrical-orthogonal-toggle { display: flex; align-items: center; gap: 7px; margin-top: 8px; color: var(--ink); font-size: calc((9px) * var(--density-font-scale, 1)); line-height: 1.4; }
 .electrical-orthogonal-toggle input { flex: 0 0 auto; accent-color: var(--deep); }
-.electrical-layout-display { display: grid; gap: 7px; margin-top: 8px; }
+.electrical-layout-display { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 12px; margin-top: 8px; }
 .electrical-layout-display label { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: calc((9px) * var(--density-font-scale, 1)); }
 .electrical-layout-display input { accent-color: var(--deep); }
 .electrical-connection-list { display: grid; gap: 5px; max-height: 125px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; }
@@ -522,7 +522,6 @@ button { font: inherit; }
 @container electrical-layout-window (min-width: 600px) {
   .electrical-layout-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .electrical-layout-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .electrical-layout-display { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 480px) {
   .electrical-layout-panel { padding: 7px; }
@@ -791,7 +790,7 @@ html[data-theme="dark"] body .catalogue-asset-preview .fixture-preview-fit-butto
 .fixture-section-toggle strong { color: var(--deep); font: 700 calc(10px * var(--density-font-scale, 1))/1.25 var(--font-sans); }
 .fixture-section-toggle small { overflow: hidden; color: var(--muted); font: 550 calc(9px * var(--density-font-scale, 1))/1.25 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .fixture-section-toggle > span:last-child { flex: 0 0 auto; color: var(--deep); font: 700 calc(17px * var(--density-font-scale, 1))/1 var(--font-sans); }
-.fixture-section-content { display: grid; gap: 9px; padding: 0 10px 10px; border-top: 1px solid var(--line); }
+.fixture-section-content { display: grid; gap: 9px; padding: var(--density-section-gap, 8px) 10px 10px; border-top: 1px solid var(--line); }
 .fixture-section-content .fixture-field-group { margin-top: 0; }
 .fixture-section-content .fixture-lock-switch { margin-top: 0; }
 .fixture-lock-switch { display: flex; align-items: center; gap: 8px; min-height: 34px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--ink); font: 650 calc(9px * var(--density-font-scale, 1))/1.3 var(--font-sans); cursor: pointer; }
@@ -1235,9 +1234,9 @@ html[data-theme="dark"] body .catalogue-asset-preview .fixture-preview-fit-butto
 .plan-constraint-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: var(--toolbar-control-gap); padding-top: var(--toolbar-control-gap); border-top: 1px solid var(--line); }
 .plan-constraint-controls .check-row { margin: 0; font: 500 calc(12px * var(--density-font-scale, 1))/1.25 var(--font-sans); }
 .plan-constraint-controls .check-row input { margin-top: 0; }
-.snap-control-row { box-sizing: border-box; display: flex; align-items: center; gap: 6px; margin: 0; padding-top: 20px; color: var(--muted); font: 500 calc(12px * var(--density-font-scale, 1))/1.25 var(--font-sans); white-space: nowrap; }
+.snap-control-row { box-sizing: border-box; display: flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font: 500 calc(12px * var(--density-font-scale, 1))/1.25 var(--font-sans); }
 .snap-control-row > input { margin: 0; accent-color: var(--deep); }
-.snap-control-row > span { display: inline-flex; align-items: center; gap: 3px; flex: 1; min-width: 0; white-space: nowrap; }
+.snap-control-row > span { display: inline-flex; align-items: center; gap: 3px; flex: 1; min-width: 0; }
 .snap-size-control { min-width: 0; margin: 0; }
 .square-walls-control { align-items: flex-start; white-space: normal !important; }
 .square-walls-control > span { display: grid; gap: 2px; }

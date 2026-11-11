@@ -38,7 +38,8 @@ test("compact CFD diagnostics highlight a vent and thermal surface without chang
   const vent = ui.locator(".cfx-diagnostic-row").filter({ hasText: "Check the supply clearance." });
   const floor = ui.locator(".cfx-diagnostic-row").filter({ hasText: "Check the floor U-value." });
   assert.ok((await vent.boundingBox()).height < 100);
-  assert.doesNotMatch(await vent.innerText(), /test-vent-id/);
+  assert.match(await vent.innerText(), /inlet_1/);
+  assert.doesNotMatch(await vent.innerText(), /test-vent-id|Move it away from the corner/);
   await vent.hover();
   await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === "Test supply");
   await floor.hover();
@@ -46,7 +47,7 @@ test("compact CFD diagnostics highlight a vent and thermal surface without chang
   assert.equal(await warnings.getAttribute("aria-selected"), "true");
   await warnings.hover();
   await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === null);
-  await vent.getByRole("button", { name: "Inspect Test supply", exact: true }).focus();
+  await vent.getByRole("button", { name: "Inspect inlet_1", exact: true }).focus();
   await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === "Test supply");
   await warnings.focus();
   await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === null);
@@ -65,6 +66,10 @@ test('shared invalid-input feedback stays singular when returning to Thermal and
   await cfdWindow(ui, 'Thermal Envelope & Solar Conditions');
   await ui.getByRole('region', { name: 'Thermal envelope setup', exact: true }).waitFor();
   assert.ok(await ui.getByRole('tab', { name: 'Conditions', exact: true }).isVisible(), 'Boundary navigation remains available while the independent thermal editor is open');
+  const thermalTabs = ui.getByRole("tablist", { name: "Boundary setup", exact: true }).filter({ visible: true });
+  const [conditions, thermal] = await Promise.all((await thermalTabs.getByRole("tab").all()).map(tab => tab.boundingBox()));
+  assert.equal(conditions.width, thermal.width);
+  assert.ok(conditions.width > 120);
   await eventually(() => thermalResponses, count => count > 0);
   await cfdWindow(ui, 'Physics');
   const density = ui.getByRole('spinbutton', { name: 'Air density (kg/m³)', exact: true });

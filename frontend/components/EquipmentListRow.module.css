@@ -6,7 +6,7 @@
 :global(body) .row.row.row .name :is(strong,small) { display:block; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 :global(body) .row.row.row .name strong { font:inherit; }
 :global(body) .row.row.row .name small { color:var(--muted); opacity:1; font:500 calc(11px * var(--density-font-scale,1))/1.3 var(--font-sans); }
-:global(body) .row.row.row .actions.actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:1fr; align-items:stretch; width:270px; max-width:100%; gap:6px; grid-column:auto; grid-row:auto; }
+:global(body) .row.row.row .actions.actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:1fr; align-items:stretch; width:198px; max-width:100%; gap:6px; grid-column:auto; grid-row:auto; }
 :global(body) .row.row.row .actions.actions > button { width:100%; min-width:0; height:100%; min-height:var(--density-control-min-height); padding:var(--density-control-padding-y) 4px; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--ui-button-background,var(--surface-muted)); color:var(--ui-button-text,var(--ink)); font:650 calc(12px * var(--density-font-scale,1))/1.3 var(--font-sans); white-space:normal; overflow-wrap:anywhere; }
 :global(body) .row.row.row .actions.actions > :global(.cfx-danger) { color:var(--fail); }
 :global(body) .row.row.row .actions.actions > button:hover:not(:disabled), :global(body) .collection.collection :global(.cfx-grip:hover:not(:disabled)) { background:var(--ui-button-hoverBackground); }
@@ -20,15 +20,14 @@
 :global(body) .collection.collection :global(.cfx-row-menu) > summary { min-height:var(--density-control-min-height); margin:0; }
 :global(body) .collection.collection :global(.cfx-row-menu-panel) { display:none; position:fixed; inset:auto; z-index:20002; width:min(260px,calc(100vw - 32px)); max-width:calc(100vw - 16px); overflow:auto; padding:8px; margin:0; border:1px solid var(--line); border-radius:var(--radius-panel); background:var(--panel); color:var(--ink); box-shadow:var(--ui-window-shadow); }
 :global(body) .collection.collection :global(.cfx-row-menu-panel:popover-open) { display:grid; gap:6px; }
-@container equipment-list (max-width:540px) {
+@container equipment-list (max-width:390px) {
   :global(body) .row.row.row { grid-template-columns:minmax(0,1fr) auto; }
   :global(body) .row.row.row .name { grid-column:1; grid-row:1; }
   :global(body) .row.row.row .actions.actions {
     grid-column:1/-1;
     grid-row:2;
     justify-self:end;
-    width:min(270px,100%);
-    grid-template-columns:repeat(auto-fit,minmax(min(72px,100%),1fr));
+    width:min(198px,100%);
   }
   :global(body) .row.row.row > :global(.cfx-row-menu) { grid-column:2; grid-row:1; }
 }
