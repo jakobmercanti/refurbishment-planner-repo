@@ -144,5 +144,14 @@ export function useLocalProject() {
   const editBuilding = useCallback((operation:(p:ProjectDocument)=>ProjectDocument,resetDocument=false) => { const before=current.current;if(!before)return null;const result=operation(before);if(result===before)return before;const next=parseProject(result);if(JSON.stringify(before.building?.floors.map(f=>f.id))!==JSON.stringify(next.building?.floors.map(f=>f.id)))validateFloorSupports(projectFloors(next));history.current.record(before,next,true);if(resetDocument)resetSession();return restoreEdit(next); },[restoreEdit,resetSession]);
   const undo = useCallback(()=>current.current ? restoreEdit(history.current.undo(current.current)) : null,[restoreEdit]);
   const redo = useCallback(()=>current.current ? restoreEdit(history.current.redo(current.current)) : null,[restoreEdit]);
-  return { project, restore, revision, documentSession, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, setHvac, setCFDScenarios, editBuilding, undo, redo, isScopeCurrent, ...historyStatus };
+  const carryGuestDraft = useCallback(async (account: string, isCurrent: () => boolean) => {
+    let draft = current.current;
+    while (draft && isCurrent()) {
+      const snapshot = draft;
+      await projectRepository.carryGuestDraft(snapshot, account, () => isCurrent() && current.current === snapshot);
+      draft = current.current;
+      if (draft === snapshot) return;
+    }
+  }, []);
+  return { project, restore, revision, documentSession, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, setHvac, setCFDScenarios, editBuilding, undo, redo, isScopeCurrent, carryGuestDraft, ...historyStatus };
 }

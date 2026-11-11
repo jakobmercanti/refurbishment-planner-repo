@@ -26,7 +26,8 @@ import { constrainObstacleToRoom, containsPoint, resolveObstaclePlacement, resol
 import { PlacementPreview2D } from "@/components/PlacementPreview2D";
 import { DisplayNumberInput } from "@/components/DisplayNumberInput";
 import { createFloorPlanViewport, floorPlanFromClient as floorPlanFrom2DClient, floorPlanToScreen, FLOOR_PLAN_CANVAS_HEIGHT, FLOOR_PLAN_CANVAS_WIDTH, FloorPlanCanvas, scaleFloorPlanViewport, type FloorPlanViewport } from "@/components/FloorPlanCanvas";
-import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, InsulationOpeningOutline, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
+import { FloorPlanOpeningDimensions, FloorPlanOpeningSymbol, InsulationOpeningOutline, projectingWindowClearance, type FloorPlanOpeningGraphic } from "@/components/FloorPlanOpeningGraphics";
+import { outwardNormalForRoom } from "@/lib/openingRendering";
 import { filledToolbarDock, FloatingToolbar, positionedToolbarDock } from "@/components/FloatingToolbar";
 import { ToolbarContextMenu } from "@/components/ToolbarContextMenu";
 import { closestValidOpeningOffset, cornerOffsetsOnWallSegment, isOpeningPlacementValid } from "@/lib/openingPlacement";
@@ -5193,6 +5194,39 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
       clear: () => { hvac?.selectVent(null);setSelectedFixtureId(null);setSelectedElectricalConnectionId(null);setElectricalSourceId(null); },
     };
   });
+  const openingGraphics = new Map(openings.map(opening => {
+    const catalogue = catalogueItemForOpening(opening);
+    const graphic: FloorPlanOpeningGraphic = {
+      ...opening, representationKey: opening.representationKey ?? catalogue?.representation_key,
+      windowDepthMm: opening.windowDepthMm ?? catalogue?.depth_mm,
+      windowPaneCount: opening.kind === "WINDOW" ? windowPaneCountFor(opening) : undefined,
+    };
+    return [opening.id, graphic] as const;
+  }));
+  const windowClearances = new Map<string, number>();
+  for (const opening of openings) {
+    const depth = projectingWindowClearance(openingGraphics.get(opening.id)!, activeViewport.scale);
+    if (depth > 0) {
+      const key = `${opening.wallId}:${opening.segmentIndex}`;
+      windowClearances.set(key, Math.max(depth, windowClearances.get(key) ?? 0));
+    }
+  }
+  function dimensionRoomCentre(wall: Wall) {
+    if (samePoint(wall.points[0], wall.points.at(-1)!)) return roomVisualCentre(wall.points.slice(0, -1));
+    return wall.points.reduce((centre, point) => ({
+      x: centre.x + point.x / wall.points.length, y: centre.y + point.y / wall.points.length,
+    }), { x: 0, y: 0 });
+  }
+  function displayWallDimensionOffset(wall: Wall, segmentIndex: number) {
+    const id = `${wall.id}:${segmentIndex}`;
+    const preferred = dimensionOffsets[id] ?? wallDimensionOffsetFor(wall, segmentIndex);
+    const depth = windowClearances.get(id);
+    if (depth === undefined) return preferred;
+    // Dimension text stays horizontal, so allow for its full half-width even on vertical walls.
+    const labelClearance = formatLength(wallLengthForSegment(wall, segmentIndex), displayUnits).length * 5 + 6;
+    return preferred < 0 ? Math.min(preferred, -labelClearance - MEASUREMENT_LABEL_GAP_SCREEN)
+      : Math.max(preferred, depth + labelClearance);
+  }
   const labelPortal = serviceView?.in3D && serviceView.scene?.labels ? (anchor:Point2D,node:ReactNode) => createPortal(<g data-service-anchor-x={activeViewport.minX+(anchor.x-activeViewport.offsetX)/activeViewport.scale} data-service-anchor-y={activeViewport.maxY-(anchor.y-activeViewport.offsetY)/activeViewport.scale} pointerEvents="auto" style={{visibility:"hidden"}}><g transform={`translate(${-anchor.x} ${-anchor.y})`}>{node}</g></g>,serviceView.scene!.labels) : undefined;
   const serviceLayers = <>
             {(!serviceView?.in3D || electricalWindowOpen) && !energy.windowOpen && <ElectricalLayoutOverlay labelPortal={labelPortal} routes={electricalMode ? electricalPlanRoutes : undefined} zoom={zoom} testing={lightingTestOpen} switchGangs={switchGangs} junctions={electricalLayout.junctions} onFixtureGangActivate={(fixture, gang) => { if (lightingTestOpen) testFixtureSwitch(fixture, gang); else if (electricalConnecting) chooseElectricalEndpoint(fixture.id, gang); }} lightStates={lightingTest.lights} switchLabels={lightingTest.switchLabels} fixtures={electricalFixtures} connections={electricalMode ? electricalLayout.connections : []} circuits={electricalLayout.circuits} toScreen={toScreen} showSymbols={!electricalMode || electricalDisplay.symbols} showConnections={electricalMode && electricalDisplay.connections} showLabels={electricalMode && electricalDisplay.circuitLabels} active={electricalMode} selectedFixtureId={selectedFixtureId} sourceId={electricalSourceId} sourceGang={electricalSourceGang} selectedConnectionId={selectedElectricalConnectionId} activeCircuitId={selectedElectricalCircuitId ?? DEFAULT_ELECTRICAL_CIRCUIT.id} connecting={electricalMode && electricalConnecting} forceOrthogonalRouting={electricalLayout.forceOrthogonalRouting} cursor={electricalPointer} defaults={electricalDefaults} onFixturePointerDown={(event, fixture) => { if (lightingTestOpen) { event.preventDefault(); event.stopPropagation(); testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { event.preventDefault(); event.stopPropagation(); chooseElectricalEndpoint(fixture.id); return; } beginFixtureDrag(event, fixture); }} onFixtureActivate={(fixture) => { if (lightingTestOpen) { testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { chooseElectricalEndpoint(fixture.id); return; } const owner = projectRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)); selectFixtureForEdit(fixture, owner); if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id); }} onFixtureContextMenu={openFixtureContextMenu} onConnectionPointerDown={beginElectricalConnectionDrag} onConnectionContextMenu={openElectricalConnectionContextMenu} onWaypointPointerDown={beginElectricalWaypointDrag} onWaypointContextMenu={openElectricalWaypointContextMenu} onLabelPointerDown={beginElectricalLabelDrag} />}
@@ -5394,11 +5428,11 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
               )}</g>)}
             </g>
             {walls.map((wall) => {
-              const closed = samePoint(wall.points[0], wall.points.at(-1)!); const modelPoints = closed ? wall.points.slice(0, -1) : wall.points; const screenPoints = modelPoints.map(toScreen); const centre = screenPoints.reduce((total, point) => ({ x: total.x + point.x / screenPoints.length, y: total.y + point.y / screenPoints.length }), { x: 0, y: 0 });
+              const centre = toScreen(dimensionRoomCentre(wall));
               const wallSegments = wall.points.slice(0, -1).map((modelStart, segmentIndex): WallRenderSegment => { const start = toScreen(modelStart); const end = toScreen(wall.points[segmentIndex + 1]); const thicknessMm = wallThicknessForSegment(wall, segmentIndex, wallThickness); return { segmentIndex, start, end, thicknessMm, visualThicknessMm: showWallThickness ? thicknessMm : 0 }; });
 
               const dimensions = wall.points.slice(0, -1).map((modelStart, segmentIndex) => {
-                const modelEnd = wall.points[segmentIndex + 1]; const length = wallLengthForSegment(wall, segmentIndex); const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y; const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y }; const dimensionId = `${wall.id}:${segmentIndex}`; if (hiddenDimensions.includes(dimensionId) || redundantHeightDimensions.has(dimensionId)) return null; const offset = dimensionOffsets[dimensionId] ?? wallDimensionOffsetFor(wall, segmentIndex); const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * MEASUREMENT_LABEL_GAP_SCREEN, y: (first.y + second.y) / 2 + outward.y * MEASUREMENT_LABEL_GAP_SCREEN }; const manual = wall.lengthOverridesMm?.[segmentIndex] !== undefined;
+                const modelEnd = wall.points[segmentIndex + 1]; const length = wallLengthForSegment(wall, segmentIndex); const start = toScreen(modelStart); const end = toScreen(modelEnd); const screenLength = Math.hypot(end.x - start.x, end.y - start.y) || 1; const tangent = { x: (end.x - start.x) / screenLength, y: (end.y - start.y) / screenLength }; const candidate = { x: -tangent.y, y: tangent.x }; const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const outward = outwardNormalForRoom(candidate, midpoint, centre); const dimensionId = `${wall.id}:${segmentIndex}`; if (hiddenDimensions.includes(dimensionId) || redundantHeightDimensions.has(dimensionId)) return null; const offset = displayWallDimensionOffset(wall, segmentIndex); const first = { x: start.x + outward.x * offset, y: start.y + outward.y * offset }; const second = { x: end.x + outward.x * offset, y: end.y + outward.y * offset }; const label = { x: (first.x + second.x) / 2 + outward.x * MEASUREMENT_LABEL_GAP_SCREEN, y: (first.y + second.y) / 2 + outward.y * MEASUREMENT_LABEL_GAP_SCREEN }; const manual = wall.lengthOverridesMm?.[segmentIndex] !== undefined;
                 return <g key={`${wall.id}-dimension-${segmentIndex}`} className={`wall-dimension measurement-item measurement-context-target ${manual ? "manual-measurement" : ""} ${tool === "MEASURE" ? "editable" : ""} ${tool === "REMOVE_MEASURE" ? "measurement-removal-target" : ""} ${selectedMeasurement === `auto:${dimensionId}` ? "selected" : ""}`} onPointerDown={(event) => tool === "REMOVE_MEASURE" ? (event.preventDefault(), event.stopPropagation(), removeMeasurementById(dimensionId, false)) : beginMeasurementDrag(event, dimensionId, false, offset, outward)} onContextMenu={(event) => openAutoMeasurementContextMenu(event, { wallId: wall.id, segmentIndex })}><line className="measurement-hit" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-extension" x1={start.x + outward.x * 7} y1={start.y + outward.y * 7} x2={first.x + outward.x * 4} y2={first.y + outward.y * 4} /><line className="dimension-extension" x1={end.x + outward.x * 7} y1={end.y + outward.y * 7} x2={second.x + outward.x * 4} y2={second.y + outward.y * 4} /><line className="dimension-line" x1={first.x} y1={first.y} x2={second.x} y2={second.y} /><line className="dimension-tick" x1={first.x - tangent.x * 4 + outward.x * 4} y1={first.y - tangent.y * 4 + outward.y * 4} x2={first.x + tangent.x * 4 - outward.x * 4} y2={first.y + tangent.y * 4 - outward.y * 4} /><line className="dimension-tick" x1={second.x - tangent.x * 4 + outward.x * 4} y1={second.y - tangent.y * 4 + outward.y * 4} x2={second.x + tangent.x * 4 - outward.x * 4} y2={second.y + tangent.y * 4 - outward.y * 4} /><text className={`wall-label ${manual ? "manual-measurement-value" : ""}`} x={label.x} y={label.y}>{formatLength(length, displayUnits)}</text></g>;
               });
               return (
@@ -5435,7 +5469,7 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
               const wallSpan = selected && fixture.wall_lock === true ? isHeatingElement(fixture) && fixtureRoom ? heatingWallClearanceSpan(fixture, fixtureRoom) : nearestFixtureWallSpan(fixture, walls) : null;
               const wall = wallSpan ? walls.find((candidate) => candidate.id === wallSpan.wallId) : undefined;
               const wallDimensionOffset = wallSpan
-                ? dimensionOffsets[`${wallSpan.wallId}:${wallSpan.segmentIndex}`] ?? (wall ? wallDimensionOffsetFor(wall, wallSpan.segmentIndex) : undefined)
+                ? wall ? displayWallDimensionOffset(wall, wallSpan.segmentIndex) : undefined
                 : undefined;
               return (
                 <g key={`fixture-${fixture.id}`} data-fixture-id={fixture.id} data-heating-fixture={isHeatingElement(fixture) || undefined} data-plan-info={isHeatingElement(fixture) ? `${fixture.name}\nWall-mounted heater. Click to edit dimensions and output; drag along a wall to reposition. It follows wall edits.` : undefined} role={isHeatingElement(fixture) ? "button" : undefined} tabIndex={isHeatingElement(fixture) ? 0 : undefined} aria-label={isHeatingElement(fixture) ? `Heating element: ${fixture.name}` : undefined} onKeyDown={event => { if (isHeatingElement(fixture) && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); event.stopPropagation(); selectFixtureForEdit(fixture); } }} className={`floorplan-fixture${selectedFixtureId === fixture.id ? " selected" : ""}`} onPointerDown={(event) => beginFixtureDrag(event, fixture)} onContextMenu={(event) => openFixtureContextMenu(event, fixture)}>
@@ -5475,22 +5509,18 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
             {openings.map((opening) => {
               const wall = walls.find((item) => item.id === opening.wallId); const wallStart = wall?.points[opening.segmentIndex]; const wallEnd = wall?.points[opening.segmentIndex + 1];
               if (!wall || !wallStart || !wallEnd) return null;
-              const wallPoints = samePoint(wall.points[0], wall.points.at(-1)!) ? wall.points.slice(0, -1) : wall.points;
-              const wallCentre = wallPoints.reduce((total, point) => ({ x: total.x + point.x / wallPoints.length, y: total.y + point.y / wallPoints.length }), { x: 0, y: 0 });
               const lane = openings.filter((item) => item.wallId === opening.wallId && item.segmentIndex === opening.segmentIndex).findIndex((item) => item.id === opening.id);
               const wallDimensionId = `${opening.wallId}:${opening.segmentIndex}`;
-              const wallDimensionOffset = dimensionOffsets[wallDimensionId] ?? wallDimensionOffsetFor(wall, opening.segmentIndex);
-              const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward, colorHex: opening.colorHex, representationKey: opening.representationKey ?? catalogueItemForOpening(opening)?.representation_key, windowDepthMm: opening.windowDepthMm ?? catalogueItemForOpening(opening)?.depth_mm, windowPaneCount: opening.kind === "WINDOW" ? windowPaneCountFor(opening) : undefined };
-              return showMeasurements && selectedOpeningId === opening.id && <FloorPlanOpeningDimensions key={`opening-dimensions-${opening.id}`} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} wallCentre={wallCentre} wallDimensionOffset={wallDimensionOffset} lane={lane} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`opening:${opening.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openOpeningMeasurementContextMenu(event, opening, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openOpeningMeasurementContextMenu(event, opening, section) : undefined} />;
+              const projection = windowClearances.get(wallDimensionId) ?? 0;
+              const wallDimensionOffset = Math.max(projection, displayWallDimensionOffset(wall, opening.segmentIndex));
+              const graphic = openingGraphics.get(opening.id)!;
+              return showMeasurements && selectedOpeningId === opening.id && <FloorPlanOpeningDimensions key={`opening-dimensions-${opening.id}`} opening={graphic} wallStart={wallStart} wallEnd={wallEnd} wallCentre={dimensionRoomCentre(wall)} wallDimensionOffset={wallDimensionOffset} rowGap={projection ? 48 : undefined} lane={lane} toScreen={toScreen} displayUnits={displayUnits} hiddenMeasurementIds={hiddenDimensions} onMeasurementPointerDown={tool === "REMOVE_MEASURE" ? (event, section) => { event.preventDefault(); event.stopPropagation(); removeMeasurementById(`opening:${opening.id}:${section}`, false); } : undefined} onMeasurementContextMenu={measurementEditEnabled ? (event, section) => openOpeningMeasurementContextMenu(event, opening, section) : undefined} onMeasurementDoubleClick={measurementEditEnabled ? (event, section) => openOpeningMeasurementContextMenu(event, opening, section) : undefined} />;
             })}
             {openings.map((opening) => {
               const wall = walls.find((item) => item.id === opening.wallId); const wallStart = wall?.points[opening.segmentIndex]; const wallEnd = wall?.points[opening.segmentIndex + 1];
               if (!wall || !wallStart || !wallEnd) return null;
-              const graphic: FloorPlanOpeningGraphic = { id: opening.id, kind: opening.kind, offset: opening.offset, width: opening.width, doorType: opening.doorType, hingeSide: opening.hingeSide, opensInward: opening.opensInward, colorHex: opening.colorHex, representationKey: opening.representationKey ?? catalogueItemForOpening(opening)?.representation_key, windowDepthMm: opening.windowDepthMm ?? catalogueItemForOpening(opening)?.depth_mm, windowPaneCount: opening.kind === "WINDOW" ? windowPaneCountFor(opening) : undefined };
-              const closedWall = samePoint(wall.points[0], wall.points.at(-1)!);
-              const wallPoints = closedWall ? wall.points.slice(0, -1) : wall.points;
-              const wallCentre = wallPoints.reduce((total, point) => ({ x: total.x + point.x / wallPoints.length, y: total.y + point.y / wallPoints.length }), { x: 0, y: 0 });
-              const roomCentre = closedWall ? roomVisualCentre(wallPoints) : wallCentre;
+              const graphic = openingGraphics.get(opening.id)!;
+              const roomCentre = dimensionRoomCentre(wall);
               return <FloorPlanOpeningSymbol key={opening.id} opening={graphic} roomCentre={roomCentre} wallThicknessScreen={showWallThickness ? wallThicknessForSegment(wall, opening.segmentIndex, wallThickness) * activeViewport.scale : 10} wallStart={wallStart} wallEnd={wallEnd} toScreen={toScreen} displayUnits={displayUnits} selected={selectedOpeningId === opening.id} onPointerDown={(event) => beginOpeningDrag(event, opening)} onContextMenu={(event) => openOpeningContextMenu(event, opening)} />;
             })}
             <g className="annotation-layer" pointerEvents={annotationLayerDisabled ? "none" : "auto"} aria-label="Annotations">

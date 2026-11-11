@@ -260,7 +260,7 @@ export function BoundariesPanel({
               <small>{allMembers.length} {allMembers.length === 1 ? "surface" : "surfaces"}</small>
               <button className="cfx-boundary-actions-trigger" aria-label={`Actions for boundary group ${collection.name}`} aria-haspopup="dialog" aria-expanded={actionGroupId === collection.id}
                 onClick={() => setActionGroupId(collection.id)}>…</button>
-              {actionGroupId === collection.id && <CFDEditorWindow title={`Actions — ${collection.name}`} dialog initialSize={{ width: 380 }} defaultPosition={{ x: 260, y: 120 }}
+              {actionGroupId === collection.id && <CFDEditorWindow title={`Actions — ${collection.name}`} sectionTitle="Group actions" dialog initialSize={{ width: 380 }} defaultPosition={{ x: 260, y: 120 }}
                 bringToFront onClose={() => setActionGroupId(null)}>
               <div className="cfx-boundary-action-list" onClick={event => {
                 const button = (event.target as HTMLElement).closest("button");
@@ -328,7 +328,7 @@ export function BoundariesPanel({
       </div>
       {!allPatches.length && <p className="cfx-caption" role="status">Choose a seed room in Domain and resolve preparation checks to assign existing surfaces. You can configure group conditions now; groups do not create new geometry.</p>}
       </details>
-      {assignment && <CFDEditorWindow title="Assign boundary surfaces" initialSize={{ width: 700 }} defaultPosition={{ x: 240, y: 100 }} maxHeight={750}
+      {assignment && <CFDEditorWindow title="Assign boundary surfaces" sectionTitle="Surface assignment" initialSize={{ width: 700 }} defaultPosition={{ x: 240, y: 100 }} maxHeight={750}
         bringToFront onClose={() => setAssignment(null)}>
         <section className="cfx-card">
           <h3>{collections.find(g => g.id === assignment.groupId)?.name ?? "Unavailable group"}</h3>
@@ -361,7 +361,7 @@ export function BoundariesPanel({
           </div>
         </section>
       </CFDEditorWindow>}
-      {editing === "group" && currentGroup && <CFDEditorWindow title="Edit boundary group" defaultPosition={{ x: 220, y: 90 }} initialSize={{ width: 620 }} maxHeight={850}
+      {editing === "group" && currentGroup && <CFDEditorWindow title="Edit boundary group" sectionTitle="Group settings" defaultPosition={{ x: 220, y: 90 }} initialSize={{ width: 620 }} maxHeight={850}
         bringToFront onClose={() => setEditing(null)} helpSteps={[{ heading: "Surface groups", text: "Each physical surface belongs to one group. Drag grips move groups or surfaces; Escape cancels. Duplicate copies conditions to a new empty group, not geometry. Delete returns surfaces to Default surfaces. Per-surface overrides take precedence over group conditions." }]}>
       <section className="cfx-card" aria-label="Boundary group conditions">
         <CFDText key={currentGroup.id} label="Group name" value={currentGroup.name} maxLength={80}
@@ -416,7 +416,7 @@ export function BoundariesPanel({
         </p>
       )}
       {patch && editing === "surface" && (
-        <CFDEditorWindow title="Edit boundary surface" defaultPosition={{ x: 240, y: 110 }} initialSize={{ width: 600, height: 640 }} maxHeight={850} bringToFront onClose={() => setEditing(null)}>
+        <CFDEditorWindow title="Edit boundary surface" sectionTitle="Surface settings" defaultPosition={{ x: 240, y: 110 }} initialSize={{ width: 600, height: 640 }} maxHeight={850} bringToFront onClose={() => setEditing(null)}>
         <section className="cfx-card">
           <h3>
             {patch.label ?? labelFor(patch.kind)} · {patch.sourceId}

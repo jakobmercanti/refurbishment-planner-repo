@@ -186,23 +186,29 @@ export async function currentSession(): Promise<AuthSession | null> {
   return refreshInFlight;
 }
 
-export async function signIn(email: string, password: string): Promise<AuthSession> {
+export type BeforeLocalSignIn = (account: string, isCurrent: () => boolean) => Promise<void>;
+
+export async function signIn(email: string, password: string, beforeSignIn?: BeforeLocalSignIn): Promise<AuthSession> {
   const revision = sessionRevision;
   const result = await authRequest<Record<string, unknown>>("token?grant_type=password", { email: email.trim(), password });
   const session = normalizeSession(result);
   if (!session) throw new Error("Sign-in did not return a valid session.");
+  if (revision !== sessionRevision) throw new Error("The account session changed. Try signing in again.");
+  if (!storedAccountId() && beforeSignIn) await beforeSignIn(session.user.id, () => revision === sessionRevision);
   if (revision !== sessionRevision) throw new Error("The account session changed. Try signing in again.");
   sessionStorage.removeItem(RECOVERY_KEY);
   saveSession(session);
   return session;
 }
 
-export async function signUp(email: string, password: string): Promise<AuthSession | null> {
+export async function signUp(email: string, password: string, beforeSignIn?: BeforeLocalSignIn): Promise<AuthSession | null> {
   const revision = sessionRevision;
   const result = await authRequest<Record<string, unknown>>("signup?redirect_to=" + encodeURIComponent(accountRedirect()), { email: email.trim(), password });
   const session = normalizeSession(result);
   const user = result.user && typeof result.user === "object" ? result.user as Record<string, unknown> : result;
   if (!session && (typeof user.id !== "string" || !user.id)) throw new Error("The account service returned an unexpected response. Please try again.");
+  if (revision !== sessionRevision) throw new Error("The account session changed. Check your email or try signing in.");
+  if (session && !storedAccountId() && beforeSignIn) await beforeSignIn(session.user.id, () => revision === sessionRevision);
   if (revision !== sessionRevision) throw new Error("The account session changed. Check your email or try signing in.");
   sessionStorage.removeItem(RECOVERY_KEY);
   saveSession(session);

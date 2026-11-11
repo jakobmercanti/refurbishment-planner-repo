@@ -3,10 +3,11 @@
 import { useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { createPortal } from "react-dom";
 import { FloatingToolbar } from "./FloatingToolbar";
+import { CFDWindowSections } from "./CFDCollapseAll";
 
 /** Editor windows must not live inside a scrolling/hidden phase panel. Keep
  * their owning workspace (and docking context), without clipping their chrome. */
-export function CFDEditorWindow(props: ComponentProps<typeof FloatingToolbar>) {
+export function CFDEditorWindow({ children, sectionTitle, ...props }: ComponentProps<typeof FloatingToolbar> & { sectionTitle?: string }) {
   const anchor = useRef<HTMLSpanElement>(null);
   const [host, setHost] = useState<Element | null>(null);
   useLayoutEffect(() => {
@@ -18,5 +19,7 @@ export function CFDEditorWindow(props: ComponentProps<typeof FloatingToolbar>) {
       target?.focus({ preventScroll: true });
     };
   }, []);
-  return <><span hidden ref={anchor} />{host && createPortal(<FloatingToolbar {...props} />, host)}</>;
+  return <><span hidden ref={anchor} />{host && createPortal(<FloatingToolbar {...props}>
+    <CFDWindowSections sectionTitle={sectionTitle}>{children}</CFDWindowSections>
+  </FloatingToolbar>, host)}</>;
 }

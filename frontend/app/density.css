@@ -163,7 +163,7 @@ body .cfx-workspace :is(.cfx-study-group, .cfx-object-group) .cfx-group-actions 
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   width: clamp(210px, 25cqw, 270px); margin-right: calc(33px + var(--density-row-padding) + var(--density-field-gap)); gap: 6px;
 }
-body .cfx-workspace :is(.cfx-study-actions, .cfx-device-actions) { width: clamp(210px, 25cqw, 270px); }
+body .cfx-workspace .cfx-device-actions { width: clamp(210px, 25cqw, 270px); }
 body .cfx-workspace :is(.cfx-group-actions, .cfx-study-actions, .cfx-device-actions) > button { width: 100%; min-width: 0; }
 body .cfx-workspace :is(.cfx-group-actions, .cfx-study-actions, .cfx-device-actions) { gap: 6px; }
 body .cfx-workspace .cfx-setup-window .floating-toolbar-content :is(.cfx-group-actions, .cfx-study-actions, .cfx-device-actions) > button { padding-inline: 4px; }
@@ -193,8 +193,6 @@ body .cfx-workspace .cfx-refinement-row {
 }
 body .cfx-workspace .cfx-refinement-name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding-block: var(--density-control-padding-y); }
 body .cfx-workspace .cfx-refinement-actions { grid-column: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--density-field-gap); }
-body .cfx-workspace .cfx-study-actions { width: clamp(210px, 25cqw, 270px); }
-body .cfx-workspace .cfx-study-actions > button { padding-inline: 6px; }
 body .cfx-workspace .cfx-device-name { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 body .cfx-workspace .cfx-placement-actions { display: grid; flex: 0 0 auto; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px; background: var(--panel); border-top: 1px solid var(--line); }
 body .cfx-workspace .cfx-placement-actions > button { width: 100%; }
@@ -204,17 +202,14 @@ body .cfx-workspace .cfx-placement-actions > button { width: 100%; }
   body .cfx-workspace .cfx-study-group .cfx-group-actions {
     flex: 0 0 auto; width: var(--cfx-list-action-width); margin-left: auto; margin-right: calc(1px + var(--density-row-padding));
   }
-  body .cfx-workspace :is(.cfx-study-actions, .cfx-device-actions) {
+  body .cfx-workspace .cfx-device-actions {
     grid-column: 1 / -1; grid-row: 2; justify-self: end; width: var(--cfx-list-action-width, 100%);
   }
-  body .cfx-workspace .cfx-setup-window .floating-toolbar-content :is(.cfx-group-actions, .cfx-study-actions, .cfx-device-actions) > button {
+  body .cfx-workspace .cfx-setup-window .floating-toolbar-content :is(.cfx-group-actions, .cfx-device-actions) > button {
     font-size: 11px; padding-inline: 2px; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap:anywhere;
   }
-  body .cfx-workspace :is(.cfx-study-row, .cfx-device-row) > .cfx-row-menu { grid-column: 2; grid-row: 1; }
-  body .cfx-workspace :is(.cfx-study-row, .cfx-device-row) > :is(.cfx-study-name, .cfx-device-name, .cfx-inline-name) { grid-column: 1; grid-row: 1; }
-  body .cfx-workspace .cfx-study-row { grid-template-columns: minmax(0, 1fr) 28px; }
-  body .cfx-workspace .cfx-study-name { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.25fr); gap: 4px 8px; }
-  body .cfx-workspace .cfx-study-name small { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body .cfx-workspace .cfx-device-row > .cfx-row-menu { grid-column: 2; grid-row: 1; }
+  body .cfx-workspace .cfx-device-row > :is(.cfx-device-name, .cfx-inline-name) { grid-column: 1; grid-row: 1; }
   body .cfx-workspace .cfx-refinement-row { grid-template-columns: 8px minmax(0, 1fr); }
   body .cfx-workspace .cfx-refinement-actions { grid-column: 2; }
 }

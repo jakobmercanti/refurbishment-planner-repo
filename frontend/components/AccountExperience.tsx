@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
-import { AUTH_SESSION_CHANGED, AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, storedAccountId, updatePassword, type AuthSession, type PendingAccountLink } from "@/lib/commercialAuth";
+import { AUTH_SESSION_CHANGED, AuthRequestError, acceptAuthRedirect, currentSession, resendVerificationEmail, sendPasswordReset, signIn, signOut, signUp, storedAccountId, updatePassword, type AuthSession, type BeforeLocalSignIn, type PendingAccountLink } from "@/lib/commercialAuth";
 import { PlansRedirect } from "@/components/PlansRedirect";
 import { UiTheme, type SoftwareUi } from "@/components/UiTheme";
 import type { PlanKey } from "@/lib/commercialCatalogue";
@@ -10,7 +10,7 @@ type Mode = "signin" | "signup" | "reset";
 type AccountSection = "account" | "plans";
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-export function AccountExperience({ embedded = false, onClose, embeddedSection, onEmbeddedSectionChange }: { embedded?: boolean; onClose?: () => void; embeddedSection?: AccountSection; onEmbeddedSectionChange?: (section: AccountSection) => void }) {
+export function AccountExperience({ embedded = false, onClose, embeddedSection, onEmbeddedSectionChange, beforeSignIn }: { embedded?: boolean; onClose?: () => void; embeddedSection?: AccountSection; onEmbeddedSectionChange?: (section: AccountSection) => void; beforeSignIn?: BeforeLocalSignIn }) {
   const [mode, setMode] = useState<Mode>("signin");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [email, setEmail] = useState("");
@@ -141,12 +141,12 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
         setRecovery(null); setMode("signin"); selectSection("account");
         setPassword(""); setConfirmPassword(""); setNotice("Password changed. Sign in below with your new password.");
       } else if (mode === "signin") {
-        const signedIn = await signIn(email, password);
+        const signedIn = await signIn(email, password, beforeSignIn);
         setSession(signedIn);
         if (pendingPlanKey) selectSection("plans");
         else returnToPlanner();
       } else if (mode === "signup") {
-        const registered = await signUp(email, password);
+        const registered = await signUp(email, password, beforeSignIn);
         setSession(registered);
         if (registered) { if (pendingPlanKey) selectSection("plans"); else returnToPlanner(); }
         setPassword("");

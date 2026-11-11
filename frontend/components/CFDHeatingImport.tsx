@@ -7,15 +7,13 @@ import type { CFDScenario } from "@/lib/climoptixDocument";
 import { applyCFDHeating,cfdHeatingCandidates } from "@/lib/cfdHeatingBridge";
 import { CFDNumber } from "./CFDFields";
 import { CFDIndependentWindow } from "./CFDIndependentWindow";
-import { CFDCollapseAll } from "./CFDCollapseAll";
 import { SharedHvacCFD } from "./SharedHvacCFD";
 
 export function CFDHeatingImport({project,scenario,report,checked,onChange,onClose,onInsulation,onEditSource}:{project:ProjectDocument;scenario:CFDScenario;report:CFDReport|null;checked:boolean;onChange:(s:CFDScenario,checkpoint?:boolean)=>void;onClose:()=>void;onInsulation:()=>void;onEditSource:()=>void}) {
   const candidates=useMemo(()=>report?cfdHeatingCandidates(project,report):[],[project,report]);
   const [selected,setSelected]=useState<Record<string,number>>({}),[error,setError]=useState("");
   return <CFDIndependentWindow title="Import insulation & heating conditions" wide onClose={onClose}>
-    <section data-cfx-collapse-root className="cfx-heating-import-panel">
-    <div className="cfx-window-disclosure-bar"><CFDCollapseAll/></div>
+    <section className="cfx-heating-import-panel">
     <details open><summary>Source workbenches</summary><div className="cfx-equal-actions"><button onClick={onInsulation}>Import insulation boundary conditions</button><button onClick={onEditSource}>Open floorplan source workbenches</button></div>
     <p className="cfx-notice">Thermal CFD preparation only: the current native worker cannot solve temperature or buoyancy. Applying heating enables the thermal equations and blocks incompatible isothermal runs. Export a thermal contract for a compatible solver; no heat result is fabricated.</p>
     </details>

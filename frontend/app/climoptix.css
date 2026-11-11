@@ -1006,7 +1006,7 @@
 }
 .cfx-study-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(min-content, clamp(126px, 25cqw, 240px)) auto;
   align-items: center;
   gap: 8px;
   border: 1px solid var(--line);
@@ -1035,6 +1035,9 @@
 .cfx-study-name small {
   flex: 0 0 auto;
   max-width: 55%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: inherit;
   opacity: 0.8;
   font-weight: 500;
@@ -1042,9 +1045,14 @@
 .cfx-study-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  width: 240px;
   align-items: center;
   gap: 6px;
+}
+.cfx-study-status {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--density-field-gap);
+  min-width: 0;
 }
 .cfx-workspace :is(.cfx-study-name, .cfx-study-actions > button) {
   min-height: 36px;
@@ -1064,7 +1072,7 @@
   background: var(--focus-ring);
 }
 .cfx-job-detail,
-.cfx-study-row > p {
+.cfx-study-status > p {
   grid-column: 1 / -1;
   margin: 0;
   overflow-wrap: anywhere;
@@ -1198,24 +1206,7 @@
   }
 }
 @container cfx-setup (max-width: 540px) {
-  .cfx-study-row {
-    grid-template-columns: minmax(0, 1fr) 32px;
-  }
-  .cfx-study-row > :is(.cfx-study-name, .cfx-inline-name) { grid-column: 1 / -1; }
-  .cfx-study-actions { width: auto; }
-  .cfx-workspace .cfx-study-name {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    gap: 8px;
-    padding: 6px 8px;
-  }
-  .cfx-study-name small {
-    max-width: none;
-    overflow-wrap: anywhere;
-  }
-  .cfx-study-actions > button {
-    flex: 1;
-  }
+  .cfx-study-name small { display: none; }
   .cfx-workspace :is(.cfx-study-name, .cfx-study-actions > button) {
     min-height: 40px;
   }

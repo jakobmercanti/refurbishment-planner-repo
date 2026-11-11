@@ -27,7 +27,7 @@ import { completedRunReference, terminalJob, workerInput } from "@/lib/climoptix
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP, CFD_SETUP_HELP } from "@/lib/climoptixHelp";
 import { FloatingToolbar } from "./FloatingToolbar";
-import { CFDCollapseAll } from "./CFDCollapseAll";
+import { CFDWindowControls, CFDWindowSections } from "./CFDCollapseAll";
 import {
   ClimoptixWindowMenu,
   CFD_WINDOWS,
@@ -903,13 +903,13 @@ export function ClimoptixWorkspace({
                 </button>
               ))}
             </div>
-            <div className="cfx-setup-status-row">
-              {scenario && shownTab !== "results" && shownTab !== "adjoint" ? <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
+            <CFDWindowControls>
+              {shownTab === "results" && scenario && <h2>{`Results · ${scenario.name}`}</h2>}
+              {scenario ? <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
                 showFailure onIssues={() => reviewIssues()}
                 onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} /> :
-                <h2>{shownTab === "results" && scenario ? `Results · ${scenario.name}` : CFD_WINDOWS.find(item => item.id === shownTab)?.tab}</h2>}
-              <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
-            </div>
+                <h2>{CFD_WINDOWS.find(item => item.id === shownTab)?.tab}</h2>}
+            </CFDWindowControls>
             <section
               role="tabpanel"
               id="cfx-setup-panel-studies"
@@ -1188,15 +1188,13 @@ export function ClimoptixWorkspace({
       )}
       {active && viewOpen && <FloatingToolbar title="View properties" className="cfx-view-window" defaultPosition={{ x: 900, y: 144 }}
         initialSize={{ width: 440 }} onClose={() => setViewOpen(false)} helpSteps={CFD_PHASE_HELP.view}>
-        <div className="cfx-window-sections" data-cfx-collapse-root>
-          <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
+        <CFDWindowSections>
           <div ref={setViewTarget} />
-        </div>
+        </CFDWindowSections>
       </FloatingToolbar>}
       {active&&scenario&&heatingImportOpen&&<CFDHeatingImport key={scenario.id} project={project} scenario={scenario} report={activeReport} checked={!stale&&!busy&&!error} onChange={change} onClose={()=>setHeatingImportOpen(false)} onInsulation={()=>{setHeatingImportOpen(false);openThermal();}} onEditSource={onEditBuilding}/>}
       {active&&!setupOpen&&mainResult&&mainResult.studyId===scenario?.id&&mainResult.jobId===jobs[scenario?.id??""]?.job?.id&&<FloatingToolbar title="Building result display" defaultPosition={{x:24,y:80}} initialSize={{width:380,height:390}} onClose={()=>{setMainResult(null);setMainResultLayers([]);}}>
-        <section className="cfx-window-sections" data-cfx-collapse-root>
-        <div className="cfx-window-disclosure-bar"><CFDCollapseAll wholeWindow /></div>
+        <CFDWindowSections>
         <details open><summary>Plane selection &amp; display</summary>
         <p>{mainResult.file.name} · verified worker plane · metres → scene coordinates.</p>
         <label>Loaded plane<select aria-label="Building 3D plane" value={mainResult.file.name} onChange={event=>{const next=mainResultLayers.find(item=>item.file.name===event.target.value);if(next){setMainResult(next);setMainResultField("");setMainResultMetadata({fields:[],error:""});}}}>{mainResultLayers.filter(item=>item.studyId===scenario?.id).map(item=><option key={item.file.name} value={item.file.name}>{item.file.name}</option>)}</select></label>
@@ -1213,16 +1211,16 @@ export function ClimoptixWorkspace({
         <div className="cfx-equal-actions"><button onClick={()=>{const next=mainResultLayers.filter(item=>item.file!==mainResult.file);setMainResultLayers(next);setMainResult(next.find(item=>item.studyId===scenario?.id)??null);setMainResultField("");setMainResultMetadata({fields:[],error:""});}}>Unload selected plane</button><button onClick={()=>{setMainResultLayers([]);setMainResult(null);}}>Unload all planes</button></div>
         <button onClick={()=>{setSetupOpen(true);openPhase("results");}}>Return to results</button>
         </details>
-        </section>
+        </CFDWindowSections>
       </FloatingToolbar>}
       {active && scenario && ventEditor?.studyId === scenario.id && scenario.vents.some(v => v.id === ventEditor.id) &&
         <FloatingToolbar title="Edit equipment" className="cfx-equipment-editor" initialSize={{ width: 620, height: 650 }}
           defaultPosition={{ x: 260, y: 88 }} bringToFront onClose={closeEquipmentEditor} helpSteps={CFD_PHASE_HELP.equipment}>
-          <section className="cfx-inspector" aria-label="Equipment editor">
+          <CFDWindowSections><section className="cfx-inspector" aria-label="Equipment editor">
             <EquipmentPanel key={`${scenario.id}:${ventEditor.id}`} editor scenario={scenario} report={activeReport}
               selected={`vent:${ventEditor.id}`} onSelect={selectObject} onChange={change} onPick={startPlacement} onEditSource={onEditBuilding} />
             <button onClick={closeEquipmentEditor}>Done</button>
-          </section>
+          </section></CFDWindowSections>
         </FloatingToolbar>}
       {active && placement && placementScenario && <FloatingToolbar title="Place vent" className="cfx-equipment-editor cfx-placement-editor"
         initialSize={{ width: 420, height: 600 }} defaultPosition={{ x: 24, y: 100 }} bringToFront onClose={() => finishPlacement(false)}
@@ -1230,11 +1228,11 @@ export function ClimoptixWorkspace({
           <button className="cfx-primary" disabled={!activeReport?.patches.some(p => p.host && p.id === placement.draft.host.patchId)} onClick={() => finishPlacement(true)}>OK</button>
           <button onClick={() => finishPlacement(false)}>Cancel</button>
         </footer>}>
-        <section className="cfx-inspector" aria-label="Vent placement editor">
+        <CFDWindowSections><section className="cfx-inspector" aria-label="Vent placement editor">
           <p role="status">Click another wall, floor or ceiling to move the vent there. Drag the orange vent to position it. Changes are a preview until you choose OK.</p>
           <EquipmentPanel editor placement scenario={placementScenario} report={activeReport} selected={`vent:${placement.ventId}`} onSelect={selectObject}
             onChange={next => { const draft = next.vents.find(v => v.id === placement.ventId); if (draft && ventSchema.safeParse(draft).success) setPicking({ ...placement, draft }); }} onPick={startPlacement} onEditSource={onEditBuilding} />
-        </section>
+        </section></CFDWindowSections>
       </FloatingToolbar>}
       {active && scenario && refinementEditor?.studyId === scenario.id && (
         <FloatingToolbar
@@ -1247,7 +1245,7 @@ export function ClimoptixWorkspace({
           bringToFront
           onClose={closeRefinementEditor}
         >
-          <section className="cfx-inspector" aria-label="Refinement editor">
+          <CFDWindowSections><section className="cfx-inspector" aria-label="Refinement editor">
             <RefinementEditor
               key={`${scenario.id}:${refinementEditor.id}`}
               scenario={scenario}
@@ -1256,7 +1254,7 @@ export function ClimoptixWorkspace({
               onChange={change}
             />
             <button onClick={closeRefinementEditor}>Done</button>
-          </section>
+          </section></CFDWindowSections>
         </FloatingToolbar>
       )}
       {deleting && deletingStudy && (

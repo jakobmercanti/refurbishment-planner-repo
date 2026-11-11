@@ -131,10 +131,10 @@ body details > summary > .menu-section-help::before { content:"?"; }
 body .floating-toolbar .floating-toolbar-resize-left, body .floating-toolbar .floating-toolbar-resize-right { min-height:0; min-width:0; padding:0; z-index:30; }
 body .floating-toolbar[data-edge-docked="LEFT"] > .floating-toolbar-resize-right, body .floating-toolbar[data-edge-docked="RIGHT"] > .floating-toolbar-resize-left { display:block !important; width:8px; }
 .cfx-study-row, .cfx-study-group, .cfx-group-heading, .cfx-study-actions { min-width:0; max-width:100%; box-sizing:border-box; }
-.cfx-study-row { grid-template-columns:minmax(0,1fr) minmax(0,auto) !important; }
-.cfx-study-row > .cfx-row-menu { grid-column:2; grid-row:1; min-width:0; }
-.cfx-study-actions { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); justify-self:end; }
-.cfx-study-actions > button { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.cfx-study-row > :is(.cfx-study-name, .cfx-inline-name) { grid-column:1; grid-row:1; }
+.cfx-study-actions { grid-column:2; grid-row:1; }
+.cfx-study-row > .cfx-row-menu { grid-column:3; grid-row:1; min-width:0; }
+body .cfx-workspace .cfx-study-actions > button { min-width:0; white-space:nowrap; }
 body .popup.new-outline-popup { width:min(590px, calc(100vw - 24px)); }
 body .new-outline-popup :is(.popup-content, .popup-actions) { padding:16px 20px; }
 body .cfx-workspace .cfx-hvac-actions { grid-template-columns:repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }

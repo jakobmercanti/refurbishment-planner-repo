@@ -5,7 +5,6 @@ import { downloadCFD } from "@/lib/climoptix";
 import { archiveEntries, archiveFile, postprocessingArchive, type CFDArchiveEntry } from "@/lib/cfdArchive";
 import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import type { RailwayCFDWorker, WorkerResult } from "@/lib/railwayCFDWorker";
-import { CFDCollapseAll } from "./CFDCollapseAll";
 import { CFDIndependentWindow } from "./CFDIndependentWindow";
 
 const size = (bytes: number) => bytes >= 1024**2 ? `${(bytes/1024**2).toFixed(1)} MB` : `${Math.ceil(bytes/1024)} KB`;
@@ -66,8 +65,7 @@ export function CFDResultFiles({ adapter,job,result,onVTK }: { adapter:RailwayCF
     <div className="cfx-actions"><button disabled={!!busy||!native} onClick={()=>void action("folder",async signal=>{const bytes=await readArchive(signal);const listed=archiveEntries(bytes);signal.throwIfAborted();setEntries(listed);})}>Open online results folder</button></div>
     {busy&&<p role="status">{busy==="folder"?"Loading verified online folder…":`Loading ${busy}…`} This does not rerun the simulation.</p>}
     {error&&<p role="alert" className="cfx-error">{error}</p>}
-    {entries&&<CFDIndependentWindow title="Online simulation folder" onClose={()=>{setEntries(null);setFolder("");setPage(0);}}><section aria-label="Private simulation files" data-cfx-collapse-root>
-      <div className="cfx-window-disclosure-bar"><CFDCollapseAll /></div>
+    {entries&&<CFDIndependentWindow title="Online simulation folder" onClose={()=>{setEntries(null);setFolder("");setPage(0);}}><section aria-label="Private simulation files">
       <details open><summary>Folder navigation</summary>
       <div className="cfx-inline-toolbar"><strong>/{folder}</strong><button disabled={!folder||!!busy} onClick={()=>{setFolder(folder.replace(/[^/]+\/$/,""));setPage(0);}}>Up one folder</button><button disabled={!!busy} onClick={()=>{setEntries(null);cache.current=null;setFolder("");setPage(0);}}>Close folder</button></div>
       <p className="cfx-caption">Private, verified archive from worker storage. Double-click a folder or press Enter to open it. Download files before worker retention expires.</p>

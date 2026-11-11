@@ -21,6 +21,21 @@ export type FloorPlanOpeningGraphic = {
   windowDepthMm?: number;
 };
 
+function projectingWindowPlan(family: string | undefined, width: number, depthMm: number | undefined, scale: number) {
+  if (family !== "window-bay" && family !== "window-bow") return null;
+  const depth = Math.max(1, depthMm ?? (family === "window-bay" ? 650 : 700)) * scale;
+  return windowPlanVertices(family, width * scale, depth).map(([along, z]) => ({
+    along: along + width * scale / 2, projection: depth / 2 - z,
+  }));
+}
+
+export function projectingWindowClearance(opening: FloorPlanOpeningGraphic, scale: number) {
+  if (opening.kind !== "WINDOW") return 0;
+  const plan = projectingWindowPlan(opening.representationKey, opening.width, opening.windowDepthMm, scale);
+  // Allow for the outer frame drawn 2 SVG units beyond the plan profile.
+  return plan ? Math.max(...plan.map(point => point.projection)) + 3 : 0;
+}
+
 type OpeningProps = {
   opening: FloorPlanOpeningGraphic;
   wallStart: Point2D;
@@ -89,16 +104,14 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, roomCentre
   const className = selected ? " selected" : "";
   if (opening.kind === "WINDOW") {
     const family = opening.representationKey ?? "window-single-pane";
-    if (family === "window-bay" || family === "window-bow") {
-      const scale = Math.hypot(end.x - start.x, end.y - start.y) / opening.width;
-      const depth = Math.max(1, opening.windowDepthMm ?? (family === "window-bay" ? 650 : 700)) * scale;
-      const span = opening.width * scale;
-      const vertices = windowPlanVertices(family, span, depth);
+    const scale = Math.hypot(end.x - start.x, end.y - start.y) / opening.width;
+    const projectingPlan = projectingWindowPlan(family, opening.width, opening.windowDepthMm, scale);
+    if (projectingPlan) {
       const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
       const roomPoint = roomCentre ? toScreen(roomCentre) : null;
       const outsideNormal = outwardNormalForRoom(perpendicular, midpoint, roomPoint ?? undefined);
-      const points = (shift: number) => vertices.map(([x, z]) => {
-        const along = x + span / 2, distanceFromWall = depth / 2 - z + shift;
+      const points = (shift: number) => projectingPlan.map(({ along, projection }) => {
+        const distanceFromWall = projection + shift;
         return `${start.x + shape.tangent.x * along + outsideNormal.x * distanceFromWall},${start.y + shape.tangent.y * along + outsideNormal.y * distanceFromWall}`;
       }).join(" ");
       return <g style={style} className={`opening-symbol window-symbol pickable-opening${className}`} onPointerDown={onPointerDown} onContextMenu={onContextMenu}>
@@ -198,9 +211,9 @@ export function FloorPlanOpeningSymbol({ opening, wallStart, wallEnd, roomCentre
   </g>;
 }
 
-type DimensionProps = OpeningProps & { wallCentre: Point2D; wallDimensionOffset?: number; lane: number; hiddenMeasurementIds?: ReadonlyArray<string>; onMeasurementPointerDown?: (event: ReactPointerEvent<SVGGElement>, section: number) => void; onMeasurementContextMenu?: (event: ReactMouseEvent<SVGGElement>, section: number) => void; onMeasurementDoubleClick?: (event: ReactMouseEvent<SVGGElement>, section: number) => void };
+type DimensionProps = OpeningProps & { wallCentre: Point2D; wallDimensionOffset?: number; rowGap?: number; lane: number; hiddenMeasurementIds?: ReadonlyArray<string>; onMeasurementPointerDown?: (event: ReactPointerEvent<SVGGElement>, section: number) => void; onMeasurementContextMenu?: (event: ReactMouseEvent<SVGGElement>, section: number) => void; onMeasurementDoubleClick?: (event: ReactMouseEvent<SVGGElement>, section: number) => void };
 
-export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCentre, wallDimensionOffset = 32, lane, toScreen, displayUnits, hiddenMeasurementIds = [], onMeasurementPointerDown, onMeasurementContextMenu, onMeasurementDoubleClick }: DimensionProps) {
+export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCentre, wallDimensionOffset = 32, rowGap = 28, lane, toScreen, displayUnits, hiddenMeasurementIds = [], onMeasurementPointerDown, onMeasurementContextMenu, onMeasurementDoubleClick }: DimensionProps) {
   const shape = geometry(opening, wallStart, wallEnd, toScreen);
   if (!shape) return null;
   const start = toScreen(wallStart); const end = toScreen(wallEnd); const centre = toScreen(wallCentre);
@@ -208,7 +221,7 @@ export function FloorPlanOpeningDimensions({ opening, wallStart, wallEnd, wallCe
   const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   const dot = (midpoint.x - centre.x) * candidate.x + (midpoint.y - centre.y) * candidate.y;
   const outward = dot >= 0 ? candidate : { x: -candidate.x, y: -candidate.y };
-  const rowOffset = Math.max(56, wallDimensionOffset + 28) + lane * 20;
+  const rowOffset = Math.max(56, wallDimensionOffset + rowGap) + lane * 20;
   const points = [start, shape.start, shape.end, end].map((point) => ({ x: point.x + outward.x * rowOffset, y: point.y + outward.y * rowOffset }));
   const values = [opening.offset, opening.width, Math.max(0, shape.wallLength - opening.offset - opening.width)];
   const hasMeasurementActions = Boolean(onMeasurementPointerDown || onMeasurementContextMenu || onMeasurementDoubleClick);

@@ -111,6 +111,7 @@ test("CFD phases use one window disclosure bar and contextual section help", asy
       for (const name of ["Collapse all", "Expand all"]) {
         assert.equal(await panel.getByRole("button", { name, exact: true }).count(), 1);
       }
+      assert.equal(await panel.getByRole("region", { name: "Simulation readiness", exact: true }).count(), 1);
       if (phase === "Simulations") {
         const add = panel.getByRole("button", { name: "New simulation", exact: true });
         const management = panel.locator(".cfx-studies > details");
@@ -128,6 +129,17 @@ test("CFD phases use one window disclosure bar and contextual section help", asy
         assert.equal(await add.isVisible(), false);
         await panel.getByRole("button", { name: "Expand all", exact: true }).click();
         assert.equal(await add.isVisible(), true);
+        const row = panel.locator(".cfx-study-row").first();
+        const placement = await row.evaluate(element => {
+          const rect = node => node.getBoundingClientRect();
+          const name = rect(element.querySelector(".cfx-study-name"));
+          const status = rect(element.querySelector(".cfx-study-status"));
+          const actions = [...element.querySelectorAll(".cfx-study-actions > button, .cfx-row-menu > summary")];
+          return { aligned: actions.every(action => Math.abs(rect(action).y + rect(action).height / 2 - name.y - name.height / 2) < 2),
+            statusBelow: status.y >= name.bottom, overflow: element.scrollWidth > element.clientWidth + 2,
+            clipped: actions.slice(0, 3).some(action => action.scrollWidth > action.clientWidth + 2) };
+        });
+        assert.deepEqual(placement, { aligned: true, statusBelow: true, overflow: false, clipped: false }, `${p.width}px ${p.density}`);
       }
       if (phase === "Imported results" && p.width === 1440) {
         const heading = (await panel.getByRole("heading", { name: /^Results ·/ }).boundingBox())!;
@@ -168,6 +180,13 @@ test("adding a vent reveals its selected object group above Shared HVAC", async 
   const added = target.getByRole("button", { name: "Select Supply vent", exact: true });
   await added.waitFor();
   assert.equal(await added.getAttribute("aria-pressed"), "true");
+  const editor = ui.locator(".cfx-equipment-editor").filter({ visible: true });
+  if (!await editor.count()) await target.getByRole("button", { name: "Edit Supply vent", exact: true }).click();
+  const name = editor.getByRole("textbox", { name: "Vent name", exact: true });
+  await editor.getByRole("button", { name: "Collapse all", exact: true }).click();
+  assert.equal(await name.isVisible(), false);
+  await editor.getByRole("button", { name: "Expand all", exact: true }).click();
+  assert.equal(await name.isVisible(), true);
 });
 
 test("Preferences uses the reclaimed help column and real room-target guidance remains accessible after changing tabs", async t => {

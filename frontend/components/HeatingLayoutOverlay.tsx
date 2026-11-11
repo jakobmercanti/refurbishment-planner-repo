@@ -18,7 +18,14 @@ import { activeFloor } from "@/lib/buildingDocument";
 import { conventionalHvac } from "@/lib/hvacHeating";
 import { hvacConditionsSchema, roomOperatingScenario } from "@/lib/hvacDocument";
 interface Props { labelPortal?:ServiceLabelPortal; onPipeDraftChange?: (path: Point2D[]) => void; pipePointer?: Point2D | null; zoom?: number; connecting?: boolean; onConnect?: (id: string) => void; pipeDraft?: Point2D[]; data: HeatingProject; rooms: Room[]; selection: HeatingSelection; onSelect: (s: HeatingSelection) => void; onChange: (p: HeatingProject) => void; toScreen: (p: Point2D) => Point2D; fromClient: (x: number, y: number, svg: SVGSVGElement) => Point2D; highlightedRoomId: string | null; draft: Point2D[]; }
-type Drag = { bend?: number; bendMode?: "POSITION" | "RADIUS"; source: HeatingProject; before: HeatingProject; kind: "radiator" | "manifold" | "exclusion" | "circuit" | "roomIndicator"; id: string; pathKey?: "pathMm" | "supplyPathMm" | "returnPathMm"; index?: number; segment?: boolean; start: Point2D; };
+type IndicatorPositions = "roomIndicatorPositions" | "ventilationIndicatorPositions";
+type Drag = { bend?: number; bendMode?: "POSITION" | "RADIUS"; source: HeatingProject; before: HeatingProject; kind: "radiator" | "manifold" | "exclusion" | "circuit" | "roomIndicator"; id: string; pathKey?: "pathMm" | "supplyPathMm" | "returnPathMm"; index?: number; segment?: boolean; start: Point2D; indicatorPositions?: IndicatorPositions };
+
+function indicatorPosition(data: HeatingProject, key: IndicatorPositions, room: Room): Point2D {
+  return data[key]?.[room.id] ?? room.vertices.reduce((centre, point) => ({
+    x: centre.x + point.x / room.vertices.length, y: centre.y + point.y / room.vertices.length,
+  }), { x: 0, y: 0 });
+}
 export function HeatingLayoutOverlay(props: Props) {
   const [preview, setPreview] = useState<HeatingProject | null>(null);
   const [editError, setEditError] = useState("");
@@ -27,6 +34,7 @@ export function HeatingLayoutOverlay(props: Props) {
   const drag = useRef<Drag | null>(null), latest = useRef<HeatingProject | null>(null), data = preview ?? props.data;
   const results = useMemo(() => heatingResults(props.rooms, props.data), [props.rooms, props.data]);
   const hvac = useHvac(), ventilationProject = hvac?.tab === "Ventilation" ? hvac.project : null;
+  const indicatorPositions = ventilationProject ? "ventilationIndicatorPositions" : "roomIndicatorPositions";
   const airResults = useMemo(() => {
     const layout = ventilationProject?.hvac;
     if (!ventilationProject || !layout) return null;
@@ -79,8 +87,12 @@ export function HeatingLayoutOverlay(props: Props) {
     if (value.kind === "roomIndicator") {
       const room = props.rooms.find(r => r.id === value.id);
       if (!room) return;
-      const original = value.before.roomIndicatorPositions?.[value.id] ?? { x: room.vertices.reduce((s, p) => s + p.x, 0) / room.vertices.length, y: room.vertices.reduce((s, p) => s + p.y, 0) / room.vertices.length };
-      next.roomIndicatorPositions = { ...next.roomIndicatorPositions, [value.id]: { x: original.x + dx, y: original.y + dy } };
+      const key = value.indicatorPositions ?? "roomIndicatorPositions";
+      const original = indicatorPosition(value.before, key, room);
+      next[key] = { ...next[key], [value.id]: { x: original.x + dx, y: original.y + dy } };
+      latest.current = next;
+      setPreview(next);
+      return;
     }
     if (value.kind === "radiator") { const r = next.radiators.find(r => r.radiatorId === value.id)!, room = props.rooms.find(room => room.id === r.roomId);if (room) Object.assign(r, snapRadiatorToWall(r, room, at)); }
     if (value.kind === "manifold") { const m = next.manifolds.find(m => m.manifoldId === value.id)!;m.positionMm = at;for (const c of next.ufhCircuits.filter(c => c.manifoldId === m.manifoldId)) { c.supplyPathMm[0] = at;c.returnPathMm[c.returnPathMm.length - 1] = at; } }
@@ -152,10 +164,26 @@ export function HeatingLayoutOverlay(props: Props) {
     {editError && <text x={10} y={20} fill="#ad2323" role="alert">{editError}</text>}
     {props.draft.length > 0 && <polyline points={screenPath(props.draft)} stroke="#b45c24" strokeWidth="2" fill="none" pointerEvents="none" />}
     {results.rooms.map(row => {
-      const pts = row.room.vertices.map(props.toScreen), savedPosition = data.roomIndicatorPositions?.[row.room.id], label = savedPosition ? props.toScreen(savedPosition) : { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+      const label = props.toScreen(indicatorPosition(data, indicatorPositions, row.room));
+      const interaction = {
+        role: "button", tabIndex: 0, pointerEvents: "all", "data-heating-interactive": "true", "data-room-id": row.room.id,
+        "aria-label": `Move ${ventilationProject ? "ventilation" : "heating"} summary: ${row.room.name}`,
+        style: { cursor: "move", touchAction: "none" },
+        onPointerDown: (event: ReactPointerEvent<SVGElement>) => begin(event, { kind: "roomIndicator", id: row.room.id, indicatorPositions }),
+        onKeyDown: (event: React.KeyboardEvent<SVGElement>) => {
+          const directions: Record<string, Point2D> = { ArrowLeft: { x: -50, y: 0 }, ArrowRight: { x: 50, y: 0 }, ArrowUp: { x: 0, y: 50 }, ArrowDown: { x: 0, y: -50 } };
+          const direction = directions[event.key];
+          if (!direction) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const original = indicatorPosition(props.data, indicatorPositions, row.room);
+          props.onChange({ ...props.data, [indicatorPositions]: { ...props.data[indicatorPositions], [row.room.id]: { x: original.x + direction.x, y: original.y + direction.y } } });
+        },
+      };
       if (ventilationProject) {
         const air = airResults?.get(row.room.id);
-        return <g key={row.room.id} pointerEvents="none">{labelAt(label, <g className="ventilation-room-indicator" transform={`translate(${label.x},${label.y + 37}) scale(${.76 * (props.zoom ?? 1)})`} aria-label={`Ventilation summary: ${row.room.name}`}>
+        return <g key={row.room.id} pointerEvents="none">{labelAt(label, <g className="ventilation-room-indicator" transform={`translate(${label.x},${label.y + 37}) scale(${.76 * (props.zoom ?? 1)})`} {...interaction}>
+          <title>Drag this ventilation summary or use the arrow keys to move it.</title>
           <rect x="-120" y="-32" width="240" height="77" rx="10" fill="#f0f7ff" stroke="#277ab5" />
           <text x="0" y="-14" textAnchor="middle" fill="#24334b" fontSize="11" fontWeight="700">{row.room.name}</text>
           <text x="0" y="5" textAnchor="middle" fill="#24334b" fontSize="11">Supply air changes: {air?.supplyACH == null ? "Unknown" : `${air.supplyACH.toFixed(2)} h⁻¹`}</text>
@@ -165,12 +193,7 @@ export function HeatingLayoutOverlay(props: Props) {
       const balance = heatingRoomBalance(row), green = balance.tone === "sufficient", red = balance.tone === "insufficient";
       const colour = green ? "#15803d" : red ? "#b91c1c" : "#a16207", background = green ? "#f0fdf4" : red ? "#fff1f2" : "#fffbeb";
       return <g key={row.room.id} pointerEvents="none">
-        {(data.display.demand || data.display.temperature || data.display.density) && labelAt(label, <g className="heating-room-indicator" data-room-id={row.room.id} data-balance={balance.tone} transform={`translate(${label.x},${label.y + 37}) scale(${.76 * (props.zoom ?? 1)})`} pointerEvents="all" role="button" tabIndex={0} aria-label={`Move heating summary: ${row.room.name}`} style={{ cursor: "move" }} onPointerDown={event => begin(event, { kind: "roomIndicator", id: row.room.id })} onKeyDown={event => {
-          const directions: Record<string, Point2D> = { ArrowLeft: { x: -50, y: 0 }, ArrowRight: { x: 50, y: 0 }, ArrowUp: { x: 0, y: 50 }, ArrowDown: { x: 0, y: -50 } }, direction = directions[event.key];
-          if (!direction) return; event.preventDefault(); event.stopPropagation();
-          const original = data.roomIndicatorPositions?.[row.room.id] ?? { x: row.room.vertices.reduce((s, p) => s + p.x, 0) / row.room.vertices.length, y: row.room.vertices.reduce((s, p) => s + p.y, 0) / row.room.vertices.length };
-          props.onChange({ ...props.data, roomIndicatorPositions: { ...props.data.roomIndicatorPositions, [row.room.id]: { x: original.x + direction.x, y: original.y + direction.y } } });
-        }}>
+        {(data.display.demand || data.display.temperature || data.display.density) && labelAt(label, <g className="heating-room-indicator" data-balance={balance.tone} transform={`translate(${label.x},${label.y + 37}) scale(${.76 * (props.zoom ?? 1)})`} {...interaction}>
           <title>{`${row.room.name}: ${balance.headline}. ${balance.detail}. Drag this summary to move it; arrow keys also move it. ${row.warnings.join(" ")}`}</title>
           <rect x="-120" y="-33" width="240" height="111" rx="10" fill={background} fillOpacity=".97" stroke={colour} strokeWidth="1.5" />
           <text x="0" y="-18" textAnchor="middle" fill="#24334b" fontSize="11" fontWeight="700">{row.room.name}</text>

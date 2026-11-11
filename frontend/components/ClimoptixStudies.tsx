@@ -151,8 +151,10 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       onOrder(moveStudy(scenarios, s.id, target.name, scenarios.filter(v => sameGroup(v.group, target.name)).length), groups);
                     }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
                   </CFDRowMenu>
-                  <CFDJobProgress job={job} name={s.name} operation={entry?.operation} pending={entry?.submitting || entry?.dispatched ? phase : undefined} />
-                  {entry?.error && <p className="cfx-error" role="alert">{entry.error} <button className="cfx-issues-link" onClick={() => onIssues(s.id)}>View issues for {s.name}</button></p>}
+                  <div className="cfx-study-status">
+                    <CFDJobProgress job={job} name={s.name} operation={entry?.operation} pending={entry?.submitting || entry?.dispatched ? phase : undefined} />
+                    {entry?.error && <p className="cfx-error" role="alert">{entry.error} <button className="cfx-issues-link" onClick={() => onIssues(s.id)}>View issues for {s.name}</button></p>}
+                  </div>
                 </article>;
               }}
             </CFDReorderList>

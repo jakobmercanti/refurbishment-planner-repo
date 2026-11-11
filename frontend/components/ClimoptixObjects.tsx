@@ -134,7 +134,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
       helpSteps={[{ heading: "Simulation-only objects", text: "Treatments, copies and Delete affect this simulation only. Source furniture and the measured building remain unchanged. Copies reuse measured source dimensions, with separate millimetre offsets; use Offset mm to position them. Preparation reports overlaps and out-of-domain objects. Count multiplies emissions, not geometry. Groups are only organization metadata. Undo restores changes." }]}>
       {renderObject(editing.id)}
     </CFDEditorWindow>}
-    {editingGroup && <CFDEditorWindow title="Edit object group" defaultPosition={{ x: 240, y: 100 }} initialSize={{ width: 420 }} onClose={() => setEditing(null)} bringToFront>
+    {editingGroup && <CFDEditorWindow title="Edit object group" sectionTitle="Group settings" defaultPosition={{ x: 240, y: 100 }} initialSize={{ width: 420 }} onClose={() => setEditing(null)} bringToFront>
       <label>Group name<input key={`${editingGroup.id}:${editingGroup.name}`} aria-label="Object group name" defaultValue={editingGroup.name} maxLength={80} onBlur={event => {
         const name = event.target.value.trim();
         if (!name || groups.some(g => g.id !== editingGroup.id && g.name.toLowerCase() === name.toLowerCase())) { setError("Choose a unique, non-empty object group name."); event.target.value = editingGroup.name; return; }
