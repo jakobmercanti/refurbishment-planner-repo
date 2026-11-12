@@ -178,6 +178,7 @@ export function useCFDJobs(
             operation,
             controller.signal,
             submissionId,
+            adapter,
           ));
         const live = latest.current.project.cfdScenarios?.find(
           (s) => s.id === study.id,

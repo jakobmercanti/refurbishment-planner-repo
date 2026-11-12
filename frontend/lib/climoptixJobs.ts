@@ -3,6 +3,7 @@ import { resolveHvacScenario, requiresHvacThermalExecution } from "./hvacBridge"
 import type { CFDScenario } from "./climoptixDocument";
 import type { ProjectDocument } from "./projectDocument";
 import {
+  type CFDReport,
   preparationInput,
   preparationRevision,
   preparationRequestBody,
@@ -65,9 +66,17 @@ export interface CFDWorkerAdapter {
     run: boolean;
     reason: string;
   };
+  configurationIssue?(scenario: CFDScenario): string | undefined;
+  reportIssue?(report: CFDReport): string | undefined;
   submit(request: CFDSubmission, signal: AbortSignal): Promise<unknown>;
   status(jobId: string, signal: AbortSignal): Promise<unknown>;
   list?(projectId: string, signal: AbortSignal): Promise<CFDWorkerJob[]>;
+}
+
+export function workerConfigurationIssue(project: ProjectDocument, scenario: CFDScenario, adapter: CFDWorkerAdapter | null, operation: CFDOperation = "run") {
+  if (operation === "run" && requiresHvacThermalExecution(project, scenario))
+    return "Shared HVAC thermal execution is not connected. Export the boundary package for a thermal-capable solver. The native worker runs isothermal airflow.";
+  return adapter?.configurationIssue?.(resolveHvacScenario(project, scenario));
 }
 
 /** Job freshness also includes Apply intent, without invalidating geometry preparation. */
@@ -87,10 +96,11 @@ export async function prepareWorkerSubmission(
   operation: CFDOperation,
   signal: AbortSignal,
   submissionId: string = crypto.randomUUID(),
+  adapter: CFDWorkerAdapter | null = null,
 ): Promise<CFDSubmission> {
   signal.throwIfAborted();
-  if (operation === "run" && requiresHvacThermalExecution(project, scenario))
-    throw new Error("Shared HVAC thermal execution is not connected. Export the checked boundary package; a compatible energy adapter must implement the prepared thermal conditions before solving.");
+  const configurationIssue = workerConfigurationIssue(project, scenario, adapter, operation);
+  if (configurationIssue) throw new Error(configurationIssue);
   scenario = resolveHvacScenario(project, scenario);
   const applied = scenario.thermalSnapshots?.[0];
   const thermalApplication = applied
@@ -118,10 +128,12 @@ export async function prepareWorkerSubmission(
     signal,
   );
   signal.throwIfAborted();
-  if (report.validation.errors || !report.surface.exportable)
-    throw new Error(
-      "Preflight blocked this submission. Validate the study and resolve its diagnostics.",
-    );
+  if (report.validation.errors || !report.surface.exportable) {
+    const issue = report.diagnostics.find(diagnostic => diagnostic.severity === "error");
+    throw new Error("Preflight blocked this submission. " + (issue?.message ?? "Review the geometry checks."));
+  }
+  const reportIssue = adapter?.reportIssue?.(report);
+  if (reportIssue) throw new Error(reportIssue);
   return {
     contractVersion: 1,
     dialect: "OpenCFD-v2312",

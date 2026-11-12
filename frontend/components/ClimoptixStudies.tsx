@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { duplicateCFDScenario, type CFDScenario, type CFDSimulationGroup } from "@/lib/climoptixDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDOperation, CFDWorkerAdapter } from "@/lib/climoptixJobs";
-import { terminalJob, workerInput } from "@/lib/climoptixJobs";
+import { terminalJob, workerConfigurationIssue, workerInput } from "@/lib/climoptixJobs";
 import { insertAtBoundary, moveStudy } from "@/lib/climoptixStudies";
 import { duplicateSimulationGroup, sameGroup, simulationGroups, uniqueGroupName } from "@/lib/climoptixGroups";
 import type { CFDJobEntry } from "./useCFDJobs";
@@ -124,10 +124,12 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 const entry = entries[s.id], job = entry?.job;
                 const stale = !!job && entry.input !== workerInput(project, s);
                 const phase = entry?.submitting ? "Checking & submitting…" : job ? `${job.phase}${stale ? " · older setup" : ""}` : entry?.dispatched ? "Submission status unknown" : "Not submitted";
+                const checkConfiguration = (operation: CFDOperation) => entry?.dispatched ? undefined : workerConfigurationIssue(project, s, worker, operation);
+                const configurationIssue = checkConfiguration("run");
                 const reason = (operation: CFDOperation) => resetting ? "Wait for default setup to finish" : s.archived ? "Unarchive this simulation before submitting" : busy(s) ? "Wait for this job to finish" :
                   entry?.dispatched && entry.operation !== operation ? `Recover the previous ${entry.operation} submission first` :
                   !worker?.capabilities.connected ? worker?.capabilities.reason || "Connect an OpenFOAM worker to submit this simulation" :
-                  !worker.capabilities[operation] ? worker.capabilities.reason || `This worker does not support ${operation}` : undefined;
+                  !worker.capabilities[operation] ? worker.capabilities.reason || `This worker does not support ${operation}` : operation === "run" ? configurationIssue : checkConfiguration(operation);
                 return <article className={`cfx-study-row${s.id === scenario?.id ? " selected" : ""}`}>
                   {renaming === s.id ? <InlineName key={s.id} value={s.name} label="Simulation name" onCommit={name => onChange({ ...s, name }, true)} onDone={() => setRenaming(null)} /> :
                     <button className="cfx-study-name" aria-label={`Select ${s.name}`} aria-pressed={s.id === scenario?.id}
@@ -136,7 +138,8 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                     </button>}
                   <div className="cfx-study-actions">
                     {(["mesh", "run"] as const).map(operation => <button key={operation}
-                      aria-label={`${operation === "mesh" ? "Mesh" : "Run"} ${s.name}`} disabled={!!reason(operation)} title={reason(operation)} onClick={() => onSubmit(operation, [s])}>
+                      aria-label={`${operation === "mesh" ? "Mesh" : "Run"} ${s.name}`} data-field-help={operation === "mesh" ? "Generate and check the mesh for this study using its measured geometry and mesh settings." : "Check this study and submit its mesh and solver settings to the connected CFD worker."}
+                      disabled={!!reason(operation)} title={reason(operation)} onClick={() => onSubmit(operation, [s])}>
                       {operation === "mesh" ? "Mesh" : "Run"}</button>)}
                     <button aria-label={`Delete ${s.name}`} className="cfx-danger" disabled={busy(s) || entry?.dispatched}
                       title={entry?.dispatched ? "Recover the previous submission before deleting this simulation" : undefined} onClick={e => onDelete(s.id, e.currentTarget)}>Delete</button>
@@ -153,7 +156,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                   </CFDRowMenu>
                   <div className="cfx-study-status">
                     <CFDJobProgress job={job} name={s.name} operation={entry?.operation} pending={entry?.submitting || entry?.dispatched ? phase : undefined} />
-                    {entry?.error && <p className="cfx-error" role="alert">{entry.error} <button className="cfx-issues-link" onClick={() => onIssues(s.id)}>View issues for {s.name}</button></p>}
+                    {(entry?.error || configurationIssue) && <p className="cfx-error" role={entry?.error ? "alert" : "status"}>{entry?.error || configurationIssue} <button className="cfx-issues-link" onClick={() => onIssues(s.id)}>View issues for {s.name}</button></p>}
                   </div>
                 </article>;
               }}

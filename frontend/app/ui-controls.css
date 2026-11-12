@@ -180,7 +180,8 @@ body .element-add-editor .elements-list-content .fixture-list :is(.edit-fixture,
 :root { --planner-button-radius: max(3px, calc(var(--ui-button-radius) - 3px)); }
 
 /* Swatches, resize handles and tab strips retain their specialised shapes. */
-body button:where(:not([role=tab], .floating-toolbar-resize, .finish-palette button, .tile-palette-presets button, .pb-colour-presets button, .catalogue-material-entry, .color-swatch, .colour-swatch, .material-swatch)) {
+body button:where(:not([role=tab], .floating-toolbar-resize, .finish-palette button, .tile-palette-presets button, .pb-colour-presets button, .catalogue-material-entry, .color-swatch, .colour-swatch, .material-swatch)),
+body .software-dropdown .software-wall-setting > summary {
   border-radius: var(--planner-button-radius) !important;
 }
 body :is(.floating-canvas-navigation, .floating-view-controls, .cfx-view-window .floating-toolbar-content) button {

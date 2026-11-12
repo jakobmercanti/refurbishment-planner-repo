@@ -62,7 +62,16 @@ function defaultControlGuide(control: HTMLElement, label: string): string {
     if (control.readOnly) return `Read ${label} for the current selection. This value is read-only here.`;
   }
   if (control.matches("output, th[scope='row']")) return `Read ${label} in the results for the current inputs and units.`;
-  if (control.matches("button,[role='button'],[role='menuitem']")) return control.title || `Choose ${label} to run this action for the current selection.`;
+  if (control.matches("button,[role='button'],[role='menuitem']")) {
+    if (control.closest("form") && control.getAttribute("type") === "submit") return "Submit this form using the values entered above.";
+    if (control.matches(".floating-window-task")) return "Bring the minimised window back into the workspace.";
+    if (control.getAttribute("aria-haspopup") === "menu") return "Open the available actions for " + label + ".";
+    if (/^edit\b/i.test(label)) return "Open the editor for " + (label.slice(4).trim() || "the adjacent item") + ".";
+    if (/^delete\b/i.test(label)) return "Remove " + (label.slice(6).trim() || "the adjacent item") + " from this list.";
+    if (/^duplicate\b/i.test(label)) return "Make a separate copy of " + (label.slice(9).trim() || "the adjacent item") + ".";
+    if (/^(select|choose)\b/i.test(label)) return "Set " + label.replace(/^(select|choose)\s*/i, "") + " as the item to work on.";
+    return "Activate “" + label + "”.";
+  }
   return `Enter ${label} for the current item. Use the value from the relevant project or source record.`;
 }
 
@@ -73,7 +82,11 @@ export function controlHelp(control: HTMLElement, includeChoices = true): Window
   const fallback = !includeChoices && control instanceof HTMLSelectElement
     ? `Choose ${heading} from the available options.`
     : defaultControlGuide(control, heading);
-  const guide = control.dataset.fieldHelp || fieldDescription(heading) || control.title || context || fallback;
+  const group = control.closest("details");
+  const topic = group?.querySelector<HTMLElement>(":scope > summary [data-window-help-topic], :scope > .window-help-disclosure-header [data-window-help-topic]");
+  const localGuide = topic?.dataset.windowHelpSteps ? parseHelpSteps(topic.dataset.windowHelpSteps)?.find(step => step.heading.toLowerCase() === heading.toLowerCase())?.text : undefined;
+  const guide = control.dataset.fieldHelp || fieldDescription(heading) || localGuide || control.title || context || fallback;
+  if (!guide) return;
   return { heading, text: context && !guide.includes(context) ? `${guide} ${context}` : guide };
 }
 

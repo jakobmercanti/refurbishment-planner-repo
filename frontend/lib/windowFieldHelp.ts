@@ -1,4 +1,55 @@
 const descriptions: Record<string, string> = {
+  "fit view": "Frame the visible plan or model in the viewer. Zoom and camera position change while measured geometry stays in place.",
+  "fit": "Frame the visible plan or model in the viewer. Zoom and camera position change while measured geometry stays in place.",
+  "show all": "Turn on all the windows listed in this menu so they can be used in the current view.",
+  "hide all": "Hide the windows listed here to clear the viewer. Use this menu to show them again.",
+  "add element": "Open the catalogue and placement controls for the current workbench. Choose an element and use its preview to position it in the measured plan.",
+  "connect heating elements": "Pick a source and destination on the plan to create paired supply and return heating routes.",
+  "draw heating pipe": "Draw a heating route one corner at a time. Finish pipe saves the route and its editable corners.",
+  "edit source building & assets": "Return to the floorplan to edit the measured rooms, walls, openings and catalogue assets used by this CFD case.",
+  "add object group": "Create a folder for related simulation objects. This changes how the objects are organised in the workbench.",
+  "new simulation": "Create a separate CFD study for the current building with its own domain, objects, physics and solver settings.",
+  "add group": "Create a folder for organising simulations. Studies can be moved between groups without changing their setup.",
+  "restore default": "Prepare a starter airflow setup for the selected room with the default inlet, outlet and steady isothermal settings.",
+  "use worker resource limits": "Reduce requested processors, RAM, runtime, storage, retention and cell budgets to the connected worker’s limits.",
+  "review submission issues": "Open the checks for this study and see which geometry or solver settings need attention before the worker can accept it.",
+  "add exclusion": "Draw an area where underfloor pipes must stay out, such as beneath fixed cabinets or a shower. Click at least three corners in the viewer and choose Finish exclusion. The area is removed from the usable heating footprint when the layout is checked or regenerated.",
+  "finish exclusion": "Close and save the drawn polygon as a pipe-free area. Regenerate the underfloor layout to reroute unlocked circuits around it.",
+  "cancel drawing": "Discard the unfinished exclusion or pipe route. Saved heating geometry stays in the plan.",
+  "place manifold": "Place the distribution point where the supply and return of each underfloor circuit connect. Choose an accessible position with space to route both leads.",
+  "create room ufh": "Create an underfloor zone and its first pipe routes for the selected room using the chosen system, available floor area and bend limits.",
+  "regenerate room": "Recalculate unlocked underfloor pipe routes from the current room shape, exclusions, manifold and zone settings. Locked circuits are retained.",
+  "apply spacing and circuit count": "Reroute unlocked circuits using the chosen spacing, parallel runs and circuit count. The layout must still fit the room and meet the bend limits.",
+  "remove room ufh": "Review removal of the selected room’s underfloor zones, pipe circuits and exclusions. Radiators and shared manifolds are kept.",
+  "evaluate in cfd": "Prepare a CFD case for this room from its shared HVAC and construction data. Sign in if prompted to open that case. Thermal cases can be reviewed and exported for a thermal solver.",
+  "check geometry": "Rebuild the room’s measured host surfaces and check vent placement, openings and obstructions before preparing a CFD case.",
+  "update calculations": "Recheck the selected room’s airflow and sensible heat balance using the current operating scenario.",
+  "export calculations": "Save the room’s operating inputs and calculated airflow and heat balance to a file.",
+  "add supply inlet": "Add a device that delivers air to the selected room. Drag it to a measured wall or ceiling and enter the supply flow and temperature.",
+  "add extract/outlet": "Add an outlet that removes air from the room. Set its pressure or flow in the vent editor.",
+  "add return": "Add a device that returns room air to the system. Return airflow is counted separately from exhaust and outdoor supply.",
+  "delete selected scenario": "Review deletion of the selected construction alternative. The existing building and other scenarios remain available.",
+  "define wall layers": "Set the wall build-up from outside to inside. Layer thickness and conductivity are used to estimate wall U-value and heat loss.",
+  "define floor layers": "Set the floor build-up and review the estimated floor U-value and heat loss.",
+  "define roof layers": "Set the roof or ceiling build-up and review the estimated U-value and heat loss.",
+  "clear override · inherit group": "Remove this surface’s individual boundary condition so it follows its boundary group or the surface type defaults.",
+  "review physics settings": "Open the equations and fluid properties. Check whether the selected energy, buoyancy and scalar equations are supported by the worker.",
+  "run solver": "Check this study and submit its current mesh and solver settings to the connected CFD worker.",
+  "review solver settings": "Open solver settings to check mesh features, steady mode, coupling, convergence, sampling and resource limits.",
+  "refresh checks": "Rebuild the prepared CFD geometry and recompute the diagnostics for the current simulation settings.",
+  "edit selected opening": "Open the selected door, window or passage in Add to plan, where its dimensions and wall position can be changed.",
+  "flow / return": "Open system temperatures. Flow is the water supplied to the emitters, and return is the water coming back after releasing heat.",
+  "edit heating element": "Open the selected emitter’s model, dimensions, rating and placement settings.",
+  "show heat-loss surfaces": "Highlight walls and openings that contribute to heat loss and show their estimated U-values and heat loss on the plan.",
+  "hide heat-loss surfaces": "Remove the heat-loss highlights from the viewer while keeping the heating calculation available.",
+  "electrical layout": "Open the electrical workbench to place fittings, group them into circuits, draw routes and check whether sockets reach a consumer unit.",
+  "heating & ventilation": "Open the workbench for heating output, underfloor pipework, vent placement and room airflow.",
+  "energy & insulation": "Open the workbench for construction scenarios, envelope layers, U-values and heat-loss estimates.",
+  "live element preview": "Inspect the selected catalogue model in 3D before placing it. Enter dimensions from the measured product or design data.",
+  "finish pipe": "Save the drawn heating pipe route from the current points. Each corner remains editable on the plan.",
+  "test mode": "Select a socket or fitting to check its modelled path to the consumer unit and see which route segments connect it.",
+  "import ufh performance json": "Load the output table for the installed underfloor system. Match pipe spacing, covering resistance and temperatures so the planner can estimate capacity.",
+  "assign boundary surfaces": "Choose the measured surfaces that belong to this boundary group. Each surface uses one group and may also have its own override.",
   "annotate": "Open the drawing annotation tools to add text, symbols and leaders to the current floor.",
   "room names": "Show or hide the room names drawn on the current floor.",
   "measurements": "Show or hide dimension lines and measured distances on the drawing.",
@@ -168,6 +219,13 @@ export function fieldDescription(label: string) {
   const key = full.replace(/: (visible|hidden)$/, "").replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+(°[cfk]?|w\/m²k|mm|cm|m|in|ft|w)$/, "");
   if (Object.hasOwn(descriptions, full)) return descriptions[full];
   if (Object.hasOwn(descriptions, key)) return descriptions[key];
+  if (/^(↶\s*)?undo\b/.test(full)) return "Restore the previous saved edit in this workbench.";
+  if (/^(↷\s*)?redo\b/.test(full)) return "Reapply the most recent edit that was undone in this workbench.";
+  if (/^window layout for /.test(full)) return "Open the window layout menu to dock, float, minimise or maximise this window.";
+  if (/^minimise /.test(full)) return "Hide this window temporarily and keep a Restore control available at the edge of the workspace.";
+  if (/^(edit|select) surface /.test(full)) return "Select a measured CFD face and inspect its assigned group or per-surface boundary condition. Supply and extract faces are edited as devices.";
+  if (/^inspect /.test(full)) return "Go to the simulation setting or measured element that triggered this check.";
+  if (/^duplicate (simulation|group|circuit|vent|floor)/.test(full)) return "Create a separate editable copy using the current settings. Later edits apply to the selected copy.";
   if (/^include ["“]made with freefloorplan3d\.com/.test(full)) return descriptions["include “made with freefloorplan3d.com”"];
   if (/\bu[- ]?value\b|\btarget [ur]\b/.test(key) && /w\/m²k|u[- ]value/.test(full)) return "Use a measured, tested or design U-value for the complete element. A lower value means less heat transfer for the same area and temperature difference.";
   if (/\bconductivity\b/.test(key)) return "Use the material's design conductivity in W/(m·K). Divide layer thickness in metres by this value to find the layer's thermal resistance.";

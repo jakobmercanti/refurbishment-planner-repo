@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { hvacProject } from "../hvacFixtures";
+import { cfdProject } from "../climoptixFixtures";
+import { newHeatingProject } from "../../lib/heatingDocument";
+import { thermalRoom } from "../../lib/heatingCalculations";
 import { roofProject } from "../roofBalustradeFixtures";
 import { newProject } from "../../lib/projectDocument";
 import { eventually, menu, readProject, startBrowserHarness, writeProject } from "./harness.mjs";
@@ -10,13 +13,13 @@ before(async () => { harness = await startBrowserHarness(); });
 after(async () => { await harness?.close(); });
 
 const account = "11111111-1111-4111-8111-111111111111";
-async function signInFromPlanner(page, context) {
+async function signInFromPlanner(page, context, open = true) {
   await context.route("**/planner/auth-api/token?grant_type=password", route => route.fulfill({ json: {
     access_token: "mock-access", refresh_token: "mock-refresh", expires_in: 3600,
     user: { id: account, email: "draft@example.invalid" },
   } }));
   await context.route("**/commercial/summary", route => route.fulfill({ json: { plan: "free" } }));
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  if (open) await page.getByRole("button", { name: "Sign in", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Account & plans" });
   await dialog.getByLabel("Email", { exact: true }).fill("draft@example.invalid");
   await dialog.getByLabel("Password", { exact: true }).fill("not-a-real-password");
@@ -59,6 +62,90 @@ test("signing in from the planner carries the guest draft and retains existing a
   await page.getByRole("dialog", { name: "Account & plans" }).getByRole("button", { name: "Sign out", exact: true }).click();
   await eventually(session.saved, p => p?.projectId === draft.projectId);
   await page.getByRole("button", { name: "Sign in", exact: true }).waitFor();
+});
+
+test("Evaluate in CFD from Heating opens the exact case after signing in and blocks thermal submission", async t => {
+  const draft = hvacProject();
+  const session = await harness.session(draft);
+  t.after(() => session.close());
+  const { page, context } = session;
+  // An earlier account project with this identity forces a new project ID at handoff.
+  await writeProject(page, draft, account);
+  await context.route("**/climoptix/worker/capabilities", route => route.fulfill({ json: {
+    connected: true, mesh: true, run: true, reason: "Test native worker", namespace: account,
+    limits: { cpu: 2, memoryGb: 4, wallTimeMinutes: 15, storageGb: 1, retentionDays: 3, maxCells: 500000, concurrentJobs: 1 },
+  } }));
+  let submissions = 0;
+  await context.route("**/climoptix/worker/jobs**", route => {
+    if (route.request().method() === "POST") submissions++;
+    return route.fulfill({ json: [] });
+  });
+  await menu(page, "Tools", "Heating & ventilation");
+  await page.locator(".heating-layout-window").getByRole("button", { name: "Evaluate in CFD", exact: true }).click();
+  await page.getByRole("dialog", { name: "Account & plans" }).waitFor();
+  await signInFromPlanner(page, context, false);
+  const carried = await eventually(session.saved, p => p?.projectId !== draft.projectId && p?.cfdScenarios?.some(study => study.name === "Nominal operation · HVAC"));
+  const study = carried.cfdScenarios.find(s => s.name === "Nominal operation · HVAC");
+  await eventually(() => page.getByRole("combobox", { name: "Workspace", exact: true }).inputValue(), value => value === "CLIMOPTIX");
+  const ui = page.locator(".cfx-workspace");
+  await ui.getByRole("tab", { name: "Objects", exact: true }).waitFor();
+  assert.equal(await ui.getByRole("tab", { name: "Objects", exact: true }).getAttribute("aria-selected"), "true");
+  await ui.getByRole("tab", { name: "Simulations", exact: true }).click();
+  const run = ui.getByRole("button", { name: "Run " + study.name, exact: true });
+  await run.waitFor();
+  await eventually(() => run.isDisabled(), Boolean);
+  await ui.getByText(/Shared HVAC thermal execution is not connected/).first().waitFor();
+  assert.equal(submissions, 0);
+});
+
+test("construction scenario deletion uses the application dialog and UFH exclusion help describes the footprint", async t => {
+  const session = await harness.session(hvacProject());
+  t.after(() => session.close());
+  const { page } = session;
+  await menu(page, "Tools", "Heating & ventilation");
+  const heating = page.locator(".heating-layout-window");
+  const construction = heating.locator("summary").filter({ hasText: "Construction scenario" });
+  assert.ok((await construction.boundingBox()).y < (await heating.getByRole("combobox", { name: "Selected room", exact: true }).boundingBox()).y);
+  await construction.click();
+  await heating.getByRole("textbox", { name: "New scenario name" }).fill("Alternative finish");
+  await heating.getByRole("button", { name: "Add scenario", exact: true }).click();
+  await heating.getByRole("button", { name: "Delete selected scenario", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete construction scenario?" });
+  await dialog.getByText(/Alternative finish/).waitFor();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  assert.match(await construction.innerText(), /Alternative finish/);
+  await heating.getByRole("button", { name: "Delete selected scenario", exact: true }).click();
+  await dialog.getByRole("button", { name: "Delete scenario", exact: true }).click();
+  assert.match(await construction.innerText(), /Existing Building/);
+  await heating.getByRole("tab", { name: "Underfloor", exact: true }).click();
+  const exclusion = heating.getByRole("button", { name: "Add exclusion", exact: true });
+  await exclusion.scrollIntoViewIfNeeded();
+  await exclusion.hover();
+  await page.getByRole("tooltip").filter({ hasText: "where underfloor pipes must stay out" }).waitFor();
+});
+
+test("a heating passage warning opens the affected opening for editing", async t => {
+  const project = cfdProject();
+  const heating = newHeatingProject();
+  heating.rooms = project.rooms.map((room, index) => ({
+    ...thermalRoom(room, heating), designTemperatureOverride: true, designIndoorTemperatureC: index === 0 ? 21 : 15,
+  }));
+  project.heatingLayout = heating;
+  const session = await harness.session(project);
+  t.after(() => session.close());
+  const { page } = session;
+  await menu(page, "Tools", "Heating & ventilation");
+  const panel = page.locator(".heating-layout-window");
+  await panel.locator("summary").filter({ hasText: "Items to review" }).click();
+  await panel.getByRole("button", { name: /Passage 1: air transfer to a colder space/ }).click();
+  await page.locator(".energy-layout-window").getByRole("tab", { name: "Openings", exact: true }).waitFor();
+  const add = page.locator(".floorplan-add-elements-toolbar");
+  await add.getByRole("button", { name: "Update opening", exact: true }).waitFor();
+  await add.getByRole("button", { name: /Appearance & dimensions/ }).click();
+  const dimensions = page.getByRole("dialog", { name: "Appearance & dimensions", exact: true });
+  await dimensions.getByRole("spinbutton", { name: /^Height/ }).fill("2050");
+  await dimensions.getByRole("button", { name: "Done", exact: true }).click();
+  await eventually(session.saved, p => p.floorplan.openings[0].height === 2050 && p.floorplan.openings[0].representationKey === "door-opening-single");
 });
 
 test("an empty guest canvas keeps the existing account project active", async t => {

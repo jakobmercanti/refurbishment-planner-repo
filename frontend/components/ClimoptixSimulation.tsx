@@ -19,6 +19,7 @@ interface RunConnection {
   busy: boolean;
   blockedReason?: string;
   onRun: () => void;
+  onIssues: () => void;
 }
 
 function RunPanel({
@@ -52,6 +53,9 @@ function RunPanel({
         <button disabled={exportDisabled || exporting} onClick={onExport}>{exporting ? "Exporting…" : "Export OpenFOAM settings"}</button>
         <button onClick={onConvergence}>Open monitor</button>
       </div>
+      {connection?.blockedReason && <p className="cfx-notice" role="status">
+        {connection.blockedReason} <button onClick={connection.onIssues}>Review submission issues</button>
+      </p>}
       </details>
       {workerControls&&<details open><summary>Worker connection &amp; limits</summary>{workerControls}</details>}
       <details open><summary>Simulation &amp; resources</summary>

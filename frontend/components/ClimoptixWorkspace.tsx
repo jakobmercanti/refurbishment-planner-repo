@@ -17,13 +17,13 @@ import { CFDJobProgress } from "./CFDJobProgress";
 import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import type { SceneResultMetadata } from "./CFDSceneResult";
 import { CFDHeatingImport } from "./CFDHeatingImport";
-import { resolveHvacScenario, requiresHvacThermalExecution } from "@/lib/hvacBridge";
+import { resolveHvacScenario } from "@/lib/hvacBridge";
 import { hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
 import { SharedHvacCFD } from "./SharedHvacCFD";
 import { SharedBoundaryCapture } from "./SharedBoundaryCapture";
 import { useHvac } from "./HvacContext";
 import { CFDPointProbeControls, CFDPointProbeValue, useCFDPointProbe } from "./CFDPointProbeControls";
-import { completedRunReference, terminalJob, workerInput } from "@/lib/climoptixJobs";
+import { completedRunReference, terminalJob, workerConfigurationIssue, workerInput } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP, CFD_SETUP_HELP } from "@/lib/climoptixHelp";
 import { FloatingToolbar } from "./FloatingToolbar";
@@ -137,6 +137,7 @@ export function ClimoptixWorkspace({
     studyId: string;
     id: string;
   } | null>(null);
+  const [boundarySurfaceRequest, setBoundarySurfaceRequest] = useState<{ studyId: string; id: string; nonce: string } | null>(null);
   const [ventEditor, setVentEditor] = useState<{ studyId: string; id: string } | null>(null);
   const { entries: jobs, submit: submitJobs } = useCFDJobs(
     project,
@@ -225,7 +226,7 @@ export function ClimoptixWorkspace({
     };
   }, [project, selectedId, showArchived]);
   const currentWorkerInput = useMemo(() => scenario ? workerInput(project, scenario) : "", [project, scenario]);
-  const hvacThermalRequired = useMemo(() => scenario ? requiresHvacThermalExecution(project, scenario) : false, [project, scenario]);
+  const runConfigurationIssue = scenario && !jobs[scenario.id]?.dispatched ? workerConfigurationIssue(project, scenario, workerAdapter) : undefined;
   const currentVTKFile=vtkFile&&scenario&&vtkFile.studyId===scenario.id&&vtkFile.jobId===jobs[scenario.id]?.job?.id?vtkFile:null;
   const mainProbeKey=[mainResult?.file,mainResultField,currentWorkerInput,mainResultVisible];
   const mainProbe=useCFDPointProbe(active&&!setupOpen&&!!mainResult&&mainResultVisible&&mainResult.studyId===scenario?.id&&mainResult.jobId===jobs[scenario?.id??""]?.job?.id&&mainResult.input===currentWorkerInput&&!!mainResultMetadata.fields.length&&!mainResultMetadata.error,mainProbeKey);
@@ -562,8 +563,20 @@ export function ClimoptixWorkspace({
       const target = diagnosticTarget(objectId, scenario, activeReport);
       selectObject(device ? `vent:${objectId}` : target?.refinementId ? `refinement:${target.refinementId}` : target?.patchIds?.[0] ?? objectId);
     }
+    if (group === "boundaries" && objectId && scenario) {
+      const id = diagnosticTarget(objectId, scenario, activeReport)?.patchIds?.[0] ?? objectId;
+      if (activeReport?.patches.some(patch => patch.id === id && patch.kind !== "supply" && patch.kind !== "extract")) {
+        setBoundsTab("conditions");
+        setBoundarySurfaceRequest({ studyId: scenario.id, id, nonce: crypto.randomUUID() });
+      }
+    }
     if (device || object) {
       openPhase("equipment");
+      return;
+    }
+    if (group === "solver") {
+      openPhase("mesh");
+      setSimulationTab("run");
       return;
     }
     openPhase(
@@ -742,18 +755,30 @@ export function ClimoptixWorkspace({
             ? diagnosticTarget(highlightedDiagnostic, scenario, activeReport) : undefined}
           onSelect={(id) => {
             selectObject(id);
-            if (!id) return;
-            if (setupOpen && id.startsWith("refinement:")) {
-              openPhase("mesh");
-              setSimulationTab("mesh");
+            if (!id || !scenario) return;
+            if (id.startsWith("refinement:")) {
+              if (setupOpen) { openPhase("mesh"); setSimulationTab("mesh"); }
+              return;
             }
-            if(setupOpen&&shownTab==="mesh"&&id.startsWith("probe:"))setSimulationTab("post");
-            if (
-              setupOpen &&
-              (id.startsWith("vent:") ||
-                activeReport?.objects.some((obj) => obj.id === id))
-            )
+            if (id.startsWith("probe:")) {
+              if (setupOpen && shownTab === "mesh") setSimulationTab("post");
+              return;
+            }
+            if (setupOpen && (id.startsWith("vent:") || activeReport?.objects.some(object => object.id === id))) openPhase("equipment");
+          }}
+          onInspectPatch={id => {
+            if (!scenario) return;
+            const patch = activeReport?.patches.find(surface => surface.id === id);
+            const ventId = id.startsWith("vent:") ? id.slice(5) : activeReport?.vents.find(vent => vent.patchId === id)?.id;
+            if (ventId && scenario.vents.some(vent => vent.id === ventId)) {
+              selectObject("vent:" + ventId);
               openPhase("equipment");
+              setVentEditor({ studyId: scenario.id, id: ventId });
+            } else if (patch && patch.kind !== "supply" && patch.kind !== "extract") {
+              setBoundsTab("conditions");
+              openPhase("boundaries");
+              setBoundarySurfaceRequest({ studyId: scenario.id, id, nonce: crypto.randomUUID() });
+            }
           }}
           picking={placement?.draft ?? false}
           onHostPick={hostPick}
@@ -1008,6 +1033,7 @@ export function ClimoptixWorkspace({
                           selected={selected}
                           onSelect={selectObject}
                           onChange={change}
+                          surfaceRequest={boundarySurfaceRequest?.studyId === scenario.id && boundarySurfaceRequest.id === selected ? boundarySurfaceRequest : null}
                           selectedGroup={boundaryGroup}
                           onSelectGroup={id => { setBoundaryGroup(id); setSelected(null); }}
                         />
@@ -1024,7 +1050,7 @@ export function ClimoptixWorkspace({
                           connected:
                             workerAdapter?.capabilities.connected ?? false,
                           canRun:
-                            !hvacThermalRequired &&
+                            !runConfigurationIssue &&
                             !!workerAdapter?.capabilities.connected &&
                             workerAdapter.capabilities.run &&
                             !(
@@ -1032,14 +1058,15 @@ export function ClimoptixWorkspace({
                               jobs[scenario.id].operation !== "run"
                             ),
                           blockedReason:
-                            hvacThermalRequired ? "Shared HVAC thermal execution is not connected; export the boundary package." : jobs[scenario.id]?.dispatched &&
+                            runConfigurationIssue ?? (jobs[scenario.id]?.dispatched &&
                             jobs[scenario.id].operation !== "run"
                               ? "Recover the previous Mesh submission from Simulations first"
-                              : workerAdapter?.capabilities.run === false ? workerAdapter.capabilities.reason : undefined,
+                              : workerAdapter?.capabilities.run === false ? workerAdapter.capabilities.reason : undefined),
                           busy:
                             resetting || !!jobs[scenario.id]?.submitting ||
                             (!!jobs[scenario.id]?.job &&
                               !terminalJob(jobs[scenario.id].job!)),
+                          onIssues: () => reviewIssues(),
                           onRun: () => {
                             if (defaultAbort.current) return;
                             void submitJobs("run", [scenario]);
@@ -1087,8 +1114,16 @@ export function ClimoptixWorkspace({
                             remoteWorker.adapter && jobs[scenario.id]?.job ? <ClimoptixWorkerMonitor
                               key={`${remoteWorker.adapter.namespace}:${jobs[scenario.id].job!.id}`} adapter={remoteWorker.adapter} job={jobs[scenario.id].job!}
                               name={scenario.name} older={jobs[scenario.id].input !== currentWorkerInput}
-                              onVTK={file => {openPhase("results"); setVTKFile({studyId:scenario.id,file,token:crypto.randomUUID(),jobId:jobs[scenario.id].job!.id,
-                                provenance:`Authenticated worker job ${jobs[scenario.id].job!.id} · pinned revision ${jobs[scenario.id].job!.clientRevision.slice(0,12)} · p in m²/s², not Pa${jobs[scenario.id].input !== currentWorkerInput ? " · older setup" : ""}`});}} /> : <ClimoptixConvergence
+                              onVTK={(file, buildingPlane) => {
+                                const entry = jobs[scenario.id];
+                                const job = entry?.job;
+                                if (!job) return;
+                                const older = entry.input !== currentWorkerInput;
+                                setVTKFile({ studyId: scenario.id, file, token: crypto.randomUUID(), jobId: job.id,
+                                  provenance: "Authenticated worker job " + job.id + " · pinned revision " + job.clientRevision.slice(0,12) + " · p in m²/s²" + (older ? " · older setup" : "") });
+                                if (older || !buildingPlane) openPhase("results");
+                                else showScenePlane(file);
+                              }} /> : <ClimoptixConvergence
                               name={scenario.name}
                               state={logs.get(scenario.id)}
                               onImport={(file) =>
@@ -1161,7 +1196,7 @@ export function ClimoptixWorkspace({
                   {active && (
                     <ClimoptixResults
                       view={resultsView} onViewChange={setResultsView}
-                      review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? jobs[scenario.id]?.error : undefined}
+                      review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? jobs[scenario.id]?.error : undefined} configurationIssue={runConfigurationIssue}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
                       onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}

@@ -35,11 +35,16 @@ export function createRoomUFH(room: Room, heating: HeatingProject, systemIndex =
   const item = next.manifolds.find(m=>m.manifoldId===manifold!.manifoldId)!; item.ports = Math.min(50, Math.max(item.ports, usedPorts));
   return { heating: next, changes: generated.changes };
 }
+export type HeatingReviewItem = { message: string } & (
+  { kind: "fabric" | "radiator" | "zone" | "circuit"; id: string } |
+  { kind: "system" | "emitters" | "underfloor" }
+);
+
 export function heatingResults(rooms: readonly Room[], heating: HeatingProject, openingNames: ReadonlyMap<string, string> = numberedOpeningNames(rooms.flatMap(room => room.openings))) {
   if (!heating.radiators.length) heating = withHeatingElements(heating, rooms);
   const { flowTemperatureC: flow, returnTemperatureC: returning } = heating.heatingSystem;
   const rows = rooms.map(room => {
-    const demand = calculateRoomHeatLoss(room, rooms, heating, openingNames), settings = thermalRoom(room, heating), warnings: string[] = [];
+    const demand = calculateRoomHeatLoss(room, rooms, heating, openingNames), settings = thermalRoom(room, heating), review: HeatingReviewItem[] = [];
     const emitters = heating.radiators.filter(r => r.roomId === room.id).map(r => ({ radiator: r, ...calculateRadiatorOutput(r, flow, returning, demand.targetC, heating.estimateRoomTemperatureOutput ?? true), warnings: radiatorPlacementWarnings(r, room) }));
     const zones = heating.ufhZones.filter(z => z.roomId === room.id).map(zone => {
       const exclusions = heating.exclusions.filter(e => e.roomId === room.id), activeAreaM2 = activeUFHAreaM2(room.vertices, exclusions.map(e => e.polygonMm));
@@ -56,16 +61,26 @@ export function heatingResults(rooms: readonly Room[], heating: HeatingProject, 
         return { circuit: c, lengthM, areaM2, outputW, flowLmin, designFlowLmin: calculateUFHFlowRate(demand.designW * areaM2 / Math.max(activeAreaM2, 0.01), zoneFlow, zoneReturn), pressureDropPa: flowLmin === null || (zone.internalDiameterMm ?? Infinity) >= zone.diameterMm ? null : calculatePressureDrop(lengthM, flowLmin, zone.internalDiameterMm, (zoneFlow + zoneReturn) / 2), warnings: validateCircuitGeometry(c, room, zone, heating.exclusions) };
       }) };
     });
-    if (flow <= returning) warnings.push("Flow temperature must exceed return temperature for hydronic flow sizing.");
-    if (zones.length > 1) warnings.push("Multiple zones share this room: verify non-overlapping active coverage; capacities are not summed as certified coverage.");
+    if (flow <= returning) review.push({ kind: "system", message: "Flow temperature must exceed return temperature for hydronic flow sizing." });
+    if (zones.length > 1) review.push({ kind: "underfloor", message: "Multiple zones share this room: verify non-overlapping active coverage; capacities are not summed as certified coverage." });
     const radiatorW = emitters.reduce((s, e) => s + (e.outputW ?? 0), 0), ufhW = zones.reduce((s, z) => s + (z.outputW ?? 0), 0), capacityW = radiatorW + ufhW;
     const capacityEstimated = emitters.some(e => e.radiator.category !== "Boiler" && (e.radiator.estimatedOutput || e.estimated)) || zones.some(z => z.performance?.surfaceEstimated);
     const capacityNeedsReview = emitters.some(e => e.radiator.category !== "Boiler" && (e.outputW === null || e.radiator.emitterTechnology !== "Electric" && flow <= returning)) || zones.some(z => !z.performance || z.performance.surfaceTemperatureC === null || z.performance.overLimit || (z.zone.designFlowC ?? flow) <= (z.zone.designReturnC ?? returning) || z.zone.geometryFingerprint !== geometryFingerprint(room, heating.exclusions.filter(e => e.roomId === room.id)) || z.circuits.some(c => c.warnings.some(w => /crosses room boundary|exceeds preferred maximum/i.test(w)))) || zones.length > 1;
     const passageNeedsReview = demand.openPassageWarnings.length > 0;
     const unknown = capacityEstimated || capacityNeedsReview || passageNeedsReview;
     const status = unknown || demand.warnings.some(w => w.startsWith("Energy ")) ? "Not verified" : capacityW >= demand.designW ? "Sufficient" : capacityW >= demand.designW * 0.9 ? "Marginal" : "Insufficient";
-    if (settings.selectedEmitterType !== "None" && capacityW < demand.designW) warnings.push(`Known emitter output ${Math.round(capacityW)} W is below the room requirement ${Math.round(demand.designW)} W${capacityNeedsReview ? "; unresolved output data is excluded" : ""}.`);
-    return { room, settings, demand, emitters, zones, radiatorW, ufhW, capacityW, capacityEstimated, capacityComparisonValid: !capacityNeedsReview && !passageNeedsReview, coveragePercent: demand.designW ? capacityW / demand.designW * 100 : 0, status, warnings: [...warnings, ...demand.warnings.filter(w => w.startsWith("Energy ")), ...demand.openPassageWarnings, ...emitters.flatMap(e => e.warnings), ...zones.flatMap(z => [...z.warnings, ...z.circuits.flatMap(c => c.warnings)])] };
+    if (settings.selectedEmitterType !== "None" && capacityW < demand.designW) review.push({ kind: "emitters", message: `Known emitter output ${Math.round(capacityW)} W is below the room requirement ${Math.round(demand.designW)} W${capacityNeedsReview ? "; unresolved output data is excluded" : ""}.` });
+    review.push(...demand.fabricReview.map(({ message, elementId }): HeatingReviewItem => ({ message, kind: "fabric", id: elementId })));
+    for (const { radiator, warnings } of emitters) {
+      review.push(...warnings.map((message): HeatingReviewItem => ({ message, kind: "radiator", id: radiator.radiatorId })));
+    }
+    for (const { zone, warnings, circuits } of zones) {
+      review.push(...warnings.map((message): HeatingReviewItem => ({ message, kind: "zone", id: zone.zoneId })));
+      for (const { circuit, warnings } of circuits) {
+        review.push(...warnings.map((message): HeatingReviewItem => ({ message, kind: "circuit", id: circuit.circuitId })));
+      }
+    }
+    return { room, settings, demand, emitters, zones, radiatorW, ufhW, capacityW, capacityEstimated, capacityComparisonValid: !capacityNeedsReview && !passageNeedsReview, coveragePercent: demand.designW ? capacityW / demand.designW * 100 : 0, status, warnings: review.map(item => item.message), review };
   });
   const orphanIds = [...heating.radiators, ...heating.ufhZones, ...heating.exclusions].filter(e => !rooms.some(r => r.id === e.roomId));
   return { rooms: rows, heatLossW: rows.reduce((s, r) => s + r.demand.designW, 0), radiatorW: rows.reduce((s, r) => s + r.radiatorW, 0), ufhW: rows.reduce((s, r) => s + r.ufhW, 0), electricW: rows.reduce((s, r) => s + r.emitters.reduce((s, e) => s + e.electricalW, 0), 0), pipeM: heating.ufhCircuits.reduce((s, c) => s + calculateCircuitLength(c), 0), sufficient: rows.filter(r => r.status === "Sufficient").length, warnings: [...rows.flatMap(r => r.warnings.map(message => `${r.room.name}: ${message}`)), ...(orphanIds.length ? [`${orphanIds.length} heating objects reference removed rooms. Data retained, but capacity excluded; review the saved layout.`] : [])] };

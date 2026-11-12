@@ -973,6 +973,7 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
   const energy = useEnergyLayout();
   const openingPlacementInInsulation = Boolean(energy.windowOpen && placement?.opening);
   const [openingAddFocus, setOpeningAddFocus] = useState<number>();
+  const [energyReviewFocus, setEnergyReviewFocus] = useState<number>();
   const lastThermalAction = useRef<"ENERGY" | "HEATING" | "FLOORPLAN">("ENERGY");
   const energyUndo = useRef<Array<{ data: EnergyProject; walls: Wall[]; thickness: number }>>([]), energyRedo = useRef<Array<{ data: EnergyProject; walls: Wall[]; thickness: number }>>([]);
   const { energySelection, setEnergySelection, heatingSelection, setHeatingSelection, heatingFabricVisible, setHeatingFabricVisible } = serviceView!;
@@ -1417,9 +1418,14 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
   const activeOpeningCategory = openingCatalogueCategories.find((category) => category.items.some((item) => item.id === openingCatalogueId))
     ?? openingCatalogueCategories.find((category) => category.items.some((item) => item.is_default))
     ?? openingCatalogueCategories[0];
-  const activeOpeningCatalogueItem = activeOpeningCategory?.items.find((item) => item.id === openingCatalogueId)
-    ?? activeOpeningCategory?.items.find((item) => item.is_default)
+  const editingOpening = openings.find(opening => opening.id === selectedOpeningId);
+  const chosenOpeningCatalogueItem = openingCatalogueItems.find(item => item.id === openingCatalogueId && item.fixture_kind === openingKind);
+  const activeOpeningCatalogueItem = chosenOpeningCatalogueItem
+    ?? (editingOpening?.representationKey ? openingCatalogueItems.find(item => item.fixture_kind === openingKind && item.representation_key === editingOpening.representationKey) : undefined)
+    ?? activeOpeningCategory?.items.find(item => item.is_default)
     ?? activeOpeningCategory?.items[0];
+  const openingRepresentation = chosenOpeningCatalogueItem?.representation_key ?? editingOpening?.representationKey ?? activeOpeningCatalogueItem?.representation_key;
+  const openingIsPassage = Boolean(passageProfileForKey(openingRepresentation));
   const doorColour = doorCustomColour;
   const hoveredOpeningCatalogueItem = hoveredOpeningCatalogueId ? openingCatalogueItems.find((item) => item.id === hoveredOpeningCatalogueId) : undefined;
   const previewOpeningCatalogueItem = hoveredOpeningCatalogueItem && hoveredOpeningCatalogueItem.id !== activeOpeningCatalogueItem?.id ? hoveredOpeningCatalogueItem : activeOpeningCatalogueItem;
@@ -2673,6 +2679,7 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
   }
 
   function showOpeningToolbar() {
+    if (serviceView?.in3D) setServiceAddOpen(true);
     if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings");
     setOpeningAddFocus(previous => (previous ?? 0) + 1);
   }
@@ -2683,6 +2690,22 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     onCancelPlacement?.();
     selectOpeningForEdit(opening);
     showOpeningToolbar();
+  }
+
+  function inspectHeatingFabric(elementId: string) {
+    const openingId = elementId.split("|opening:")[1];
+    if (openingId) {
+      selectInsulationOpening(openingId);
+      editInsulationOpening(openingId);
+      return true;
+    }
+    const elements = energyElements(planRooms, heating.data, energy.data);
+    const wholeWallId = elementId.replace(/(\|wall:\d+):\d+$/, "$1");
+    const element = elements.find(item => item.elementId === elementId) ?? elements.find(item => item.elementId === wholeWallId);
+    if (!element || !isInsulationSelectable(element, planRooms)) return false;
+    selectEnergyWall([element.elementId]);
+    setEnergyReviewFocus(focus => (focus ?? 0) + 1);
+    return true;
   }
 
   function insulationOpeningIds(id: string) {
@@ -4510,7 +4533,10 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     if (offset === null) { setOpeningError(selectedOpeningId ? "This opening overlaps another door or window. Choose a different offset." : "There is not enough free space on this wall for another opening of this width."); return false; }
     lastThermalAction.current = "FLOORPLAN";
     record();
-    const nextOpening: Omit<FullOpening, "id"> = { kind: openingKind, wallId: option.wall.id, segmentIndex: option.segmentIndex, offset, width: openingWidth, height: openingHeight, sill: openingKind === "WINDOW" ? windowSill : 0, hingeSide, doorType, opensInward, catalogueItemId: activeOpeningCatalogueItem?.id, representationKey: activeOpeningCatalogueItem?.representation_key, windowDepthMm: activeOpeningCatalogueItem?.depth_mm, colorHex: doorColour, componentColors: { ...openingComponentColours } };
+    const nextOpening: Omit<FullOpening, "id"> = { kind: openingKind, wallId: option.wall.id, segmentIndex: option.segmentIndex, offset, width: openingWidth, height: openingHeight, sill: openingKind === "WINDOW" ? windowSill : 0, hingeSide, doorType, opensInward, catalogueItemId: editingOpening ? chosenOpeningCatalogueItem?.id ?? editingOpening.catalogueItemId : activeOpeningCatalogueItem?.id,
+      representationKey: openingRepresentation,
+      windowDepthMm: chosenOpeningCatalogueItem?.depth_mm ?? editingOpening?.windowDepthMm ?? activeOpeningCatalogueItem?.depth_mm,
+      colorHex: doorColour, componentColors: { ...openingComponentColours } };
     if (selectedOpeningId) setOpenings((current) => current.map((item) => item.id === selectedOpeningId ? { ...nextOpening, id: item.id } : item));
     else {
       setOpenings((current) => [...current, { ...nextOpening, id: crypto.randomUUID() }]);
@@ -4646,10 +4672,10 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
       <div className="fixture-section-content" data-window-help-body hidden={!openingPositionExpanded}>
         <div className="coordinate-fields opening-fields"><label className="field"><span>Parent wall</span><select value={openingParent} onChange={(event) => setOpeningParent(event.target.value)}><option value="">Select a wall…</option>{segmentOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
         <label className="field"><span>Offset <small>{UNIT_LABEL[displayUnits]}</small></span><DisplayNumberInput minMm={0} valueMm={openingOffset} units={displayUnits} onMmChange={setOpeningOffset} /></label></div>
-        {openingKind === "DOOR" && !passageProfileForKey(activeOpeningCatalogueItem?.representation_key) && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
+        {openingKind === "DOOR" && !openingIsPassage && <div className="coordinate-fields opening-behaviour-fields"><label className="field"><span>Hinge side</span><select value={hingeSide} disabled={doorType === "DOUBLE"} onChange={(event) => setHingeSide(event.target.value as "START" | "END")}><option value="START">Wall start</option><option value="END">Wall end</option></select></label><label className="field"><span>Direction</span><select value={opensInward ? "IN" : "OUT"} onChange={(event) => setOpensInward(event.target.value === "IN")}><option value="IN">Into room</option><option value="OUT">Out of room</option></select></label></div>}
       </div>
     </section>
-    {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={() => saveOpening()}>{selectedOpeningId ? `Update ${passageProfileForKey(activeOpeningCatalogueItem?.representation_key) ? "opening" : openingKind.toLowerCase()}` : `Add ${passageProfileForKey(activeOpeningCatalogueItem?.representation_key) ? "opening" : openingKind.toLowerCase()}`}</button></div>
+    {openingError && <p className="inline-error">{openingError}</p>}<div className="opening-form-actions">{selectedOpeningId && <button onClick={cancelOpeningEdit}>Cancel edit</button>}<button className="primary-small" onClick={() => saveOpening()}>{selectedOpeningId ? `Update ${openingIsPassage ? "opening" : openingKind.toLowerCase()}` : `Add ${openingIsPassage ? "opening" : openingKind.toLowerCase()}`}</button></div>
     {openings.length > 0 && <section className="fixture-add-section elements-list-section" aria-label="Elements list">
       <WindowHelpSectionHeader title="Elements list">
       <button type="button" className="fixture-section-toggle" aria-expanded={openingListExpanded} onClick={() => setOpeningListExpanded(current => !current)}><span><strong>Elements list</strong></span><span aria-hidden>{openingListExpanded ? "−" : "›"}</span></button>
@@ -5669,10 +5695,10 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     </div>
     <ServiceWindow>
     {energy.windowOpen && <FloatingToolbar title="Energy & Insulation" className="electrical-layout-window energy-layout-window" defaultPosition={{ x: 340, y: 95 }} initialSize={{ width: 700 }} maxHeight={760} layoutResetKey={toolbarLayoutResetKey} onClose={energy.close}>
-      <EnergyLayoutPanel rooms={planRooms} data={energy.data} heating={heating.data} onChange={applyEnergyLayout} onHeatingChange={applyHeatingLayout} selectedIds={energySelection} onSelect={selectEnergyWall} onAddOpening={serviceView?.in3D ? undefined : openInsulationOpeningCatalogue} onEditOpening={serviceView?.in3D ? undefined : editInsulationOpening} openingNames={buildingOpeningNames ?? floorOpeningNames} onUndo={undoEnergy} onRedo={redoEnergy} canUndo={energyUndo.current.length > 0} canRedo={energyRedo.current.length > 0} projectName={projectName} />
+      <EnergyLayoutPanel rooms={planRooms} data={energy.data} heating={heating.data} onChange={applyEnergyLayout} onHeatingChange={applyHeatingLayout} selectedIds={energySelection} onSelect={selectEnergyWall} onAddOpening={openInsulationOpeningCatalogue} onEditOpening={editInsulationOpening} focusRequest={energyReviewFocus} openingNames={buildingOpeningNames ?? floorOpeningNames} onUndo={undoEnergy} onRedo={redoEnergy} canUndo={energyUndo.current.length > 0} canRedo={energyRedo.current.length > 0} projectName={projectName} />
     </FloatingToolbar>}
     {heating.windowOpen && <FloatingToolbar title="Heating Layout" className="electrical-layout-window heating-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 680 }} maxHeight={760} layoutResetKey={toolbarLayoutResetKey} onClose={() => { heating.close();setHeatingFabricVisible(false);setHeatingTool(null);setHeatingExclusionDraft([]);setHeatingPipeDraft([]);setHeatingPipeSource(null);setHeatingSelection(null);setHighlightedHeatingRoomId(null); }}>
-      <HeatingVentilationTabs><HeatingLayoutPanel openingNames={buildingOpeningNames ?? floorOpeningNames} onHeatLossSurfacesChange={setHeatingFabricVisible} energy={energy.data} onEnergyChange={applyEnergyLayout} apiUrl={apiUrl} onFinishPipe={finishHeatingPipe} pipePointCount={heatingPipeDraft.length} onAdd={() => { onElementSelected?.(null);setSelectedFixtureId(null);setHeatingSelection(null);setServiceAddOpen(true);selectAddToPlanMode("HEATING"); if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings"); }} rooms={planRooms} data={heating.data} onChange={applyHeatingLayout} selection={heatingSelection} onSelect={selectHeatingElement} onHighlightRoom={setHighlightedHeatingRoomId} onTool={tool => { setHeatingTool(tool);setHeatingExclusionDraft([]);setHeatingPipeDraft([]);setHeatingPipeSource(null); }} tool={heatingTool} onFinishExclusion={finishHeatingExclusion} exclusionPointCount={heatingExclusionDraft.length} onUndo={undoHeating} onRedo={redoHeating} canUndo={heatingUndo.current.length > 0} canRedo={heatingRedo.current.length > 0} projectName={projectName} /></HeatingVentilationTabs>
+      <HeatingVentilationTabs><HeatingLayoutPanel onReviewFabric={inspectHeatingFabric} openingNames={buildingOpeningNames ?? floorOpeningNames} onHeatLossSurfacesChange={setHeatingFabricVisible} energy={energy.data} onEnergyChange={applyEnergyLayout} apiUrl={apiUrl} onFinishPipe={finishHeatingPipe} pipePointCount={heatingPipeDraft.length} onAdd={() => { onElementSelected?.(null);setSelectedFixtureId(null);setHeatingSelection(null);setServiceAddOpen(true);selectAddToPlanMode("HEATING"); if (!toolbarVisibility["floorplan-openings"]) onToggleToolbar("floorplan-openings"); }} rooms={planRooms} data={heating.data} onChange={applyHeatingLayout} selection={heatingSelection} onSelect={selectHeatingElement} onHighlightRoom={setHighlightedHeatingRoomId} onTool={tool => { setHeatingTool(tool);setHeatingExclusionDraft([]);setHeatingPipeDraft([]);setHeatingPipeSource(null); }} tool={heatingTool} onFinishExclusion={finishHeatingExclusion} exclusionPointCount={heatingExclusionDraft.length} onUndo={undoHeating} onRedo={redoHeating} canUndo={heatingUndo.current.length > 0} canRedo={heatingRedo.current.length > 0} projectName={projectName} /></HeatingVentilationTabs>
     </FloatingToolbar>}
     {electricalWindowOpen && <FloatingToolbar title="Electrical Layout module" className="electrical-layout-window" defaultPosition={{ x: 310, y: 108 }} initialSize={{ width: 600 }} maxHeight={780} layoutResetKey={toolbarLayoutResetKey} onClose={closeElectricalWindow}>
       <ElectricalLayoutPanel

@@ -12,14 +12,17 @@ export function applyWorkerLimits(scenario: CFDScenario, limits: Limits): CFDSce
     maxCells: Math.min(scenario.mesh.maxCells, limits.maxCells), targetCells: Math.min(scenario.mesh.targetCells, limits.maxCells) } };
 }
 
-/** Advisory only: authenticated worker validation remains authoritative. */
+/** Configuration checks shared by the connection panel and native submissions. */
 export function workerProfileIssues(scenario: CFDScenario, limits: Limits): string[] {
   const issues: string[] = [], p = scenario.physics;
   if (resourceKeys.some(key => scenario.resources[key] > limits[key]) || scenario.mesh.maxCells > limits.maxCells)
     issues.push("Requested resources exceed this worker's limits. Review them or use the explicit limits action.");
   if (p.mode !== "steady" || !["isothermal", "custom"].includes(p.preset) || p.energy || p.co2 || p.boussinesq || p.numerics.coupling !== "SIMPLE" || p.numerics.monitor !== "flowBalance")
     issues.push("Execution supports steady isothermal SIMPLE ventilation; thermal, scalar and transient settings remain export-only intent.");
-  if (scenario.thermalSnapshots?.length) issues.push("Applied thermal contracts are not supported by this worker.");
+  if (scenario.thermalSnapshots?.length || scenario.assetOverrides.some(item => item.temperatureK !== null))
+    issues.push("Applied thermal conditions and fixed-temperature objects require a thermal solver.");
+  if (scenario.vents.some(vent => vent.openAreaFraction !== 1 || vent.dischargeCoefficient !== 1 || vent.yawDeg || vent.pitchDeg || vent.recirculationPair))
+    issues.push("Objects: use full open area, unit discharge, normal flow and no recirculation pairing for this worker.");
   if (scenario.mesh.layers.enabled || scenario.mesh.alignmentDeg !== 0) issues.push("Boundary layers and rotated background grids are not supported by this worker.");
   if (scenario.outputs.temperature || scenario.outputs.co2 || scenario.outputs.ageOfAir || scenario.outputs.comfort || scenario.postProcessing.fields.some(field => field !== "U" && field !== "p"))
     issues.push("Execution outputs are velocity and kinematic pressure only. Other requested fields are not computed.");

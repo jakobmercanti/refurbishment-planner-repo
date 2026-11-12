@@ -107,6 +107,7 @@ interface Props {
   selected: string | null;
   diagnosticHighlight?: DiagnosticTarget;
   onSelect: (id: string | null) => void;
+  onInspectPatch?: (id: string) => void;
   picking: CFDVent | boolean;
   onHostPick: (patchId: string, u: number, v: number) => void;
   onMoveVent: (id: string, u: number, v: number, patchId?: string) => void;
@@ -176,6 +177,7 @@ function PatchMesh({
   positions,
   selected,
   onPointerDown,
+  onClick,
   onPointerMove,
   onPointerUp,
   colour,
@@ -186,6 +188,7 @@ function PatchMesh({
   positions: number[];
   selected: boolean;
   onPointerDown: (e: ThreeEvent<PointerEvent>) => void;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
   onPointerMove: (e: ThreeEvent<PointerEvent>) => void;
   onPointerUp: (e: ThreeEvent<PointerEvent>) => void;
   colour?: string;
@@ -208,6 +211,7 @@ function PatchMesh({
       name={patch.id}
       geometry={geometry}
       onPointerDown={onPointerDown}
+      onClick={onClick}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
     >
@@ -249,6 +253,7 @@ function VentIntent({
   host,
   selected,
   onDown,
+  onClick,
   onMove,
   onUp,
   onCancel,
@@ -257,6 +262,7 @@ function VentIntent({
   host: CFDPatch;
   selected: boolean;
   onDown: (e: ThreeEvent<PointerEvent>) => void;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
   onMove: (e: ThreeEvent<PointerEvent>) => void;
   onUp: (e: ThreeEvent<PointerEvent>) => void;
   onCancel: () => void;
@@ -288,6 +294,7 @@ function VentIntent({
         userData={{ intentOnly: true }}
         geometry={geometry}
         onPointerDown={onDown}
+        onClick={onClick}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onCancel}
@@ -325,6 +332,7 @@ export function ClimoptixViewer({
   selected,
   diagnosticHighlight,
   onSelect,
+  onInspectPatch,
   picking,
   onHostPick,
   onMoveVent,
@@ -427,6 +435,7 @@ export function ClimoptixViewer({
   const [drag, setDrag] = useState<{ id: string; patch:CFDPatch; u: number; v: number } | null>(
     null,
   );
+  const inspectPress = useRef<string | null>(null);
   const dragRef = useRef<{
     id: string;
     patch: CFDPatch;
@@ -518,6 +527,7 @@ export function ClimoptixViewer({
     e.stopPropagation();
     const vent = scenario.vents.find((v) => `vent:${v.id}` === patch.id);
     if (vent && typeof picking === "object" && vent.id !== picking.id) return;
+    inspectPress.current = picking ? null : patch.id;
     onSelect(patch.id);
     if (canMoveVents && vent) {
       const host = patches.find((p) => p.id === vent.host.patchId);
@@ -545,6 +555,12 @@ export function ClimoptixViewer({
       const uv = location && typeof picking === "object" ? snapVentUV(picking, hostPatch.host, ...location) : location;
       if (uv) onHostPick(patch.id, ...uv);
     }
+  };
+  const onMeshClick = (e: ThreeEvent<MouseEvent>, id: string) => {
+    if (e.button !== 0 || e.delta > 4 || resultOverlay?.probing || inspectPress.current !== id) return;
+    e.stopPropagation();
+    inspectPress.current = null;
+    onInspectPatch?.(id);
   };
   const onMeshMove = (e: ThreeEvent<PointerEvent>) => {
     const current = dragRef.current;
@@ -595,6 +611,7 @@ export function ClimoptixViewer({
     dragRef.current = null;
     setDrag(null);
     const host = scenario.vents.find(vent => vent.id === current.id)?.host;
+    if (current.moved) inspectPress.current = null;
     if (current.moved && host && (current.patch.id !== host.patchId || current.u !== host.u || current.v !== host.v))
       onMoveVent(current.id, current.u, current.v, current.patch.id);
   };
@@ -773,6 +790,7 @@ export function ClimoptixViewer({
                     highlighted={groupSelection.has(p.id)}
                     outlines={wallOutlines&&p.kind==="wall"}
                     onPointerDown={(e) => onMeshDown(e, p)}
+                    onClick={e => onMeshClick(e, p.id)}
                     onPointerMove={onMeshMove}
                     onPointerUp={onMeshUp}
                   />
@@ -812,6 +830,7 @@ export function ClimoptixViewer({
                     host={host}
                     selected={selected === marker.id}
                     onDown={(e) => onMeshDown(e, marker)}
+                    onClick={e => onMeshClick(e, marker.id)}
                     onMove={onMeshMove}
                     onUp={onMeshUp}
                     onCancel={() => {

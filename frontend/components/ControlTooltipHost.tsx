@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { controlHelp } from "@/lib/windowHelpContent";
 
-const controls = "button,input:not([type=hidden]),textarea,select,summary,[contenteditable=true],[role=button],[role=tab],[role=menuitem],[role=menuitemradio],[role=textbox],[role=combobox]";
+const controls = "button,input:not([type=hidden]),textarea,select,summary,a[href],[contenteditable=true],[role=button],[role=tab],[role=menuitem],[role=menuitemradio],[role=menuitemcheckbox],[role=textbox],[role=combobox],[role=slider],[role=switch],[role=checkbox],[role=radio],[role=spinbutton]";
 const tooltipId = "planner-control-tooltip";
 
 export function ControlTooltipHost() {
@@ -14,6 +14,7 @@ export function ControlTooltipHost() {
     let owner: HTMLElement | undefined;
     let title: string | null = null;
     let timer: number | undefined;
+    let mouse: { x: number; y: number } | undefined;
 
     const dismiss = () => {
       window.clearTimeout(timer);
@@ -29,10 +30,21 @@ export function ControlTooltipHost() {
       title = null;
       if (tooltip.matches(":popover-open")) tooltip.hidePopover();
     };
-    const start = (target: EventTarget | null) => {
+    const position = (rect: DOMRect) => {
+      const margin = 8;
+      const { width, height } = tooltip.getBoundingClientRect();
+      const left = Math.max(margin, Math.min(rect.left, document.documentElement.clientWidth - width - margin));
+      const below = rect.bottom + margin;
+      const top = below + height + margin <= window.innerHeight ? below : Math.max(margin, rect.top - height - margin);
+      tooltip.style.left = left + "px";
+      tooltip.style.top = top + "px";
+    };
+    const start = (target: EventTarget | null, mouseEvent?: PointerEvent) => {
       if (!(target instanceof Element)) return;
       const control = target.closest(controls);
-      if (!(control instanceof HTMLElement) || owner === control) return;
+      if (!(control instanceof HTMLElement)) return;
+      mouse = mouseEvent ? { x: mouseEvent.clientX, y: mouseEvent.clientY } : undefined;
+      if (owner === control) return;
       dismiss();
       const guide = controlHelp(control, false);
       if (!guide || control.closest("[aria-hidden=true],[data-help-ignore]")) return;
@@ -44,13 +56,7 @@ export function ControlTooltipHost() {
         if (!rect.width || !rect.height || !control.isConnected) { dismiss(); return; }
         tooltip.textContent = guide.text;
         tooltip.showPopover();
-        const margin = 8;
-        const { width, height } = tooltip.getBoundingClientRect();
-        const left = Math.max(margin, Math.min(rect.left, document.documentElement.clientWidth - width - margin));
-        const below = rect.bottom + margin;
-        const top = below + height + margin <= window.innerHeight ? below : Math.max(margin, rect.top - height - margin);
-        tooltip.style.left = `${left}px`;
-        tooltip.style.top = `${top}px`;
+        position(rect);
         const description = control.getAttribute("aria-describedby");
         control.setAttribute("aria-describedby", description ? `${description} ${tooltipId}` : tooltipId);
       }, 500);
@@ -59,9 +65,15 @@ export function ControlTooltipHost() {
       if (!owner?.contains(event.target as Node)) return;
       if (!(event.relatedTarget instanceof Node) || !owner.contains(event.relatedTarget)) dismiss();
     };
-    const hover = (event: PointerEvent) => { if (event.pointerType === "mouse") start(event.target); };
+    const hover = (event: PointerEvent) => { if (event.pointerType === "mouse") start(event.target, event); };
     const focus = (event: FocusEvent) => {
       if (event.target instanceof HTMLElement && event.target.matches(":focus-visible")) start(event.target);
+    };
+    const onScroll = () => {
+      if (!owner) return;
+      const stillTargeted = mouse ? owner.contains(document.elementFromPoint(mouse.x, mouse.y)) : document.activeElement === owner;
+      if (!stillTargeted) dismiss();
+      else if (tooltip.matches(":popover-open")) position(owner.getBoundingClientRect());
     };
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") dismiss(); };
     const listeners = new AbortController();
@@ -72,7 +84,7 @@ export function ControlTooltipHost() {
     document.addEventListener("focusout", leave, options);
     document.addEventListener("pointerdown", dismiss, options);
     document.addEventListener("input", dismiss, options);
-    document.addEventListener("scroll", dismiss, options);
+    document.addEventListener("scroll", onScroll, options);
     document.addEventListener("keydown", escape, options);
     window.addEventListener("resize", dismiss, options);
     return () => { listeners.abort(); dismiss(); };

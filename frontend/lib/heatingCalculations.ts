@@ -17,7 +17,8 @@ export function thermalRoom(room: Room, project: HeatingProject): RoomThermalDat
   return { roomId: room.id, designTemperatureOverride: false, airChangeRateOverride: false, designIndoorTemperatureC: defaultTemperature, airChangeRate: project.buildingSettings.airChangeRate, selectedEmitterType: "Radiator", floorBoundary: "Ground", ceilingBoundary: "External", adjacentTemperatureC: 10, walls: {} };
 }
 export type ThermalSurface = { key: string; label: string; areaM2: number; uValue: number; adjacentTemperatureC: number; lossW: number; boundary: string; edgeIndex?: number; startMm?: Point2D; endMm?: Point2D };
-export type RoomHeatLoss = { roomId: string; areaM2: number; perimeterM: number; volumeM3: number; heightMm: number; externalWallAreaM2: number; internalWallAreaM2: number; windowAreaM2: number; doorAreaM2: number; surfaces: ThermalSurface[]; fabricW: number; ventilationW: number; totalW: number; designW: number; densityWm2: number; targetC: number; ach: number; warnings: string[]; openPassageWarnings: string[] };
+export type FabricReviewItem = { message: string; elementId: string };
+export type RoomHeatLoss = { roomId: string; areaM2: number; perimeterM: number; volumeM3: number; heightMm: number; externalWallAreaM2: number; internalWallAreaM2: number; windowAreaM2: number; doorAreaM2: number; surfaces: ThermalSurface[]; fabricW: number; ventilationW: number; totalW: number; designW: number; densityWm2: number; targetC: number; ach: number; warnings: string[]; openPassageWarnings: string[]; fabricReview: FabricReviewItem[] };
 export function projectOnSegment(p: Point2D, a: Point2D, b: Point2D) {
   const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
   const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
@@ -45,11 +46,15 @@ export function calculateRoomHeatLoss(room: Room, rooms: readonly Room[], projec
   const areaM2 = polygonAreaMm2(room.vertices) / 1e6, heightMm = room.wall_height.value, targetC = settings.designIndoorTemperatureC;
   const surfaces: ThermalSurface[] = [], warnings: string[] = ["Unmatched walls assumed external; floor assumed ground-facing and ceiling exposed unless overridden. Preset U-values/ACH are planning assumptions, not a survey."];
   const openPassageWarnings: string[] = [];
+  const fabricReview: FabricReviewItem[] = [];
   let perimeterM = 0, externalWallAreaM2 = 0, internalWallAreaM2 = 0, windowAreaM2 = 0, doorAreaM2 = 0;
   const add = (key: string, label: string, areaM2: number, uValue: number, adjacentTemperatureC: number, boundary: string, edgeIndex?: number) => {
     const lookupKey = key.startsWith("wall:") ? `wall:${edgeIndex}` : key;
     const energy = project.thermalOverrides?.[thermalElementId(room.id, key)] ?? project.thermalOverrides?.[thermalElementId(room.id, lookupKey)];
-    if (energy?.warning) warnings.push(energy.warning);
+    if (energy?.warning) {
+      warnings.push(energy.warning);
+      fabricReview.push({ message: energy.warning, elementId: thermalElementId(room.id, key) });
+    }
     const actualU = energy?.uValue ?? uValue;
     if (key.startsWith("opening:") && energy) {
       if (energy.boundary && energy.boundary !== "Auto") boundary = energy.boundary;
@@ -87,7 +92,11 @@ export function calculateRoomHeatLoss(room: Room, rooms: readonly Room[], projec
         const width = Math.max(0, Math.min(end, o.offset_mm + o.width.value) - Math.max(start, o.offset_mm));
         const openingArea = passageProfileForOpening(o) ? openingClearAreaMm2(o,Math.max(start,o.offset_mm)-o.offset_mm,Math.min(end,o.offset_mm+o.width.value)-o.offset_mm)/1e6 : width * Math.min(heightMm, o.height.value) / 1e6;
         if(passageProfileForOpening(o)) {
-          if(openingArea&&targetC>adjacentC&&boundary!=="Adiabatic")openPassageWarnings.push(`${openingNames.get(o.id) ?? "Open passage"}: air transfer to a colder space is not modelled. Obtain a verified heat-loss assessment.`);
+          if (openingArea && targetC > adjacentC && boundary !== "Adiabatic") {
+            const message = `${openingNames.get(o.id) ?? "Open passage"}: air transfer to a colder space is not modelled. Obtain a verified heat-loss assessment.`;
+            openPassageWarnings.push(message);
+            fabricReview.push({ message, elementId: thermalElementId(room.id, "opening:" + o.id) });
+          }
           continue;
         }
         if (openingArea) add(`opening:${o.id}`, openingNames.get(o.id) ?? (o.kind === "WINDOW" ? "Window" : "Door"), openingArea, o.kind === "WINDOW" ? u.window : u.door, adjacentC, boundary, index);
@@ -102,7 +111,7 @@ export function calculateRoomHeatLoss(room: Room, rooms: readonly Room[], projec
   add("floor", `Floor (${floorBoundary.toLowerCase()})`, areaM2, floorBoundary === "Ground" ? u.groundFloor : u.exposedFloor, temperature(floorBoundary, floorOverride), floorBoundary);
   add("roof", `Ceiling (${roofBoundary.toLowerCase()})`, areaM2, u.roof, temperature(roofBoundary, roofOverride), roofBoundary);
   const volumeM3 = areaM2 * heightMm / 1000, fabricW = surfaces.reduce((s, v) => s + v.lossW, 0), ventilationW = calculateVentilationLoss(volumeM3, settings.airChangeRate, targetC, build.externalDesignTemperatureC), totalW = fabricW + ventilationW, designW = totalW * (1 + build.designAllowancePercent / 100);
-  return { roomId: room.id, areaM2, perimeterM, heightMm, volumeM3, externalWallAreaM2, internalWallAreaM2, windowAreaM2, doorAreaM2, surfaces, fabricW, ventilationW, totalW, designW, densityWm2: areaM2 ? designW / areaM2 : 0, targetC, ach: settings.airChangeRate, warnings: [...warnings, ...openPassageWarnings], openPassageWarnings };
+  return { roomId: room.id, areaM2, perimeterM, heightMm, volumeM3, externalWallAreaM2, internalWallAreaM2, windowAreaM2, doorAreaM2, surfaces, fabricW, ventilationW, totalW, designW, densityWm2: areaM2 ? designW / areaM2 : 0, targetC, ach: settings.airChangeRate, warnings: [...warnings, ...openPassageWarnings], openPassageWarnings, fabricReview };
 }
 /** Multilinear interpolation only within a complete supplied grid. No extrapolation. */
 export function interpolatePerformance<T extends object>(points: readonly T[], coordinates: readonly (keyof T)[], query: Partial<T>, output: keyof T): { value: number; interpolated: boolean } | null {

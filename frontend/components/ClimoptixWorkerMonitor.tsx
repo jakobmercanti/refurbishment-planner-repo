@@ -14,7 +14,7 @@ import { CFDJobProgress } from "./CFDJobProgress";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 
 export function ClimoptixWorkerMonitor({adapter, job, name, older, onVTK}: {
-  adapter: RailwayCFDWorker; job: CFDWorkerJob; name: string; older: boolean; onVTK: (file: File) => void;
+  adapter: RailwayCFDWorker; job: CFDWorkerJob; name: string; older: boolean; onVTK: (file: File, buildingPlane?: boolean) => void;
 }) {
   const [text, setText] = useState("");
   const [error, setError] = useState("");

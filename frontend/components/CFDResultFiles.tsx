@@ -8,7 +8,7 @@ import type { RailwayCFDWorker, WorkerResult } from "@/lib/railwayCFDWorker";
 import { CFDIndependentWindow } from "./CFDIndependentWindow";
 
 const size = (bytes: number) => bytes >= 1024**2 ? `${(bytes/1024**2).toFixed(1)} MB` : `${Math.ceil(bytes/1024)} KB`;
-export function CFDResultFiles({ adapter,job,result,onVTK }: { adapter:RailwayCFDWorker;job:CFDWorkerJob;result:WorkerResult;onVTK:(file:File)=>void }) {
+export function CFDResultFiles({ adapter,job,result,onVTK }: { adapter:RailwayCFDWorker;job:CFDWorkerJob;result:WorkerResult;onVTK:(file:File,buildingPlane?:boolean)=>void }) {
   const [busy,setBusy] = useState(""), [error,setError] = useState("");
   const [entries,setEntries] = useState<CFDArchiveEntry[] | null>(null), [folder,setFolder] = useState("");
   const [page,setPage] = useState(0);
@@ -47,7 +47,7 @@ export function CFDResultFiles({ adapter,job,result,onVTK }: { adapter:RailwayCF
     <div className="cfx-result-selectors">
       <label>View result in 3D<select aria-label="View result in 3D" disabled={!!busy||!planes.length} value="" onChange={event=>{
         const item=planes.find(item=>item.id===event.target.value);if(!item)return;
-        void action(item.name??item.id,async signal=>{const file=await adapter.download(job,item,signal);signal.throwIfAborted();onVTK(file);});
+        void action(item.name??item.id,async signal=>{const file=await adapter.download(job,item,signal);signal.throwIfAborted();onVTK(file,true);});
       }}><option value="">{planes.length?"Choose a result plane…":"No result planes retained"}</option>{planes.map(item=><option key={item.id} value={item.id}>{label(item)}</option>)}</select></label>
       <label>Download simulation data<select aria-label="Download simulation data" disabled={!!busy||!result.artifacts.length} value="" onChange={event=>{
         const id=event.target.value;if(!id)return;

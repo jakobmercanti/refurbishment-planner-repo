@@ -280,6 +280,11 @@ test("3D insulation selects real walls, uses the same U and W values, and applie
   await eventually(s.saved, p => JSON.stringify(p.energyLayout) !== JSON.stringify(before.energyLayout));
   await panel.getByRole("button", { name: "Undo", exact: true }).click(); await eventually(s.saved, p => JSON.stringify(p.energyLayout) === JSON.stringify(before.energyLayout));
   await page.screenshot({ path: "../.local-logs/services-3d-qa/insulation.png" });
+  await panel.getByRole("tab", { name: "Openings", exact: true }).click();
+  await panel.getByRole("button", { name: "Add window…", exact: true }).click();
+  const add = page.locator(".floorplan-add-elements-toolbar");
+  await add.getByRole("button", { name: "Add window", exact: true }).waitFor();
+  assert.equal(await add.getByRole("combobox", { name: "Add to plan", exact: true }).inputValue(), "WINDOW");
   await page.getByRole("button", { name: "2D", exact: true }).click(); assert.ok(await panel.isVisible());
 });
 

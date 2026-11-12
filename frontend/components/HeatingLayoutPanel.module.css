@@ -50,6 +50,7 @@
 .panel button.primary { background:var(--primary-action,var(--deep)); border-color:var(--primary-action,var(--deep)); color:var(--primary-action-text,#fff); }
 .panel p.guide,.panel p.hint { color:var(--muted,#526b80); margin:0; }
 .toolbar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.toolbar[data-cfd-action="true"] { grid-template-columns: repeat(5,minmax(0,1fr)); }
 .toolbar > .actions { display:contents; }
 .constructionScenario { display: grid; gap: var(--density-section-gap, 8px); }
 .constructionScenario:not([open]) > :not(summary) { display: none; }
@@ -97,6 +98,7 @@
 .panel summary > .count { margin-inline-start:var(--density-section-gap); }
 .panel details.instructions { background:var(--surface-muted); }
 .review { border-left:3px solid #d8932c!important; }
+.panel.panel .reviewLink { padding: 2px 0; border: 0; background: transparent; color: var(--ink); text-align: left; font-weight: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .panel ul { margin:8px 0 2px; padding-left:20px; display:grid; gap:6px; }
 .elementList { display:grid; gap:12px; }
 .elementCard { min-width:0; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
@@ -113,7 +115,7 @@
 .scenario { display:grid; gap:5px; padding:10px; border:1px solid var(--line); border-radius:8px; }
 @container electrical-layout-window (max-width:420px) {
   .systemPresets { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .toolbar, .toolbar[data-cfd-action="true"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .roomPicker { grid-template-columns:1fr; }
   .panel button.systemChip { display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .metrics { gap:9px; }

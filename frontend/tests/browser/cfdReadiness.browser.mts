@@ -51,6 +51,25 @@ test("compact CFD diagnostics highlight a vent and thermal surface without chang
   await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === "Test supply");
   await warnings.focus();
   await eventually(() => viewport.getAttribute("data-diagnostic-highlight"), value => value === null);
+  await floor.getByRole("button", { name: /^Inspect / }).click();
+  await ui.getByRole("tab", { name: "Bounds", exact: true }).waitFor();
+  await page.getByRole("dialog", { name: "Edit boundary surface", exact: true }).waitFor();
+});
+
+test("clicking a measured CFD face opens its boundary editor", async t => {
+  const { page, close } = await harness.session(cfdProject(), { viewport: { width: 1700, height: 1000 } });
+  t.after(close);
+  await page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("CLIMOPTIX");
+  const ui = page.locator(".cfx-workspace");
+  await eventually(() => ui.getAttribute("data-preparation-state"), state => state === "checked");
+  await ui.getByRole("button", { name: "Hide Simulation setup", exact: true }).click();
+  const canvas = ui.locator(".cfx-viewport canvas");
+  await canvas.waitFor();
+  const box = await canvas.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const editor = page.getByRole("dialog", { name: "Edit boundary surface", exact: true });
+  await editor.waitFor();
+  assert.ok(await editor.locator("select").count() > 0);
 });
 
 test('shared invalid-input feedback stays singular when returning to Thermal and links to issues', async t => {

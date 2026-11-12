@@ -57,6 +57,7 @@ import { newEnergyProject } from "@/lib/energyDocument";
 // the private local engineering backend, so phones on the LAN never try to use
 // their own `localhost:8000`.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/engineering-api";
+const HVAC_CFD_HANDOFF = "planner:pending-hvac-cfd";
 const FULL_FLOORPLAN_SELECTION = "__FULL_FLOORPLAN__";
 // Catalogue administration changes the software's master configuration and is
 // intentionally available only while an administrator runs a development build.
@@ -138,6 +139,23 @@ export default function Home() {
   const [climoptixAccountPrompt, setClimoptixAccountPrompt] = useState(false);
   const [accountInitialSection, setAccountInitialSection] = useState<"account" | "plans">("account");
   const closeAccountDialog = useCallback(() => { setAccountOpen(false); setClimoptixAccountPrompt(false); }, []);
+  useEffect(() => {
+    if (!climoptixEnabled || !local.project) return;
+    let id: string | null;
+    try { id = sessionStorage.getItem(HVAC_CFD_HANDOFF); } catch { return; }
+    if (!id) return;
+    try { sessionStorage.removeItem(HVAC_CFD_HANDOFF); } catch { /* Storage unavailable. */ }
+    // Account binding reloads the app. Resume only a case that travelled with the draft.
+    if (!local.project.hvac?.bindings[id] || !local.project.cfdScenarios?.some(study => study.id === id && !study.archived)) return;
+    const request = ++workspaceRequest.current;
+    queueMicrotask(() => {
+      if (workspaceRequest.current !== request) return;
+      setHvacCFDRequest({ id, nonce: crypto.randomUUID() });
+      setPlacement(null);
+      closeAccountDialog();
+      setWorkspaceModeState("CLIMOPTIX");
+    });
+  }, [climoptixEnabled, closeAccountDialog, local.project]);
   const [wallMode, setWallMode] = useState<WallViewMode>("SOLID");
   const [floorplanStyle, setFloorplanStyle] = useState<FloorplanStyle>("DEFAULT");
   const [floorplanExportRequest, setFloorplanExportRequest] = useState(0);
@@ -340,6 +358,15 @@ export default function Home() {
     setPlacement(null);
     setPlannerBuildDemoMode(nextMode === "PLANNERBUILD" && demoMode);
     setWorkspaceMode(nextMode);
+  }
+
+  function navigateHvacCFD(id: string) {
+    if (climoptixEnabled) {
+      setHvacCFDRequest({ id, nonce: crypto.randomUUID() });
+    } else {
+      try { sessionStorage.setItem(HVAC_CFD_HANDOFF, id); } catch { /* The case still exists in the saved draft. */ }
+    }
+    void changeWorkspaceMode("CLIMOPTIX");
   }
 
   function resolveViewerRoom(current: DemoResponse | null, rooms = projectRooms, selection = viewerRoomSelection): Room | null {
@@ -631,7 +658,7 @@ export default function Home() {
   }
 
   return (
-<HvacProvider onFocusFloor={floorId=>{if(currentFloor.id!==floorId&&floors.some(f=>f.id===floorId))editBuilding(p=>selectFloor(p,floorId));}} key={`${local.project.projectId}|${local.documentSession}`} project={local.project} apiUrl={API_URL} commit={(hvac,scenarios)=>local.setHvac(hvac,scenarios,scopeToken)} cfdAvailable={climoptixEnabled} navigateCFD={id=>{if(id)setHvacCFDRequest({id,nonce:crypto.randomUUID()});setPlacement(null);void changeWorkspaceMode("CLIMOPTIX");}} undo={undoProject} redo={redoProject} canUndo={local.canUndo} canRedo={local.canRedo}><ServiceViewProvider key={scopeToken} active={workspaceMode === "FLOORPLAN"} in3D={mode === "ANALYSIS"}><EnergyLayoutProvider editRequest={insulationEditRequest} visible={workspaceMode === "FLOORPLAN"} scopeKey={scopeToken} data={local.project.energyLayout ?? newEnergyProject()} onChange={next=>{if(local.isScopeCurrent(scopeToken))local.setEnergyLayout(next);}} onOpen={() => { setPlacement(null);setWorkspaceMode("FLOORPLAN"); }}><HeatingLayoutProvider visible={workspaceMode === "FLOORPLAN"} scopeKey={scopeToken} data={local.project.heatingLayout ?? newHeatingProject()} rooms={local.project.rooms} onChange={(next, refreshedResize) => { if(!local.isScopeCurrent(scopeToken))return;const rooms = local.setHeatingLayout(next, refreshedResize); if (rooms) { setProjectRooms(rooms); setDemo(current => current ? { ...current, room: rooms.find(room => room.id === current.room.id) ?? current.room } : current); } }} onOpen={() => { setPlacement(null);setWorkspaceMode("FLOORPLAN"); }}><main className={`planner-workspace ${compactWorkspace ? "compact-workspace" : ""}`}><HvacNavigationBridge />
+<HvacProvider onFocusFloor={floorId=>{if(currentFloor.id!==floorId&&floors.some(f=>f.id===floorId))editBuilding(p=>selectFloor(p,floorId));}} key={`${local.project.projectId}|${local.documentSession}`} project={local.project} apiUrl={API_URL} commit={(hvac,scenarios)=>local.setHvac(hvac,scenarios,scopeToken)} navigateCFD={navigateHvacCFD} undo={undoProject} redo={redoProject} canUndo={local.canUndo} canRedo={local.canRedo}><ServiceViewProvider key={scopeToken} active={workspaceMode === "FLOORPLAN"} in3D={mode === "ANALYSIS"}><EnergyLayoutProvider editRequest={insulationEditRequest} visible={workspaceMode === "FLOORPLAN"} scopeKey={scopeToken} data={local.project.energyLayout ?? newEnergyProject()} onChange={next=>{if(local.isScopeCurrent(scopeToken))local.setEnergyLayout(next);}} onOpen={() => { setPlacement(null);setWorkspaceMode("FLOORPLAN"); }}><HeatingLayoutProvider visible={workspaceMode === "FLOORPLAN"} scopeKey={scopeToken} data={local.project.heatingLayout ?? newHeatingProject()} rooms={local.project.rooms} onChange={(next, refreshedResize) => { if(!local.isScopeCurrent(scopeToken))return;const rooms = local.setHeatingLayout(next, refreshedResize); if (rooms) { setProjectRooms(rooms); setDemo(current => current ? { ...current, room: rooms.find(room => room.id === current.room.id) ?? current.room } : current); } }} onOpen={() => { setPlacement(null);setWorkspaceMode("FLOORPLAN"); }}><main className={`planner-workspace ${compactWorkspace ? "compact-workspace" : ""}`}><HvacNavigationBridge />
       <UiTheme settings={uiSettings} />
       <header className="topbar">
         <div className="app-identity"><a className="brand" href="https://www.freefloorplan3d.com/" title="Return to FreeFloorplan3D website"><Image className="brand-mark" src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/planner-build-icon.png`} alt="FreeFloorplan3D" width={34} height={34} priority /><span>FreeFloorplan3D</span></a><ApplicationMenuBar onClimoptixMenuTarget={setCFDMenuTarget} buildingView={buildingView} onBuildingViewChange={changeBuildingView} roofAvailable={(roofPreview??building.roof).enabled!==false} onPrepareProject={local.prepareFile} onSaveProject={local.saveFile} onOpenProject={local.openFile} onOpenAssets={() => setAssetsOpen(true)} onOpenPrivacy={() => setPrivacyOpen(true)} room={demo.room} mode={mode} workspaceMode={workspaceMode} wallMode={wallMode} floorplanStyle={floorplanStyle} displayUnits={preferences.units} onDisplayUnitsChange={(units) => handlePreferencesChange({ ...appPreferences, units })} onOpenRoom={openRoomFile} onOpenCatalogue={() => setCatalogueOpen(true)} onOpenElectricalLayout={openElectricalLayout} onOpenCatalogueManager={(opener) => { setCatalogueManagerOpener(opener); setCatalogueManagerOpen(true); }} catalogueManagerAvailable={CATALOGUE_MANAGER_AVAILABLE} onWallModeChange={setWallMode} onFloorplanStyleChange={setFloorplanStyle} onExportFloorplan={() => setFloorplanExportRequest((current) => current + 1)} onSaveView={() => setViewerSaveViewRequest((current) => current + 1)} onAnnotate={() => setFloorplanAnnotateRequest((current) => current + 1)} onImportDrawing={handleImportDrawing} onOpenSettings={() => setSettingsOpen(true)} toolbars={mode === "EDITOR" ? FLOORPLAN_TOOLBARS : VIEWER_TOOLBARS} toolbarVisibility={visibleToolbars} toolbarAvailability={toolbarAvailability} onToggleToolbar={toggleToolbar} onShowAllToolbars={showAllToolbars} onHideAllToolbars={hideAllToolbars} /></div>
@@ -732,7 +759,7 @@ export default function Home() {
         </section>
       ) : null}
       </div>
-      {climoptixEnabled && <section className="climoptix-screen" hidden={workspaceMode!=="CLIMOPTIX"} aria-hidden={workspaceMode!=="CLIMOPTIX"}><ClimoptixWorkspace openingNames={openingNames} openRequest={hvacCFDRequest} active={workspaceMode==="CLIMOPTIX"} key={`${local.project.projectId}|${local.documentSession}`} project={local.project} apiUrl={API_URL} menuTarget={cfdMenuTarget} onChange={(next,checkpoint,groups,domain,copies)=>local.setCFDScenarios(next,scopeToken,checkpoint,groups,domain,copies)} onUndo={undoProject} onRedo={redoProject} canUndo={local.canUndo} canRedo={local.canRedo} onEditBuilding={()=>{setPlacement(null);setMode("EDITOR");void changeWorkspaceMode("FLOORPLAN");}} onEditInsulation={(face, constructionScenario) => { editBuilding(p => { const next=selectFloor(p,face.floorId);return {...next,energyLayout:{...(next.energyLayout??newEnergyProject()),activeScenarioId:constructionScenario}}; });setInsulationEditRequest({id:crypto.randomUUID(),elementId:face.elementId,pointMm:[face.centroidMm[0],face.centroidMm[1]]});setPlacement(null);setMode("EDITOR");setWorkspaceMode("FLOORPLAN"); }}/></section>}
+      {climoptixEnabled && <section className="climoptix-screen" hidden={workspaceMode!=="CLIMOPTIX"} aria-hidden={workspaceMode!=="CLIMOPTIX"}><ClimoptixWorkspace openingNames={openingNames} openRequest={hvacCFDRequest && local.project.cfdScenarios?.some(study => study.id === hvacCFDRequest.id && !study.archived) ? hvacCFDRequest : null} active={workspaceMode==="CLIMOPTIX"} key={`${local.project.projectId}|${local.documentSession}`} project={local.project} apiUrl={API_URL} menuTarget={cfdMenuTarget} onChange={(next,checkpoint,groups,domain,copies)=>local.setCFDScenarios(next,scopeToken,checkpoint,groups,domain,copies)} onUndo={undoProject} onRedo={redoProject} canUndo={local.canUndo} canRedo={local.canRedo} onEditBuilding={()=>{setPlacement(null);setMode("EDITOR");void changeWorkspaceMode("FLOORPLAN");}} onEditInsulation={(face, constructionScenario) => { editBuilding(p => { const next=selectFloor(p,face.floorId);return {...next,energyLayout:{...(next.energyLayout??newEnergyProject()),activeScenarioId:constructionScenario}}; });setInsulationEditRequest({id:crypto.randomUUID(),elementId:face.elementId,pointMm:[face.centroidMm[0],face.centroidMm[1]]});setPlacement(null);setMode("EDITOR");setWorkspaceMode("FLOORPLAN"); }}/></section>}
       <section className="planner-build-screen" hidden={workspaceMode !== "PLANNERBUILD"} aria-hidden={workspaceMode !== "PLANNERBUILD"}>{local.project ? <PlannerBuildWorkspace project={local.project} view={plannerBuildView} displayUnits={preferences.units} defaultCurrency={defaultCurrency} onQuotesChange={local.setQuotes} onSaveQuotes={local.saveQuotes} onActivitiesChange={(activities) => local.setPlannerBuild({ ...(local.project?.plannerBuild ?? { activities: [] }), activities })} demoMode={plannerBuildDemoMode} onDemoLimitReached={openPlansDialog} /> : <p className="pb-loading-state" role="status">Loading project data…</p>}</section>
 {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && (requiresWallMount(placement.obstacle) ? " · Snaps and aligns to a wall" : " · R to rotate")}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
       {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={asset=>{if(local.isScopeCurrent(scopeToken))local.addAsset(asset);}} onChange={next=>{if(local.isScopeCurrent(scopeToken))local.setInstances(next);}} onClose={() => setAssetsOpen(false)} />}

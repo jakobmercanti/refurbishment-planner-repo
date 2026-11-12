@@ -6,7 +6,7 @@ import { CFDRowMenu } from "./CFDRowMenu";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { assignBoundarySurfaces, boundaryGroups, boundaryMembership, BOUNDARY_COLOURS, DEFAULT_BOUNDARY_GROUP, effectiveBoundary, isSourceThermalBoundary, moveBoundary, uniqueGroupName } from "@/lib/climoptixGroups";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { CFDEditorWindow } from "./CFDEditorWindow";
 import { boundarySchema, type CFDBoundary, type CFDScenario, type PatchKind, PATCH_KINDS } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
@@ -157,6 +157,7 @@ export function BoundariesPanel({
   navigation,
   sharedCapture,
   actions,
+  surfaceRequest,
 }: {
   project: ProjectDocument;
   scenario: CFDScenario;
@@ -170,6 +171,7 @@ export function BoundariesPanel({
   navigation?: ReactNode;
   sharedCapture?: ReactNode;
   actions?: ReactNode;
+  surfaceRequest?: { id: string; nonce: string } | null;
 }) {
   const [search, setSearch] = useState(""),
     [group, setGroup] = useState<PatchKind>("wall");
@@ -179,6 +181,9 @@ export function BoundariesPanel({
   const [assignment, setAssignment] = useState<{ groupId: string; ids: string[]; editConditions?: boolean } | null>(null);
   const [surfaceKind, setSurfaceKind] = useState("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (surfaceRequest) queueMicrotask(() => setEditing("surface"));
+  }, [surfaceRequest]);
   const patch = report?.patches.find(
     (p) =>
       p.id === selected || (p.kind === "object" && p.sourceId === selected),
@@ -416,7 +421,7 @@ export function BoundariesPanel({
         </p>
       )}
       {patch && editing === "surface" && (
-        <CFDEditorWindow title="Edit boundary surface" sectionTitle="Surface settings" defaultPosition={{ x: 240, y: 110 }} initialSize={{ width: 600, height: 640 }} maxHeight={850} bringToFront onClose={() => setEditing(null)}>
+        <CFDEditorWindow key={patch.id} dialog title="Edit boundary surface" sectionTitle="Surface settings" defaultPosition={{ x: 240, y: 110 }} initialSize={{ width: 600, height: 640 }} maxHeight={850} bringToFront onClose={() => setEditing(null)}>
         <section className="cfx-card">
           <h3>
             {patch.label ?? labelFor(patch.kind)} · {patch.sourceId}

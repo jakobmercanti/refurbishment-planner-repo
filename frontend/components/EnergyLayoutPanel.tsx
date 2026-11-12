@@ -1,6 +1,6 @@
 "use client";
 import { isInsulationSelectable } from "@/lib/energyCalculations";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Room } from "@/lib/types";
 import type { HeatingProject } from "@/lib/heatingDocument";
 import { type ConstructionAssembly, type EnergyProject, type ElementAssignment } from "@/lib/energyDocument";
@@ -13,12 +13,26 @@ import ui from "./EnergyLayoutPanel.module.css";
 import { NumberField } from "./EnergyNumberField";
 import { WallLayersEditor } from "./WallLayersEditor";
 import { WallLayersPreview } from "./WallLayersPreview";
-import { removeEnergyScenario, renameEnergyScenario, saveEnergyScenarioAs } from "@/lib/energyScenarios";
+import { renameEnergyScenario, saveEnergyScenarioAs } from "@/lib/energyScenarios";
+import { DeleteConstructionScenario } from "./DeleteConstructionScenario";
 
-export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingChange, selectedIds, onSelect, onAddOpening, onEditOpening, openingNames, onUndo, onRedo, canUndo, canRedo, projectName }: { rooms: Room[]; data: EnergyProject; heating: HeatingProject; onChange: (data: EnergyProject) => void; onHeatingChange: (data: HeatingProject) => void; selectedIds: string[]; onSelect: (ids: string[]) => void; onAddOpening?: (kind: "DOOR" | "WINDOW") => void; onEditOpening?: (id: string) => void; openingNames?: ReadonlyMap<string, string>; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string }) {
+export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingChange, selectedIds, onSelect, onAddOpening, onEditOpening, focusRequest, openingNames, onUndo, onRedo, canUndo, canRedo, projectName }: { rooms: Room[]; data: EnergyProject; heating: HeatingProject; onChange: (data: EnergyProject) => void; onHeatingChange: (data: HeatingProject) => void; selectedIds: string[]; onSelect: (ids: string[]) => void; onAddOpening?: (kind: "DOOR" | "WINDOW") => void; onEditOpening?: (id: string) => void; focusRequest?: number; openingNames?: ReadonlyMap<string, string>; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean; projectName: string }) {
   const [tab, setTab] = useState<"Walls" | "Floors" | "Roofs" | "Openings" | "Results">("Walls"), [error, setError] = useState(""), [reportOpen, setReportOpen] = useState(false);
   const [newScenarioName, setNewScenarioName] = useState(""), [scenarioNameDraft, setScenarioNameDraft] = useState<{ id: string; text: string } | null>(null);
   const [resultsSelection, setResultsSelection] = useState<string | undefined>();
+  const elementSection = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (!focusRequest) return;
+    queueMicrotask(() => setResultsSelection(undefined));
+    const frame = requestAnimationFrame(() => {
+      const section = elementSection.current;
+      if (!section) return;
+      section.open = true;
+      section.querySelector("select")?.focus({ preventScroll: true });
+      section.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusRequest]);
   const [editor, setEditor] = useState<{ source: EnergyProject; draft: EnergyProject; assembly: ConstructionAssembly; element: EnergyElement; thickness: number } | null>(null);
   const result = useMemo(() => energyResults(rooms, heating, data), [rooms, heating, data]);
   const passages = useMemo(() => insulationPassages(rooms), [rooms]);
@@ -59,9 +73,9 @@ export function EnergyLayoutPanel({ rooms, data, heating, onChange, onHeatingCha
         <div><strong>Editing: {scenarioLabel}</strong></div>
         <label>Load construction scenario<select aria-label="Load construction scenario" value={data.activeScenarioId ?? ""} onChange={e => update({ ...data, activeScenarioId: e.target.value || null })}><option value="">Existing Building</option>{data.scenarios.map(s => <option key={s.scenarioId} value={s.scenarioId}>{s.name}</option>)}</select></label>
         <div className={ui.scenarioActions}><label>New scenario name<input value={newScenarioName} maxLength={80} placeholder={`Upgrade ${data.scenarios.length + 1}`} onChange={e => setNewScenarioName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveScenario(); }} /></label><button type="button" onClick={saveScenario} disabled={data.scenarios.length >= 100}>Save as new scenario</button></div>
-        {activeScenario && <div className={ui.scenarioActions}><label>Rename active scenario<input value={editableScenarioName} maxLength={80} onChange={e => setScenarioNameDraft({ id: activeScenario.scenarioId, text: e.target.value })} onBlur={renameScenario} onKeyDown={e => { if (e.key === "Enter") { e.currentTarget.blur(); } }} /></label><button type="button" onClick={renameScenario}>Save name</button><button type="button" onClick={() => { if (window.confirm(`Delete scenario “${activeScenario.name}”? Existing Building and other scenarios will be kept.`)) update(removeEnergyScenario(data, activeScenario.scenarioId)); }}>Delete scenario</button></div>}
+        {activeScenario && <div className={ui.scenarioActions}><label>Rename active scenario<input value={editableScenarioName} maxLength={80} onChange={e => setScenarioNameDraft({ id: activeScenario.scenarioId, text: e.target.value })} onBlur={renameScenario} onKeyDown={e => { if (e.key === "Enter") { e.currentTarget.blur(); } }} /></label><button type="button" onClick={renameScenario}>Save name</button><DeleteConstructionScenario data={data} label="Delete scenario" onChange={update} /></div>}
       </section></details>
-      <details open><summary>{elementName === "opening" ? "Opening selection & performance" : `${activeTab} selection & construction`}</summary>
+      <details ref={elementSection} open><summary>{elementName === "opening" ? "Opening selection & performance" : `${activeTab} selection & construction`}</summary>
       {elementName === "opening" && onAddOpening && <div className={`${styles.grid} ${ui.openingActions}`}>
         <button type="button" onClick={() => onAddOpening("DOOR")}>Add door or passage…</button>
         <button type="button" onClick={() => onAddOpening("WINDOW")}>Add window…</button>

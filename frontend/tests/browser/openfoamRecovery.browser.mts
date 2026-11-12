@@ -248,26 +248,22 @@ test('native downloads, VTK viewing, resource controls, probe/flow graphs and CS
   const download=s.page.waitForEvent('download');await s.ui.getByRole('combobox',{name:'Download simulation data',exact:true}).selectOption('native-case');
   assert.match((await download).suggestedFilename(),/native-case\.zip$/);
   await s.ui.getByRole('combobox',{name:'View result in 3D',exact:true}).selectOption('slice-0');
-  await s.ui.getByText(/Authenticated worker job 55555555/).waitFor();
-  const viewer=s.ui.getByRole('region',{name:'VTK results viewer',exact:true});
-  await viewer.getByRole('status').filter({hasText:/4 points.*1 cell/}).waitFor();
-  await viewer.getByRole('button',{name:'Zoom VTK in',exact:true}).click();
-  await viewer.getByRole('button',{name:'Zoom VTK out',exact:true}).click();
-  await viewer.getByRole('button',{name:'Fit',exact:true}).click();
-  const original=s.page.waitForEvent('download');await viewer.getByRole('button',{name:'Download full original data',exact:true}).click();
-  assert.match((await original).suggestedFilename(),/slice-0\.vtk$/);
-  assert.equal(await s.ui.getByRole('alert').count(),0);
-  await viewer.getByRole('button',{name:'Back to geometry',exact:true}).click();
+  const viewer = s.ui.locator(".floating-toolbar").filter({ has: s.page.getByText("Building result display", { exact: true }) });
+  await viewer.getByRole("combobox", { name: "Building 3D plane", exact: true }).waitFor();
+  assert.match(await viewer.getByRole("combobox", { name: "Building 3D plane", exact: true }).inputValue(), /55555555.*slice-0\.vtk$/);
+  await viewer.getByRole("combobox", { name: "Building result field", exact: true }).locator("option").first().waitFor({ state: "attached" });
+  await viewer.getByRole("button", { name: "Unload selected plane", exact: true }).click();
+  await viewer.waitFor({ state: "hidden" });
 
 });
 
 test('a definite 422 rejection releases its payload so corrected settings get a fresh submission',async t=>{
   const requests:CFDSubmission[]=[];
   const project=cfdProject();
-  project.cfdScenarios![0].resources.cpu=4;
+  project.cfdScenarios![0].resources.cpu=2;
   const s=await open(t,async route=>{
     const path=new URL(route.request().url()).pathname;
-    if(path.endsWith('/capabilities'))return route.fulfill({json:caps});
+    if(path.endsWith('/capabilities'))return route.fulfill({json:requests.length ? caps : {...caps, limits:{...caps.limits,cpu:2}}});
     if(path.endsWith('/jobs')&&route.request().method()==='POST'){
       requests.push(route.request().postDataJSON());
       if(requests.length===1)return route.fulfill({status:422,json:{detail:'Worker limit: cpu must be at most 1. Change the study explicitly.'}});
@@ -281,8 +277,13 @@ test('a definite 422 rejection releases its payload so corrected settings get a 
   assert.ok(await s.ui.getByRole('button',{name:'Delete Office airflow',exact:true}).isEnabled());
   await s.ui.getByRole('button',{name:'View issues for Office airflow',exact:true}).click();
   await s.ui.getByRole('tabpanel',{name:'Warnings & checks',exact:true}).getByRole('alert').filter({hasText:'Simulation was not accepted by the worker'}).waitFor();
-  assert.equal(requests[0].scenario.resources.cpu,4);
+  const physics = await s.ui.getByRole("button", { name: "Review physics settings", exact: true }).boundingBox();
+  const solver = await s.ui.getByRole("button", { name: "Review solver settings", exact: true }).boundingBox();
+  assert.equal(physics?.y, solver?.y);
+  assert.equal(requests[0].scenario.resources.cpu,2);
   await cfdWindow(s.ui,'Solver');await s.ui.getByRole('tab',{name:'Run',exact:true}).click();
+  await s.ui.getByRole('button',{name:'Refresh connection',exact:true}).click();
+  await s.ui.getByText(/Worker compatibility/).first().waitFor();
   await s.ui.getByRole('button',{name:'Use worker resource limits',exact:true}).click();
   await eventually(s.saved,p=>p.cfdScenarios[0].resources.cpu===1);
   assert.equal(await s.ui.locator('.cfx-worker-compatibility').count(),0);

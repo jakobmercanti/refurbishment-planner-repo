@@ -2,7 +2,9 @@
 
 import { z } from "zod";
 import { readBoundedResponse } from "./boundedResponse";
-import { MAX_SAMPLING_PLANES } from "./climoptixDocument";
+import { MAX_SAMPLING_PLANES, type CFDScenario } from "./climoptixDocument";
+import type { CFDReport } from "./climoptixReport";
+import { workerProfileIssues } from "./cfdWorkerProfile";
 import { currentSession, storedAccountId } from "./commercialAuth";
 import { matchesLocalStorageAccount } from "./localDatabase";
 import { workerTelemetrySchema } from "./cfdWorkerTelemetry";
@@ -63,11 +65,22 @@ export async function workerJSON(base: string, path: string, signal: AbortSignal
   return JSON.parse(new TextDecoder().decode(await workerRequest(base, path, signal, body)));
 }
 
+function nativeReportIssue(report: CFDReport) {
+  if (report.surface.triangles.length > 100000 || report.domain.slabVoids.length) return "The prepared geometry exceeds this worker’s surface capabilities. Review the domain or use a compatible solver.";
+  if (report.patches.some(({ kind, boundary: b }) => b.thermal.type !== "adiabatic" || b.roughnessM || b.scalarType !== "zeroFlux" ||
+    (!["supply", "extract"].includes(kind) && ["velocity", "volumeFlow", "massFlow"].includes(b.flow.type))))
+    return "Bounds: use adiabatic smooth surfaces with zero scalar flux. Assign airflow through a supply or extract object.";
+  if (report.objects.some(obj => obj.mode === "porousProxy" || obj.heatW || obj.co2M3S))
+    return "Objects: porous proxies, heat sources and scalar sources require a compatible solver.";
+}
+
 export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities) {
   const jobPath = (id: string) => `/jobs/${z.uuid().parse(id)}`;
   return {
     namespace: capabilities.namespace,
     capabilities,
+    configurationIssue: (scenario: CFDScenario) => workerProfileIssues(scenario, capabilities.limits)[0],
+    reportIssue: nativeReportIssue,
     async submit(request: CFDSubmission, signal: AbortSignal) {
       return checkedWorkerJob(await workerJSON(base, "/jobs", signal, request), request);
     },

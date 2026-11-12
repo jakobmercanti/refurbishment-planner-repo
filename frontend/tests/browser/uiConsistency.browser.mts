@@ -318,10 +318,13 @@ test("Heating adds and deletes shared construction scenarios inside the submenu"
   const saved = await eventually(session.saved, value => value?.energyLayout?.scenarios.length === 1);
   assert.equal(saved.energyLayout.scenarios[0].name, "Heating upgrade");
   assert.equal(await remove.isDisabled(), false);
-  page.once("dialog", dialog => dialog.dismiss()); await remove.click();
+  const confirm = page.getByRole("dialog", { name: "Delete construction scenario?" });
+  await remove.click();
+  await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
   assert.equal((await session.saved()).energyLayout.scenarios.length, 1);
   await page.screenshot({ path: "../.local-logs/ui-nov01-qa/heating-scenarios.png" });
-  page.once("dialog", dialog => dialog.accept()); await remove.click();
+  await remove.click();
+  await confirm.getByRole("button", { name: "Delete scenario", exact: true }).click();
   await eventually(session.saved, value => value?.energyLayout?.scenarios.length === 0 && value.energyLayout.activeScenarioId === null);
   assert.equal(await remove.isDisabled(), true);
   await section.getByRole("button", { name: "Add scenario", exact: true }).click();
