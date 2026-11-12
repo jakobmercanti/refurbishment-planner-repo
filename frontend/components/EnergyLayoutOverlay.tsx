@@ -52,7 +52,7 @@ export function EnergyLayoutOverlay({ labelPortal, rooms, heating, data, selecte
     onChange({ ...data, labelPositions });
     drag.current = null; setPreview(null);
   }} onPointerCancel={() => { drag.current = null; setPreview(null); }}>
-    {labels.filter(({e})=>e.category === "wall").map(({ e }) => {
+    {!labelPortal && labels.filter(({e})=>e.category === "wall").map(({ e }) => {
       const intensity = Math.min(1, e.uValue / 2), color = `hsl(${135 - intensity * 130} 60% 42%)`, selected = selectedIds.includes(e.elementId);
       const title = `${e.label}; ${e.boundary}; ${e.areaM2.toFixed(1)} m²; U ${e.uValue.toFixed(3)}; ΔT ${e.deltaTK.toFixed(1)} K; ${Math.round(e.heatLossW)} W${e.warnings.length ? "; " + e.warnings.join("; ") : ""}`;
       const events = { onPointerDown: (event: React.PointerEvent<SVGElement>) => { event.stopPropagation(); select(e.elementId, event.shiftKey); }, onKeyDown: (event: React.KeyboardEvent<SVGElement>) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(e.elementId, event.shiftKey); } } };

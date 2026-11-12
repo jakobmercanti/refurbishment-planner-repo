@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { Point2D } from "@/lib/types";
+import type { Opening, Point2D } from "@/lib/types";
 import type { FloorPlanViewport } from "./FloorPlanCanvas";
 import type { HeatingSelection } from "./HeatingLayoutPanel";
 
@@ -13,10 +13,20 @@ export interface ServiceSceneHost {
   canPick: (x: number, y: number) => boolean;
 }
 export type ServiceLabelPortal = (anchor: Point2D, node: ReactNode) => ReactNode;
+export type ServiceOpeningMove = {
+  id: string;
+  source: string;
+  wallId: string;
+  segmentIndex: number;
+  offset: number;
+  byRoom: ReadonlyMap<string, Opening>;
+};
 export interface ServiceSceneActions {
   selectObject?: (id: string) => "edit" | "consume" | false;
   ownsObject?: (id: string) => boolean;
   recordObjectMove?: (id: string) => void;
+  previewOpeningMove?: (id: string, point: Point2D) => ServiceOpeningMove | null;
+  commitOpeningMove?: (move: ServiceOpeningMove) => boolean;
   clear?: () => void;
 }
 function useServiceViewState(active: boolean, in3D: boolean) {

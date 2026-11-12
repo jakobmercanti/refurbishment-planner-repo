@@ -45,6 +45,134 @@ async function pointOnFloor(layer, p) {
   }, at);
 }
 
+async function watchViewer(page) {
+  await page.addInitScript(() => {
+    const stores = [];
+    window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+      supportsFiber: true, inject: () => 1, onCommitFiberUnmount() {},
+      onCommitFiberRoot(_, root) {
+        const store = root.containerInfo;
+        if (typeof store?.getState === "function" && !stores.includes(store)) stores.push(store);
+      },
+    };
+    window.__serviceViewer = () => stores.map(store => store.getState()).find(state => state.gl?.domElement.closest(".viewer-shell"));
+  });
+  await page.reload();
+  await enter3D(page);
+  await eventually(() => page.evaluate(() => Boolean(window.__serviceViewer()?.controls)), Boolean);
+}
+
+async function aim(page, eye, focus) {
+  await page.evaluate(({ eye, focus }) => {
+    const { camera, controls } = window.__serviceViewer();
+    camera.position.set(...eye); controls.target.set(...focus); controls.update(); camera.updateMatrixWorld();
+  }, { eye, focus });
+}
+
+async function scenePoint(page, point) {
+  return page.evaluate(point => {
+    const { camera, gl } = window.__serviceViewer();
+    const p = camera.position.clone().set(...point).project(camera), rect = gl.domElement.getBoundingClientRect();
+    return { x: rect.left + (p.x + 1) * rect.width / 2, y: rect.top + (1 - p.y) * rect.height / 2 };
+  }, point);
+}
+
+test("ventilation and insulation keep the camera responsive and insulation picks rendered surfaces", async t => {
+  const project = fixture();
+  project.building.roof.enabled = true;
+  const s = await harness.session(project); t.after(() => s.close()); const { page } = s;
+  await watchViewer(page);
+  await menu(page, "Tools", "Heating & ventilation");
+  const heating = page.locator(".heating-layout-window");
+  assert.match(await heating.getByLabel("Room heating balance").innerText(), /Studio - /);
+  await minimise(heating, "Heating Layout");
+  await walls(page, "Solid walls");
+  const radiator = project.rooms[0].obstacles[0];
+  const heaterPoint = [radiator.center.x / 1000, (radiator.base_z_mm + radiator.dimensions.height.value * .5) / 1000, -radiator.center.y / 1000];
+  await aim(page, [2, 1.4, -1.5], heaterPoint);
+  const heater = await scenePoint(page, heaterPoint);
+  const hit = await page.evaluate(({ x, y, id }) => {
+    const { camera, gl, pointer, raycaster, scene } = window.__serviceViewer(), rect = gl.domElement.getBoundingClientRect();
+    const position = pointer.clone();
+    const fixture = scene.getObjectByName(`fixture:${id}`);
+    for (const dx of [0, -12, 12, -24, 24]) for (const dy of [0, -10, 10, -20, 20]) {
+      const px = x + dx, py = y + dy;
+      position.set((px - rect.left) / rect.width * 2 - 1, 1 - (py - rect.top) / rect.height * 2);
+      raycaster.setFromCamera(position, camera);
+      if (fixture && raycaster.intersectObject(fixture, true).length && document.elementFromPoint(px, py)?.closest(".stable-canvas-host")) {
+        return { x: px, y: py, target: document.elementFromPoint(px, py)?.outerHTML.slice(0, 90) };
+      }
+    }
+    return null;
+  }, { ...heater, id: radiator.id });
+  assert.ok(hit, `Radiator must be pickable near ${JSON.stringify(heater)}`);
+  await page.mouse.click(hit.x, hit.y);
+  await eventually(() => page.evaluate(() => Boolean(window.__serviceViewer().scene.getObjectByName("Radiator selection"))), Boolean, `Radiator outline missing at ${JSON.stringify(hit)}`);
+  await page.getByRole("button", { name: "Hide Heating element editor", exact: true }).click();
+  await restore(page, "Heating Layout");
+  await heating.getByRole("tab", { name: "Ventilation", exact: true }).click();
+  const actions = await Promise.all(["Undo HVAC", "Redo HVAC", "Check room geometry", "Update calculations", "Evaluate in CFD", "Export calculations"]
+    .map(name => heating.getByRole("button", { name, exact: true }).boundingBox()));
+  assert.equal(actions[0].y, actions[2].y); assert.equal(actions[3].y, actions[5].y);
+  assert.equal(actions[0].x, actions[3].x); assert.ok(actions[3].y > actions[0].y);
+  await minimise(heating, "Heating Layout");
+  const floorMaterial = () => page.evaluate(() => window.__serviceViewer().scene.getObjectByName("floor:room-a").material.color.getHexString());
+  await eventually(floorMaterial, colour => colour === "b8bdbf");
+  const camera = () => page.evaluate(() => window.__serviceViewer().camera.position.toArray());
+  async function orbit() {
+    const canvas = await page.locator(".viewer-shell canvas").boundingBox();
+    const before = await camera();
+    const x = canvas.x + canvas.width * .6, y = canvas.y + canvas.height * .65;
+    await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 74, y + 18, { steps: 8 }); await page.mouse.up();
+    await eventually(camera, next => Math.hypot(...next.map((v, i) => v - before[i])) > .2);
+  }
+  await orbit();
+  await menu(page, "Tools", "Energy & Insulation");
+  const insulation = page.locator(".energy-layout-window");
+  await minimise(insulation, "Energy & Insulation");
+  await orbit();
+  await walls(page, "Solid walls");
+  await aim(page, [2, 1.7, -1.2], [2, 1.2, -3]);
+  const wall = await scenePoint(page, [2, 1.2, -3]);
+  await page.mouse.click(wall.x, wall.y);
+  await restore(page, "Energy & Insulation");
+  await insulation.getByRole("button", { name: "Define wall layers", exact: true }).waitFor();
+  await minimise(insulation, "Energy & Insulation");
+  await aim(page, [2, 4, -1.5], [2, 0, -1.5]);
+  const floor = await scenePoint(page, [2.65, 0, -1.75]);
+  await page.mouse.click(floor.x, floor.y);
+  await restore(page, "Energy & Insulation");
+  await insulation.getByRole("button", { name: "Define floor layers", exact: true }).waitFor();
+  await minimise(insulation, "Energy & Insulation");
+  await page.getByRole("button", { name: "Show", exact: true }).click();
+  await page.getByRole("button", { name: "Show all roof", exact: true }).click();
+  const roof = await scenePoint(page, [2.6, 2.58, -1.75]);
+  await page.mouse.click(roof.x, roof.y);
+  await restore(page, "Energy & Insulation");
+  await insulation.getByRole("button", { name: "Define roof layers", exact: true }).waitFor();
+});
+
+test("3D openings retain a visible outline while dragging and persist the measured wall position", async t => {
+  const project = fixture();
+  project.floorplan.openings = [{ id: "test-window", kind: "WINDOW", wallId: "wall-a", segmentIndex: 0, offset: 800, width: 700, height: 850, sill: 950, hingeSide: "START", doorType: "SINGLE", opensInward: true }];
+  project.building = defaultBuilding(project);
+  project.building.roof.enabled = false;
+  const s = await harness.session(parseProject(project)); t.after(() => s.close()); const { page } = s;
+  await watchViewer(page);
+  await walls(page, "Solid walls");
+  await aim(page, [2, 1.8, 4], [2, 1.4, 0]);
+  const pick = await scenePoint(page, [1.15, 1.375, .018]);
+  const drop = await scenePoint(page, [2.5, 1.375, .018]);
+  await page.mouse.move(pick.x, pick.y); await page.mouse.down();
+  await eventually(() => page.evaluate(() => Boolean(window.__serviceViewer().scene.getObjectByName("Opening outline"))), Boolean);
+  await page.mouse.move(drop.x, drop.y, { steps: 10 }); await page.mouse.up();
+  const moved = await eventually(async () => (await s.saved()).floorplan.openings[0], opening => opening.offset >= 1900);
+  assert.equal(moved.sill, 950);
+  assert.equal(moved.wallId, "wall-a");
+  assert.equal(moved.segmentIndex, 0);
+  assert.ok(await page.evaluate(() => window.__serviceViewer().controls.enabled));
+});
+
 test("vents belong to the ventilation workbench in both views, respect walls, and deselect on background click", async t => {
   const p = fixture(), s = await harness.session(p); t.after(() => s.close()); const { page } = s;
   assert.equal(await page.locator("[data-hvac-plan-vent]").count(), 0);

@@ -146,6 +146,12 @@ test("circuit row actions stay equal and single-line when the window shrinks", a
   const session = await harness.session(parseProject(project));
   t.after(() => session.close());
   const { page } = session;
+  const add = page.locator(".floorplan-add-elements-toolbar");
+  await add.getByRole("combobox", { name: "Add to plan", exact: true }).selectOption("FURNITURE");
+  assert.equal(await add.locator(".fixture-list article").count(), 0, "Electrical fittings must stay out of the Fittings list");
+  await add.getByRole("combobox", { name: "Add to plan", exact: true }).selectOption("ELECTRICAL");
+  await add.locator(".fixture-list article").first().waitFor();
+  assert.equal(await add.locator(".fixture-list article").count(), 4);
   await menu(page, "Tools", "Electrical Layout module…");
   const panel = page.locator(".electrical-layout-window");
   await panel.locator("summary").filter({ hasText: "Circuits (2)" }).click();

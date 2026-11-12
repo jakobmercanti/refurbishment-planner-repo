@@ -2,14 +2,57 @@
 
 import { Html } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
-import type { Room } from "@/lib/types";
-import { energyElements, isInsulationSelectable } from "@/lib/energyCalculations";
 import { FLOOR_PLAN_CANVAS_HEIGHT as HEIGHT, FLOOR_PLAN_CANVAS_WIDTH as WIDTH } from "./FloorPlanCanvas";
 import { useServiceView } from "./ServiceViewContext";
-import { useEnergyLayout } from "./EnergyLayoutContext";
-import { useHeatingLayout } from "./HeatingLayoutContext";
+
+export const SERVICE_CONTEXT_COLOUR = "#b8bdbf";
+export const insulationColour = (uValue: number) => `hsl(${135 - Math.min(1, uValue / 2) * 130},60%,42%)`;
+
+/** Presentation materials are local to this viewer and retain the model's
+ * transparent panes, depth settings and pick geometry. */
+function SyncMaterial({ update }: { update: { current: (() => void) | null } }) {
+  useFrame(() => update.current?.());
+  return null;
+}
+
+export function ServiceObjectTint({ colour, children, revision, dynamic = false }: { colour?: string; children: ReactNode; revision?: unknown; dynamic?: boolean }) {
+  const root = useRef<THREE.Group>(null);
+  const sync = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    const group = root.current;
+    if (!colour || !group) return;
+    const originals = new Map<THREE.Mesh, { source: THREE.Material | THREE.Material[]; tint: THREE.Material | THREE.Material[] }>();
+    const variants = new Map<THREE.Material, THREE.MeshStandardMaterial>();
+    const replace = (source: THREE.Material) => {
+      const existing = variants.get(source);
+      if (existing) return existing;
+      const tint = new THREE.MeshStandardMaterial({
+        color: colour, roughness: .85, side: source.side, transparent: source.transparent, opacity: source.opacity,
+        depthTest: source.depthTest, depthWrite: source.depthWrite, polygonOffset: source.polygonOffset,
+        polygonOffsetFactor: source.polygonOffsetFactor, polygonOffsetUnits: source.polygonOffsetUnits,
+      });
+      variants.set(source, tint);
+      return tint;
+    };
+    const update = () => group.traverse(object => {
+      if (!(object instanceof THREE.Mesh) || object.userData.editorOnly || object.material === originals.get(object)?.tint) return;
+      const source = object.material;
+      const tint = Array.isArray(source) ? source.map(replace) : replace(source);
+      originals.set(object, { source, tint });
+      object.material = tint;
+    });
+    update();
+    if (dynamic) sync.current = update;
+    return () => {
+      sync.current = null;
+      for (const [mesh, { source, tint }] of originals) if (mesh.material === tint) mesh.material = source;
+      for (const material of variants.values()) material.dispose();
+    };
+  }, [colour, revision, dynamic]);
+  return <group ref={root}>{children}{colour && dynamic && <SyncMaterial update={sync} />}</group>;
+}
 
 /** The existing SVG editors sit on the measured floor, not on a screenshot of it.
  * Pointer coordinates are ray/plane intersections in mm, also in perspective.
@@ -23,7 +66,8 @@ export function ServiceFloorLayer({ elevationMm }: { elevationMm: number }) {
   const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -height), [height]);
   const lastPoint = useRef({ x: 0, y: 0 });
   const cast = useCallback((x: number, y: number) => {
-    const bounds = events.connected!.getBoundingClientRect();
+    const bounds = events.connected?.getBoundingClientRect();
+    if (!bounds?.width || !bounds.height) return null;
     raycaster.setFromCamera(new THREE.Vector2((x - bounds.left) / bounds.width * 2 - 1, 1 - (y - bounds.top) / bounds.height * 2), camera);
     return raycaster.ray.intersectPlane(plane, new THREE.Vector3());
   }, [camera, events, raycaster, plane]);
@@ -35,7 +79,11 @@ export function ServiceFloorLayer({ elevationMm }: { elevationMm: number }) {
   const canPick = useCallback((x: number, y: number) => {
     const point = cast(x, y); if (!point) return false;
     const distance = raycaster.ray.origin.distanceTo(point);
-    return !raycaster.intersectObjects(scene.children, true).some(hit => hit.distance < distance - .002 && hit.object.userData.serviceOccluder);
+    return !raycaster.intersectObjects(scene.children, true).some(hit => {
+      if (hit.distance >= distance - .002 || !hit.object.userData.serviceOccluder) return false;
+      for (let node: THREE.Object3D | null = hit.object; node; node = node.parent) if (!node.visible) return false;
+      return true;
+    });
   }, [cast, raycaster, scene]);
   const setScene = view?.setScene;
   useEffect(() => {
@@ -55,49 +103,7 @@ export function ServiceFloorLayer({ elevationMm }: { elevationMm: number }) {
   const frame = view.frame;
   const x = frame.minX + (WIDTH / 2 - frame.offsetX) / frame.scale;
   const y = frame.maxY - (HEIGHT / 2 - frame.offsetY) / frame.scale;
-  return <><Html transform occlude="blending" geometry={<planeGeometry args={[WIDTH / frame.scale / 1000, HEIGHT / frame.scale / 1000]} />} position={[x / 1000, height, -y / 1000]} rotation={[-Math.PI / 2, 0, 0]} distanceFactor={.4 / frame.scale} zIndexRange={[8, 0]} style={{ pointerEvents: "none" }}>
+  return <><Html transform pointerEvents="none" position={[x / 1000, height, -y / 1000]} rotation={[-Math.PI / 2, 0, 0]} distanceFactor={.4 / frame.scale} zIndexRange={[8, 0]}>
     <svg ref={setSvg} data-service-scene="true" aria-label="3D service layout" width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: "block", overflow: "visible", pointerEvents: "none" }} />
   </Html><Html fullscreen calculatePosition={()=>[size.width/2,size.height/2]} zIndexRange={[14,13]} style={{pointerEvents:"none"}}><svg ref={setLabels} data-service-scene="true" aria-label="Service labels" width={size.width} height={size.height} style={{display:"block",pointerEvents:"none",overflow:"visible"}}/></Html></>;
-}
-
-function FabricFace({ room, start, end, floor, heightMm, colour, selected, onSelect }: {
-  room: Room; start?: { x: number; y: number }; end?: { x: number; y: number }; floor: boolean; heightMm: number;
-  colour: string; selected: boolean; onSelect?: (additive: boolean) => void;
-}) {
-  const geometry = useMemo(() => {
-    if (start && end) {
-      const dx = end.x - start.x, dy = end.y - start.y, length = Math.hypot(dx, dy);
-      const area = room.vertices.reduce((sum, p, i, vertices) => { const next = vertices[(i + 1) % vertices.length]; return sum + p.x * next.y - next.x * p.y; }, 0);
-      const sign = area >= 0 ? 1 : -1;
-      const ox = -dy / length * 5 * sign, oy = dx / length * 5 * sign;
-      const a = [start.x + ox, start.y + oy], b = [end.x + ox, end.y + oy];
-      const points = [a[0], 0, -a[1], b[0], 0, -b[1], b[0], heightMm, -b[1], a[0], heightMm, -a[1]].map(n => n / 1000);
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute(points, 3)); g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals();
-      return g;
-    }
-    const shape = new THREE.Shape(room.vertices.map(p => new THREE.Vector2(p.x / 1000, p.y / 1000)));
-    const g = new THREE.ShapeGeometry(shape); g.rotateX(-Math.PI / 2); g.translate(0, floor ? .006 : heightMm / 1000 - .006, 0);
-    return g;
-  }, [room, start, end, floor, heightMm]);
-  useEffect(() => () => geometry.dispose(), [geometry]);
-  return <group userData={{ editorOnly: true }}>
-    <mesh geometry={geometry} onPointerDown={onSelect ? e => { if (e.button !== 0) return; e.stopPropagation(); onSelect(e.shiftKey); } : undefined}>
-      <meshBasicMaterial color={selected ? "#1b81ef" : colour} side={THREE.DoubleSide} transparent opacity={selected ? .65 : .38} depthWrite={false} />
-    </mesh>
-  </group>;
-}
-
-/** Same U values, heat losses, colours and selection as the insulation plan. */
-export function ServiceFabricLayer({ rooms, displayRooms, elevationMm, showRoof }: { rooms: Room[]; displayRooms: Room[]; elevationMm: number; showRoof: boolean }) {
-  const view = useServiceView(), energy = useEnergyLayout(), heating = useHeatingLayout();
-  const data = energy.data, readOnly = !energy.windowOpen;
-  const elements = useMemo(() => energyElements(rooms, heating.data, data), [rooms, heating.data, data]);
-  if (!view || !energy.windowOpen && !(heating.windowOpen && view.heatingFabricVisible)) return null;
-  return <group position={[0, elevationMm / 1000, 0]}>{elements.filter(e => (e.category !== "roof" || showRoof) && isInsulationSelectable(e, rooms) && (readOnly || (e.category === "wall" ? data.display.walls : e.category === "floor" ? data.display.floors : e.category === "roof" ? data.display.roofs : false))).map(e => {
-    const room = rooms.find(r => r.id === e.roomId), displayRoom = displayRooms.find(r => r.id === e.roomId); if (!room || !displayRoom) return null;
-    const colour = `hsl(${135 - Math.min(1, e.uValue / 2) * 130},60%,42%)`;
-    const selected = !readOnly && view.energySelection.includes(e.elementId);
-    return <FabricFace key={e.elementId} room={room} start={e.startMm} end={e.endMm} floor={e.category === "floor"} heightMm={displayRoom.wall_height.value} colour={colour} selected={selected} onSelect={readOnly ? undefined : additive => view.setEnergySelection(ids => additive ? ids.includes(e.elementId) ? ids.filter(id => id !== e.elementId) : [...ids, e.elementId] : [e.elementId])} />;
-  })}</group>;
 }

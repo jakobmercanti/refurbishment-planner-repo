@@ -1637,7 +1637,7 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
   const toScreen = useCallback((point: Point2D) => floorPlanToScreen(point, activeViewport), [activeViewport]);
   const setServiceFrame = serviceView?.setFrame, setServiceFloorActive = serviceView?.setFloorActive;
   useEffect(() => { setServiceFrame?.(activeViewport); }, [activeViewport, setServiceFrame]);
-  useEffect(() => { setServiceFloorActive?.(electricalWindowOpen || energy.windowOpen || heating.windowOpen && hvac?.tab !== "Ventilation"); }, [electricalWindowOpen, energy.windowOpen, heating.windowOpen, hvac?.tab, setServiceFloorActive]);
+  useEffect(() => { setServiceFloorActive?.(electricalWindowOpen || energy.windowOpen || heating.windowOpen); }, [electricalWindowOpen, energy.windowOpen, heating.windowOpen, setServiceFloorActive]);
   const planTerminal = useCallback((connection: ElectricalConnection, side: "from" | "to", fixture: Obstacle) => electricalPlanEndpoint(connection, side, fixture, toScreen, electricalMode && electricalDisplay.symbols, zoom), [toScreen, electricalMode, electricalDisplay.symbols, zoom]);
   const electricalRouteOptions = useMemo(() => electricalPlanRouteOptions(electricalFixtures, toScreen, electricalMode && electricalDisplay.symbols, zoom), [electricalFixtures, toScreen, electricalMode, electricalDisplay.symbols, zoom]);
   const electricalPlanRoutes = useMemo(() => routeElectricalConnections(electricalLayout, electricalFixtures, electricalRouteOptions), [electricalLayout, electricalFixtures, electricalRouteOptions]);
@@ -4054,6 +4054,18 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     return { distance, openings: translate(distance).openings };
   }
 
+  function openingMoveCandidates(opening: FullOpening, pointer: Point2D) {
+    const vertices = walls.flatMap(wall => wall.points);
+    return walls.flatMap((wall) => wall.points.slice(0, -1).map((start, segmentIndex) => {
+      const end = wall.points[segmentIndex + 1]; const projection = pointOnSegment(pointer, start, end); const length = segmentLength(wall, segmentIndex);
+      const rawOffset = projection.along * length - opening.width / 2;
+      const requested = snapEnabled ? Math.round(rawOffset / snapSize) * snapSize : Math.round(rawOffset * 10) / 10;
+      const blockers = openings.filter((item) => item.id !== opening.id && item.wallId === wall.id && item.segmentIndex === segmentIndex);
+      const offset = closestValidOpeningOffset(requested, opening.width, length, cornerOffsetsOnWallSegment(start, end, vertices), blockers, OPENING_CORNER_CLEARANCE_MM);
+      return { wall, segmentIndex, distance: Math.hypot(pointer.x - projection.point.x, pointer.y - projection.point.y), offset };
+    })).filter((item): item is { wall: Wall; segmentIndex: number; distance: number; offset: number } => item.offset !== null).sort((first, second) => first.distance - second.distance);
+  }
+
   function moveOpening(event: ReactPointerEvent<SVGSVGElement>): boolean {
     const active = openingDrag.current;
     if (!active) return false;
@@ -4061,14 +4073,7 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     const opening = openings.find((item) => item.id === active.openingId);
     if (!opening) return true;
     const pointer = canvasPoint(event, false);
-    const nearest = walls.flatMap((wall) => wall.points.slice(0, -1).map((start, segmentIndex) => {
-      const end = wall.points[segmentIndex + 1]; const projection = pointOnSegment(pointer, start, end); const length = segmentLength(wall, segmentIndex);
-      const rawOffset = projection.along * length - opening.width / 2;
-      const requested = snapEnabled ? Math.round(rawOffset / snapSize) * snapSize : Math.round(rawOffset * 10) / 10;
-      const blockers = openings.filter((item) => item.id !== opening.id && item.wallId === wall.id && item.segmentIndex === segmentIndex);
-      const offset = closestValidOpeningOffset(requested, opening.width, length, openingCornerOffsets(wall, segmentIndex), blockers, OPENING_CORNER_CLEARANCE_MM);
-      return { wall, segmentIndex, distance: Math.hypot(pointer.x - projection.point.x, pointer.y - projection.point.y), offset };
-    })).filter((item): item is { wall: Wall; segmentIndex: number; distance: number; offset: number } => item.offset !== null).sort((first, second) => first.distance - second.distance)[0];
+    const nearest = openingMoveCandidates(opening, pointer)[0];
     if (!nearest) return true;
     const sameWallSegment = nearest.wall.id === active.wallId && nearest.segmentIndex === active.segmentIndex;
     const distanceFromWall = signedWallSide(pointer, nearest.wall.points[nearest.segmentIndex], nearest.wall.points[nearest.segmentIndex + 1]);
@@ -5194,14 +5199,51 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
           else selectFixtureForEdit(fixture, projectRooms.find(r => r.obstacles.some(o => o.id === id)));
           return lightingTestOpen || electricalConnecting ? "consume" : "edit";
         }
-        const radiator = heating.windowOpen && heating.data.radiators.find(r => r.radiatorId === id);
-        if (radiator) { selectHeatingElement({ kind: "radiator", id });return radiator.locked ? "consume" : "edit"; }
+        const radiator = heating.windowOpen && hvac?.tab !== "Ventilation" && heating.data.radiators.find(r => r.radiatorId === id);
+        if (radiator) {
+          if (heatingTool === "CONNECT") { connectHeatingEndpoint(id); return "consume"; }
+          selectHeatingElement({ kind: "radiator", id });
+          return radiator.locked ? "consume" : "edit";
+        }
         return false;
       },
       ownsObject: id => Boolean(electricalWindowOpen && electricalFixtures.some(f => f.id === id) || heating.windowOpen && heating.data.radiators.some(r => r.radiatorId === id)),
       recordObjectMove: id => {
         if (electricalWindowOpen && electricalFixtures.some(f => f.id === id)) recordElectricalUndo();
         if (heating.windowOpen && heating.data.radiators.some(r => r.radiatorId === id)) { heatingUndo.current.push(structuredClone(heating.data));heatingRedo.current = [];lastThermalAction.current = "HEATING"; }
+      },
+      previewOpeningMove: (id, point) => {
+        const opening = openings.find(item => item.id === id);
+        if (!opening) return null;
+        for (const { wall, segmentIndex, offset, distance } of openingMoveCandidates(opening, point)) {
+          if (distance > Math.max(400, opening.width * .6)) break;
+          const byRoom = new Map<string, Opening>();
+          for (const room of planRooms) {
+            const outline = rooms.find(item => item.id === room.source_floorplan_room_id);
+            if (!outline) continue;
+            const [model] = roomOpenings({ ...outline, vertices: counterClockwiseVertices(outline.vertices) },
+              [{ ...opening, wallId: wall.id, segmentIndex, offset }], walls, openingCatalogueItems);
+            if (model) byRoom.set(room.id, model);
+          }
+          if (!byRoom.size || planRooms.some(room => {
+            const model = byRoom.get(room.id);
+            return model && model.sill_height_mm + model.height.value > room.wall_height.value;
+          })) continue;
+          return { id, source: JSON.stringify(opening), wallId: wall.id, segmentIndex, offset, byRoom };
+        }
+        return null;
+      },
+      commitOpeningMove: move => {
+        const opening = openings.find(item => item.id === move.id);
+        if (!opening || JSON.stringify(opening) !== move.source) return false;
+        if (opening.wallId === move.wallId && opening.segmentIndex === move.segmentIndex && opening.offset === move.offset) return false;
+        const next = { ...opening, wallId: move.wallId, segmentIndex: move.segmentIndex, offset: move.offset };
+        if (!openingPlacementIsValid(next, walls, openings)) return false;
+        lastThermalAction.current = "FLOORPLAN";
+        record();
+        setOpenings(current => current.map(item => item.id === move.id ? next : item));
+        selectOpeningForEdit(next);
+        return true;
       },
       clear: () => { hvac?.selectVent(null);setSelectedFixtureId(null);setSelectedElectricalConnectionId(null);setElectricalSourceId(null); },
     };
@@ -5242,22 +5284,23 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
   const labelPortal = serviceView?.in3D && serviceView.scene?.labels ? (anchor:Point2D,node:ReactNode) => createPortal(<g data-service-anchor-x={activeViewport.minX+(anchor.x-activeViewport.offsetX)/activeViewport.scale} data-service-anchor-y={activeViewport.maxY-(anchor.y-activeViewport.offsetY)/activeViewport.scale} pointerEvents="auto" style={{visibility:"hidden"}}><g transform={`translate(${-anchor.x} ${-anchor.y})`}>{node}</g></g>,serviceView.scene!.labels) : undefined;
   const serviceLayers = <>
             {(!serviceView?.in3D || electricalWindowOpen) && !energy.windowOpen && <ElectricalLayoutOverlay labelPortal={labelPortal} routes={electricalMode ? electricalPlanRoutes : undefined} zoom={zoom} testing={lightingTestOpen} switchGangs={switchGangs} junctions={electricalLayout.junctions} onFixtureGangActivate={(fixture, gang) => { if (lightingTestOpen) testFixtureSwitch(fixture, gang); else if (electricalConnecting) chooseElectricalEndpoint(fixture.id, gang); }} lightStates={lightingTest.lights} switchLabels={lightingTest.switchLabels} fixtures={electricalFixtures} connections={electricalMode ? electricalLayout.connections : []} circuits={electricalLayout.circuits} toScreen={toScreen} showSymbols={!electricalMode || electricalDisplay.symbols} showConnections={electricalMode && electricalDisplay.connections} showLabels={electricalMode && electricalDisplay.circuitLabels} active={electricalMode} selectedFixtureId={selectedFixtureId} sourceId={electricalSourceId} sourceGang={electricalSourceGang} selectedConnectionId={selectedElectricalConnectionId} activeCircuitId={selectedElectricalCircuitId ?? DEFAULT_ELECTRICAL_CIRCUIT.id} connecting={electricalMode && electricalConnecting} forceOrthogonalRouting={electricalLayout.forceOrthogonalRouting} cursor={electricalPointer} defaults={electricalDefaults} onFixturePointerDown={(event, fixture) => { if (lightingTestOpen) { event.preventDefault(); event.stopPropagation(); testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { event.preventDefault(); event.stopPropagation(); chooseElectricalEndpoint(fixture.id); return; } beginFixtureDrag(event, fixture); }} onFixtureActivate={(fixture) => { if (lightingTestOpen) { testFixtureSwitch(fixture); return; } if (electricalMode && electricalConnecting) { chooseElectricalEndpoint(fixture.id); return; } const owner = projectRooms.find((room) => room.obstacles.some((item) => item.id === fixture.id)); selectFixtureForEdit(fixture, owner); if (owner?.source_floorplan_room_id) setSelectedRoomId(owner.source_floorplan_room_id); }} onFixtureContextMenu={openFixtureContextMenu} onConnectionPointerDown={beginElectricalConnectionDrag} onConnectionContextMenu={openElectricalConnectionContextMenu} onWaypointPointerDown={beginElectricalWaypointDrag} onWaypointContextMenu={openElectricalWaypointContextMenu} onLabelPointerDown={beginElectricalLabelDrag} />}
-                        {!energy.windowOpen && heating.data.enabled && <HeatingLayoutOverlay labelPortal={labelPortal} onPipeDraftChange={setHeatingPipeDraft} pipePointer={heatingTool === "PIPE" ? heatingPipePointer : null} zoom={zoom} connecting={heatingTool === "CONNECT"} onConnect={connectHeatingEndpoint} pipeDraft={heatingPipeDraft} data={heating.data} rooms={planRooms} selection={heatingSelection} onSelect={selectHeatingElement} onChange={applyHeatingLayout} toScreen={toScreen} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} highlightedRoomId={heatingFabricVisible ? null : highlightedHeatingRoomId} draft={heatingExclusionDraft} />}
+                        {!energy.windowOpen && heating.data.enabled && (!serviceView?.in3D || heating.windowOpen) && <HeatingLayoutOverlay labelPortal={labelPortal} onPipeDraftChange={setHeatingPipeDraft} pipePointer={heatingTool === "PIPE" ? heatingPipePointer : null} zoom={zoom} connecting={heatingTool === "CONNECT"} onConnect={connectHeatingEndpoint} pipeDraft={heatingPipeDraft} data={heating.data} rooms={planRooms} selection={heatingSelection} onSelect={selectHeatingElement} onChange={applyHeatingLayout} toScreen={toScreen} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} highlightedRoomId={heatingFabricVisible ? null : highlightedHeatingRoomId} draft={heatingExclusionDraft} />}
             {!serviceView?.in3D && !energy.windowOpen && <HvacPlanMarkers toScreen={toScreen} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} />}
             {heating.windowOpen && heatingFabricVisible && !energy.windowOpen && <EnergyLayoutOverlay labelPortal={labelPortal} readOnly data={{ ...energy.data, display: { ...energy.data.display, walls: true, floors: true, roofs: true, labels: true, heatLoss: true } }} heating={heating.data} rooms={planRooms} selectedIds={[]} onSelect={() => {}} toScreen={toScreen} onChange={applyEnergyLayout} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} />}
-            {energy.data.enabled && <EnergyLayoutOverlay labelPortal={labelPortal} data={energy.data} heating={heating.data} rooms={planRooms} roomTitleBox={r => { const outline = rooms.find(v => v.id === r.source_floorplan_room_id); return outline ? { ...toScreen(roomLabelPosition(outline)), width: roomNameEditorWidth(outline.name) + 12, height: 30 } : undefined; }} selectedIds={energySelection} onSelect={selectEnergyWall} toScreen={toScreen} onChange={applyEnergyLayout} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} />}
+            {energy.data.enabled && (!serviceView?.in3D || energy.windowOpen) && <EnergyLayoutOverlay labelPortal={labelPortal} data={energy.data} heating={heating.data} rooms={planRooms} roomTitleBox={r => { const outline = rooms.find(v => v.id === r.source_floorplan_room_id); return outline ? { ...toScreen(roomLabelPosition(outline)), width: roomNameEditorWidth(outline.name) + 12, height: 30 } : undefined; }} selectedIds={energySelection} onSelect={selectEnergyWall} toScreen={toScreen} onChange={applyEnergyLayout} fromClient={(x, y, svg) => floorPlanFromClient(x, y, svg, activeViewport)} />}
   </>;
-  const sceneLayers = serviceView?.in3D && serviceView.scene && createPortal(<svg data-service-scene="true" aria-label="Interactive 3D service layer" width={FLOOR_PLAN_CANVAS_WIDTH} height={FLOOR_PLAN_CANVAS_HEIGHT} viewBox={`0 0 ${FLOOR_PLAN_CANVAS_WIDTH} ${FLOOR_PLAN_CANVAS_HEIGHT}`} className={`full-plan-page ${floorplanStyleClass(floorplanStyle)} ${electricalWindowOpen ? "electrical-layout-open" : ""}`} style={{ display: "block", pointerEvents: "auto" }} onPointerDownCapture={event => {
+  const drawingHeatingIn3D = heating.windowOpen && hvac?.tab !== "Ventilation" && !energy.windowOpen && heatingTool !== null && heatingTool !== "CONNECT" && !placement;
+  const sceneLayers = serviceView?.in3D && serviceView.scene && createPortal(<svg data-service-scene="true" aria-label="Interactive 3D service layer" width={FLOOR_PLAN_CANVAS_WIDTH} height={FLOOR_PLAN_CANVAS_HEIGHT} viewBox={`0 0 ${FLOOR_PLAN_CANVAS_WIDTH} ${FLOOR_PLAN_CANVAS_HEIGHT}`} className={`${floorplanStyleClass(floorplanStyle)} ${electricalWindowOpen ? "electrical-layout-open" : ""}`} style={{ display: "block", pointerEvents: "none" }} onPointerDownCapture={event => {
     if (event.button !== 0) return;
     if (serviceView.scene && !serviceView.scene.canPick(event.clientX, event.clientY)) { event.preventDefault();event.stopPropagation();return; }
     const interactive = event.target instanceof Element && event.target.closest("[data-heating-interactive], [data-energy-interactive], [data-electrical-interactive]");
     if (interactive) return;
     hvac?.selectVent(null);
-    if (energy.windowOpen) { event.preventDefault();event.stopPropagation();setEnergySelection([]);return; }
-    if (heating.windowOpen) { heatingCanvasPointerDown(event);return; }
+    if (drawingHeatingIn3D) { heatingCanvasPointerDown(event);return; }
     setSelectedElectricalConnectionId(null);setSelectedFixtureId(null);setElectricalSourceId(null);
   }} onPointerMove={event => { if (heatingTool === "PIPE") setHeatingPipePointer(floorPlanFromClient(event.clientX,event.clientY,event.currentTarget,activeViewport));movePoint(event); }} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag}>
-    <rect width={FLOOR_PLAN_CANVAS_WIDTH} height={FLOOR_PLAN_CANVAS_HEIGHT} fill="transparent" />{serviceLayers}
+    {drawingHeatingIn3D && <rect width={FLOOR_PLAN_CANVAS_WIDTH} height={FLOOR_PLAN_CANVAS_HEIGHT} fill="transparent" pointerEvents="all" />}
+    <g pointerEvents="visiblePainted">{serviceLayers}</g>
   </svg>, serviceView.scene.svg);
   return <><section ref={editorRoot} onClickCapture={clearRepeatCommandFromButton} className={`editor-page full-plan-page ${floorplanStyleClass(floorplanStyle)} ${electricalWindowOpen ? "electrical-layout-open" : ""} ${electricalAddElementsOpen ? "electrical-add-elements-open" : ""}`.trim()}>
     {liveStyleCss && <style data-floorplan-style={floorplanStyle} dangerouslySetInnerHTML={{ __html: liveStyleCss }} />}

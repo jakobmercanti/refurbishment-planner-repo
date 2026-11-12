@@ -5,6 +5,7 @@ import { buildingRoofZones, buildRoofSurfaces, roofFrame, subtractVoids, type Bu
 import { minimumRoofHeight, type FloorContent, type FloorOpening, type RoofConfiguration, type RoofFinish } from "@/lib/buildingDocument";
 import { resolvedRoofFinish, ROOF_MATERIALS, roofTexturePixels } from "@/lib/roofAppearance";
 import { OpeningBalustrades } from "./BalustradeFixture";
+import { ServiceObjectTint } from "./ServiceSceneLayers";
 
 export function shapesFromPolygons(polygons:PlanPolygons) {
   return polygons.map(poly=>{
@@ -28,20 +29,22 @@ function SurfaceMesh({surface,roof,frame,transparent=false}:{surface:BuildingSur
     g.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));g.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));g.setIndex(surface.indices);g.computeVertexNormals();return g;
   },[surface,frame,roof.type,roof.highHeightMm,roof.lowHeightMm,finish.tileWidthMm,finish.tileHeightMm]);
   useEffect(()=>()=>geometry.dispose(),[geometry]);
-  return <mesh geometry={geometry} castShadow={!transparent} receiveShadow userData={{buildingSurface:surface.kind,roofMaterial:finish.material}}>{surface.kind==="ROOF"?<RoofMaterial finish={finish} transparent={transparent}/>:<meshStandardMaterial color={surface.kind==="FASCIA"||surface.kind==="STEP"?finish.colour:surface.kind==="CEILING"?"#f5f3ed":"#c8c3b9"} side={THREE.DoubleSide} roughness={.85} transparent={transparent} opacity={transparent?.2:1} depthWrite={!transparent}/>}</mesh>;
+  return <mesh geometry={geometry} castShadow={!transparent} receiveShadow userData={{buildingSurface:surface.kind,roofMaterial:finish.material,serviceOccluder:!transparent}}>{surface.kind==="ROOF"?<RoofMaterial finish={finish} transparent={transparent}/>:<meshStandardMaterial color={surface.kind==="FASCIA"||surface.kind==="STEP"?finish.colour:surface.kind==="CEILING"?"#f5f3ed":"#c8c3b9"} side={THREE.DoubleSide} roughness={.85} transparent={transparent} opacity={transparent?.2:1} depthWrite={!transparent}/>}</mesh>;
 }
 export function BuildingRoof({footprint,roof,wallTop,frameFootprint=footprint,interiorOnly=false,transparent=false}:{footprint:PlanPolygons;roof:RoofConfiguration;wallTop:number;frameFootprint?:PlanPolygons;interiorOnly?:boolean;transparent?:boolean}) {
   const surfaces=useMemo(()=>buildRoofSurfaces(footprint,roof,wallTop,frameFootprint),[footprint,roof,wallTop,frameFootprint]);
   const frame=useMemo(()=>roofFrame(frameFootprint,roof),[frameFootprint,roof]);
   return <group name={interiorOnly?"Internal ceiling only":"Building roof and interior ceiling"}>{surfaces.filter(s=>!interiorOnly||s.kind==="CEILING").map((s,i)=><SurfaceMesh key={i} surface={s} roof={roof} frame={frame} transparent={transparent}/>)}</group>;
 }
-export function CombinedBuildingRoof({content,roof,interiorOnly=false,transparent=false}:{content:FloorContent;roof:RoofConfiguration;interiorOnly?:boolean;transparent?:boolean}) {
+export function CombinedBuildingRoof({content,roof,interiorOnly=false,transparent=false,colourForRoom}:{content:FloorContent;roof:RoofConfiguration;interiorOnly?:boolean;transparent?:boolean;colourForRoom?:(id:string)=>string|undefined}) {
   const zones=useMemo(()=>buildingRoofZones(content,roof),[content,roof]);
-  return <group name="Combined room roofs">{zones.map(zone=><group key={zone.id} userData={{roofRoomId:zone.id}}><BuildingRoof footprint={zone.footprint} frameFootprint={zone.frameFootprint} roof={zone.roof} wallTop={minimumRoofHeight(zone.roof)} interiorOnly={interiorOnly} transparent={transparent}/></group>)}</group>;
+  return <group name="Combined room roofs">{zones.map(zone=><group key={`${zone.id}:${interiorOnly}:${transparent}`} userData={{roofRoomId:zone.id}}><ServiceObjectTint colour={colourForRoom?.(zone.id)} revision={zone}>
+    <BuildingRoof footprint={zone.footprint} frameFootprint={zone.frameFootprint} roof={zone.roof} wallTop={minimumRoofHeight(zone.roof)} interiorOnly={interiorOnly} transparent={transparent}/>
+  </ServiceObjectTint></group>)}</group>;
 }
 export function InternalFloorCeiling({footprint,heightMm,transparent=false}:{footprint:PlanPolygons;heightMm:number;transparent?:boolean}) {
   const shapes=useMemo(()=>shapesFromPolygons(footprint),[footprint]);
-  return <group name="Internal floor ceiling only">{shapes.map((shape,i)=><mesh key={i} rotation={[-Math.PI/2,0,0]} position={[0,heightMm*.001,0]} userData={{buildingSurface:"CEILING"}}><shapeGeometry args={[shape]}/><meshStandardMaterial color="#f5f3ed" side={THREE.DoubleSide} transparent={transparent} opacity={transparent?.2:1} depthWrite={!transparent}/></mesh>)}</group>;
+  return <group name="Internal floor ceiling only">{shapes.map((shape,i)=><mesh key={i} rotation={[-Math.PI/2,0,0]} position={[0,heightMm*.001,0]} userData={{buildingSurface:"CEILING",serviceOccluder:!transparent}}><shapeGeometry args={[shape]}/><meshStandardMaterial color="#f5f3ed" side={THREE.DoubleSide} transparent={transparent} opacity={transparent?.2:1} depthWrite={!transparent}/></mesh>)}</group>;
 }
 export function BuildingSlab({footprint,openings,thicknessMm}:{footprint:PlanPolygons;openings:FloorOpening[];thicknessMm:number}) {
   const shapes=useMemo(()=>shapesFromPolygons(subtractVoids(footprint,openings)),[footprint,openings]);

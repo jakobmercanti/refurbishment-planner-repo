@@ -149,7 +149,7 @@ export function HeatingLayoutPanel(props: Props) {
       </div>
     </details>}
     {row && balance && <section className={styles.balance} aria-label="Room heating balance" data-balance={balance.tone}>
-      <div className={styles.balanceHeading}><strong>{row.room.name}</strong><strong className={styles.balanceHeadline} title={`${balance.headline} — ${balance.detail}`}>{balance.tone === "sufficient" ? "✓ " : "! "}{balance.headline}</strong><small>{row.demand.areaM2.toFixed(1)} m² · Target {row.demand.targetC}°C</small></div>
+      <div className={styles.balanceHeading}><strong className={styles.balanceHeadline} title={`${row.room.name} - ${balance.headline}. ${balance.detail}`}>{row.room.name} - {balance.headline}</strong><small>{row.demand.areaM2.toFixed(1)} m² · Target {row.demand.targetC}°C</small></div>
       <div className={styles.metrics}>
         <div><span>Heat required</span><strong>{watt(row.demand.designW)}</strong></div>
         <div><span>Heat available</span><strong title={balance.estimated ? "Includes estimated output" : undefined}>{balance.capacityText}</strong></div>

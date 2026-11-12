@@ -80,7 +80,7 @@ function VentMarker({ device, host, onDragging }: { device: VentDevice; host: CF
         (e.target as Element).releasePointerCapture(e.pointerId);
       }}>
       {device.vent.shape === "circle" ? <circleGeometry args={[device.vent.diameterMm / 2000, 32]} /> : <planeGeometry args={[device.vent.widthMm / 1000, device.vent.heightMm / 1000]} />}
-      <meshBasicMaterial color={selected ? "#cf863c" : device.vent.role === "supply" ? "#6e97ad" : "#b59076"} side={THREE.DoubleSide} depthTest depthWrite={false} transparent opacity={device.enabled ? selected ? .65 : .32 : .14} />
+      <meshBasicMaterial color={selected ? "#ff7900" : device.vent.role === "supply" ? "#277ab5" : "#ae5a26"} side={THREE.DoubleSide} depthTest depthWrite={false} transparent opacity={device.enabled ? selected ? .75 : .55 : .14} />
     </mesh>
     </group>
     <Html center occlude position={labelPosition} zIndexRange={[10, 0]} style={{ pointerEvents: "none", userSelect: "none", whiteSpace: "nowrap", fontSize: 10, opacity: selected ? 1 : .7, background: "rgba(255,255,255,.85)", color: "#374d5c", padding: "2px 4px", borderRadius: 3 }}><span data-hvac-scene-vent={device.vent.id} data-selected={selected}>{device.vent.name}</span>{error && <span role="alert">{error}</span>}</Html>
