@@ -9,7 +9,7 @@ import { assignBoundarySurfaces, boundaryGroups, boundaryMembership, BOUNDARY_CO
 import { useEffect, useState, type ReactNode } from "react";
 import { CFDEditorWindow } from "./CFDEditorWindow";
 import { boundarySchema, type CFDBoundary, type CFDScenario, type PatchKind, PATCH_KINDS } from "@/lib/climoptixDocument";
-import type { CFDReport } from "@/lib/climoptix";
+import type { CFDPatch, CFDReport } from "@/lib/climoptix";
 import { projectFloors } from "@/lib/buildingDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import { CFDNumber, CFDText, Parameters, labelFor } from "./CFDFields";
@@ -158,6 +158,7 @@ export function BoundariesPanel({
   sharedCapture,
   actions,
   surfaceRequest,
+  openingNames,
 }: {
   project: ProjectDocument;
   scenario: CFDScenario;
@@ -171,6 +172,7 @@ export function BoundariesPanel({
   navigation?: ReactNode;
   sharedCapture?: ReactNode;
   actions?: ReactNode;
+  openingNames?: ReadonlyMap<string, string>;
   surfaceRequest?: { id: string; nonce: string } | null;
 }) {
   const [search, setSearch] = useState(""),
@@ -189,10 +191,20 @@ export function BoundariesPanel({
       p.id === selected || (p.kind === "object" && p.sourceId === selected),
   );
   const roomNames = new Map(report?.domain.regions.map((r) => [r.id, r.name]));
+  const labels = new Map<string, string>();
+  const counts = new Map<string, number>();
+  for (const surface of report?.patches ?? []) {
+    const opening = openingNames?.get(surface.sourceId.replace(/^reveal:/, ""));
+    const prefix = opening ? surface.sourceId.startsWith("reveal:") ? opening + " reveal" : opening : labelFor(surface.kind);
+    const count = (counts.get(prefix) ?? 0) + 1;
+    counts.set(prefix, count);
+    labels.set(surface.id, opening && count === 1 ? prefix : prefix + " " + count);
+  }
+  const nameOf = (surface: CFDPatch) => labels.get(surface.id) ?? labelFor(surface.kind);
   const query = search.trim().toLowerCase();
   const rows =
     report?.patches.filter((p) =>
-      `${p.kind} ${p.label ?? ""} ${roomNames.get(p.roomId) ?? ""} ${p.roomId} ${p.sourceId} ${p.id}`
+      `${p.kind} ${nameOf(p)} ${roomNames.get(p.roomId) ?? ""} ${p.roomId} ${p.sourceId} ${p.id}`
         .toLowerCase()
         .includes(query),
     ) ?? [];
@@ -238,7 +250,7 @@ export function BoundariesPanel({
       </div>
       {scenario.boundaries.hideDefaultGroup && <details className="cfx-ungrouped-surfaces"><summary>Ungrouped building surfaces · {rows.filter(p => !patchOwners.has(p.id)).length}</summary>
         <p className="cfx-caption">All boundary groups were removed. Physical surfaces remain; their default conditions still apply. Add a boundary group to assign them.</p>
-        {rows.filter(p => !patchOwners.has(p.id)).map(p => <button key={p.id} aria-label={`Edit surface ${p.id}`} onClick={() => { onSelect(p.id); setEditing("surface"); }}>{p.label ?? labelFor(p.kind)} · {roomNames.get(p.roomId) ?? p.roomId}</button>)}
+        {rows.filter(p => !patchOwners.has(p.id)).map(p => <button key={p.id} aria-label={`Edit surface ${p.id}`} onClick={() => { onSelect(p.id); setEditing("surface"); }}>{nameOf(p)} · {roomNames.get(p.roomId) ?? "Building"}</button>)}
       </details>}
       {!scenario.seed && <label>Choose the room whose connected surfaces you want to configure
         <select aria-label="Boundary seed room" value="" onChange={event => {
@@ -255,7 +267,7 @@ export function BoundariesPanel({
           const members = allMembers.filter(p => matchingIds.has(p.id));
           return <section className={`cfx-boundary-group${currentGroup?.id === collection.id ? " selected" : ""}`} key={collection.id}
             aria-label={`Boundary group ${collection.name}`} style={{ "--boundary-colour": BOUNDARY_COLOURS[index % BOUNDARY_COLOURS.length] } as import("react").CSSProperties}>
-            <CFDReorderList items={members.map(p => ({ ...p, name: `${p.label ?? labelFor(p.kind)} · ${p.sourceId}` }))}
+            <CFDReorderList items={members.map(p => ({ ...p, name: `${nameOf(p)} · ${roomNames.get(p.roomId) ?? "Building"}` }))}
               label={`${collection.name} surfaces`} scope={`boundary-surfaces:${scenario.id}`} collapsed={collapsed.has(collection.id)}
               header={<header className="cfx-group-heading">
               <button className="cfx-collapse" aria-label={`${collapsed.has(collection.id) ? "Expand" : "Collapse"} boundary group ${collection.name}`} aria-expanded={!collapsed.has(collection.id)}
@@ -303,9 +315,9 @@ export function BoundariesPanel({
               }}>
               {p => <article className={`cfx-surface-row${patch?.id === p.id ? " selected" : ""}`}>
                 <button className="cfx-surface-name" aria-label={`Select surface ${p.id}`} onClick={() => { onSelectGroup(collection.id); onSelect(p.id); }}>
-                  <strong>{p.label ?? labelFor(p.kind)}</strong><small>{roomNames.get(p.roomId) ?? p.roomId} · {p.areaM2.toFixed(2)} m²{scenario.boundaries.patches[p.id] ? " · override" : ""}</small>
+                  <strong>{nameOf(p)}</strong><small>{roomNames.get(p.roomId) ?? "Building"} · {p.areaM2.toFixed(2)} m²{scenario.boundaries.patches[p.id] ? " · override" : ""}</small>
                 </button>
-                <div className="cfx-device-actions">
+                <div className="cfx-device-actions cfx-boundary-row-actions">
                   <button aria-label={`Edit surface ${p.id}`} onClick={() => { onSelectGroup(collection.id); onSelect(p.id); setEditing("surface"); }}>Edit</button>
                   <button aria-label={`Duplicate conditions for ${p.id}`} disabled={collections.length >= 100 || isSourceThermalBoundary(p)} title={isSourceThermalBoundary(p) ? "Source thermal conditions stay with their physical Heating/Insulation source." : "Copy these conditions to a new empty group"} onClick={() => {
                     const copy = { id: crypto.randomUUID(), name: uniqueGroupName(collections.map(g => g.name), "Surface conditions"), patchIds: [], boundary: structuredClone(effectiveBoundary(scenario, p)) };
@@ -317,14 +329,14 @@ export function BoundariesPanel({
                       const patches = { ...next.boundaries.patches }; delete patches[p.id];
                       onChange({ ...next, boundaries: { ...next.boundaries, patches } }); onSelectGroup(DEFAULT_BOUNDARY_GROUP);
                     }}>Delete</button>
+                  <CFDRowMenu label={`Move surface ${p.id}`}>
+                    <label>Move to group<select aria-label={`Group for surface ${p.id}`} value={collection.id} onChange={e => {
+                      e.currentTarget.closest("details")!.open = false;
+                      onChange(moveBoundary(scenario, p.id, e.target.value, 0, allPatches)); }}>
+                      {collections.map(g => <option value={g.id} key={g.id}>{g.name}</option>)}
+                    </select></label><button onClick={() => newGroup(p.id)}>New group from surface</button>
+                  </CFDRowMenu>
                 </div>
-                <CFDRowMenu label={`Move surface ${p.id}`}>
-                  <label>Move to group<select aria-label={`Group for surface ${p.id}`} value={collection.id} onChange={e => {
-                    e.currentTarget.closest("details")!.open = false;
-                    onChange(moveBoundary(scenario, p.id, e.target.value, 0, allPatches)); }}>
-                    {collections.map(g => <option value={g.id} key={g.id}>{g.name}</option>)}
-                  </select></label><button onClick={() => newGroup(p.id)}>New group from surface</button>
-                </CFDRowMenu>
               </article>}
             </CFDReorderList>
           </section>;
@@ -347,7 +359,7 @@ export function BoundariesPanel({
               return <label className="cfx-check" key={p.id}>
                 <input type="checkbox" aria-label={`Assign surface ${p.id}`} disabled={device || !checked} checked={assignment.ids.includes(p.id)}
                   onChange={e => setAssignment({ ...assignment, ids: e.target.checked ? [...assignment.ids, p.id] : assignment.ids.filter(id => id !== p.id) })} />
-                <span>{p.label ?? labelFor(p.kind)} · {roomNames.get(p.roomId) ?? p.roomId}
+                <span>{nameOf(p)} · {roomNames.get(p.roomId) ?? "Building"}
                   <small>{p.sourceId} · {patchOwners.get(p.id) ?? "Default surfaces"}{device ? " · device conditions in Objects" : ""}</small>
                 </span>
               </label>;
@@ -424,9 +436,8 @@ export function BoundariesPanel({
         <CFDEditorWindow key={patch.id} dialog title="Edit boundary surface" sectionTitle="Surface settings" defaultPosition={{ x: 240, y: 110 }} initialSize={{ width: 600, height: 640 }} maxHeight={850} bringToFront onClose={() => setEditing(null)}>
         <section className="cfx-card">
           <h3>
-            {patch.label ?? labelFor(patch.kind)} · {patch.sourceId}
+            {nameOf(patch)} · {roomNames.get(patch.roomId) ?? "Building"}
           </h3>
-          <small>{patch.id}</small>
           {patch.kind === "supply" || patch.kind === "extract" ? (
             <p>Controlled by the device in Equipment.</p>
           ) : (

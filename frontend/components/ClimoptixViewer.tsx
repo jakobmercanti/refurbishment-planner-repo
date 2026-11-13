@@ -37,6 +37,8 @@ import {
   type ThermalMetric,
   type ThermalSurface,
 } from "@/lib/thermalDocument";
+import { labelFor } from "./CFDFields";
+import { isVisibleCFDObject } from "@/lib/climoptixObjectGroups";
 import { ParametricFixture } from "./ParametricFixture";
 import { samplingPlanes, refinementColour } from "@/lib/climoptixWorkflow";
 import {
@@ -62,6 +64,35 @@ const COLORS: Record<string, string> = {
   object: "#83a793",
   slabSide: "#aaa389",
 };
+const PATCH_DISPLAY_MODES = {
+  geometry: "Default",
+  type: "Boundary condition type",
+  value: "Boundary condition value",
+  refinement: "Mesh refinement level",
+} as const;
+type PatchDisplayMode = keyof typeof PATCH_DISPLAY_MODES;
+const PATCH_PALETTE = ["#4381c1", "#af5c8f", "#2a9579", "#d58335", "#7966bc", "#739039", "#c6604c", "#528fa4"];
+const FLOW_UNITS: Record<string, string> = { velocity: "m/s", volumeFlow: "m³/s", massFlow: "kg/s", pressure: "Pa" };
+
+function patchDisplay(patch: CFDPatch, scenario: CFDScenario, mode: PatchDisplayMode) {
+  if (mode === "refinement") {
+    const mesh = scenario.mesh;
+    const cell = patch.kind === "supply" || patch.kind === "extract" ? mesh.ventCellMm
+      : ["door", "window", "cap"].includes(patch.kind) ? mesh.openingCellMm
+        : patch.kind === "object" ? Math.min(mesh.objectCellMm, scenario.assetOverrides.find(item => item.objectId === patch.sourceId)?.refinementMm ?? Infinity)
+          : mesh.wallCellMm;
+    const level = Math.max(0, Math.ceil(Math.log2(mesh.baseCellMm / Math.max(cell, mesh.minCellMm)) - 1e-12));
+    return { label: "Level " + level, colour: refinementColour(level) };
+  }
+  const { flow, thermal } = patch.boundary;
+  const flowValue = mode === "value" && FLOW_UNITS[flow.type] ? " " + flow.value + " " + FLOW_UNITS[flow.type] : "";
+  const thermalUnit = thermal.type === "heatTransfer" ? "W/m²K" : thermal.type === "heatFlux" ? "W/m²" : "K";
+  const thermalValue = mode === "value" ? " " + thermal.value + " " + thermalUnit : "";
+  const label = labelFor(flow.type) + flowValue
+    + (scenario.physics.energy ? " · " + labelFor(thermal.type) + (thermal.type === "adiabatic" ? "" : thermalValue) : "");
+  return { label };
+}
+
 const EMPTY_POSITIONS: number[] = [];
 const millimetres = (p: Vector3): Vec3 => [p.x * 1000, -p.z * 1000, p.y * 1000];
 const dot = (a: Vec3, b: Vec3) => a.reduce((s, x, i) => s + x * b[i], 0);
@@ -252,6 +283,7 @@ function VentIntent({
   vent,
   host,
   selected,
+  colour,
   onDown,
   onClick,
   onMove,
@@ -261,6 +293,7 @@ function VentIntent({
   vent: CFDVent;
   host: CFDPatch;
   selected: boolean;
+  colour?: string;
   onDown: (e: ThreeEvent<PointerEvent>) => void;
   onClick: (e: ThreeEvent<MouseEvent>) => void;
   onMove: (e: ThreeEvent<PointerEvent>) => void;
@@ -300,7 +333,7 @@ function VentIntent({
         onPointerCancel={onCancel}
       >
         <meshBasicMaterial
-          color={selected ? CFD_SELECTION_COLOUR : COLORS[vent.role]}
+          color={selected ? CFD_SELECTION_COLOUR : colour ?? COLORS[vent.role]}
           side={DoubleSide}
           transparent={false}
           opacity={1}
@@ -368,6 +401,7 @@ export function ClimoptixViewer({
   );
   const [ceilings, setCeilings] = useState(false);
   const [wallOutlines,setWallOutlines]=useState(false);
+  const [patchMode, setPatchMode] = useState<PatchDisplayMode>("geometry");
   const [detailed, setDetailed] = useState(false);
   const [isolate, setIsolate] = useState(false);
   const [fit, setFit] = useState(0);
@@ -477,6 +511,18 @@ export function ClimoptixViewer({
       ? report
       : null;
   const patches = prepared?.patches ?? [];
+  const visibleObjectIds = new Set(prepared?.objects.filter(isVisibleCFDObject).map(object => object.id));
+  const patchLegend = new Map<string, string>();
+  const patchStyles = new Map<string, string>();
+  if (patchMode !== "geometry") {
+    for (const patch of patches) {
+      if (!visibleRooms.has(patch.roomId)) continue;
+      const style = patchDisplay(patch, scenario, patchMode);
+      const colour = style.colour ?? patchLegend.get(style.label) ?? PATCH_PALETTE[patchLegend.size] ?? "hsl(" + (patchLegend.size * 137.508 % 360) + " 58% 53%)";
+      patchLegend.set(style.label, colour);
+      patchStyles.set(patch.id, colour);
+    }
+  }
   const groupColours = new Map(prepared ? boundaryGroups.flatMap(g => g.patchIds.map(id => [id, g.colour] as const)) : []);
   const groupSelection = new Set(boundaryGroups.find(g => g.id === boundarySelection)?.patchIds);
   const positions = useMemo(() => patchPositions(prepared), [prepared]);
@@ -649,6 +695,9 @@ export function ClimoptixViewer({
               ))}
           </optgroup>
         </select>
+        <select aria-label="CFD patch display" value={patchMode} onChange={event => setPatchMode(event.target.value as PatchDisplayMode)}>
+          {Object.entries(PATCH_DISPLAY_MODES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
         <button type="button" onClick={() => setFit((x) => x + 1)}>
           Fit
         </button>
@@ -730,6 +779,7 @@ export function ClimoptixViewer({
         className="cfx-viewport"
         tabIndex={0}
         data-point-probing={resultOverlay?.probing||undefined}
+        data-patch-display={patchMode}
         data-view="3D"
         data-visible-rooms={viewScope.rooms.join(",")}
         data-scope={viewScope.id}
@@ -754,7 +804,7 @@ export function ClimoptixViewer({
                   project={project}
                   roomIds={viewScope.rooms}
                   showRoof={ceilings}
-                  assets={detailed}
+                  assets={false}
                   wallMode={wallOutlines?"CUTAWAY_2D":"TRANSPARENT"}
                 />
               )}
@@ -769,7 +819,7 @@ export function ClimoptixViewer({
                     (ceilings || picking || boundaryGroups.length > 0 || p.kind !== "ceiling" || p.id === selected) &&
                     p.kind !== "supply" &&
                     p.kind !== "extract" &&
-                    (!detailed || p.kind !== "object"),
+                    (p.kind !== "object" || visibleObjectIds.has(p.sourceId) && (!detailed || patchMode !== "geometry")),
                 )
                 .filter((p) => !isolated || p.id === selectedPatch?.id)
                 .filter((p) => !thermalVisible || !thermalPatchIds.has(p.id))
@@ -786,7 +836,7 @@ export function ClimoptixViewer({
                       p.id === selected ||
                       (p.kind === "object" && p.sourceId === selected)
                     }
-                    colour={groupColours.get(p.id)}
+                    colour={patchMode === "geometry" ? groupColours.get(p.id) : patchStyles.get(p.id) ?? "#a5acb2"}
                     highlighted={groupSelection.has(p.id)}
                     outlines={wallOutlines&&p.kind==="wall"}
                     onPointerDown={(e) => onMeshDown(e, p)}
@@ -828,6 +878,7 @@ export function ClimoptixViewer({
                     key={vent.id}
                     vent={preview}
                     host={host}
+                    colour={patchMode === "geometry" ? undefined : patchStyles.get(patches.find(p => p.sourceId === vent.id && p.kind === vent.role)?.id ?? "") ?? "#a5acb2"}
                     selected={selected === marker.id}
                     onDown={(e) => onMeshDown(e, marker)}
                     onClick={e => onMeshClick(e, marker.id)}
@@ -910,14 +961,14 @@ export function ClimoptixViewer({
                     />
                   </mesh>
                 ))}
-              {detailed &&
+              {detailed && patchMode === "geometry" &&
                 floors.flatMap((f) =>
                   f.content.rooms
                     .filter((r) => visibleRooms.has(r.id))
                     .flatMap((r) =>
                       r.obstacles
                         .filter(
-                          (o) => !isolated || selectedPatch?.sourceId === o.id,
+                          (o) => visibleObjectIds.has(o.id) && (!isolated || selectedPatch?.sourceId === o.id),
                         )
                         .map((object) => (
                           <group
@@ -996,7 +1047,11 @@ export function ClimoptixViewer({
         )}
       </div>
       <footer>
-        {boundaryGroups.length > 0 && <ul className="cfx-refinement-legend" aria-label="Boundary group colours">
+        {patchMode !== "geometry" && <ul className="cfx-refinement-legend cfx-patch-legend" aria-label={PATCH_DISPLAY_MODES[patchMode]}>
+          {[...patchLegend].map(([label, colour]) => <li key={label}><i style={{ background: colour }} aria-hidden="true" />{label}</li>)}
+          <li><i style={{ background: "#a5acb2" }} aria-hidden="true" />Outside checked domain</li>
+        </ul>}
+        {patchMode === "geometry" && boundaryGroups.length > 0 && <ul className="cfx-refinement-legend" aria-label="Boundary group colours">
           {boundaryGroups.map(g => <li key={g.id}><i style={{ background: g.colour }} aria-hidden="true" />{g.name} · {g.patchIds.length}</li>)}
         </ul>}
         {thermalVisible && (
@@ -1027,11 +1082,11 @@ export function ClimoptixViewer({
             ))}
           </ul>
         )}
-        <ul className="cfx-refinement-legend" aria-label="Flow and boundary legend">
+        {patchMode === "geometry" && <ul className="cfx-refinement-legend" aria-label="Flow and boundary legend">
           <li><i style={{ background: COLORS.supply }} />Supply</li>
           <li><i style={{ background: COLORS.extract }} />Extract</li>
           <li><i style={{ background: COLORS.door }} />Boundary cap</li>
-        </ul>
+        </ul>}
       </footer>
       <CFDPlaneContextMenu menu={planeMenu} onClose={()=>setPlaneMenu(null)} onDelete={file=>onRemoveResultFile?.(file)}/>
     </section>

@@ -17,7 +17,7 @@ import { CFDJobProgress } from "./CFDJobProgress";
 import { useCFDPlaneStepper } from "./useCFDPlaneStepper";
 import type { SceneResultMetadata } from "./CFDSceneResult";
 import { CFDHeatingImport } from "./CFDHeatingImport";
-import { resolveHvacScenario } from "@/lib/hvacBridge";
+import { copyHvacAsAirflow, requiresHvacThermalExecution, resolveHvacScenario } from "@/lib/hvacBridge";
 import { hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
 import { SharedHvacCFD } from "./SharedHvacCFD";
 import { SharedBoundaryCapture } from "./SharedBoundaryCapture";
@@ -401,7 +401,7 @@ export function ClimoptixWorkspace({
       const starter = { ...next, vents: hasDesign ? [] : next.vents.map(vent => ({ ...vent, id: `${next.id}:${vent.id}` })) };
       onChange(adding ? [...now.scenarios, starter] : [{ ...starter, group: "General" }], true,
         adding ? undefined : [{ id: crypto.randomUUID(), name: "General" }],
-        { scenarioId: next.id, rooms, replaceVents: !adding });
+        { scenarioId: next.id, rooms, replaceVents: !adding, analysisMode: "airflow" });
       setSelectedId(next.id); setSelected(null); setVentEditor(null); setRefinementEditor(null); setPicking(null);
       setEditorReset(value => value + 1); openPhase("studies");
       setMessage(hasDesign ? "New simulation linked to the shared vents in this domain." : "Starter setup saved with a shared inlet and outlet. Review the checks before running.");
@@ -598,6 +598,20 @@ export function ClimoptixWorkspace({
       : activeReport && !stale
         ? activeReport.state
         : "Draft";
+  const canCopyToAirflow = (study: CFDScenario) => !!(hvacContext && study.seed && project.hvac?.bindings[study.id]
+    && requiresHvacThermalExecution(project, study));
+  function createAirflowCopy(study: CFDScenario) {
+    if (!hvacContext || !canCopyToAirflow(study)) return;
+    try {
+      const copy = copyHvacAsAirflow(project, study);
+      hvacContext.commit(copy.hvac, [...(project.cfdScenarios ?? []), copy.scenario]);
+      setSelectedId(copy.scenario.id);
+      setSelected(null);
+      setError("");
+      openPhase("studies");
+      setMessage("Airflow copy ready to check and run. It uses the shared vent geometry and flow settings.");
+    } catch (cause) { setError(hvacErrorMessage(cause)); }
+  }
   const reviewIssues = (id = scenario?.id) => {
     if (!id) return;
     if (id !== scenario?.id) { setError(""); setMessage(""); }
@@ -969,6 +983,7 @@ export function ClimoptixWorkspace({
                 worker={workerAdapter}
                 onSubmit={(op, studies) => { if (!defaultAbort.current) void submitJobs(op, studies); }}
                 onIssues={reviewIssues}
+                airflowCopy={study => canCopyToAirflow(study) ? () => createAirflowCopy(study) : undefined}
                 onUndo={onUndo}
                 onRedo={onRedo}
                 canUndo={canUndo}
@@ -1020,8 +1035,9 @@ export function ClimoptixWorkspace({
                     {panel.id === "boundaries" && (
                       <>
                         <BoundariesPanel
+                          openingNames={openingNames}
                           sharedCapture={<>
-                            {project.hvac?.bindings[scenario.id] && <SharedBoundaryCapture report={activeReport} checked={!stale && !busy} />}
+                            {scenario.sharedBoundaries && <SharedBoundaryCapture report={activeReport} checked={!stale && !busy} />}
                             {!!scenario.thermalSnapshots?.length && <p className="cfx-notice">Thermal handoff stored · {thermalStale ? "refresh to verify current sources" : "current source revision"}. Contract only, not executed.</p>}
                           </>}
                           actions={<button onClick={()=>setHeatingImportOpen(true)}>Import insulation &amp; heating conditions</button>}
@@ -1067,6 +1083,7 @@ export function ClimoptixWorkspace({
                             (!!jobs[scenario.id]?.job &&
                               !terminalJob(jobs[scenario.id].job!)),
                           onIssues: () => reviewIssues(),
+                          onAirflowCopy: canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined,
                           onRun: () => {
                             if (defaultAbort.current) return;
                             void submitJobs("run", [scenario]);
@@ -1196,7 +1213,7 @@ export function ClimoptixWorkspace({
                   {active && (
                     <ClimoptixResults
                       view={resultsView} onViewChange={setResultsView}
-                      review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? jobs[scenario.id]?.error : undefined} configurationIssue={runConfigurationIssue}
+                      review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? jobs[scenario.id]?.error : undefined} configurationIssue={runConfigurationIssue} onAirflowCopy={canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
                       onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}

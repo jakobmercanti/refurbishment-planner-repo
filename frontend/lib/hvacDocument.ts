@@ -44,7 +44,9 @@ export const ventDeviceSchema = z.object({
   enabled: z.boolean().default(true),
 }).strict();
 export type VentDevice = z.infer<typeof ventDeviceSchema>;
+export type HvacAnalysisMode = "airflow" | "thermal";
 const binding = z.object({
+  analysisMode: z.enum(["airflow", "thermal"]).optional(),
   operatingScenarioId: id.nullable().default(null),
   deviceIds: z.array(id).max(500),
   editMode: z.enum(["design", "override"]).default("design"),
@@ -104,7 +106,7 @@ export function updateVentDevice(hvac: HvacProject, id: string, patch: Partial<V
 export function hvacErrorMessage(cause: unknown, fallback = "Invalid HVAC inputs."): string {
   return cause instanceof z.ZodError ? cause.issues.slice(0, 3).map(issue => issue.message).join(" ") : cause instanceof Error ? cause.message : fallback;
 }
-export interface HvacDomainScope { scenarioId: string; rooms: { floorId: string; roomId: string }[]; replaceVents?: boolean }
+export interface HvacDomainScope { scenarioId: string; rooms: { floorId: string; roomId: string }[]; replaceVents?: boolean; analysisMode?: HvacAnalysisMode }
 
 /** Idempotent shared-source reconciliation, including cases created before HVAC setup. */
 export function migrateHvac(project: ProjectDocument): ProjectDocument {
@@ -275,6 +277,7 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
   const studyIds = new Set(stored.map(s => s.id));
   hvac.bindings = Object.fromEntries(Object.entries(hvac.bindings).filter(([id]) => studyIds.has(id)));
   if (domain && hvac.bindings[domain.scenarioId]) {
+    if (domain.analysisMode) hvac.bindings[domain.scenarioId].analysisMode = domain.analysisMode;
     hvac.bindings[domain.scenarioId].scopeRooms = domain.rooms;
     hvac.bindings[domain.scenarioId].scopeSeed = stored.find(s => s.id === domain.scenarioId)?.seed ?? null;
   }

@@ -1,12 +1,19 @@
 import { projectFloors } from "./buildingDocument";
-import { assetOverrideSchema, type CFDScenario, type CFDVent } from "./climoptixDocument";
+import { assetOverrideSchema, newCFDScenario, type CFDScenario, type CFDVent } from "./climoptixDocument";
 import { ventAreaM2, ventFlowM3S } from "./hvacCalculations";
-import { resolveHvacVents, type HvacConditions, type HvacOperatingScenario } from "./hvacDocument";
+import { hvacSchema, resolveHvacVents, type HvacConditions, type HvacOperatingScenario } from "./hvacDocument";
 import type { ProjectDocument } from "./projectDocument";
 import type { CFDReport } from "./climoptix";
 import { sharedHeatingBoundaries, type SharedHeater, type SharedEnvelope } from "./hvacHeating";
 import { hasSharedInsulation, sharedCaseRooms } from "./sharedSources";
 import type { SharedBoundaryInputs, SharedBoundaryAudit } from "./sharedBoundaryDocument";
+
+function operatingAirProperties(operating: HvacOperatingScenario | undefined) {
+  if (!operating) return {};
+  const { densityKgM3, cpJKgK, roomC, outdoorC } = operating.conditions;
+  return { densityKgM3, heatCapacityJKgK: cpJKgK, referenceTemperatureK: roomC + 273.15,
+    initialTemperatureK: roomC + 273.15, outdoorTemperatureK: outdoorC + 273.15 };
+}
 
 function hvacCaseSettings(scenario: CFDScenario, operating: HvacOperatingScenario | undefined, heaters: HvacCfdBoundaryPackage["heaters"], envelopeActive: boolean) {
   const radiators = heaters.filter(h => h.kind === "radiator"), ids = new Set(radiators.map(h => h.id));
@@ -18,7 +25,7 @@ function hvacCaseSettings(scenario: CFDScenario, operating: HvacOperatingScenari
     thermalApplication: scenario.thermalSnapshots?.[0] ? { caseHash: scenario.thermalSnapshots[0].caseHash, sourceRevision: scenario.thermalSnapshots[0].sourceRevision } : null,
     assetOverrides: [...scenario.assetOverrides.filter(o => !ids.has(o.objectId)), ...radiators.map(h => assetOverrideSchema.parse({ objectId: h.id, mode: "solidProxy", heatW: h.enabled ? h.watts ?? 0 : 0, temperatureK: null, notes: h.notes }))],
     physics: thermal ? { ...scenario.physics, energy: true, boussinesq: true, preset: "custom" as const,
-      ...(operating ? { densityKgM3: operating.conditions.densityKgM3, heatCapacityJKgK: operating.conditions.cpJKgK, referenceTemperatureK: operating.conditions.roomC + 273.15, initialTemperatureK: operating.conditions.roomC + 273.15, outdoorTemperatureK: operating.conditions.outdoorC + 273.15 } : {}),
+      ...operatingAirProperties(operating),
     } : scenario.physics,
     outputs: thermal ? { ...scenario.outputs, temperature: true } : scenario.outputs,
     postProcessing: thermal ? { ...scenario.postProcessing, fields: [...new Set([...scenario.postProcessing.fields, "T" as const])] } : scenario.postProcessing,
@@ -93,24 +100,49 @@ export const hvacModelLabel = (model: string) => model === "solidProxySurfacePow
 export const hvacControlLabel = (control: CFDVent["control"]) => ({ volumeFlow: "Volume flow", massFlow: "Mass flow", velocity: "Mean velocity", pressure: "Pressure" })[control];
 
 export function requiresHvacThermalExecution(project: ProjectDocument, scenario: CFDScenario): boolean {
+  const binding = project.hvac?.bindings[scenario.id];
+  if (binding?.analysisMode === "airflow") return false;
   if (scenario.sharedBoundaries && (scenario.physics.energy || scenario.sharedBoundaries.sources.some(s => s.enabled && (s.watts === null || s.watts > 0)))) return true;
-  if (!project.hvac?.bindings[scenario.id]) return false;
-  if (project.hvac.bindings[scenario.id].operatingScenarioId) return true;
+  if (!binding) return false;
+  if (binding.analysisMode === "thermal" || binding.operatingScenarioId) return true;
   if (hasSharedInsulation(project)) return true;
   return sharedCaseInputs(project, scenario).heaters.some(h => h.inDomain && h.enabled && (h.watts === null || h.watts > 0));
 }
 
 /** Derived solver view. No canonical room/device is cloned back into a second editable collection. */
 export function resolveHvacScenario(project: ProjectDocument, scenario: CFDScenario): CFDScenario {
-  if (!project.hvac?.bindings[scenario.id]) return scenario;
-  const source = sharedCaseInputs(project, scenario);
-  const order = new Map(project.hvac.devices.map((d, i) => [`vent:${d.vent.id}`, i]));
-  return { ...scenario, vents: resolveHvacVents(project, scenario), sharedBoundaries: source.boundaryInputs,
+  const hvac = project.hvac, binding = hvac?.bindings[scenario.id];
+  if (!hvac || !binding) return scenario;
+  const order = new Map(hvac.devices.map((d, i) => [`vent:${d.vent.id}`, i]));
+  const linked = {
+    ...scenario, vents: resolveHvacVents(project, scenario),
     objectGroups: scenario.objectGroups?.map(g => {
       const vents = g.memberIds.filter(id => id.startsWith("vent:")).sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity));
       let i = 0;
       return { ...g, memberIds: g.memberIds.map(id => id.startsWith("vent:") ? vents[i++] : id) };
     }),
+  };
+  if (binding.analysisMode === "airflow") {
+    const operating = hvac.scenarios.find(s => s.id === binding.operatingScenarioId);
+    return { ...linked, sharedBoundaries: undefined, physics: { ...linked.physics, ...operatingAirProperties(operating) } };
+  }
+  const source = sharedCaseInputs(project, scenario);
+  return { ...linked, sharedBoundaries: source.boundaryInputs,
     assetOverrides: source.caseSettings.assetOverrides, physics: source.caseSettings.physics, outputs: source.caseSettings.outputs, postProcessing: source.caseSettings.postProcessing,
   };
+}
+
+/** A fresh airflow setup keeps the measured domain, vent hosts and operating flow. */
+export function copyHvacAsAirflow(project: ProjectDocument, original: CFDScenario) {
+  const hvac = project.hvac, binding = hvac?.bindings[original.id];
+  if (!hvac || !binding || !original.seed) throw new Error("Select a measured room before creating the airflow copy.");
+  if ((project.cfdScenarios?.length ?? 0) >= 100) throw new Error("Remove an existing simulation before creating the airflow copy.");
+  const names = new Set(project.cfdScenarios?.map(s => s.name));
+  const base = original.name.slice(0, 100) + " · Airflow";
+  let name = base, index = 2;
+  while (names.has(name)) name = base + " " + index++;
+  const scenario = { ...newCFDScenario(project.projectId, name), seed: original.seed, group: original.group };
+  return { scenario, hvac: hvacSchema.parse({ ...hvac, bindings: {
+    ...hvac.bindings, [scenario.id]: { ...binding, analysisMode: "airflow" },
+  } }) };
 }

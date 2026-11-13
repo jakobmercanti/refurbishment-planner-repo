@@ -20,6 +20,7 @@ interface RunConnection {
   blockedReason?: string;
   onRun: () => void;
   onIssues: () => void;
+  onAirflowCopy?: () => void;
 }
 
 function RunPanel({
@@ -55,6 +56,7 @@ function RunPanel({
       </div>
       {connection?.blockedReason && <p className="cfx-notice" role="status">
         {connection.blockedReason} <button onClick={connection.onIssues}>Review submission issues</button>
+        {connection.onAirflowCopy && <button type="button" onClick={connection.onAirflowCopy}>Create airflow copy</button>}
       </p>}
       </details>
       {workerControls&&<details open><summary>Worker connection &amp; limits</summary>{workerControls}</details>}

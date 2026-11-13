@@ -129,3 +129,13 @@ export function realPreparation(request: {
     );
   return JSON.parse(result.stdout) as CFDReport;
 }
+
+
+export function validateNativeSubmission(request: unknown, referenceRoot?: string) {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const python = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+  const result = spawnSync(python, ["-X", "utf8", "-c",
+    "import sys; from backend.app.openfoam_case import Submission, validate_submission; validate_submission(Submission.model_validate_json(sys.stdin.read()), max_cpu=1)"],
+    { cwd: referenceRoot ?? root, input: JSON.stringify(request), encoding: "utf8", timeout: 25000 });
+  if (result.status !== 0) throw new Error(result.stderr || result.error?.message || "Native submission rejected");
+}

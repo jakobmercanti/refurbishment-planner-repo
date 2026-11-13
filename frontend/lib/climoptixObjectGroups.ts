@@ -11,10 +11,12 @@ export function objectGroups(scenario: CFDScenario, objects: CFDObject[] = []): 
     { id: DEFAULT_OBJECT_GROUP, name: uniqueGroupName(groups.map(g => g.name), "General"), memberIds: [] }, ...groups,
   ];
 }
+export const isVisibleCFDObject = (object: CFDObject) => object.mode !== "none";
+
 export function objectEntries(scenario: CFDScenario, objects: CFDObject[]): CFDObjectEntry[] {
   const hidden = new Set(scenario.hiddenObjectIds);
   return [...scenario.vents.map(v => ({ id: `vent:${v.id}`, sourceId: v.id, name: v.name, type: "vent" as const, detail: `${v.role} · ${v.shape === "circle" ? `Ø ${v.diameterMm}` : `${v.widthMm} × ${v.heightMm}`} mm` })),
-    ...objects.filter(o => !hidden.has(o.id)).map(o => ({ id: `object:${o.id}`, sourceId: o.id, name: o.name, type: "object" as const, detail: `${o.mode} · ${o.heatW} W` }))];
+    ...objects.filter(o => isVisibleCFDObject(o) && !hidden.has(o.id)).map(o => ({ id: `object:${o.id}`, sourceId: o.id, name: o.name, type: "object" as const, detail: `${o.mode} · ${o.heatW} W` }))];
 }
 export function objectMembers(group: CFDObjectCollection, groups: CFDObjectCollection[], entries: CFDObjectEntry[]) {
   const assigned = new Set(groups.filter(g => g.id !== DEFAULT_OBJECT_GROUP).flatMap(g => g.memberIds));

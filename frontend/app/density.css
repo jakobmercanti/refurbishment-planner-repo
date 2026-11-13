@@ -362,7 +362,8 @@ body .cfx-workspace .cfx-study-tools { flex-wrap:nowrap; overflow-x:auto; paddin
 body .cfx-workspace .cfx-study-tools > * { flex-shrink:0; }
 body .cfx-workspace .cfx-boundaries-panel > header { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
 body .cfx-workspace .cfx-boundaries-panel > header > * { flex-shrink:0; }
-body .cfx-workspace .cfx-surface-row .cfx-device-actions { width:clamp(240px,25cqw,270px); max-width:100%; }
+body .cfx-workspace .cfx-surface-row .cfx-boundary-row-actions { grid-template-columns:repeat(4,minmax(0,1fr)); width:100%; }
+.cfx-boundary-row-actions > .cfx-row-menu > summary { min-width:0; height:100%; min-height:var(--density-control-min-height); }
 body .cfx-workspace .cfx-view-window:not([data-window-maximized]):not([data-edge-docked]) { height:auto!important; min-height:0!important; }
 body .cfx-workspace .cfx-view-window .floating-toolbar-content { flex:0 0 auto; }
 body .cfx-workspace .cfx-thermal-inline { display:flex; flex:1 1 0; min-height:0; overflow:hidden; }

@@ -71,6 +71,7 @@ class RoomScope(Contract):
 
 
 class Binding(Contract):
+    analysisMode: Literal["airflow", "thermal"] | None = None
     operatingScenarioId: Identifier | None = None
     deviceIds: list[Identifier] = Field(max_length=500)
     editMode: Literal["design", "override"] = "design"

@@ -40,6 +40,22 @@ const resultSchema = z.object({jobId: z.uuid(), studyId: z.string(), clientRevis
 });
 export type WorkerResult = z.infer<typeof resultSchema>;
 
+function workerRejection(data: Uint8Array, status: number): string {
+  const fallback = `CFD worker request failed (${status}).`;
+  try {
+    const { detail } = JSON.parse(new TextDecoder().decode(data));
+    if (typeof detail === "string") return detail.slice(0, 2000);
+    if (status === 422 && Array.isArray(detail)) {
+      const fields = [...new Set(detail.flatMap(issue => {
+        const field = Array.isArray(issue?.loc) ? issue.loc.at(-1) : undefined;
+        return typeof field === "string" && /^[A-Za-z][A-Za-z0-9_]{0,49}$/.test(field) ? [field] : [];
+      }))].slice(0, 6);
+      if (fields.length) return `The worker rejected these submission fields: ${fields.join(", ")}.`;
+    }
+  } catch { /* Unstructured response. */ }
+  return fallback;
+}
+
 async function workerRequest(base: string, path: string, signal: AbortSignal, body?: unknown, max = 1024**2): Promise<Uint8Array<ArrayBuffer>> {
   signal.throwIfAborted();
   const session = await currentSession(); signal.throwIfAborted();
@@ -54,11 +70,7 @@ async function workerRequest(base: string, path: string, signal: AbortSignal, bo
   });
   const data = await readBoundedResponse(response, response.ok ? max : 16384, "Worker response exceeded its size bound.");
   if (storedAccountId() !== session.user.id) throw new CFDWorkerError("Account changed. Reopen your workspace.", 401);
-  if (!response.ok) {
-    let detail = `CFD worker request failed (${response.status}).`;
-    try { const parsed = JSON.parse(new TextDecoder().decode(data)); if (typeof parsed.detail === "string") detail = parsed.detail.slice(0, 2000); } catch { /* fixed fallback */ }
-    throw new CFDWorkerError(detail, response.status);
-  }
+  if (!response.ok) throw new CFDWorkerError(workerRejection(data, response.status), response.status);
   return data;
 }
 export async function workerJSON(base: string, path: string, signal: AbortSignal, body?: unknown): Promise<unknown> {

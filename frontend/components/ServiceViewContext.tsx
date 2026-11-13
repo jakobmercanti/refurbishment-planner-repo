@@ -12,7 +12,7 @@ export interface ServiceSceneHost {
   fromClient: (x: number, y: number) => Point2D;
   canPick: (x: number, y: number) => boolean;
 }
-export type ServiceLabelPortal = (anchor: Point2D, node: ReactNode) => ReactNode;
+export type ServiceLabelPortal = (anchor: Point2D, node: ReactNode, key?: string) => ReactNode;
 export type ServiceOpeningMove = {
   id: string;
   source: string;

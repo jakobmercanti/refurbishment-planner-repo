@@ -277,8 +277,7 @@
   color: var(--muted);
   font-size: 11px;
 }
-.cfx-workspace .cfx-danger,
-.cfx-confirm .cfx-danger {
+.cfx-workspace .cfx-danger {
   color: var(--fail);
   background: var(--fail-soft);
   border-color: color-mix(in srgb, var(--fail), transparent 70%);
@@ -442,21 +441,6 @@
 }
 .cfx-empty p {
   margin: 0;
-}
-.cfx-confirm {
-  width: min(460px, 94vw);
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--ui-window-radius);
-  color: var(--ink);
-  background: var(--panel);
-  box-shadow: var(--ui-window-shadow);
-}
-.cfx-confirm::backdrop {
-  background: var(--ui-window-backdrop);
-}
-.cfx-confirm .popup-titlebar {
-  grid-template-columns: 18px minmax(0, 1fr) auto;
 }
 .cfx-list-row {
   display: grid;
@@ -647,7 +631,8 @@
   box-shadow: var(--ui-window-shadow);
 }
 .cfx-view-selector select {
-  width: min(310px, 32vw);
+  width: min(250px, 24vw);
+  min-width: 0;
 }
 .cfx-view-selector label {
   color: var(--muted);
@@ -905,7 +890,7 @@
 @container cfx-setup (max-width: 460px) {
   .cfx-setup .cfx-grid:not(.cfx-three), .cfx-physics-fields { grid-template-columns: minmax(0, 1fr); }
 }
-.cfx-bound-tabs { display: grid; flex: 0 1 340px; width: min(340px, 100%); grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; border-bottom: 1px solid var(--line); }
+.cfx-bound-tabs { display: grid; flex: 1 1 100%; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; border-bottom: 1px solid var(--line); }
 .cfx-workspace .cfx-bound-tabs > button { width: 100%; }
 .cfx-input-failure { color: var(--fail); overflow-wrap: anywhere; margin-bottom: var(--density-section-gap); }
 .cfx-probe-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: var(--density-field-gap); padding-block: var(--density-row-padding); }
@@ -1127,7 +1112,7 @@
 .cfx-objects .cfx-group-select { background: transparent; color: var(--ink); border-color: transparent; }
 .cfx-simulation-tabs { flex: 1; }
 .cfx-boundary-group .cfx-list-header > .cfx-group-heading { padding-left: 32px; }
-.cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+.cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr) minmax(0, 330px); }
 .cfx-thermal-navigation { padding: var(--density-window-padding); }
 .cfx-review > section > * + * { margin-top: var(--density-section-gap); }
 .cfx-review > header { margin-bottom: var(--density-section-gap); }
@@ -1139,7 +1124,7 @@
 .cfx-workspace .cfx-review textarea { min-height: calc(var(--density-control-min-height) * 1.7); }
 @container cfx-setup (max-width: 620px) {
   .cfx-workspace .cfx-segments > button { padding-inline: 8px; }
-  .cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr); }
   .cfx-surface-row > .cfx-surface-name { grid-column: 1 / -1; }
   .cfx-objects .cfx-device-row { grid-template-columns: minmax(0, 1fr) auto; }
   .cfx-objects .cfx-device-row > .cfx-device-name { grid-column: 1 / -1; }
@@ -1236,4 +1221,11 @@
   .cfx-context-menu {
     max-height: calc(100dvh - 16px);
   }
+}
+
+.cfx-viewer > footer .cfx-patch-legend { max-height: 100px; overflow:auto; pointer-events:auto; }
+@media (max-width: 700px) {
+  .cfx-view-selector { flex-wrap:wrap; }
+  .cfx-view-selector select { flex:1 1 115px; width:auto; }
+  .cfx-viewer:has(.cfx-patch-legend) > footer { display:flex; }
 }

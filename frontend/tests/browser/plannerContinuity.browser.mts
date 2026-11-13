@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { hvacProject } from "../hvacFixtures";
-import { cfdProject } from "../climoptixFixtures";
+import { cfdProject, realDefaultSetup, validateNativeSubmission } from "../climoptixFixtures";
 import { newHeatingProject } from "../../lib/heatingDocument";
 import { thermalRoom } from "../../lib/heatingCalculations";
 import { roofProject } from "../roofBalustradeFixtures";
@@ -64,38 +64,58 @@ test("signing in from the planner carries the guest draft and retains existing a
   await page.getByRole("button", { name: "Sign in", exact: true }).waitFor();
 });
 
-test("Evaluate in CFD from Heating opens the exact case after signing in and blocks thermal submission", async t => {
-  const draft = hvacProject();
+test("Heating opens the exact airflow case after sign-in and submits it with the native worker contract", async t => {
+  const draft = hvacProject(), seed = draft.cfdScenarios[0].seed;
+  const defaults = realDefaultSetup({ project: draft, scenario: draft.cfdScenarios[0], clientRevision: "a".repeat(64) });
+  draft.hvac.devices = defaults.vents.map(vent => ({ ...seed, vent, outdoorAirFraction: 1, enabled: true, extractKind: "exhaust" }));
+  const original = draft.cfdScenarios[0];
+  draft.hvac.bindings[original.id] = { operatingScenarioId: "operation-1", deviceIds: draft.hvac.devices.map(d => d.vent.id), editMode: "design", overrides: {} };
   const session = await harness.session(draft);
   t.after(() => session.close());
   const { page, context } = session;
-  // An earlier account project with this identity forces a new project ID at handoff.
   await writeProject(page, draft, account);
   await context.route("**/climoptix/worker/capabilities", route => route.fulfill({ json: {
     connected: true, mesh: true, run: true, reason: "Test native worker", namespace: account,
     limits: { cpu: 2, memoryGb: 4, wallTimeMinutes: 15, storageGb: 1, retentionDays: 3, maxCells: 500000, concurrentJobs: 1 },
   } }));
-  let submissions = 0;
+  let submission;
   await context.route("**/climoptix/worker/jobs**", route => {
-    if (route.request().method() === "POST") submissions++;
-    return route.fulfill({ json: [] });
+    if (route.request().method() !== "POST") return route.fulfill({ json: [] });
+    submission = route.request().postDataJSON();
+    validateNativeSubmission(submission);
+    return route.fulfill({ json: {
+      id: "34567890-1234-4123-8123-123456789012", studyId: submission.studyId,
+      clientRevision: submission.clientRevision, phase: "Completed", progress: 100, operation: "run",
+    } });
   });
   await menu(page, "Tools", "Heating & ventilation");
   await page.locator(".heating-layout-window").getByRole("button", { name: "Evaluate in CFD", exact: true }).click();
   await page.getByRole("dialog", { name: "Account & plans" }).waitFor();
   await signInFromPlanner(page, context, false);
-  const carried = await eventually(session.saved, p => p?.projectId !== draft.projectId && p?.cfdScenarios?.some(study => study.name === "Nominal operation · HVAC"));
-  const study = carried.cfdScenarios.find(s => s.name === "Nominal operation · HVAC");
+  const carried = await eventually(session.saved, p => p?.projectId !== draft.projectId && p?.cfdScenarios?.some(study => study.name === "Nominal operation · Airflow"));
+  const study = carried.cfdScenarios.find(s => s.name === "Nominal operation · Airflow");
   await eventually(() => page.getByRole("combobox", { name: "Workspace", exact: true }).inputValue(), value => value === "CLIMOPTIX");
   const ui = page.locator(".cfx-workspace");
   await ui.getByRole("tab", { name: "Objects", exact: true }).waitFor();
   assert.equal(await ui.getByRole("tab", { name: "Objects", exact: true }).getAttribute("aria-selected"), "true");
   await ui.getByRole("tab", { name: "Simulations", exact: true }).click();
-  const run = ui.getByRole("button", { name: "Run " + study.name, exact: true });
-  await run.waitFor();
-  await eventually(() => run.isDisabled(), Boolean);
-  await ui.getByText(/Shared HVAC thermal execution is not connected/).first().waitFor();
-  assert.equal(submissions, 0);
+  await ui.getByRole("button", { name: "Run " + study.name, exact: true }).click();
+  const row = ui.locator(".cfx-study-row").filter({ hasText: study.name });
+  await row.getByText("Completed", { exact: true }).first().waitFor();
+  assert.equal(submission.studyId, study.id);
+  assert.equal(submission.scenario.physics.energy, false);
+  assert.equal(submission.scenario.physics.boussinesq, false);
+  assert.equal(submission.scenario.vents.length, 2);
+  assert.equal(submission.scenario.sharedBoundaries, undefined);
+  const legacyRow = ui.locator(".cfx-study-row").filter({ has: page.getByRole("button", { name: "Run Office airflow", exact: true }) });
+  assert.equal(await legacyRow.getByRole("button", { name: "Run Office airflow", exact: true }).isDisabled(), true);
+  await legacyRow.getByRole("button", { name: "Create airflow copy", exact: true }).click();
+  const copied = await eventually(session.saved, p => p?.cfdScenarios.some(s => s.name === "Office airflow · Airflow"));
+  const copy = copied.cfdScenarios.find(s => s.name === "Office airflow · Airflow");
+  assert.equal(copied.hvac.bindings[copy.id].analysisMode, "airflow");
+  assert.equal(copied.hvac.bindings[original.id].analysisMode, undefined);
+  assert.deepEqual(copied.hvac.devices, carried.hvac.devices);
+  assert.equal(await ui.getByRole("button", { name: "Run " + copy.name, exact: true }).isEnabled(), true);
 });
 
 test("construction scenario deletion uses the application dialog and UFH exclusion help describes the footprint", async t => {

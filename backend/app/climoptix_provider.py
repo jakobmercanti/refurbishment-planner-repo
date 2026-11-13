@@ -971,6 +971,15 @@ class PreparationOnlyProvider:
                 "createdAt", "updatedAt", "objectGroups", "adjointStudies"
             },
         )
+        # Keep the v1 fingerprint for cases without the newer thermal inputs.
+        # Preparation and execution may run on different deployed revisions.
+        if config["sharedBoundaries"] is None:
+            del config["sharedBoundaries"]
+        boundaries = config["boundaries"]
+        for boundary in (*boundaries["groups"].values(), *boundaries["patches"].values(),
+                         *(group["boundary"] for group in boundaries["collections"] if group["boundary"] is not None)):
+            if boundary["thermal"]["sourceFluxWm2"] == 0:
+                del boundary["thermal"]["sourceFluxWm2"]
         stamp = ValidationStamp(
             clientRevision=client_revision,
             sourceHash=domain.source_hash,

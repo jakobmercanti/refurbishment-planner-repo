@@ -1,36 +1,65 @@
 import assert from 'node:assert/strict';
 import test, { before, after } from 'node:test';
-import { cfdProject, realPreparation, realDefaultSetup } from '../climoptixFixtures';
+import { cfdProject, realPreparation, realDefaultSetup, validateNativeSubmission } from '../climoptixFixtures';
 import { boundarySchema } from '../../lib/climoptixDocument';
+import { resolveHvacScenario } from '../../lib/hvacBridge';
 import { cfdWindow, eventually, startBrowserHarness } from './harness.mjs';
 
 let harness;
 before(async()=>{harness=await startBrowserHarness({climoptixEnabled:true});});
 after(async()=>{await harness?.close();});
 const button=(scope,name)=>scope.getByRole('button',{name,exact:true});
-async function open(t,width=1440) {
+async function open(t,width=1440,run=false) {
   const p=cfdProject(false); p.cfdScenarios[0].boundaries.groups.floor=boundarySchema.parse({flow:{type:'volumeFlow'},thermal:{type:'temperature',value:300}});
   const s=await harness.session(p,{viewport:{width,height:1000}}); t.after(()=>s.close());
+  const localPreparation=process.env.CFD_LOCAL_PREPARATION_ORIGIN;
+  if(localPreparation) for(const action of ['default-setup','prepare']) {
+    await s.context.route(`**/climoptix/${action}`,async route=>{
+      const response=await fetch(new URL(`/engineering-api/climoptix/${action}`,localPreparation),{
+        method:'POST',headers:{'Content-Type':'application/json'},body:route.request().postData(),
+      });
+      await route.fulfill({status:response.status,contentType:'application/json',body:await response.text()});
+    });
+  }
+  if(run) await s.context.route('**/climoptix/worker/capabilities',route=>route.fulfill({json:{
+    connected:true,mesh:true,run:true,reason:'Native test worker',namespace:'11111111-1111-4111-8111-111111111111',
+    limits:{cpu:1,memoryGb:4,wallTimeMinutes:15,storageGb:1,retentionDays:3,maxCells:500000,concurrentJobs:1},
+  }}));
   await s.page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');
   const ui=s.page.locator('.cfx-workspace'); await cfdWindow(ui,'Simulations');
   await eventually(()=>ui.getAttribute('data-preparation-state'),v=>v==='checked');
   return {...s,ui};
 }
-test('reset confirms, backs up and restores a valid worker-ready case without changing rooms; new simulations inherit it',async t=>{
-  const {page,ui,saved}=await open(t);
+test('reset confirms, backs up and submits a native default case without changing rooms; new simulations inherit it',async t=>{
+  const {page,context,ui,saved}=await open(t,1440,true);
+  let submission;
+  await context.route('**/climoptix/worker/jobs**',route=>{
+    if(route.request().method()!=='POST')return route.fulfill({json:[]});
+    submission=route.request().postDataJSON();
+    validateNativeSubmission(submission,process.env.CFD_WORKER_CONTRACT_ROOT);
+    return route.fulfill({json:{id:'34567890-1234-4123-8123-123456789012',studyId:submission.studyId,
+      clientRevision:submission.clientRevision,phase:'Completed',progress:100,operation:'run'}});
+  });
   const original=await saved(), rooms=structuredClone(original.rooms);
   await button(ui,'Restore default').click(); await button(page.getByRole('dialog',{name:'Restore the default workbench?',exact:true}),'Cancel').click();
   assert.deepEqual((await saved()).cfdScenarios[0].boundaries,original.cfdScenarios[0].boundaries);
   await button(ui,'Restore default').click(); await button(page.getByRole('dialog',{name:'Restore the default workbench?',exact:true}),'Restore default').click();
-  const reset=await eventually(saved,p=>p.cfdScenarios[0].vents.length===2&&p.cfdScenarios[0].validation?.errors===0);
+  const reset=await eventually(saved,p=>resolveHvacScenario(p,p.cfdScenarios[0]).vents.length===2&&p.cfdScenarios[0].validation?.errors===0);
   assert.deepEqual(reset.rooms,rooms); assert.equal(reset.cfdScenarios[0].resources.cpu,1); assert.equal(reset.cfdScenarios[0].physics.turbulence,'laminar');
   assert.equal(reset.cfdScenarios[0].outputs.probesMm.length,1);
+  for(const axis of ['x','y','z']) assert.deepEqual(reset.cfdScenarios[0].postProcessing[axis],{enabled:true,count:15});
   const backup=await page.evaluate(ids=>JSON.parse(localStorage.getItem(`climoptix:before-restore:${ids[0]}`)),[reset.projectId,reset.cfdScenarios[0].id]);
   assert.deepEqual(backup.scenarios[0].boundaries,original.cfdScenarios[0].boundaries);
+  await button(ui,'Run '+reset.cfdScenarios[0].name).click();
+  await ui.locator('.cfx-study-row').getByText('Completed',{exact:true}).first().waitFor();
+  assert.equal(submission.studyId,reset.cfdScenarios[0].id);
+  assert.equal(submission.scenario.sharedBoundaries,undefined);
+  for(const boundary of Object.values(submission.scenario.boundaries.groups))assert.equal(boundary.thermal.sourceFluxWm2,undefined);
   await button(ui,'New simulation').click();
   const added=await eventually(saved,p=>p.cfdScenarios.length===2);
-  const report=realPreparation({project:added,scenario:added.cfdScenarios[1],clientRevision:'a'.repeat(64)});
-  assert.equal(report.validation.errors,0); assert.equal(added.cfdScenarios[1].vents.length,2);
+  const addedCase=resolveHvacScenario(added,added.cfdScenarios[1]);
+  const report=realPreparation({project:added,scenario:addedCase,clientRevision:'a'.repeat(64)});
+  assert.equal(report.validation.errors,0); assert.equal(addedCase.vents.length,2);
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/default-simulations.png`});
 });
 

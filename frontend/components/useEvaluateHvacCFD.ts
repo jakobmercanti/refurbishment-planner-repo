@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { preparationInput, preparationRevision, prepareCFD } from "@/lib/climoptix";
 import { newCFDScenario } from "@/lib/climoptixDocument";
 import { hvacBoundaryPackage, resolveHvacScenario } from "@/lib/hvacBridge";
-import { hvacConditionsSchema, hvacSchema, newHvacProject, roomOperatingScenario, type HvacConditions } from "@/lib/hvacDocument";
+import { hvacConditionsSchema, hvacSchema, newHvacProject, roomOperatingScenario, type HvacAnalysisMode, type HvacConditions } from "@/lib/hvacDocument";
 import { useHvac } from "./HvacContext";
 
 export function useEvaluateHvacCFD(floorId: string, roomId: string | undefined, defaults: Partial<HvacConditions>) {
@@ -15,7 +15,7 @@ export function useEvaluateHvacCFD(floorId: string, roomId: string | undefined, 
   const [error, setError] = useState("");
   useEffect(() => () => request.current?.abort(), [project, floorId, roomId, ctx?.apiUrl]);
 
-  async function evaluate() {
+  async function evaluate(analysisMode: HvacAnalysisMode = "airflow") {
     if (!ctx || !project || !roomId || request.current && !request.current.signal.aborted) return;
     const { apiUrl } = ctx;
     if ((project.cfdScenarios?.length ?? 0) >= 100) {
@@ -34,11 +34,11 @@ export function useEvaluateHvacCFD(floorId: string, roomId: string | undefined, 
       const operating = roomOperatingScenario(hvac, floorId, roomId) ?? {
         ...seed, id: crypto.randomUUID(), name: "Nominal operation", conditions: hvacConditionsSchema.parse(defaults), ventOverrides: {}, heaterOverrides: {},
       };
-      const scenario = { ...newCFDScenario(project.projectId, `${operating.name} · HVAC`), seed };
+      const scenario = { ...newCFDScenario(project.projectId, `${operating.name} · ${analysisMode === "airflow" ? "Airflow" : "HVAC"}`), seed };
       const deviceIds = hvac.devices.filter(d => d.floorId === floorId && d.roomId === roomId).map(d => d.vent.id);
       const nextHvac = hvacSchema.parse({ ...hvac, activeScenarioId: operating.id,
         scenarios: [...hvac.scenarios.filter(s => s.id !== operating.id), operating],
-        bindings: { ...hvac.bindings, [scenario.id]: { operatingScenarioId: operating.id, deviceIds, editMode: "design", overrides: {} } },
+        bindings: { ...hvac.bindings, [scenario.id]: { analysisMode, operatingScenarioId: operating.id, deviceIds, editMode: "design", overrides: {} } },
       });
       const nextProject = { ...project, hvac: nextHvac };
       async function prepare() {

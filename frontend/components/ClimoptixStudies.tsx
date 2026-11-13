@@ -28,7 +28,7 @@ function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
 }
 
 export function ClimoptixStudies({ project, scenarios, scenario, showArchived, onShowArchived, onSelect,
-  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onIssues, onUndo, onRedo, canUndo, canRedo,
+  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onIssues, airflowCopy, onUndo, onRedo, canUndo, canRedo,
 }: {
   project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
   onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
@@ -42,6 +42,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   entries: Record<string, CFDJobEntry>; worker: CFDWorkerAdapter | null;
   onSubmit: (operation: CFDOperation, studies: CFDScenario[]) => void;
   onIssues: (id: string) => void;
+  airflowCopy?: (scenario: CFDScenario) => (() => void) | undefined;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
 }) {
   const visible = scenarios.filter(s => showArchived || !s.archived);
@@ -126,6 +127,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 const phase = entry?.submitting ? "Checking & submitting…" : job ? `${job.phase}${stale ? " · older setup" : ""}` : entry?.dispatched ? "Submission status unknown" : "Not submitted";
                 const checkConfiguration = (operation: CFDOperation) => entry?.dispatched ? undefined : workerConfigurationIssue(project, s, worker, operation);
                 const configurationIssue = checkConfiguration("run");
+                const createAirflow = configurationIssue ? airflowCopy?.(s) : undefined;
                 const reason = (operation: CFDOperation) => resetting ? "Wait for default setup to finish" : s.archived ? "Unarchive this simulation before submitting" : busy(s) ? "Wait for this job to finish" :
                   entry?.dispatched && entry.operation !== operation ? `Recover the previous ${entry.operation} submission first` :
                   !worker?.capabilities.connected ? worker?.capabilities.reason || "Connect an OpenFOAM worker to submit this simulation" :
@@ -156,7 +158,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                   </CFDRowMenu>
                   <div className="cfx-study-status">
                     <CFDJobProgress job={job} name={s.name} operation={entry?.operation} pending={entry?.submitting || entry?.dispatched ? phase : undefined} />
-                    {(entry?.error || configurationIssue) && <p className="cfx-error" role={entry?.error ? "alert" : "status"}>{entry?.error || configurationIssue} <button className="cfx-issues-link" onClick={() => onIssues(s.id)}>View issues for {s.name}</button></p>}
+                    {(entry?.error || configurationIssue) && <p className="cfx-error" role={entry?.error ? "alert" : "status"}>{entry?.error || configurationIssue} <button className="cfx-issues-link" onClick={() => onIssues(s.id)}>View issues for {s.name}</button>{createAirflow && <button type="button" onClick={createAirflow} disabled={scenarios.length >= 100}>Create airflow copy</button>}</p>}
                   </div>
                 </article>;
               }}

@@ -9,6 +9,7 @@ import {
 } from "./buildingDocument";
 import {
   cfdScenarioSchema,
+  defaultSamplingPlanes,
   type CFDScenario,
 } from "./climoptixDocument";
 import type { ProjectDocument } from "./projectDocument";
@@ -256,7 +257,7 @@ export async function defaultCFDSetup(apiUrl: string, project: ProjectDocument, 
   }
   const result = cfdScenarioSchema.parse(await response.json());
   if (result.id !== scenario.id || result.sourceBuildingId !== project.projectId) throw new Error("Default setup returned a different simulation. Nothing was changed.");
-  return { ...result, group: scenario.group };
+  return { ...result, group: scenario.group, postProcessing: { ...result.postProcessing, ...defaultSamplingPlanes() } };
 }
 export function boundarySurfaceSTL(
   report: CFDReport,

@@ -1,7 +1,7 @@
 /* Content gutters are independent of the unchanged five-pixel resize targets. */
 :root { --window-side-padding: 5px; --window-density-width: 1; }
 :root[data-density="compact"] { --window-side-padding: 3px; --window-density-width: .8; }
-body :is(.floating-toolbar-content, .popup-content, .local-assets-content, .settings-content, .settings-sections, .cfx-setup-panel, .thermal-body) {
+body :is(.planner-window-body, .floating-toolbar-content, .popup-content, .local-assets-content, .settings-content, .settings-sections, .cfx-setup-panel, .thermal-body) {
   padding-inline: var(--window-side-padding);
 }
 body .floating-toolbar-content { margin-inline: 5px; }
@@ -20,7 +20,7 @@ body .catalogue-detail-dialog.catalogue-object-dialog { --window-dialog-width: 1
 :root body[data-ui-style="modern"] .catalogue-detail-dialog > .catalogue-form-heading { margin-inline: calc(-1 * var(--window-side-padding)); padding-inline: var(--window-side-padding); }
 :root body .account-dialog-content { padding-inline: var(--window-side-padding); }
 :root[data-density="compact"] .floating-toolbar.full-plan-build-toolbar { min-width: min(290px, calc(100vw - 16px)); }
-:root[data-density="compact"] .popup:not(.floating-toolbar, .appearance-popup, .electrical-bom-editor) { width: min(360px, calc(100vw - 32px)); }
+:root[data-density="compact"] .popup:not(.floating-toolbar, .appearance-popup, .electrical-bom-editor, .planner-confirmation) { width: min(360px, calc(100vw - 32px)); }
 body .floating-toolbar-content :is(button, summary) { text-overflow: clip; }
 body .floating-toolbar-content button:not(.colour-swatch, .color-swatch, .material-swatch) { white-space: normal; overflow-wrap: anywhere; }
 body .building-floor-bar { padding-left: 12px; }
@@ -167,9 +167,8 @@ body .cfx-vent-settings .cfx-vent-flow-row:has(> :only-child) { grid-template-co
 .cfx-vent-optimisation fieldset { display:grid; gap:var(--density-section-gap); min-width:0; }
 .cfx-vent-optimisation fieldset > button { justify-self:start; }
 .cfx-vent-optimisation .cfx-movement-point { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:var(--density-section-gap); }
-body .popup:is(.heating-reset-dialog, .electrical-circuit-dialog) { width:min(620px, calc(100vw - 24px)); }
-body :is(.heating-reset-dialog, .electrical-circuit-dialog) :is(.popup-content, .popup-actions) { padding:18px 24px; }
-body .heating-reset-dialog .popup-content p { font-weight:400; }
+body .popup.electrical-circuit-dialog { width:min(620px, calc(100vw - 24px)); }
+body .electrical-circuit-dialog :is(.popup-content, .popup-actions) { padding:18px 24px; }
 .electrical-circuit-dialog .popup-content { display:grid; gap:var(--density-section-gap); }
 .electrical-circuit-row-actions { display:grid; grid-auto-flow:column; grid-auto-columns:5rem; align-items:center; gap:var(--density-section-gap); }
 body .electrical-circuit-list .electrical-circuit-row-actions > button { width:100%; min-width:0; white-space:nowrap; overflow-wrap:normal; }
@@ -207,3 +206,35 @@ body .building-level-actions > button { white-space: nowrap; overflow-wrap: norm
   overflow-wrap: anywhere;
   pointer-events: none;
 }
+
+/* Window roles share tokens. A confirmation is a size and copy variant of the same frame. */
+.planner-window { --window-copy-weight: 400; }
+body .popup.planner-confirmation {
+  --window-side-padding: clamp(14px, 4vw, 28px);
+  --window-dialog-width: 640px;
+  width: min(calc(var(--window-dialog-width) * var(--window-density-width)), calc(100vw - 32px));
+}
+dialog.planner-confirmation {
+  padding: 0;
+  background: var(--panel);
+  color: var(--ink);
+}
+dialog.planner-confirmation::backdrop { background: var(--ui-window-backdrop); }
+dialog.planner-confirmation .planner-window-header { grid-template-columns: 18px minmax(0, 1fr) auto; }
+body .planner-confirmation :is(.planner-window-header, .planner-window-body, .planner-window-footer) {
+  padding-inline: var(--window-side-padding);
+}
+.planner-confirmation .planner-window-body { padding-block: 16px; }
+.planner-confirmation .planner-window-body > p {
+  font: var(--window-copy-weight) calc(12px * var(--density-font-scale, 1))/1.6 var(--font-sans);
+}
+.planner-confirmation .planner-window-footer { flex-wrap: wrap; }
+.planner-window-footer .planner-danger-action {
+  background: var(--fail-soft);
+  color: var(--fail);
+  border-color: color-mix(in srgb, var(--fail) 25%, var(--panel));
+}
+
+.insulation-wall-label { pointer-events:auto; border:1px solid var(--line); color:var(--ink); background:var(--panel); padding:2px 5px; border-radius:4px; font-size:11px; white-space:nowrap; }
+[data-energy-room-card] { user-select:none; }
+.service-window-host > .floating-toolbar { pointer-events:auto; }

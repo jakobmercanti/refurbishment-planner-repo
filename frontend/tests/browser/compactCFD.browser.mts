@@ -82,6 +82,12 @@ test("selected/collapsible simulation groups accept protected cross-group transf
   await cfdWindow(ui, "Simulations");
   await button(ui, "Clear all").click();
   const confirm = page.getByRole("dialog", { name: "Clear all simulations", exact: true });
+  const frameStyles = await confirm.evaluate(dialog => {
+    const body = dialog.querySelector(".planner-window-body"), copy = body.querySelector("p");
+    return { width: dialog.getBoundingClientRect().width, gutter: parseFloat(getComputedStyle(body).paddingInlineStart), weight: getComputedStyle(copy).fontWeight };
+  });
+  assert.ok(frameStyles.width >= 480 && frameStyles.gutter >= 20);
+  assert.equal(frameStyles.weight, "400");
   await confirm.locator(".popup-content").click({ button: "right" });
   assert.equal(await page.locator(".cfx-context-menu:visible").count(), 0, "Modal text is not a viewer background");
   await button(confirm, "Cancel").click(); assert.equal((await saved()).cfdScenarios.length, 2);
@@ -109,6 +115,22 @@ test("mesh/physics columns follow window width and all phase content remains rea
         await cfdWindow(ui, phase);
         const overflow = await frame(page).locator(".cfx-setup-panel:visible").evaluate(el => el.scrollWidth - el.clientWidth);
         assert.ok(overflow < 3, `${density}/${width}/${phase} overflows by ${overflow}px`);
+        if (phase === "Boundaries") {
+          const tabs = ui.getByRole("tablist", { name: "Boundary setup" });
+          const [conditions, thermal] = await Promise.all(["Conditions", "Thermal"].map(name => tabs.getByRole("tab", { name, exact: true }).boundingBox()));
+          const box = await tabs.boundingBox();
+          assert.ok(Math.abs(conditions.width - thermal.width) < 1);
+          assert.ok(Math.abs(conditions.width + thermal.width - box.width) < 2);
+          const row = ui.locator(".cfx-boundary-row-actions").first();
+          if (await row.isVisible()) {
+            const cells = await row.locator(":scope > button, :scope > details > summary").evaluateAll(nodes => nodes.map(node => {
+              const { y, width } = node.getBoundingClientRect();
+              return { y, width };
+            }));
+            assert.equal(cells.length, 4);
+            assert.ok(cells.every(cell => Math.abs(cell.y - cells[0].y) < 1 && Math.abs(cell.width - cells[0].width) < 1));
+          }
+        }
         if (phase === "Physics") {
           const vectorColumns = await ui.locator(".cfx-physics-fields .cfx-three").first().evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length);
           assert.equal(vectorColumns, 3, "Related X/Y/Z vector components keep their own three-column group");
@@ -123,6 +145,13 @@ test("mesh/physics columns follow window width and all phase content remains rea
 
 test("objects, boundary groups, refinements and review tabs use compact independent editing and preserve shared geometry", async t => {
   const { page, ui, saved } = await open(t, { viewport: { width: 1900, height: 1000 } }, true);
+  const display = ui.getByLabel("CFD patch display");
+  for (const [mode, name] of [["type", "Boundary condition type"], ["value", "Boundary condition value"], ["refinement", "Mesh refinement level"]]) {
+    await display.selectOption(mode);
+    await ui.getByRole("list", { name, exact: true }).waitFor();
+    assert.equal(await ui.locator(".cfx-viewport").getAttribute("data-patch-display"), mode);
+  }
+  await display.selectOption("geometry");
   const source = sourceGeometry(await saved());
   await layout(page, "Maximise window");
   await cfdWindow(ui, "Equipment");

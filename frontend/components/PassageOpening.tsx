@@ -22,7 +22,7 @@ export function PassageReveal({profile,width,height,depth,colour,from=0,to=width
     const result=new BufferGeometry();result.setAttribute("position",new Float32BufferAttribute(positions,3));result.computeVertexNormals();return result;
   },[profile,width,height,depth,from,to]);
   useEffect(()=>()=>geometry.dispose(),[geometry]);
-  return <mesh name="passage-reveal" geometry={geometry} receiveShadow><meshStandardMaterial color={colour} roughness={.86} side={DoubleSide} transparent={transparent} opacity={transparent?.2:1} depthWrite={!transparent}/></mesh>;
+  return <mesh name="passage-reveal" geometry={geometry} receiveShadow><meshStandardMaterial color={colour} roughness={.86} side={DoubleSide} polygonOffset polygonOffsetFactor={1} polygonOffsetUnits={1} transparent={transparent} opacity={transparent?.2:1} depthWrite={!transparent}/></mesh>;
 }
 
 /** Catalogue/asset preview: an open-bottom wall section, never a hidden door leaf. */

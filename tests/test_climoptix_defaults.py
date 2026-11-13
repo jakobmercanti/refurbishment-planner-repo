@@ -28,10 +28,15 @@ def test_default_replaces_invalid_settings_without_modifying_source():
     assert not scenario.boundaries.collections
     assert len(scenario.vents) == 2
     assert len(scenario.outputs.probesMm) == 1
+    assert [(stack.enabled, stack.count) for stack in (scenario.postProcessing.x, scenario.postProcessing.y,
+                                                        scenario.postProcessing.z)] == [(True, 15)] * 3
     assert {v.role for v in scenario.vents} == {"supply", "extract"}
     report = PreparationOnlyProvider().validate_scenario(request.project, scenario, request.clientRevision)
     assert report["validation"]["errors"] == 0
     assert report["surface"]["exportable"]
+    # Fingerprint of this physical setup from the deployed v1 worker compiler.
+    legacy_configuration_hash = "21bcda51077b0759d2f2d67bb377d1810c2f17178ab413b5b18cb393b4948823"
+    assert report["validation"]["configurationHash"] == legacy_configuration_hash
     normals = [v["outwardNormal"] for v in report["vents"]]
     assert sum(a * b for a, b in zip(*normals, strict=True)) < -.999
     assert all(p["boundary"]["thermal"]["type"] == "adiabatic" for p in report["patches"])

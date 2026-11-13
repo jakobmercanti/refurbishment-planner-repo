@@ -29,6 +29,7 @@ def default_setup(project: dict, original: Scenario, revision: str) -> Scenario:
         seed={"floorId": floor_id, "roomId": room_id},
         description="Starter ventilation: opposing inlet/outlet, adiabatic no-slip walls, laminar steady isothermal flow. Source furniture is excluded; add it back deliberately after the baseline run.",
         physics={"turbulence": "laminar", "numerics": {"maxIterations": 2000, "residualTarget": 1e-4, "writeEveryIterations": 50}},
+        postProcessing={axis: {"enabled": True, "count": 15} for axis in ("x", "y", "z")},
         resources={"cpu": 1, "memoryGb": 4, "wallTimeMinutes": 15, "storageGb": 1, "retentionDays": 3},
         boundaries={"groups": {kind: Boundary() for kind in ("wall", "floor", "ceiling", "door", "window", "cap", "slabSide", "object")}},
     )

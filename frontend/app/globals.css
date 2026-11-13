@@ -183,7 +183,7 @@ button { font: inherit; }
 .popup-drag { display: inline-grid; place-items: center; width: 27px; height: 25px; color: var(--muted); }
 .popup-content { min-height:0; overflow:auto; padding: 16px; }
 .popup-titlebar, .popup-actions { flex-shrink:0; }
-.popup-content p { margin: 0; color: var(--ink); font: 550 calc(10px * var(--density-font-scale, 1))/1.55 var(--font-mono); }
+.popup-content p { margin: 0; color: var(--ink); font: var(--window-copy-weight, 400) calc(10px * var(--density-font-scale, 1))/1.55 var(--font-mono); }
 .save-view-format { min-width: 0; }
 .save-view-attribution, .export-attribution-toggle { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--ink); font: 550 calc(9px * var(--density-font-scale, 1))/1.35 var(--font-mono); cursor: pointer; }
 .save-view-attribution { min-height: 32px; align-items: center; padding-block: 8px; }
@@ -2178,7 +2178,7 @@ button:focus-visible, [role="button"]:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
-.floating-toolbar, .popup {
+:is(.planner-window, .floating-toolbar, .popup) {
   border-radius: var(--radius-panel);
   border-color: var(--line);
   box-shadow: 0 14px 34px rgba(20,39,31,.18);
@@ -2189,7 +2189,7 @@ button:focus-visible, [role="button"]:focus-visible {
   gap: 6px;
   padding: 4px 6px;
 }
-.floating-toolbar-titlebar > strong, .popup-titlebar > strong {
+:is(.planner-window-header, .floating-toolbar-titlebar, .popup-titlebar) > strong {
   font: 700 calc(11px * var(--density-font-scale, 1))/1.2 var(--font-sans);
   letter-spacing: .01em;
 }

@@ -29,6 +29,8 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     if (source) hvac?.focusRoom(source); hvac?.setTab("Heating"); hvac?.requestHeating(); onEditSource();
   };
   const groups = objectGroups(scenario, objects), entries = objectEntries(scenario, objects);
+  const removed = objects.filter(object => scenario.hiddenObjectIds?.includes(object.id)
+    && (object.profile || scenario.assetOverrides.some(override => override.objectId === object.id && override.mode !== "none")));
   const [selectedGroup, setSelectedGroup] = useState(DEFAULT_OBJECT_GROUP);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const groupList = useRef<HTMLDetailsElement>(null);
@@ -122,13 +124,13 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
       </CFDReorderList>
     </div>
     </details>
-    {!!scenario.hiddenObjectIds?.length && <details><summary>Removed from this simulation ({scenario.hiddenObjectIds.length})</summary>
-      {scenario.hiddenObjectIds.map(id => <button key={id} onClick={() => onChange({ ...scenario, hiddenObjectIds: scenario.hiddenObjectIds!.filter(value => value !== id) })}>Restore {objects.find(o => o.id === id)?.name ?? id}</button>)}
+    {!!removed.length && <details><summary>Removed from this simulation ({removed.length})</summary>
+      {removed.map(({id, name}) => <button key={id} onClick={() => onChange({ ...scenario, hiddenObjectIds: scenario.hiddenObjectIds!.filter(value => value !== id) })}>Restore {name}</button>)}
     </details>}
     {checked && (scenario.assetOverrides.some(o => !objects.some(obj => obj.id === o.objectId)) || scenario.objectCopies?.some(o => !objects.some(obj => obj.id === o.id))) &&
       <details><summary>Unavailable object inputs</summary>
         {scenario.objectCopies?.filter(o => !objects.some(obj => obj.id === o.id)).map(copy => <button key={copy.id} onClick={() => onChange(deleteObjectEntry(scenario, { id: `object:${copy.id}`, sourceId: copy.id, name: copy.name, type: "object", detail: "" }))}>Delete unavailable copy · {copy.name}</button>)}
-        {scenario.assetOverrides.filter(o => !objects.some(obj => obj.id === o.objectId)).map(override => <button key={override.objectId} onClick={() => onChange({ ...scenario, assetOverrides: scenario.assetOverrides.filter(o => o.objectId !== override.objectId) })}>Remove override · {override.objectId}</button>)}
+        {scenario.assetOverrides.filter(o => !objects.some(obj => obj.id === o.objectId)).map((override, index) => <button key={override.objectId} onClick={() => onChange({ ...scenario, assetOverrides: scenario.assetOverrides.filter(o => o.objectId !== override.objectId) })}>Remove unavailable override {index + 1}</button>)}
       </details>}
     {editing?.type === "object" && <CFDEditorWindow title="Edit CFD object" defaultPosition={{ x: 250, y: 100 }} initialSize={{ width: 620, height: 640 }} maxHeight={850} bringToFront onClose={() => setEditing(null)}
       helpSteps={[{ heading: "Simulation-only objects", text: "Treatments, copies and Delete affect this simulation only. Source furniture and the measured building remain unchanged. Copies reuse measured source dimensions, with separate millimetre offsets; use Offset mm to position them. Preparation reports overlaps and out-of-domain objects. Count multiplies emissions, not geometry. Groups are only organization metadata. Undo restores changes." }]}>

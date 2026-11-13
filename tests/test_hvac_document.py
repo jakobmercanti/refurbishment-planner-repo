@@ -57,6 +57,13 @@ def test_invalid_scenario_flow_and_corrupt_snapshot_are_rejected():
         HvacProject.model_validate(data)
 
 
+@pytest.mark.parametrize("mode", ["airflow", "thermal"])
+def test_binding_keeps_explicit_analysis_mode(mode):
+    data = hvac()
+    data["bindings"]["case-1"]["analysisMode"] = mode
+    assert HvacProject.model_validate(data).bindings["case-1"].analysisMode == mode
+
+
 def test_domain_scope_and_bounded_overrides_match_client_contract():
     data = hvac()
     data["bindings"]["case-1"]["scopeRooms"] = [{"floorId": "ground", "roomId": "room"}]

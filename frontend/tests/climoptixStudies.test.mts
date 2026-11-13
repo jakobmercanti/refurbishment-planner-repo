@@ -288,8 +288,8 @@ test("study rows show only the worker's current-phase progress, never a syntheti
   assert.match(draft, /Not submitted · 0%/);
   assert.doesNotMatch(draft, /indeterminate|cfx-batch|cfx-study-heading/);
   assert.doesNotMatch(draft, /Preparation only|Select for batch/);
-  assert.match(draft, /aria-label="Mesh Office airflow" disabled=""/);
-  assert.match(draft, /aria-label="Run Office airflow" disabled=""/);
+  assert.match(draft, /<button(?=[^>]*aria-label="Mesh Office airflow")(?=[^>]*disabled="")[^>]*>/);
+  assert.match(draft, /<button(?=[^>]*aria-label="Run Office airflow")(?=[^>]*disabled="")[^>]*>/);
   assert.match(draft, new RegExp(`aria-describedby="cfx-study-status-${scenario.id}"`));
 });
 

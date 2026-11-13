@@ -8,7 +8,7 @@ import { FLOOR_PLAN_CANVAS_HEIGHT as HEIGHT, FLOOR_PLAN_CANVAS_WIDTH as WIDTH } 
 import { useServiceView } from "./ServiceViewContext";
 
 export const SERVICE_CONTEXT_COLOUR = "#b8bdbf";
-export const insulationColour = (uValue: number) => `hsl(${135 - Math.min(1, uValue / 2) * 130},60%,42%)`;
+export const insulationColour = (uValue: number) => `hsl(${135 - Math.min(1, uValue / 2) * 130},34%,64%)`;
 
 /** Presentation materials are local to this viewer and retain the model's
  * transparent panes, depth settings and pick geometry. */

@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [switch]$OpenBrowser,
-  [switch]$RestartExisting
+  [switch]$RestartExisting,
+  [switch]$RestartBackend
 )
 
 $ErrorActionPreference = "Stop"
@@ -289,9 +290,12 @@ if (!(Test-Path -LiteralPath (Join-Path $projectRoot "backend\app\main.py"))) {
 
 New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 
-if ($RestartExisting) {
-  Write-Host "Refreshing existing local services..."
+if ($RestartExisting -or $RestartBackend) {
+  Write-Host "Refreshing the local engineering backend..."
   Stop-ExistingService -Port 8000 -Service "backend"
+}
+if ($RestartExisting) {
+  Write-Host "Refreshing the local frontend..."
   Stop-ExistingService -Port $frontendPort -Service "frontend"
 }
 
@@ -312,6 +316,10 @@ if (Test-BackendHealthy) {
     $owner = Get-ProcessDescription $backendListener.OwningProcess
     throw "Port 8000 is already used by $owner, but it is not the Renovation Fit backend. Close that process, then run this launcher again."
   }
+  # Reload the API and geometry compiler together during local development.
+  # Otherwise the browser can hot-reload a new request while Uvicorn still
+  # returns fingerprints from the previous compiler.
+  $backendArguments = @("-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload", "--reload-dir", "backend", "--reload-dir", "geometry")
   if (Test-Path -LiteralPath $venvPython) {
     if (!(Test-BackendPythonEnvironment -PythonPath $venvPython)) {
       $uvPath = Find-CommandPath "uv" @()
@@ -321,10 +329,10 @@ if (Test-BackendHealthy) {
         throw "The local Python environment could not be repaired from uv.lock."
       }
     }
-    $backendProcess = Start-LoggedProcess -FilePath $venvPython -ArgumentList @("-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8000") -WorkingDirectory $projectRoot -OutputLog $backendOutputLog -ErrorLog $backendErrorLog
+    $backendProcess = Start-LoggedProcess -FilePath $venvPython -ArgumentList $backendArguments -WorkingDirectory $projectRoot -OutputLog $backendOutputLog -ErrorLog $backendErrorLog
   } else {
     $uvPath = Find-CommandPath "uv" @()
-    $backendProcess = Start-LoggedProcess -FilePath $uvPath -ArgumentList @("run", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8000") -WorkingDirectory $projectRoot -OutputLog $backendOutputLog -ErrorLog $backendErrorLog
+    $backendProcess = Start-LoggedProcess -FilePath $uvPath -ArgumentList (@("run", "python") + $backendArguments) -WorkingDirectory $projectRoot -OutputLog $backendOutputLog -ErrorLog $backendErrorLog
   }
   Write-Host "Starting backend at http://127.0.0.1:8000"
 }

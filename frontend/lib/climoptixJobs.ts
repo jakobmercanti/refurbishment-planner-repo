@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveHvacScenario, requiresHvacThermalExecution } from "./hvacBridge";
-import type { CFDScenario } from "./climoptixDocument";
+import type { CFDBoundary, CFDScenario } from "./climoptixDocument";
 import type { ProjectDocument } from "./projectDocument";
 import {
   type CFDReport,
@@ -88,6 +88,12 @@ export function workerInput(
   return `${preparationInput(project, scenario)}\nthermal:${applied?.caseHash ?? "none"}:${applied?.sourceRevision ?? "none"}`;
 }
 
+function nativeBoundary(boundary: CFDBoundary): CFDBoundary {
+  return boundary.thermal.sourceFluxWm2 === 0
+    ? { ...boundary, thermal: { ...boundary.thermal, sourceFluxWm2: undefined } }
+    : boundary;
+}
+
 /** Validate a bounded, immutable handoff before any worker submission is allowed. */
 export async function prepareWorkerSubmission(
   apiUrl: string,
@@ -112,7 +118,18 @@ export async function prepareWorkerSubmission(
     : null;
   // Detach only the bounded solver source, not unrelated studies or thermal histories.
   // Do this before the first await, including when a caller mutates its objects.
-  scenario = structuredClone({ ...scenario, thermalSnapshots: undefined, adjointStudies: undefined, boundaries: { ...scenario.boundaries, hideDefaultGroup: undefined } });
+  const { boundaries } = scenario;
+  scenario = structuredClone({
+    ...scenario,
+    thermalSnapshots: undefined,
+    adjointStudies: undefined,
+    sharedBoundaries: scenario.sharedBoundaries ?? undefined,
+    boundaries: {
+      groups: Object.fromEntries(Object.entries(boundaries.groups).map(([kind, boundary]) => [kind, nativeBoundary(boundary)])),
+      patches: Object.fromEntries(Object.entries(boundaries.patches).map(([id, boundary]) => [id, nativeBoundary(boundary)])),
+      collections: boundaries.collections.map(group => group.boundary ? { ...group, boundary: nativeBoundary(group.boundary) } : group),
+    },
+  });
   project = JSON.parse(
     preparationRequestBody(project, scenario, "0".repeat(64)),
   ).project;

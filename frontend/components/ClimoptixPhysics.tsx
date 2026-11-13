@@ -18,7 +18,9 @@ export function PhysicsPanel({
 }) {
   const p = scenario.physics;
   const ctx = useHvac();
-  const linked = !!ctx?.project.hvac?.bindings[scenario.id]?.operatingScenarioId;
+  const binding = ctx?.project.hvac?.bindings[scenario.id];
+  const linked = !!binding?.operatingScenarioId;
+  const airflow = binding?.analysisMode === "airflow";
   const thermalSource = !!ctx && requiresHvacThermalExecution(ctx.project, { ...scenario, sharedBoundaries: undefined });
   return (
     <section data-cfx-collapse-root className="cfx-physics-panel">
@@ -29,7 +31,7 @@ export function PhysicsPanel({
         Physics preset
         <select
           aria-label="Physics preset"
-          disabled={thermalSource}
+          disabled={thermalSource || airflow}
           value={p.preset}
           onChange={(e) =>
             onChange({
@@ -67,10 +69,11 @@ export function PhysicsPanel({
           </select>
         </label>
       </div>
-      {linked && <p className="cfx-notice">Linked HVAC scenario: energy and buoyancy are required. Density, cp, reference room temperature and outdoor temperature edit the same conventional operating conditions. Thermal execution is unavailable on the isothermal worker.</p>}
+      {airflow && <p className="cfx-notice">Airflow study. The worker calculates velocity and pressure from the measured geometry and vent flows. Use Prepare thermal CFD in Heating or Ventilation to capture heat transfer.</p>}
+      {linked && thermalSource && <p className="cfx-notice">Linked HVAC scenario: energy and buoyancy are required. Density, cp, reference room temperature and outdoor temperature edit the same conventional operating conditions. Thermal execution is unavailable on the isothermal worker.</p>}
       {thermalSource && !linked && <p className="cfx-notice">Shared Heating or Insulation conditions require energy and buoyancy. Air properties remain case settings; thermal execution needs a compatible energy adapter.</p>}
-      <Parameters value={p} omit={Object.keys(p).filter(k => !(thermalSource ? ["co2"] : ["energy", "co2", "boussinesq"]).includes(k))}
-        onChange={v => onChange({ ...scenario, physics: { ...v, preset: "custom" } as typeof p })} />
+      {!airflow && <Parameters value={p} omit={Object.keys(p).filter(k => !(thermalSource ? ["co2"] : ["energy", "co2", "boussinesq"]).includes(k))}
+        onChange={v => onChange({ ...scenario, physics: { ...v, preset: "custom" } as typeof p })} />}
       </details>
       {([
         ["Fluid properties", ["densityKgM3", "dynamicViscosityPaS", "heatCapacityJKgK", "conductivityWMK", "prandtl", "expansionPerK"]],

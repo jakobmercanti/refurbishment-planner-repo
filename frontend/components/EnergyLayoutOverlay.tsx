@@ -30,7 +30,7 @@ export function EnergyLayoutOverlay({ labelPortal, rooms, heating, data, selecte
   })).filter(r => r.category === "wall").concat(surfaceCards.map(c => ({ id:c.id,roomId:c.room.id,category:"floor" as const,width:162,height:54,preferred:preview?.id===c.id?toScreen(preview.position):data.labelPositions?.[c.id]?toScreen(data.labelPositions[c.id]):undefined }))) : []);
   function beginDrag(event: React.PointerEvent<SVGElement>, id: string, label: Point2D, selectionIds?: string[]) {
     event.preventDefault(); event.stopPropagation(); if (selectionIds) onSelect(selectionIds); else select(id, event.shiftKey);
-    const start = fromClient(event.clientX, event.clientY, event.currentTarget.ownerSVGElement!);
+    const start = fromClient(event.clientX, event.clientY, event.currentTarget.closest("svg") as SVGSVGElement);
     const position = screenLabelToWorld(label, toScreen);
     drag.current = { id, start, position, preview: position };
     setPreview({ id, position });
@@ -41,7 +41,7 @@ export function EnergyLayoutOverlay({ labelPortal, rooms, heating, data, selecte
   const paintOrder = energyLabelPaintOrder([...labels.filter(({e}) => e.category === "wall").map(({e}) => e.elementId), ...surfaceCards.map(c => c.id)], data.labelPositions, preview?.id);
   return <g data-energy-layer="true" pointerEvents={readOnly ? "none" : undefined} aria-hidden={readOnly || undefined} onPointerMove={event => {
     if (!drag.current) return; event.stopPropagation();
-    const at = fromClient(event.clientX, event.clientY, event.currentTarget.ownerSVGElement!);
+    const at = fromClient(event.clientX, event.clientY, event.target instanceof SVGElement && event.target.ownerSVGElement || event.currentTarget.ownerSVGElement!);
     const position = { x: drag.current.position.x + at.x - drag.current.start.x, y: drag.current.position.y + at.y - drag.current.start.y };
     drag.current.preview = position; setPreview({ id: drag.current.id, position });
   }} onPointerUp={event => {
@@ -65,7 +65,7 @@ export function EnergyLayoutOverlay({ labelPortal, rooms, heating, data, selecte
       return null;
     })}
     {paintOrder.map(id => {
-      const wall = labels.find(({e}) => e.elementId === id && e.category === "wall");
+      const wall = labelPortal ? undefined : labels.find(({e}) => e.elementId === id && e.category === "wall");
       if (wall) {
         const { e, text } = wall, label = positions[id];
         return label ? labelAt(label,<text key={id} data-energy-interactive="true" data-energy-label={id} data-plan-info={`${e.label}\n${text}. Drag to reposition this label freely.`} role={readOnly ? undefined : "button"} tabIndex={readOnly ? -1 : 0} aria-label={`Move insulation label: ${e.label}`} style={{ cursor: "move", touchAction: "none" }} onPointerDown={event => beginDrag(event, id, label)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault();event.stopPropagation();select(id, event.shiftKey); } }} x={label.x} y={label.y + 3} fontSize={8.5} textAnchor="middle" fill="var(--ink,#10243e)" paintOrder="stroke" stroke="var(--surface,#fff)" strokeWidth={2}>{text}</text>) : null;
@@ -74,13 +74,13 @@ export function EnergyLayoutOverlay({ labelPortal, rooms, heating, data, selecte
       const label = positions[card.id]; if (!label) return null;
       const ids = card.rows.map(({e})=>e.elementId), selected = ids.some(id=>selectedIds.includes(id));
       return labelAt(label,<g key={card.id} data-energy-interactive="true" data-energy-label={card.id} data-energy-room-card={card.room.id} transform={`translate(${label.x},${label.y}) scale(${label.width/162})`} role={readOnly ? undefined : "button"} tabIndex={readOnly ? -1 : 0} aria-label={`Move floor and roof insulation: ${card.room.name}`} onPointerDown={event=>beginDrag(event,card.id,label,ids)} onKeyDown={event=>{if(event.key === "Enter" || event.key === " "){event.preventDefault();event.stopPropagation();onSelect(ids);}}} style={{cursor:"move",touchAction:"none"}}>
-        <rect x="-81" y="-27" width="162" height="54" rx="6" fill="var(--surface,#fff)" stroke={selected?"#1b81ef":"#298a31"} strokeWidth={selected?2:1} />
+        <rect x="-81" y="-27" width="162" height="54" rx="6" fill="var(--surface,#fff)" stroke={selected?"#c87524":"#578d58"} strokeWidth={selected?2:1} />
         <text x="0" y="-13" textAnchor="middle" fontSize="9" fontWeight="700" fill="var(--ink,#10243e)">{card.room.name}</text>
         {card.rows.map(({e,value},i)=><g key={e.elementId} data-energy-category={e.category} data-plan-info={`${card.room.name}\n${e.category === "floor" ? "Floor" : "Roof"} heat-loss surface · ${e.areaM2.toFixed(1)} m² · U ${e.uValue.toFixed(3)} · ${Math.round(e.heatLossW)} W. Click the row to edit; drag the table header to move both surfaces.`} role={readOnly ? undefined : "button"} tabIndex={readOnly ? -1 : 0} aria-label={`${e.category === "floor"?"Floor":"Roof"} insulation: ${card.room.name}`} onPointerDown={event=>{event.stopPropagation();select(e.elementId,event.shiftKey);}} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();event.stopPropagation();select(e.elementId,event.shiftKey);}}}>
-          <rect x="-76" y={-6+i*14} width="152" height="13" rx="2" fill={selectedIds.includes(e.elementId)?"#e0efff":"transparent"} />
+          <rect x="-76" y={-6+i*14} width="152" height="13" rx="2" fill={selectedIds.includes(e.elementId)?"#ffe7cc":"transparent"} />
           <text x="0" y={3+i*14} textAnchor="middle" fontSize={Math.min(8,144/((value.length+8)*.54))} fill="var(--ink,#10243e)" pointerEvents="none">{e.category === "floor"?"Floor":"Roof"} · {value}</text>
         </g>)}
-      </g>);
+      </g>, card.id);
     })}
   </g>;
 }

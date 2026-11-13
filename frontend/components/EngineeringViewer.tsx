@@ -283,7 +283,7 @@ function WallPiece({
   outerEnd,
   wallLength,
   colour,
-  bodyColour = DEFAULT_WALL_COLOUR,
+  bodyColour,
   wallMode,
   selected,
   paintOnly = false,
@@ -365,11 +365,11 @@ function WallPiece({
         onPointerDown={onSelect ? (event) => { if (event.button !== 0) return; event.stopPropagation(); onSelect(event.shiftKey || event.ctrlKey || event.metaKey); } : undefined}
       >
         <extrudeGeometry args={[shape, { depth: height * SCALE, bevelEnabled: false }]} />
-        <meshStandardMaterial color={bodyColour} roughness={0.86} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
+        <meshStandardMaterial color={bodyColour ?? DEFAULT_WALL_COLOUR} roughness={0.86} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.2 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
       </mesh>}
       {/* Paint is a thin overlay on the solid wall; shadow mapping it causes
           perspective self-shadow acne along the coplanar wall surfaces. */}
-      <mesh
+      {(!bodyColour || paintOnly || wallMode === "CUTAWAY_2D") && <mesh
         userData={{ serviceOccluder: wallMode !== "TRANSPARENT" }}
         position={[
           innerCentre.x * SCALE - vector.dy * paintOffset,
@@ -383,7 +383,7 @@ function WallPiece({
       >
         <planeGeometry args={[length * SCALE, height * SCALE]} />
         <meshStandardMaterial color={colour} roughness={0.88} metalness={0} emissive={selected ? "#b76d16" : "#000000"} emissiveIntensity={selected ? 0.12 : 0} userData={{ editorSelectionHighlight: selected }} side={THREE.DoubleSide} transparent={wallMode === "TRANSPARENT"} opacity={wallMode === "TRANSPARENT" ? 0.28 : 1} depthWrite={wallMode !== "TRANSPARENT"} />
-      </mesh>
+      </mesh>}
       </>}
     </group>
   );
@@ -402,6 +402,7 @@ function WallWithOpenings({
   selected,
   paintOnly = false,
   thermalColour,
+  onSelectOpening,
   onSelect,
 }: {
   index: number;
@@ -416,6 +417,7 @@ function WallWithOpenings({
   selected: boolean;
   paintOnly?: boolean;
   thermalColour?: string;
+  onSelectOpening?: (id: string) => void;
   onSelect?: (additive: boolean) => void;
 }) {
   const vector = wallVector(start, end);
@@ -441,7 +443,7 @@ function WallWithOpenings({
     const passage=passageProfileForOpening(opening);
     const shoulder=passage?<group position={[(start.x+vector.dx*opening.profileSourceOffsetMm)*SCALE,opening.sill_height_mm*SCALE,-(start.y+vector.dy*opening.profileSourceOffsetMm)*SCALE]} rotation={[0,vector.angle,0]}>
       <PassageSpandrel profile={passage} widthMm={opening.profileSourceWidthMm} heightMm={opening.height.value} fromMm={opening.offset_mm-opening.profileSourceOffsetMm} toMm={opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm} depthMm={thickness} colour={colour} solidColour={thermalColour ?? DEFAULT_WALL_COLOUR} wallMode={wallMode} paintOnly={paintOnly} selected={selected} onSelect={onSelect}/>
-      {!paintOnly&&<group position={[opening.profileSourceWidthMm*SCALE/2,0,0]}><PassageReveal profile={passage} width={opening.profileSourceWidthMm*SCALE} height={opening.height.value*SCALE} depth={thickness*SCALE} from={(opening.offset_mm-opening.profileSourceOffsetMm)*SCALE} to={(opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm)*SCALE} colour={resolvedPartColours({representation_key:typeof opening.metadata?.representation_key==="string"?opening.metadata.representation_key:undefined,color_hex:typeof opening.metadata?.color_hex==="string"?opening.metadata.color_hex:colour,component_colors:componentColoursFromMetadata(opening.metadata)}).reveal??colour} transparent={wallMode==="TRANSPARENT"}/></group>}
+      {!paintOnly&&<group onClick={onSelectOpening ? event => { if(event.button === 0 && event.delta <= 4) { event.stopPropagation(); onSelectOpening(opening.id); } } : undefined} position={[opening.profileSourceWidthMm*SCALE/2,0,0]}><PassageReveal profile={passage} width={opening.profileSourceWidthMm*SCALE} height={opening.height.value*SCALE} depth={thickness*SCALE} from={(opening.offset_mm-opening.profileSourceOffsetMm)*SCALE} to={(opening.offset_mm+opening.width.value-opening.profileSourceOffsetMm)*SCALE} colour={resolvedPartColours({representation_key:typeof opening.metadata?.representation_key==="string"?opening.metadata.representation_key:undefined,color_hex:typeof opening.metadata?.color_hex==="string"?opening.metadata.color_hex:colour,component_colors:componentColoursFromMetadata(opening.metadata)}).reveal??colour} transparent={wallMode==="TRANSPARENT"}/></group>}
     </group>:null;
     pieces.push(
       <WallPiece bodyColour={thermalColour}
@@ -536,7 +538,7 @@ function ExposedFloorCover({floor,above,transparent}:{floor:SceneFloor;above:Sce
   const footprint=useMemo(()=>exposedCover(structuralFloorFootprint(floor.content),structuralFloorFootprint(above.content)),[floor.content,above.content]);
   return <group position={[0,above.elevationMm*SCALE,0]}><TerraceCover footprint={footprint} thickness={above.slabThicknessMm} transparent={transparent}/></group>;
 }
-function PassiveBuildingFloor({floor,above,roof,showRoof,interiorOnly=false,wallMode,toggles}:{floor:SceneFloor;above?:SceneFloor;roof?:RoofConfiguration;showRoof:boolean;interiorOnly?:boolean;wallMode:WallViewMode;toggles:Toggles}) {
+function PassiveBuildingFloor({floor,above,roof,showRoof,interiorOnly=false,wallMode,toggles,insulation=false}:{floor:SceneFloor;above?:SceneFloor;roof?:RoofConfiguration;showRoof:boolean;interiorOnly?:boolean;wallMode:WallViewMode;toggles:Toggles;insulation?:boolean}) {
   const clear=above?above.elevationMm-above.slabThicknessMm-floor.elevationMm:roof&&roof.enabled!==false?minimumRoofHeight(roof):floor.heightMm-floor.slabThicknessMm;
   const rooms=useMemo(()=>floor.content.rooms.map(r=>({...r,wall_height:{...r.wall_height,value:roof&&roof.enabled!==false?minimumRoofHeight(roofForRoom(roof,r.id)):clear}})),[floor.content.rooms,clear,roof]);
   const walls=useMemo(()=>{const solids=rooms.length===1?buildIsolatedRoomWalls(rooms[0]):buildRenderedWalls(rooms);return [...solids,...buildSharedWallFinishFaces(rooms,solids)];},[rooms]);
@@ -545,8 +547,8 @@ function PassiveBuildingFloor({floor,above,roof,showRoof,interiorOnly=false,wall
     <BuildingSlab footprint={footprint} openings={floor.openings} thicknessMm={floor.slabThicknessMm}/>
     {wallMode!=="INVISIBLE"&&walls.map((w,i)=><WallWithOpenings key={i} {...w} wallMode={wallMode} selected={false}/>)}
     <SkirtingBoards walls={walls} wallMode={wallMode} defaultWallColour={DEFAULT_WALL_COLOUR}/>
-    {rooms.map(r=><group key={r.id}><Floor room={r} selected={false} openings={floor.openings} includeSlab={false}/>{r.openings.map(o=><OpeningFixture key={o.id} room={r} opening={o} selected={false}/>)}{toggles.elements&&r.obstacles.map(o=><FixtureMesh key={o.id} obstacle={o} selected={false}/>)}{toggles.person&&r.person_mockup?.enabled&&<PersonMesh person={r.person_mockup} showClearance={false} collision={false} selected={false}/>}</group>)}
-    <LocalAssetScene instances={floor.content.assetInstances}/>
+    {rooms.map(r=><group key={r.id}><Floor room={r} selected={false} openings={floor.openings} includeSlab={false}/>{r.openings.map(o=><OpeningFixture key={o.id} room={r} opening={o} selected={false}/>)}{toggles.elements&&r.obstacles.filter(item=>!insulation||isHeatingElement(item)).map(o=><FixtureMesh key={o.id} obstacle={o} selected={false}/>)}{!insulation&&toggles.person&&r.person_mockup?.enabled&&<PersonMesh person={r.person_mockup} showClearance={false} collision={false} selected={false}/>}</group>)}
+    {!insulation&&<LocalAssetScene instances={floor.content.assetInstances}/>}
     {showRoof&&roof&&roof.enabled!==false&&<CombinedBuildingRoof content={floor.content} roof={roof} interiorOnly={interiorOnly} transparent={wallMode==="TRANSPARENT"}/>}
     {showRoof&&interiorOnly&&(above||roof?.enabled===false)&&<InternalFloorCeiling footprint={above ? subtractVoids(footprint,above.openings) : footprint} heightMm={clear} transparent={wallMode==="TRANSPARENT"}/>}
   </group>{showRoof&&!interiorOnly&&above&&<ExposedFloorCover floor={floor} above={above} transparent={wallMode==="TRANSPARENT"}/>}</>;
@@ -621,7 +623,7 @@ function Floor({ room, selected, onSelect, openings, slabThicknessMm = 10, inclu
   return (
     <group>
       {includeSlab&&<BuildingSlab footprint={structuralFloorFootprint({rooms:[room],floorplan:null,assetInstances:[]})} openings={openings??[]} thicknessMm={slabThicknessMm}/>}
-      <mesh name={`floor:${room.id}`} geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onClick={onSelect ? (event) => { if (event.delta > 4) return; event.stopPropagation(); onSelect(event.shiftKey || event.ctrlKey || event.metaKey); } : undefined}>
+      <mesh name={`floor:${room.id}`} geometry={floorGeometry} position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onClick={onSelect ? (event) => { if (event.button !== 0 || event.delta > 4) return; event.stopPropagation(); onSelect(event.shiftKey || event.ctrlKey || event.metaKey); } : undefined}>
         {thermalColour ? <meshStandardMaterial color={thermalColour} roughness={.85} side={THREE.DoubleSide} /> : swatch ? <ProceduralFloorMaterial url={swatch.url} selected={selected} roughness={design && !design.pattern.startsWith("wood-") ? ({ polished: .18, gloss: .12, satin: .4, honed: .6, matt: .8, textured: .95, rustic: .9, tumbled: .9 }[TILE_MATERIALS.find((tile) => tile.id === design.tile_material_id)?.finish ?? "matt"] ?? .78) : .78} /> : renderedTile ? (
           <shaderMaterial
             uniforms={tileUniforms}
@@ -787,7 +789,7 @@ function faceOutline(width: number, bottom: number, height: number, z: number): 
   return [[-half,bottom,z],[-half,bottom+height,z],[half,bottom+height,z],[half,bottom,z],[-half,bottom,z]];
 }
 
-function OpeningFixture({ room, opening, selected, onPointerDown, onClick, tint, outline }: { room: Room; opening: Opening; selected: boolean; onPointerDown?: (event: ThreeEvent<PointerEvent>) => void; onClick?: (event: ThreeEvent<MouseEvent>) => void; tint?: string; outline?: string }) {
+function OpeningFixture({ room, opening, selected, onPointerDown, onClick, tint, pickPassage = true }: { room: Room; opening: Opening; selected: boolean; onPointerDown?: (event: ThreeEvent<PointerEvent>) => void; onClick?: (event: ThreeEvent<MouseEvent>) => void; tint?: string; pickPassage?: boolean }) {
   const wallIndex = Number(opening.parent_wall_id.split("-")[1]) - 1;
   const start = room.vertices[wallIndex];
   const end = room.vertices[(wallIndex + 1) % room.vertices.length];
@@ -812,13 +814,13 @@ function OpeningFixture({ room, opening, selected, onPointerDown, onClick, tint,
   const openingRotation = windowProjection && signedPolygonArea(room.vertices) >= 0 ? vector.angle + Math.PI : vector.angle;
   const outlineDepth = windowProjection ? [-windowDepth * .94 - .008, depth / 2 + .008] : [-depth / 2 - .008, depth / 2 + .008];
   return <group name={`opening:${opening.id}`} position={[centre.x * SCALE, 0, -centre.y * SCALE]} rotation={[0, openingRotation, 0]} onPointerDown={onPointerDown} onClick={onClick}>
-    {(selected || outline) && <group name="Opening outline" userData={{ editorOnly: true }}>
+    {selected && <group name="Opening outline" userData={{ editorOnly: true }}>
       {outlineDepth.map(z => <Line key={z} points={passage
         ? [[-width/2,sill,z], ...passageTopPoints(passage,width,height).map(p=>[p.x-width/2,sill+p.y,z] as VectorTuple), [width/2,sill,z], [-width/2,sill,z]]
-        : faceOutline(width, sill, height, z)} color={selected ? "#f08220" : outline!} lineWidth={selected ? 3 : 2} raycast={DISABLED_MESH_RAYCAST} />)}
+        : faceOutline(width, sill, height, z)} color="#f08220" lineWidth={3} raycast={DISABLED_MESH_RAYCAST} />)}
     </group>}
     <ServiceObjectTint colour={tint} revision={opening}>
-    {passage ? <group position={[0,sill,wallThickness(room,wallIndex)*SCALE/2]}><PassageHitArea profile={passage} width={width} height={height}/></group> : opening.kind === "DOOR" ? (
+    {passage ? pickPassage && <group position={[0,sill,wallThickness(room,wallIndex)*SCALE/2]}><PassageHitArea profile={passage} width={width} height={height}/></group> : opening.kind === "DOOR" ? (
       <group position={[0, sill, 0]} scale={[opening.hinge_side === "END" ? -1 : 1, 1, 1]}><DoorFixture colours={resolvedPartColours({ representation_key: doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type), color_hex: doorColour, component_colors: componentColoursFromMetadata(opening.metadata) })} representation={doorRepresentation(typeof opening.metadata?.representation_key === "string" ? opening.metadata.representation_key : undefined, opening.door_type)} width={width} depth={depth} height={height} colour={doorColour} frame /></group>
     ) : <group position={[0, sill, windowProjection ? -windowDepth * .44 : 0]}>
       <WindowFixture colours={resolvedPartColours({ representation_key: windowKey, color_hex: typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE", component_colors: componentColoursFromMetadata(opening.metadata) })} representation={windowKey} width={width} height={height} depth={windowDepth} colour={typeof opening.metadata?.color_hex === "string" ? opening.metadata.color_hex : "#F4F3EE"} />
@@ -1491,7 +1493,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
   const hvac = useHvac();
   const ventilationActive = heating.windowOpen && hvac?.tab === "Ventilation" && !energy.windowOpen;
   const heatingActive = heating.windowOpen && !ventilationActive && !energy.windowOpen;
-  const contextColour = ventilationActive || energy.windowOpen ? SERVICE_CONTEXT_COLOUR : undefined;
+  const contextColour = ventilationActive ? SERVICE_CONTEXT_COLOUR : undefined;
   const [previewObstacles, setPreviewObstacles] = useState<Record<string, Obstacle>>({});
   const [openingDragging, setOpeningDragging] = useState(false);
   const [openingPreview, setOpeningPreview] = useState<ServiceOpeningMove | null>(null);
@@ -1562,13 +1564,21 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
     onSelectionChange(null);
     serviceView?.setEnergySelection(ids => additive ? ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id] : [id]);
   };
-  const fabricColour = (element: (typeof fabricElements)[number]) => energy.windowOpen && serviceView?.energySelection.includes(element.elementId) ? "#1b81ef" : insulationColour(element.uValue);
+  const fabricSelected = (id?: string) => Boolean(id && energy.windowOpen && serviceView?.energySelection.includes(id));
+  const fabricColour = (element: (typeof fabricElements)[number]) => fabricSelected(element.elementId) ? "#eab078" : insulationColour(element.uValue);
   const openingRooms = useMemo(() => openingPreview ? renderedRooms.map(item => {
     const next = openingPreview.byRoom.get(item.id);
     if (!next && !item.openings.some(opening => opening.id === openingPreview.id)) return item;
     const remaining = item.openings.filter(opening => opening.id !== openingPreview.id);
     return { ...item, openings: next ? [...remaining, next] : remaining };
   }) : renderedRooms, [openingPreview, renderedRooms]);
+  const openingOwners = useMemo(() => {
+    const owners = new Map<string, string>();
+    for (const room of openingRooms) {
+      for (const opening of room.openings) if (!owners.has(opening.id)) owners.set(opening.id, room.id);
+    }
+    return owners;
+  }, [openingRooms]);
   const renderedWalls = useMemo<RenderedWall[]>(
     () => {
       if (openingRooms.length === 1) return buildIsolatedRoomWalls(openingRooms[0]);
@@ -1821,13 +1831,25 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
             capEnd={capEnd}
             paintOnly={paintOnly}
             thermalColour={thermalColour}
+            onSelectOpening={sceneInteractive && energy.windowOpen && energy.data.display.openings ? id => selectFabric(wallRoom.id + "|opening:" + id, false) : undefined}
             wallMode={wallMode}
-            selected={sceneInteractive && selection?.type === "WALL" && selection.roomId === wallRoom.id && selection.ids.includes(wallId(index))}
+            selected={sceneInteractive && (energy.windowOpen ? Boolean(fabric && fabricSelected(fabric.elementId)) : selection?.type === "WALL" && selection.roomId === wallRoom.id && selection.ids.includes(wallId(index)))}
             onSelect={sceneInteractive && !ventilationActive && !placement ? (additive) => { if (energy.windowOpen) { if (fabric) selectFabric(fabric.elementId, additive); } else selectWall(wallRoom.id, wallId(index), additive); } : undefined}
           />
         );
       })}
       <ServiceObjectTint colour={contextColour} revision={renderedWalls}><SkirtingBoards walls={renderedWalls} wallMode={wallMode} defaultWallColour={DEFAULT_WALL_COLOUR} /></ServiceObjectTint>
+      {energy.windowOpen && energy.data.display.walls && energy.data.display.labels && fabricElements.map(element => {
+        const room = openingRooms.find(item => item.id === element.roomId);
+        if (element.category !== "wall" || !room || !element.startMm || !element.endMm) return null;
+        const { startMm, endMm } = element;
+        return <Html key={element.elementId} position={[(startMm.x + endMm.x) * SCALE / 2, room.wall_height.value * SCALE / 2, -(startMm.y + endMm.y) * SCALE / 2]} center zIndexRange={[8, 1]} style={{ pointerEvents: "none" }}>
+          <button type="button" className="insulation-wall-label" onPointerDown={event => event.stopPropagation()}
+            onClick={event => { event.stopPropagation(); selectFabric(element.elementId, event.shiftKey || event.ctrlKey || event.metaKey); }}>
+            U {element.uValue.toFixed(2)}{energy.data.display.heatLoss && " · " + Math.round(element.heatLossW) + " W"}
+          </button>
+        </Html>;
+      })}
       {openingRooms.map((sceneRoom) => {
         const sceneInteractive = selectedCameraRigHandle === null && (multiRoom || sceneRoom.id === room.id);
         const sceneObstacles = sceneRoom.id === room.id ? displayedObstacles : sceneRoom.obstacles.map((obstacle) => previewObstacles[obstacle.id] ?? obstacle);
@@ -1837,22 +1859,22 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
           <group key={`room-${sceneRoom.id}`}>
             <Floor room={sceneRoom} openings={currentFloor?.openings} includeSlab={!currentFloor}
               thermalColour={floorFabric ? fabricColour(floorFabric) : contextColour}
-              selected={!energy.windowOpen && sceneInteractive && selection?.type === "FLOOR" && selection.roomId === sceneRoom.id}
+              selected={sceneInteractive && (energy.windowOpen ? Boolean(floorFabric && fabricSelected(floorFabric.elementId)) : selection?.type === "FLOOR" && selection.roomId === sceneRoom.id)}
               onSelect={sceneInteractive && !ventilationActive && !placement ? additive => {
                 if (energy.windowOpen) { if (floorFabric) selectFabric(floorFabric.elementId, additive); }
                 else onSelectionChange({ type: "FLOOR", roomId: sceneRoom.id });
               } : undefined} />
-            {sceneRoom.openings.map((opening) => {
+            {sceneRoom.openings.filter(opening => !energy.windowOpen || openingOwners.get(opening.id) === sceneRoom.id).map((opening) => {
               const id = `${sceneRoom.id}|opening:${opening.id}`;
               const openingFabric = energy.windowOpen && energy.data.display.openings && (fabricElements.some(item => item.elementId === id) || passages.some(item => item.elementId === id));
               const energySelected = openingFabric && serviceView?.energySelection.includes(id);
               return <OpeningFixture key={opening.id} room={sceneRoom} opening={opening} tint={contextColour}
-                outline={openingFabric ? energySelected ? "#1b81ef" : "#2277ae" : undefined}
-                selected={!contextColour && selection?.type === "OPENING" && selection.id === opening.id && (openingPreview?.id === opening.id || selection.roomId === sceneRoom.id)}
-                onPointerDown={sceneInteractive && !contextColour ? event => startOpeningDrag(event, sceneRoom, opening) : undefined}
+                pickPassage={!energy.windowOpen}
+                selected={Boolean(energySelected) || !contextColour && !energy.windowOpen && selection?.type === "OPENING" && selection.id === opening.id && (openingPreview?.id === opening.id || selection.roomId === sceneRoom.id)}
+                onPointerDown={sceneInteractive && !contextColour && !energy.windowOpen ? event => startOpeningDrag(event, sceneRoom, opening) : undefined}
                 onClick={sceneInteractive && openingFabric ? event => { if (event.delta > 4 || event.button !== 0) return; event.stopPropagation(); selectFabric(id, event.shiftKey || event.ctrlKey || event.metaKey); } : undefined} />;
             })}
-            {toggles.elements && sceneObstacles.map((obstacle) => (
+            {toggles.elements && sceneObstacles.filter(item => !energy.windowOpen || isHeatingElement(item)).map((obstacle) => (
               <FixtureMesh
                 key={`${sceneRoom.id}-${obstacle.id}`}
                 obstacle={obstacle}
@@ -1865,12 +1887,12 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
                 onPointerUp={sceneInteractive && !contextColour ? (event) => endDrag(event, sceneRoom, obstacle) : undefined}
               />
             ))}
-            {toggles.openingImprints && !contextColour && <group userData={{ editorOnly: true }}>
+            {toggles.openingImprints && !contextColour && !energy.windowOpen && <group userData={{ editorOnly: true }}>
               {sceneRoom.openings.map((opening) => <OpeningImprint key={`imprint-${sceneRoom.id}-${opening.id}`} room={sceneRoom} opening={opening} />)}
               {sceneRoom.openings.filter((item) => item.kind === "DOOR").map((door) => <DoorSwing key={`swing-${sceneRoom.id}-${door.id}`} room={sceneRoom} door={door} />)}
             </group>}
-            {toggles.person && scenePerson?.enabled && <ServiceObjectTint colour={contextColour} revision={scenePerson}><PersonMesh person={scenePerson} showClearance={!contextColour && toggles.clearance && scenePerson.show_clearance !== false} collision={collisionIds.includes(scenePerson.id)} selected={!contextColour && sceneInteractive && selection?.type === "PERSON" && selection.roomId === sceneRoom.id} onPointerDown={sceneInteractive && !contextColour ? (event) => startPersonDrag(event, sceneRoom, scenePerson) : undefined} onPointerMove={sceneInteractive && !contextColour ? (event) => movePersonDrag(event, sceneRoom, scenePerson) : undefined} onPointerUp={sceneInteractive && !contextColour ? (event) => endPersonDrag(event, sceneRoom, scenePerson) : undefined} /></ServiceObjectTint>}
-            {toggles.collisions && <group userData={{ editorOnly: true }}>{sceneRoom.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
+            {!energy.windowOpen && toggles.person && scenePerson?.enabled && <ServiceObjectTint colour={contextColour} revision={scenePerson}><PersonMesh person={scenePerson} showClearance={!contextColour && toggles.clearance && scenePerson.show_clearance !== false} collision={collisionIds.includes(scenePerson.id)} selected={!contextColour && sceneInteractive && selection?.type === "PERSON" && selection.roomId === sceneRoom.id} onPointerDown={sceneInteractive && !contextColour ? (event) => startPersonDrag(event, sceneRoom, scenePerson) : undefined} onPointerMove={sceneInteractive && !contextColour ? (event) => movePersonDrag(event, sceneRoom, scenePerson) : undefined} onPointerUp={sceneInteractive && !contextColour ? (event) => endPersonDrag(event, sceneRoom, scenePerson) : undefined} /></ServiceObjectTint>}
+            {!energy.windowOpen && toggles.collisions && <group userData={{ editorOnly: true }}>{sceneRoom.obstacles.filter((item) => collisionIds.includes(item.id)).map((obstacle) => (
               <mesh key={`collision-${sceneRoom.id}-${obstacle.id}`} position={[obstacle.center.x * SCALE, 0.9, -obstacle.center.y * SCALE]}>
                 <sphereGeometry args={[0.11, 24, 24]} />
                 <meshStandardMaterial color="#ff2d2d" emissive="#ff2d2d" emissiveIntensity={1.2} />
@@ -1880,7 +1902,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
         );
       })}
       {currentFloor&&<ServiceObjectTint colour={contextColour} revision={activeFootprint}><BuildingSlab footprint={activeFootprint} openings={currentFloor.openings} thicknessMm={currentFloor.slabThicknessMm}/></ServiceObjectTint>}
-      <ServiceObjectTint colour={contextColour} revision={assetInstances} dynamic={Boolean(assetInstances?.length)}><LocalAssetScene instances={assetInstances??[]}/></ServiceObjectTint>
+      {!energy.windowOpen && <ServiceObjectTint colour={contextColour} revision={assetInstances} dynamic={Boolean(assetInstances?.length)}><LocalAssetScene instances={assetInstances??[]}/></ServiceObjectTint>}
       {showRoof && <group onClick={energy.windowOpen ? selectRoof : undefined}>
         {interiorOnly && (above || buildingRoof?.enabled === false) && <ServiceObjectTint colour={roofColour()} revision={activeFootprint}><InternalFloorCeiling footprint={above ? subtractVoids(activeFootprint,above.openings) : activeFootprint} heightMm={clearHeight??room.wall_height.value} transparent={wallMode==="TRANSPARENT"}/></ServiceObjectTint>}
         {currentFloor && currentFloor.id === topFloor?.id && buildingRoof?.enabled !== false && buildingRoof &&
@@ -1889,7 +1911,7 @@ function Scene({ buildingProject, buildingView, roofPreview, assetInstances, pla
       {showGrid && <group userData={{ editorOnly: true }}><Grid position={[roomTarget[0], -0.002, roomTarget[2]]} args={[8, 8]} cellSize={0.1} cellThickness={0.4} cellColor="#a9b1ac" sectionSize={1} sectionColor="#65706a" fadeDistance={9} /></group>}
       {placement && <group userData={{ editorOnly: true }}><PlacementCursor elevationMm={elevationMm} key={placement.id} request={placement} rooms={renderedRooms} walls={placementWalls} onCommit={candidate => { onCommitPlacement?.(candidate); if (!placement.opening && candidate.roomId) onSelectionChange({type:"ELEMENT",id:candidate.obstacle.id,roomId:candidate.roomId}); }} onCancel={onCancelPlacement} onPreviewCandidate={setPreviewPlacementCandidate} /></group>}
       </group>
-      {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><ServiceObjectTint key={f.id} colour={contextColour} revision={f}><PassiveBuildingFloor floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} interiorOnly={interiorOnly} wallMode={wallMode} toggles={toggles}/></ServiceObjectTint>)}
+      {visibleFloors.filter(f=>f.id!==currentFloor?.id).map(f=><ServiceObjectTint key={f.id} colour={contextColour} revision={f}><PassiveBuildingFloor floor={f} above={floors[floors.findIndex(x=>x.id===f.id)+1]} roof={f.id===topFloor?.id?buildingRoof:undefined} showRoof={showRoof} interiorOnly={interiorOnly} wallMode={wallMode} toggles={toggles} insulation={energy.windowOpen}/></ServiceObjectTint>)}
       {showRoof&&!interiorOnly&&currentFloor&&above&&<group onClick={energy.windowOpen ? selectRoof : undefined}><ServiceObjectTint colour={roofColour()} revision={activeFootprint}><ExposedFloorCover floor={floors.find(f=>f.id===currentFloor.id)!} above={above} transparent={wallMode==="TRANSPARENT"}/></ServiceObjectTint></group>}
       {wholeView&&<mesh rotation={[-Math.PI/2,0,0]} position={[roomTarget[0],sceneBounds.minZ*SCALE-.002,roomTarget[2]]} receiveShadow raycast={DISABLED_MESH_RAYCAST} userData={{buildingPresentation:true}}><planeGeometry args={[Math.max(20,roomSpan[0]*4),Math.max(20,roomSpan[2]*4)]}/><shadowMaterial transparent opacity={.18} depthWrite={false}/></mesh>}
       <ServiceFloorLayer elevationMm={elevationMm} />

@@ -509,6 +509,11 @@ export const cfdScenariosSchema = z
     if (new Set(s.map((v) => v.id)).size !== s.length)
       c.addIssue({ code: "custom", message: "Scenario IDs must be unique." });
   });
+export function defaultSamplingPlanes() {
+  const stack = () => ({ enabled: true, count: 15 });
+  return { x: stack(), y: stack(), z: stack() };
+}
+
 export function newCFDScenario(
   projectId: string,
   name = "Ventilation study",
@@ -537,6 +542,7 @@ export function duplicateCFDScenario(s: CFDScenario): CFDScenario {
     updatedAt: now,
     archived: false,
     validation: null,
+    postProcessing: postProcessingSchema.parse(defaultSamplingPlanes()),
   };
 }
 export function physicsPreset(

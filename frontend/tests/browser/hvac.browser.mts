@@ -68,7 +68,8 @@ test("real preflight opens exact shared CFD case; CFD permanent and operating ed
   await enter(vent, "Volume flow (L/s)", 100);
   await vent.getByRole("button", { name: "Done", exact: true }).click();
   await eventually(s.saved, p => p.hvac.devices[0]?.vent.host.patchId !== "unassigned");
-  await panel.getByRole("button", { name: "Evaluate in CFD", exact: true }).click();
+  await panel.locator("summary").filter({ hasText: "Advanced & validation" }).click();
+  await panel.getByRole("button", { name: "Prepare thermal CFD", exact: true }).click();
   const ui = s.page.getByRole("region", { name: "Climoptix CFD workspace", exact: true });
   const shared = ui.getByLabel("Shared HVAC devices", { exact: true }); await shared.waitFor();
   let saved = await eventually(s.saved, p => p.hvac.snapshots.length === 1); const caseId = saved.hvac.snapshots[0].caseId;

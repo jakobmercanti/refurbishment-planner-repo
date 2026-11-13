@@ -152,6 +152,37 @@ test("ventilation and insulation keep the camera responsive and insulation picks
   await insulation.getByRole("button", { name: "Define roof layers", exact: true }).waitFor();
 });
 
+test("insulation lets a floor be picked through a doorless opening", async t => {
+  const project = fixture();
+  project.floorplan.openings = [{ id: "passage", kind: "DOOR", wallId: "wall-a", segmentIndex: 0,
+    offset: 1350, width: 1300, height: 2100, sill: 0, hingeSide: "START", doorType: "SINGLE",
+    opensInward: true, representationKey: "door-opening-chamfered" }];
+  project.building = defaultBuilding(project);
+  project.building.roof.enabled = false;
+  const s = await harness.session(parseProject(project)); t.after(() => s.close());
+  const { page } = s;
+  await watchViewer(page);
+  await menu(page, "Tools", "Energy & Insulation");
+  const panel = page.locator(".energy-layout-window");
+  await minimise(panel, "Energy & Insulation");
+  await walls(page, "Solid walls");
+  await aim(page, [2, 1.7, 1.8], [2, 0, -1.2]);
+  const floor = await scenePoint(page, [2, 0, -1.2]);
+  await page.mouse.click(floor.x, floor.y);
+  await restore(page, "Energy & Insulation");
+  await panel.getByRole("button", { name: "Define floor layers", exact: true }).waitFor();
+  const card = page.locator('[data-energy-room-card="room-a"]');
+  assert.equal(await card.locator('[data-energy-category="floor"] rect').getAttribute("fill"), "#ffe7cc");
+  await minimise(panel, "Energy & Insulation");
+  const title = card.getByText("Studio", { exact: true });
+  const box = await title.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 45, box.y + box.height / 2 + 24, { steps: 8 });
+  await page.mouse.up();
+  await eventually(s.saved, p => Boolean(p.energyLayout.labelPositions?.["room-a|surfaces"]));
+});
+
 test("3D openings retain a visible outline while dragging and persist the measured wall position", async t => {
   const project = fixture();
   project.floorplan.openings = [{ id: "test-window", kind: "WINDOW", wallId: "wall-a", segmentIndex: 0, offset: 800, width: 700, height: 850, sill: 950, hingeSide: "START", doorType: "SINGLE", opensInward: true }];
@@ -266,11 +297,18 @@ test("3D insulation selects real walls, uses the same U and W values, and applie
   const source = fixture(), s = await harness.session(source); t.after(() => s.close()); const { page } = s;
   await enter3D(page); await menu(page, "Tools", "Energy & Insulation"); const panel = page.locator(".energy-layout-window"); await panel.waitFor();
   await minimise(panel, "Energy & Insulation"); await walls(page, "Invisible walls");
-  const label = page.getByLabel("Service labels",{exact:true}).locator("text[data-energy-label]").filter({ visible: true }).first(); await label.waitFor();
+  const label = page.locator(".insulation-wall-label").filter({ visible: true }).first(); await label.waitFor();
   const labelText = await label.textContent();
   assert.match(labelText, /U [\d.]+ · \d+ W/);
   assert.ok(energyElements(source.rooms, source.heatingLayout, source.energyLayout).some(e => labelText.includes(`${Math.round(e.heatLossW)} W`) && labelText.includes(e.uValue.toFixed(2))), "3D labels must use the same authoritative values as the plan");
   await label.click(); await restore(page, "Energy & Insulation");
+  const heading = panel.getByLabel("Move Energy & Insulation", { exact: true });
+  const bounds = await heading.boundingBox();
+  await page.mouse.move(bounds.x + 100, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + 145, bounds.y + bounds.height / 2 + 30, { steps: 8 });
+  await page.mouse.up();
+  assert.ok(Math.abs((await heading.boundingBox()).y - bounds.y) > 10);
   await panel.getByRole("button", { name: "Define wall layers", exact: true }).click();
   const editor = page.locator(".wall-layers-popup"), before = await eventually(s.saved, p => p.energyLayout.enabled);
   await editor.getByRole("button", { name: "Add layer", exact: true }).click(); await editor.getByRole("button", { name: "Cancel", exact: true }).click();
