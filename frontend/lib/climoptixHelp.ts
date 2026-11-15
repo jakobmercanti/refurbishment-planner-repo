@@ -365,7 +365,7 @@ export const CFD_WORKBENCH_HELP = [
   },
   {
     heading: "Prepare, inspect, export",
-    text: "Choose global mesh settings in Domain, add equipment in Objects, organize coloured surface groups in Bounds and review Physics. Solver contains Mesh, Run, Monitor and Post. Use Refresh checks in the Simulation setup title bar to retry preparation. Preparation and Foamlib settings exports contain configuration for solver handoff. Worker submission performs its own preflight.",
+    text: "Open Domain in Solver → Mesh to choose the connected air volume. Add equipment under Bounds → Objects and group surfaces under Bounds → Conditions. Solver contains Mesh, Run, Monitor, Post and Optimisation. Refresh checks in the title bar retries geometry preparation. Worker submission performs its own preflight.",
   },
   {
     heading: "No simulated results",

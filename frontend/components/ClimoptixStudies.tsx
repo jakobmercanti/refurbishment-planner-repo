@@ -28,7 +28,7 @@ function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
 }
 
 export function ClimoptixStudies({ project, scenarios, scenario, showArchived, onShowArchived, onSelect,
-  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onUndo, onRedo, canUndo, canRedo,
+  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onOpenResults, onUndo, onRedo, canUndo, canRedo,
 }: {
   project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
   onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
@@ -41,6 +41,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   onImport: (f: File) => void;
   entries: Record<string, CFDJobEntry>; worker: CFDWorkerAdapter | null;
   onSubmit: (operation: CFDOperation, studies: CFDScenario[]) => void;
+  onOpenResults: (studyId: string, jobId?: string) => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
 }) {
   const visible = scenarios.filter(s => showArchived || !s.archived);
@@ -124,6 +125,20 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
               {s => {
                 const entry = entries[s.id], job = entry?.job;
                 const stale = !!job && entry.input !== workerInput(project, s);
+                const operation = job?.operation ?? entry?.operation;
+                const currentJob = stale ? undefined : job;
+                const checkedMesh = !!currentJob && ["Running", "Postprocess", "Completed"].includes(currentJob.phase);
+                const solved = !!currentJob && operation === "run" && ["Postprocess", "Completed"].includes(currentJob.phase);
+                const posted = solved && currentJob?.phase === "Completed";
+                const working = !stale && busy(s);
+                const nextOperation = entry?.dispatched ? entry.operation
+                  : posted ? undefined : checkedMesh || currentJob && operation === "run" ? "run" : "mesh";
+                const showResults = job?.phase === "Completed" && operation === "run";
+                const stages = [
+                  { label: "Mesh", state: checkedMesh ? "completed" : working ? "running" : "pending" },
+                  { label: "Run", state: solved ? "completed" : currentJob?.phase === "Running" ? "running" : "pending" },
+                  { label: "Post", state: posted ? "completed" : currentJob?.phase === "Postprocess" ? "running" : "pending" },
+                ];
                 const phase = entry?.submitting ? "Checking & submitting…" : job ? `${job.phase}${stale ? " · older setup" : ""}` : entry?.dispatched ? "Submission status unknown" : "Not submitted";
                 const checkConfiguration = (operation: CFDOperation) => entry?.dispatched ? undefined : workerConfigurationIssue(project, s, worker, operation);
                 const configurationIssue = checkConfiguration("run");
@@ -134,6 +149,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                   !worker?.capabilities.connected ? worker?.capabilities.reason || "Connect an OpenFOAM worker to submit this simulation" :
                   entry?.dispatched ? undefined :
                   !worker.capabilities[operation] ? worker.capabilities.reason || `This worker does not support ${operation}` : operation === "run" ? configurationIssue : checkConfiguration(operation);
+                const blocked = nextOperation ? reason(nextOperation) : undefined;
                 return <article className={`cfx-study-row${s.id === scenario?.id ? " selected" : ""}`}>
                   {renaming === s.id ? <InlineName key={s.id} value={s.name} label="Simulation name" onCommit={name => onChange({ ...s, name }, true)} onDone={() => setRenaming(null)} /> :
                     <button className="cfx-study-name" aria-label={`Select ${s.name}`} aria-pressed={s.id === scenario?.id}
@@ -141,19 +157,21 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       <strong>{s.name}</strong><small id={`cfx-study-status-${s.id}`}>{s.archived ? "Archived · " : ""}{hasIssues ? "Issues · see top panel" : phase}</small>
                     </button>}
                   <div className="cfx-study-actions">
-                    {(["mesh", "run"] as const).map(operation => {
-                      const blocked = reason(operation);
-                      const help = operation === "mesh" ? "Generate and check the mesh for this study using its measured geometry and mesh settings."
-                        : "Check this study and submit its mesh and solver settings to the connected CFD worker.";
-                      return <button key={operation}
-                        aria-label={`${operation === "mesh" ? "Mesh" : "Run"} ${s.name}`} data-field-help={blocked ?? help}
-                        disabled={!!blocked} title={blocked} onClick={() => onSubmit(operation, [s])}>
-                        {operation === "mesh" ? "Mesh" : "Run"}</button>;
-                    })}
+                    {nextOperation && <button
+                      aria-label={`${nextOperation === "mesh" ? "Mesh" : "Run"} ${s.name}`}
+                      data-field-help={blocked ?? (nextOperation === "mesh"
+                        ? "Generate and check the mesh for this study."
+                        : "Run the solver and generate the configured post-processing results in one submission.")}
+                      disabled={!!blocked} title={blocked} onClick={() => onSubmit(nextOperation, [s])}>
+                      {nextOperation === "mesh" ? "Mesh" : "Run"}</button>}
                     <button aria-label={`Delete ${s.name}`} className="cfx-danger" disabled={busy(s) || entry?.dispatched}
                       title={entry?.dispatched ? "Recover the previous submission before deleting this simulation" : undefined} onClick={e => onDelete(s.id, e.currentTarget)}>Delete</button>
                   </div>
                   <CFDRowMenu label={`Actions for ${s.name}`}>
+                    {showResults && <>
+                      <button onClick={event => { event.currentTarget.closest("details")!.open = false; onOpenResults(s.id); }}>View results</button>
+                      <button onClick={event => { event.currentTarget.closest("details")!.open = false; onOpenResults(s.id,job.id); }}>Load post-processing plane in 3D</button>
+                    </>}
                     <button onClick={e => { e.currentTarget.closest("details")!.open = false; setRenaming(s.id); }}>Rename</button>
                     <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups, { [copy.id]: s.id }); onSelect(copy.id); }}>Duplicate simulation</button>
                     <button disabled={busy(s) || entry?.dispatched} onClick={() => onChange({ ...s, archived: !s.archived }, true)}>{s.archived ? "Unarchive" : "Archive"}</button>
@@ -163,9 +181,12 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       onOrder(moveStudy(scenarios, s.id, target.name, scenarios.filter(v => sameGroup(v.group, target.name)).length), groups);
                     }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
                   </CFDRowMenu>
-                  {(job || entry?.submitting || entry?.dispatched) && <div className="cfx-study-status">
-                    <CFDJobProgress job={job} name={s.name} operation={entry?.operation} pending={entry?.submitting || entry?.dispatched ? phase : undefined} />
-                  </div>}
+                  <div className="cfx-study-status">
+                    <ul className="cfx-study-phases" aria-label="Simulation phases">
+                      {stages.map(stage => <li key={stage.label} data-state={stage.state} aria-label={`${stage.label}: ${stage.state}`}>{stage.label}</li>)}
+                    </ul>
+                    {(job || entry?.submitting || entry?.dispatched) && <CFDJobProgress job={job} name={s.name} operation={entry?.operation} pending={entry?.submitting || entry?.dispatched ? phase : undefined} />}
+                  </div>
                 </article>;
               }}
             </CFDReorderList>

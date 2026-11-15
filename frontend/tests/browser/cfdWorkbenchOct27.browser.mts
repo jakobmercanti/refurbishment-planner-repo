@@ -23,7 +23,7 @@ async function open(t,worker=false){
   if(worker)await s.context.route('**/climoptix/worker/**',async route=>{
     const url=new URL(route.request().url()),u=url.pathname;
     if(u.endsWith('/capabilities'))return route.fulfill({json:{connected:true,mesh:true,run:true,namespace,reason:'Local native-plane fixture',limits:{cpu:1,memoryGb:4,wallTimeMinutes:15,storageGb:1,retentionDays:3,maxCells:500000,concurrentJobs:1}}});
-    if(u.endsWith('/jobs')&&route.request().method()==='POST'){const request=route.request().postDataJSON();sourceHash=request.sourceHash;job={id:jobId,studyId:request.studyId,clientRevision:request.clientRevision,phase:'Completed',progress:100,operation:'run',message:'Retained fixture'};return route.fulfill({json:job});}
+    if(u.endsWith('/jobs')&&route.request().method()==='POST'){const request=route.request().postDataJSON();sourceHash=request.sourceHash;job={id:request.operation==='mesh'?'77777777-7777-4777-8777-777777777777':jobId,studyId:request.studyId,clientRevision:request.clientRevision,phase:'Completed',progress:100,operation:request.operation,message:'Retained fixture'};return route.fulfill({json:job});}
     if(u.endsWith('/jobs'))return route.fulfill({json:job?[job,{...job,id:otherId,studyId:'other-study',name:'Alternative'}]:[]});
     if(u.endsWith('/slices'))return route.fulfill({status:404,json:{detail:'Not Found'}});
     if(u.endsWith('/result'))return route.fulfill({json:{jobId:u.includes(otherId)?otherId:jobId,studyId:u.includes(otherId)?'other-study':job.studyId,clientRevision:job.clientRevision,sourceHash,configurationHash:'b'.repeat(64),pressureUnit:'m2/s2',accepted:true,artifacts}});
@@ -35,8 +35,42 @@ async function open(t,worker=false){
   const ui=s.page.locator('.cfx-workspace');await cfdWindow(ui,'Solver');await eventually(()=>ui.getAttribute('data-preparation-state'),v=>v==='checked');
   return {...s,ui,project:p};
 }
-async function results(t){const s=await open(t,true);await cfdWindow(s.ui,'Simulations');await button(s.ui,'Run Office airflow').click();await cfdWindow(s.ui,'Imported results');await eventually(()=>s.ui.getByLabel('Plane to inspect',{exact:true}).inputValue(),v=>v==='slice_Z_001.vtk');return s;}
+async function results(t){
+  const s=await open(t,true);
+  await cfdWindow(s.ui,'Simulations');
+  const row=s.ui.locator('.cfx-study-row');
+  assert.equal(await button(row,'Run Office airflow').count(),0);
+  await button(row,'Mesh Office airflow').click();
+  await row.getByLabel('Mesh: completed',{exact:true}).waitFor();
+  assert.equal(await button(row,'Mesh Office airflow').count(),0);
+  await button(row,'Run Office airflow').click();
+  await row.getByLabel('Post: completed',{exact:true}).waitFor();
+  await row.getByLabel('Actions for Office airflow',{exact:true}).click();
+  await button(row,'View results').click();
+  await eventually(()=>s.ui.getByLabel('Plane to inspect',{exact:true}).inputValue(),v=>v==='slice_Z_001.vtk');
+  return s;
+}
 async function shot(page,name){if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/oct27-${name}.png`});}
+
+test('Bounds and Solver contain their new sections and Thermal keeps a single tab row',async t=>{
+  const {ui}=await open(t);
+  const phases=ui.getByRole('tablist',{name:'Climoptix setup',exact:true});
+  for(const name of ['Domain','Objects','Optimisation'])
+    assert.equal(await phases.getByRole('tab',{name,exact:true}).count(),0);
+  await cfdWindow(ui,'Equipment');
+  const bounds=ui.getByRole('tablist',{name:'Boundary setup',exact:true});
+  const before=await bounds.boundingBox();
+  await bounds.getByRole('tab',{name:'Thermal',exact:true}).click();
+  const after=await bounds.boundingBox();
+  assert.ok(before.height<60&&Math.abs(after.height-before.height)<2);
+  await cfdWindow(ui,'Domain');
+  await ui.locator('#cfx-setup-panel-domain > summary').waitFor({state:'visible'});
+  await cfdWindow(ui,'Optimisation');
+  assert.equal(await ui.getByRole('tab',{name:'Optimisation',exact:true}).getAttribute('aria-selected'),'true');
+  await ui.getByRole('tab',{name:'Run',exact:true}).click();
+  assert.equal(await button(ui,'Open monitor').count(),0);
+  assert.equal(await button(ui,'Refresh connection').count(),0);
+});
 
 test('whole workbench survey keeps every phase contained and category text readable at wide and narrow sizes',async t=>{
   const {page,ui}=await open(t);
@@ -241,11 +275,22 @@ test('legacy comparison is a compact shared 2 by 2 viewport with collapsed docke
   await shot(page,'shared-compare');
 });
 
-test('changing the physical setup blocks 3D keyboard navigation of stale result planes',async t=>{
+test('editing the setup hides an existing overlay and retained planes can reopen in isolation',async t=>{
   const {page,ui,saved}=await results(t);await button(ui,'Load selected plane into building 3D').click();await eventually(()=>page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),Boolean);
   await cfdWindow(ui,'Physics');const density=ui.getByRole('spinbutton',{name:'Air density (kg/m³)',exact:true});await density.fill('1.3');await density.press('Enter');await eventually(saved,p=>p.cfdScenarios[0].physics.densityKgM3===1.3);
   await button(page,'Hide Simulation setup').click();await ui.getByText('Setup changed. This pinned result is hidden to avoid overlaying a different building. Inspect the original job separately.',{exact:true}).waitFor();
   await ui.locator('.cfx-viewport').focus();await page.keyboard.press('ArrowUp');await page.waitForTimeout(400);assert.equal(await ui.getByRole('combobox',{name:'Building 3D plane',exact:true}).inputValue(),'slice_Z_001.vtk');assert.equal(await page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),false);
+  await cfdWindow(ui,'Imported results');
+  await ui.getByLabel('View result in 3D',{exact:true}).selectOption('slice-1');
+  const display=ui.locator('.cfx-building-results');
+  await eventually(()=>display.getByLabel('Building 3D plane',{exact:true}).inputValue(),name=>name==='slice_Z_002.vtk');
+  await eventually(()=>page.evaluate(()=>!!window.__octScene().scene.getObjectByName('verified-cfd-result')),Boolean);
+  assert.equal(await page.evaluate(()=>window.__octScene().scene.getObjectByName('cfd-building-context').visible),false);
+  await cfdWindow(ui,'Simulations');
+  const row=ui.locator('.cfx-study-row');
+  await row.getByLabel('Actions for Office airflow',{exact:true}).click();
+  await button(row,'Load post-processing plane in 3D').click();
+  await eventually(()=>display.getByLabel('Building 3D plane',{exact:true}).inputValue(),name=>name==='slice_Z_001.vtk');
 });
 
 test('default optimisation selects an inlet, validates its actual region and exposes no fake execution',async t=>{

@@ -11,7 +11,11 @@ import { WindowHelpButton } from "./WindowHelpButton";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { CFDProbes } from "./CFDProbes";
 
-export type SimulationTab = "mesh" | "run" | "monitor" | "post";
+const SOLVER_TABS = [
+  ["mesh", "Mesh"], ["run", "Run"], ["monitor", "Monitor"],
+  ["post", "Post-processing"], ["adjoint", "Optimisation"],
+] as const;
+export type SimulationTab = typeof SOLVER_TABS[number][0];
 
 interface RunConnection {
   connected: boolean;
@@ -29,18 +33,14 @@ function RunPanel({
   onExport,
   exporting,
   exportDisabled,
-  onConvergence,
   connection,
-  workerControls,
 }: {
   scenario: CFDScenario;
   onChange: (s: CFDScenario) => void;
   onExport: () => void;
   exporting: boolean;
   exportDisabled: boolean;
-  onConvergence: () => void;
   connection?: RunConnection;
-  workerControls?: ReactNode;
 }) {
   const physics = scenario.physics;
   return (
@@ -52,7 +52,6 @@ function RunPanel({
           title={connection?.blockedReason || (!connection?.connected ? "Sign in and connect the OpenFOAM worker" : undefined)}
           onClick={() => connection?.onRun()}>▶ Play</button>
         <button disabled={exportDisabled || exporting} onClick={onExport}>{exporting ? "Exporting…" : "Export OpenFOAM settings"}</button>
-        <button onClick={onConvergence}>Open monitor</button>
       </div>
       {connection?.blockedReason && <p className="cfx-notice" role="status">
         {connection.blockedReason} <button onClick={connection.onIssues}>Review submission issues</button>
@@ -60,7 +59,6 @@ function RunPanel({
       </p>}
       </details>
       <details open><summary>Simulation &amp; resources</summary>
-      {workerControls}
       <div className="cfx-grid">
         <label>
           Simulation type
@@ -342,11 +340,11 @@ export function ClimoptixSimulation({
   onResults,
   convergence,
   jobProgress,
-  onConvergence,
   onShowRefinements,
   onEditRefinement,
   connection,
-  workerControls,
+  domain,
+  optimisation,
 }: {
   tab: SimulationTab;
   onTab: (t: SimulationTab) => void;
@@ -362,11 +360,11 @@ export function ClimoptixSimulation({
   exportDisabled: boolean;
   convergence: ReactNode;
   jobProgress?: ReactNode;
-  onConvergence: () => void;
   onShowRefinements: () => void;
   onEditRefinement: (id: string) => void;
   connection?: RunConnection;
-  workerControls?: ReactNode;
+  domain: ReactNode;
+  optimisation: ReactNode;
   onVTK: (f: File) => void;
   onResults?: () => void;
 }) {
@@ -378,14 +376,7 @@ export function ClimoptixSimulation({
         role="tablist"
         aria-label="Simulation setup"
       >
-        {(
-          [
-            ["mesh", "Mesh"],
-            ["run", "Run"],
-            ["monitor", "Monitor"],
-            ["post", "Post-processing"],
-          ] as const
-        ).map(([id, title]) => (
+        {SOLVER_TABS.map(([id, title], index) => (
           <button
             key={id}
             role="tab"
@@ -400,16 +391,16 @@ export function ClimoptixSimulation({
               if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key))
                 return;
               e.preventDefault();
-              const ids = ["mesh", "run", "monitor", "post"] as const,
-                index = ids.indexOf(id);
+              const count = SOLVER_TABS.length;
               const next =
                 e.key === "Home"
                   ? 0
                   : e.key === "End"
-                    ? 3
-                    : (index + (e.key === "ArrowRight" ? 1 : 3)) % 4;
-              onTab(ids[next]);
-              document.getElementById(`cfx-tab-${ids[next]}`)?.focus();
+                    ? count - 1
+                    : (index + (e.key === "ArrowRight" ? 1 : -1) + count) % count;
+              const [nextId] = SOLVER_TABS[next];
+              onTab(nextId);
+              document.getElementById(`cfx-tab-${nextId}`)?.focus();
             }}
             tabIndex={tab === id ? 0 : -1}
           >
@@ -419,7 +410,7 @@ export function ClimoptixSimulation({
       </div>
       <WindowHelpButton title="Mesh, Run & Post-processing" steps={CFD_SIMULATION_HELP} />
       </div>
-      {jobProgress}
+      {tab !== "adjoint" && jobProgress}
       <section
         role="tabpanel"
         id="cfx-panel-mesh"
@@ -427,6 +418,7 @@ export function ClimoptixSimulation({
         className="cfx-simulation-panel"
         hidden={tab !== "mesh"}
       >
+        <details id="cfx-setup-panel-domain" open><summary>Domain</summary>{domain}</details>
         <MeshPanel
           scenario={scenario}
           report={report}
@@ -451,9 +443,7 @@ export function ClimoptixSimulation({
           onExport={onExport}
           exporting={exporting}
           exportDisabled={exportDisabled}
-          onConvergence={onConvergence}
           connection={connection}
-          workerControls={workerControls}
         />
       </section>
       <section role="tabpanel" id="cfx-panel-monitor" aria-labelledby="cfx-tab-monitor"
@@ -479,6 +469,8 @@ export function ClimoptixSimulation({
           onSamplingPreview={onSamplingPreview}
         />
       </section>
+      <section role="tabpanel" id="cfx-panel-adjoint" aria-labelledby="cfx-tab-adjoint"
+        className="cfx-simulation-panel" hidden={tab !== "adjoint"}>{optimisation}</section>
     </>
   );
 }

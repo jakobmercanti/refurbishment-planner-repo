@@ -6,6 +6,7 @@ import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
   EdgesGeometry,
+  type Group,
   Mesh,
   DoubleSide,
   Float32BufferAttribute,
@@ -106,21 +107,21 @@ function hostLocation(patch: CFDPatch, p: Vec3): [number, number] | null {
     Math.max(0, Math.min(1, dot(delta, h.vAxis) / h.heightMm)),
   ];
 }
-function Frame({ request }: { request: string }) {
+function Frame({ request, target }: { request: string; target?: React.RefObject<Group | null> }) {
   const bounds = useBounds();
   const controls = useThree(state => state.controls);
   const framed = useRef<string | null>(null);
   useEffect(() => {
-    if (!controls) return;
+    if (!controls || (target && !target.current)) return;
     const id = requestAnimationFrame(() => {
       // Bounds' API can change when controls mount or the viewer rerenders.
       // Only an explicit fit, scene replacement or scope change may reframe.
       if (framed.current === request) return;
       framed.current = request;
-      bounds.refresh().clip().fit();
+      bounds.refresh(target?.current ?? undefined).clip().fit();
     });
     return () => cancelAnimationFrame(id);
-  }, [bounds, controls, request]);
+  }, [bounds, controls, request, target]);
   return null;
 }
 interface Props {
@@ -129,6 +130,8 @@ interface Props {
   resultSample?: ResultPointValue;
   onClearResultSample?: () => void;
   resultFitRequest?: number;
+  historicalResult?: boolean;
+  resultReady?: boolean;
   project: ProjectDocument;
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -396,6 +399,8 @@ export function ClimoptixViewer({
   resultSample,
   onClearResultSample,
   resultFitRequest = 0,
+  historicalResult = false,
+  resultReady = false,
 }: Props) {
   const mouseButtons = useViewerNavigation();
   const [planeMenu,setPlaneMenu]=useState<PlaneMenu|null>(null);
@@ -408,7 +413,8 @@ export function ClimoptixViewer({
   const [patchMode, setPatchMode] = useState<PatchDisplayMode>("geometry");
   const thermalVisible = patchMode === "geometry" && thermalMetric !== "off" && thermalSurfaces.length > 0;
   const hasVisibleResults = Boolean(resultOverlay || additionalResultOverlays?.length);
-  const resultsOnly = onlyResults && hasVisibleResults;
+  const resultsOnly = (onlyResults || historicalResult) && hasVisibleResults;
+  const resultGroup = useRef<Group>(null);
   const [detailed, setDetailed] = useState(false);
   const [isolate, setIsolate] = useState(false);
   const [fit, setFit] = useState(0);
@@ -787,7 +793,7 @@ export function ClimoptixViewer({
               Refinement intent
             </label>
             <label className="cfx-check"><input type="checkbox" checked={wallOutlines} disabled={patchMode !== "geometry"} onChange={event=>setWallOutlines(event.target.checked)}/>2D wall outlines</label>
-            <label className="cfx-check"><input type="checkbox" checked={resultsOnly} disabled={!hasVisibleResults}
+            <label className="cfx-check"><input type="checkbox" checked={resultsOnly} disabled={!hasVisibleResults || historicalResult}
               data-field-help="Hide building geometry while a result plane is visible. Show a loaded result plane first to use this option."
               onChange={event=>onOnlyResults?.(event.target.checked)}/>Only CFD result planes</label>
             <label className="cfx-check"><input type="checkbox" checked={resultsVisible} onChange={event=>onResultsVisible?.(event.target.checked)}/>Show CFD result planes</label>
@@ -815,7 +821,7 @@ export function ClimoptixViewer({
         data-diagnostic-highlight={issuePositions.length || issueVentPoints.length || issueRefinement ? diagnosticHighlight?.label : undefined}
         data-boundary-groups={JSON.stringify(boundaryGroups.map(g => ({ id: g.id, colour: g.colour, patchIds: g.patchIds })))}
       >
-        {rooms.length > 0 ? (
+        {rooms.length > 0 || hasVisibleResults ? (
           <StableCanvas
             frameloop="demand"
             dpr={[1, 1.5]}
@@ -825,7 +831,11 @@ export function ClimoptixViewer({
               filter: hits => {
                 const plane = hits.find(hit => hit.object.name === RESULT_PLANE_MESH);
                 // A transparent boundary can be nearer the camera than the visible plane.
-                return plane ? [plane] : hits;
+                return plane ? [plane] : hits.filter(hit => {
+                  for (let node: typeof hit.object | null = hit.object; node; node = node.parent)
+                    if (!node.visible) return false;
+                  return true;
+                });
               },
             })}
             onPointerMissed={event => {
@@ -845,9 +855,6 @@ export function ClimoptixViewer({
                   wallMode={wallOutlines && patchMode === "geometry" ? "CUTAWAY_2D" : "TRANSPARENT"}
                 />
               )}
-              <Frame
-                request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit + resultFitRequest}`}
-              />
               {scenario.outputs.probesMm.map((point,index)=><CFDProbeMarker key={`probe:${index}`} point={point} index={index} selected={selected===`probe:${index}`} onSelect={()=>onSelect(`probe:${index}`)} onMove={next=>onMoveProbe?.(index,next)}/>)}
               {project.hvac?.bindings[scenario.id] && projectFloors(project).flatMap(floor => (floor.content.heatingLayout?.ufhZones ?? []).filter(zone => report?.domain.regions.some(r => r.included && r.floorId === floor.id && r.id === zone.roomId)).flatMap(zone => (floor.content.heatingLayout?.ufhCircuits ?? []).filter(c => c.zoneId === zone.zoneId).map(circuit => <Line key={`hvac:${floor.id}:${circuit.circuitId}`} name={`UFH loop intent: ${zone.name}`} points={circuit.pathMm.map(p => scene([p.x, p.y, floor.elevationMm + 5]))} color={COLORS.object} lineWidth={2} raycast={() => {}} />)))}
               {displayPatches
@@ -1044,16 +1051,22 @@ export function ClimoptixViewer({
                     ),
                 )}
               </group>
-              {!!issuePositions.length && <DiagnosticSurface positions={issuePositions} />}
-              {!!issueVentPoints.length && <Line points={[...issueVentPoints, issueVentPoints[0]]} color={ISSUE_COLOUR} lineWidth={4} depthTest={false} depthWrite={false} renderOrder={11} raycast={() => {}} />}
-              {issueRefinement && <mesh position={scene(issueRefinement.centerMm)} renderOrder={11} raycast={() => {}}>
+              {!resultsOnly && !!issuePositions.length && <DiagnosticSurface positions={issuePositions} />}
+              {!resultsOnly && !!issueVentPoints.length && <Line points={[...issueVentPoints, issueVentPoints[0]]} color={ISSUE_COLOUR} lineWidth={4} depthTest={false} depthWrite={false} renderOrder={11} raycast={() => {}} />}
+              {!resultsOnly && issueRefinement && <mesh position={scene(issueRefinement.centerMm)} renderOrder={11} raycast={() => {}}>
                 {issueRefinement.shape === "sphere" ? <sphereGeometry args={[issueRefinement.sizeMm[0] * .0005, 12, 8]} /> :
                   <boxGeometry args={[issueRefinement.sizeMm[0] * .001, issueRefinement.sizeMm[2] * .001, issueRefinement.sizeMm[1] * .001]} />}
                 <meshBasicMaterial color={ISSUE_COLOUR} wireframe depthTest={false} depthWrite={false} />
               </mesh>}
               {resultSample&&hasVisibleResults&&<CFDSceneProbeReading sample={resultSample}/>}
+              <group ref={resultGroup}>
               {resultOverlay&&<CFDSceneResult {...resultOverlay} onSelect={()=>onSelectResultFile?.(resultOverlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:resultOverlay.file,x,y});}:undefined}/>}
               {additionalResultOverlays?.map(overlay=><CFDSceneResult key={overlay.file.name} {...overlay} onSelect={()=>onSelectResultFile?.(overlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:overlay.file,x,y});}:undefined}/>)}
+              </group>
+              {(!resultsOnly || resultReady) && <Frame
+                request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${resultsOnly}:${fit + resultFitRequest}`}
+                target={resultsOnly ? resultGroup : undefined}
+              />}
             </Bounds>
             <OrbitControls
               makeDefault

@@ -5,15 +5,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export const CFD_WINDOWS = [
   { id: "studies", name: "Simulations", tab: "Simulations" },
-  { id: "domain", name: "Domain", tab: "Domain" },
-  { id: "equipment", name: "Equipment", tab: "Objects" },
   { id: "boundaries", name: "Boundaries", tab: "Bounds" },
   { id: "physics", name: "Physics", tab: "Physics" },
   { id: "mesh", name: "Solver", tab: "Solver" },
-  { id: "adjoint", name: "Optimisation", tab: "Optimisation" },
   { id: "results", name: "Imported results", tab: "Results" },
 ] as const;
-export type CFDWindowId = (typeof CFD_WINDOWS)[number]["id"] | "view" | "thermal" | "convergence" | "review";
+export type CFDWindowId = (typeof CFD_WINDOWS)[number]["id"] | "domain" | "equipment" | "adjoint" | "view" | "thermal" | "convergence" | "review";
 
 /** The same menu content serves the application Toolbar and viewer context menu. */
 export function ClimoptixWindowMenu({

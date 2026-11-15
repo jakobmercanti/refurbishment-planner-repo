@@ -170,7 +170,7 @@ export async function cfdWindow(ui, name) {
     await page.locator(".cfx-view-window").getByLabel("Move View properties", { exact: true }).focus();
     return;
   }
-  const phases = { Simulations: ["studies", "Simulations"], Domain: ["domain", "Domain"], Equipment: ["equipment", "Objects"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], Optimisation: ["adjoint", "Optimisation"], "Review & export": ["results", "Results"], "Imported results": ["results", "Results"] };
+  const phases = { Simulations: ["studies", "Simulations"], Domain: ["mesh", "Solver"], Equipment: ["boundaries", "Bounds"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], Optimisation: ["mesh", "Solver"], "Review & export": ["results", "Results"], "Imported results": ["results", "Results"] };
   const [id, text] = phases[aliases[name] ?? name];
   const select = ui.getByRole("combobox", { name: "CFD phase", exact: true });
   const tab = ui.getByRole("tablist", { name: "Climoptix setup", exact: true }).getByRole("tab", { name: text, exact: true });
@@ -184,6 +184,13 @@ export async function cfdWindow(ui, name) {
   if (name === "Review & export") await ui.getByRole("tab", { name: "Review & files", exact: true }).click();
   if (name === "Thermal Envelope & Solar Conditions") await ui.getByRole("tab", { name: "Thermal", exact: true }).click();
   if (name === "Convergence monitor") await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
+  if (name === "Domain") {
+    await ui.getByRole("tab", { name: "Mesh", exact: true }).click();
+    const domain = ui.locator("#cfx-setup-panel-domain");
+    if (await domain.getAttribute("open") === null) await domain.locator(":scope > summary").click();
+  }
+  if (name === "Equipment") await ui.getByRole("tab", { name: "Objects", exact: true }).click();
+  if (aliases[name] === "Optimisation" || name === "Optimisation") await ui.getByRole("tab", { name: "Optimisation", exact: true }).click();
   const title = page.getByRole("region", { name: "Climoptix CFD workspace", exact: true }).getByLabel("Move Simulation setup", { exact: true });
   if (await title.isVisible()) await title.focus();
 }

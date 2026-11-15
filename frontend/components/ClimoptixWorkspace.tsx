@@ -75,12 +75,12 @@ import {
 } from "./ClimoptixConvergence";
 
 const PHASES = [
-  { id: "domain", label: "Domain" },
   { id: "equipment", label: "Equipment" },
   { id: "boundaries", label: "Boundaries" },
   { id: "physics", label: "Physics" },
   { id: "mesh", label: "Simulation" },
 ] as const;
+const BOUNDS_TABS = [["equipment", "Objects"], ["conditions", "Conditions"], ["thermal", "Thermal"]] as const;
 const EMPTY_SCENARIOS: CFDScenario[] = [];
 const ignoreSceneMetadata=()=>{};
 
@@ -127,11 +127,12 @@ export function ClimoptixWorkspace({
   const [setupOpen, setSetupOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<CFDWindowId>("studies");
   const [setupFocus, setSetupFocus] = useState(0);
-  useEffect(() => { if (openRequest) queueMicrotask(() => { setSelectedId(openRequest.id); setActiveTab("equipment"); setSetupOpen(true); setSetupFocus(n => n + 1); }); }, [openRequest]);
   const [viewTarget, setViewTarget] = useState<HTMLDivElement | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [resultsView,setResultsView] = useState<"summary"|"slices"|"review">("summary");
-  const [boundsTab, setBoundsTab] = useState<"conditions" | "thermal">("conditions");
+  const [boundsTab, setBoundsTab] = useState<typeof BOUNDS_TABS[number][0]>("conditions");
+  useEffect(() => { if (openRequest) queueMicrotask(() => { setSelectedId(openRequest.id); setActiveTab("boundaries"); setBoundsTab("equipment"); setSetupOpen(true); setSetupFocus(n => n + 1); }); }, [openRequest]);
+  const [defaultPlaneRequest, setDefaultPlaneRequest] = useState<{ jobId: string; nonce: string }>();
   const [issuesRequest, setIssuesRequest] = useState(0);
   const [boundaryGroup, setBoundaryGroup] = useState("all-surfaces");
   const [refinementEditor, setRefinementEditor] = useState<{
@@ -155,10 +156,13 @@ export function ClimoptixWorkspace({
   );
   const openPhase = (id: CFDWindowId) => {
     if (id === "view") { setViewOpen(true); return; }
-    if (id === "thermal") setBoundsTab("thermal");
+    if (id === "thermal" || id === "equipment" || id === "boundaries")
+      setBoundsTab(id === "boundaries" ? "conditions" : id);
     if (id === "convergence") setSimulationTab("monitor");
+    if (id === "domain" || id === "adjoint") setSimulationTab(id === "domain" ? "mesh" : "adjoint");
     if (id === "review" || id === "results") setResultsView(id === "review" ? "review" : "summary");
-    setActiveTab(id === "thermal" ? "boundaries" : id === "convergence" ? "mesh" : id === "review" ? "results" : id);
+    setActiveTab(id === "thermal" || id === "equipment" ? "boundaries"
+      : id === "convergence" || id === "domain" || id === "adjoint" ? "mesh" : id === "review" ? "results" : id);
     setSetupOpen(true);
     setSetupFocus((value) => value + 1);
   };
@@ -201,7 +205,6 @@ export function ClimoptixWorkspace({
   const [thermalMetric, setThermalMetric] = useState<ThermalMetric>("off");
   const [thermalSelected, setThermalSelected] = useState<string | null>(null);
   const { logs, importLog, clearLog } = useConvergenceLogs();
-  const openConvergence = () => openPhase("convergence");
   const [exporting, setExporting] = useState(false);
   const [vtkFile, setVTKFile] = useState<{
     studyId: string;
@@ -210,7 +213,7 @@ export function ClimoptixWorkspace({
     provenance?: string;
     jobId?: string;
   } | null>(null);
-  const [mainResult,setMainResult]=useState<{studyId:string;file:File;input:string;jobId?:string}|null>(null);
+  const [mainResult,setMainResult]=useState<{studyId:string;file:File;input:string;jobId?:string;historical?:boolean}|null>(null);
   const [mainResultLayers,setMainResultLayers]=useState<NonNullable<typeof mainResult>[]>([]);
   const [mainResultField,setMainResultField]=useState("");
   const [mainResultVisible,setMainResultVisible]=useState(true);
@@ -244,7 +247,7 @@ export function ClimoptixWorkspace({
     ? workerAdapter.capabilities.reason : undefined;
   const currentVTKFile=vtkFile&&scenario&&vtkFile.studyId===scenario.id&&vtkFile.jobId===jobs[scenario.id]?.job?.id?vtkFile:null;
   const currentSceneLayers = mainResultLayers.filter(item => item.studyId === scenario?.id
-    && item.jobId === currentJob?.job?.id && item.input === currentWorkerInput);
+    && item.jobId === currentJob?.job?.id && item.input === currentWorkerInput && !!item.historical === !!mainResult?.historical);
   const currentPlane = currentSceneLayers.find(item => item === mainResult);
   const activeAxis = resultPlaneAxis(currentPlane?.file.name ?? "");
   const axisPlanes = RESULT_AXES.map(axis => activeAxis === axis ? currentPlane
@@ -599,21 +602,25 @@ export function ClimoptixWorkspace({
     selectObject(null);
     setSelectedResultPlane(item.file);
   };
-  const showScenePlane=(file:File,replace=false,preserveWindows=false)=>{
+  const showScenePlane=(file:File,replace=false,preserveWindows=false,historical=false)=>{
     if(!scenario)return;
     const axis = resultPlaneAxis(file.name);
     const replacesActive = replace && axis === activeAxis;
-    const next=[...currentSceneLayers.filter(item=>item.file.name!==file.name&&(!replacesActive||item!==currentPlane)),{studyId:scenario.id,file,input:currentWorkerInput,jobId:currentJob?.job?.id}];
+    const pinned = currentSceneLayers.filter(item => !!item.historical === historical);
+    const next=[...pinned.filter(item=>item.file.name!==file.name&&(!replacesActive||item!==currentPlane)),{studyId:scenario.id,file,input:currentWorkerInput,jobId:currentJob?.job?.id,historical}];
     if(next.length>8||next.reduce((sum,item)=>sum+item.file.size,0)>64*1024**2){setMainResultMetadata({fields:[],error:"Load at most eight building planes totalling 64 MB. Unload a plane before adding more."});return;}
     if (!currentPlane) setHiddenResultAxes([]);
     mainProbe.pick(null);
     setMainResultLayers(next);
     focusScenePlane(next.at(-1)!);
     setMainResultVisible(true);
-    if (!preserveWindows) setSetupOpen(false);
+    if (!preserveWindows) {
+      setSetupOpen(false);
+      if (historical) setResultFitRequest(value => value + 1);
+    }
   };
   const mainStack=useCFDPlaneStepper(remoteWorker.adapter,currentJob?.job,currentPlane?.file,
-    file=>showScenePlane(file,true,true));
+    file=>showScenePlane(file,true,true,currentPlane?.historical));
   const toggleResultAxis = (axis: ResultAxis, visible: boolean) => {
     const layer = axisPlanes[RESULT_AXES.indexOf(axis)];
     mainProbe.pick(null);
@@ -744,23 +751,11 @@ export function ClimoptixWorkspace({
     target?.focus();
   };
   const deletingStudy = scenarios.find((s) => s.id === deleting?.id);
-  const boundsNavigation = (
-<div className="cfx-bound-tabs" role="tablist" aria-label="Boundary setup"
-              onKeyDown={event => {
-                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-                event.preventDefault();
-                const next = event.key === "Home" ? "conditions" : event.key === "End" ? "thermal" : boundsTab === "conditions" ? "thermal" : "conditions";
-                if (next === "thermal") openThermal(); else setBoundsTab("conditions");
-                document.getElementById(`cfx-bounds-tab-${next}`)?.focus();
-              }}>
-              <button role="tab" id="cfx-bounds-tab-conditions" aria-controls="cfx-setup-panel-boundaries" aria-selected={boundsTab === "conditions"}
-                tabIndex={boundsTab === "conditions" ? 0 : -1}
-                onClick={() => setBoundsTab("conditions")}>Conditions</button>
-              <button role="tab" id="cfx-bounds-tab-thermal" aria-controls="cfx-bounds-thermal" aria-selected={boundsTab === "thermal"}
-                tabIndex={boundsTab === "thermal" ? 0 : -1}
-                onClick={openThermal}>Thermal</button>
-            </div>
-  );
+  const chooseBoundsTab = (id: typeof boundsTab) => {
+    setPicking(null);
+    if (id === "thermal") openThermal();
+    else setBoundsTab(id);
+  };
   const viewerMenu = useViewerContextMenu(target => !!target.closest(".cfx-viewport") && !target.closest(".floating-toolbar,dialog,[role=dialog],button,input,select,textarea,[role=menu]"), setContextMenu, () => setContextMenu(null));
   return (
     <section
@@ -892,7 +887,9 @@ export function ClimoptixWorkspace({
           onHostPick={hostPick}
           onMoveVent={moveVent}
           onMoveProbe={(index,point)=>{if(scenario&&scenario.outputs.probesMm[index]&&point.every(value=>Number.isFinite(value)&&Math.abs(value)<=1e7))change({...scenario,outputs:{...scenario.outputs,probesMm:scenario.outputs.probesMm.map((old,i)=>i===index?point:old)}},true);}}
-          onlyResults={onlyResultPlanes} onOnlyResults={setOnlyResultPlanes} resultsVisible={mainResultVisible} onResultsVisible={setMainResultVisible}
+          historicalResult={!!currentPlane?.historical}
+          resultReady={!!mainResultMetadata.fields.length}
+          onlyResults={onlyResultPlanes} onOnlyResults={currentPlane?.historical ? undefined : setOnlyResultPlanes} resultsVisible={mainResultVisible} onResultsVisible={setMainResultVisible}
           onSelectResultFile={file=>{const found=currentSceneLayers.find(item=>item.file===file);if(found)focusScenePlane(found);}}
           onRemoveResultFile={unloadScenePlane}
           onResultContextMenuOpen={()=>setContextMenu(null)}
@@ -1084,6 +1081,14 @@ export function ClimoptixWorkspace({
                 resetting={resetting}
                 onImport={(file) => void importScenario(file)}
                 entries={jobs}
+                onOpenResults={(id, jobId) => {
+                  setSelectedId(id);
+                  setPicking(null);
+                  selectObject(null);
+                  setError("");
+                  setDefaultPlaneRequest(jobId ? {jobId,nonce:crypto.randomUUID()} : undefined);
+                  openPhase("results");
+                }}
                 worker={workerAdapter}
                 onSubmit={(op, studies) => { if (!defaultAbort.current) void submitJobs(op, studies); }}
                 onUndo={onUndo}
@@ -1092,33 +1097,43 @@ export function ClimoptixWorkspace({
                 canRedo={canRedo}
               />
             </section>
-            {scenario && <section role="tabpanel" id="cfx-setup-panel-adjoint" aria-labelledby="cfx-setup-tab-adjoint" hidden={shownTab!=="adjoint"} className="cfx-setup-panel">
-              <ClimoptixAdjoint key={scenario.id} project={project} scenario={scenario} report={activeReport} revision={revision} checked={!stale&&!busy&&!preparationError}
-                apiUrl={apiUrl} active={setupOpen&&shownTab==="adjoint"} selected={selected} onSelect={selectObject} onChange={change} onNavigate={openPhase}
-                workerConnected={!!workerAdapter?.capabilities.connected} baselineRunId={completedRunReference(jobs[scenario.id],currentWorkerInput)}/>
-            </section>}
+            {scenario && shownTab === "boundaries" && (
+              <div className="cfx-bound-tabs" role="tablist" aria-label="Boundary setup">
+                {BOUNDS_TABS.map(([id, label], index) => (
+                  <button key={id} type="button" role="tab" id={"cfx-bounds-tab-" + id}
+                    aria-controls={id === "thermal" ? "cfx-bounds-thermal" : "cfx-setup-panel-" + (id === "conditions" ? "boundaries" : id)}
+                    aria-selected={boundsTab === id} tabIndex={boundsTab === id ? 0 : -1}
+                    onClick={() => chooseBoundsTab(id)}
+                    onKeyDown={event => {
+                      const count = BOUNDS_TABS.length;
+                      const next = event.key === "Home" ? 0 : event.key === "End" ? count - 1
+                        : event.key === "ArrowLeft" ? (index - 1 + count) % count
+                        : event.key === "ArrowRight" ? (index + 1) % count : -1;
+                      if (next < 0) return;
+                      event.preventDefault();
+                      const [target] = BOUNDS_TABS[next];
+                      chooseBoundsTab(target);
+                      document.getElementById("cfx-bounds-tab-" + target)?.focus();
+                    }}>{label}</button>
+                ))}
+              </div>
+            )}
             {scenario &&
               PHASES.map((panel) => (
                 <section
                   key={`${scenario.id}|${editorReset}|${panel.id}`}
                   role="tabpanel"
                   id={`cfx-setup-panel-${panel.id}`}
-                  aria-labelledby={`cfx-setup-tab-${panel.id}`}
-                  hidden={shownTab !== panel.id || (panel.id === "boundaries" && boundsTab !== "conditions")}
+                  aria-labelledby={panel.id === "equipment" ? "cfx-bounds-tab-equipment" : panel.id === "boundaries" ? "cfx-bounds-tab-conditions" : `cfx-setup-tab-${panel.id}`}
+                  hidden={panel.id === "equipment" || panel.id === "boundaries"
+                    ? shownTab !== "boundaries" || boundsTab !== (panel.id === "equipment" ? "equipment" : "conditions")
+                    : shownTab !== panel.id}
                   className="cfx-setup-panel"
                 >
                   <section
                     className="cfx-inspector"
                     aria-label={`${panel.label} settings`}
                   >
-                    {panel.id === "domain" && (
-                      <DomainPanel
-                        project={project}
-                        scenario={scenario}
-                        report={activeReport}
-                        onChange={change}
-                      />
-                    )}
                     {panel.id === "equipment" && (
                       <><EquipmentPanel
                         checked={!stale}
@@ -1144,7 +1159,6 @@ export function ClimoptixWorkspace({
                           </>}
                           actions={<button onClick={()=>setHeatingImportOpen(true)}>Import insulation &amp; heating conditions</button>}
                           project={project}
-                          navigation={boundsTab === "conditions" ? boundsNavigation : undefined}
                           checked={!stale}
                           scenario={scenario}
                           report={activeReport}
@@ -1162,8 +1176,10 @@ export function ClimoptixWorkspace({
                     )}
                     {panel.id === "mesh" && (
                       <ClimoptixSimulation
-                        workerControls={providedWorker === undefined && <CFDWorkerConnection adapter={remoteWorker.adapter} reason={remoteWorker.reason}
-                          onRefresh={remoteWorker.refresh} scenario={scenario} onChange={change} />}
+                        domain={<DomainPanel project={project} scenario={scenario} report={activeReport} onChange={change}/>}
+                        optimisation={<ClimoptixAdjoint key={scenario.id} project={project} scenario={scenario} report={activeReport} revision={revision} checked={!stale&&!busy&&!preparationError}
+                apiUrl={apiUrl} active={setupOpen&&shownTab==="mesh"&&simulationTab==="adjoint"} selected={selected} onSelect={selectObject} onChange={change} onNavigate={openPhase}
+                workerConnected={!!workerAdapter?.capabilities.connected} baselineRunId={completedRunReference(jobs[scenario.id],currentWorkerInput)}/>}
                         connection={{
                           connected:
                             workerAdapter?.capabilities.connected ?? false,
@@ -1228,7 +1244,6 @@ export function ClimoptixWorkspace({
                             value?.startsWith("refinement:") ? value : null,
                           );
                         }}
-                        onConvergence={openConvergence}
                         convergence={
                           shownTab === "mesh" &&
                           simulationTab === "monitor" && (
@@ -1242,8 +1257,8 @@ export function ClimoptixWorkspace({
                                 const older = entry.input !== currentWorkerInput;
                                 setVTKFile({ studyId: scenario.id, file, token: crypto.randomUUID(), jobId: job.id,
                                   provenance: "Authenticated worker job " + job.id + " · pinned revision " + job.clientRevision.slice(0,12) + " · p in m²/s²" + (older ? " · older setup" : "") });
-                                if (older || !buildingPlane) openPhase("results");
-                                else showScenePlane(file);
+                                if (!buildingPlane) openPhase("results");
+                                else showScenePlane(file, false, false, older);
                               }} /> : <ClimoptixConvergence
                               name={scenario.name}
                               state={logs.get(scenario.id)}
@@ -1270,7 +1285,6 @@ export function ClimoptixWorkspace({
                   hidden={shownTab !== "boundaries" || boundsTab !== "thermal"}
                   className="cfx-setup-panel cfx-thermal-panel"
                 >
-                  {boundsNavigation}
                   {thermalOpen && (
                     <div className="cfx-thermal-inline">
                     <ThermalEnvelopeWindow
@@ -1317,9 +1331,14 @@ export function ClimoptixWorkspace({
                   {active && (
                     <ClimoptixResults
                       view={resultsView} onViewChange={setResultsView}
-                      review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
+                      review={<><ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
-                      onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />}
+                      onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />
+                        {providedWorker === undefined && <details><summary>Worker connection &amp; limits</summary>
+                          <CFDWorkerConnection adapter={remoteWorker.adapter} reason={remoteWorker.reason}
+                            onRefresh={remoteWorker.refresh} scenario={scenario} onChange={change}/>
+                        </details>}
+                      </>}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}
                       adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} report={activeReport}
                       projectId={project.projectId}
@@ -1330,7 +1349,9 @@ export function ClimoptixWorkspace({
                       sceneFiles={mainResultLayers.filter(item=>item.studyId===scenario.id&&item.jobId===jobs[scenario.id]?.job?.id&&item.input===currentWorkerInput).map(item=>item.file)}
                       sceneError={mainResult?.studyId===scenario.id&&mainResult.jobId===jobs[scenario.id]?.job?.id?mainResultMetadata.error:undefined}
                       onUnloadScene={unloadScenePlane}
-                      onScene={showScenePlane}
+                      onScene={(file, historical) => showScenePlane(file, false, false, historical)}
+                      defaultPlaneRequest={defaultPlaneRequest?.jobId === currentJob?.job?.id ? defaultPlaneRequest?.nonce : undefined}
+                      onDefaultPlaneHandled={() => setDefaultPlaneRequest(undefined)}
                       onClose={() => {
                         setVTKFile(null);
                         openPhase("mesh");
@@ -1353,6 +1374,7 @@ export function ClimoptixWorkspace({
       {active&&mainResult&&mainResult.studyId===scenario?.id&&mainResult.jobId===currentJob?.job?.id&&<FloatingToolbar title="Building result display" className="cfx-building-results" defaultPosition={{x:1060,y:170}} initialSize={{width:400,height:620}} onClose={()=>unloadScenePlane()}>
         <CFDWindowSections>
         <details open><summary>Plane selection &amp; display</summary>
+        {mainResult.historical && <p className="cfx-notice">Submitted result · shown on its own because it could not be matched to the current building.</p>}
         <label>Loaded plane<select aria-label="Building 3D plane" disabled={mainStack.busy} value={mainResult.file.name} onChange={event=>{const next=currentSceneLayers.find(item=>item.file.name===event.target.value);if(next){mainProbe.pick(null);focusScenePlane(next);}}}>{mainResultLayers.filter(item=>item.studyId===scenario?.id).map(item=><option key={item.file.name} value={item.file.name}>{item.file.name}</option>)}</select></label>
         {mainResult.input!==currentWorkerInput?<p className="cfx-error" role="alert">Setup changed. This pinned result is hidden to avoid overlaying a different building. Inspect the original job separately.</p>:<>
         <label>Result field<select aria-label="Building result field" value={resultField?.key??""} onChange={event=>setMainResultField(event.target.value)}>{mainResultMetadata.fields.map(field=><option key={field.key} value={field.key}>{field.name} · {field.key.startsWith("cell:")?"cell":"point"}</option>)}</select></label>
@@ -1374,7 +1396,7 @@ export function ClimoptixWorkspace({
         <div className="cfx-equal-actions"><button disabled={!mainStack.previous} onClick={()=>void mainStack.step(-1)}>Previous 3D plane</button><button disabled={!mainStack.next} onClick={()=>void mainStack.step(1)}>Next 3D plane</button></div>
         {mainStack.busy&&<p role="status">Loading sampled plane…</p>}
         {mainStack.error&&<p role="alert" className="cfx-error">{mainStack.error}</p>}
-        <label className="cfx-check"><input type="checkbox" checked={onlyResultPlanes} onChange={event=>setOnlyResultPlanes(event.target.checked)}/>Only CFD result planes</label>
+        <label className="cfx-check"><input type="checkbox" checked={!!mainResult.historical || onlyResultPlanes} disabled={!!mainResult.historical} onChange={event=>setOnlyResultPlanes(event.target.checked)}/>Only CFD result planes</label>
         <label className="cfx-check"><input type="checkbox" checked={mainResultVisible} onChange={event=>setMainResultVisible(event.target.checked)}/>Show result plane{shownAxisPlanes.length>1?"s":""}</label>
         <CFDPointProbeControls probe={mainProbe}/>
         </>}

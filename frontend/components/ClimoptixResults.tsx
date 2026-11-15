@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import type { CFDReport } from "@/lib/climoptix";
 import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import type { RailwayCFDWorker } from "@/lib/railwayCFDWorker";
@@ -17,8 +17,10 @@ const RESULT_VIEWS = [
 ] as const;
 type ResultsView = (typeof RESULT_VIEWS)[number][0];
 
-export function ClimoptixResults({adapter,job,older,report,initialFile,initialProvenance,onClose,onScene,sceneFiles=[],sceneError,onUnloadScene,active=true,projectId,review,view:subview,onViewChange:setSubview}:{
-  adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File)=>void;sceneFiles?:File[];sceneError?:string;onUnloadScene?:(file?:File)=>void;active?:boolean;projectId:string;review:ReactNode;view:ResultsView;onViewChange:(view:ResultsView)=>void;
+export function ClimoptixResults({adapter,job,older,report,initialFile,initialProvenance,onClose,onScene,sceneFiles=[],sceneError,onUnloadScene,active=true,projectId,review,view:subview,onViewChange:setSubview,defaultPlaneRequest,onDefaultPlaneHandled}:{
+  adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File,historical:boolean)=>void;sceneFiles?:File[];sceneError?:string;onUnloadScene?:(file?:File)=>void;active?:boolean;projectId:string;review:ReactNode;view:ResultsView;onViewChange:(view:ResultsView)=>void;
+  defaultPlaneRequest?: string;
+  onDefaultPlaneHandled?: () => void;
 }){
   const {result,error,missing,retry}=useCFDResult(adapter,job,active);
   const [files,setFiles]=useState<{file:File;verified:boolean}[]>(()=>initialFile?[{file:initialFile,verified:!!initialProvenance?.startsWith("Authenticated worker job")}]:[]);
@@ -45,20 +47,49 @@ export function ClimoptixResults({adapter,job,older,report,initialFile,initialPr
     if(next.length>8||next.reduce((sum,item)=>sum+item.file.size,0)>64*1024**2){setFileError("Load at most eight layers totalling 64 MB. Remove a layer before adding more.");return;}
     setFileError("");replaceFiles(next);setPlane(incoming[0]?.name??"");setInspectorOpen(true);
   },[replaceFiles]);
+  const historical = older || !report || result?.sourceHash !== report.validation.sourceHash;
+  const openIn3D = useEffectEvent((file:File) => onScene?.(file,historical));
   const loadPlane=useCallback((id:string,automatic=false)=>{
     const artifact=result?.artifacts.find(item=>item.id===id&&item.kind==="vtk");if(!artifact||!adapter||!job)return;
     planeRequest.current?.abort();const controller=new AbortController(),started=loadsGeneration.current;planeRequest.current=controller;setPlaneBusy(true);setFileError("");
     void adapter.download(job,artifact,AbortSignal.any([controller.signal,AbortSignal.timeout(120000)])).then(file=>{if(!controller.signal.aborted&&(!automatic||!currentFiles.current.length))add([file],true,started);}).catch(cause=>{if(!controller.signal.aborted)setFileError(cause instanceof Error?cause.message:"Plane download failed.");}).finally(()=>{if(!controller.signal.aborted)setPlaneBusy(false);});
   },[adapter,job,result,add]);
+  const loadDefaultIn3D = useEffectEvent(async (id: string, signal: AbortSignal) => {
+    const artifact = result?.artifacts.find(item => item.id === id);
+    if (!adapter || !job || !artifact) return;
+    setFileError("");
+    try {
+      const file = await adapter.download(job,artifact,AbortSignal.any([signal,AbortSignal.timeout(120000)]));
+      if (!signal.aborted) { add([file],true); openIn3D(file); }
+    } catch(cause) {
+      if (!signal.aborted) setFileError(cause instanceof Error ? cause.message : "Plane download failed.");
+    } finally {
+      if (!signal.aborted) onDefaultPlaneHandled?.();
+    }
+  });
+  const noDefaultPlane = useEffectEvent(() => {
+    setFileError("This job has no retained post-processing planes.");
+    onDefaultPlaneHandled?.();
+  });
+  useEffect(() => {
+    if (!active || !defaultPlaneRequest || !result) return;
+    const controller = new AbortController();
+    const first = result.artifacts.find(item => item.kind === "vtk");
+    const timer = setTimeout(() => {
+      if (first) void loadDefaultIn3D(first.id,controller.signal);
+      else noDefaultPlane();
+    }, 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [active, defaultPlaneRequest, result]);
   useEffect(()=>{
-    if(!active||autoOpened.current||initialFile||!result)return;
+    if(!active||defaultPlaneRequest||planeBusy||autoOpened.current||initialFile||!result)return;
     const first=result.artifacts.find(item=>item.kind==="vtk");if(!first)return;
     const timer=setTimeout(()=>{autoOpened.current=true;if(!currentFiles.current.length)loadPlane(first.id,true);},0);
     return()=>clearTimeout(timer);
-  },[active,initialFile,result,loadPlane]);
+  },[active,defaultPlaneRequest,planeBusy,initialFile,result,loadPlane]);
   const primary=files.find(item=>item.file.name===plane)??files[0];
   const stack=useCFDPlaneStepper(adapter,job,primary?.verified?primary.file:undefined,file=>{replaceFiles(currentFiles.current.filter(item=>item!==primary));add([file],true);});
-  const canOverlay=!!(primary?.verified&&report&&result&&!older&&result.sourceHash===report.validation.sourceHash);
+  const canViewIn3D=!!(primary?.verified&&result);
   const provenance=primary&&!primary.verified?"External file layers · simulation provenance and physical units unverified":
     job?`Authenticated worker job ${job.id} · pinned revision ${job.clientRevision.slice(0,12)} · p in m²/s², not Pa${older?" · older setup":""}`:initialProvenance;
   const selectedScene=sceneFiles.find(file=>file.name===sceneSelection)??sceneFiles[0];
@@ -89,9 +120,10 @@ export function ClimoptixResults({adapter,job,older,report,initialFile,initialPr
     {subview==="slices"&&error&&<details open><summary>Result retrieval status</summary><div role="alert" className="cfx-error">Native result retrieval failed: {error}<button onClick={retry}>Retry loading results</button></div></details>}
     {subview==="slices"&&<div id="results-panel-slices" role="tabpanel" aria-labelledby="results-tab-slices"><CFD2DSlices key={`${adapter?.namespace}:${projectId}:${job?.id??"none"}`} adapter={adapter} projectId={projectId} currentJob={job} active={active} legacyViewer={planeViewer} forceNative={!!primary&&!primary.verified}/></div>}
     <div id="results-panel-summary" role="tabpanel" aria-labelledby="results-tab-summary" hidden={subview!=="summary"}>
-    {(older||error)&&<details open><summary>Result status</summary>{older&&<p className="cfx-notice">This job belongs to an older setup. Its results remain pinned to the submitted geometry/configuration; current building overlays are disabled.</p>}
+    {defaultPlaneRequest&&result&&!fileError&&<p role="status">Opening a post-processing plane in 3D…</p>}
+    {(older||error)&&<details open><summary>Result status</summary>{older&&<p className="cfx-notice">This job belongs to an older setup. View its planes in 3D on their own, using the submitted coordinates.</p>}
     {error&&<div role="alert" className="cfx-error">Native result retrieval failed: {error}<button onClick={retry}>Retry loading results</button></div>}</details>}
-    {result&&adapter&&job?<CFDResultFiles key={job.id} adapter={adapter} job={job} result={result} onVTK={file=>{add([file],true,loadGeneration);if(!older&&report&&result.sourceHash===report.validation.sourceHash)onScene?.(file);}}/>:
+    {result&&adapter&&job?<CFDResultFiles key={job.id} adapter={adapter} job={job} result={result} onVTK={(file,buildingPlane)=>{add([file],true,loadGeneration);if(buildingPlane)onScene?.(file,historical);}}/>:
       <details open><summary>Online results folder</summary><p>{job?missing?"No native result manifest was retained for this job.":"Results are available after the worker finishes. You can return to Monitor to follow its current phase.":"Run a simulation to create its private online folder and verified post-processing downloads. You can also import an existing result below."}</p></details>}
     <details open={!files.length}><summary>Cached result layers · {files.length} loaded</summary>
       <label className="cfx-file">Import surface, plane or scalar volume<input type="file" multiple accept=".vtk,.vtp,.vti" aria-label="Import result layers" onChange={event=>{add(Array.from(event.target.files??[]),false);setSubview("slices");event.target.value="";}}/></label>
@@ -102,7 +134,7 @@ export function ClimoptixResults({adapter,job,older,report,initialFile,initialPr
       {fileError&&<p role="alert" className="cfx-error">{fileError}</p>}
     </details>
     <details><summary>Planes loaded in building 3D · {sceneFiles.length}</summary><label>Loaded plane<select aria-label="Planes loaded in building 3D" value={selectedScene?.name??""} onChange={event=>setSceneSelection(event.target.value)}><option value="" disabled>No loaded planes</option>{sceneFiles.map(file=><option key={file.name} value={file.name}>{file.name.replace(`${job?.id}-`,"")}</option>)}</select></label><div className="cfx-equal-actions"><button disabled={!selectedScene} onClick={()=>onUnloadScene?.(selectedScene)}>Unload selected 3D plane</button><button disabled={!sceneFiles.length} onClick={()=>onUnloadScene?.()}>Unload all 3D planes</button></div></details>
-    <details open><summary>Main 3D viewer</summary>{planeSelection}<div className="cfx-inline-toolbar"><button disabled={!canOverlay||!onScene} onClick={()=>{if(primary)onScene?.(primary.file);}}>Load selected plane into building 3D</button><button onClick={()=>setSubview("slices")}>Inspect in 2D</button><button onClick={onClose}>Back to geometry</button></div>{sceneError&&<p role="alert" className="cfx-error">{sceneError}</p>}{fileError&&<p role="alert" className="cfx-error">{fileError}</p>}</details>
+    <details open><summary>Main 3D viewer</summary>{planeSelection}<div className="cfx-inline-toolbar"><button disabled={!canViewIn3D||!onScene} onClick={()=>{if(primary)onScene?.(primary.file,historical);}}>Load selected plane into building 3D</button><button onClick={()=>setSubview("slices")}>Inspect in 2D</button><button onClick={onClose}>Back to geometry</button></div>{sceneError&&<p role="alert" className="cfx-error">{sceneError}</p>}{fileError&&<p role="alert" className="cfx-error">{fileError}</p>}</details>
     </div>
   </section>;
 }
