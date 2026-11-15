@@ -13,6 +13,7 @@ import { CFDConfirmAction } from "./CFDConfirmAction";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { useHvac } from "./HvacContext";
 import { hvacBoundaryPackage } from "@/lib/hvacBridge";
+import { hvacErrorMessage, removeVent } from "@/lib/hvacDocument";
 import { EquipmentListRow, equipmentListStyles } from "./EquipmentListRow";
 
 export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChange, onAdd, onPick, onEditVent, onEditSource, renderObject, canAdd, canPlace, checked }: {
@@ -21,13 +22,10 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
   onEditSource: () => void; renderObject: (id: string) => ReactNode; canAdd: boolean; canPlace: boolean; checked: boolean;
 }) {
   const hvac = useHvac();
-  const heatingSources = hvac?.project.hvac?.bindings[scenario.id] ? hvacBoundaryPackage(hvac.project, scenario).heaters.filter(h => h.kind === "radiator") : [];
+  const shared = hvac?.project.hvac;
+  const link = shared?.bindings[scenario.id];
+  const heatingSources = hvac && link ? hvacBoundaryPackage(hvac.project, scenario).heaters.filter(h => h.kind === "radiator") : [];
   const sharedHeaters = new Set(heatingSources.map(h => h.id));
-  const editHeating = (id: string) => {
-    const source = heatingSources.find(h => h.id === id), shared = hvac?.project.hvac, operationId = shared?.bindings[scenario.id]?.operatingScenarioId;
-    if (hvac && shared && operationId && shared.activeScenarioId !== operationId) hvac.commit({ ...shared, activeScenarioId: operationId });
-    if (source) hvac?.focusRoom(source); hvac?.setTab("Heating"); hvac?.requestHeating(); onEditSource();
-  };
   const groups = objectGroups(scenario, objects), entries = objectEntries(scenario, objects);
   const removed = objects.filter(object => scenario.hiddenObjectIds?.includes(object.id)
     && (object.profile || scenario.assetOverrides.some(override => override.objectId === object.id && override.mode !== "none")));
@@ -36,6 +34,33 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
   const groupList = useRef<HTMLDetailsElement>(null);
   const [editing, setEditing] = useState<{ type: "object" | "group"; id: string } | null>(null);
   const [error, setError] = useState("");
+  const sharedVent = (entry: CFDObjectEntry) => entry.type === "vent" && link
+    ? shared?.devices.find(device => device.vent.id === entry.sourceId) : undefined;
+  const openSource = (entry: CFDObjectEntry) => {
+    if (!hvac || !shared) return;
+    const vent = sharedVent(entry), heater = heatingSources.find(h => h.id === entry.sourceId);
+    const source = vent ?? heater;
+    if (!source) return;
+    try {
+      const operationId = link?.operatingScenarioId;
+      if (operationId && shared.activeScenarioId !== operationId) hvac.commit({ ...shared, activeScenarioId: operationId });
+      hvac.focusRoom(source, vent?.vent.id);
+      hvac.setTab(vent ? "Ventilation" : "Heating");
+      if (vent) hvac.editVent(vent.vent.id);
+      hvac.requestHeating();
+      onEditSource();
+    } catch (cause) { setError(hvacErrorMessage(cause)); }
+  };
+  const deleteEntry = (entry: CFDObjectEntry) => {
+    try {
+      const heater = heatingSources.find(h => h.id === entry.sourceId);
+      if (hvac && heater) hvac.removeRadiator(heater.floorId, heater.id);
+      else if (hvac && shared && sharedVent(entry)) hvac.commit(removeVent(shared, entry.sourceId));
+      else onChange(deleteObjectEntry(scenario, entry));
+      if (editing?.id === entry.sourceId) setEditing(null);
+      setError("");
+    } catch (cause) { setError(hvacErrorMessage(cause)); }
+  };
   const currentGroup = groups.find(g => g.id === selectedGroup) ?? groups[0];
   const addVent = (role: "supply" | "extract") => {
     const groupId = currentGroup?.id ?? DEFAULT_OBJECT_GROUP;
@@ -111,9 +136,13 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
                 onSelect={() => onSelect(entry.type === "vent" ? entry.id : entry.sourceId)} onEdit={() => edit(entry)} onDuplicate={() => duplicate(entry, group.id)}
                 duplicateTitle={sharedHeaters.has(entry.sourceId) ? "Duplicate measured heating devices in Heating, then they appear here automatically." : undefined}
                 duplicateDisabled={sharedHeaters.has(entry.sourceId) || (entry.type === "vent" ? scenario.vents.length >= 500 : objects.find(o => o.id === entry.sourceId)?.roomId === "unresolved")}
-                onDelete={sharedHeaters.has(entry.sourceId) ? undefined : () => { onChange(deleteObjectEntry(scenario, entry)); if (editing?.id === entry.sourceId) setEditing(null); }}
-                alternateAction={<button onClick={() => editHeating(entry.sourceId)}>Edit in Heating</button>}
-                menu={<CFDRowMenu label={`Move ${entry.name}`}><label>Move to group<select aria-label={`Move ${entry.name} to group`} value={group.id} onChange={e => {
+                onDelete={() => deleteEntry(entry)}
+                menu={<CFDRowMenu label={`Move ${entry.name}`}>
+                  {(sharedHeaters.has(entry.sourceId) || sharedVent(entry)) && <button onClick={event => {
+                    event.currentTarget.closest("details")!.open = false;
+                    openSource(entry);
+                  }}>{entry.type === "vent" ? "Edit in ventilation" : "Edit in heating"}</button>}
+                  <label>Move to group<select aria-label={`Move ${entry.name} to group`} value={group.id} onChange={e => {
                   const target = groups.find(g => g.id === e.target.value)!;
                   onChange(moveObject(scenario, entry.id, target.id, objectMembers(target, groups, entries).length, objects));
                   setSelectedGroup(target.id); e.currentTarget.closest("details")!.open = false;
@@ -133,7 +162,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
         {scenario.assetOverrides.filter(o => !objects.some(obj => obj.id === o.objectId)).map((override, index) => <button key={override.objectId} onClick={() => onChange({ ...scenario, assetOverrides: scenario.assetOverrides.filter(o => o.objectId !== override.objectId) })}>Remove unavailable override {index + 1}</button>)}
       </details>}
     {editing?.type === "object" && <CFDEditorWindow title="Edit CFD object" defaultPosition={{ x: 250, y: 100 }} initialSize={{ width: 620, height: 640 }} maxHeight={850} bringToFront onClose={() => setEditing(null)}
-      helpSteps={[{ heading: "Simulation-only objects", text: "Treatments, copies and Delete affect this simulation only. Source furniture and the measured building remain unchanged. Copies reuse measured source dimensions, with separate millimetre offsets; use Offset mm to position them. Preparation reports overlaps and out-of-domain objects. Count multiplies emissions, not geometry. Groups are only organization metadata. Undo restores changes." }]}>
+      helpSteps={[{ heading: "Objects and shared devices", text: "Treatments and object copies belong to this simulation. Deleting a shared radiator or vent removes it from the project and its source workbench. Use the row menu to open that source workbench. Copies reuse measured source dimensions with separate millimetre offsets. Count multiplies emissions. Undo restores changes." }]}>
       {renderObject(editing.id)}
     </CFDEditorWindow>}
     {editingGroup && <CFDEditorWindow title="Edit object group" sectionTitle="Group settings" defaultPosition={{ x: 240, y: 100 }} initialSize={{ width: 420 }} onClose={() => setEditing(null)} bringToFront>

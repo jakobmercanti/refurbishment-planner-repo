@@ -72,7 +72,6 @@ export function PhysicsPanel({
           </select>
         </label>
       </div>
-      {airflow && <p className="cfx-notice">Airflow study. The worker calculates velocity and pressure from the measured geometry and vent flows. Use Prepare thermal CFD in Heating or Ventilation to capture heat transfer.</p>}
       {linked && thermalSource && <p className="cfx-notice">Linked HVAC scenario: energy and buoyancy are required. Density, cp, reference room temperature and outdoor temperature edit the same conventional operating conditions. Thermal execution is unavailable on the isothermal worker.</p>}
       {thermalSource && !linked && <p className="cfx-notice">Shared Heating or Insulation conditions require energy and buoyancy. Air properties remain case settings; thermal execution needs a compatible energy adapter.</p>}
       {!airflow && <Parameters value={p} omit={Object.keys(p).filter(k => !(thermalSource ? ["co2"] : ["energy", "co2", "boussinesq"]).includes(k))}

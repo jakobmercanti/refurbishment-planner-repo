@@ -48,7 +48,7 @@ export const CFD_SECTION_HELP: Record<string, WindowHelpStep[]> = {
   }],
   "Sampling planes": [{
     heading: "Plan where to sample",
-    text: "Choose how many equally spaced slices to request in each direction. Preview shows the intended positions within checked bounds. Computed field values become available for verified solver outputs in Results.",
+    text: "Each direction defaults to 15 equally spaced slices and accepts at least 10. Preview shows their positions within checked bounds. Computed field values become available for verified solver outputs in Results.",
   }],
   "Local refinement regions": [{
     heading: "Refine where the flow changes",
@@ -280,6 +280,10 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
     },
   ],
   physics: [
+    {
+      heading: "Airflow and thermal studies",
+      text: "For an isothermal airflow study, the worker calculates velocity and pressure using the measured geometry and vent flows. Use Prepare thermal CFD in Heating or Ventilation to capture heat-transfer inputs for a compatible solver.",
+    },
     {
       heading: "Physics and units",
       text: "Presets are starting intentions, not certified engineering settings. Physics uses SI units: temperatures in kelvin and CO₂ in ppm by volume (1 ppm = 10⁻⁶ volume fraction). Numerical controls and time stepping are in Solver → Run. Age of air and comfort are requested future outputs, not computed metrics. A worker must explicitly support the selected solver, turbulence, energy and scalar models before execution.",

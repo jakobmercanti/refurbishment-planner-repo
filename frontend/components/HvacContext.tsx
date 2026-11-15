@@ -15,6 +15,7 @@ import { sceneInput } from "@/lib/climoptixScene";
 interface HvacContextValue {
   project: ProjectDocument; apiUrl: string;
   commit: (hvac: HvacProject, scenarios?: CFDScenario[]) => void;
+  removeRadiator: (floorId: string, id: string) => void;
   navigateCFD: (id: string) => void;
   tab: "Heating" | "Ventilation"; setTab: (tab: "Heating" | "Ventilation") => void;
   undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean;

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { MAX_SAMPLING_PLANES, type CFDScenario } from "@/lib/climoptixDocument";
+import { MAX_SAMPLING_PLANES, MIN_SAMPLING_PLANES, type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { samplingPlanes } from "@/lib/climoptixWorkflow";
 import { CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
@@ -220,10 +220,14 @@ function PostPanel({
           <CFDNumber
             label={`${axis.toUpperCase()} plane count`}
             value={post[axis].count}
-            min={1}
+            min={MIN_SAMPLING_PLANES}
             max={MAX_SAMPLING_PLANES}
             disabled={!post[axis].enabled}
-            onChange={(count) =>
+            validate={count => count < MIN_SAMPLING_PLANES
+                ? `Enter at least ${MIN_SAMPLING_PLANES} planes.`
+                : !Number.isInteger(count) || count > MAX_SAMPLING_PLANES
+                  ? `Enter a whole number up to ${MAX_SAMPLING_PLANES}.` : undefined}
+            onChange={count =>
               onChange({
                 ...scenario,
                 postProcessing: { ...post, [axis]: { ...post[axis], count } },

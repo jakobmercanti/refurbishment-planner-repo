@@ -1,9 +1,9 @@
-import { projectFloors } from "./buildingDocument";
+import { activeFloor, projectFloors, selectFloor } from "./buildingDocument";
 import { withEnergyFabric } from "./energyCalculations";
 import { newEnergyProject } from "./energyDocument";
 import { heatingResults } from "./heatingDesign";
 import { newHeatingProject } from "./heatingDocument";
-import { withHeatingElements } from "./heatingElements";
+import { isHeatingElement, withHeatingElements } from "./heatingElements";
 import { geometryFingerprint } from "./heatingCalculations";
 import { calculateHvac } from "./hvacCalculations";
 import { operatingVents, type HvacOperatingScenario } from "./hvacDocument";
@@ -18,6 +18,32 @@ export interface SharedHeater {
 export interface SharedEnvelope {
   floorId: string; roomId: string; surfaceKey: string; label: string;
   areaM2: number; uWm2K: number; adjacentC: number; boundary: string;
+}
+
+/** Delete the authoritative placed or legacy radiator on its owning floor. */
+export function removeSharedRadiator(project: ProjectDocument, floorId: string, id: string): ProjectDocument {
+  const originalFloor = activeFloor(project).id;
+  const floor = selectFloor(project, floorId);
+  const layout = floor.heatingLayout;
+  if (!floor.rooms.some(room => room.obstacles.some(item => item.id === id && isHeatingElement(item)))
+      && !layout?.radiators.some(item => item.radiatorId === id)) return project;
+  const next = {
+    ...floor,
+    rooms: floor.rooms.map(room => ({...room, obstacles: room.obstacles.filter(item => item.id !== id || !isHeatingElement(item))})),
+    heatingLayout: layout && {...layout,
+      radiators: layout.radiators.filter(item => item.radiatorId !== id),
+      pipes: layout.pipes.filter(pipe => pipe.fromId !== id && pipe.toId !== id),
+    },
+    hvac: floor.hvac && {...floor.hvac, scenarios: floor.hvac.scenarios.map(scenario => ({
+      ...scenario, heaterOverrides: Object.fromEntries(Object.entries(scenario.heaterOverrides).filter(([heaterId]) => heaterId !== id)),
+    }))},
+    cfdScenarios: floor.cfdScenarios?.map(scenario => ({
+      ...scenario,
+      objectGroups: scenario.objectGroups?.map(group => ({...group, memberIds:group.memberIds.filter(member => member !== `object:${id}`)})),
+      assetOverrides: scenario.assetOverrides.filter(override => override.objectId !== id),
+    })),
+  };
+  return selectFloor(next, originalFloor);
 }
 
 /** All powers are room-effective thermal W, never water temperatures or electrical fan draw. */

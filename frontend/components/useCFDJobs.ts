@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDScenario } from "@/lib/climoptixDocument";
-import { preparationInput, preparationRevision } from "@/lib/climoptix";
 import { readPendingCFD, savePendingCFD, removePendingCFD } from "@/lib/cfdSubmissionJournal";
 import { CFDWorkerError } from "@/lib/railwayCFDWorker";
 import {
   checkedWorkerJob,
   prepareWorkerSubmission,
   terminalJob,
+  workerClientRevision,
   workerInput,
   type CFDOperation,
   type CFDSubmission,
@@ -117,13 +117,14 @@ export function useCFDJobs(
       for (const job of jobs) {
         if (controller.signal.aborted || recovered.has(job.studyId)) continue;
         recovered.add(job.studyId);
-        const study = latest.current.project.cfdScenarios?.find(s => s.id === job.studyId);
+        const sourceProject = latest.current.project;
+        const study = sourceProject.cfdScenarios?.find(s => s.id === job.studyId);
         if (!study) continue;
-        const revision = await preparationRevision(preparationInput(latest.current.project, study));
+        const revision = await workerClientRevision(sourceProject, study);
         if (controller.signal.aborted || generation !== resultGeneration.current || entriesRef.current[study.id] || pending.current.has(study.id)) continue;
         update(study.id, {job: checkedWorkerJob(job, {studyId: study.id, clientRevision: job.clientRevision}),
           meshChecked: checkedMeshes.has(`${job.studyId}:${job.clientRevision}`),
-          input: revision === job.clientRevision ? workerInput(latest.current.project, study) : `recovered-older:${job.clientRevision}`});
+          input: revision === job.clientRevision ? workerInput(sourceProject, study) : `recovered-older:${job.clientRevision}`});
       }
     }).catch(() => { /* Existing submissions/status remain recoverable on a later connection. */ });
     return () => controller.abort();

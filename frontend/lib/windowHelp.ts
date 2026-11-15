@@ -60,8 +60,12 @@ function taskWindowHelpSteps(title: string): WindowHelpStep[] {
     if (section === "Boundary groups & surfaces") return CFD_PHASE_HELP.boundaries;
     if (section === "Models & equations") return CFD_PHASE_HELP.physics;
     if (section === "Solver actions") return [{ heading: "Run, export and monitor", text: "Play submits the current simulation to the connected worker after preparation checks. Export OpenFOAM settings downloads configuration for review. Open monitor shows the job and its solver log or lets you import a local log." }];
-    if (section === "Shared HVAC design & operation") return ventilationHelp;
   }
+  if (title.endsWith(" — Shared HVAC design & operation")) return [
+    { heading: "Shared devices", text: "Heating, Ventilation and CFD use the same measured radiators and vents. Geometry edits apply across all three workbenches. Deleting a radiator or vent removes it from the shared design. The row menu opens its source workbench. Use Edit on a radiator to change its operating output for the linked scenario." },
+    { heading: "Shared operating scenario", text: "Choose a scenario for the seed room to share its vent flow, temperature and heating output across the workbenches. Choose New scenario... and enter a title to create and select a shared scenario. It starts from the linked scenario for that room when available, or from conventional defaults. Selecting a scenario clears case-only vent overrides. Case air settings uses the shared design directly." },
+    { heading: "Thermal handoff", text: "Airflow studies use shared vent geometry and flow. Open Import insulation & heating conditions to review or export shared inputs for a thermal-capable solver." },
+  ];
   if (title === "View properties — Geometry & result visibility") return CFD_PHASE_HELP.view;
   if (title === "Online simulation folder — Folder navigation") return [{ heading: "Browse the verified archive", text: "Double-click a folder, or focus it and press Enter or Right Arrow. Up one folder returns to its parent. The path shows your current location in the archive." }];
   if (title.startsWith("Online simulation folder — Files in this folder")) return [{ heading: "View and download files", text: "View opens a supported result mesh or plane in the viewer. Download saves the original file. Previous files and Next files page through large folders. Download anything you want to keep before the worker retention period expires." }];

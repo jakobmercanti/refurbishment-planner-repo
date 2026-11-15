@@ -128,18 +128,17 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 const stale = !!job && !currentInput;
                 const operation = job?.operation ?? entry?.operation;
                 const currentJob = currentInput ? job : undefined;
-                const checkedMesh = currentInput && (entry.meshChecked || jobHasCheckedMesh(currentJob));
-                const solved = !!currentJob && operation === "run" && ["Postprocess", "Completed"].includes(currentJob.phase);
-                const posted = solved && currentJob?.phase === "Completed";
+                const showResults = job?.phase === "Completed" && operation !== "mesh";
+                const checkedMesh = showResults || currentInput && (entry.meshChecked || jobHasCheckedMesh(currentJob));
+                const solved = showResults || operation === "run" && currentJob?.phase === "Postprocess";
                 const working = currentInput && busy(s);
                 const running = currentJob?.phase === "Running" || (working && operation === "run" && checkedMesh);
                 const nextOperation = entry?.dispatched ? entry.operation
-                  : posted ? undefined : checkedMesh || currentInput && operation === "run" ? "run" : "mesh";
-                const showResults = job?.phase === "Completed" && operation === "run";
+                  : showResults ? undefined : checkedMesh || currentInput && operation === "run" ? "run" : "mesh";
                 const stages = [
                   { label: "Mesh", state: checkedMesh ? "completed" : working ? "running" : "pending" },
                   { label: "Run", state: solved ? "completed" : running ? "running" : "pending" },
-                  { label: "Post", state: posted ? "completed" : currentJob?.phase === "Postprocess" ? "running" : "pending" },
+                  { label: "Post", state: showResults ? "completed" : currentJob?.phase === "Postprocess" ? "running" : "pending" },
                 ];
                 const phase = entry?.submitting ? "Checking & submitting…" : job ? `${job.phase}${stale ? " · older setup" : ""}` : entry?.dispatched ? "Submission status unknown" : "Not submitted";
                 const checkConfiguration = (operation: CFDOperation) => entry?.dispatched ? undefined : workerConfigurationIssue(project, s, worker, operation);
@@ -179,6 +178,8 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                     {showResults &&
                       <button onClick={event => { event.currentTarget.closest("details")!.open = false; onOpenResults(s.id,job.id); }}>Load post-processing plane in 3D</button>
                     }
+                    {showResults && stale && <button disabled={!!reason("mesh")} title={reason("mesh")}
+                      onClick={event => { event.currentTarget.closest("details")!.open = false; onSubmit("mesh", [s]); }}>Mesh current setup</button>}
                     <button onClick={e => { e.currentTarget.closest("details")!.open = false; setRenaming(s.id); }}>Rename</button>
                     <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups, { [copy.id]: s.id }); onSelect(copy.id); }}>Duplicate simulation</button>
                     <button disabled={busy(s) || entry?.dispatched} onClick={() => onChange({ ...s, archived: !s.archived }, true)}>{s.archived ? "Unarchive" : "Archive"}</button>

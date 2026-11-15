@@ -371,7 +371,7 @@ class Outputs(Contract):
 
 class SliceStack(Contract):
     enabled: bool = False
-    count: int = Field(default=3, ge=1, le=MAX_SAMPLING_PLANES)
+    count: int = Field(default=15, ge=1, le=MAX_SAMPLING_PLANES)
 
 
 def default_slice_fields() -> list[Literal["U", "p", "T", "CO2"]]:

@@ -1146,7 +1146,7 @@ export function ClimoptixWorkspace({
                         onEditSource={onEditBuilding}
                         onEditVent={id => setVentEditor({ studyId: scenario.id, id })}
                       />
-                      <SharedHvacCFD scenario={scenario} report={activeReport} checked={!stale && !busy} onEditSource={onEditBuilding} />
+                      <SharedHvacCFD scenario={scenario} onEditSource={onEditBuilding} />
                       </>
                     )}
                     {panel.id === "boundaries" && (

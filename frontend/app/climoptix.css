@@ -729,22 +729,22 @@
 }
 .cfx-setup-window { container: cfx-window / inline-size; }
 .cfx-setup-window .floating-toolbar-titlebar:has(.floating-toolbar-header-content) {
-  grid-template-columns: 20px 18px minmax(0, 1fr) minmax(0, auto) auto;
+  grid-template-columns: 20px 18px max-content minmax(0, 1fr) auto;
 }
 .floating-toolbar-header-content { min-width: 0; touch-action: auto; }
 .cfx-header-simulation { display: flex; gap: 6px; align-items: center; justify-content: flex-end; min-width: 0; font-size: calc(12px * var(--density-font-scale, 1)); }
 .cfx-header-simulation .cfx-state { font-size: inherit; }
 .cfx-header-current { display: none; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.cfx-header-simulation select { flex: 1; min-width: 0; width: clamp(120px, 23cqw, 300px); font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.cfx-header-simulation select { flex: 0 1 clamp(90px, 23cqw, 300px); min-width: 0; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-control); }
 .cfx-setup-heading:has(> .cfx-phase-select) { padding: 0; border: 0; }
 .cfx-phase-label { display: none; }
 .cfx-setup-heading > .cfx-phase-select { padding: 4px 8px; }
-@container cfx-window (max-width: 620px) {
+@container cfx-window (max-width: 380px) {
   .cfx-setup-window > .floating-toolbar-titlebar > strong { display: none; }
   .cfx-setup-window > .floating-toolbar-titlebar:has(.floating-toolbar-header-content) { grid-template-columns: 20px 18px minmax(0, 1fr) auto; }
   .cfx-header-simulation .cfx-state { display: none; }
 }
-@container cfx-window (max-width: 760px) {
+@container cfx-window (max-width: 480px) {
   .cfx-header-simulation select { display: none; }
   .cfx-header-current { display: block; }
 }
@@ -882,7 +882,7 @@
 .cfx-study-tools-primary button { padding-inline: 8px; }
 .cfx-list-header { list-style: none; min-width: 0; border-radius: var(--radius-control); }
 .cfx-list-header[data-active="true"] { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.cfx-study-group .cfx-list-header > .cfx-group-heading { padding-left: 32px; }
+.cfx-study-group .cfx-list-header > .cfx-group-heading { padding-left: 40px; }
 .cfx-study-group.selected-group { border-color: var(--focus-ring); background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }
 .cfx-workspace .cfx-collapse { flex: 0 0 26px; padding-inline: 2px; }
 .cfx-inline-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--density-section-gap); min-width: 0; }
@@ -909,6 +909,7 @@
 .cfx-surface-assignment span { min-width: 0; overflow-wrap: anywhere; }
 .cfx-surface-assignment small { display: block; color: var(--muted); }
 .cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item { display: block; position: relative; }
+.cfx-group-tree { --cfx-group-control-height: max(36px, var(--density-control-min-height)); }
 .cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item > .cfx-grip { position: absolute; left: calc(var(--density-window-padding) + 1px); top: calc(var(--density-window-padding) + 1px); width: 32px; z-index: 2; }
 .cfx-study-group {
   --cfx-study-action-width: clamp(150px, 26cqw, 264px);
@@ -1077,10 +1078,10 @@
 .cfx-study-phases > span { padding: 1px 4px; border-radius: 3px; background: var(--panel); text-align: center; }
 .cfx-study-phases [data-state="pending"] { color: #b42318; }
 .cfx-study-phases [data-state="running"] { color: #b65406; background: #ffdfb0; }
-.cfx-study-phases [data-state="completed"] { color: #16734b; }
+.cfx-study-phases [data-state="completed"] { color: #16734b; background: #d8f2e1; }
 :root[data-theme="dark"] .cfx-study-phases [data-state="pending"] { color: #ff938a; }
 :root[data-theme="dark"] .cfx-study-phases [data-state="running"] { color: #ffc27d; background: #4a2a12; }
-:root[data-theme="dark"] .cfx-study-phases [data-state="completed"] { color: #8bddad; }
+:root[data-theme="dark"] .cfx-study-phases [data-state="completed"] { color: #145b3d; background: #a7e5be; }
 .cfx-study-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

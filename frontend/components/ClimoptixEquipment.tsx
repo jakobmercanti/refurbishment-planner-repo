@@ -13,6 +13,7 @@ import { ventCenter } from "@/lib/climoptixPreview";
 import { ventHostAtCoordinates } from "@/lib/ventPlacement";
 import { useHvac } from "./HvacContext";
 import { hvacBoundaryPackage } from "@/lib/hvacBridge";
+import { CFDSharedHeaterSettings } from "./SharedHvacCFD";
 import type { FlowUnit } from "@/lib/cfdUnits";
 
 function VentPositionFields({ vent, hosts, position, onChange }: {
@@ -127,6 +128,7 @@ export function EquipmentPanel({
             ],
           });
         const sharedHeater = hvacContext?.project.hvac?.bindings[scenario.id] ? hvacBoundaryPackage(hvacContext.project, scenario).heaters.find(h => h.id === obj.id) : null;
+        if (sharedHeater) return <CFDSharedHeaterSettings heater={sharedHeater} scenarioId={scenario.id} />;
         return (
           <section className="cfx-card" data-cfx-collapse-root>
             <header className="cfx-inline-toolbar"><h3>{obj.name}</h3><WindowHelpButton title="Object proxy" steps={[{ heading: "Measured proxy", text: obj.profile ? `Catalogue proxy: ${obj.profile}` : "No eligible catalogue proxy. Exclude this asset or explicitly review a conservative box." }, ...(obj.assumptions ?? []).map(text => ({ heading: "Proxy assumption", text }))]} /><CFDCollapseAll/></header>
@@ -143,7 +145,6 @@ export function EquipmentPanel({
                 CFD treatment
                 <select
                   value={override.mode}
-                  disabled={!!sharedHeater}
                   onChange={(e) =>
                     apply({
                       ...override,
@@ -162,24 +163,20 @@ export function EquipmentPanel({
               <CFDNumber
                 label={`Heat · ${obj.name} (W)`}
                 value={override.heatW}
-                disabled={!!sharedHeater}
                 onChange={(heatW) => apply({ ...override, heatW })}
               />
               <CFDNumber
                 label={`CO₂ · ${obj.name} (m³/s)`}
                 value={override.co2M3S}
-                disabled={!!sharedHeater}
                 onChange={(co2M3S) => apply({ ...override, co2M3S })}
               />
               <CFDNumber
                 label={`Count · ${obj.name}`}
                 value={override.count}
-                disabled={!!sharedHeater}
                 onChange={(count) => apply({ ...override, count })}
               />
             </div>
-            {sharedHeater && <p className="cfx-notice">Shared Heating output. Change its operating watts in Shared HVAC design &amp; operation, or open Heating to edit design geometry/ratings.</p>}
-            {!sharedHeater && <Parameters
+            <Parameters
               value={override}
               omit={[
                 "objectId",
@@ -190,11 +187,10 @@ export function EquipmentPanel({
                 "temperatureK",
               ]}
               onChange={(v) => apply(v as typeof override)}
-            />}
+            />
             <label className="cfx-check">
               <input
                 type="checkbox"
-                disabled={!!sharedHeater}
                 checked={override.temperatureK !== null}
                 onChange={(e) =>
                   apply({

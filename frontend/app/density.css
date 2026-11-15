@@ -135,7 +135,7 @@ body .cfx-setup-window > .floating-toolbar-content { padding: 0; }
 body .cfx-setup-panel > .cfx-inspector { padding: 0; }
 body .cfx-physics-fields > * + * { margin-top: var(--density-section-gap); }
 body .cfx-workspace .cfx-group-heading > .cfx-collapse,
-body .cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item > .cfx-grip { height: var(--density-control-min-height); min-height: var(--density-control-min-height); }
+body .cfx-group-tree > .cfx-reorder-list > .cfx-reorder-item > .cfx-grip { height: var(--cfx-group-control-height, var(--density-control-min-height)); min-height: var(--cfx-group-control-height, var(--density-control-min-height)); }
 body .cfx-workspace .cfx-row-menu-panel { margin: 0; }
 body .cfx-workspace .cfx-row-menu-panel > * + * { margin-top: 0; }
 body .cfx-workspace :is(.cfx-simulation-panel, .cfx-physics-fields) > details > summary { font-size: inherit; font-family: inherit; }

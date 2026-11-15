@@ -11,6 +11,7 @@ function NumberInput({
   onChange,
   min,
   max,
+  validate,
   disabled = false,
 }: {
   label: string;
@@ -18,13 +19,16 @@ function NumberInput({
   onChange: (v: number) => void;
   min?: number;
   max?: number;
+  validate?: (value: number) => string | undefined;
   disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(String(value)),
     [lastValue, setLastValue] = useState(value);
+  const [error, setError] = useState<string>();
   if (value !== lastValue) {
     setLastValue(value);
     setDraft(String(value));
+    setError(undefined);
   }
   return (
     <label>
@@ -37,12 +41,17 @@ function NumberInput({
         min={min}
         max={max}
         disabled={disabled}
-        onChange={(e) => setDraft(e.target.value)}
+        aria-invalid={error ? true : undefined}
+        onChange={(e) => { setDraft(e.target.value); setError(undefined); }}
         onBlur={() => {
           const next = Number(draft);
+          if (draft.trim() && Number.isFinite(next)) {
+            const message = validate?.(next);
+            setError(message);
+            if (message) return;
+            if (next !== value) onChange(next);
+          }
           setDraft(String(value));
-          if (draft.trim() && Number.isFinite(next) && next !== value)
-            onChange(next);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -52,9 +61,11 @@ function NumberInput({
           if (e.key === "Escape") {
             e.preventDefault();
             setDraft(String(value));
+            setError(undefined);
           }
         }}
       />
+      {!disabled && error && <span role="alert" className="cfx-error">{error}</span>}
     </label>
   );
 }
@@ -63,6 +74,7 @@ export function CFDNumber({ convert = true, ...props }: Parameters<typeof Number
   const display = engineeringDisplay(props.label, convert ? parseEngineeringUnits(raw) : {});
   return <NumberInput {...props} key={display.label} label={display.label} value={display.to(props.value)}
     min={props.min === undefined ? undefined : display.to(props.min)} max={props.max === undefined ? undefined : display.to(props.max)}
+    validate={props.validate && (value => props.validate?.(display.from(value)))}
     onChange={value => props.onChange(display.from(value))} />;
 }
 export function CFDText({

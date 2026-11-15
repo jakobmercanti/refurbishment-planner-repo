@@ -4,6 +4,8 @@ import { adjointStudiesSchema } from "./cfdAdjointDocument";
 import { sharedBoundaryInputsSchema } from "./sharedBoundaryDocument";
 
 export const MAX_SAMPLING_PLANES = 250;
+export const MIN_SAMPLING_PLANES = 10;
+const DEFAULT_SAMPLING_PLANE_COUNT = 15;
 
 const id = z.string().regex(/^[\w:-]{1,150}$/),
   patchId = z.string().regex(/^[\w:.-]{1,500}$/);
@@ -399,7 +401,9 @@ export const cfdValidationSchema = z
 const sliceStackSchema = z
   .object({
     enabled: z.boolean().default(false),
-    count: z.int().min(1).max(MAX_SAMPLING_PLANES).default(3),
+    count: z.int().min(1).max(MAX_SAMPLING_PLANES)
+      .transform(count => count < MIN_SAMPLING_PLANES ? DEFAULT_SAMPLING_PLANE_COUNT : count)
+      .default(DEFAULT_SAMPLING_PLANE_COUNT),
   })
   .strict();
 export const postProcessingSchema = z
@@ -511,7 +515,7 @@ export const cfdScenariosSchema = z
       c.addIssue({ code: "custom", message: "Scenario IDs must be unique." });
   });
 export function defaultSamplingPlanes() {
-  const stack = () => ({ enabled: true, count: 15 });
+  const stack = () => ({ enabled: true, count: DEFAULT_SAMPLING_PLANE_COUNT });
   return { x: stack(), y: stack(), z: stack() };
 }
 

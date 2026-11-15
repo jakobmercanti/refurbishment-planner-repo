@@ -95,6 +95,27 @@ function nativeBoundary(boundary: CFDBoundary): CFDBoundary {
     : boundary;
 }
 
+function nativeWorkerSource(project: ProjectDocument, scenario: CFDScenario) {
+  const { boundaries } = scenario;
+  const detached = structuredClone({
+    ...scenario,
+    thermalSnapshots: undefined,
+    adjointStudies: undefined,
+    sharedBoundaries: scenario.sharedBoundaries ?? undefined,
+    boundaries: {
+      groups: Object.fromEntries(Object.entries(boundaries.groups).map(([kind, boundary]) => [kind, nativeBoundary(boundary)])),
+      patches: Object.fromEntries(Object.entries(boundaries.patches).map(([id, boundary]) => [id, nativeBoundary(boundary)])),
+      collections: boundaries.collections.map(group => group.boundary ? { ...group, boundary: nativeBoundary(group.boundary) } : group),
+    },
+  });
+  return { project: JSON.parse(preparationRequestBody(project, detached, "0".repeat(64))).project as ProjectDocument, scenario: detached };
+}
+
+export function workerClientRevision(project: ProjectDocument, scenario: CFDScenario) {
+  const source = nativeWorkerSource(project, resolveHvacScenario(project, scenario));
+  return preparationRevision(preparationInput(source.project, source.scenario));
+}
+
 /** Validate a bounded, immutable handoff before any worker submission is allowed. */
 export async function prepareWorkerSubmission(
   apiUrl: string,
@@ -119,21 +140,9 @@ export async function prepareWorkerSubmission(
     : null;
   // Detach only the bounded solver source, not unrelated studies or thermal histories.
   // Do this before the first await, including when a caller mutates its objects.
-  const { boundaries } = scenario;
-  scenario = structuredClone({
-    ...scenario,
-    thermalSnapshots: undefined,
-    adjointStudies: undefined,
-    sharedBoundaries: scenario.sharedBoundaries ?? undefined,
-    boundaries: {
-      groups: Object.fromEntries(Object.entries(boundaries.groups).map(([kind, boundary]) => [kind, nativeBoundary(boundary)])),
-      patches: Object.fromEntries(Object.entries(boundaries.patches).map(([id, boundary]) => [id, nativeBoundary(boundary)])),
-      collections: boundaries.collections.map(group => group.boundary ? { ...group, boundary: nativeBoundary(group.boundary) } : group),
-    },
-  });
-  project = JSON.parse(
-    preparationRequestBody(project, scenario, "0".repeat(64)),
-  ).project;
+  const source = nativeWorkerSource(project, scenario);
+  project = source.project;
+  scenario = source.scenario;
   const clientRevision = await preparationRevision(
     preparationInput(project, scenario),
   );
