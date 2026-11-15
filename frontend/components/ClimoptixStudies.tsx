@@ -171,14 +171,14 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                         : "Run the solver and generate the configured post-processing results in one submission.")}
                       disabled={!!blocked} title={blocked} onClick={() => onSubmit(nextOperation, [s])}>
                       {nextOperation === "mesh" ? "Mesh" : "Run"}</button>}
+                    {!nextOperation && showResults && <button aria-label={`Results for ${s.name}`} onClick={() => onOpenResults(s.id)}>Results</button>}
                     <button aria-label={`Delete ${s.name}`} className="cfx-danger" disabled={busy(s) || entry?.dispatched}
                       title={entry?.dispatched ? "Recover the previous submission before deleting this simulation" : undefined} onClick={e => onDelete(s.id, e.currentTarget)}>Delete</button>
                   </div>
                   <CFDRowMenu label={`Actions for ${s.name}`}>
-                    {showResults && <>
-                      <button onClick={event => { event.currentTarget.closest("details")!.open = false; onOpenResults(s.id); }}>View results</button>
+                    {showResults &&
                       <button onClick={event => { event.currentTarget.closest("details")!.open = false; onOpenResults(s.id,job.id); }}>Load post-processing plane in 3D</button>
-                    </>}
+                    }
                     <button onClick={e => { e.currentTarget.closest("details")!.open = false; setRenaming(s.id); }}>Rename</button>
                     <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups, { [copy.id]: s.id }); onSelect(copy.id); }}>Duplicate simulation</button>
                     <button disabled={busy(s) || entry?.dispatched} onClick={() => onChange({ ...s, archived: !s.archived }, true)}>{s.archived ? "Unarchive" : "Archive"}</button>

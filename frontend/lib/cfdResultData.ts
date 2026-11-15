@@ -37,7 +37,8 @@ export async function readResultData(file:File) {
       if(!renderableVTKValues(range)){warnings.push(`${name} (magnitude range cannot be displayed safely)`);continue;}
       fields.push({key:`${cell?"cell":"point"}:${name}`,name,cell,components,range:[range[0],range[1]],componentRanges:Array.from({length:components},(_,i)=>{const values=array.getRange(i);return [values[0],values[1]];})});
     }
-    return {data,volume,fields,warnings,dispose:()=>reader.delete()};
+    const meshSection = !xml && text.split(/\r?\n/, 3)[1]?.trim() === "Climoptix mesh cell sections";
+    return {data,volume,fields,warnings,meshSection,dispose:()=>reader.delete()};
   }catch(error){reader.delete();throw error;}
 }
 export type ResultData = Awaited<ReturnType<typeof readResultData>>;

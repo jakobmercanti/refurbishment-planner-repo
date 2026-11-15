@@ -221,6 +221,7 @@ export function ClimoptixWorkspace({
   const [hiddenResultAxes, setHiddenResultAxes] = useState<ResultAxis[]>([]);
   const [resultPalette, setResultPalette] = useState<ResultPalette>("spectrum");
   const [resultAppearance, setResultAppearance] = useState(DEFAULT_RESULT_APPEARANCE);
+  const [showResultMesh, setShowResultMesh] = useState(false);
   const [legendStyle, setLegendStyle] = useState<"horizontal"|"vertical"|"hidden">("horizontal");
   const [manualResultScale, setManualResultScale] = useState(false);
   const [scaleMin, setScaleMin] = useState("");
@@ -618,7 +619,8 @@ export function ClimoptixWorkspace({
     if (historical && !replace) setResultFitRequest(value => value + 1);
   };
   const mainStack=useCFDPlaneStepper(remoteWorker.adapter,currentJob?.job,currentPlane?.file,
-    file=>showScenePlane(file,{replace:true,historical:currentPlane?.historical}));
+    file=>showScenePlane(file,{replace:true,historical:currentPlane?.historical}),true);
+  const planeDisplay = {field:resultField?.key??mainResultField,palette:resultPalette,range:resultRange,appearance:resultAppearance};
   const toggleResultAxis = (axis: ResultAxis, visible: boolean) => {
     const layer = axisPlanes[RESULT_AXES.indexOf(axis)];
     mainProbe.pick(null);
@@ -840,8 +842,9 @@ export function ClimoptixWorkspace({
           report={activeReport}
           active={active}
           apiUrl={apiUrl}
-          resultOverlay={currentPlane&&mainResultVisible&&!placement?{file:currentPlane.file,field:resultField?.key??mainResultField,onMetadata:setMainResultMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,selected:!selected&&selectedResultPlane===currentPlane.file,palette:resultPalette,range:resultRange,appearance:resultAppearance}:undefined}
-          additionalResultOverlays={mainResultVisible&&!placement&&activeAxis?shownAxisPlanes.flatMap(item=>item&&item!==currentPlane?[{file:item.file,field:resultField?.key??mainResultField,onMetadata:ignoreSceneMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,palette:resultPalette,range:resultRange,appearance:resultAppearance}]:[]):undefined}
+          resultOverlay={currentPlane&&mainResultVisible&&!placement?{...planeDisplay,file:currentPlane.file,onMetadata:setMainResultMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,selected:!selected&&selectedResultPlane===currentPlane.file,showMesh:showResultMesh}:undefined}
+          additionalResultOverlays={mainResultVisible&&!placement&&activeAxis?shownAxisPlanes.flatMap(item=>item&&item!==currentPlane?[{...planeDisplay,file:item.file,onMetadata:ignoreSceneMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick}]:[]):undefined}
+          bufferedResultOverlays={currentPlane&&mainResultVisible&&!placement?mainStack.buffered.map(file=>({...planeDisplay,file,onMetadata:ignoreSceneMetadata,visible:false})):undefined}
           resultSample={mainProbe.reading?.sample ?? undefined}
           onClearResultSample={()=>mainProbe.pick(null)}
           resultFitRequest={resultFitRequest}
@@ -1404,6 +1407,9 @@ export function ClimoptixWorkspace({
           <label className="cfx-check"><input type="checkbox" checked={resultAppearance.edges}
             onChange={event=>setResultAppearance({...resultAppearance,edges:event.target.checked})}
             data-field-help="Show each plane’s perimeter. The selected plane retains its orange outline."/>Plane edges</label>
+          <label className="cfx-check"><input type="checkbox" checked={showResultMesh && !!mainResultMetadata.meshSection}
+            disabled={!mainResultMetadata.meshSection} onChange={event=>setShowResultMesh(event.target.checked)}
+            data-field-help={mainResultMetadata.meshSection ? "Show the solver mesh cells cut by the selected plane." : "This result does not include native mesh sections."}/>Show mesh</label>
           <label>Edge opacity · {resultAppearance.edgeOpacity}%<input type="range" min={0} max={100} step={5}
             value={resultAppearance.edgeOpacity} disabled={!resultAppearance.edges}
             onChange={event=>setResultAppearance({...resultAppearance,edgeOpacity:event.target.valueAsNumber})}/></label>
@@ -1423,14 +1429,6 @@ export function ClimoptixWorkspace({
             </div>
             {!validManualRange&&<p role="status">Enter a minimum below the maximum to replace the automatic scale.</p>}
           </>}
-        </details>
-        <details open><summary>Manage loaded planes</summary>
-        <div className="cfx-equal-actions">
-          <button onClick={()=>unloadScenePlane(mainResult.file)}>Unload selected plane</button>
-          <button onClick={()=>unloadScenePlane()}>Unload all planes</button>
-          <button onClick={()=>setResultFitRequest(value=>value+1)}>Fit view</button>
-          <button onClick={()=>openPhase("results")}>Return to results</button>
-        </div>
         </details>
         </CFDWindowSections>
       </FloatingToolbar>}

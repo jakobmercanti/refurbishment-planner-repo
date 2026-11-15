@@ -87,6 +87,29 @@ class Store:
     def path(self, job_id: str) -> Path:
         return self.root / str(UUID(job_id))
 
+    def checked_mesh_case(self, owner: str, request: Submission) -> Path | None:
+        if request.operation != "run":
+            return None
+        with self.connect() as db:
+            rows = db.execute(
+                """SELECT id FROM jobs
+                   WHERE owner=? AND project=? AND study=? AND revision=?
+                     AND phase='Completed' AND expires>? AND json_valid(payload)
+                     AND json_extract(payload, '$.sourceHash')=?
+                     AND json_extract(payload, '$.configurationHash')=?
+                   ORDER BY created DESC LIMIT 20""",
+                (owner, request.project["projectId"], request.studyId, request.clientRevision,
+                 time.time(), request.sourceHash, request.configurationHash),
+            ).fetchall()
+        for row in rows:
+            case = self.path(row["id"])
+            if (case / "result.json").is_file() and all(
+                (case / "constant/polyMesh" / name).is_file()
+                for name in ("points", "faces", "owner", "neighbour", "boundary")
+            ):
+                return case
+        return None
+
     def quota(self, owner: str) -> dict:
         with self.connect() as db:
             completed = db.execute(
@@ -297,6 +320,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
                         report,
                         lambda phase, message, jid=job_id: store.update(jid, phase, message),
                         lambda jid=job_id: stop.is_set() or store.cancelled(jid),
+                        store.checked_mesh_case(row["owner"], submission),
                     )
                     if store.cancelled(job_id) or stop.is_set():
                         raise JobCancelled("Cancelled before final acceptance.")

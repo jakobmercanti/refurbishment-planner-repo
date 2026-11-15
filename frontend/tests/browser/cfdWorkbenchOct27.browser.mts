@@ -45,8 +45,7 @@ async function results(t){
   assert.equal(await button(row,'Mesh Office airflow').count(),0);
   await button(row,'Run Office airflow').click();
   await row.getByLabel('Post: completed',{exact:true}).waitFor();
-  await row.getByLabel('Actions for Office airflow',{exact:true}).click();
-  await button(row,'View results').click();
+  await button(row,'Results for Office airflow').click();
   await eventually(()=>s.ui.getByLabel('Plane to inspect',{exact:true}).inputValue(),v=>v==='slice_Z_001.vtk');
   return s;
 }
@@ -111,7 +110,7 @@ test('external plane with a worker filename cannot become verified through keybo
 test('unloading a re-downloaded verified plane also removes its existing building overlay',async t=>{
   const {page,ui}=await results(t);await button(ui,'Load selected plane into building 3D').click();
   await eventually(()=>page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),Boolean);
-  await button(ui,'Return to results').click();await eventually(()=>ui.getByLabel('Plane to inspect',{exact:true}).inputValue(),v=>v==='slice_Z_001.vtk');
+  await cfdWindow(ui,'Imported results');await eventually(()=>ui.getByLabel('Plane to inspect',{exact:true}).inputValue(),v=>v==='slice_Z_001.vtk');
   const selection=ui.getByLabel('Plane to inspect',{exact:true}),downloaded=page.waitForResponse(r=>r.url().endsWith('/artifacts/slice-0'));
   await selection.selectOption('artifact:slice-0');await downloaded;await eventually(()=>selection.isEnabled(),Boolean);
   const cached=ui.getByText(/^Cached result layers · \d+ loaded$/);if(!(await cached.locator('..').getAttribute('open')))await cached.click();
@@ -123,7 +122,7 @@ test('mixed imported and verified layers retain selected-file provenance and ind
   const {page,ui}=await results(t);await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name:'external.vtk',mimeType:'application/octet-stream',buffer:Buffer.from(vtk(.4))});
   const viewer=ui.getByRole('region',{name:'VTK results viewer',exact:true});await viewer.getByText('Plane controls',{exact:true}).click();await viewer.getByLabel('Plane to inspect',{exact:true}).selectOption('slice_Z_001.vtk');
   await ui.getByRole('tab',{name:'Summary & 3D',exact:true}).click();assert.ok(await button(ui,'Load selected plane into building 3D').isEnabled());await button(ui,'Load selected plane into building 3D').click();
-  await eventually(()=>page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),Boolean);await button(ui,'Return to results').click();
+  await eventually(()=>page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),Boolean);await cfdWindow(ui,'Imported results');
   await eventually(()=>ui.getByLabel('Plane to inspect',{exact:true}).inputValue(),v=>v==='slice_Z_001.vtk');await ui.getByLabel('Import result layers',{exact:true}).setInputFiles({name:'slice_Z_001.vtk',mimeType:'application/octet-stream',buffer:Buffer.from(vtk(.05))});
   await ui.getByRole('tab',{name:'Summary & 3D',exact:true}).click();const cached=ui.getByText(/^Cached result layers · \d+ loaded$/);if(!(await cached.locator('..').getAttribute('open')))await cached.click();await ui.getByLabel('Delete result plane',{exact:true}).selectOption('slice_Z_001.vtk');
   assert.equal(await page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),true,'Deleting an external namesake must not unload the verified worker overlay');
@@ -244,7 +243,7 @@ test('main 3D plane selection and Up/Down replace sampled layers; visibility con
   const probeStyle=await reading.evaluate(node=>({color:getComputedStyle(node).color,background:getComputedStyle(node).backgroundColor}));
   assert.deepEqual(probeStyle,{color:'rgb(0, 0, 0)',background:'rgba(0, 0, 0, 0)'});
   await button(page,'Restore Building result display').click();
-  await button(ui,'Return to results').click();
+  await cfdWindow(ui,'Imported results');
   assert.equal(await reading.count(),0,'Clicking another control clears the probe');
   await setup.waitFor({state:'visible'});
   await ui.locator('.cfx-viewport').focus();

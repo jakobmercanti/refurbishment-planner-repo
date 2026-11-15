@@ -107,12 +107,12 @@ function hostLocation(patch: CFDPatch, p: Vec3): [number, number] | null {
     Math.max(0, Math.min(1, dot(delta, h.vAxis) / h.heightMm)),
   ];
 }
-function Frame({ request, target }: { request: string; target?: React.RefObject<Group | null> }) {
+function Frame({ request, target, ready = true }: { request: string; target?: React.RefObject<Group | null>; ready?: boolean }) {
   const bounds = useBounds();
   const controls = useThree(state => state.controls);
   const framed = useRef<string | null>(null);
   useEffect(() => {
-    if (!controls || (target && !target.current)) return;
+    if (!ready || !controls || (target && !target.current)) return;
     const id = requestAnimationFrame(() => {
       // Bounds' API can change when controls mount or the viewer rerenders.
       // Only an explicit fit, scene replacement or scope change may reframe.
@@ -121,12 +121,13 @@ function Frame({ request, target }: { request: string; target?: React.RefObject<
       bounds.refresh(target?.current ?? undefined).clip().fit();
     });
     return () => cancelAnimationFrame(id);
-  }, [bounds, controls, request, target]);
+  }, [bounds, controls, ready, request, target]);
   return null;
 }
 interface Props {
   resultOverlay?:CFDSceneResultProps;
   additionalResultOverlays?:CFDSceneResultProps[];
+  bufferedResultOverlays?:CFDSceneResultProps[];
   resultSample?: ResultPointValue;
   onClearResultSample?: () => void;
   resultFitRequest?: number;
@@ -395,6 +396,7 @@ export function ClimoptixViewer({
   boundarySelection,
   resultOverlay,
   additionalResultOverlays,
+  bufferedResultOverlays,
   resultSample,
   onClearResultSample,
   resultFitRequest = 0,
@@ -411,6 +413,9 @@ export function ClimoptixViewer({
   const [patchMode, setPatchMode] = useState<PatchDisplayMode>("geometry");
   const thermalVisible = patchMode === "geometry" && thermalMetric !== "off" && thermalSurfaces.length > 0;
   const hasVisibleResults = Boolean(resultOverlay || additionalResultOverlays?.length);
+  const resultLayers = new Map<string, CFDSceneResultProps>();
+  for (const overlay of [...(bufferedResultOverlays ?? []), ...(additionalResultOverlays ?? []), ...(resultOverlay ? [resultOverlay] : [])])
+    resultLayers.set(overlay.file.name, overlay);
   const resultsOnly = onlyResults && hasVisibleResults;
   const resultGroup = useRef<Group>(null);
   const [detailed, setDetailed] = useState(false);
@@ -1058,13 +1063,15 @@ export function ClimoptixViewer({
               </mesh>}
               {resultSample&&hasVisibleResults&&<CFDSceneProbeReading sample={resultSample}/>}
               <group ref={resultGroup}>
-              {resultOverlay&&<CFDSceneResult {...resultOverlay} onSelect={()=>onSelectResultFile?.(resultOverlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:resultOverlay.file,x,y});}:undefined}/>}
-              {additionalResultOverlays?.map(overlay=><CFDSceneResult key={overlay.file.name} {...overlay} onSelect={()=>onSelectResultFile?.(overlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:overlay.file,x,y});}:undefined}/>)}
+              {[...resultLayers.values()].map(overlay=><CFDSceneResult key={overlay.file.name} {...overlay}
+                onSelect={()=>onSelectResultFile?.(overlay.file)}
+                onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:overlay.file,x,y});}:undefined}/>)}
               </group>
-              {(!resultsOnly || resultReady) && <Frame
+              <Frame
                 request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${resultsOnly}:${fit + resultFitRequest}`}
                 target={resultsOnly ? resultGroup : undefined}
-              />}
+                ready={!resultsOnly || resultReady}
+              />
             </Bounds>
             <OrbitControls
               makeDefault

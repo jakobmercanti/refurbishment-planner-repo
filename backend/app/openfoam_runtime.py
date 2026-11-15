@@ -169,6 +169,7 @@ def execute(
     report: dict[str, Any],
     update: Callable[[str, str], None],
     cancelled: Callable[[], bool],
+    checked_case: Path | None = None,
 ) -> dict[str, Any]:
     manifest = compile_case(root, request, report)
     deadline = time.monotonic() + request.scenario.resources.wallTimeMinutes * 60
@@ -231,20 +232,29 @@ def execute(
                 process.wait()
 
     from backend.app.openfoam_progress import write_phase_progress
-    for completed, args in enumerate((["blockMesh"], ["surfaceFeatureExtract"], ["snappyHexMesh", "-overwrite"])):
-        write_phase_progress(root, "Meshing", completed, 3)
-        command(args, "Meshing")
-        write_phase_progress(root, "Meshing", completed + 1, 3)
-    write_phase_progress(root, "MeshCheck", 0, 1)
-    command(["checkMesh", "-allGeometry", "-allTopology"], "MeshCheck")
-    write_phase_progress(root, "MeshCheck", 1, 1)
-    metrics = mesh_metrics(
-        log.read_text(errors="replace"),
-        (root / "constant/polyMesh/boundary").read_text(),
-        set(manifest["patches"].values()),
-        request.scenario,
-    )
-    manifest["mesh"] = metrics
+    mesh_path = root / "constant/polyMesh"
+    mesh_steps = 5 if request.operation == "mesh" else 4
+    if checked_case is not None:
+        checked = json.loads((checked_case / "result.json").read_text(encoding="utf-8"))
+        if (checked.get("accepted") and checked.get("patches") == manifest["patches"]
+            and all(checked.get(key) == manifest[key] for key in ("sourceHash", "configurationHash", "clientRevision"))
+            and isinstance(checked.get("mesh"), dict)):
+            update("Running", "Reusing the completed and checked mesh")
+            shutil.copytree(checked_case / "constant/polyMesh", mesh_path)
+            manifest["mesh"] = checked["mesh"]
+    if "mesh" not in manifest:
+        commands = (["blockMesh"], ["surfaceFeatureExtract"], ["snappyHexMesh", "-overwrite"],
+                    ["checkMesh", "-allGeometry", "-allTopology"])
+        for completed, args in enumerate(commands):
+            write_phase_progress(root, "Meshing", completed, mesh_steps)
+            command(args, "Meshing")
+            write_phase_progress(root, "Meshing", completed + 1, mesh_steps)
+        manifest["mesh"] = mesh_metrics(
+            log.read_text(errors="replace"),
+            (mesh_path / "boundary").read_text(),
+            set(manifest["patches"].values()),
+            request.scenario,
+        )
     if request.operation == "run":
         cpu = request.scenario.resources.cpu
         if cpu > 1:
@@ -271,8 +281,9 @@ def execute(
         # Measure the final solver iteration before appending its utility log.
         if cpu > 1:
             command(["reconstructPar", "-latestTime"], "Postprocess")
-    update("Postprocess", "Packaging provenance-bound native fields and ASCII slices")
-    write_phase_progress(root, "Postprocess", 0, 1)
+    packaging_phase = "Meshing" if request.operation == "mesh" else "Postprocess"
+    update(packaging_phase, "Packaging the checked mesh" if request.operation == "mesh"
+           else "Packaging provenance-bound native fields and ASCII slices")
     manifest["accepted"] = request.operation == "mesh" or (
         manifest["convergence"]["converged"] and manifest["conservation"]["passed"]
     )
@@ -294,6 +305,12 @@ def execute(
                 continue  # Full native output remains available in the archive.
             if re.search(r"\b(?:nan|[-+]?inf)\b", text, re.IGNORECASE):
                 raise ValueError("Native sampled fields contain non-finite values.")
+            # The native sampler exported untriangulated mesh-cell intersections.
+            # Mark the VTK title so older slices are not mistaken for cell sections.
+            lines[1] = "Climoptix mesh cell sections"
+            path.write_text("\n".join(lines) + "\n", encoding="ascii")
+            if path.stat().st_size > 25 * 1024**2:
+                continue
             artifacts.append(
                 {
                     "id": f"slice-{len(artifacts)}",
@@ -313,6 +330,13 @@ def execute(
     post_paths = (sorted(path for path in (root / "postProcessing").rglob("*") if path.is_file())
                   if request.operation == "run" else [])
     total_steps = len(paths) + len(post_paths) + 2  # file writes plus archive integrity hashes
+    def packaging_progress(completed: int) -> None:
+        if request.operation == "mesh":
+            write_phase_progress(root, packaging_phase, 4 * total_steps + completed, 5 * total_steps)
+        else:
+            write_phase_progress(root, packaging_phase, completed, total_steps)
+
+    packaging_progress(0)
     with ZipFile(archive_path, "w", ZIP_DEFLATED) as archive:
         for index, path in enumerate(paths):
             if path.is_file() and path != archive_path and not any(part.startswith("processor") for part in path.parts):
@@ -321,7 +345,7 @@ def execute(
                 if time.monotonic() > deadline:
                     raise TimeoutError("Job time limit reached during native packaging.")
                 archive.write(path, path.relative_to(root).as_posix())
-                write_phase_progress(root, "Postprocess", index + 1, total_steps)
+                packaging_progress(index + 1)
                 if archive_path.stat().st_size > MAX_ARTIFACT:
                     raise ValueError("Native case archive exceeds its 128 MB bound.")
     if archive_path.stat().st_size > MAX_ARTIFACT:
@@ -341,12 +365,12 @@ def execute(
     )
     if request.operation == "run":
         artifacts.append(postprocessing_artifact(root, post_paths, deadline, cancelled,
-                         lambda count: write_phase_progress(root, "Postprocess", len(paths) + count + 1, total_steps)))
+                         lambda count: packaging_progress(len(paths) + count + 1)))
     if sum(p.stat().st_size for p in root.rglob("*") if p.is_file()) > max_bytes:
         raise ValueError("Job storage limit reached while packaging post-processing.")
     manifest["artifacts"] = artifacts
     (root / "result.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    write_phase_progress(root, "Postprocess", total_steps, total_steps)
+    packaging_progress(total_steps)
     return manifest
 
 

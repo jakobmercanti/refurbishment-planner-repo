@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { RailwayCFDWorker } from "@/lib/railwayCFDWorker";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import type { RailwayCFDWorker, WorkerResult } from "@/lib/railwayCFDWorker";
 import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import { readResultData } from "@/lib/cfdResultData";
 import { useCFDResult } from "./useCFDResult";
@@ -23,9 +23,23 @@ async function physicalPlane(file:File) {
   } finally {loaded.dispose();}
 }
 
+type Artifact = WorkerResult["artifacts"][number];
+type PreparedPlane = { file: File; bounds: Awaited<ReturnType<typeof physicalPlane>> };
+const boundsCache = new WeakMap<File, ReturnType<typeof physicalPlane>>();
+function planeBounds(file: File) {
+  const existing = boundsCache.get(file);
+  if (existing) return existing;
+  const bounds = physicalPlane(file);
+  boundsCache.set(file, bounds);
+  return bounds;
+}
+
 /** Select another verified native artifact. Never translate a solved plane mesh. */
-export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJob|undefined,current:File|undefined,onChoose:(file:File)=>void) {
+export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJob|undefined,current:File|undefined,onChoose:(file:File)=>void,preload=false) {
   const {result}=useCFDResult(adapter,job,!!current);
+  const jobId = job?.id, revision = job?.clientRevision;
+  const cache = useMemo(() => ({jobId,revision,adapter,ready:new Map<string,PreparedPlane>(),pending:new Map<string,Promise<PreparedPlane>>()}), [adapter,jobId,revision]);
+  const [buffer, setBuffer] = useState<{cache:typeof cache;files:File[]}>();
   const [task, setTask] = useState<{
     adapter: RailwayCFDWorker; file: File; jobId: string; busy: boolean; error: string;
   } | null>(null);
@@ -39,6 +53,54 @@ export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJo
   const stack = all.filter(a => !axis || resultPlaneAxis(name(a)) === axis)
     .sort((a, b) => name(a).localeCompare(name(b), undefined, { numeric: true }));
   const index = stack.findIndex(a => name(a) === current?.name);
+  const remember = (id: string, plane: PreparedPlane) => {
+    if (!preload || plane.file.size > 12 * 1024**2) return;
+    cache.ready.delete(id);
+    cache.ready.set(id,plane);
+    while (cache.ready.size > 6 || [...cache.ready.values()].reduce((size, entry)=>size + entry.file.size,0) > 24 * 1024**2) {
+      cache.ready.delete(cache.ready.keys().next().value!);
+    }
+    setBuffer({cache,files:[...cache.ready.values()].map(entry=>entry.file)});
+  };
+  const prepare = async (artifact: Artifact, signal: AbortSignal) => {
+    const ready = cache.ready.get(artifact.id);
+    if (ready) return ready;
+    const queued = cache.pending.get(artifact.id);
+    if (queued) return queued;
+    const load = async () => {
+      if (!adapter || !job) throw new Error("Reconnect the worker to load this plane.");
+      const file = await adapter.download(job,artifact,AbortSignal.any([signal,AbortSignal.timeout(120000)]));
+      const bounds = await planeBounds(file);
+      signal.throwIfAborted();
+      const value = {file,bounds};
+      remember(artifact.id,value);
+      return value;
+    };
+    const loading = load();
+    cache.pending.set(artifact.id, loading);
+    try { return await loading; }
+    finally { if (cache.pending.get(artifact.id) === loading) cache.pending.delete(artifact.id); }
+  };
+  const warmNeighbours = useEffectEvent(async (signal: AbortSignal) => {
+    if (!current || index < 0) return;
+    try {
+      if (!cache.ready.has(stack[index].id)) {
+        const bounds = await planeBounds(current);
+        signal.throwIfAborted();
+        remember(stack[index].id, {file:current,bounds});
+      }
+      await Promise.allSettled([1,-1,2,-2].flatMap(offset => {
+        const artifact = stack[index + offset];
+        return artifact && artifact.size <= 12 * 1024**2 ? [prepare(artifact,signal)] : [];
+      }));
+    } catch { /* The explicit step reports download or validation failures. */ }
+  });
+  useEffect(() => {
+    if (!preload || !current || !result) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => void warmNeighbours(controller.signal), 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [cache,current,preload,result]);
   const choose = async (artifact: typeof all[number] | undefined, direction?: -1 | 1) => {
     // Lock before the first await; two clicks in one React render cannot download twice.
     if (!adapter || !job || !current || busy || (pending.current && !pending.current.signal.aborted) || !artifact) return;
@@ -46,9 +108,8 @@ export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJo
     const source = { adapter, file: current, jobId: job.id };
     setTask({ ...source, busy: true, error: "" });
     try {
-      const file = await adapter.download(job, artifact, AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]));
-      const after = await physicalPlane(file);
-      const before = direction ? await physicalPlane(current) : null;
+      const {file,bounds:after} = await prepare(artifact,controller.signal);
+      const before = direction ? await planeBounds(current) : null;
       controller.signal.throwIfAborted();
       if (direction && before && (before.axis !== after.axis || direction * (after.coordinate - before.coordinate) <= 1e-9))
         throw Error("No adjacent sampled plane in this direction. Choose a different plane stack; result data has not been moved.");
@@ -69,5 +130,6 @@ export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJo
     chooseAxis: (axis: ResultAxis) => choose(sorted.find(a => resultPlaneAxis(name(a)) === axis)),
     availableAxes: RESULT_AXES.filter(axis => sorted.some(a => resultPlaneAxis(name(a)) === axis)),
     busy, error, previous: index > 0 && !busy, next: index >= 0 && index < stack.length - 1 && !busy,
+    buffered: buffer?.cache === cache ? buffer.files : [],
   };
 }

@@ -526,7 +526,7 @@ def compile_case(root: Path, request: Submission, report: dict[str, Any]) -> dic
             # distorted mesh. Use geometric edge intersections for physical slices.
             f"{plane['id']} {{type plane; planeType pointAndNormal; "
             f"pointAndNormalDict {{point {vector(plane['pointMm'], 0.001)}; normal {vector(plane['normal'])};}} "
-            "interpolate true;}"
+            "interpolate true; triangulate false;}"
             for plane in planes
         )
         functions += (
