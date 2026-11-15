@@ -11,7 +11,7 @@ export function CFDWorkerConnection({ adapter, reason, onRefresh, scenario, onCh
   const quota = adapter?.capabilities.simulationQuota;
   const issues = limits ? workerProfileIssues(scenario, limits, adapter?.capabilities.rotatedGrid) : [];
   return <section className="cfx-worker-connection" aria-label="OpenFOAM connection">
-    <div className="cfx-worker-controls"><p>{reason}</p><div className="cfx-inline-toolbar">
+    <div className="cfx-worker-controls"><p>{reason}</p><div className="cfx-worker-actions">
       <button onClick={onRefresh}>Refresh connection</button>
       {adapter && <button onClick={() => onChange(applyWorkerLimits(scenario, adapter.capabilities.limits))}>Use worker resource limits</button>}
     </div></div>

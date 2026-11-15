@@ -45,7 +45,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
   };
   return <div className="cfx-review" data-cfx-collapse-root>
     <header className="cfx-inline-toolbar">
-      <div className="cfx-segments" role="tablist" aria-label="Review and transfer">
+      <div className="cfx-review-tabs" role="tablist" aria-label="Review and transfer">
         {TABS.map(([id, title], index) => <button key={id} role="tab" aria-label={title} id={`${prefix}-${id}`} aria-controls={`${prefix}-panel-${id}`}
           aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)} onKeyDown={event => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

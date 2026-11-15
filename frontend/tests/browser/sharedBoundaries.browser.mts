@@ -46,7 +46,7 @@ test("switching to CFD captures checked radiator/UFH watts and fabric; surface e
   assert.ok(patches.every(p => p.boundary.thermal.type === "heatTransfer"));
   assert.ok(Math.abs(patches.reduce((sum,p) => sum + p.areaM2 * p.boundary.thermal.sourceFluxWm2,0) - 900) < 1e-5);
   await cfdWindow(ui, "Boundaries");
-  await ui.getByRole("button", { name: `Edit surface ${patches[0].id}`, exact: true }).click();
+  await ui.locator(`.cfx-reorder-item[data-item-id=${JSON.stringify(patches[0].id)}]`).getByRole("button", { name: /^Edit surface / }).click();
   const editor = s.page.getByRole("region", { name: "Edit boundary surface", exact: true });
   const surface = s.page.locator(".floating-toolbar").filter({ has: s.page.getByLabel("Move Edit boundary surface", { exact: true }) });
   const controls = await editor.count() ? editor : surface;

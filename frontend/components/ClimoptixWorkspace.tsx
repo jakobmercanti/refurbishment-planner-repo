@@ -451,10 +451,10 @@ export function ClimoptixWorkspace({
       );
       return;
     }
-    const s = newCFDScenario(
-      project.projectId,
-      `Simulation ${scenarios.length + 1}`,
-    );
+    const names = new Set(scenarios.map(study => study.name.toLowerCase()));
+    let number = scenarios.length + 1;
+    while (names.has(`simulation ${number}`)) number++;
+    const s = newCFDScenario(project.projectId, `Simulation ${number}`);
     s.group = group ?? scenario?.group ?? simulationGroups(scenarios, project.cfdSimulationGroups)[0]?.name ?? "General";
     void applyDefaults(s, true, previousStudyId);
   };
@@ -585,7 +585,11 @@ export function ClimoptixWorkspace({
     const matches=(item:typeof mainResult)=>!!item&&item.studyId===scenario?.id&&(!file||item.file.name===file.name);
     const next=mainResultLayers.filter(item=>!matches(item));
     setMainResultLayers(next);
-    if(matches(mainResult)){setMainResult(next.find(item=>item.studyId===scenario?.id)??null);setMainResultField("");setMainResultMetadata({fields:[],error:""});}
+    if(matches(mainResult)){
+      const replacement = next.find(item=>item.studyId===scenario?.id) ?? null;
+      setMainResult(replacement);setMainResultField("");setMainResultMetadata({fields:[],error:""});
+      if (!replacement) setOnlyResultPlanes(false);
+    }
   };
   const jump = (objectId: string | null, group: string) => {
     const device = objectId
@@ -885,9 +889,12 @@ export function ClimoptixWorkspace({
                   ))}
                 </select>
             <span className={`cfx-state ${status.toLowerCase()}`} title={`Simulation status: ${status}`}>{status}</span>
-            <button type="button" className="cfx-refresh-checks" disabled={!scenario || busy || resetting}
+            <button type="button" className="cfx-refresh-checks" aria-label="Refresh checks" disabled={!scenario || busy || resetting}
               data-field-help="Recheck this study’s geometry and preparation diagnostics. Also refresh the connected worker’s run eligibility."
-              onClick={() => { refreshPreparation(); remoteWorker.refresh(); }}>Refresh checks</button>
+              onClick={() => { refreshPreparation(); remoteWorker.refresh(); }}>
+              <span aria-hidden="true" className="cfx-refresh-icon">↻</span>
+              <span className="cfx-refresh-label">Refresh checks</span>
+            </button>
           </div>}
           helpTitle="Climoptix CFD"
           helpSteps={[...CFD_PHASE_HELP[shownTab], ...CFD_SETUP_HELP]}
@@ -1286,7 +1293,7 @@ export function ClimoptixWorkspace({
         </CFDWindowSections>
       </FloatingToolbar>}
       {active&&scenario&&heatingImportOpen&&<CFDHeatingImport key={scenario.id} project={project} scenario={scenario} report={activeReport} checked={!stale&&!busy&&!error} onChange={change} onClose={()=>setHeatingImportOpen(false)} onInsulation={()=>{setHeatingImportOpen(false);openThermal();}} onEditSource={onEditBuilding}/>}
-      {active&&!setupOpen&&mainResult&&mainResult.studyId===scenario?.id&&mainResult.jobId===jobs[scenario?.id??""]?.job?.id&&<FloatingToolbar title="Building result display" defaultPosition={{x:24,y:80}} initialSize={{width:380,height:390}} onClose={()=>{setMainResult(null);setMainResultLayers([]);}}>
+      {active&&!setupOpen&&mainResult&&mainResult.studyId===scenario?.id&&mainResult.jobId===jobs[scenario?.id??""]?.job?.id&&<FloatingToolbar title="Building result display" defaultPosition={{x:24,y:80}} initialSize={{width:380,height:390}} onClose={()=>unloadScenePlane()}>
         <CFDWindowSections>
         <details open><summary>Plane selection &amp; display</summary>
         <p>{mainResult.file.name} · verified worker plane · metres → scene coordinates.</p>
@@ -1301,7 +1308,7 @@ export function ClimoptixWorkspace({
         </>}
         {mainResultMetadata.error&&<p className="cfx-error" role="alert">{mainResultMetadata.error}</p>}
         </details><details open><summary>Manage loaded planes</summary>
-        <div className="cfx-equal-actions"><button onClick={()=>{const next=mainResultLayers.filter(item=>item.file!==mainResult.file);setMainResultLayers(next);setMainResult(next.find(item=>item.studyId===scenario?.id)??null);setMainResultField("");setMainResultMetadata({fields:[],error:""});}}>Unload selected plane</button><button onClick={()=>{setMainResultLayers([]);setMainResult(null);}}>Unload all planes</button></div>
+        <div className="cfx-equal-actions"><button onClick={()=>unloadScenePlane(mainResult.file)}>Unload selected plane</button><button onClick={()=>unloadScenePlane()}>Unload all planes</button></div>
         <button onClick={()=>{setSetupOpen(true);openPhase("results");}}>Return to results</button>
         </details>
         </CFDWindowSections>

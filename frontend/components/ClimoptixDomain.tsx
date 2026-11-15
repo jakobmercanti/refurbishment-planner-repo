@@ -23,6 +23,8 @@ export function DomainPanel({
   const mesh = scenario.mesh;
   const bounds = report?.domain.boundsMm;
   const baseCells = bounds ? backgroundCellCount(bounds, mesh) : null;
+  const roomNames = new Map(report?.domain.regions.map(room => [room.id, room.name]));
+  const floorName = (id: string) => floors.find(floor => floor.id === id)?.name ?? "Unresolved floor";
   return (
     <section data-cfx-collapse-root className="cfx-domain-panel">
       <details open><summary>Seed &amp; connected domain</summary>
@@ -116,7 +118,7 @@ export function DomainPanel({
           <p className="cfx-caption">
             Connected floors:{" "}
             {report.domain.floorIds
-              .map((id) => floors.find((f) => f.id === id)?.name ?? id)
+              .map(floorName)
               .join(", ") || "None"}
           </p>
           {report.domain.boundsMm && (
@@ -134,7 +136,7 @@ export function DomainPanel({
                 <strong>{r.name}</strong>
                 <span>
                   {r.included ? "Included" : "Excluded · disconnected"} ·{" "}
-                  {floors.find((f) => f.id === r.floorId)?.name ?? r.floorId}
+                  {floorName(r.floorId)}
                 </span>
                 <small>
                   Elevation {r.baseMm} mm · ceiling{" "}
@@ -147,19 +149,20 @@ export function DomainPanel({
             ))}
           </ul>
           <h3>Passages &amp; stops</h3>
-          {report.domain.portals.map((p) => (
+          {report.domain.portals.map((p, index) => (
             <div className="cfx-notice" key={p.id}>
               <strong>
-                {p.traversed ? "↔ Connected" : "STOP"} · {p.kind}
+                {labelFor(p.kind)} {index + 1} · {p.traversed ? "Connected" : "Stops connectivity"}
               </strong>
               <small>
-                {p.reason} · {p.rooms.join(" ↔ ")}
+                {p.reason}{p.rooms.length > 0 && ` · ${p.rooms.map(id => roomNames.get(id) ?? "Unresolved room").join(" ↔ ")}`}
               </small>
             </div>
           ))}
-          {report.domain.slabVoids.map((v) => (
+          {report.domain.slabVoids.map((v, index) => (
             <div key={v.id} className="cfx-notice">
-              ↕ Physical slab void · {v.id}
+              <strong>Slab opening {index + 1}</strong>
+              <small>{roomNames.get(v.lower) ?? "Lower room"} ↔ {roomNames.get(v.upper) ?? "Upper room"}</small>
             </div>
           ))}
         </details>

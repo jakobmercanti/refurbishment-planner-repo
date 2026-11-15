@@ -135,7 +135,7 @@ test("boundary groups colour real 3D patches, transfer surfaces and apply physic
   await ui.getByRole("button", { name: "Add boundary group", exact: true }).click();
   assert.equal(await ui.getByRole("button", { name: "Hide Edit boundary group", exact: true }).count(), 0);
   const target = ui.getByRole("region", { name: "Boundary group Group", exact: true });
-  const sourceRow = original.locator(".cfx-reorder-item").filter({ has: page.getByRole("button", { name: `Select surface ${first.id}`, exact: true }) });
+  const sourceRow = original.locator(`.cfx-reorder-item[data-item-id=${JSON.stringify(first.id)}]`);
   await sourceRow.getByRole("button", { name: /^Reorder / }).dragTo(target.getByRole("list", { name: "Group surfaces", exact: true }), { targetPosition: { x: 60, y: 20 } });
   await eventually(saved, p => p.cfdScenarios[0].boundaries.collections.find(g => g.name === "Group")?.patchIds.includes(first.id));
   await cfdWindow(ui, "Simulations");

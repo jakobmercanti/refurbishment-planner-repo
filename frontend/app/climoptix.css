@@ -450,9 +450,7 @@
   border-bottom: 1px solid var(--line);
 }
 .cfx-simulation-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-bottom: 1px solid var(--line);
+  flex: 1;
 }
 .cfx-simulation-tabs button {
   padding: 8px 5px;
@@ -615,16 +613,24 @@
   inset: 0;
   min-height: 0;
 }
-.cfx-view-selector {
+.cfx-view-tools {
   position: absolute;
   z-index: 10;
   top: 12px;
   right: 12px;
   display: grid;
+  gap: var(--density-field-gap);
+  justify-items: end;
+  width: min(410px, calc(100% - 24px));
+  pointer-events: none;
+}
+.cfx-view-selector {
+  display: grid;
   grid-template-columns: max-content minmax(0, 210px) max-content;
   align-items: center;
   gap: 7px;
-  max-width: calc(100% - 24px);
+  max-width: 100%;
+  pointer-events: auto;
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
@@ -635,20 +641,15 @@
   width: 100%;
   min-width: 0;
 }
-.cfx-view-selector .cfx-return-to-setup { grid-column: 1 / -1; }
+.cfx-view-fit-actions { display: flex; align-items: stretch; gap: var(--density-field-gap); }
+.cfx-view-fit-actions > :first-child { flex: 1; }
+.cfx-view-fit-actions > button { min-width: 0; }
 .cfx-view-selector label {
   color: var(--muted);
   padding-left: 5px;
 }
-.cfx-viewer > .cfx-stale {
-  position: absolute;
-  z-index: 9;
-  top: 120px;
-  right: 12px;
-  max-width: min(440px, calc(100% - 24px));
-  border-radius: var(--radius-control);
-  pointer-events: none;
-}
+.cfx-view-tools > :is(.cfx-stale, .cfx-geometry-notice) { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.cfx-geometry-notice > button { flex: none; pointer-events: auto; }
 .cfx-viewer > footer {
   position: absolute;
   left: 12px;
@@ -799,13 +800,15 @@
   color: var(--muted);
   font-weight: 500;
 }
-.cfx-setup-tabs {
+.cfx-workspace :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .cfx-review-tabs) {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
-  padding: 0 8px;
+  min-width: 0;
   border-bottom: 1px solid var(--line);
 }
+.cfx-setup-tabs { padding-inline: var(--window-side-padding); }
+.cfx-bound-tabs { width: 100%; flex: 1 1 100%; }
 .cfx-workspace .cfx-setup-tabs > button {
   padding: 8px 3px;
   font-size: 11px;
@@ -816,7 +819,7 @@
 /* Navigation shares a baseline, not the rounded styling of action buttons.
    Control variables also preserve this distinction in the Modern theme. */
 .cfx-workspace
-  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .thermal-steps)
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .cfx-review-tabs, .thermal-steps)
   > button {
   --control-bg: transparent;
   --control-text: var(--muted);
@@ -833,23 +836,23 @@
   box-shadow: none;
 }
 .cfx-workspace
-  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .thermal-steps)
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .cfx-review-tabs, .thermal-steps)
   > button:hover:not(:disabled) {
   background: var(--control-hover-bg);
   color: var(--control-hover-text);
 }
 .cfx-workspace
-  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .thermal-steps)
+  :is(.cfx-setup-tabs, .cfx-simulation-tabs, .cfx-bound-tabs, .cfx-review-tabs, .thermal-steps)
   > button:is([aria-selected="true"], [aria-current="step"]) {
-  --control-bg: var(--panel);
-  --control-text: var(--ink);
+  --control-bg: var(--ui-button-activeBackground);
+  --control-text: var(--ui-button-activeText);
   --control-border: transparent;
-  --control-hover-bg: var(--surface-muted);
-  --control-hover-text: var(--ink);
+  --control-hover-bg: var(--ui-button-activeBackground);
+  --control-hover-text: var(--ui-button-activeText);
   --control-hover-border: transparent;
   background: var(--control-bg);
   color: var(--control-text);
-  box-shadow: inset 0 -3px var(--accent);
+  box-shadow: inset 0 -3px var(--focus-ring);
 }
 .cfx-setup-panel {
   flex: 1;
@@ -894,8 +897,6 @@
 @container cfx-setup (max-width: 460px) {
   .cfx-setup .cfx-grid:not(.cfx-three), .cfx-physics-fields { grid-template-columns: minmax(0, 1fr); }
 }
-.cfx-bound-tabs { display: grid; flex: 1 1 100%; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; border-bottom: 1px solid var(--line); }
-.cfx-workspace .cfx-bound-tabs > button { width: 100%; }
 .cfx-input-failure { color: var(--fail); overflow-wrap: anywhere; margin-bottom: var(--density-section-gap); }
 .cfx-probe-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: var(--density-field-gap); padding-block: var(--density-row-padding); }
 .cfx-probe-row + .cfx-probe-row { border-top: 1px solid var(--line); }
@@ -1015,12 +1016,17 @@
 .cfx-study-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--cfx-study-action-width) var(--cfx-study-menu-width);
+  grid-template-areas: "study actions menu";
   align-items: center;
   gap: var(--cfx-study-row-gap);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   padding: var(--cfx-study-row-padding);
 }
+.cfx-study-row > :is(.cfx-study-name, .cfx-inline-name) { grid-area: study; }
+.cfx-study-row > .cfx-study-actions { grid-area: actions; }
+.cfx-study-row > .cfx-row-menu { grid-area: menu; min-width: 0; }
+.cfx-workspace .cfx-study-row :is(.cfx-study-actions, .cfx-row-menu) button { min-width: 0; white-space: normal; }
 .cfx-study-row.selected {
   border-color: var(--focus-ring);
   background: var(--surface-muted);
@@ -1086,15 +1092,10 @@
   overflow-wrap: anywhere;
 }
 .cfx-geometry-notice {
-  position: absolute;
-  top: 120px;
-  right: 12px;
-  z-index: 9;
   display: flex;
   gap: 8px;
   align-items: center;
   padding: 8px 12px;
-  max-width: min(410px, calc(100% - 24px));
   background: var(--panel);
   color: var(--muted);
   border: 1px solid var(--line);
@@ -1121,15 +1122,11 @@
   display: flex;
   flex-direction: column;
 }
-.cfx-workspace .cfx-segments { display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; gap: 0; }
-.cfx-workspace .cfx-segments > button { border-radius: 0; margin: 0; box-shadow: none; border: 0; padding-inline: 12px; }
-.cfx-workspace .cfx-segments > button[aria-selected="true"] { background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); box-shadow: none; }
 .cfx-boundary-tools input { min-width: 150px; flex: 1 1 200px; }
 .cfx-objects > * + * { margin-top: var(--density-section-gap); }
 .cfx-objects .cfx-device-row { grid-template-columns: minmax(0, 1fr) auto auto; flex: 1; }
 .cfx-objects .cfx-device-row .cfx-device-name { padding-inline: 6px; }
 .cfx-objects .cfx-group-select { background: transparent; color: var(--ink); border-color: transparent; }
-.cfx-simulation-tabs { flex: 1; }
 .cfx-boundary-group .cfx-list-header > .cfx-group-heading { padding-left: 32px; }
 .cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr) minmax(0, 330px); }
 .cfx-thermal-navigation { padding: var(--density-window-padding); }
@@ -1142,7 +1139,6 @@
 .cfx-review-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
 .cfx-workspace .cfx-review textarea { min-height: calc(var(--density-control-min-height) * 1.7); }
 @container cfx-setup (max-width: 620px) {
-  .cfx-workspace .cfx-segments > button { padding-inline: 8px; }
   .cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr); }
   .cfx-surface-row > .cfx-surface-name { grid-column: 1 / -1; }
   .cfx-objects .cfx-device-row { grid-template-columns: minmax(0, 1fr) auto; }
@@ -1169,7 +1165,7 @@
   .cfx-setup-heading > .cfx-phase-select {
     display: grid;
   }
-  .cfx-setup-tabs,
+  .cfx-workspace .cfx-setup-tabs,
   .cfx-setup-heading > .cfx-state,
   .thermal-embedded .thermal-steps {
     display: none;
@@ -1183,7 +1179,7 @@
   .cfx-setup-heading > .cfx-phase-select {
     display: grid;
   }
-  .cfx-setup-tabs,
+  .cfx-workspace .cfx-setup-tabs,
   .cfx-setup-heading > .cfx-state,
   .thermal-steps {
     display: none;
@@ -1212,19 +1208,20 @@
     justify-self: end;
     width: var(--cfx-study-action-width);
   }
-  .cfx-study-row > :is(.cfx-study-name, .cfx-inline-name) { grid-column: 1 / -1; }
-  .cfx-study-row > .cfx-study-actions { grid-column: 2; }
-  .cfx-study-row > .cfx-row-menu { grid-column: 3; }
-  .cfx-workspace :is(.cfx-study-name, .cfx-study-actions > button) {
+  .cfx-study-group { --cfx-study-action-width: clamp(112px, 32cqw, 164px); }
+  .cfx-study-row { grid-template-areas: "study study study" ". actions menu"; }
+  .cfx-workspace .cfx-study-group :is(.cfx-study-name, .cfx-study-actions > button, .cfx-group-actions > button, .cfx-study-row > .cfx-row-menu > summary) {
     min-height: 40px;
   }
 }
 @media (max-width: 700px) {
-  .cfx-view-selector {
+  .cfx-view-tools {
     top: 8px;
     right: 8px;
+    width: min(410px, calc(100% - 16px));
+  }
+  .cfx-view-selector {
     gap: 4px;
-    max-width: calc(100% - 16px);
     grid-template-columns: minmax(0, 185px) max-content;
   }
   .cfx-view-selector select {
@@ -1249,7 +1246,16 @@
 
 .cfx-viewer > footer .cfx-patch-legend { max-height: 100px; overflow:auto; pointer-events:auto; }
 @media (max-width: 700px) {
-  .cfx-viewer:has(.cfx-patch-legend) > footer { display:flex; }
+  .cfx-viewer > footer:has(.cfx-patch-legend) { display:grid; }
 }
 .cfx-workbench-status .cfx-run-issue { display: block; color: var(--fail); }
 .cfx-header-simulation .cfx-refresh-checks { flex: none; white-space: nowrap; }
+.cfx-refresh-icon, .cfx-return-icon { display: none; }
+@container cfx-window (max-width: 620px) {
+  .cfx-refresh-icon { display: inline; }
+  .cfx-refresh-label { display: none; }
+}
+@media (max-width: 460px) {
+  .cfx-return-icon { display: inline; }
+  .cfx-return-label { display: none; }
+}

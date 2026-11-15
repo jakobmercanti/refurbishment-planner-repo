@@ -394,7 +394,6 @@ export function ClimoptixViewer({
 }: Props) {
   const mouseButtons = useViewerNavigation();
   const [planeMenu,setPlaneMenu]=useState<PlaneMenu|null>(null);
-  const thermalVisible = thermalMetric !== "off" && thermalSurfaces.length > 0;
   const thermalPatchIds = useMemo(
     () => new Set(thermalSurfaces.map((f) => f.patchId)),
     [thermalSurfaces],
@@ -402,6 +401,9 @@ export function ClimoptixViewer({
   const [ceilings, setCeilings] = useState(false);
   const [wallOutlines,setWallOutlines]=useState(false);
   const [patchMode, setPatchMode] = useState<PatchDisplayMode>("geometry");
+  const thermalVisible = patchMode === "geometry" && thermalMetric !== "off" && thermalSurfaces.length > 0;
+  const hasVisibleResults = Boolean(resultOverlay || additionalResultOverlays?.length);
+  const resultsOnly = onlyResults && hasVisibleResults;
   const [detailed, setDetailed] = useState(false);
   const [isolate, setIsolate] = useState(false);
   const [fit, setFit] = useState(0);
@@ -515,11 +517,14 @@ export function ClimoptixViewer({
   const patchLegend = new Map<string, string>();
   const patchStyles = new Map<string, string>();
   if (patchMode !== "geometry") {
+    const colours = new Map<string, string>();
     for (const patch of patches) {
-      if (!visibleRooms.has(patch.roomId)) continue;
+      if (patch.kind === "object" && !visibleObjectIds.has(patch.sourceId)) continue;
       const style = patchDisplay(patch, scenario, patchMode);
-      const colour = style.colour ?? patchLegend.get(style.label) ?? PATCH_PALETTE[patchLegend.size] ?? "hsl(" + (patchLegend.size * 137.508 % 360) + " 58% 53%)";
-      patchLegend.set(style.label, colour);
+      const colour = style.colour ?? colours.get(style.label) ?? PATCH_PALETTE[colours.size] ?? "hsl(" + (colours.size * 137.508 % 360) + " 58% 53%)";
+      colours.set(style.label, colour);
+      if (visibleRooms.has(patch.roomId) && (ceilings || picking || boundaryGroups.length > 0 || patch.kind !== "ceiling" || patch.id === selected))
+        patchLegend.set(style.label, colour);
       patchStyles.set(patch.id, colour);
     }
   }
@@ -663,53 +668,69 @@ export function ClimoptixViewer({
   };
   return (
     <section className="cfx-viewer" aria-label="Climoptix geometry viewer">
-      <div className="cfx-view-selector">
-        <label htmlFor="cfx-view-scope">View</label>
-        <select
-          id="cfx-view-scope"
-          aria-label="CFD view scope"
-          value={viewScope.id}
-          onChange={(e) => {
-            setScope(e.target.value);
-            setIsolate(false);
-          }}
-        >
-          <option value="building">Whole building</option>
-          <optgroup label="Rooms">
-            {scopes
-              .filter((s) => s.id.startsWith("room:"))
-              .map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-          </optgroup>
-          <optgroup label="Connected air volumes">
-            {scopes
-              .filter((s) => s.id.startsWith("air:"))
-              .map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-          </optgroup>
-        </select>
-        <button type="button" onClick={() => setFit((x) => x + 1)}>
-          Fit
-        </button>
-        <label htmlFor="cfx-patch-display">Display</label>
-        <select id="cfx-patch-display" aria-label="CFD patch display" value={patchMode} onChange={event => setPatchMode(event.target.value as PatchDisplayMode)}>
-          {Object.entries(PATCH_DISPLAY_MODES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-        <button
-          type="button"
-          disabled={!!picking}
-          aria-expanded={viewSettingsOpen}
-          onClick={() => onViewSettings(!viewSettingsOpen)}
-        >
-          View properties
-        </button>
-        {onReturnToSetup && <button className="cfx-return-to-setup" type="button" autoFocus onClick={onReturnToSetup} title="Return to simulation setup (Escape)">Return to setup</button>}
+      <div className="cfx-view-tools">
+        <div className="cfx-view-selector">
+          <label htmlFor="cfx-view-scope">View</label>
+          <select
+            id="cfx-view-scope"
+            aria-label="CFD view scope"
+            value={viewScope.id}
+            onChange={(e) => {
+              setScope(e.target.value);
+              setIsolate(false);
+            }}
+          >
+            <option value="building">Whole building</option>
+            <optgroup label="Rooms">
+              {scopes
+                .filter((s) => s.id.startsWith("room:"))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="Connected air volumes">
+              {scopes
+                .filter((s) => s.id.startsWith("air:"))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+            </optgroup>
+          </select>
+          <div className="cfx-view-fit-actions">
+            <button type="button" data-field-help="Fit the current building or room scope into the 3D view." onClick={() => setFit((x) => x + 1)}>Fit</button>
+            {onReturnToSetup && <button type="button" aria-label="Return to setup" autoFocus onClick={onReturnToSetup}
+              data-field-help="Reopen Simulation setup and restore the previous viewer selection. Escape also returns to setup.">
+              <span className="cfx-return-icon" aria-hidden="true">↩</span><span className="cfx-return-label">Setup</span>
+            </button>}
+          </div>
+          <label htmlFor="cfx-patch-display">Display</label>
+          <select id="cfx-patch-display" aria-label="CFD patch display" value={patchMode} onChange={event => setPatchMode(event.target.value as PatchDisplayMode)}>
+            {Object.entries(PATCH_DISPLAY_MODES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <button
+            type="button"
+            disabled={!!picking}
+            aria-expanded={viewSettingsOpen}
+            onClick={() => onViewSettings(!viewSettingsOpen)}
+          >
+            View properties
+          </button>
+        </div>
+        {!buildingScene && rooms.length > 0 && (
+          <div className="cfx-geometry-notice" role="status">
+            <span>{sceneState.input === source && sceneState.error
+              ? "Building shown from your project · connectivity service unavailable"
+              : "Building shown from your project · checking air volumes…"}</span>
+            {sceneState.input === source && sceneState.error && (
+              <button onClick={() => setRetry((x) => x + 1)}>Retry geometry</button>
+            )}
+          </div>
+        )}
+        {stale && report && <p className="cfx-stale" role="status">Setup changed. Overlays await updated checks.</p>}
       </div>
       {viewTarget &&
         createPortal(
@@ -726,6 +747,7 @@ export function ClimoptixViewer({
               <input
                 type="checkbox"
                 checked={detailed}
+                disabled={patchMode !== "geometry"}
                 onChange={(e) => setDetailed(e.target.checked)}
               />
               Visual assets
@@ -747,8 +769,10 @@ export function ClimoptixViewer({
               />
               Refinement intent
             </label>
-            <label className="cfx-check"><input type="checkbox" checked={wallOutlines} onChange={event=>setWallOutlines(event.target.checked)}/>2D wall outlines</label>
-            <label className="cfx-check"><input type="checkbox" checked={onlyResults} onChange={event=>onOnlyResults?.(event.target.checked)}/>Only CFD result planes</label>
+            <label className="cfx-check"><input type="checkbox" checked={wallOutlines} disabled={patchMode !== "geometry"} onChange={event=>setWallOutlines(event.target.checked)}/>2D wall outlines</label>
+            <label className="cfx-check"><input type="checkbox" checked={resultsOnly} disabled={!hasVisibleResults}
+              data-field-help="Hide building geometry while a result plane is visible. Show a loaded result plane first to use this option."
+              onChange={event=>onOnlyResults?.(event.target.checked)}/>Only CFD result planes</label>
             <label className="cfx-check"><input type="checkbox" checked={resultsVisible} onChange={event=>onResultsVisible?.(event.target.checked)}/>Show CFD result planes</label>
             </div>
             <button type="button" onClick={() => setFit((x) => x + 1)}>
@@ -757,25 +781,6 @@ export function ClimoptixViewer({
           </details>,
           viewTarget,
         )}
-      {!buildingScene && rooms.length > 0 && (
-        <div className="cfx-geometry-notice" role="status">
-          <span>
-            {sceneState.input === source && sceneState.error
-              ? "Building shown from your project · connectivity service unavailable"
-              : "Building shown from your project · checking air volumes…"}
-          </span>
-          {sceneState.input === source && sceneState.error && (
-            <button onClick={() => setRetry((x) => x + 1)}>
-              Retry geometry
-            </button>
-          )}
-        </div>
-      )}
-      {stale && report && (
-        <p className="cfx-stale" role="status">
-          Simulation setup changed · overlays not yet checked
-        </p>
-      )}
       <div
         className="cfx-viewport"
         tabIndex={0}
@@ -799,14 +804,14 @@ export function ClimoptixViewer({
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
             <Bounds margin={1.15} maxDuration={0.25}>
-              <group name="cfd-building-context" visible={!onlyResults}>
+              <group name="cfd-building-context" visible={!resultsOnly}>
               {!buildingScene && (
                 <ReadOnlyBuildingScene
                   project={project}
                   roomIds={viewScope.rooms}
                   showRoof={ceilings}
                   assets={false}
-                  wallMode={wallOutlines?"CUTAWAY_2D":"TRANSPARENT"}
+                  wallMode={wallOutlines && patchMode === "geometry" ? "CUTAWAY_2D" : "TRANSPARENT"}
                 />
               )}
               <Frame
@@ -839,7 +844,7 @@ export function ClimoptixViewer({
                     }
                     colour={patchMode === "geometry" ? groupColours.get(p.id) : patchStyles.get(p.id) ?? "#a5acb2"}
                     highlighted={groupSelection.has(p.id)}
-                    outlines={wallOutlines&&p.kind==="wall"}
+                    outlines={patchMode === "geometry" && wallOutlines && p.kind === "wall"}
                     onPointerDown={(e) => onMeshDown(e, p)}
                     onClick={e => onMeshClick(e, p.id)}
                     onPointerMove={onMeshMove}
@@ -1047,10 +1052,11 @@ export function ClimoptixViewer({
           </div>
         )}
       </div>
-      <footer>
-        {patchMode !== "geometry" && <ul className="cfx-refinement-legend cfx-patch-legend" aria-label={PATCH_DISPLAY_MODES[patchMode]}>
+      {!resultsOnly && <footer>
+        {patchMode !== "geometry" && <ul className="cfx-refinement-legend cfx-patch-legend" tabIndex={0} aria-label={PATCH_DISPLAY_MODES[patchMode]}>
           {[...patchLegend].map(([label, colour]) => <li key={label}><i style={{ background: colour }} aria-hidden="true" />{label}</li>)}
-          <li><i style={{ background: "#a5acb2" }} aria-hidden="true" />Outside checked domain</li>
+          {(!prepared || displayPatches.some(p => !patchStyles.has(p.id) && p.kind !== "object")) &&
+            <li><i style={{ background: "#a5acb2" }} aria-hidden="true" />Outside checked domain</li>}
         </ul>}
         {patchMode === "geometry" && boundaryGroups.length > 0 && <ul className="cfx-refinement-legend" aria-label="Boundary group colours">
           {boundaryGroups.map(g => <li key={g.id}><i style={{ background: g.colour }} aria-hidden="true" />{g.name} · {g.patchIds.length}</li>)}
@@ -1086,9 +1092,9 @@ export function ClimoptixViewer({
         {patchMode === "geometry" && <ul className="cfx-refinement-legend" aria-label="Flow and boundary legend">
           <li><i style={{ background: COLORS.supply }} />Supply</li>
           <li><i style={{ background: COLORS.extract }} />Extract</li>
-          <li><i style={{ background: COLORS.door }} />Boundary cap</li>
+          <li><i style={{ background: COLORS.cap }} />Boundary cap</li>
         </ul>}
-      </footer>
+      </footer>}
       <CFDPlaneContextMenu menu={planeMenu} onClose={()=>setPlaneMenu(null)} onDelete={file=>onRemoveResultFile?.(file)}/>
     </section>
   );

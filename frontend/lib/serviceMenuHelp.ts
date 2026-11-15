@@ -1,12 +1,14 @@
 import { useEffect, type RefObject } from "react";
 import { collectedHelp, helpLabelText, helpWindowFor, mergeHelpSteps, parseHelpSteps } from "./windowHelpContent";
 import { windowHelpSteps, type WindowHelpStep } from "./windowHelp";
+import { climoptixSectionHelp } from "./climoptixHelp";
 /** One contextual guide per main collapsible section; field help stays in its guide. */
 export function useServiceMenuHelp(root: RefObject<HTMLElement | null>, windowTitle: string, fromHeader = false) {
   useEffect(() => {
     const panel = fromHeader && root.current ? helpWindowFor(root.current) : root.current;
     if (!panel || !windowTitle || /^Help\b/.test(windowTitle)) return;
     if (fromHeader && panel.matches(".floating-toolbar")) return;
+    const isCFD = Boolean(panel.closest(".cfx-workspace"));
     const remembered = new Map<string, WindowHelpStep[]>();
     const bag = document.createElement("span"); bag.hidden = true; bag.dataset.windowHelpTopic = windowTitle; panel.appendChild(bag);
     const decorate = () => {
@@ -14,9 +16,10 @@ export function useServiceMenuHelp(root: RefObject<HTMLElement | null>, windowTi
         const title = helpLabelText(target);
         if (!title || target.closest(".cfx-row-menu") || helpWindowFor(target) !== panel) continue;
         const topic = `${windowTitle} — ${title}`;
-        target.dataset.windowHelpTopic = topic; remembered.set(topic, windowHelpSteps(topic));
+        const contextual = isCFD ? climoptixSectionHelp(title) : undefined;
+        target.dataset.windowHelpTopic = topic; remembered.set(topic, contextual ?? windowHelpSteps(topic));
         const parent = target.parentElement?.parentElement?.closest("details");
-        if (target.tagName === "SUMMARY" && (target.parentElement?.hasAttribute("data-section-help") || !parent || helpWindowFor(parent) !== panel) &&
+        if (target.tagName === "SUMMARY" && (contextual || target.parentElement?.hasAttribute("data-section-help") || !parent || helpWindowFor(parent) !== panel) &&
           !target.querySelector(".window-help-button:not(.menu-section-help)")) {
           let button = target.querySelector<HTMLButtonElement>(":scope > .menu-section-help");
           if (!button) {
@@ -31,7 +34,7 @@ export function useServiceMenuHelp(root: RefObject<HTMLElement | null>, windowTi
           button.onclick = event => {
             event.preventDefault();
             event.stopPropagation();
-            const steps = collectedHelp(target.parentElement, topic);
+            const steps = collectedHelp(target.parentElement, topic, contextual);
             window.dispatchEvent(new CustomEvent("plannerbuild:window-help", { detail: { title, steps, controls: [], opener: button } }));
           };
         }

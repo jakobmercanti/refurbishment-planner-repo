@@ -305,7 +305,7 @@ test("boundary groups offer conditions and explicit unique surface assignment wi
   await button(ui.getByRole("dialog", {name:"Actions — Group", exact:true}), "Assign surfaces to Group").click();
   const assign = page.locator(".floating-toolbar").filter({ has: page.getByLabel("Move Assign boundary surfaces", { exact: true }) });
   const checks = assign.getByRole("checkbox");
-  const ids = await checks.evaluateAll(els => els.slice(0, 2).map(el => el.getAttribute("aria-label").replace("Assign surface ", "")));
+  const ids = await checks.evaluateAll(els => els.slice(0, 2).map(el => el.getAttribute("data-surface-id")));
   await checks.nth(0).check(); await checks.nth(1).check(); await button(assign, "Apply assignment").click();
   const result = await eventually(saved, p => p.cfdScenarios[0].boundaries.collections.find(g => g.name === "Group")?.patchIds.length === 2);
   const id = result.cfdScenarios[0].boundaries.collections.find(g => g.name === "Group").id;
@@ -315,7 +315,7 @@ test("boundary groups offer conditions and explicit unique surface assignment wi
   await eventually(() => ui.getAttribute("data-preparation-state"), v => v === "checked");
   await button(group, "Actions for boundary group Group").click();
   await button(ui.getByRole("dialog", {name:"Actions — Group", exact:true}), "Assign surfaces to Group").click();
-  await assign.getByRole("checkbox", { name: `Assign surface ${ids[0]}`, exact: true }).uncheck();
+  await assign.locator(`input[data-surface-id=${JSON.stringify(ids[0])}]`).uncheck();
   await button(assign, "Apply assignment").click();
   await eventually(saved, p => p.cfdScenarios[0].boundaries.collections.find(g => g.id === id)?.patchIds.length === 1);
   assert.deepEqual((await saved()).rooms, source);

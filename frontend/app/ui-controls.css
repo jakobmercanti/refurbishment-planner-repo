@@ -131,10 +131,6 @@ body details > summary > .menu-section-help::before { content:"?"; }
 body .floating-toolbar .floating-toolbar-resize-left, body .floating-toolbar .floating-toolbar-resize-right { min-height:0; min-width:0; padding:0; z-index:30; }
 body .floating-toolbar[data-edge-docked="LEFT"] > .floating-toolbar-resize-right, body .floating-toolbar[data-edge-docked="RIGHT"] > .floating-toolbar-resize-left { display:block !important; width:8px; }
 .cfx-study-row, .cfx-study-group, .cfx-group-heading, .cfx-study-actions { min-width:0; max-width:100%; box-sizing:border-box; }
-.cfx-study-row > :is(.cfx-study-name, .cfx-inline-name) { grid-column:1; grid-row:1; }
-.cfx-study-actions { grid-column:2; grid-row:1; }
-.cfx-study-row > .cfx-row-menu { grid-column:3; grid-row:1; min-width:0; }
-body .cfx-workspace .cfx-study-actions > button { min-width:0; white-space:nowrap; }
 body .popup.new-outline-popup { width:min(590px, calc(100vw - 24px)); }
 body .new-outline-popup :is(.popup-content, .popup-actions) { padding:16px 20px; }
 body .cfx-workspace .cfx-hvac-actions { grid-template-columns:repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
@@ -144,8 +140,10 @@ body .cfx-workspace .cfx-hvac-actions { grid-template-columns:repeat(auto-fit, m
 .cfx-setup-status-row { display:flex; flex-wrap:wrap; align-items:center; gap:var(--density-field-gap) var(--density-section-gap); padding:var(--density-field-gap) var(--window-side-padding); }
 .cfx-setup-status-row > h2 { flex:1 1 145px; min-width:0; margin:0; font:650 calc(12px * var(--density-font-scale,1))/1.4 var(--font-sans); overflow-wrap:anywhere; }
 .cfx-setup-status-row .cfx-workbench-status { flex:0 1 auto; min-width:0; margin:0; padding:var(--density-field-gap) var(--density-section-gap); }
-.cfx-setup-status-row .cfx-workbench-status:not(:has(.cfx-input-failure)) > div { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; }
 .cfx-setup-status-row .cfx-window-disclosure-bar { margin-inline-start:auto; padding:0; }
+@container cfx-setup (max-width: 540px) {
+  .cfx-setup-status-row .cfx-workbench-status { flex:1 1 100%; }
+}
 body .cfx-setup-window .cfx-setup-panel { padding-block:0 var(--density-window-padding); }
 body .cfx-workspace .cfx-solver-nav { margin-top:0; }
 body .cfx-workspace :is(.cfx-studies,.cfx-objects) > :first-child { margin-top:0; }

@@ -146,10 +146,7 @@ body .cfx-workspace .cfx-post-planes .cfx-slice-row { grid-template-columns: min
 body .cfx-workspace .cfx-simulation-panel > * + * { margin-top: var(--density-section-gap); }
 body .cfx-workspace .cfx-simulation-panel details > :not(summary) { margin-top: var(--density-section-gap); }
 body .cfx-workspace .cfx-review > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
-body .cfx-workspace .cfx-segments { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; flex: 1 1 auto; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; overflow: visible; }
-body .cfx-workspace .cfx-segments > button { min-width: 0; white-space: normal; text-align: center; border-radius: var(--radius-control) var(--radius-control) 0 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); }
 body .cfx-workspace .cfx-transfer-actions > :is(button, .cfx-file) { display: flex; align-items: center; justify-content: center; text-align: center; min-width: 0; }
-body .cfx-workspace .cfx-segments > button[aria-selected="true"] { border-bottom-color: var(--focus-ring); background: var(--ui-button-activeBackground); color: var(--ui-button-activeText); }
 body .cfx-viewer > footer { display: grid; height: auto; max-height: min(40%, 260px); overflow: auto; pointer-events: auto; margin: 0; padding: var(--density-row-padding) var(--density-window-padding); }
 body .cfx-viewer > footer > * { min-width: 0; margin: 0; }
 body .cfx-viewer > footer li { align-items: center; min-width: 0; overflow-wrap: anywhere; }
@@ -184,7 +181,8 @@ body .cfx-workspace .cfx-transfer-actions { grid-template-columns: repeat(3, min
 body .cfx-workspace .cfx-review-outcome p { margin-block: var(--density-section-gap); }
 body .cfx-workspace .cfx-worker-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--density-section-gap); padding: var(--density-window-padding); border: 1px solid var(--line); border-radius: var(--radius-control); }
 body .cfx-workspace .cfx-worker-controls p { flex: 1 1 320px; min-width: 0; margin: 0; color: var(--muted); }
-body .cfx-workspace .cfx-worker-controls > .cfx-inline-toolbar { flex: 0 1 auto; margin: 0; }
+body .cfx-workspace .cfx-worker-actions { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:var(--density-field-gap); min-width:0; }
+body .cfx-workspace .cfx-worker-actions > button { min-width:0; white-space:normal; }
 body .cfx-workspace .cfx-issues-link { text-decoration: underline; }
 body .cfx-workspace .cfx-native-log { max-height: 280px; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 body .cfx-workspace .cfx-refinement-row {
@@ -208,6 +206,9 @@ body .cfx-workspace .cfx-placement-actions > button { width: 100%; }
   body .cfx-workspace .cfx-device-row > :is(.cfx-device-name, .cfx-inline-name) { grid-column: 1; grid-row: 1; }
   body .cfx-workspace .cfx-refinement-row { grid-template-columns: 8px minmax(0, 1fr); }
   body .cfx-workspace .cfx-refinement-actions { grid-column: 2; }
+}
+@container cfx-setup (max-width: 400px) {
+  body .cfx-workspace .cfx-study-group > .cfx-reorder-list > .cfx-reorder-item { margin-inline-start: 10px; }
 }
 body .cfx-setup-window .cfx-header-simulation select {
   height: calc(var(--density-control-min-height) - 4px);
@@ -281,7 +282,7 @@ body .cfx-workspace .cfx-thermal-import :is(.thermal-heading,.thermal-steps,.the
 body .cfx-workspace .cfx-inspector-plane { display:flex; align-items:center; gap:10px; flex:0 0 auto; padding:4px 8px; }
 body .cfx-workspace .cfx-inspector-plane select { flex:1; min-width:0; }
 body .cfx-workspace .cfx-disclosure-actions { display:inline-grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--density-section-gap); }
-body .cfx-workspace .cfx-results-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-bottom:var(--density-section-gap); }
+body .cfx-workspace .cfx-results-tabs { margin-bottom:var(--density-section-gap); }
 body .cfx-workspace .cfx-probe-value { position:absolute; z-index:4; inset:12px auto auto 12px; max-width:calc(100% - 24px); padding:5px 8px; border-radius:var(--radius-control); background:var(--panel); color:var(--ink); font:700 12px/1.5 var(--font-sans); overflow-wrap:anywhere; pointer-events:none; }
 body .cfx-workspace .cfx-point-probe > .cfx-probe-value { position:static; }
 body .cfx-workspace .cfx-slice-stage { position:relative; min-width:0; }
@@ -319,7 +320,7 @@ body .cfx-workspace .cfx-view-checks .cfx-check { min-width:0; margin:0; }
 }
 /* Results controls live below the data canvas, with uniform disclosure spacing. */
 body .cfx-workspace :is(.cfx-post-panel,.cfx-results,[role=tabpanel],.cfx-results-controls,.cfx-viewer-frame,.cfx-slices) > details { margin-block:10px; }
-body .cfx-workspace details[open] > summary { margin-bottom:12px; }
+body .cfx-workspace details[open]:not(.cfx-row-menu) > summary { margin-bottom:var(--density-section-gap); }
 body .cfx-workspace :is(.cfx-post-panel,.cfx-results) details { min-width:0; }
 body .cfx-workspace .cfx-vtk-viewer { display:flex; flex-direction:column; height:auto; min-width:0; }
 body .cfx-workspace .cfx-viewer-frame { display:flex; flex-direction:column; gap:12px; width:100%; min-width:0; padding:8px; box-sizing:border-box; background:var(--paper); color:var(--ink); }
@@ -352,7 +353,8 @@ body .cfx-workspace .cfx-objects > .cfx-inline-toolbar { justify-content:flex-st
 body .cfx-workspace .cfx-objects > .cfx-inline-toolbar > button { flex:0 0 auto; }
 body .cfx-workspace :is(.cfx-studies,.cfx-mesh-panel,.cfx-boundaries-panel,.cfx-objects,.cfx-review [role=tabpanel],.cfx-vent-settings,.cfx-boundary-fields,.cfx-heating-import-panel) > details { margin-block:10px; padding:var(--density-window-padding); border:1px solid var(--line); border-radius:var(--radius-panel); }
 body .cfx-workspace .cfx-review > header { display:flex; flex-wrap:wrap; }
-body .cfx-workspace .cfx-review > header .cfx-segments { flex:1 1 320px; }
+body .cfx-workspace .cfx-review > header .cfx-review-tabs { flex:1 1 100%; }
+body .cfx-workspace .cfx-review-tabs > button { white-space:normal; }
 body .cfx-workspace .cfx-transfer-actions { grid-template-columns:repeat(2,minmax(0,1fr)); padding:0; }
 body .cfx-workspace .cfx-study-tools { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
 body .cfx-workspace .cfx-study-tools > * { flex-shrink:0; }
@@ -390,6 +392,7 @@ body .cfx-workspace .cfx-picked-dot { position:absolute; top:50%; left:-13px; wi
 @container cfx-setup (max-width:640px) {
   body .cfx-workspace .cfx-results-controls .cfx-vtk-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
   body .cfx-workspace .cfx-plane-management { grid-template-columns:minmax(0,1fr); }
+  body .cfx-workspace .cfx-worker-actions { flex:1 1 100%; }
 }
 /* Compact desktop rows must not conceal essential actions on a narrow window. */
 @container cfx-window (max-width:620px) {
