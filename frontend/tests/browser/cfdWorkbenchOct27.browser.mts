@@ -215,13 +215,16 @@ test('2D Up/Down loads real adjacent native planes and never changes stored geom
 test('main 3D plane selection and Up/Down replace sampled layers; visibility controls are display-only and compact',async t=>{
   const {page,ui,saved}=await results(t),before=await saved();await button(ui,'Load selected plane into building 3D').click();
   await eventually(()=>page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),Boolean);
+  const setup=ui.locator('.cfx-setup-window');
+  assert.ok(await setup.isVisible(),'Loading a plane leaves Simulation setup open');
   const plane=ui.getByRole('combobox',{name:'Building 3D plane',exact:true});assert.equal(await plane.inputValue(),'slice_Z_001.vtk');
   await ui.locator('.cfx-viewport').focus();await page.keyboard.press('ArrowUp');await eventually(()=>plane.inputValue(),v=>v==='slice_Z_002.vtk');assert.equal(await plane.locator('option').count(),1,'Navigating replaces the selected layer rather than leaking new layers');
   await button(ui,'Previous 3D plane').click();await eventually(()=>plane.inputValue(),v=>v==='slice_Z_001.vtk');
   await eventually(()=>page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),Boolean);
   const display=ui.locator('.cfx-building-results');
-  await display.locator('.cfx-point-probe > button').click();
+  await display.getByRole('checkbox',{name:'Point probe',exact:true}).check();
   await display.getByRole('button',{name:/^Minimi[sz]e/}).click();
+  await button(page,'Hide Simulation setup').click();
   const hit=await page.evaluate(()=>{
     const {camera,gl}=window.__octScene(), box=gl.domElement.getBoundingClientRect();
     const candidates=[.5,.2,.8].flatMap(x=>[.5,.2,.8].map(y=>{
@@ -243,7 +246,6 @@ test('main 3D plane selection and Up/Down replace sampled layers; visibility con
   await button(page,'Restore Building result display').click();
   await button(ui,'Return to results').click();
   assert.equal(await reading.count(),0,'Clicking another control clears the probe');
-  const setup=ui.locator('.cfx-setup-window');
   await setup.waitFor({state:'visible'});
   await ui.locator('.cfx-viewport').focus();
   await page.keyboard.press('ArrowUp');
@@ -275,7 +277,7 @@ test('legacy comparison is a compact shared 2 by 2 viewport with collapsed docke
   await shot(page,'shared-compare');
 });
 
-test('editing the setup hides an existing overlay and retained planes can reopen in isolation',async t=>{
+test('retained planes reopen with the current building and support optional isolation',async t=>{
   const {page,ui,saved}=await results(t);await button(ui,'Load selected plane into building 3D').click();await eventually(()=>page.evaluate(()=>!!window.__octScene()?.scene.getObjectByName('verified-cfd-result')),Boolean);
   await cfdWindow(ui,'Physics');const density=ui.getByRole('spinbutton',{name:'Air density (kg/m³)',exact:true});await density.fill('1.3');await density.press('Enter');await eventually(saved,p=>p.cfdScenarios[0].physics.densityKgM3===1.3);
   await button(page,'Hide Simulation setup').click();await ui.getByText('Setup changed. This pinned result is hidden to avoid overlaying a different building. Inspect the original job separately.',{exact:true}).waitFor();
@@ -285,7 +287,12 @@ test('editing the setup hides an existing overlay and retained planes can reopen
   const display=ui.locator('.cfx-building-results');
   await eventually(()=>display.getByLabel('Building 3D plane',{exact:true}).inputValue(),name=>name==='slice_Z_002.vtk');
   await eventually(()=>page.evaluate(()=>!!window.__octScene().scene.getObjectByName('verified-cfd-result')),Boolean);
+  assert.equal(await page.evaluate(()=>window.__octScene().scene.getObjectByName('cfd-building-context').visible),true);
+  const planesOnly=display.getByRole('checkbox',{name:'Planes only',exact:true});
+  await planesOnly.check();
   assert.equal(await page.evaluate(()=>window.__octScene().scene.getObjectByName('cfd-building-context').visible),false);
+  await planesOnly.uncheck();
+  assert.equal(await page.evaluate(()=>window.__octScene().scene.getObjectByName('cfd-building-context').visible),true);
   await cfdWindow(ui,'Simulations');
   const row=ui.locator('.cfx-study-row');
   await row.getByLabel('Actions for Office airflow',{exact:true}).click();

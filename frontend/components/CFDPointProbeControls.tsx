@@ -48,9 +48,13 @@ export function CFDPointProbeValue({probe,native=false,unit:explicitUnit,anchor}
     {sample?`${sample.field}${sample.component?` ${sample.component}`:""} = ${probeNumber(sample.value)} ${unit}`:probe.reading?.message??"Click the plane to read its value. Esc exits."}
   </output>:null;
 }
-export function CFDPointProbeControls({ probe }: { probe: CFDPointProbeController }) {
+export function CFDPointProbeControls({ probe, checkbox = false }: { probe: CFDPointProbeController; checkbox?: boolean }) {
   const {registerControl}=probe;
+  const help = "Pick the active plane's displayed field. V toggles; Escape exits. Geometry-only, hidden planes and isosurfaces cannot be probed.";
   return <div ref={registerControl} className="cfx-point-probe" data-probe-mode={probe.mode || undefined}>
-    <button type="button" aria-pressed={probe.mode} aria-keyshortcuts="V" disabled={!probe.enabled} onClick={probe.toggle} title="Pick the active plane's displayed field. V toggles; Escape exits. Geometry-only, hidden planes and isosurfaces cannot be probed.">{probe.mode ? "Exit point probe (Esc)" : "Probe point value (V)"}</button>
+    {checkbox ? <label className="cfx-check" title={help}>
+      <input type="checkbox" aria-keyshortcuts="V" checked={probe.mode} disabled={!probe.enabled} onChange={probe.toggle}/>
+      Point probe
+    </label> : <button type="button" aria-pressed={probe.mode} aria-keyshortcuts="V" disabled={!probe.enabled} onClick={probe.toggle} title={help}>{probe.mode ? "Exit point probe (Esc)" : "Probe point value (V)"}</button>}
   </div>;
 }

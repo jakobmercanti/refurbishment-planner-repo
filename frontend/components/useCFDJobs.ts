@@ -24,9 +24,14 @@ export type CFDJobEntry = {
   submitting?: boolean;
   submissionId?: string;
   operation?: CFDOperation;
+  meshChecked?: boolean;
   /** Dispatch may have succeeded even if its response was lost. */
   dispatched?: boolean;
 };
+
+export function jobHasCheckedMesh(job?: CFDWorkerJob) {
+  return job?.phase === "Running" || job?.phase === "Postprocess" || job?.phase === "Completed";
+}
 
 export function useCFDJobs(
   project: ProjectDocument,
@@ -52,7 +57,11 @@ export function useCFDJobs(
   }, [project, adapter]);
   const update = useCallback((id: string, entry: CFDJobEntry) => {
     // The synchronous ref is the submission lock; React rendering is not a lock.
-    const next = { ...entriesRef.current, [id]: entry };
+    const previous = entriesRef.current[id];
+    const continuesCheckedMesh = (entry.job?.operation ?? entry.operation) === "run"
+      && previous?.input === entry.input && previous.meshChecked;
+    const meshChecked = !!(entry.meshChecked || jobHasCheckedMesh(entry.job) || continuesCheckedMesh);
+    const next = { ...entriesRef.current, [id]: { ...entry, meshChecked } };
     entriesRef.current = next;
     setEntries(next);
   }, []);
@@ -104,6 +113,7 @@ export function useCFDJobs(
     const generation = resultGeneration.current;
     void adapter.list(project.projectId, controller.signal).then(async jobs => {
       const recovered = new Set<string>();
+      const checkedMeshes = new Set(jobs.filter(jobHasCheckedMesh).map(job => `${job.studyId}:${job.clientRevision}`));
       for (const job of jobs) {
         if (controller.signal.aborted || recovered.has(job.studyId)) continue;
         recovered.add(job.studyId);
@@ -112,6 +122,7 @@ export function useCFDJobs(
         const revision = await preparationRevision(preparationInput(latest.current.project, study));
         if (controller.signal.aborted || generation !== resultGeneration.current || entriesRef.current[study.id] || pending.current.has(study.id)) continue;
         update(study.id, {job: checkedWorkerJob(job, {studyId: study.id, clientRevision: job.clientRevision}),
+          meshChecked: checkedMeshes.has(`${job.studyId}:${job.clientRevision}`),
           input: revision === job.clientRevision ? workerInput(latest.current.project, study) : `recovered-older:${job.clientRevision}`});
       }
     }).catch(() => { /* Existing submissions/status remain recoverable on a later connection. */ });

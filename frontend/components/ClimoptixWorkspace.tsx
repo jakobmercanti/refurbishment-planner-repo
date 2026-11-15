@@ -16,7 +16,7 @@ import { CFDWorkbenchStatus } from "./CFDWorkbenchStatus";
 import { diagnosticTarget } from "@/lib/climoptixDiagnostics";
 import { CFDJobProgress } from "./CFDJobProgress";
 import { RESULT_AXES, resultPlaneAxis, useCFDPlaneStepper, type ResultAxis } from "./useCFDPlaneStepper";
-import { CFDResultLegend, RESULT_PALETTES, type ResultPalette, type SceneResultMetadata } from "./CFDSceneResult";
+import { CFDResultLegend, DEFAULT_RESULT_APPEARANCE, RESULT_PALETTES, type ResultPalette, type SceneResultMetadata } from "./CFDSceneResult";
 import { CFDHeatingImport } from "./CFDHeatingImport";
 import { copyHvacAsAirflow, requiresHvacThermalExecution, resolveHvacScenario } from "@/lib/hvacBridge";
 import { hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
@@ -220,6 +220,7 @@ export function ClimoptixWorkspace({
   const [onlyResultPlanes,setOnlyResultPlanes]=useState(false);
   const [hiddenResultAxes, setHiddenResultAxes] = useState<ResultAxis[]>([]);
   const [resultPalette, setResultPalette] = useState<ResultPalette>("spectrum");
+  const [resultAppearance, setResultAppearance] = useState(DEFAULT_RESULT_APPEARANCE);
   const [legendStyle, setLegendStyle] = useState<"horizontal"|"vertical"|"hidden">("horizontal");
   const [manualResultScale, setManualResultScale] = useState(false);
   const [scaleMin, setScaleMin] = useState("");
@@ -602,7 +603,7 @@ export function ClimoptixWorkspace({
     selectObject(null);
     setSelectedResultPlane(item.file);
   };
-  const showScenePlane=(file:File,replace=false,preserveWindows=false,historical=false)=>{
+  const showScenePlane=(file:File,{replace=false,historical=false}: {replace?:boolean;historical?:boolean}={})=>{
     if(!scenario)return;
     const axis = resultPlaneAxis(file.name);
     const replacesActive = replace && axis === activeAxis;
@@ -614,13 +615,10 @@ export function ClimoptixWorkspace({
     setMainResultLayers(next);
     focusScenePlane(next.at(-1)!);
     setMainResultVisible(true);
-    if (!preserveWindows) {
-      setSetupOpen(false);
-      if (historical) setResultFitRequest(value => value + 1);
-    }
+    if (historical && !replace) setResultFitRequest(value => value + 1);
   };
   const mainStack=useCFDPlaneStepper(remoteWorker.adapter,currentJob?.job,currentPlane?.file,
-    file=>showScenePlane(file,true,true,currentPlane?.historical));
+    file=>showScenePlane(file,{replace:true,historical:currentPlane?.historical}));
   const toggleResultAxis = (axis: ResultAxis, visible: boolean) => {
     const layer = axisPlanes[RESULT_AXES.indexOf(axis)];
     mainProbe.pick(null);
@@ -842,8 +840,8 @@ export function ClimoptixWorkspace({
           report={activeReport}
           active={active}
           apiUrl={apiUrl}
-          resultOverlay={currentPlane&&mainResultVisible&&!placement?{file:currentPlane.file,field:resultField?.key??mainResultField,onMetadata:setMainResultMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,selected:!selected&&selectedResultPlane===currentPlane.file,palette:resultPalette,range:resultRange}:undefined}
-          additionalResultOverlays={mainResultVisible&&!placement&&activeAxis?shownAxisPlanes.flatMap(item=>item&&item!==currentPlane?[{file:item.file,field:resultField?.key??mainResultField,onMetadata:ignoreSceneMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,palette:resultPalette,range:resultRange}]:[]):undefined}
+          resultOverlay={currentPlane&&mainResultVisible&&!placement?{file:currentPlane.file,field:resultField?.key??mainResultField,onMetadata:setMainResultMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,selected:!selected&&selectedResultPlane===currentPlane.file,palette:resultPalette,range:resultRange,appearance:resultAppearance}:undefined}
+          additionalResultOverlays={mainResultVisible&&!placement&&activeAxis?shownAxisPlanes.flatMap(item=>item&&item!==currentPlane?[{file:item.file,field:resultField?.key??mainResultField,onMetadata:ignoreSceneMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,palette:resultPalette,range:resultRange,appearance:resultAppearance}]:[]):undefined}
           resultSample={mainProbe.reading?.sample ?? undefined}
           onClearResultSample={()=>mainProbe.pick(null)}
           resultFitRequest={resultFitRequest}
@@ -887,9 +885,8 @@ export function ClimoptixWorkspace({
           onHostPick={hostPick}
           onMoveVent={moveVent}
           onMoveProbe={(index,point)=>{if(scenario&&scenario.outputs.probesMm[index]&&point.every(value=>Number.isFinite(value)&&Math.abs(value)<=1e7))change({...scenario,outputs:{...scenario.outputs,probesMm:scenario.outputs.probesMm.map((old,i)=>i===index?point:old)}},true);}}
-          historicalResult={!!currentPlane?.historical}
           resultReady={!!mainResultMetadata.fields.length}
-          onlyResults={onlyResultPlanes} onOnlyResults={currentPlane?.historical ? undefined : setOnlyResultPlanes} resultsVisible={mainResultVisible} onResultsVisible={setMainResultVisible}
+          onlyResults={onlyResultPlanes} onOnlyResults={setOnlyResultPlanes} resultsVisible={mainResultVisible} onResultsVisible={setMainResultVisible}
           onSelectResultFile={file=>{const found=currentSceneLayers.find(item=>item.file===file);if(found)focusScenePlane(found);}}
           onRemoveResultFile={unloadScenePlane}
           onResultContextMenuOpen={()=>setContextMenu(null)}
@@ -1258,7 +1255,7 @@ export function ClimoptixWorkspace({
                                 setVTKFile({ studyId: scenario.id, file, token: crypto.randomUUID(), jobId: job.id,
                                   provenance: "Authenticated worker job " + job.id + " · pinned revision " + job.clientRevision.slice(0,12) + " · p in m²/s²" + (older ? " · older setup" : "") });
                                 if (!buildingPlane) openPhase("results");
-                                else showScenePlane(file, false, false, older);
+                                else showScenePlane(file, {historical:older});
                               }} /> : <ClimoptixConvergence
                               name={scenario.name}
                               state={logs.get(scenario.id)}
@@ -1349,7 +1346,7 @@ export function ClimoptixWorkspace({
                       sceneFiles={mainResultLayers.filter(item=>item.studyId===scenario.id&&item.jobId===jobs[scenario.id]?.job?.id&&item.input===currentWorkerInput).map(item=>item.file)}
                       sceneError={mainResult?.studyId===scenario.id&&mainResult.jobId===jobs[scenario.id]?.job?.id?mainResultMetadata.error:undefined}
                       onUnloadScene={unloadScenePlane}
-                      onScene={(file, historical) => showScenePlane(file, false, false, historical)}
+                      onScene={(file, historical) => showScenePlane(file, {historical})}
                       defaultPlaneRequest={defaultPlaneRequest?.jobId === currentJob?.job?.id ? defaultPlaneRequest?.nonce : undefined}
                       onDefaultPlaneHandled={() => setDefaultPlaneRequest(undefined)}
                       onClose={() => {
@@ -1374,7 +1371,6 @@ export function ClimoptixWorkspace({
       {active&&mainResult&&mainResult.studyId===scenario?.id&&mainResult.jobId===currentJob?.job?.id&&<FloatingToolbar title="Building result display" className="cfx-building-results" defaultPosition={{x:1060,y:170}} initialSize={{width:400,height:620}} onClose={()=>unloadScenePlane()}>
         <CFDWindowSections>
         <details open><summary>Plane selection &amp; display</summary>
-        {mainResult.historical && <p className="cfx-notice">Submitted result · shown on its own because it could not be matched to the current building.</p>}
         <label>Loaded plane<select aria-label="Building 3D plane" disabled={mainStack.busy} value={mainResult.file.name} onChange={event=>{const next=currentSceneLayers.find(item=>item.file.name===event.target.value);if(next){mainProbe.pick(null);focusScenePlane(next);}}}>{mainResultLayers.filter(item=>item.studyId===scenario?.id).map(item=><option key={item.file.name} value={item.file.name}>{item.file.name}</option>)}</select></label>
         {mainResult.input!==currentWorkerInput?<p className="cfx-error" role="alert">Setup changed. This pinned result is hidden to avoid overlaying a different building. Inspect the original job separately.</p>:<>
         <label>Result field<select aria-label="Building result field" value={resultField?.key??""} onChange={event=>setMainResultField(event.target.value)}>{mainResultMetadata.fields.map(field=><option key={field.key} value={field.key}>{field.name} · {field.key.startsWith("cell:")?"cell":"point"}</option>)}</select></label>
@@ -1396,11 +1392,25 @@ export function ClimoptixWorkspace({
         <div className="cfx-equal-actions"><button disabled={!mainStack.previous} onClick={()=>void mainStack.step(-1)}>Previous 3D plane</button><button disabled={!mainStack.next} onClick={()=>void mainStack.step(1)}>Next 3D plane</button></div>
         {mainStack.busy&&<p role="status">Loading sampled plane…</p>}
         {mainStack.error&&<p role="alert" className="cfx-error">{mainStack.error}</p>}
-        <label className="cfx-check"><input type="checkbox" checked={!!mainResult.historical || onlyResultPlanes} disabled={!!mainResult.historical} onChange={event=>setOnlyResultPlanes(event.target.checked)}/>Only CFD result planes</label>
-        <label className="cfx-check"><input type="checkbox" checked={mainResultVisible} onChange={event=>setMainResultVisible(event.target.checked)}/>Show result plane{shownAxisPlanes.length>1?"s":""}</label>
-        <CFDPointProbeControls probe={mainProbe}/>
+        <div className="cfx-result-visibility">
+          <label className="cfx-check"><input type="checkbox" checked={onlyResultPlanes} onChange={event=>setOnlyResultPlanes(event.target.checked)}/>Planes only</label>
+          <label className="cfx-check"><input type="checkbox" checked={mainResultVisible} onChange={event=>setMainResultVisible(event.target.checked)}/>Show planes</label>
+          <CFDPointProbeControls probe={mainProbe} checkbox/>
+        </div>
         </>}
         {mainResultMetadata.error&&<p className="cfx-error" role="alert">{mainResultMetadata.error}</p>}
+        </details>
+        <details><summary>Plane appearance</summary>
+          <label className="cfx-check"><input type="checkbox" checked={resultAppearance.edges}
+            onChange={event=>setResultAppearance({...resultAppearance,edges:event.target.checked})}
+            data-field-help="Show each plane’s perimeter. The selected plane retains its orange outline."/>Plane edges</label>
+          <label>Edge opacity · {resultAppearance.edgeOpacity}%<input type="range" min={0} max={100} step={5}
+            value={resultAppearance.edgeOpacity} disabled={!resultAppearance.edges}
+            onChange={event=>setResultAppearance({...resultAppearance,edgeOpacity:event.target.valueAsNumber})}/></label>
+          <label>Directional shading · {resultAppearance.shading}%<input type="range" min={0} max={60} step={5}
+            value={resultAppearance.shading}
+            data-field-help="Darken planes according to their orientation to make overlapping slices easier to distinguish. Set to zero to match the legend colours exactly."
+            onChange={event=>setResultAppearance({...resultAppearance,shading:event.target.valueAsNumber})}/></label>
         </details>
         <details open><summary>Legend &amp; colour scale</summary>
           <label>Legend style<select value={legendStyle} onChange={event=>setLegendStyle(event.target.value as typeof legendStyle)}><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option><option value="hidden">Hidden</option></select></label>
