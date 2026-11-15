@@ -166,9 +166,6 @@
 .cfx-workbench-status > button { flex-shrink: 0; }
 .cfx-workbench-status.has-issues { border-color: color-mix(in srgb, var(--fail), var(--line) 65%); }
 .cfx-workbench-status.has-issues strong { color: var(--fail); }
-.cfx-worker-connection { margin-bottom: var(--density-section-gap); }
-.cfx-worker-compatibility { margin-top: var(--density-section-gap); }
-.cfx-worker-compatibility li + li { margin-top: 6px; }
 @container cfx-setup (max-width: 450px) {
   .cfx-workbench-status { align-items: stretch; flex-direction: column; gap: 6px; }
 }
