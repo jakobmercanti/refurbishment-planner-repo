@@ -9,7 +9,11 @@ body .floating-toolbar-content :is(.tool-section, .selected-properties, .fixture
 body .cfx-setup-window > .floating-toolbar-content { padding: 0; }
 /* The standalone dialogs use the same density and gutters as floating tools. */
 :root body :is(.settings-dialog, .save-as-dialog, .floorplan-export-dialog, .catalogue-manager-modal, .catalogue-detail-dialog) { padding-inline: var(--window-side-padding); width: min(calc(var(--window-dialog-width, 470px) * var(--window-density-width)), calc(100vw - 32px)); }
-body .settings-dialog.account-dialog { --window-dialog-width: 720px; }
+body .settings-dialog.account-dialog {
+  --window-dialog-width: 720px;
+  --account-gutter: clamp(16px, 3vw, 32px);
+  --window-side-padding: 0px;
+}
 body .settings-dialog.preferences-dialog { --window-dialog-width: 740px; --window-side-padding: clamp(14px, 3vw, 26px); }
 body .settings-dialog.local-assets { --window-dialog-width: 980px; }
 body .floorplan-export-dialog { --window-dialog-width: 420px; }
@@ -18,7 +22,17 @@ body .catalogue-detail-dialog { --window-dialog-width: 720px; }
 body .catalogue-detail-dialog.catalogue-object-dialog { --window-dialog-width: 1440px; }
 :root body[data-ui-style="modern"] :is(.settings-dialog, .save-as-dialog, .floorplan-export-dialog, .catalogue-manager-modal) > header,
 :root body[data-ui-style="modern"] .catalogue-detail-dialog > .catalogue-form-heading { margin-inline: calc(-1 * var(--window-side-padding)); padding-inline: var(--window-side-padding); }
-:root body .account-dialog-content { padding-inline: var(--window-side-padding); }
+:root body .account-dialog > .account-dialog-header { padding-inline: var(--account-gutter); }
+:root body .account-dialog-content { padding-inline: var(--account-gutter); }
+:root body .account-dialog > .commercial-status { margin-inline: var(--account-gutter); }
+:root body .account-dialog-content :is(.account-ready-actions, .account-form-actions, .account-utility-actions, .commercial-actions) {
+  gap: 10px;
+  box-sizing: border-box;
+  padding-inline: clamp(4px, 1vw, 12px);
+}
+:root body .account-dialog-content :is(.account-auth-tabs, .commercial-stack > .commercial-secondary) {
+  margin-inline: clamp(4px, 1vw, 12px);
+}
 :root[data-density="compact"] .floating-toolbar.full-plan-build-toolbar { min-width: min(290px, calc(100vw - 16px)); }
 :root[data-density="compact"] .popup:not(.floating-toolbar, .appearance-popup, .electrical-bom-editor, .planner-confirmation) { width: min(360px, calc(100vw - 32px)); }
 body .floating-toolbar-content :is(button, summary) { text-overflow: clip; }

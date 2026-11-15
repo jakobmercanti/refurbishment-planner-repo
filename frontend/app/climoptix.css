@@ -1161,26 +1161,23 @@
 .cfx-workspace .thermal-step-select {
   display: none;
 }
-@container cfx-setup (max-width: 760px) {
+@container cfx-setup (max-width: 610px) {
   .cfx-setup-heading > .cfx-phase-select {
     display: grid;
   }
   .cfx-workspace .cfx-setup-tabs,
-  .cfx-setup-heading > .cfx-state,
-  .thermal-embedded .thermal-steps {
+  .cfx-setup-heading > .cfx-state {
     display: none;
   }
+}
+@container cfx-setup (max-width: 760px) {
+  .thermal-embedded .thermal-steps { display: none; }
   .thermal-embedded .thermal-step-select {
     display: grid;
     margin: 0 16px 10px;
   }
 }
 @media (max-width: 1024px), (max-width: 1366px) and (pointer: coarse) {
-  .cfx-setup-heading > .cfx-phase-select {
-    display: grid;
-  }
-  .cfx-workspace .cfx-setup-tabs,
-  .cfx-setup-heading > .cfx-state,
   .thermal-steps {
     display: none;
   }

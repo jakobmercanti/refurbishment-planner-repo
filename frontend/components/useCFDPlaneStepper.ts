@@ -6,6 +6,12 @@ import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import { readResultData } from "@/lib/cfdResultData";
 import { useCFDResult } from "./useCFDResult";
 
+export const RESULT_AXES = ["X", "Y", "Z"] as const;
+export type ResultAxis = typeof RESULT_AXES[number];
+export function resultPlaneAxis(name: string): ResultAxis | undefined {
+  return /slice_([xyz])_\d+/i.exec(name)?.[1].toUpperCase() as ResultAxis | undefined;
+}
+
 async function physicalPlane(file:File) {
   const loaded=await readResultData(file);
   try {
@@ -29,24 +35,22 @@ export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJo
   useEffect(() => () => pending.current?.abort(), [adapter, job?.id, current]);
   const all = result?.artifacts.filter(a => a.kind === "vtk") ?? [];
   const name = (a: typeof all[number]) => a.name?.replace(/[^a-z0-9_.-]/gi, "-") ?? `${job?.id}-${a.id}.vtk`;
-  const match = /slice_([xyz])_(\d+)/i.exec(current?.name ?? "");
-  const stack = all.filter(a => !match || new RegExp(`slice_${match[1]}_`, "i").test(name(a)))
+  const axis = resultPlaneAxis(current?.name ?? "");
+  const stack = all.filter(a => !axis || resultPlaneAxis(name(a)) === axis)
     .sort((a, b) => name(a).localeCompare(name(b), undefined, { numeric: true }));
   const index = stack.findIndex(a => name(a) === current?.name);
-  const step = async (direction: -1 | 1) => {
+  const choose = async (artifact: typeof all[number] | undefined, direction?: -1 | 1) => {
     // Lock before the first await; two clicks in one React render cannot download twice.
-    if (!adapter || !job || !current || busy || (pending.current && !pending.current.signal.aborted) || index < 0) return;
-    const artifact = stack[index + direction];
-    if (!artifact) return;
+    if (!adapter || !job || !current || busy || (pending.current && !pending.current.signal.aborted) || !artifact) return;
     const controller = new AbortController(); pending.current = controller;
     const source = { adapter, file: current, jobId: job.id };
     setTask({ ...source, busy: true, error: "" });
     try {
-      const before = await physicalPlane(current);
       const file = await adapter.download(job, artifact, AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]));
       const after = await physicalPlane(file);
+      const before = direction ? await physicalPlane(current) : null;
       controller.signal.throwIfAborted();
-      if (before.axis !== after.axis || direction * (after.coordinate - before.coordinate) <= 1e-9)
+      if (direction && before && (before.axis !== after.axis || direction * (after.coordinate - before.coordinate) <= 1e-9))
         throw Error("No adjacent sampled plane in this direction. Choose a different plane stack; result data has not been moved.");
       onChoose(file);
     } catch (cause) {
@@ -59,5 +63,11 @@ export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJo
       }
     }
   };
-  return { step, busy, error, previous: index > 0 && !busy, next: index >= 0 && index < stack.length - 1 && !busy };
+  const sorted = [...all].sort((a, b) => name(a).localeCompare(name(b), undefined, { numeric: true }));
+  return {
+    step: (direction: -1 | 1) => choose(index < 0 ? undefined : stack[index + direction], direction),
+    chooseAxis: (axis: ResultAxis) => choose(sorted.find(a => resultPlaneAxis(name(a)) === axis)),
+    availableAxes: RESULT_AXES.filter(axis => sorted.some(a => resultPlaneAxis(name(a)) === axis)),
+    busy, error, previous: index > 0 && !busy, next: index >= 0 && index < stack.length - 1 && !busy,
+  };
 }

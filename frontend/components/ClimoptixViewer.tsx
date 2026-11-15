@@ -12,9 +12,10 @@ import {
   Plane,
   Vector3,
 } from "three";
-import { useThree, type ThreeEvent } from "@react-three/fiber";
+import { events, useThree, type ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
-import { CFDSceneResult, type CFDSceneResultProps } from "./CFDSceneResult";
+import { CFDSceneProbeReading, CFDSceneResult, RESULT_PLANE_MESH, type CFDSceneResultProps } from "./CFDSceneResult";
+import type { ResultPointValue } from "@/lib/cfdPointProbe";
 import { CFDProbeMarker } from "./CFDProbeMarker";
 import { CFDPlaneContextMenu, type PlaneMenu } from "./CFDPlaneContextMenu";
 import { createPortal } from "react-dom";
@@ -125,7 +126,9 @@ function Frame({ request }: { request: string }) {
 interface Props {
   resultOverlay?:CFDSceneResultProps;
   additionalResultOverlays?:CFDSceneResultProps[];
-  probeValue?:React.ReactNode;
+  resultSample?: ResultPointValue;
+  onClearResultSample?: () => void;
+  resultFitRequest?: number;
   project: ProjectDocument;
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -390,7 +393,9 @@ export function ClimoptixViewer({
   boundarySelection,
   resultOverlay,
   additionalResultOverlays,
-  probeValue,
+  resultSample,
+  onClearResultSample,
+  resultFitRequest = 0,
 }: Props) {
   const mouseButtons = useViewerNavigation();
   const [planeMenu,setPlaneMenu]=useState<PlaneMenu|null>(null);
@@ -568,7 +573,7 @@ export function ClimoptixViewer({
   const isolated =
     isolate && Boolean(selectedPatch || selected?.startsWith("vent:"));
   const onMeshDown = (e: ThreeEvent<PointerEvent>, patch: CFDViewPatch) => {
-    if(resultOverlay?.probing)return;
+    onClearResultSample?.();
     if (e.button !== 0) return;
     if (
       !patch.id.startsWith("vent:") &&
@@ -608,7 +613,7 @@ export function ClimoptixViewer({
     }
   };
   const onMeshClick = (e: ThreeEvent<MouseEvent>, id: string) => {
-    if (e.button !== 0 || e.delta > 4 || resultOverlay?.probing || inspectPress.current !== id) return;
+    if (e.button !== 0 || e.delta > 4 || inspectPress.current !== id) return;
     e.stopPropagation();
     inspectPress.current = null;
     onInspectPatch?.(id);
@@ -734,7 +739,19 @@ export function ClimoptixViewer({
       </div>
       {viewTarget &&
         createPortal(
-          <details open className="cfx-inspector" aria-label="CFD view properties"><summary>Geometry &amp; result visibility</summary><div className="cfx-view-checks">
+          <div aria-label="CFD view properties">
+          <div className="cfx-view-visibility-actions">
+            {[true, false].map(visible => <button key={String(visible)} type="button" onClick={() => {
+              setCeilings(visible);
+              onShowRefinements(visible);
+              if (patchMode === "geometry") { setWallOutlines(visible); setDetailed(visible); }
+              setIsolate(false);
+              onOnlyResults?.(false);
+              onResultsVisible?.(visible);
+            }}>{visible ? "Select all" : "Deselect all"}</button>)}
+            <button type="button" onClick={() => setFit(x => x + 1)}>Fit view</button>
+          </div>
+          <details open className="cfx-inspector" aria-label="Geometry and result visibility"><summary>Geometry &amp; result visibility</summary><div className="cfx-view-checks">
             <label className="cfx-check">
               <input
                 type="checkbox"
@@ -775,15 +792,20 @@ export function ClimoptixViewer({
               onChange={event=>onOnlyResults?.(event.target.checked)}/>Only CFD result planes</label>
             <label className="cfx-check"><input type="checkbox" checked={resultsVisible} onChange={event=>onResultsVisible?.(event.target.checked)}/>Show CFD result planes</label>
             </div>
-            <button type="button" onClick={() => setFit((x) => x + 1)}>
-              Fit view
-            </button>
-          </details>,
+          </details>
+          </div>,
           viewTarget,
         )}
       <div
         className="cfx-viewport"
         tabIndex={0}
+        data-cfx-probe-surface
+        onPointerDownCapture={event => {
+          if (event.button !== 0) return;
+          if (event.target instanceof Element && event.target.closest(".stable-canvas-host") && !event.target.closest("button"))
+            event.currentTarget.focus({preventScroll:true});
+          else onClearResultSample?.();
+        }}
         data-point-probing={resultOverlay?.probing||undefined}
         data-patch-display={patchMode}
         data-view="3D"
@@ -793,13 +815,22 @@ export function ClimoptixViewer({
         data-diagnostic-highlight={issuePositions.length || issueVentPoints.length || issueRefinement ? diagnosticHighlight?.label : undefined}
         data-boundary-groups={JSON.stringify(boundaryGroups.map(g => ({ id: g.id, colour: g.colour, patchIds: g.patchIds })))}
       >
-        {probeValue}
         {rooms.length > 0 ? (
           <StableCanvas
             frameloop="demand"
             dpr={[1, 1.5]}
             camera={{ position: [10, 8, 11], fov: 42 }}
-            onPointerMissed={event => { if (event.button === 0) {if(resultOverlay?.probing)resultOverlay.onProbe?.(null);else onSelect(null);} }}
+            events={state => ({
+              ...events(state),
+              filter: hits => {
+                const plane = hits.find(hit => hit.object.name === RESULT_PLANE_MESH);
+                // A transparent boundary can be nearer the camera than the visible plane.
+                return plane ? [plane] : hits;
+              },
+            })}
+            onPointerMissed={event => {
+              if (event.button === 0) { onClearResultSample?.(); onSelect(null); }
+            }}
           >
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
@@ -815,7 +846,7 @@ export function ClimoptixViewer({
                 />
               )}
               <Frame
-                request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit}`}
+                request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${fit + resultFitRequest}`}
               />
               {scenario.outputs.probesMm.map((point,index)=><CFDProbeMarker key={`probe:${index}`} point={point} index={index} selected={selected===`probe:${index}`} onSelect={()=>onSelect(`probe:${index}`)} onMove={next=>onMoveProbe?.(index,next)}/>)}
               {project.hvac?.bindings[scenario.id] && projectFloors(project).flatMap(floor => (floor.content.heatingLayout?.ufhZones ?? []).filter(zone => report?.domain.regions.some(r => r.included && r.floorId === floor.id && r.id === zone.roomId)).flatMap(zone => (floor.content.heatingLayout?.ufhCircuits ?? []).filter(c => c.zoneId === zone.zoneId).map(circuit => <Line key={`hvac:${floor.id}:${circuit.circuitId}`} name={`UFH loop intent: ${zone.name}`} points={circuit.pathMm.map(p => scene([p.x, p.y, floor.elevationMm + 5]))} color={COLORS.object} lineWidth={2} raycast={() => {}} />)))}
@@ -1020,6 +1051,7 @@ export function ClimoptixViewer({
                   <boxGeometry args={[issueRefinement.sizeMm[0] * .001, issueRefinement.sizeMm[2] * .001, issueRefinement.sizeMm[1] * .001]} />}
                 <meshBasicMaterial color={ISSUE_COLOUR} wireframe depthTest={false} depthWrite={false} />
               </mesh>}
+              {resultSample&&hasVisibleResults&&<CFDSceneProbeReading sample={resultSample}/>}
               {resultOverlay&&<CFDSceneResult {...resultOverlay} onSelect={()=>onSelectResultFile?.(resultOverlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:resultOverlay.file,x,y});}:undefined}/>}
               {additionalResultOverlays?.map(overlay=><CFDSceneResult key={overlay.file.name} {...overlay} onSelect={()=>onSelectResultFile?.(overlay.file)} onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:overlay.file,x,y});}:undefined}/>)}
             </Bounds>

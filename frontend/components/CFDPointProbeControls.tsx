@@ -29,7 +29,7 @@ export function useCFDPointProbe(enabled: boolean, key: readonly unknown[]|strin
       if (target?.closest(".floating-toolbar") && target.closest(".floating-toolbar") !== owner) return;
       // Do not activate a viewer hidden behind a different independent window.
       const panels = Array.from(root.closest(".cfx-workspace")?.querySelectorAll<HTMLElement>(".floating-toolbar") ?? []).filter(node => node.getClientRects().length);
-      if (owner && !document.fullscreenElement?.contains(root) && panels.some(node => node !== owner && Number(getComputedStyle(node).zIndex) > Number(getComputedStyle(owner).zIndex))) return;
+      if (owner && !target?.closest("[data-cfx-probe-surface]") && !document.fullscreenElement?.contains(root) && panels.some(node => node !== owner && Number(getComputedStyle(node).zIndex) > Number(getComputedStyle(owner).zIndex))) return;
       event.preventDefault(); event.stopImmediatePropagation(); setChoice({on:!mode,request}); setReading(null);
     };
     window.addEventListener("keydown", keyboard, true);
