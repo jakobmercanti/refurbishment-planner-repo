@@ -296,7 +296,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
     },
   ],
   review: [
-    { heading: "Review, warnings and transfers", text: "Review contains notes and provenance. Warnings & checks contains filterable current diagnostics and Inspect links. Import / export contains editable simulation JSON, preparation ZIP and settings/preflight downloads. Import creates a separate simulation; stale preparation cannot be exported as current. Provider limitations are in this help window." },
+    { heading: "Review, warnings and transfers", text: "Review & warnings contains simulation notes, preparation outcome and filterable diagnostics with Inspect links. Import / export transfers editable simulation JSON, preparation ZIP and settings/preflight downloads. Import creates a separate simulation. Refresh checks before exporting the current preparation." },
     {
       heading: "Validation and export",
       text: "Validate the current source and setup before exporting. The preparation manifest records blocking diagnostics; boundary STL is included only when geometry checks pass. Source geometry is millimetres; exported STL is metres. Preparation and optional Foamlib settings ZIPs are configuration handoffs, not runnable solver cases. A worker must revalidate, construct a complete case, mesh and check it before solving. Review the visible diagnostics, assumptions and provenance hashes.",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bounds, Line, OrbitControls, useBounds } from "@react-three/drei";
 import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
@@ -16,6 +16,7 @@ import {
 import { events, useThree, type ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
 import { CFDSceneProbeReading, CFDSceneResult, RESULT_PLANE_MESH, type CFDSceneResultProps } from "./CFDSceneResult";
+import { CFDOrientation } from "./CFDOrientation";
 import type { ResultPointValue } from "@/lib/cfdPointProbe";
 import { CFDProbeMarker } from "./CFDProbeMarker";
 import { CFDPlaneContextMenu, type PlaneMenu } from "./CFDPlaneContextMenu";
@@ -125,6 +126,7 @@ function Frame({ request, target, ready = true }: { request: string; target?: Re
   return null;
 }
 interface Props {
+  resultLegend?: ReactNode;
   resultOverlay?:CFDSceneResultProps;
   additionalResultOverlays?:CFDSceneResultProps[];
   bufferedResultOverlays?:CFDSceneResultProps[];
@@ -395,6 +397,7 @@ export function ClimoptixViewer({
   boundaryGroups = [],
   boundarySelection,
   resultOverlay,
+  resultLegend,
   additionalResultOverlays,
   bufferedResultOverlays,
   resultSample,
@@ -413,6 +416,7 @@ export function ClimoptixViewer({
   const [patchMode, setPatchMode] = useState<PatchDisplayMode>("geometry");
   const thermalVisible = patchMode === "geometry" && thermalMetric !== "off" && thermalSurfaces.length > 0;
   const hasVisibleResults = Boolean(resultOverlay || additionalResultOverlays?.length);
+  const orientation = useRef<HTMLCanvasElement>(null);
   const resultLayers = new Map<string, CFDSceneResultProps>();
   for (const overlay of [...(bufferedResultOverlays ?? []), ...(additionalResultOverlays ?? []), ...(resultOverlay ? [resultOverlay] : [])])
     resultLayers.set(overlay.file.name, overlay);
@@ -1080,6 +1084,7 @@ export function ClimoptixViewer({
               minDistance={0.2}
               maxDistance={1000}
             />
+            <CFDOrientation target={orientation} />
           </StableCanvas>
         ) : (
           <div className="cfx-empty">
@@ -1101,6 +1106,9 @@ export function ClimoptixViewer({
             )}
           </div>
         )}
+        {(rooms.length > 0 || hasVisibleResults) && <canvas ref={orientation} className="cfx-orientation"
+          width={192} height={192} role="img" aria-label="Orientation of the positive CFD X, Y and Z axes" />}
+        {resultLegend}
       </div>
       {!resultsOnly && <footer>
         {patchMode !== "geometry" && <ul className="cfx-refinement-legend cfx-patch-legend" tabIndex={0} aria-label={PATCH_DISPLAY_MODES[patchMode]}>

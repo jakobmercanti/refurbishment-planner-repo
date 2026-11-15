@@ -92,7 +92,7 @@ export function DomainPanel({
         </fieldset>
         <p className="cfx-caption">The background grid rotates about the origin in X, Y, Z order. Measured rooms and boundary conditions keep their building coordinates.</p>
       </details>
-      <div className="cfx-metrics">
+      <div className="cfx-metrics cfx-base-cell-estimate">
         <div><small>Predicted cells before refinement</small>
           <strong>{baseCells?.toLocaleString() ?? "Check domain first"}</strong></div>
       </div>

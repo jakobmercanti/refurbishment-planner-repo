@@ -11,12 +11,14 @@ import { ConfirmationDialog } from "./ConfirmationDialog";
 import { useCFDJobs } from "./useCFDJobs";
 import { useRailwayCFDWorker } from "./useRailwayCFDWorker";
 import { ClimoptixWorkerMonitor } from "./ClimoptixWorkerMonitor";
-import { CFDWorkerConnection } from "./CFDWorkerConnection";
 import { CFDWorkbenchStatus } from "./CFDWorkbenchStatus";
 import { diagnosticTarget } from "@/lib/climoptixDiagnostics";
 import { CFDJobProgress } from "./CFDJobProgress";
 import { RESULT_AXES, resultPlaneAxis, useCFDPlaneStepper, type ResultAxis } from "./useCFDPlaneStepper";
-import { CFDResultLegend, DEFAULT_RESULT_APPEARANCE, RESULT_PALETTES, type ResultPalette, type SceneResultMetadata } from "./CFDSceneResult";
+import { useCFDPlaneRanges } from "./useCFDPlaneRanges";
+import { CFDResultLegend, DEFAULT_RESULT_APPEARANCE, type SceneResultMetadata } from "./CFDSceneResult";
+import { RESULT_PALETTES, type ResultPalette } from "@/lib/cfdResultPalette";
+import { CFDLegendStyleSelect, type CFDLegendStyle } from "./CFDLegendStyle";
 import { CFDHeatingImport } from "./CFDHeatingImport";
 import { copyHvacAsAirflow, requiresHvacThermalExecution, resolveHvacScenario } from "@/lib/hvacBridge";
 import { hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
@@ -222,7 +224,7 @@ export function ClimoptixWorkspace({
   const [resultPalette, setResultPalette] = useState<ResultPalette>("spectrum");
   const [resultAppearance, setResultAppearance] = useState(DEFAULT_RESULT_APPEARANCE);
   const [showResultMesh, setShowResultMesh] = useState(false);
-  const [legendStyle, setLegendStyle] = useState<"horizontal"|"vertical"|"hidden">("horizontal");
+  const [legendStyle, setLegendStyle] = useState<CFDLegendStyle>("horizontal");
   const [manualResultScale, setManualResultScale] = useState(false);
   const [scaleMin, setScaleMin] = useState("");
   const [scaleMax, setScaleMax] = useState("");
@@ -258,8 +260,6 @@ export function ClimoptixWorkspace({
   const resultField = mainResultMetadata.fields.find(field => field.key === mainResultField) ?? mainResultMetadata.fields[0];
   const validManualRange = scaleMin.trim() !== "" && scaleMax.trim() !== ""
     && Number.isFinite(Number(scaleMin)) && Number.isFinite(Number(scaleMax)) && Number(scaleMin) < Number(scaleMax);
-  const resultRange: [number,number] | undefined = manualResultScale && validManualRange
-    ? [Number(scaleMin), Number(scaleMax)] : resultField?.range;
   const mainProbe=useCFDPointProbe(active&&!!currentPlane&&mainResultVisible, [mainResultField,currentWorkerInput,mainResultVisible]);
   const placement = picking?.studyId === scenario?.id ? picking : null;
   const placementScenario = scenario && placement ? { ...scenario, vents: scenario.vents.some(v => v.id === placement.ventId)
@@ -599,7 +599,7 @@ export function ClimoptixWorkspace({
     if (axis) setHiddenResultAxes(previous => previous.filter(value => value !== axis));
     if (item !== mainResult) {
       setMainResult(item);
-      setMainResultMetadata({fields:[],error:""});
+      setMainResultMetadata(current => current.error ? {...current, error:""} : current);
     }
     selectObject(null);
     setSelectedResultPlane(item.file);
@@ -620,7 +620,14 @@ export function ClimoptixWorkspace({
   };
   const mainStack=useCFDPlaneStepper(remoteWorker.adapter,currentJob?.job,currentPlane?.file,
     file=>showScenePlane(file,{replace:true,historical:currentPlane?.historical}),true);
-  const planeDisplay = {field:resultField?.key??mainResultField,palette:resultPalette,range:resultRange,appearance:resultAppearance};
+  const useManualRange = manualResultScale && validManualRange;
+  const planeRanges = useCFDPlaneRanges(remoteWorker.adapter, currentJob?.job, mainStack.result,
+    [...currentSceneLayers.map(item => item.file), ...mainStack.buffered],
+    active && !!currentPlane && mainResultVisible && !useManualRange);
+  const resultRange: [number,number] | undefined = useManualRange ? [Number(scaleMin), Number(scaleMax)]
+    : resultField && planeRanges.ranges?.get(resultField.key);
+  const planeDisplay = {field:resultField?.key??mainResultField,palette:resultPalette,
+    range:resultRange ?? [0,0] as [number,number],appearance:resultAppearance};
   const toggleResultAxis = (axis: ResultAxis, visible: boolean) => {
     const layer = axisPlanes[RESULT_AXES.indexOf(axis)];
     mainProbe.pick(null);
@@ -843,7 +850,9 @@ export function ClimoptixWorkspace({
           active={active}
           apiUrl={apiUrl}
           resultOverlay={currentPlane&&mainResultVisible&&!placement?{...planeDisplay,file:currentPlane.file,onMetadata:setMainResultMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,selected:!selected&&selectedResultPlane===currentPlane.file,showMesh:showResultMesh}:undefined}
-          additionalResultOverlays={mainResultVisible&&!placement&&activeAxis?shownAxisPlanes.flatMap(item=>item&&item!==currentPlane?[{...planeDisplay,file:item.file,onMetadata:ignoreSceneMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick}]:[]):undefined}
+          resultLegend={mainResultVisible && currentPlane && resultField && resultRange && legendStyle !== "hidden" && !placement
+            ? <CFDResultLegend name={resultField.name} range={resultRange} palette={resultPalette} vertical={legendStyle === "vertical"}/> : undefined}
+          additionalResultOverlays={mainResultVisible&&!placement&&activeAxis?shownAxisPlanes.flatMap(item=>item&&item!==currentPlane?[{...planeDisplay,file:item.file,onMetadata:ignoreSceneMetadata,probing:mainProbe.mode,onProbe:mainProbe.pick,showMesh:showResultMesh}]:[]):undefined}
           bufferedResultOverlays={currentPlane&&mainResultVisible&&!placement?mainStack.buffered.map(file=>({...planeDisplay,file,onMetadata:ignoreSceneMetadata,visible:false})):undefined}
           resultSample={mainProbe.reading?.sample ?? undefined}
           onClearResultSample={()=>mainProbe.pick(null)}
@@ -1331,14 +1340,9 @@ export function ClimoptixWorkspace({
                   {active && (
                     <ClimoptixResults
                       view={resultsView} onViewChange={setResultsView}
-                      review={<><ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} failure={error || preparationError} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
+                      review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
                       onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
-                      onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />
-                        {providedWorker === undefined && <details><summary>Worker connection &amp; limits</summary>
-                          <CFDWorkerConnection adapter={remoteWorker.adapter} reason={remoteWorker.reason}
-                            onRefresh={remoteWorker.refresh} scenario={scenario} onChange={change}/>
-                        </details>}
-                      </>}
+                      onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}
                       adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} report={activeReport}
                       projectId={project.projectId}
@@ -1364,8 +1368,6 @@ export function ClimoptixWorkspace({
           </div>
         </FloatingToolbar>
       )}
-      {active && mainResultVisible && currentPlane && resultField && resultRange && legendStyle !== "hidden" && !placement &&
-        <CFDResultLegend name={resultField.name} range={resultRange} palette={resultPalette} vertical={legendStyle === "vertical"}/>}
       {active && viewOpen && <FloatingToolbar title="View properties" className="cfx-view-window" defaultPosition={{ x: 900, y: 144 }}
         initialSize={{ width: 440 }} onClose={() => setViewOpen(false)} helpSteps={CFD_PHASE_HELP.view}>
         <div ref={setViewTarget} />
@@ -1404,12 +1406,14 @@ export function ClimoptixWorkspace({
         {mainResultMetadata.error&&<p className="cfx-error" role="alert">{mainResultMetadata.error}</p>}
         </details>
         <details><summary>Plane appearance</summary>
+          <div className="cfx-plane-toggles">
           <label className="cfx-check"><input type="checkbox" checked={resultAppearance.edges}
             onChange={event=>setResultAppearance({...resultAppearance,edges:event.target.checked})}
             data-field-help="Show each plane’s perimeter. The selected plane retains its orange outline."/>Plane edges</label>
           <label className="cfx-check"><input type="checkbox" checked={showResultMesh && !!mainResultMetadata.meshSection}
             disabled={!mainResultMetadata.meshSection} onChange={event=>setShowResultMesh(event.target.checked)}
-            data-field-help={mainResultMetadata.meshSection ? "Show the solver mesh cells cut by the selected plane." : "This result does not include native mesh sections."}/>Show mesh</label>
+            data-field-help={mainResultMetadata.meshSection ? "Show the solver mesh cells cut by the displayed planes." : "This result does not include native mesh sections."}/>Show mesh</label>
+          </div>
           <label>Edge opacity · {resultAppearance.edgeOpacity}%<input type="range" min={0} max={100} step={5}
             value={resultAppearance.edgeOpacity} disabled={!resultAppearance.edges}
             onChange={event=>setResultAppearance({...resultAppearance,edgeOpacity:event.target.valueAsNumber})}/></label>
@@ -1419,9 +1423,17 @@ export function ClimoptixWorkspace({
             onChange={event=>setResultAppearance({...resultAppearance,shading:event.target.valueAsNumber})}/></label>
         </details>
         <details open><summary>Legend &amp; colour scale</summary>
-          <label>Legend style<select value={legendStyle} onChange={event=>setLegendStyle(event.target.value as typeof legendStyle)}><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option><option value="hidden">Hidden</option></select></label>
+          <CFDLegendStyleSelect value={legendStyle} onChange={setLegendStyle} />
           <label>Colour palette<select value={resultPalette} onChange={event=>setResultPalette(event.target.value as ResultPalette)}>{Object.entries(RESULT_PALETTES).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
-          <label>Scale<select value={manualResultScale?"manual":"auto"} onChange={event=>setManualResultScale(event.target.value==="manual")}><option value="auto">Auto · selected plane</option><option value="manual">Manual range</option></select></label>
+          <label>Scale<select data-field-help="Auto keeps the selected field’s minimum and maximum across every retained plane. The same range applies while browsing visible planes." value={manualResultScale?"manual":"auto"} onChange={event=>setManualResultScale(event.target.value==="manual")}><option value="auto">Auto · all planes</option><option value="manual">Manual range</option></select></label>
+          {!useManualRange && mainResultVisible && currentPlane && !resultRange && !planeRanges.error && !mainStack.resultError &&
+            <p role="status">Reading the colour range across all result planes…</p>}
+          {!useManualRange && mainStack.resultError && <p role="alert" className="cfx-error">
+            {mainStack.resultError} <button type="button" onClick={mainStack.retryResult}>Retry result manifest</button>
+          </p>}
+          {!useManualRange && planeRanges.error && <p role="alert" className="cfx-error">
+            {planeRanges.error} <button type="button" onClick={planeRanges.retry}>Retry colour range</button>
+          </p>}
           {manualResultScale&&<>
             <div className="cfx-equal-actions">
               <label>Minimum<input type="number" step="any" value={scaleMin} onChange={event=>setScaleMin(event.target.value)} /></label>

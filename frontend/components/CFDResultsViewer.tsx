@@ -12,7 +12,8 @@ import { CFDNumber } from "./CFDFields";
 import { CFDPointProbeControls, CFDPointProbeValue, useCFDPointProbe } from "./CFDPointProbeControls";
 import { useViewerContextMenu } from "@/lib/viewerNavigation";
 import type { ReactNode } from "react";
-import { CFDViewerControls } from "./CFDViewerControls";
+import { CFDLegendStyleSelect, type CFDLegendStyle } from "./CFDLegendStyle";
+import { RESULT_PALETTES, resultPaletteStops } from "@/lib/cfdResultPalette";
 import { CFDViewerFrame } from "./CFDViewerFrame";
 import { CFDPlaneContextMenu, type PlaneMenu } from "./CFDPlaneContextMenu";
 import { intersectResultPlane, resultProbeMesh, sampleResultPoint, type ProbeMesh, type ProbePosition, type ResultPointValue } from "@/lib/cfdPointProbe";
@@ -23,13 +24,15 @@ interface Layer { id:string; name:string; fields:ResultField[]; volume:boolean; 
 interface ResultContext { id:string; name:string; points:number[] }
 interface View { project:(point:ProbePosition)=>{x:number;y:number}|null; hit:(x:number,y:number)=>string|null; apply:(id:string,options:Options)=>Promise<void>; visibility:(id:string,visible:boolean)=>void; fit:()=>void; zoom:(factor:number)=>void; direction:(axis:number)=>void;
   pick:(id:string,x:number,y:number,field:string,component:number)=>ResultPointValue|null }
-const palettes:Record<string,number[][]>={coolwarm:[[.15,.3,.75],[.1,.8,.65],[.9,.25,.1]],viridis:[[.267,.005,.329],[.128,.567,.551],[.993,.906,.144]],grey:[[.1,.1,.1],[.5,.5,.5],[.95,.95,.95]]};
+const legacyPalettes:Record<string,number[][]>={coolwarm:[[.15,.3,.75],[.1,.8,.65],[.9,.25,.1]],grey:[[.1,.1,.1],[.5,.5,.5],[.95,.95,.95]]};
+const paletteColours = (name: string) => resultPaletteStops(name) ?? legacyPalettes[name] ?? legacyPalettes.coolwarm;
 
 export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,provenance,onClose,onRemoveFile,probeRequest=0,viewMode="3d",compact=false,embedded=false,toolbar,onPlaneStep,previousPlane,nextPlane}:{compact?:boolean;embedded?:boolean;toolbar?:ReactNode;onPlaneStep?:(direction:-1|1)=>void;previousPlane?:boolean;nextPlane?:boolean;file:File;additionalFiles?:File[];context?:ResultContext[];provenance?:string;onClose:()=>void;onRemoveFile?:(file:File)=>void;probeRequest?:number;viewMode?:"2d"|"3d"}){
   const host=useRef<HTMLDivElement>(null), view=useRef<View|null>(null);
   const [layers,setLayers]=useState<Layer[]>([]),[error,setError]=useState(""),[warnings,setWarnings]=useState<string[]>([]),[loading,setLoading]=useState(true);
   const active="0"; // The Results plane dropdown owns the inspected/loaded plane.
   const [planeMenu,setPlaneMenu]=useState<PlaneMenu|null>(null);
+  const [legendStyle, setLegendStyle] = useState<CFDLegendStyle>("horizontal");
   const files=useMemo(()=>[file,...additionalFiles],[file,additionalFiles]);
   const planeContext=useViewerContextMenu(target=>!!target.closest(".cfx-vtk-canvas"),({x,y})=>{
     if(!onRemoveFile)return;
@@ -88,8 +91,8 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
         if(!field||(loaded.volume&&options.mode==="iso")){mapper.setScalarVisibility(false);actor.getProperty().setColor(1,.48,.05);}
         else{
           if(!Number.isFinite(options.low)||!Number.isFinite(options.high)||options.low>=options.high)throw new Error("Legend minimum must be smaller than maximum.");
-          colours.removeAllPoints();const coloursAt=palettes[options.palette]??palettes.coolwarm;
-          coloursAt.forEach((rgb,i)=>colours.addRGBPoint(options.low+(options.high-options.low)*i/2,rgb[0],rgb[1],rgb[2]));
+          colours.removeAllPoints();const coloursAt=paletteColours(options.palette);
+          coloursAt.forEach((rgb,i)=>colours.addRGBPoint(options.low+(options.high-options.low)*i/(coloursAt.length-1),rgb[0],rgb[1],rgb[2]));
           if(options.component<0)colours.setVectorModeToMagnitude();else{colours.setVectorModeToComponent();colours.setVectorComponent(options.component);}
           mapper.setLookupTable(colours);mapper.setColorByArrayName(field.name);if(field.cell)mapper.setScalarModeToUseCellFieldData();else mapper.setScalarModeToUsePointFieldData();
           mapper.setScalarRange(options.low,options.high);mapper.setColorModeToMapScalars();mapper.setScalarVisibility(true);
@@ -194,6 +197,12 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
     void currentView?.apply(layer.id,options).then(()=>{if(view.current===currentView&&viewMode==="2d"&&patch.axis!==undefined){currentView.direction(options.axis);currentView.fit();}}).catch(cause=>{if(view.current===currentView)setError(cause instanceof Error?cause.message:"Viewer update failed.");});
   };
   const selectField=(key:string)=>{const selected=layer?.fields.find(item=>item.key===key),low=selected?.range[0]??0,high=selected?.range[1]??1;update({field:key,component:-1,low,high:high>low?high:low+Math.max(1,Math.abs(low))*1e-6,iso:(low+high)/2,mode:"slice"});};
+  const twoD = viewMode === "2d";
+  const unit = provenance?.startsWith("Authenticated worker job") && field
+    ? ({ U: "m/s", p: "m²/s²", T: "K" } as Record<string,string>)[field.name] ?? "file units"
+    : "file units";
+  const resultColours = paletteColours(layer?.options.palette ?? "coolwarm")
+    .map(rgb => `rgb(${rgb.map(value => Math.round(value * 255)).join(", ")})`).join(", ");
   return <section className={`cfx-viewer cfx-vtk-viewer${probe.mode?" cfx-point-probing":""}`} aria-label="VTK results viewer" data-cfx-probe-scope onKeyDown={event=>{
     if(!onPlaneStep||event.defaultPrevented||event.altKey||event.ctrlKey||event.metaKey||event.target instanceof Element&&event.target.closest("input,select,textarea,[contenteditable=true]"))return;
     if(event.key==="ArrowUp"||event.key==="ArrowDown"){event.preventDefault();onPlaneStep(event.key==="ArrowUp"?1:-1);}
@@ -203,39 +212,52 @@ export function CFDResultsViewer({file,additionalFiles=EMPTY_FILES,context,prove
     <div tabIndex={0} data-cfx-probe-surface className={`cfx-vtk-canvas${probe.mode?" cfx-probing":""}`} aria-label={`Interactive VTK ${viewMode==="2d"?"2D":"3D"} field`} onPointerDownCapture={planeContext.onPointerDownCapture} onPointerMoveCapture={planeContext.onPointerMoveCapture} onPointerUpCapture={planeContext.onPointerUpCapture} onPointerCancelCapture={planeContext.onPointerCancelCapture} onContextMenuCapture={event=>{if(onRemoveFile){planeContext.onContextMenu(event);event.stopPropagation();}}}>
       <div ref={host} className="cfx-vtk-surface"/>
       <CFDPointProbeValue probe={probe} anchor={anchor} native={!!provenance?.startsWith("Authenticated worker job")}/>
+      {twoD && field && layer?.options.visible && legendStyle !== "hidden" &&
+        <aside className="cfx-building-legend" aria-label="2D result scale" data-vertical={legendStyle === "vertical" || undefined}>
+          <strong>{field.name}{field.components > 1 && (layer.options.component < 0 ? " magnitude" : ` ${"XYZ"[layer.options.component] ?? layer.options.component + 1}`)} · {unit}</strong>
+          <div className="cfx-building-scale">
+            <span>{layer.options.low.toPrecision(5)}</span>
+            <i style={{background: `linear-gradient(${legendStyle === "vertical" ? "to top" : "to right"}, ${resultColours})`}}/>
+            <span>{layer.options.high.toPrecision(5)}</span>
+          </div>
+        </aside>}
     </div>
-    <CFDViewerControls label="Plane controls">
-    {toolbar}
-    {onPlaneStep&&<div className="cfx-inline-toolbar"><button disabled={!previousPlane} onClick={()=>onPlaneStep(-1)}>Previous plane</button><button disabled={!nextPlane} onClick={()=>onPlaneStep(1)}>Next plane</button></div>}
-    <div className="cfx-viewer-bottom-actions"><CFDPointProbeControls probe={probe}/><button onClick={onClose}>Hide plane viewer</button></div>
-    <div className="cfx-results-controls">
-    <details open><summary>Result layers &amp; display controls</summary>
-      <div className="cfx-vtk-controls cfx-grid">
+    <div className="cfx-result-display cfx-results-controls">
+      <details open><summary>Plane selection &amp; display</summary>
+        {toolbar}
         <label>Result field<select aria-label="VTK result field" value={layer?.options.field??""} onChange={event=>selectField(event.target.value)}><option value="">Geometry only</option>{layer?.fields.map(item=><option key={item.key} value={item.key}>{item.name}{item.components>1?" · magnitude":""} · {item.cell?"cell":"point"}</option>)}</select></label>
         {field&&field.components>1&&<label>Vector component<select aria-label="Vector component" value={layer?.options.component??-1} onChange={event=>{const component=Number(event.target.value),range=component<0?field.range:field.componentRanges[component];update({component,low:range[0],high:range[1]>range[0]?range[1]:range[0]+Math.max(1,Math.abs(range[0]))*1e-6});}}><option value={-1}>Magnitude</option>{Array.from({length:field.components},(_,i)=><option key={i} value={i}>{["X","Y","Z"][i]??i+1}</option>)}</select></label>}
-        <label>Colour legend<select aria-label="Colour legend" value={layer?.options.palette??"coolwarm"} onChange={event=>update({palette:event.target.value})}><option value="coolwarm">Blue–green–red</option><option value="viridis">Viridis</option><option value="grey">Greyscale</option></select></label>
-        {layer&&<><CFDNumber convert={false} label="Legend minimum" value={layer.options.low} onChange={low=>update({low})}/><CFDNumber convert={false} label="Legend maximum" value={layer.options.high} onChange={high=>update({high})}/>
+        {onPlaneStep&&<div className="cfx-equal-actions"><button disabled={!previousPlane} onClick={()=>onPlaneStep(-1)}>Previous plane</button><button disabled={!nextPlane} onClick={()=>onPlaneStep(1)}>Next plane</button></div>}
+        <div className="cfx-viewer-bottom-actions"><CFDPointProbeControls probe={probe} checkbox={twoD}/><button onClick={onClose}>Hide plane viewer</button></div>
+        <div className="cfx-actions">{layers.map(item=><label className="cfx-check" key={item.id}><input type="checkbox" aria-label={`Show result ${item.name}`} checked={item.options.visible} onChange={event=>{const options={...item.options,visible:event.target.checked};setLayers(current=>current.map(old=>old.id===item.id?{...old,options}:old));void view.current?.apply(item.id,options).catch(cause=>setError(String(cause)));}}/>{item.name}</label>)}</div>
+      </details>
+      <details><summary>Plane appearance</summary>
+        {layer&&<div className="cfx-grid cfx-vtk-controls">
           <CFDNumber convert={false} label="Layer opacity (0–1)" value={layer.options.opacity} min={0} max={1} onChange={opacity=>update({opacity:Math.max(0,Math.min(1,opacity))})}/>
-          <label className="cfx-check"><input type="checkbox" checked={layer.options.wire} onChange={event=>update({wire:event.target.checked})}/>Wireframe</label></>}
-      </div>
-      <div className="cfx-actions">{layers.map(item=><label className="cfx-check" key={item.id}><input type="checkbox" aria-label={`Show result ${item.name}`} checked={item.options.visible} onChange={event=>{const options={...item.options,visible:event.target.checked};setLayers(current=>current.map(old=>old.id===item.id?{...old,options}:old));void view.current?.apply(item.id,options).catch(cause=>setError(String(cause)));}}/>{item.name}</label>)}</div>
-      <div className="cfx-actions"><button aria-label="Zoom VTK out" onClick={()=>view.current?.zoom(1/1.2)}>−</button><button aria-label="Zoom VTK in" onClick={()=>view.current?.zoom(1.2)}>+</button><button onClick={()=>view.current?.fit()}>Fit</button>{viewMode==="3d"&&["X","Y","Z"].map((axis,i)=><button key={axis} onClick={()=>view.current?.direction(i)}>View {axis}</button>)}</div>
-    </details>
-    <details><summary>Planes &amp; passive scalar isosurfaces</summary>
-      {layer?.volume?<><label>Volume display<select aria-label="Volume display" value={layer.options.mode} onChange={event=>update({mode:event.target.value as Options["mode"]})}><option value="slice">Grid slice</option>{viewMode==="3d"&&<option value="iso" disabled={!field||field.cell||field.components!==1}>Scalar isosurface</option>}</select></label>
-        {layer.options.mode==="slice"?<><label>Slice normal<select aria-label="Slice normal" value={layer.options.axis} onChange={event=>{const axis=Number(event.target.value);update({axis,index:Math.floor((layer.dims[axis]-1)/2)});}}>{["X","Y","Z"].map((axis,i)=><option key={axis} value={i}>{axis}</option>)}</select></label>
-          <label>Slice grid index<input aria-label="Slice grid index" type="range" min={0} max={layer.dims[layer.options.axis]-1} value={layer.options.index} onChange={event=>update({index:Number(event.target.value)})}/>{layer.options.index}</label></>:<CFDNumber convert={false} label="Scalar isovalue (file units)" value={layer.options.iso} onChange={iso=>update({iso})}/>}</>:
-        <p>Select downloaded plane layers above, or load a real ASCII .vti volume to move X/Y/Z slices and extract scalar isosurfaces. A surface-only .vtk/.vtp file cannot define a volume isosurface. This worker currently solves U and p, not passive scalar transport.</p>}
-    </details>
-    {!!context?.length&&<details><summary>Building &amp; object visibility</summary><p className="cfx-caption">Measured geometry in metres for context only; it is not solved field data.</p>{context.map(object=><label className="cfx-check" key={object.id}><input type="checkbox" checked={!!contextVisible[object.id]} onChange={event=>{setContextVisible(current=>({...current,[object.id]:event.target.checked}));view.current?.visibility(object.id,event.target.checked);}}/>{object.name}</label>)}</details>}
-    <details open><summary>Provenance &amp; diagnostics</summary>
-    <p className="cfx-stale">{provenance||"External file · simulation provenance and physical units unverified"}</p>
-    {error&&<p role="alert" className="cfx-error">{error}</p>}
-    {!!warnings.length&&<div className="cfx-notice" role="status" aria-label="VTK field warnings">Some arrays were not displayed: {warnings.join("; ")}. The original download is unchanged.</div>}
-    </details></div>
-    <footer><span role="status">{loading?"Loading result layers…":layer?.status??"File not loaded"}</span>{field&&<span>{layer?.volume&&layer.options.mode==="iso"?<><i style={{background:"#ff7900"}}/>{field.name} = {layer.options.iso} · file units</>:<><i className="cfx-colour-scale" style={{background:`linear-gradient(to right, ${(palettes[layer?.options.palette??"coolwarm"]??palettes.coolwarm).map(rgb=>`rgb(${rgb.map(value=>Math.round(value*255)).join(",")})`).join(", ")})`}}/>{field.name}: {layer?.options.low.toPrecision(5)} → {layer?.options.high.toPrecision(5)} · file units</>}</span>}
-      <button onClick={()=>downloadCFD(files[Number(active)]??file,(files[Number(active)]??file).name)}>Download full original data</button></footer>
-    </CFDViewerControls>
+          <label className="cfx-check"><input type="checkbox" checked={layer.options.wire} onChange={event=>update({wire:event.target.checked})}/>Wireframe</label>
+        </div>}
+        <div className="cfx-actions"><button aria-label="Zoom VTK out" onClick={()=>view.current?.zoom(1/1.2)}>−</button><button aria-label="Zoom VTK in" onClick={()=>view.current?.zoom(1.2)}>+</button><button onClick={()=>view.current?.fit()}>Fit</button>{viewMode==="3d"&&["X","Y","Z"].map((axis,i)=><button key={axis} onClick={()=>view.current?.direction(i)}>View {axis}</button>)}</div>
+      </details>
+      <details open><summary>Legend &amp; colour scale</summary>
+        {twoD && <CFDLegendStyleSelect value={legendStyle} onChange={setLegendStyle} />}
+        <label>Colour palette<select aria-label="Colour legend" value={layer?.options.palette??"coolwarm"} onChange={event=>update({palette:event.target.value})}><option value="coolwarm">Blue–green–red</option>{Object.entries(RESULT_PALETTES).map(([id,label])=><option key={id} value={id}>{label}</option>)}<option value="grey">Greyscale</option></select></label>
+        {layer&&<div className="cfx-grid"><CFDNumber convert={false} label="Legend minimum" value={layer.options.low} onChange={low=>update({low})}/><CFDNumber convert={false} label="Legend maximum" value={layer.options.high} onChange={high=>update({high})}/></div>}
+      </details>
+      {(layer?.volume || !twoD) && <details><summary>{twoD ? "Volume slice" : "Planes & passive scalar isosurfaces"}</summary>
+        {layer?.volume?<><label>Volume display<select aria-label="Volume display" value={layer.options.mode} onChange={event=>update({mode:event.target.value as Options["mode"]})}><option value="slice">Grid slice</option>{viewMode==="3d"&&<option value="iso" disabled={!field||field.cell||field.components!==1}>Scalar isosurface</option>}</select></label>
+          {layer.options.mode==="slice"?<><label>Slice normal<select aria-label="Slice normal" value={layer.options.axis} onChange={event=>{const axis=Number(event.target.value);update({axis,index:Math.floor((layer.dims[axis]-1)/2)});}}>{["X","Y","Z"].map((axis,i)=><option key={axis} value={i}>{axis}</option>)}</select></label>
+            <label>Slice grid index<input aria-label="Slice grid index" type="range" min={0} max={layer.dims[layer.options.axis]-1} value={layer.options.index} onChange={event=>update({index:Number(event.target.value)})}/>{layer.options.index}</label></>:<CFDNumber convert={false} label="Scalar isovalue (file units)" value={layer.options.iso} onChange={iso=>update({iso})}/>}</>:
+          <p>Select downloaded plane layers above, or load a real ASCII .vti volume to move X/Y/Z slices and extract scalar isosurfaces. A surface-only .vtk/.vtp file cannot define a volume isosurface. This worker currently solves U and p, not passive scalar transport.</p>}
+      </details>}
+      {!twoD&&!!context?.length&&<details><summary>Building &amp; object visibility</summary><p className="cfx-caption">Measured geometry in metres for context only; it is not solved field data.</p>{context.map(object=><label className="cfx-check" key={object.id}><input type="checkbox" checked={!!contextVisible[object.id]} onChange={event=>{setContextVisible(current=>({...current,[object.id]:event.target.checked}));view.current?.visibility(object.id,event.target.checked);}}/>{object.name}</label>)}</details>}
+      <details><summary>Provenance &amp; diagnostics</summary>
+        <p className="cfx-stale">{provenance||"External file · simulation provenance and physical units unverified"}</p>
+        {error&&<p role="alert" className="cfx-error">{error}</p>}
+        {!!warnings.length&&<div className="cfx-notice" role="status" aria-label="VTK field warnings">Some arrays were not displayed: {warnings.join("; ")}. The original download is unchanged.</div>}
+      </details>
+      <footer><span role="status">{loading?"Loading result layers…":layer?.status??"File not loaded"}</span>{!twoD&&field&&<span>{layer?.volume&&layer.options.mode==="iso"?<><i style={{background:"#ff7900"}}/>{field.name} = {layer.options.iso} · file units</>:<><i className="cfx-colour-scale" style={{background:`linear-gradient(to right, ${resultColours})`}}/>{field.name}: {layer?.options.low.toPrecision(5)} → {layer?.options.high.toPrecision(5)} · file units</>}</span>}
+        <button onClick={()=>downloadCFD(files[Number(active)]??file,(files[Number(active)]??file).name)}>Download full original data</button></footer>
+    </div>
     <CFDPlaneContextMenu menu={planeMenu} onClose={()=>setPlaneMenu(null)} onDelete={picked=>onRemoveFile?.(picked)}/>
     </CFDViewerFrame>
   </section>;

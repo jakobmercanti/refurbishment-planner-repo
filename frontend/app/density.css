@@ -383,12 +383,12 @@ body .cfx-workspace .cfx-view-visibility-actions {
   padding: 3px 6px;
 }
 :root[data-density="compact"] body .cfx-workspace .cfx-view-selector label { padding-inline-start: 2px; }
-body .cfx-workspace .cfx-building-results .cfx-window-sections > details {
+body .cfx-workspace :is(.cfx-building-results .cfx-window-sections, .cfx-result-display) > details {
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   padding: var(--density-field-gap) var(--density-window-padding);
 }
-body .cfx-workspace .cfx-building-results .cfx-window-sections > details > :not(summary) {
+body .cfx-workspace :is(.cfx-building-results .cfx-window-sections, .cfx-result-display) > details > :not(summary) {
   margin-block: 10px;
 }
 body .cfx-workspace .cfx-building-results .cfx-equal-actions {
@@ -421,11 +421,21 @@ body .cfx-workspace .cfx-building-results input[type="range"] { width: 100%; min
   color: var(--ink);
   font: 12px/1.4 var(--font-sans);
   pointer-events: none;
+  max-width: calc(100% - 24px);
 }
-.cfx-building-scale { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.cfx-building-scale i { width: 100px; height: 10px; }
+.cfx-building-scale { display: flex; align-items: center; gap: 8px; margin-top: 4px; overflow-wrap: anywhere; }
+.cfx-building-scale i { width: 100px; min-width: 18px; height: 10px; }
 .cfx-building-legend[data-vertical] .cfx-building-scale { flex-direction: column-reverse; }
-.cfx-building-legend[data-vertical] .cfx-building-scale i { width: 10px; height: 100px; }
+.cfx-building-legend[data-vertical] .cfx-building-scale i { width: 10px; min-width: 0; height: 100px; }
+.cfx-orientation { position: absolute; z-index: 4; top: 8px; left: 8px; width: 96px; height: 96px; pointer-events: none; }
+body .cfx-workspace .cfx-plane-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--density-field-gap); }
+body .cfx-workspace .cfx-base-cell-estimate { grid-template-columns: minmax(0, 1fr); }
+body .cfx-workspace label:not(.cfx-file),
+body .cfx-workspace input.cfx-inline-name,
+body .cfx-workspace :is(select, textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"])) {
+  font-size: calc(11.5px * var(--density-font-scale, 1));
+  font-weight: 400;
+}
 .cfx-building-probe {
   display: block;
   transform: translate(9px, -100%);

@@ -6,21 +6,26 @@ import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import { autoDeltaRange,availablePlanes,axisLabels,defaultLegend,inPlaneAxes,nearestPlane,restoreSliceState,sliceCSV,type SliceRequest,type SliceState } from "@/lib/cfdSlices";
 import { downloadCFD } from "@/lib/climoptix";
 import { probeNumber } from "@/lib/cfdPointProbe";
+import { RESULT_PALETTES } from "@/lib/cfdResultPalette";
 import { CFDNumber } from "./CFDFields";
 import { CFDPointProbeControls,useCFDPointProbe } from "./CFDPointProbeControls";
 import { CFDSlicePlot,resetSliceView,type SliceView } from "./CFDSlicePlot";
 import { useSliceData,useSliceManifest,useSliceRuns } from "./useCFDSlices";
-import { CFDViewerControls } from "./CFDViewerControls";
 import { CFDViewerFrame } from "./CFDViewerFrame";
 import { CFDLegacyPlane } from "./CFDLegacyPlane";
+import { CFDLegendStyleSelect, type CFDLegendStyle } from "./CFDLegendStyle";
 
 function LegendSettings({name,value,onChange}:{name:string;value:typeof defaultLegend;onChange:(v:typeof defaultLegend)=>void}) {
   const patch=(next:Partial<typeof value>)=>onChange({...value,...next});
   return <fieldset><legend>{name}</legend><div className="cfx-slice-controls">
-    <label className="cfx-check"><input type="checkbox" checked={value.auto} onChange={e=>patch({auto:e.target.checked})}/>Auto {name}</label>
-    <CFDNumber convert={false} label={`${name} minimum`} value={value.min} disabled={value.auto} onChange={min=>patch({min})}/>
-    <CFDNumber convert={false} label={`${name} maximum`} value={value.max} disabled={value.auto} onChange={max=>patch({max})}/>
-    <label>{name} palette<select aria-label={`${name} palette`} value={value.palette} onChange={e=>patch({palette:e.target.value})}><option value="coolwarm">Blue / neutral / red</option><option value="viridis">Viridis</option><option value="grey">Greyscale</option></select></label>
+    <label>Scale<select aria-label={`${name} scale`} value={value.auto ? "auto" : "manual"} onChange={e=>patch({auto:e.target.value==="auto"})}>
+      <option value="auto">Auto</option><option value="manual">Manual range</option>
+    </select></label>
+    <label>Colour palette<select aria-label={`${name} palette`} value={value.palette} onChange={e=>patch({palette:e.target.value})}><option value="coolwarm">Blue / neutral / red</option>{Object.entries(RESULT_PALETTES).map(([id,label])=><option key={id} value={id}>{label}</option>)}<option value="grey">Greyscale</option></select></label>
+    {!value.auto && <>
+      <CFDNumber convert={false} label={`${name} minimum`} value={value.min} onChange={min=>patch({min})}/>
+      <CFDNumber convert={false} label={`${name} maximum`} value={value.max} onChange={max=>patch({max})}/>
+    </>}
     <label>{name} colour bands<select aria-label={`${name} colour bands`} value={value.bands} onChange={e=>patch({bands:Number(e.target.value)})}><option value="0">Continuous</option>{[5,9,15].map(n=><option key={n} value={n}>{n} bands</option>)}</select></label>
     <CFDNumber convert={false} label={`${name} tick count`} min={2} max={9} value={value.ticks} onChange={n=>patch({ticks:Math.max(2,Math.min(9,Math.round(n)))})}/>
     <CFDNumber convert={false} label={`${name} decimal precision`} min={0} max={7} value={value.precision} onChange={n=>patch({precision:Math.max(0,Math.min(7,Math.round(n)))})}/>
@@ -35,6 +40,7 @@ export function CFD2DSlices({adapter,projectId,currentJob,active,legacyViewer,fo
   const [retry,setRetry]=useState(0),[storageError,setStorageError]=useState("");
   const [view,setView]=useState(resetSliceView),[linked,setLinked]=useState(true),[views,setViews]=useState<Record<string,SliceView>>({});
   const [hover,setHover]=useState(false);
+  const [legendStyle, setLegendStyle] = useState<CFDLegendStyle>("horizontal");
   const runs=useSliceRuns(adapter,projectId,active&&!forceNative&&state.mode==="compare",retry);
   const a=useSliceManifest(adapter,projectId,state.baseline,active&&!forceNative,retry),b=useSliceManifest(adapter,projectId,state.mode==="compare"?state.option:"",active&&!forceNative,retry);
   const am=a.data??undefined,bm=b.data??undefined;
@@ -88,7 +94,7 @@ export function CFD2DSlices({adapter,projectId,currentJob,active,legacyViewer,fo
     if(state.focus!=="all"&&state.focus!==kind)return null;
     const value=kind==="baseline"?probe.reading?.sample?.value:kind==="option"?sample?.option?.value:sample?.delta;
     const label=kind==="delta"?(data?.deltaMode==="vector"?"|ΔU|":`Δ ${parameter}`):parameter;
-    return <CFDSlicePlot key={kind} title={title} kind={kind} axis={state.axis} physicalCoordinate={kind==="option"?option?.coordinate:plane?.coordinate} data={data} values={values} legend={kind==="delta"?legends.delta:legends.shared} limits={kind==="delta"?delta:shared} view={linked?view:views[kind]??view} onView={v=>linked?setView(v):setViews({...views,[kind]:v})} point={probe.mode&&(kind==="baseline"||quantitative)?point:null} probing={probe.mode&&(kind==="baseline"||quantitative)} hover={hover} onPick={setPoint} readout={probe.mode?{value:value??null,label,unit:kind==="delta"?data?.deltaUnit:data?.unit}:undefined} focus={state.focus===kind} onFocus={()=>patch({focus:state.focus===kind?"all":kind})}/>;
+    return <CFDSlicePlot key={kind} title={title} kind={kind} axis={state.axis} physicalCoordinate={kind==="option"?option?.coordinate:plane?.coordinate} data={data} values={values} legend={kind==="delta"?legends.delta:legends.shared} legendStyle={legendStyle} limits={kind==="delta"?delta:shared} view={linked?view:views[kind]??view} onView={v=>linked?setView(v):setViews({...views,[kind]:v})} point={probe.mode&&(kind==="baseline"||quantitative)?point:null} probing={probe.mode&&(kind==="baseline"||quantitative)} hover={hover} onPick={setPoint} readout={probe.mode?{value:value??null,label,unit:kind==="delta"?data?.deltaUnit:data?.unit}:undefined} focus={state.focus===kind} onFocus={()=>patch({focus:state.focus===kind?"all":kind})}/>;
   };
   const clipped=(values:(number|null)[]|undefined|null,limits:[number,number])=>values?.filter(v=>v!==null&&(v<limits[0]||v>limits[1])).length??0;
   return <section className="cfx-slices" data-cfx-probe-scope aria-label="2D CFD slice results" tabIndex={0} onKeyDown={event=>{
@@ -103,7 +109,7 @@ export function CFD2DSlices({adapter,projectId,currentJob,active,legacyViewer,fo
     </details>}
     {a.unsupported||forceNative?<><details><summary>Native plane data availability</summary><p className="cfx-notice">{forceNative?"Imported plane files · simulation provenance and physical units are unverified.":"This service has no indexed slice API. Displaying this simulation’s verified native plane files instead. No new solve is needed."}{compare?" Cross-run deltas require the updated worker and proxy; they are not calculated by this legacy viewer.":""}</p></details>
       {compare?<>
-      <details open><summary>Comparison plots · 2 × 2</summary><CFDViewerFrame label="2D comparison viewer"><CFDViewerControls label="Comparison controls"><details className="cfx-comparison-run-controls"><summary>Comparison run selection</summary><label>Option<select aria-label="Option run" value={state.option} onChange={event=>changeRun("option",event.target.value)}><option value="">Choose a different run…</option>{runs.runs.filter(run=>run.operation!=="mesh"&&run.phase==="Completed"&&run.id!==state.baseline).map(run=><option key={run.id} value={run.id}>{runLabel(run)}</option>)}</select></label>{runs.error&&<p role="alert" className="cfx-error">{runs.error}</p>}</details></CFDViewerControls><div className="cfx-slice-grid-scroll"><div className="cfx-slice-grid compare cfx-legacy-comparison">
+      <details open><summary>Comparison plots · 2 × 2</summary><CFDViewerFrame label="2D comparison viewer"><div className="cfx-result-display"><details open><summary>Comparison run selection</summary><label>Option<select aria-label="Option run" value={state.option} onChange={event=>changeRun("option",event.target.value)}><option value="">Choose a different run…</option>{runs.runs.filter(run=>run.operation!=="mesh"&&run.phase==="Completed"&&run.id!==state.baseline).map(run=><option key={run.id} value={run.id}>{runLabel(run)}</option>)}</select></label>{runs.error&&<p role="alert" className="cfx-error">{runs.error}</p>}</details></div><div className="cfx-slice-grid-scroll"><div className="cfx-slice-grid compare cfx-legacy-comparison">
         <section className="cfx-slice-pane" data-slice-pane="baseline"><header><strong>Baseline · current simulation</strong></header>{legacyViewer?.(true)}</section>
         <section className="cfx-slice-pane" data-slice-pane="option"><header><strong>Option · {runs.runs.find(run=>run.id===state.option)?.name??(state.option?`Run ${state.option.slice(0,8)}`:"choose run")}</strong></header><CFDLegacyPlane key={state.option} adapter={adapter} job={runs.runs.find(run=>run.id===state.option)} active={active}/></section>
         <section className="cfx-slice-pane cfx-slice-inspector" data-slice-pane="inspector"><header><strong>Comparison information</strong></header><p>Native planes can be inspected independently in 2D. Pan and zoom never rotate the plane. Check their field ranges and physical plane positions before visual comparison.</p></section>
@@ -111,19 +117,26 @@ export function CFD2DSlices({adapter,projectId,currentJob,active,legacyViewer,fo
       </div></div></CFDViewerFrame></details></>:legacyViewer?.(false)}
     </>:<>
     <details open><summary>Slice plots{compare?" · 2 × 2":""}</summary><CFDViewerFrame label="2D slice plots">
-    <CFDViewerControls label="Slice controls">
-    <div className="cfx-inline-toolbar"><button type="button" onClick={()=>setRetry(n=>n+1)}>Refresh slice data</button><label className="cfx-check"><input type="checkbox" checked={linked} onChange={e=>{setLinked(e.target.checked);setViews({});}}/>Link plot pan/zoom</label><button type="button" onClick={()=>{setView(resetSliceView);setViews({});}}>Reset plot views</button>{state.focus!=="all"&&<button type="button" onClick={()=>patch({focus:"all"})}>Show all panes</button>}</div>
-    <details><summary>Runs, fields &amp; physical plane</summary>
+    <div className="cfx-result-display">
+    <details open><summary>Plane selection &amp; display</summary>
     <div className="cfx-slice-controls">
       {compare&&<label>Baseline<select aria-label="Baseline run" value={state.baseline} onChange={e=>changeRun("baseline",e.target.value)}><option value="">Choose a run…</option>{runs.runs.filter(run=>run.operation!=="mesh"&&run.phase==="Completed").map(run=><option key={run.id} value={run.id} disabled={run.id===state.option}>{runLabel(run)}</option>)}</select></label>}
       {compare&&<><label>Option<select aria-label="Option run" value={state.option} onChange={e=>changeRun("option",e.target.value)}><option value="">Choose a different run…</option>{runs.runs.filter(run=>run.operation!=="mesh"&&run.phase==="Completed").map(run=><option key={run.id} value={run.id} disabled={run.id===state.baseline}>{runLabel(run)}</option>)}</select></label><button type="button" disabled={!state.option||state.option===state.baseline} onClick={()=>patch({baseline:state.option,option:state.baseline,time:state.optionTime,optionTime:state.time,point:null})}>Swap runs</button></>}
-      <label>Quantity<select aria-label="Slice field" value={actualField?.name??""} onChange={e=>patch({field:e.target.value,component:-1,point:null,...(state.deltaMode==="vector"&&e.target.value!=="U"?{deltaMode:"absolute" as const}:{})})}>{!actualField&&<option value="">No available fields</option>}{plane?.fields.map(f=><option key={f.name} value={f.name}>{f.name==="U"?"Velocity U":f.name==="p"?"Kinematic pressure p":f.name} [{f.unit}]</option>)}</select></label>
+      <label>Result field<select aria-label="Slice field" value={actualField?.name??""} onChange={e=>patch({field:e.target.value,component:-1,point:null,...(state.deltaMode==="vector"&&e.target.value!=="U"?{deltaMode:"absolute" as const}:{})})}>{!actualField&&<option value="">No available fields</option>}{plane?.fields.map(f=><option key={f.name} value={f.name}>{f.name==="U"?"Velocity U":f.name==="p"?"Kinematic pressure p":f.name} [{f.unit}]</option>)}</select></label>
       {actualField&&actualField.components>1&&<label>Vector quantity<select aria-label="Vector quantity" value={component} onChange={e=>patch({component:Number(e.target.value),point:null})}><option value="-1">Magnitude |{actualField.name}|</option>{Array.from({length:actualField.components},(_,i)=><option key={i} value={i}>{actualField.name}{"XYZ"[i]??i+1}</option>)}</select></label>}
       <label>Plane orientation<select aria-label="Slice orientation" value={state.axis} onChange={e=>patch({axis:e.target.value as SliceState['axis'],point:null})}>{Object.entries(axisLabels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
       <label>Baseline output iteration<select aria-label="Baseline output iteration" value={state.time} onChange={e=>patch({time:e.target.value,point:null})}><option value="">No available output</option>{[...new Set(am?.planes.map(p=>p.time))].sort((a,b)=>Number(a)-Number(b)).map(time=><option key={time}>{time}</option>)}</select></label>
       {compare&&<label>Option output iteration<select aria-label="Option output iteration" value={state.optionTime} onChange={e=>patch({optionTime:e.target.value,point:null})}><option value="">No available output</option>{[...new Set(bm?.planes.map(p=>p.time))].sort((a,b)=>Number(a)-Number(b)).map(time=><option key={time}>{time}</option>)}</select></label>}
     </div>
-    <div className="cfx-slice-navigation"><button type="button" disabled={index<=0} onClick={()=>step(index-1)}>Previous plane</button><label>Available physical plane<select aria-label="Available physical plane" value={plane?.id??""} onChange={e=>{const p=planes.find(p=>p.id===e.target.value);if(p)patch({coordinates:{...state.coordinates,[state.axis]:p.coordinate},point:null});}}>{!plane&&<option value="">No ready {state.axis} planes</option>}{planes.map((p,i)=><option key={p.id} value={p.id}>Plane {i+1} of {planes.length} | {state.axis} = {probeNumber(p.coordinate)} m</option>)}</select></label><button type="button" disabled={index<0||index>=planes.length-1} onClick={()=>step(index+1)}>Next plane</button></div>
+    <label>Loaded plane<select aria-label="Available physical plane" value={plane?.id??""} onChange={e=>{const p=planes.find(p=>p.id===e.target.value);if(p)patch({coordinates:{...state.coordinates,[state.axis]:p.coordinate},point:null});}}>{!plane&&<option value="">No ready {state.axis} planes</option>}{planes.map((p,i)=><option key={p.id} value={p.id}>Plane {i+1} of {planes.length} | {state.axis} = {probeNumber(p.coordinate)} m</option>)}</select></label>
+    <div className="cfx-equal-actions"><button type="button" disabled={index<=0} onClick={()=>step(index-1)}>Previous plane</button><button type="button" disabled={index<0||index>=planes.length-1} onClick={()=>step(index+1)}>Next plane</button></div>
+    <CFDPointProbeControls probe={probe} checkbox />
+    {probe.mode && <div className="cfx-slice-controls">
+      <label>Probe interaction<select aria-label="Probe interaction" value={hover?"hover":"pin"} onChange={e=>setHover(e.target.value==="hover")}><option value="pin">Click to pin / replace</option><option value="hover">Hover (80 ms debounce)</option></select></label>
+      <button type="button" onClick={()=>{patch({point:null});recordProbe(null,"Probe cleared. Pick another point.");}}>Clear picked point</button>
+    </div>}
+    {probe.mode && state.point&&!point&&<p className="cfx-notice">Saved probe is off the displayed plane. Pick a point on this plane.</p>}
+    <button type="button" onClick={()=>setRetry(n=>n+1)}>Refresh slice data</button>
     {plane&&<p className="cfx-caption">{planes.length>1?`Actual adjacent spacing: ${index>0?probeNumber(plane.coordinate-planes[index-1].coordinate):"—"} / ${index+1<planes.length?probeNumber(planes[index+1].coordinate-plane.coordinate):"—"} m. `:"Only one plane available. "}Horizontal {"XYZ"[axes[0]]} / vertical {"XYZ"[axes[1]]}. Iterations are not elapsed seconds.</p>}
     <div className="cfx-slice-status" role="status">{[am,bm].filter(Boolean).map(m=><p key={m!.runId}><strong>{m!.name}</strong> · {m!.status} · {new Date(m!.createdAt*1000).toLocaleString()} · {m!.solver} · geometry {m!.sourceHash.slice(0,10)} · {m!.planes.length} ready planes, {m!.pending} pending · job updated {new Date(m!.updatedAt*1000).toLocaleTimeString()}{m!.status!=="Completed"?` · ${m!.message}`:""}</p>)}</div>
     <p className="cfx-caption">Inventories refresh automatically while this Results view is active. The latest ten retained output iterations are indexed; older raw outputs remain available in the native archive under Summary &amp; 3D.</p>
@@ -139,17 +152,21 @@ export function CFD2DSlices({adapter,projectId,currentJob,active,legacyViewer,fo
     {compare&&data?.option&&!quantitative&&<p className="cfx-caption">The Option is view-only until the data is physically comparable. Point picking remains available on Baseline; Option/Delta picking and cross-run differences are disabled.</p>}
     {compare&&!option&&<p className="cfx-notice">Choose an Option run with a ready {state.axis} plane. Delta and cross-run probes require matching physical planes.</p>}
     </details>
-    <details><summary>Visual settings &amp; delta legend</summary><div className="cfx-slice-controls"><label>Sampling grid<select aria-label="Sampling grid" value={state.size} onChange={e=>patch({size:Number(e.target.value)})}>{[96,128,256,512].map(n=><option key={n} value={n}>{n} × {n} area-centred samples</option>)}</select></label>
+    <details><summary>Plane appearance</summary>
+    <div className="cfx-equal-actions"><button type="button" onClick={()=>{setView(resetSliceView);setViews({});}}>Reset plot views</button>{state.focus!=="all"&&<button type="button" onClick={()=>patch({focus:"all"})}>Show all panes</button>}</div>
+    {compare&&<label className="cfx-check"><input type="checkbox" checked={linked} onChange={e=>{setLinked(e.target.checked);setViews({});}}/>Link plot pan/zoom</label>}
+    <div className="cfx-slice-controls"><label>Sampling grid<select aria-label="Sampling grid" value={state.size} onChange={e=>patch({size:Number(e.target.value)})}>{[96,128,256,512].map(n=><option key={n} value={n}>{n} × {n} area-centred samples</option>)}</select></label>
       <label>Temperature display<select aria-label="Temperature display" value={state.temperature} onChange={e=>patch({temperature:e.target.value as "K"|"C"})}><option value="K">Kelvin (requires stored K field)</option><option value="C">Celsius (only from known K)</option></select></label>
       {compare&&<><label>Delta definition<select aria-label="Delta definition" value={state.deltaMode} onChange={e=>patch({deltaMode:e.target.value as SliceRequest['deltaMode']})}><option value="absolute">Option − Baseline</option><option value="percent">100 × (Option − Baseline) / |Baseline| [%]</option><option value="vector" disabled={actualField?.name!=="U"||actualField.components!==3}>|U_option − U_baseline| [m/s]</option></select></label><CFDNumber convert={false} label="Relative delta denominator floor" value={state.epsilon} min={1e-12} onChange={epsilon=>{if(epsilon>0&&epsilon<=1e10)patch({epsilon});}}/></>}
-    </div><LegendSettings name="Shared scale" value={legends.shared} onChange={v=>updateLegend("shared",v)}/>{compare&&<LegendSettings name="Delta scale" value={legends.delta} onChange={v=>updateLegend("delta",v)}/>}<p className="cfx-caption">Baseline and Option always share one range. Delta is Option − Baseline; default diverging scale is symmetric about zero. Masked grey is unavailable, never zero. Relative delta masks |baseline| ≤ the denominator floor. Manual clipping changes colours only.</p>
+    </div></details>
+    <details open><summary>Legend &amp; colour scale</summary>
+    <CFDLegendStyleSelect value={legendStyle} onChange={setLegendStyle} />
+    <LegendSettings name={compare?"Shared scale":"Colour scale"} value={legends.shared} onChange={v=>updateLegend("shared",v)}/>{compare&&<LegendSettings name="Delta scale" value={legends.delta} onChange={v=>updateLegend("delta",v)}/>}
+    {compare&&<p className="cfx-caption">Baseline and Option share a range. Delta is Option − Baseline. The automatic delta scale is symmetric about zero. Relative delta masks |baseline| ≤ the denominator floor.</p>}
     {(invalidShared||invalidDelta)&&<p role="alert" className="cfx-error">Legend minimum must be less than maximum. Restore Auto or correct the bounds. Numeric data has not changed.</p>}
     {data&&<p className="cfx-caption">Clipped samples: baseline {clipped(data.a,shared)}, option {clipped(data.b,shared)}, delta {clipped(data.delta,delta)}. Grey cells are holes, outside fluid or unavailable values; near-zero denominators are also masked in percent mode.</p>}
     </details>
-    <details><summary>Point probing (V / Esc)</summary><CFDPointProbeControls probe={probe}/><div className="cfx-slice-controls"><label>Probe interaction<select aria-label="Probe interaction" value={hover?"hover":"pin"} onChange={e=>setHover(e.target.value==="hover")}><option value="pin">Click to pin / replace</option><option value="hover">Hover (80 ms debounce)</option></select></label><button type="button" onClick={()=>{patch({point:null});recordProbe(null,"Probe cleared. Pick another point.");}}>Clear picked point</button></div>
-      {state.point&&!point&&<p className="cfx-notice">Saved probe is off the displayed plane and is hidden. Pick a point on this plane.</p>}
-      <p className="cfx-caption">V toggles point mode; Esc exits. A click replaces the value shown inside the plot. Drag pans without probing; arrow keys browse planes.</p></details>
-    </CFDViewerControls>
+    </div>
     {request&&!data&&!grid.error&&<p role="status">Sampling selected physical plane…</p>}
     <div className="cfx-slice-grid-scroll" data-cfx-probe-surface>
     <div className={`cfx-slice-grid${compare?" compare":""}${state.focus!=="all"?" focused":""}`}>

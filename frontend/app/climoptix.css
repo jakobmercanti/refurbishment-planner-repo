@@ -1158,11 +1158,6 @@
 .cfx-thermal-navigation { padding: var(--density-window-padding); }
 .cfx-review > section > * + * { margin-top: var(--density-section-gap); }
 .cfx-review > header { margin-bottom: var(--density-section-gap); }
-.cfx-review-metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--density-section-gap); }
-.cfx-review-metadata > div { min-width: 0; padding: var(--density-window-padding); border: 1px solid var(--line); border-radius: var(--radius-control); }
-.cfx-review-metadata dt { font-weight: 700; color: var(--muted); }
-.cfx-check-status { padding: 4px 8px; border-radius: var(--radius-control); background: var(--surface-muted); color: var(--muted); font-size: 11px; font-weight: 600; }
-.cfx-review-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
 .cfx-workspace .cfx-review textarea { min-height: calc(var(--density-control-min-height) * 1.7); }
 @container cfx-setup (max-width: 620px) {
   .cfx-boundary-group .cfx-surface-row { grid-template-columns: minmax(0, 1fr); }

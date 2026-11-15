@@ -36,7 +36,7 @@ function planeBounds(file: File) {
 
 /** Select another verified native artifact. Never translate a solved plane mesh. */
 export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJob|undefined,current:File|undefined,onChoose:(file:File)=>void,preload=false) {
-  const {result}=useCFDResult(adapter,job,!!current);
+  const {result, error: resultError, retry: retryResult}=useCFDResult(adapter,job,!!current);
   const jobId = job?.id, revision = job?.clientRevision;
   const cache = useMemo(() => ({jobId,revision,adapter,ready:new Map<string,PreparedPlane>(),pending:new Map<string,Promise<PreparedPlane>>()}), [adapter,jobId,revision]);
   const [buffer, setBuffer] = useState<{cache:typeof cache;files:File[]}>();
@@ -131,5 +131,6 @@ export function useCFDPlaneStepper(adapter:RailwayCFDWorker|null,job:CFDWorkerJo
     availableAxes: RESULT_AXES.filter(axis => sorted.some(a => resultPlaneAxis(name(a)) === axis)),
     busy, error, previous: index > 0 && !busy, next: index >= 0 && index < stack.length - 1 && !busy,
     buffered: buffer?.cache === cache ? buffer.files : [],
+    result, resultError, retryResult,
   };
 }

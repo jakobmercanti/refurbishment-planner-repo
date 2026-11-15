@@ -1,16 +1,14 @@
 /* Deliberately scoped to the CFD Results subtree, not the building viewport. */
 body .cfx-workspace .cfx-slices { min-width:0; padding-block:12px; line-height:1.5; color:var(--ink); }
 body .cfx-workspace .cfx-slices :is(h3,h4,p) { margin-block:6px 10px; }
-body .cfx-workspace .cfx-slices :is(select,input) { font:inherit; min-height:var(--density-control-min-height); }
+body .cfx-workspace .cfx-slices :is(select,input:not([type="checkbox"])) { min-height:var(--density-control-min-height); }
 body .cfx-workspace .cfx-slice-mode { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
 body .cfx-workspace .cfx-slice-mode > button { width:100%; }
 body .cfx-workspace .cfx-slices select { width:100%; min-width:0; }
 body .cfx-workspace .cfx-slice-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:end; gap:10px; padding-block:8px; }
-body .cfx-workspace .cfx-slice-controls label { display:grid; gap:5px; min-width:0; font-weight:650; }
+body .cfx-workspace .cfx-slice-controls label { display:grid; gap:5px; min-width:0; }
 body .cfx-workspace .cfx-slice-controls .cfx-check { display:flex; align-items:center; gap:7px; min-height:var(--density-control-min-height); }
 body .cfx-workspace .cfx-slice-controls input[type=checkbox] { min-height:0; }
-body .cfx-workspace .cfx-slice-navigation { display:grid; grid-template-columns:minmax(100px,.5fr) minmax(0,2fr) minmax(100px,.5fr); align-items:end; gap:8px; margin-block:10px; }
-body .cfx-workspace .cfx-slice-navigation label { display:grid; gap:5px; font-weight:650; }
 body .cfx-workspace .cfx-slice-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; margin-block:12px; }
 body .cfx-workspace .cfx-slice-grid.compare { grid-template-columns:repeat(2,minmax(0,1fr)); }
 body .cfx-workspace .cfx-slice-grid.focused { grid-template-columns:minmax(0,1fr); }
@@ -31,8 +29,6 @@ body .cfx-workspace .cfx-slices :is(canvas,section):focus-visible { outline:2px 
 @container cfx-setup (min-width:1100px) { body .cfx-workspace .cfx-slice-controls { grid-template-columns:repeat(4,minmax(0,1fr)); } }
 @container cfx-setup (max-width:720px) {
   body .cfx-workspace .cfx-slice-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  body .cfx-workspace .cfx-slice-navigation { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  body .cfx-workspace .cfx-slice-navigation label { grid-row:1; grid-column:1/-1; }
   body .cfx-workspace .cfx-slice-pane canvas { height:350px; }
 }
 @container cfx-setup (max-width:400px) { body .cfx-workspace .cfx-slice-controls { grid-template-columns:minmax(0,1fr); } body .cfx-workspace .cfx-slice-pane > header { flex-wrap:wrap; } }
@@ -58,6 +54,6 @@ body .cfx-workspace .cfx-legacy-comparison :is(.cfx-legacy-plane,.cfx-vtk-viewer
 body .cfx-workspace .cfx-legacy-comparison .cfx-vtk-canvas { flex:1 1 auto; }
 body .cfx-workspace .cfx-slice-pane > .cfx-viewer-controls { margin:4px 8px 8px; }
 body .cfx-workspace .cfx-slice-pane > .cfx-caption { margin:4px 8px; }
-body .cfx-workspace .cfx-comparison-run-controls { margin-block:8px!important; }
+body .cfx-workspace .cfx-legacy-comparison:has(.cfx-result-display details[open]) { height:max(660px,64dvh); }
 body .cfx-workspace .cfx-viewer-frame:fullscreen .cfx-slice-grid { height:calc(100dvh - 40px); }
 body .cfx-workspace .cfx-viewer-frame:fullscreen .cfx-slice-pane canvas { height:100%!important; }

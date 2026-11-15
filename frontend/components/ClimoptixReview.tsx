@@ -7,15 +7,14 @@ import { WindowHelpButton } from "./WindowHelpButton";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { diagnosticCopy, diagnosticTarget } from "@/lib/climoptixDiagnostics";
 
-const TABS = [["review", "Simulation review"], ["warnings", "Warnings & checks"], ["transfer", "Import / export"]] as const;
+const TABS = [["warnings", "Review & warnings"], ["transfer", "Import / export"]] as const;
 
-export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onChange, onImport, onExport, onError, onRefresh, onInspect, onHighlight, openingNames, issuesRequest = 0, submissionError, configurationIssue, workerIssue, onAirflowCopy, workerConnected=false }: {
+export function ClimoptixReview({ scenario, report, revision, stale, blocked, onChange, onImport, onExport, onError, onRefresh, onInspect, onHighlight, openingNames, issuesRequest = 0, submissionError, configurationIssue, workerIssue, onAirflowCopy, workerConnected=false }: {
   scenario: CFDScenario; report: CFDReport | null; revision: string; stale: boolean; blocked: boolean;
   openingNames: ReadonlyMap<string, string>;
   onChange: (scenario: CFDScenario) => void; onImport: (file: File) => void; onExport: () => void;
   onError: (message: string) => void; onRefresh: () => void; onInspect: (id: string, group: string) => void;
   onHighlight: (id: string | null) => void;
-  failure?: string;
   issuesRequest?: number;
   submissionError?: string;
   configurationIssue?: string;
@@ -23,7 +22,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
   onAirflowCopy?: () => void;
   workerConnected?:boolean;
 }) {
-  const [tab, setTab] = useState<(typeof TABS)[number][0]>(issuesRequest ? "warnings" : "review");
+  const [tab, setTab] = useState<(typeof TABS)[number][0]>("warnings");
   const [severity, setSeverity] = useState("all");
   const [hovered, setHovered] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
@@ -52,7 +51,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
             event.preventDefault();
             const at = event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : (index + (event.key === "ArrowLeft" ? TABS.length - 1 : 1)) % TABS.length;
             setTab(TABS[at][0]); document.getElementById(`${prefix}-${TABS[at][0]}`)?.focus();
-          }}>{id === "review" ? "Review" : id === "warnings" ? "Warnings" : title}{id === "warnings" && report ? ` (${report.diagnostics.filter(d => d.severity !== "info").length})` : ""}</button>)}
+          }}>{title}{id === "warnings" && report ? ` (${report.diagnostics.filter(d => d.severity !== "info").length})` : ""}</button>)}
       </div>
       <WindowHelpButton title="Simulation review and transfer" steps={[
         { heading: "Checks and exports", text: "Checks refresh after committed edits. Use Refresh checks to retry. JSON transfers editable simulation settings; Import creates a separate simulation. Preparation ZIP and preflight exports are handoffs, not runnable OpenFOAM cases or computed results. Stale reports cannot be exported as current preparation." },
@@ -60,16 +59,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
       ]} />
       <CFDCollapseAll/>
     </header>
-    <section role="tabpanel" id={`${prefix}-panel-review`} aria-labelledby={`${prefix}-review`} hidden={tab !== "review"}>
-      <div className="cfx-inline-toolbar">
-        <strong>{scenario.name}</strong>
-        <span className="cfx-check-status">{blocked || failure ? "Checks blocked · resolve pending input" : stale ? "Checks out of date" : report
-          ? report.validation.errors ? `Blocked · ${report.validation.errors} errors`
-            : !report.surface.exportable ? "Boundary geometry unavailable"
-            : `Geometry ready${report.validation.warnings ? ` · ${report.validation.warnings} warnings` : ""}`
-          : "Not checked"}</span>
-        <button onClick={onRefresh}>Refresh checks</button>
-      </div>
+    <section role="tabpanel" id={`${prefix}-panel-warnings`} aria-labelledby={`${prefix}-warnings`} hidden={tab !== "warnings"}>
       <details open><summary>Notes &amp; preparation outcome</summary>
       <label>Simulation notes<textarea rows={2} value={scenario.description} maxLength={2000} onChange={e => onChange({ ...scenario, description: e.target.value })} /></label>
       {report && !stale && <div className="cfx-review-outcome" role="status">
@@ -81,14 +71,6 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
         {report.surface.exportable && !report.validation.errors && <p>Preparation passed for {report.domain.includedRoomIds.length} connected rooms and {report.surface.triangleCount} boundary triangles. This is not a completed mesh or solver result.</p>}
       </div>}
       </details>
-      {report && <details><summary>Validation provenance</summary><dl className="cfx-review-metadata">
-        <div><dt>Geometry SHA-256</dt><dd>{report.validation.sourceHash}</dd></div>
-        <div><dt>Configuration SHA-256</dt><dd>{report.validation.configurationHash}</dd></div>
-        <div><dt>Checked</dt><dd>{new Date(report.validation.checkedAt).toLocaleString()}</dd></div>
-        <div><dt>Surface</dt><dd>{report.surface.exportable ? `${report.surface.triangleCount} boundary triangles · STL in metres` : report.surface.triangleCount ? `Unavailable · ${report.surface.badEdges} non-manifold/open edges` : "No boundary generated · select a valid seed room"}</dd></div>
-      </dl></details>}
-    </section>
-    <section role="tabpanel" id={`${prefix}-panel-warnings`} aria-labelledby={`${prefix}-warnings`} hidden={tab !== "warnings"}>
       {workerIssue && <article className="cfx-diagnostic error" role="alert"><strong>Worker cannot start a solver run</strong><p>{workerIssue}</p>
         <button onClick={()=>onInspect("solver","solver")}>Open simulation &amp; resources</button></article>}
       {(submissionError || configurationIssue) && <article className="cfx-diagnostic error" role="alert"><strong>{submissionError ? "Simulation was not accepted by the worker" : "Review settings before submitting"}</strong><p>{submissionError ?? configurationIssue}</p>
