@@ -13,7 +13,7 @@ export function applyWorkerLimits(scenario: CFDScenario, limits: Limits): CFDSce
 }
 
 /** Configuration checks shared by the connection panel and native submissions. */
-export function workerProfileIssues(scenario: CFDScenario, limits: Limits): string[] {
+export function workerProfileIssues(scenario: CFDScenario, limits: Limits, rotatedGrid = false): string[] {
   const issues: string[] = [], p = scenario.physics;
   if (resourceKeys.some(key => scenario.resources[key] > limits[key]) || scenario.mesh.maxCells > limits.maxCells)
     issues.push("Requested resources exceed this worker's limits. Review them or use the explicit limits action.");
@@ -23,7 +23,10 @@ export function workerProfileIssues(scenario: CFDScenario, limits: Limits): stri
     issues.push("Applied thermal conditions and fixed-temperature objects require a thermal solver.");
   if (scenario.vents.some(vent => vent.openAreaFraction !== 1 || vent.dischargeCoefficient !== 1 || vent.yawDeg || vent.pitchDeg || vent.recirculationPair))
     issues.push("Objects: use full open area, unit discharge, normal flow and no recirculation pairing for this worker.");
-  if (scenario.mesh.layers.enabled || scenario.mesh.alignmentDeg !== 0) issues.push("Boundary layers and rotated background grids are not supported by this worker.");
+  if (scenario.mesh.layers.enabled) issues.push("Boundary layers require a compatible worker. Turn them off in Solver → Mesh to use this worker.");
+  if (!rotatedGrid && (scenario.mesh.alignmentDeg !== 0 || scenario.mesh.alignmentXYDeg?.some(angle => angle !== 0))) {
+    issues.push("This worker requires an axis-aligned background grid. Set all three alignment angles to 0° in Domain → Mesh settings.");
+  }
   if (scenario.outputs.temperature || scenario.outputs.co2 || scenario.outputs.ageOfAir || scenario.outputs.comfort || scenario.postProcessing.fields.some(field => field !== "U" && field !== "p"))
     issues.push("Execution outputs are velocity and kinematic pressure only. Other requested fields are not computed.");
   const planes = [scenario.postProcessing.x, scenario.postProcessing.y, scenario.postProcessing.z].reduce((sum, stack) => sum + (stack.enabled ? stack.count : 0), 0);

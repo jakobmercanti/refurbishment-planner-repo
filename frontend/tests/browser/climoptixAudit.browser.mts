@@ -65,6 +65,7 @@ test("a delayed study import rechecks the project capacity after the file is rea
   );
   await cfdWindow(ui, "Studies");
   await ui.getByRole("button", { name: "New simulation", exact: true }).click();
+  await page.getByRole("dialog", { name: "Create a new simulation?" }).getByRole("button", { name: "Create simulation", exact: true }).click();
   await eventually(saved, (p) => p.cfdScenarios.length === 100);
   await page.evaluate(() => window.__releaseStudy());
   await ui

@@ -7,7 +7,8 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from backend.app.climoptix_provider import PreparationOnlyProvider
-from backend.app.openfoam_case import Submission, compile_case, validate_submission
+from backend.app.cfd_slice_service import view_root
+from backend.app.openfoam_case import Submission, background_grid, compile_case, validate_submission
 from backend.app.openfoam_runtime import convergence, flow_balance, mesh_metrics
 from backend.app.openfoam_service import Store, authenticate, create_app
 from backend.app.openfoam_smoke import fixture
@@ -33,7 +34,7 @@ def test_generated_case_has_canonical_vent_regions_and_si_units(tmp_path):
 @pytest.mark.parametrize('section,key,value', [
     ('resources', 'cpu', 3), ('resources', 'memoryGb', 5), ('resources', 'wallTimeMinutes', 16),
     ('mesh', 'maxCells', 600000), ('physics', 'energy', True), ('physics', 'mode', 'transient'),
-    ('outputs', 'comfort', True), ('mesh', 'alignmentDeg', 30),
+    ('outputs', 'comfort', True), ('mesh', 'layers', {'enabled': True}),
 ])
 def test_policy_rejects_unsupported_or_unbounded_input(section, key, value):
     request = fixture().model_dump(mode='json')
@@ -224,3 +225,61 @@ def test_expired_artifacts_keep_idempotency_tombstone(tmp_path):
     assert not case.exists()
     retry = store.submit(owner, request)
     assert retry['id'] == job['id'] and retry['phase'] == 'Stale' and retry['payload'] == ''
+
+
+def test_clear_results_is_scoped_retryable_and_keeps_completion_accounting(tmp_path):
+    app = create_app(tmp_path, start_runner=False)
+    store = app.state.store
+    account = VerifiedUser(uuid4(), 'allowed@example.com', True)
+    app.dependency_overrides[authenticate] = lambda: account
+    request = fixture()
+    owner = str(account.id)
+    job = store.submit(owner, request)
+    other = store.submit(str(uuid4()), request)
+    case = store.path(job['id'])
+    cache = view_root(case)
+    case.mkdir()
+    cache.mkdir(parents=True)
+    (case / 'solver.log').write_text('solver result')
+    (cache / 'slice-index.json').write_text('{}')
+    data = {'projectId': request.project['projectId'], 'studyIds': [request.studyId]}
+    with TestClient(app) as client:
+        clear = '/climoptix/worker/results/clear'
+        assert client.post(clear, json=data).status_code == 409
+        assert case.exists() and cache.exists()
+        store.update(job['id'], 'Completed', 'done')
+        assert client.post(clear, json={**data, 'projectId': str(uuid4())}).json() == {'cleared': True}
+        assert client.post(clear, json={**data, 'studyIds': ['another-study']}).json() == {'cleared': True}
+        assert case.exists() and cache.exists()
+        for _ in range(2):
+            assert client.post(clear, json=data).json() == {'cleared': True}
+        assert not case.exists() and not cache.exists()
+        assert store.get(other['owner'], other['id'])['phase'] == 'Queued'
+        assert client.get('/climoptix/worker/jobs', params={'projectId': data['projectId']}).json() == []
+        assert client.get(f"/climoptix/worker/jobs/{job['id']}/logs").status_code == 404
+        assert client.get(f"/climoptix/worker/jobs/{job['id']}/artifacts/native-case").status_code == 404
+        assert client.get(f"/climoptix/worker/jobs/{job['id']}/slices", params={'projectId': data['projectId']}).status_code == 410
+    assert store.submit(owner, request)['phase'] == 'Stale'
+    assert store.quota(owner)['completed'] == 1
+
+
+def test_rotated_orthogonal_grid_is_exported_around_the_measured_building(tmp_path):
+    request = fixture()
+    mesh = request.scenario.mesh
+    mesh.alignmentXYDeg = (10, 15)
+    mesh.alignmentDeg = 25
+    mesh.originMm = (70, -35, 45)
+    stamp = PreparationOnlyProvider().validate_scenario(
+        request.project, request.scenario, request.clientRevision
+    )['validation']
+    assert stamp['sourceHash'] == request.sourceHash
+    request.configurationHash = stamp['configurationHash']
+    report = validate_submission(request)
+    vertices, counts = background_grid(report['domain']['boundsMm'], mesh)
+    axes = [[vertices[j][i] - vertices[0][i] for i in range(3)] for j in (1, 3, 4)]
+    assert all(all(abs(component) > 1 for component in axis) for axis in axes)
+    for index, edge in enumerate(axes):
+        assert sum(value * value for value in edge) ** 0.5 == pytest.approx(counts[index] * mesh.baseCellMm)
+    assert sum(a * b for a, b in zip(axes[0], axes[1], strict=True)) == pytest.approx(0, abs=1e-8)
+    compile_case(tmp_path / 'case', request, report)
+    assert 'vertices (' in (tmp_path / 'case/system/blockMeshDict').read_text()

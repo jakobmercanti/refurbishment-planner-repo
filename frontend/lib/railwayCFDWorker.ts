@@ -18,6 +18,8 @@ export const workerCapabilitiesSchema = z.object({
   simulationQuota: z.object({tier:z.literal("free"),period:z.literal("lifetime"),limit:z.literal(5),
     completed:z.number().int().nonnegative(),remaining:z.number().int().min(0).max(5)})
     .refine(q=>q.remaining===Math.max(0,q.limit-q.completed),"Inconsistent simulation quota").optional(),
+  clearResults: z.boolean().optional(),
+  rotatedGrid: z.boolean().optional(),
 });
 export type WorkerCapabilities = z.infer<typeof workerCapabilitiesSchema>;
 export class CFDWorkerError extends Error {
@@ -91,7 +93,7 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
   return {
     namespace: capabilities.namespace,
     capabilities,
-    configurationIssue: (scenario: CFDScenario) => workerProfileIssues(scenario, capabilities.limits)[0],
+    configurationIssue: (scenario: CFDScenario) => workerProfileIssues(scenario, capabilities.limits, capabilities.rotatedGrid)[0],
     reportIssue: nativeReportIssue,
     async submit(request: CFDSubmission, signal: AbortSignal) {
       return checkedWorkerJob(await workerJSON(base, "/jobs", signal, request), request);
@@ -100,6 +102,9 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
     async list(projectId: string, signal: AbortSignal) {
       return z.array(workerJobSchema).max(100).parse(await workerJSON(base, `/jobs?projectId=${z.uuid().parse(projectId)}`, signal));
     },
+    clearResults: capabilities.clearResults ? async (projectId: string, studyIds: string[], signal: AbortSignal) => {
+      z.object({cleared: z.literal(true)}).parse(await workerJSON(base, "/results/clear", signal, {projectId, studyIds}));
+    } : undefined,
     async slices(jobId:string,projectId:string,signal:AbortSignal) {
       const data=sliceManifestSchema.parse(JSON.parse(new TextDecoder().decode(await workerRequest(base,`${jobPath(jobId)}/slices?projectId=${z.uuid().parse(projectId)}`,signal,undefined,8*1024**2))));
       if(data.runId!==jobId||data.projectId!==projectId)throw new Error("Slice inventory belongs to a different run/project.");

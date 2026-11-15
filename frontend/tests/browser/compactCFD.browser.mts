@@ -50,6 +50,7 @@ test("selected/collapsible simulation groups accept protected cross-group transf
   assert.equal(await frame(page).locator(".cfx-setup-heading").boundingBox().then(b => b.height), 0);
   await button(ui, "Add group").click();
   await button(ui, "New simulation").click();
+  await button(page.getByRole("dialog", { name: "Create a new simulation?", exact: true }), "Create simulation").click();
   await eventually(saved, p => p.cfdScenarios.length === 2 && p.cfdScenarios[1].group === "Group");
   const group = ui.getByRole("region", { name: "Simulation group Group", exact: true });
   assert.ok((await group.getAttribute("class")).includes("selected-group"));

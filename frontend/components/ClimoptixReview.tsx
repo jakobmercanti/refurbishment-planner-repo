@@ -9,7 +9,7 @@ import { diagnosticCopy, diagnosticTarget } from "@/lib/climoptixDiagnostics";
 
 const TABS = [["review", "Simulation review"], ["warnings", "Warnings & checks"], ["transfer", "Import / export"]] as const;
 
-export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onChange, onImport, onExport, onError, onRefresh, onInspect, onHighlight, openingNames, issuesRequest = 0, submissionError, configurationIssue, onAirflowCopy, workerConnected=false }: {
+export function ClimoptixReview({ scenario, report, revision, stale, blocked, failure, onChange, onImport, onExport, onError, onRefresh, onInspect, onHighlight, openingNames, issuesRequest = 0, submissionError, configurationIssue, workerIssue, onAirflowCopy, workerConnected=false }: {
   scenario: CFDScenario; report: CFDReport | null; revision: string; stale: boolean; blocked: boolean;
   openingNames: ReadonlyMap<string, string>;
   onChange: (scenario: CFDScenario) => void; onImport: (file: File) => void; onExport: () => void;
@@ -19,6 +19,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
   issuesRequest?: number;
   submissionError?: string;
   configurationIssue?: string;
+  workerIssue?: string;
   onAirflowCopy?: () => void;
   workerConnected?:boolean;
 }) {
@@ -88,6 +89,8 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, fa
       </dl></details>}
     </section>
     <section role="tabpanel" id={`${prefix}-panel-warnings`} aria-labelledby={`${prefix}-warnings`} hidden={tab !== "warnings"}>
+      {workerIssue && <article className="cfx-diagnostic error" role="alert"><strong>Worker cannot start a solver run</strong><p>{workerIssue}</p>
+        <button onClick={()=>onInspect("solver","solver")}>Open simulation &amp; resources</button></article>}
       {(submissionError || configurationIssue) && <article className="cfx-diagnostic error" role="alert"><strong>{submissionError ? "Simulation was not accepted by the worker" : "Review settings before submitting"}</strong><p>{submissionError ?? configurationIssue}</p>
         <p>Current configuration: {scenario.physics.mode}; {scenario.physics.numerics.coupling}; energy {scenario.physics.energy?"ON":"off"}; CO₂ {scenario.physics.co2?"ON":"off"}; buoyancy {scenario.physics.boussinesq?"ON":"off"}. The connected native worker supports steady isothermal U/p ventilation only.</p>
         <div className="cfx-inline-toolbar"><button onClick={()=>onInspect("physics","physics")}>Review physics settings</button><button onClick={()=>onInspect("solver","solver")}>Review solver settings</button>{onAirflowCopy && <button type="button" onClick={onAirflowCopy}>Create airflow copy</button>}</div></article>}

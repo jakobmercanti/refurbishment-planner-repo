@@ -2,6 +2,32 @@
 import type { CFDScenario } from "./climoptixDocument";
 import type { Vec3 } from "./climoptix";
 
+/** Mirror the worker’s padded blockMesh grid in building millimetres. */
+export function backgroundCellCount(bounds: [Vec3, Vec3], mesh: CFDScenario["mesh"]): number {
+  const angles = [...(mesh.alignmentXYDeg ?? [0, 0]), mesh.alignmentDeg];
+  const rotations = angles.map(angle => {
+    const radians = angle * Math.PI / 180;
+    return [Math.cos(radians), -Math.sin(radians)] as const;
+  });
+  const corners = bounds.flatMap(x => bounds.flatMap(y => bounds.map(z => {
+    const point = [x[0], y[1], z[2]].map((coord, axis) => coord - mesh.originMm[axis]);
+    for (const axis of [2, 1, 0]) {
+      const [cosine, sine] = rotations[axis];
+      const u = (axis + 1) % 3, v = (axis + 2) % 3;
+      [point[u], point[v]] = [cosine * point[u] - sine * point[v], sine * point[u] + cosine * point[v]];
+    }
+    return point.map(coord => {
+      const index = coord / mesh.baseCellMm;
+      const nearest = Math.round(index);
+      return Math.abs(nearest - index) < 1e-9 ? nearest : index;
+    });
+  })));
+  return [0, 1, 2].reduce((count, axis) => {
+    const coordinates = corners.map(point => point[axis]);
+    return count * (Math.ceil(Math.max(...coordinates)) - Math.floor(Math.min(...coordinates)) + 4);
+  }, 1);
+}
+
 export const LEVEL_COLOURS = [
   "#64748b",
   "#2675bd",

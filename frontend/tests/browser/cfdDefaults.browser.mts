@@ -22,7 +22,7 @@ async function open(t,width=1440,run=false) {
     });
   }
   if(run) await s.context.route('**/climoptix/worker/capabilities',route=>route.fulfill({json:{
-    connected:true,mesh:true,run:true,reason:'Native test worker',namespace:'11111111-1111-4111-8111-111111111111',
+    connected:true,mesh:true,run:true,clearResults:true,reason:'Native test worker',namespace:'11111111-1111-4111-8111-111111111111',
     limits:{cpu:1,memoryGb:4,wallTimeMinutes:15,storageGb:1,retentionDays:3,maxCells:500000,concurrentJobs:1},
   }}));
   await s.page.getByRole('combobox',{name:'Workspace',exact:true}).selectOption('CLIMOPTIX');
@@ -33,6 +33,12 @@ async function open(t,width=1440,run=false) {
 test('reset confirms, backs up and submits a native default case without changing rooms; new simulations inherit it',async t=>{
   const {page,context,ui,saved}=await open(t,1440,true);
   let submission;
+  const cleared = [];
+  let deleteAvailable = true;
+  await context.route('**/climoptix/worker/results/clear', async route => {
+    cleared.push(route.request().postDataJSON());
+    await route.fulfill(deleteAvailable ? {json:{cleared:true}} : {status:503,json:{detail:'Worker deletion unavailable. Retry shortly.'}});
+  });
   await context.route('**/climoptix/worker/jobs**',route=>{
     if(route.request().method()!=='POST')return route.fulfill({json:[]});
     submission=route.request().postDataJSON();
@@ -48,19 +54,93 @@ test('reset confirms, backs up and submits a native default case without changin
   assert.deepEqual(reset.rooms,rooms); assert.equal(reset.cfdScenarios[0].resources.cpu,1); assert.equal(reset.cfdScenarios[0].physics.turbulence,'laminar');
   assert.equal(reset.cfdScenarios[0].outputs.probesMm.length,1);
   for(const axis of ['x','y','z']) assert.deepEqual(reset.cfdScenarios[0].postProcessing[axis],{enabled:true,count:15});
+  await cfdWindow(ui,'Solver');
+  await ui.getByRole('tab',{name:'Post-processing',exact:true}).click();
+  const preview = ui.getByRole('checkbox',{name:'Preview sampling planes in 3D',exact:true});
+  assert.equal(await preview.isChecked(),false);
+  await preview.check();
+  await cfdWindow(ui,'Simulations');
   const backup=await page.evaluate(ids=>JSON.parse(localStorage.getItem(`climoptix:before-restore:${ids[0]}`)),[reset.projectId,reset.cfdScenarios[0].id]);
   assert.deepEqual(backup.scenarios[0].boundaries,original.cfdScenarios[0].boundaries);
+  assert.deepEqual(cleared, [{projectId:original.projectId,studyIds:[original.cfdScenarios[0].id]}]);
   await button(ui,'Run '+reset.cfdScenarios[0].name).click();
   await ui.locator('.cfx-study-row').getByText('Completed',{exact:true}).first().waitFor();
   assert.equal(submission.studyId,reset.cfdScenarios[0].id);
   assert.equal(submission.scenario.sharedBoundaries,undefined);
   for(const boundary of Object.values(submission.scenario.boundaries.groups))assert.equal(boundary.thermal.sourceFluxWm2,undefined);
   await button(ui,'New simulation').click();
+  const create = page.getByRole('dialog', {name:'Create a new simulation?',exact:true});
+  assert.match(await create.innerText(), /permanently deletes saved results for “Simulation 1”/);
+  deleteAvailable = false;
+  await button(create, 'Create simulation').click();
+  await ui.locator('.cfx-workbench-status').getByText(/Worker deletion unavailable/).waitFor();
+  assert.deepEqual((await saved()).cfdScenarios.map(study => study.id), [reset.cfdScenarios[0].id]);
+  deleteAvailable = true;
+  await button(ui,'New simulation').click();
+  await button(create, 'Create simulation').click();
   const added=await eventually(saved,p=>p.cfdScenarios.length===2);
+  assert.deepEqual(cleared[1], {projectId:reset.projectId,studyIds:[reset.cfdScenarios[0].id]});
+  assert.deepEqual(cleared[2], cleared[1]);
+  await cfdWindow(ui,'Solver');
+  await ui.getByRole('tab',{name:'Post-processing',exact:true}).click();
+  assert.equal(await preview.isChecked(),false);
   const addedCase=resolveHvacScenario(added,added.cfdScenarios[1]);
   const report=realPreparation({project:added,scenario:addedCase,clientRevision:'a'.repeat(64)});
   assert.equal(report.validation.errors,0); assert.equal(addedCase.vents.length,2);
   if(process.env.BROWSER_ARTIFACTS)await page.screenshot({path:`${process.env.BROWSER_ARTIFACTS}/default-simulations.png`});
+});
+
+test('a completed mesh permits Run when the account has allowance and explains an exhausted allowance',async t=>{
+  const {page,context,ui}=await open(t,1440,true);
+  let remaining=1;
+  const operations=[];
+  await context.route('**/climoptix/worker/capabilities',route=>route.fulfill({json:{
+    connected:true,mesh:true,run:remaining>0,clearResults:true,reason:remaining ? 'Native test worker' : 'Free tier: all five completed simulations have been used.',
+    namespace:'11111111-1111-4111-8111-111111111111',
+    limits:{cpu:1,memoryGb:4,wallTimeMinutes:15,storageGb:1,retentionDays:3,maxCells:500000,concurrentJobs:1},
+    simulationQuota:{tier:'free',period:'lifetime',limit:5,completed:5-remaining,remaining},
+  }}));
+  await context.route('**/climoptix/worker/results/clear', route => route.fulfill({json:{cleared:true}}));
+  await context.route('**/climoptix/worker/jobs**',route=>{
+    if(route.request().method()!=='POST') return route.fulfill({json:[]});
+    const submission=route.request().postDataJSON();
+    operations.push(submission.operation);
+    return route.fulfill({json:{
+      id:submission.operation==='mesh'?'34567890-1234-4123-8123-123456789012':'34567890-1234-4123-8123-123456789013',
+      studyId:submission.studyId,clientRevision:submission.clientRevision,phase:'Completed',progress:100,operation:submission.operation,
+    }});
+  });
+  await button(ui,'Restore default').click();
+  await button(page.getByRole('dialog',{name:'Restore the default workbench?',exact:true}),'Restore default').click();
+  await eventually(()=>button(ui,'Mesh Simulation 1').isEnabled(),Boolean);
+  await button(ui,'Mesh Simulation 1').click();
+  await ui.locator('.cfx-studies').getByText(/Mesh completed · 100%/).waitFor();
+  const run=button(ui,'Run Simulation 1');
+  assert.ok(await run.isEnabled());
+  remaining=0;
+  const refresh=button(ui.locator('.cfx-header-simulation'),'Refresh checks');
+  await refresh.click();
+  await eventually(()=>run.isDisabled(),Boolean);
+  await ui.locator('.cfx-workbench-status').getByText(/all five completed simulations/).waitFor();
+  assert.ok(await button(ui,'Mesh Simulation 1').isEnabled());
+  assert.deepEqual(operations,['mesh']);
+  remaining=1;
+  await refresh.click();
+  await eventually(()=>run.isEnabled(),Boolean);
+  await run.click();
+  await eventually(()=>operations.length,count=>count===2);
+  assert.deepEqual(operations,['mesh','run']);
+  await cfdWindow(ui,'Solver');
+  await ui.getByRole('tab',{name:'Run',exact:true}).click();
+  const resources=ui.locator('.cfx-run-panel > details').filter({hasText:'Simulation & resources'});
+  await resources.getByRole('status',{name:'Free simulation allowance',exact:true}).waitFor();
+  const numerics=ui.getByRole('combobox',{name:'Gradient',exact:true});
+  await numerics.hover();
+  await page.getByRole('tooltip').filter({hasText:/spatial derivatives/}).waitFor();
+  await button(ui,'Help for Iterations & convergence targets').click();
+  const help=page.getByRole('article',{name:'Help for Iterations & convergence targets',exact:true});
+  await help.getByText(/spatial derivatives/).waitFor();
+  await help.getByRole('link',{name:/OpenFOAM.*numerics/}).waitFor();
 });
 
 test('object, boundary, refinement and probe bulk clears require confirmation and keep the source building',async t=>{
@@ -135,7 +215,7 @@ test('a stale default response and a failed backup never replace the current set
   await cfdWindow(ui,'Physics');
   const density=ui.getByRole('spinbutton',{name:'Air density (kg/m³)',exact:true}); await density.fill('1.3'); await density.press('Enter');
   await eventually(saved,p=>p.cfdScenarios[0].physics.densityKgM3===1.3); release();
-  await ui.getByRole('alert').filter({hasText:'changed during reset'}).waitFor();
+  await ui.getByRole('alert').filter({hasText:'changed during setup'}).waitFor();
   assert.equal((await saved()).cfdScenarios[0].vents.length,0);
   await page.evaluate(()=>{
     const set=Storage.prototype.setItem;

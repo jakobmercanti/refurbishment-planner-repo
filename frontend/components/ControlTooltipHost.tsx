@@ -12,6 +12,7 @@ export function ControlTooltipHost() {
     const tooltip = ref.current;
     if (!tooltip) return;
     let owner: HTMLElement | undefined;
+    let hoverArea: HTMLElement | undefined;
     let title: string | null = null;
     let timer: number | undefined;
     let mouse: { x: number; y: number } | undefined;
@@ -27,6 +28,7 @@ export function ControlTooltipHost() {
         }
       }
       owner = undefined;
+      hoverArea = undefined;
       title = null;
       if (tooltip.matches(":popover-open")) tooltip.hidePopover();
     };
@@ -41,7 +43,8 @@ export function ControlTooltipHost() {
     };
     const start = (target: EventTarget | null, mouseEvent?: PointerEvent) => {
       if (!(target instanceof Element)) return;
-      const control = target.closest(controls);
+      const label = target.closest("label");
+      const control = target.closest(controls) ?? label?.control;
       if (!(control instanceof HTMLElement)) return;
       mouse = mouseEvent ? { x: mouseEvent.clientX, y: mouseEvent.clientY } : undefined;
       if (owner === control) return;
@@ -49,6 +52,7 @@ export function ControlTooltipHost() {
       const guide = controlHelp(control, false);
       if (!guide || control.closest("[aria-hidden=true],[data-help-ignore]")) return;
       owner = control;
+      hoverArea = mouseEvent && label?.control === control ? label : control;
       title = control.getAttribute("title");
       if (title !== null) control.removeAttribute("title");
       timer = window.setTimeout(() => {
@@ -56,14 +60,14 @@ export function ControlTooltipHost() {
         if (!rect.width || !rect.height || !control.isConnected) { dismiss(); return; }
         tooltip.textContent = guide.text;
         tooltip.showPopover();
-        position(rect);
+        position((hoverArea ?? control).getBoundingClientRect());
         const description = control.getAttribute("aria-describedby");
         control.setAttribute("aria-describedby", description ? `${description} ${tooltipId}` : tooltipId);
       }, 500);
     };
     const leave = (event: PointerEvent | FocusEvent) => {
-      if (!owner?.contains(event.target as Node)) return;
-      if (!(event.relatedTarget instanceof Node) || !owner.contains(event.relatedTarget)) dismiss();
+      if (!hoverArea?.contains(event.target as Node)) return;
+      if (!(event.relatedTarget instanceof Node) || !hoverArea.contains(event.relatedTarget)) dismiss();
     };
     const hover = (event: PointerEvent) => { if (event.pointerType === "mouse") start(event.target, event); };
     const focus = (event: FocusEvent) => {
@@ -71,9 +75,9 @@ export function ControlTooltipHost() {
     };
     const onScroll = () => {
       if (!owner) return;
-      const stillTargeted = mouse ? owner.contains(document.elementFromPoint(mouse.x, mouse.y)) : document.activeElement === owner;
+      const stillTargeted = mouse ? hoverArea?.contains(document.elementFromPoint(mouse.x, mouse.y)) : document.activeElement === owner;
       if (!stillTargeted) dismiss();
-      else if (tooltip.matches(":popover-open")) position(owner.getBoundingClientRect());
+      else if (tooltip.matches(":popover-open")) position((hoverArea ?? owner).getBoundingClientRect());
     };
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") dismiss(); };
     const listeners = new AbortController();

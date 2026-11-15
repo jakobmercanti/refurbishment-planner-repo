@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import sqlite3
 import threading
 import time
@@ -54,6 +55,17 @@ def view_root(case: Path) -> Path:
     return case.parent / "slice-views" / str(UUID(case.name))
 
 
+def remove_result_files(case: Path) -> None:
+    """Serialize removal with the writers of the derived slice cache."""
+    cache = view_root(case)
+    with _inventory_lock:
+        for folder in (case, cache):
+            if folder.is_symlink():
+                folder.unlink()
+            elif folder.exists():
+                shutil.rmtree(folder)
+
+
 def safe_path(root: Path, relative: str) -> Path:
     path = root / relative
     if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()) or not path.is_file():
@@ -101,10 +113,10 @@ def inventory(root: Path, row: sqlite3.Row) -> dict[str, Any]:
     # pRefCell is not a comparable physical reference after geometry changes.
     reference = [payload["sourceHash"], scenario.get("boundaries"), scenario.get("vents")]
     result["pressureReference"] = hashlib.sha256(json.dumps(reference, sort_keys=True).encode()).hexdigest()
-    if not root.is_dir():
-        result["warnings"].append("No completed sampled-plane write is available yet.")
-        return result
     with _inventory_lock:
+        if not root.is_dir():
+            result["warnings"].append("No completed sampled-plane write is available yet.")
+            return result
         cache = view_root(root)
         cache.mkdir(parents=True, exist_ok=True)
         index_path = cache / "slice-index.json"

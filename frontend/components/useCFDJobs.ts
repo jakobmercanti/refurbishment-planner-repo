@@ -39,6 +39,14 @@ export function useCFDJobs(
   const unresolved = useRef(new Map<string, CFDSubmission>());
   const submitAbort = useRef(new AbortController());
   const entriesRef = useRef(entries);
+  const resultGeneration = useRef(0);
+  const forgetResults = (studyIds: string[]) => {
+    resultGeneration.current++;
+    const next = { ...entriesRef.current };
+    for (const id of studyIds) delete next[id];
+    entriesRef.current = next;
+    setEntries(next);
+  };
   useEffect(() => {
     latest.current = { project, adapter };
   }, [project, adapter]);
@@ -93,6 +101,7 @@ export function useCFDJobs(
   useEffect(() => {
     if (!adapter?.list || !adapter.capabilities.connected) return;
     const controller = new AbortController();
+    const generation = resultGeneration.current;
     void adapter.list(project.projectId, controller.signal).then(async jobs => {
       const recovered = new Set<string>();
       for (const job of jobs) {
@@ -101,7 +110,7 @@ export function useCFDJobs(
         const study = latest.current.project.cfdScenarios?.find(s => s.id === job.studyId);
         if (!study) continue;
         const revision = await preparationRevision(preparationInput(latest.current.project, study));
-        if (controller.signal.aborted || entriesRef.current[study.id] || pending.current.has(study.id)) continue;
+        if (controller.signal.aborted || generation !== resultGeneration.current || entriesRef.current[study.id] || pending.current.has(study.id)) continue;
         update(study.id, {job: checkedWorkerJob(job, {studyId: study.id, clientRevision: job.clientRevision}),
           input: revision === job.clientRevision ? workerInput(latest.current.project, study) : `recovered-older:${job.clientRevision}`});
       }
@@ -109,7 +118,7 @@ export function useCFDJobs(
     return () => controller.abort();
   }, [adapter, project.projectId, update]);
   const submit = async (operation: CFDOperation, studies: CFDScenario[]) => {
-    if (!adapter?.capabilities.connected || !adapter.capabilities[operation])
+    if (!adapter?.capabilities.connected)
       return;
     try { restorePending(); } catch (error) {
       for (const study of studies) update(study.id, {...entriesRef.current[study.id], input:entriesRef.current[study.id]?.input ?? "",
@@ -141,6 +150,7 @@ export function useCFDJobs(
         });
         continue;
       }
+      if (!recovery && !adapter.capabilities[operation]) continue;
       pending.current.set(study.id, controller);
       const input = recovery ? existing!.input : workerInput(project, study);
       const submissionId =
@@ -275,5 +285,5 @@ export function useCFDJobs(
       clearTimeout(timer);
     };
   }, [adapter, project.projectId, update]);
-  return { entries, submit };
+  return { entries, submit, forgetResults };
 }

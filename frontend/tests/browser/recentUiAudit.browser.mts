@@ -132,14 +132,14 @@ test("CFD phases use one window disclosure bar and contextual section help", asy
         const row = panel.locator(".cfx-study-row").first();
         const placement = await row.evaluate(element => {
           const rect = node => node.getBoundingClientRect();
-          const name = rect(element.querySelector(".cfx-study-name"));
-          const status = rect(element.querySelector(".cfx-study-status"));
+          const status = element.querySelector(".cfx-study-status");
           const actions = [...element.querySelectorAll(".cfx-study-actions > button, .cfx-row-menu > summary")];
-          return { aligned: actions.every(action => Math.abs(rect(action).y + rect(action).height / 2 - name.y - name.height / 2) < 2),
-            statusBelow: status.y >= name.bottom, overflow: element.scrollWidth > element.clientWidth + 2,
+          const middle = action => rect(action).y + rect(action).height / 2;
+          return { aligned: actions.every(action => Math.abs(middle(action) - middle(actions[0])) < 2),
+            emptyProgressHidden: !status, overflow: element.scrollWidth > element.clientWidth + 2,
             clipped: actions.slice(0, 3).some(action => action.scrollWidth > action.clientWidth + 2) };
         });
-        assert.deepEqual(placement, { aligned: true, statusBelow: true, overflow: false, clipped: false }, `${p.width}px ${p.density}`);
+        assert.deepEqual(placement, { aligned: true, emptyProgressHidden: true, overflow: false, clipped: false }, `${p.width}px ${p.density}`);
       }
       if (phase === "Imported results" && p.width === 1440) {
         const heading = (await panel.getByRole("heading", { name: /^Results ·/ }).boundingBox())!;

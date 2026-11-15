@@ -273,9 +273,9 @@ test('a definite 422 rejection releases its payload so corrected settings get a 
   },project);
   await s.ui.getByRole('button',{name:'Run Office airflow',exact:true}).click();
   await s.ui.getByText(/Worker limit: cpu must be at most 1/).waitFor();
-  await s.ui.getByText('Not submitted',{exact:true}).waitFor();
+  await s.ui.getByText('Issues · see top panel',{exact:true}).waitFor();
   assert.ok(await s.ui.getByRole('button',{name:'Delete Office airflow',exact:true}).isEnabled());
-  await s.ui.getByRole('button',{name:'View issues for Office airflow',exact:true}).click();
+  await s.ui.locator('.cfx-workbench-status').getByRole('button',{name:'Review issues',exact:true}).click();
   await s.ui.getByRole('tabpanel',{name:'Warnings & checks',exact:true}).getByRole('alert').filter({hasText:'Simulation was not accepted by the worker'}).waitFor();
   const physics = await s.ui.getByRole("button", { name: "Review physics settings", exact: true }).boundingBox();
   const solver = await s.ui.getByRole("button", { name: "Review solver settings", exact: true }).boundingBox();

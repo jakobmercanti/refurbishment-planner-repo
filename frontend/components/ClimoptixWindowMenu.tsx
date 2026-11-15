@@ -25,8 +25,6 @@ export function ClimoptixWindowMenu({
   available,
   onToggle,
   onHideAll,
-  onRefresh,
-  checking,
 }: {
   target: HTMLElement | null;
   context: { x: number; y: number } | null;
@@ -36,8 +34,6 @@ export function ClimoptixWindowMenu({
   available: (id: CFDWindowId) => boolean;
   onToggle: (id: CFDWindowId) => void;
   onHideAll: () => void;
-  onRefresh: () => void;
-  checking: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -112,49 +108,18 @@ export function ClimoptixWindowMenu({
           type="button"
           role="menuitem"
           onClick={() => {
-            onHideAll();
+            if (setupOpen) onHideAll();
+            else onToggle(selected);
             dismiss();
             button.current?.focus();
           }}
         >
-          Hide setup window
+          {setupOpen ? "Hide setup window" : "Show setup window"}
         </button>
       </div>
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          onToggle(selected);
-          dismiss();
-          button.current?.focus();
-        }}
-      >
-        Simulation setup…
-      </button>
-      <p className="cfx-menu-caption">Setup phases</p>
-      <button type="button" role="menuitem" disabled={!available("domain") || checking}
-        onClick={() => { onRefresh(); dismiss(); button.current?.focus(); }}>Refresh checks</button>
-      {CFD_WINDOWS.map((window) => (
-        <button
-          key={window.id}
-          type="button"
-          role="menuitem"
-          aria-current={
-            setupOpen && selected === window.id ? "page" : undefined
-          }
-          disabled={!available(window.id)}
-          onClick={() => {
-            onToggle(window.id);
-            dismiss();
-            button.current?.focus();
-          }}
-        >
-          <span className="menu-check" aria-hidden="true">
-            {setupOpen && selected === window.id ? "✓" : ""}
-          </span>
-          <span>{window.name}</span>
-        </button>
-      ))}
+      {context && CFD_WINDOWS.map(phase => <button key={phase.id} type="button" role="menuitem"
+        disabled={!available(phase.id)} aria-current={setupOpen && selected === phase.id ? "page" : undefined}
+        onClick={() => { onToggle(phase.id); dismiss(); }}>{phase.name}</button>)}
     </div>
   );
   return (

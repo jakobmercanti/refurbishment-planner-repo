@@ -326,6 +326,7 @@ const meshRecipeSchema = z
     maxCellMm: cellLength.default(400),
     originMm: vector.default([0, 0, 0]),
     alignmentDeg: finite.min(-360).max(360).default(0),
+    alignmentXYDeg: z.tuple([finite.min(-360).max(360), finite.min(-360).max(360)]).optional(),
     targetCells: z.int().min(1).max(1e9).default(100000),
     maxCells: z.int().min(1).max(1e9).default(500000),
     geometryToleranceMm: finite.gt(0).max(1).default(0.01),

@@ -32,6 +32,7 @@ Fraction = Annotated[StrictFloat, Field(ge=0, le=1)]
 Temperature = Annotated[StrictFloat, Field(ge=150, le=1500)]
 Coordinate = Annotated[StrictFloat, Field(ge=-1e7, le=1e7)]
 Vector = tuple[Coordinate, Coordinate, Coordinate]
+GridAngle = Annotated[StrictFloat, Field(ge=-360, le=360)]
 PatchKind = Literal["wall", "floor", "ceiling", "door", "window", "cap", "supply", "extract", "object", "slabSide"]
 
 
@@ -316,6 +317,7 @@ class MeshRecipe(Contract):
     maxCellMm: CellLength = 400
     originMm: Vector = (0, 0, 0)
     alignmentDeg: float = Field(default=0, ge=-360, le=360)
+    alignmentXYDeg: tuple[GridAngle, GridAngle] | None = Field(default=None, exclude_if=lambda angles: not angles or not any(angles))
     targetCells: int = Field(default=100000, ge=1, le=1000000000)
     maxCells: int = Field(default=500000, ge=1, le=1000000000)
     geometryToleranceMm: float = Field(default=0.01, gt=0, le=1)

@@ -16,7 +16,7 @@ export function useServiceMenuHelp(root: RefObject<HTMLElement | null>, windowTi
         const topic = `${windowTitle} — ${title}`;
         target.dataset.windowHelpTopic = topic; remembered.set(topic, windowHelpSteps(topic));
         const parent = target.parentElement?.parentElement?.closest("details");
-        if (target.tagName === "SUMMARY" && (!parent || helpWindowFor(parent) !== panel) &&
+        if (target.tagName === "SUMMARY" && (target.parentElement?.hasAttribute("data-section-help") || !parent || helpWindowFor(parent) !== panel) &&
           !target.querySelector(".window-help-button:not(.menu-section-help)")) {
           let button = target.querySelector<HTMLButtonElement>(":scope > .menu-section-help");
           if (!button) {

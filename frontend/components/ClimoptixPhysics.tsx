@@ -22,6 +22,9 @@ export function PhysicsPanel({
   const linked = !!binding?.operatingScenarioId;
   const airflow = binding?.analysisMode === "airflow";
   const thermalSource = !!ctx && requiresHvacThermalExecution(ctx.project, { ...scenario, sharedBoundaries: undefined });
+  const fields = (keys: (keyof typeof p)[], markCustom = true) => <Parameters value={p}
+    omit={Object.keys(p).filter(key => !keys.includes(key as keyof typeof p))}
+    onChange={value => onChange({ ...scenario, physics: { ...p, ...value, preset: markCustom ? "custom" : p.preset } })} />;
   return (
     <section data-cfx-collapse-root className="cfx-physics-panel">
       <div className="cfx-inline-toolbar">{actions}<CFDCollapseAll /></div>
@@ -75,41 +78,25 @@ export function PhysicsPanel({
       {!airflow && <Parameters value={p} omit={Object.keys(p).filter(k => !(thermalSource ? ["co2"] : ["energy", "co2", "boussinesq"]).includes(k))}
         onChange={v => onChange({ ...scenario, physics: { ...v, preset: "custom" } as typeof p })} />}
       </details>
-      {([
-        ["Fluid properties", ["densityKgM3", "dynamicViscosityPaS", "heatCapacityJKgK", "conductivityWMK", "prandtl", "expansionPerK"]],
-        ["Reference & ambient conditions", ["referenceTemperatureK", "referencePressurePa", "outdoorTemperatureK", "humidityFraction", "gravityMS2", "outdoorCo2Ppm"]],
-      ] as const).map(([title, keys]) => <details open key={title}><summary>{title}</summary>
-        <Parameters value={p} omit={Object.keys(p).filter(k => !(keys as readonly string[]).includes(k))}
-          onChange={v => onChange({ ...scenario, physics: { ...v, preset: "custom" } as typeof p })} />
-      </details>)}
+      <details open><summary>Fluid properties</summary>
+        {fields(["densityKgM3", "dynamicViscosityPaS", "heatCapacityJKgK", "conductivityWMK", "prandtl", "expansionPerK"])}
+      </details>
+      <details open><summary>Reference &amp; ambient conditions</summary>
+        <fieldset><legend>Temperature, pressure &amp; humidity</legend>
+          {fields(["referenceTemperatureK", "referencePressurePa", "outdoorTemperatureK", "humidityFraction"])}
+        </fieldset>
+        {fields(["gravityMS2"])}
+        <fieldset><legend>Outdoor air composition</legend>{fields(["outdoorCo2Ppm"])}</fieldset>
+      </details>
       <details>
         <summary>Initial fields</summary>
-        <Parameters
-          value={p}
-          omit={[
-            "preset",
-            "mode",
-            "energy",
-            "co2",
-            "boussinesq",
-            "turbulence",
-            "densityKgM3",
-            "dynamicViscosityPaS",
-            "heatCapacityJKgK",
-            "conductivityWMK",
-            "prandtl",
-            "expansionPerK",
-            "referenceTemperatureK",
-            "referencePressurePa",
-            "outdoorTemperatureK",
-            "humidityFraction",
-            "gravityMS2",
-            "outdoorCo2Ppm",
-            "time",
-            "numerics",
-          ]}
-          onChange={(v) => onChange({ ...scenario, physics: v as typeof p })}
-        />
+        {fields(["initialVelocityMS"], false)}
+        <fieldset><legend>Pressure, temperature &amp; concentration</legend>
+          {fields(["initialPressurePa", "initialTemperatureK", "initialCo2Ppm"], false)}
+        </fieldset>
+        <fieldset><legend>Turbulence</legend>
+          {fields(["initialK", "initialEpsilon", "initialOmega"], false)}
+        </fieldset>
         <p>
           Kinematic viscosity ν = μ/ρ ={" "}
           {(p.dynamicViscosityPaS / p.densityKgM3).toExponential(3)} m²/s.

@@ -28,21 +28,19 @@ function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
 }
 
 export function ClimoptixStudies({ project, scenarios, scenario, showArchived, onShowArchived, onSelect,
-  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onIssues, airflowCopy, onUndo, onRedo, canUndo, canRedo,
+  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onUndo, onRedo, canUndo, canRedo,
 }: {
   project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
   onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
   onChange: (s: CFDScenario, checkpoint?: boolean) => void;
   onOrder: (s: CFDScenario[], groups?: CFDSimulationGroup[], copiedFrom?: Record<string, string>) => void;
-  onAdd: (group?: string) => void;
+  onAdd: (group: string | undefined, opener: HTMLButtonElement) => void;
   onDelete: (id: string, opener: HTMLButtonElement) => void;
   onClear: (opener: HTMLButtonElement) => void;
   onReset: () => void; resetting: boolean;
   onImport: (f: File) => void;
   entries: Record<string, CFDJobEntry>; worker: CFDWorkerAdapter | null;
   onSubmit: (operation: CFDOperation, studies: CFDScenario[]) => void;
-  onIssues: (id: string) => void;
-  airflowCopy?: (scenario: CFDScenario) => (() => void) | undefined;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
 }) {
   const visible = scenarios.filter(s => showArchived || !s.archived);
@@ -69,7 +67,8 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   return <div className="cfx-studies" data-cfx-collapse-root>
     <details open><summary>Manage simulations</summary>
     <div className="cfx-study-tools">
-      <button className="cfx-primary" onClick={() => { if (targetGroup) setCollapsed(v => new Set([...v].filter(id => id !== targetGroup.id))); onAdd(targetGroup?.name); }} disabled={resetting || scenarios.length >= 100}>New simulation</button>
+      <div className="cfx-study-tools-primary">
+      <button className="cfx-primary" onClick={event => { if (targetGroup) setCollapsed(v => new Set([...v].filter(id => id !== targetGroup.id))); onAdd(targetGroup?.name, event.currentTarget); }} disabled={resetting || scenarios.length >= 100}>New simulation</button>
       <button disabled={groups.length >= 100} onClick={() => {
         const group = { id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name)) };
         onOrder(scenarios, [...groups, group]); setSelectedGroup(group.id);
@@ -79,15 +78,16 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
         onClick={e => onClear(e.currentTarget)}>Clear all</button>
       <CFDConfirmAction label={resetting ? "Preparing defaults…" : "Restore default"} title="Restore the default workbench?" confirmLabel="Restore default"
         disabled={resetting || scenarios.some(s => busy(s) || entries[s.id]?.dispatched)}
-        description="Back up the workbench, then replace its simulations with one starter case. Its inlet and outlet replace the shared vents in the checked rooms and appear in Ventilation too. Undo restores the previous simulations and vents."
+        description="Back up the workbench, then replace its simulations with one starter case. This clears loaded results and permanently deletes their saved worker files, including archived simulations’ results. The starter inlet and outlet replace shared vents in the checked rooms. Undo restores simulation settings and vents. Deleted result files cannot be recovered."
         onConfirm={onReset} />
+      </div>
       <label className="cfx-check"><input type="checkbox" checked={showArchived} onChange={e => onShowArchived(e.target.checked)} />Archived</label>
       <div className="cfx-history"><button disabled={!canUndo} onClick={onUndo}>Undo</button><button disabled={!canRedo} onClick={onRedo}>Redo</button></div>
       <CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:groups.map(group=>group.id)))}/>
     </div>
     {error && <p className="cfx-error" role="alert">{error}</p>}
     {!scenarios.length && <div className="cfx-welcome"><h3>No simulations</h3>
-      <div className="cfx-actions"><button onClick={() => onAdd(targetGroup?.name)}>Create first simulation</button>
+      <div className="cfx-actions"><button onClick={event => onAdd(targetGroup?.name, event.currentTarget)}>Create first simulation</button>
       <label className="cfx-file">Import simulation<input aria-label="Import CFD scenario" type="file" accept=".json,application/json"
         onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onImport(file); }} /></label>
       </div>
@@ -107,7 +107,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 onClick={() => setCollapsed(previous => { const next = new Set(previous); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}>{collapsed.has(group.id) ? "▸" : "▾"}</button>
               <InlineName key={`${group.id}:${group.name}`} value={group.name} label={`Rename group ${group.name}`} maxLength={80} onCommit={name => renameGroup(group, name)} />
               <div className="cfx-group-actions">
-                <button className="cfx-add-sim" aria-label={`Add simulation to ${group.name}`} disabled={scenarios.length >= 100} onClick={() => { setCollapsed(v => new Set([...v].filter(id => id !== group.id))); onAdd(group.name); }}>+ sim</button>
+                <button className="cfx-add-sim" aria-label={`Add simulation to ${group.name}`} disabled={resetting || scenarios.length >= 100} onClick={event => { setCollapsed(v => new Set([...v].filter(id => id !== group.id))); onAdd(group.name, event.currentTarget); }}>+ sim</button>
                 <button aria-label={`Duplicate group ${group.name}`} disabled={scenarios.length + allMembers.length > 100 || groups.length >= 100}
                   onClick={() => { const copy = duplicateSimulationGroup(scenarios, groups, group.id); if (copy) { const sources = scenarios.filter(s => sameGroup(s.group, group.name)), added = copy.scenarios.filter(s => !scenarios.some(old => old.id === s.id)); onOrder(copy.scenarios, copy.groups, Object.fromEntries(added.map((s, i) => [s.id, sources[i].id]))); setSelectedGroup(copy.groups.find(g => !groups.some(old => old.id === g.id))!.id); } }}>Duplicate</button>
                 <button className="cfx-danger" aria-label={`Delete group ${group.name}`} title="Remove this folder; keep its simulations in Ungrouped"
@@ -127,22 +127,29 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 const phase = entry?.submitting ? "Checking & submitting…" : job ? `${job.phase}${stale ? " · older setup" : ""}` : entry?.dispatched ? "Submission status unknown" : "Not submitted";
                 const checkConfiguration = (operation: CFDOperation) => entry?.dispatched ? undefined : workerConfigurationIssue(project, s, worker, operation);
                 const configurationIssue = checkConfiguration("run");
-                const createAirflow = configurationIssue ? airflowCopy?.(s) : undefined;
+                const hasIssues = !!(entry?.error || configurationIssue || s.validation?.errors ||
+                  (!entry?.dispatched && worker?.capabilities.connected && !worker.capabilities.run));
                 const reason = (operation: CFDOperation) => resetting ? "Wait for default setup to finish" : s.archived ? "Unarchive this simulation before submitting" : busy(s) ? "Wait for this job to finish" :
                   entry?.dispatched && entry.operation !== operation ? `Recover the previous ${entry.operation} submission first` :
                   !worker?.capabilities.connected ? worker?.capabilities.reason || "Connect an OpenFOAM worker to submit this simulation" :
+                  entry?.dispatched ? undefined :
                   !worker.capabilities[operation] ? worker.capabilities.reason || `This worker does not support ${operation}` : operation === "run" ? configurationIssue : checkConfiguration(operation);
                 return <article className={`cfx-study-row${s.id === scenario?.id ? " selected" : ""}`}>
                   {renaming === s.id ? <InlineName key={s.id} value={s.name} label="Simulation name" onCommit={name => onChange({ ...s, name }, true)} onDone={() => setRenaming(null)} /> :
                     <button className="cfx-study-name" aria-label={`Select ${s.name}`} aria-pressed={s.id === scenario?.id}
                       aria-describedby={`cfx-study-status-${s.id}`} title={`${s.name} · ${phase}`} onClick={() => onSelect(s.id)} onDoubleClick={() => setRenaming(s.id)}>
-                      <strong>{s.name}</strong><small id={`cfx-study-status-${s.id}`}>{s.archived ? "Archived · " : ""}{phase}</small>
+                      <strong>{s.name}</strong><small id={`cfx-study-status-${s.id}`}>{s.archived ? "Archived · " : ""}{hasIssues ? "Issues · see top panel" : phase}</small>
                     </button>}
                   <div className="cfx-study-actions">
-                    {(["mesh", "run"] as const).map(operation => <button key={operation}
-                      aria-label={`${operation === "mesh" ? "Mesh" : "Run"} ${s.name}`} data-field-help={operation === "mesh" ? "Generate and check the mesh for this study using its measured geometry and mesh settings." : "Check this study and submit its mesh and solver settings to the connected CFD worker."}
-                      disabled={!!reason(operation)} title={reason(operation)} onClick={() => onSubmit(operation, [s])}>
-                      {operation === "mesh" ? "Mesh" : "Run"}</button>)}
+                    {(["mesh", "run"] as const).map(operation => {
+                      const blocked = reason(operation);
+                      const help = operation === "mesh" ? "Generate and check the mesh for this study using its measured geometry and mesh settings."
+                        : "Check this study and submit its mesh and solver settings to the connected CFD worker.";
+                      return <button key={operation}
+                        aria-label={`${operation === "mesh" ? "Mesh" : "Run"} ${s.name}`} data-field-help={blocked ?? help}
+                        disabled={!!blocked} title={blocked} onClick={() => onSubmit(operation, [s])}>
+                        {operation === "mesh" ? "Mesh" : "Run"}</button>;
+                    })}
                     <button aria-label={`Delete ${s.name}`} className="cfx-danger" disabled={busy(s) || entry?.dispatched}
                       title={entry?.dispatched ? "Recover the previous submission before deleting this simulation" : undefined} onClick={e => onDelete(s.id, e.currentTarget)}>Delete</button>
                   </div>
@@ -156,10 +163,9 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       onOrder(moveStudy(scenarios, s.id, target.name, scenarios.filter(v => sameGroup(v.group, target.name)).length), groups);
                     }}>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
                   </CFDRowMenu>
-                  <div className="cfx-study-status">
+                  {(job || entry?.submitting || entry?.dispatched) && <div className="cfx-study-status">
                     <CFDJobProgress job={job} name={s.name} operation={entry?.operation} pending={entry?.submitting || entry?.dispatched ? phase : undefined} />
-                    {(entry?.error || configurationIssue) && <p className="cfx-error" role={entry?.error ? "alert" : "status"}>{entry?.error || configurationIssue} <button className="cfx-issues-link" onClick={() => onIssues(s.id)}>View issues for {s.name}</button>{createAirflow && <button type="button" onClick={createAirflow} disabled={scenarios.length >= 100}>Create airflow copy</button>}</p>}
-                  </div>
+                  </div>}
                 </article>;
               }}
             </CFDReorderList>

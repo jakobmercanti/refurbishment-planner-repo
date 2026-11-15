@@ -1,5 +1,6 @@
 import { windowHelpSteps, type WindowHelpStep } from "./windowHelp";
 import { fieldDescription } from "./windowFieldHelp";
+import { climoptixFieldDescription, climoptixSectionHelp } from "./climoptixHelp";
 
 export const HELP_WINDOW_SELECTOR = ".floating-toolbar,dialog,[role='dialog'],[role='alertdialog'],.popup";
 export const helpWindowFor = (element: Element) => element.closest(HELP_WINDOW_SELECTOR);
@@ -85,7 +86,10 @@ export function controlHelp(control: HTMLElement, includeChoices = true): Window
   const group = control.closest("details");
   const topic = group?.querySelector<HTMLElement>(":scope > summary [data-window-help-topic], :scope > .window-help-disclosure-header [data-window-help-topic]");
   const localGuide = topic?.dataset.windowHelpSteps ? parseHelpSteps(topic.dataset.windowHelpSteps)?.find(step => step.heading.toLowerCase() === heading.toLowerCase())?.text : undefined;
-  const guide = control.dataset.fieldHelp || fieldDescription(heading) || localGuide || control.title || context || fallback;
+  const cfdGuide = control.closest(".cfx-workspace,.cfx-setup-window")
+    ? climoptixFieldDescription(heading) ?? (control.matches("summary") ? climoptixSectionHelp(heading)?.[0]?.text : undefined)
+    : undefined;
+  const guide = control.dataset.fieldHelp || cfdGuide || fieldDescription(heading) || localGuide || control.title || context || fallback;
   if (!guide) return;
   return { heading, text: context && !guide.includes(context) ? `${guide} ${context}` : guide };
 }

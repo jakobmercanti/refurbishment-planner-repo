@@ -71,6 +71,7 @@ export interface CFDWorkerAdapter {
   submit(request: CFDSubmission, signal: AbortSignal): Promise<unknown>;
   status(jobId: string, signal: AbortSignal): Promise<unknown>;
   list?(projectId: string, signal: AbortSignal): Promise<CFDWorkerJob[]>;
+  clearResults?(projectId: string, studyIds: string[], signal: AbortSignal): Promise<void>;
 }
 
 export function workerConfigurationIssue(project: ProjectDocument, scenario: CFDScenario, adapter: CFDWorkerAdapter | null, operation: CFDOperation = "run") {

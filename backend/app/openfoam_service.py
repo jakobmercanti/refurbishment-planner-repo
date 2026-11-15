@@ -7,7 +7,6 @@ import json
 import logging
 import math
 import os
-import shutil
 import sqlite3
 import threading
 import time
@@ -18,19 +17,26 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import Field
 from starlette.requests import Request
 
-from backend.app.cfd_slice_service import SliceRequest, inventory, slice_data, view_root
+from backend.app.cfd_slice_service import SliceRequest, inventory, remove_result_files, slice_data
 from backend.app.openfoam_case import LIMITS, Submission, validate_submission
 from backend.app.openfoam_runtime import JobCancelled, execute, runtime_available
 from backend.app.openfoam_telemetry import telemetry
 from backend.app.supabase_rest import InvalidAccessToken, SupabaseREST, SupabaseUnavailable, VerifiedUser
+from geometry.climoptix_models import Contract, Id
 
 TERMINAL = ("Completed", "Failed", "Cancelled", "Stale")
 ACTIVE_SQL = "('Queued','Meshing','MeshCheck','Running','Postprocess')"
 MAX_BODY = 4 * 1024**2
 FREE_COMPLETED_SIMULATIONS = 5
 logger = logging.getLogger(__name__)
+
+
+class ClearResultsRequest(Contract):
+    projectId: UUID
+    studyIds: list[Id] = Field(min_length=1, max_length=100)
 
 
 def finite_json_number(value: str) -> float:
@@ -151,8 +157,10 @@ class Store:
     def update(self, job_id: str, phase: str, message: str):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT owner, payload FROM jobs WHERE id=?", (job_id,)).fetchone()
-            if phase == "Completed" and row and row["payload"] and json.loads(row["payload"])["operation"] == "run":
+            row = db.execute("SELECT owner, payload, expires FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if not row or not row["payload"] or row["expires"] == 0:
+                return
+            if phase == "Completed" and json.loads(row["payload"])["operation"] == "run":
                 # Durable and exactly once, even after cleanup, retries or restart.
                 db.execute("INSERT OR IGNORE INTO simulation_completions VALUES (?,?,?)",
                            (job_id, row["owner"], time.time()))
@@ -173,26 +181,41 @@ class Store:
                 (time.time(),),
             )
 
+    def clear_results(self, owner: str, request: ClearResultsRequest) -> None:
+        studies = list(set(request.studyIds))
+        matches = "owner=? AND project=? AND study IN (" + ",".join("?" for _ in studies) + ")"
+        scope = [owner, str(request.projectId), *studies]
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute(f"SELECT 1 FROM jobs WHERE {matches} AND phase IN {ACTIVE_SQL} LIMIT 1", scope).fetchone():
+                raise HTTPException(409, "Wait for active jobs in the affected simulations to finish before deleting results.")
+            db.execute(f"UPDATE jobs SET expires=0 WHERE {matches} AND expires<>0", scope)
+        self.cleanup()
+        with self.connect() as db:
+            if db.execute(f"SELECT 1 FROM jobs WHERE {matches} AND expires=0 AND payload<>'' LIMIT 1", scope).fetchone():
+                raise HTTPException(503, "Results were hidden, but file deletion is still pending. Retry to finish clearing them.")
+
     def cleanup(self):
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             expired = db.execute(
-                "SELECT id FROM jobs WHERE expires<? AND payload<>'' "
+                "SELECT id, expires FROM jobs WHERE expires<? AND payload<>'' "
                 "AND phase IN ('Completed','Failed','Cancelled','Stale')",
                 (time.time(),),
             ).fetchall()
             for row in expired:
-                target = self.path(row["id"])
-                if target.parent == self.root and target.exists() and not target.is_symlink():
-                    shutil.rmtree(target)
-                views = view_root(target)
-                if views.parent == self.root / "slice-views" and views.exists() and not views.is_symlink():
-                    shutil.rmtree(views)
+                try:
+                    remove_result_files(self.path(row["id"]))
+                except OSError:
+                    logger.exception("Could not remove CFD files for %s", row["id"])
+                    continue
                 # Keep a small idempotency tombstone; a late retry must never
                 # charge for a second execution after its artifacts expire.
                 db.execute(
                     "UPDATE jobs SET payload='', phase='Stale', "
-                    "message='Artifacts expired; this submission will not run again.' WHERE id=?",
-                    (row["id"],),
+                    "message=? WHERE id=?",
+                    ("Results deleted; this submission will not run again." if row["expires"] == 0
+                     else "Artifacts expired; this submission will not run again.", row["id"]),
                 )
 
 
@@ -380,6 +403,8 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
             "namespace": str(user.id),
             "limits": {**LIMITS, "cpu": state["processors"]},
             "simulationQuota": quota,
+            "clearResults": True,
+            "rotatedGrid": True,
             "optimisation": CAPABILITY,
         }
 
@@ -397,10 +422,15 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
     def jobs(projectId: UUID, user: WorkerUser):
         with store.connect() as db:
             rows = db.execute(
-                "SELECT * FROM jobs WHERE owner=? AND project=? ORDER BY created DESC LIMIT 100",
+                "SELECT * FROM jobs WHERE owner=? AND project=? AND expires<>0 ORDER BY created DESC LIMIT 100",
                 (str(user.id), str(projectId)),
             ).fetchall()
         return [public_job(row, store.path(row["id"])) for row in rows]
+
+    @app.post(prefix + "/results/clear")
+    def clear_results(body: ClearResultsRequest, user: WorkerUser):
+        store.clear_results(str(user.id), body)
+        return {"cleared": True}
 
     @app.get(prefix + "/jobs/{job_id}")
     def status(job_id: UUID, user: WorkerUser):
@@ -419,6 +449,8 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
     @app.get(prefix + "/jobs/{job_id}/logs")
     def logs(job_id: UUID, user: WorkerUser, cursor: int = Query(default=0, ge=0, le=8 * 1024**2)):
         row = store.get(str(user.id), str(job_id))
+        if row["expires"] == 0:
+            raise HTTPException(404, "Results were deleted.")
         path = store.path(str(job_id)) / "solver.log"
         size = min(path.stat().st_size, 8 * 1024**2) if path.exists() else 0
         if cursor > size:
@@ -440,7 +472,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
     def result(job_id: UUID, user: WorkerUser):
         row = store.get(str(user.id), str(job_id))
         path = store.path(str(job_id)) / "result.json"
-        if row["phase"] not in TERMINAL or not path.is_file():
+        if row["expires"] == 0 or row["phase"] not in TERMINAL or not path.is_file():
             raise HTTPException(409, "No finalized result manifest is available.")
         manifest = json.loads(path.read_text())
         for artifact in manifest.get("artifacts", []):
@@ -465,7 +497,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
     def artifact(job_id: UUID, artifact_id: str, user: WorkerUser):
         row = store.get(str(user.id), str(job_id))
         root = store.path(str(job_id))
-        if row["phase"] not in TERMINAL or not (root / "result.json").is_file():
+        if row["expires"] == 0 or row["phase"] not in TERMINAL or not (root / "result.json").is_file():
             raise HTTPException(404, "Artifact not found.")
         manifest = json.loads((root / "result.json").read_text())
         item = next((a for a in manifest.get("artifacts", []) if a["id"] == artifact_id), None)

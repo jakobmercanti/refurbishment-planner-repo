@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Sequence
+from itertools import product
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -18,7 +20,7 @@ from shapely.geometry import Point
 
 from backend.app.climoptix_api import PreparationRequest, prepare
 from backend.app.climoptix_provider import PreparationOnlyProvider
-from geometry.climoptix_models import MAX_SAMPLING_PLANES, Contract, Id, Scenario
+from geometry.climoptix_models import MAX_SAMPLING_PLANES, Contract, Id, MeshRecipe, Scenario
 from geometry.climoptix_workflow import sampling_planes
 
 Hash = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
@@ -92,8 +94,8 @@ def validate_submission(request: Submission, *, max_cpu: int | None = None) -> d
                          "no settings were changed automatically.")
     if request.thermalApplication or s.thermalSnapshots:
         raise ValueError("Applied thermal conditions are not supported by this solver adapter.")
-    if s.mesh.layers.enabled or s.mesh.alignmentDeg != 0:
-        raise ValueError("Boundary layers and rotated background grids are not supported yet.")
+    if s.mesh.layers.enabled:
+        raise ValueError("Boundary layers are not supported by this worker.")
     if any((s.outputs.temperature, s.outputs.co2, s.outputs.ageOfAir, s.outputs.comfort)) or any(
         field not in ("U", "p") for field in s.postProcessing.fields
     ):
@@ -124,6 +126,9 @@ def validate_submission(request: Submission, *, max_cpu: int | None = None) -> d
         raise ValueError("Canonical surface exceeds the worker triangle limit.")
     if report["domain"].get("slabVoids"):
         raise ValueError("Slab-void cases need a separately verified multi-level seed adapter.")
+    _, base_counts = background_grid(report["domain"]["boundsMm"], s.mesh)
+    if math.prod(base_counts) > s.mesh.maxCells:
+        raise ValueError("Background grid alone exceeds the cell budget. Increase the base cell size.")
     for patch in report["patches"]:
         b = patch["boundary"]
         if b["thermal"]["type"] != "adiabatic" or b["roughnessM"] or b["scalarType"] != "zeroFlux":
@@ -215,6 +220,41 @@ def interior_point(report: dict[str, Any], request: Submission) -> list[float]:
     raise ValueError("Cannot find a conservative interior mesh seed outside solid objects.")
 
 
+def background_grid(bounds_mm: Sequence[Sequence[float]], mesh: MeshRecipe) -> tuple[list[list[float]], list[int]]:
+    """Fit the checked domain’s bounds in grid coordinates, with two cells of padding per side."""
+    origin = mesh.originMm
+    angles = (*(mesh.alignmentXYDeg or (0, 0)), mesh.alignmentDeg)
+    rotations = [(math.cos(math.radians(angle)), math.sin(math.radians(angle))) for angle in angles]
+
+    def rotate(point: Sequence[float], *, inverse: bool = False) -> list[float]:
+        result = list(point)
+        for axis in (range(2, -1, -1) if inverse else range(3)):
+            cosine, sine = rotations[axis]
+            if inverse:
+                sine = -sine
+            u, v = (axis + 1) % 3, (axis + 2) % 3
+            result[u], result[v] = cosine * result[u] - sine * result[v], sine * result[u] + cosine * result[v]
+        return result
+
+    corners = [rotate([coord - origin[i] for i, coord in enumerate(point)], inverse=True)
+               for point in product(*zip(*bounds_mm))]
+    base = mesh.baseCellMm
+
+    def cell_index(value: float) -> float:
+        index = value / base
+        nearest = round(index)
+        return nearest if abs(nearest - index) < 1e-9 else index
+
+    low = [math.floor(cell_index(min(axis))) - 2 for axis in zip(*corners)]
+    high = [math.ceil(cell_index(max(axis))) + 2 for axis in zip(*corners)]
+    counts = [b - a for a, b in zip(low, high, strict=True)]
+    local = ([x * base, y * base, z * base] for z in (low[2], high[2])
+             for y in (low[1], high[1]) for x in (low[0], high[0]))
+    vertices = [[coord + origin[i] for i, coord in enumerate(rotate(point))] for point in local]
+    # OpenFOAM hexahedron vertex winding.
+    return [vertices[i] for i in (0, 1, 3, 2, 4, 5, 7, 6)], counts
+
+
 def compile_case(root: Path, request: Submission, report: dict[str, Any]) -> dict[str, Any]:
     s, mesh, physics = request.scenario, request.scenario.mesh, request.scenario.physics
     surface = report["surface"]
@@ -241,16 +281,11 @@ def compile_case(root: Path, request: Submission, report: dict[str, Any]) -> dic
                     out.write("vertex " + " ".join(number(v * 0.001) for v in vertex) + "\n")
                 out.write("endloop\nendfacet\n")
             out.write(f"endsolid {names[pid]}\n")
-    low, high = report["domain"]["boundsMm"]
     base = mesh.baseCellMm
-    lo = [mesh.originMm[i] + (math.floor((low[i] - mesh.originMm[i]) / base) - 2) * base for i in range(3)]
-    hi = [mesh.originMm[i] + (math.ceil((high[i] - mesh.originMm[i]) / base) + 2) * base for i in range(3)]
-    counts = [round((hi[i] - lo[i]) / base) for i in range(3)]
+    verts, counts = background_grid(report["domain"]["boundsMm"], mesh)
+    mesh_extent = max(max(axis) - min(axis) for axis in zip(*verts))
     if math.prod(counts) > mesh.maxCells:
         raise ValueError("Background grid alone exceeds the cell budget. Increase the base cell size.")
-    verts = [[x, y, z] for z in (lo[2], hi[2]) for y in (lo[1], hi[1]) for x in (lo[0], hi[0])]
-    # OpenFOAM hexahedron vertex winding.
-    verts = [verts[i] for i in (0, 1, 3, 2, 4, 5, 7, 6)]
     write_dictionary(
         root,
         "system/blockMeshDict",
@@ -375,7 +410,7 @@ def compile_case(root: Path, request: Submission, report: dict[str, Any]) -> dic
         "nSmoothThickness 10; maxFaceThicknessRatio 0.5; maxThicknessToMedialRatio 0.3; minMedialAxisAngle 90; "
         "nBufferCellsNoExtrude 0; nLayerIter 50;}\n"
         f"meshQualityControls {{{quality}}} "
-        f"mergeTolerance {number(mesh.geometryToleranceMm / max(hi[i] - lo[i] for i in range(3)))};",
+        f"mergeTolerance {number(mesh.geometryToleranceMm / mesh_extent)};",
     )
     nu = physics.dynamicViscosityPaS / physics.densityKgM3
     write_dictionary(

@@ -3,7 +3,7 @@ import { MANIFOLD_HELP_STEPS, serviceHelp } from "./serviceHelp";
 import { workspaceHelp } from "./workspaceHelp";
 import { ENERGY_DISCLAIMER } from "./energyDocument";
 import { HEATING_DISCLAIMER } from "./heatingDocument";
-import { CFD_PHASE_HELP } from "./climoptixHelp";
+import { CFD_PHASE_HELP, climoptixSectionHelp } from "./climoptixHelp";
 import { THERMAL_HELP } from "./thermalHelp";
 export interface WindowHelpStep { heading: string; text: string; links?: { label: string; url: string }[] }
 
@@ -51,6 +51,8 @@ function taskWindowHelpSteps(title: string): WindowHelpStep[] {
   if (title === "Room selector") return [{ heading: "Choose what to inspect", text: "Switch between the complete floorplan and a specific room. The selection changes what the viewer shows." }];
   if (title.startsWith("Simulation setup — ")) {
     const section = title.slice("Simulation setup — ".length);
+    const cfdSection = climoptixSectionHelp(section);
+    if (cfdSection) return cfdSection;
     if (Object.hasOwn(thermalStepHelp, section)) return THERMAL_HELP.filter(step => thermalStepHelp[section].includes(step.heading));
     if (section === "Manage simulations") return CFD_PHASE_HELP.studies;
     if (section === "Seed & connected domain" || section === "Connectivity & passages") return CFD_PHASE_HELP.domain.slice(0, 1);

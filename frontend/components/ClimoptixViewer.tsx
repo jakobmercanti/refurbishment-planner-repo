@@ -664,7 +664,6 @@ export function ClimoptixViewer({
   return (
     <section className="cfx-viewer" aria-label="Climoptix geometry viewer">
       <div className="cfx-view-selector">
-        {onReturnToSetup && <button type="button" autoFocus onClick={onReturnToSetup} title="Return to simulation setup (Escape)">Return to setup</button>}
         <label htmlFor="cfx-view-scope">View</label>
         <select
           id="cfx-view-scope"
@@ -695,12 +694,13 @@ export function ClimoptixViewer({
               ))}
           </optgroup>
         </select>
-        <select aria-label="CFD patch display" value={patchMode} onChange={event => setPatchMode(event.target.value as PatchDisplayMode)}>
-          {Object.entries(PATCH_DISPLAY_MODES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
         <button type="button" onClick={() => setFit((x) => x + 1)}>
           Fit
         </button>
+        <label htmlFor="cfx-patch-display">Display</label>
+        <select id="cfx-patch-display" aria-label="CFD patch display" value={patchMode} onChange={event => setPatchMode(event.target.value as PatchDisplayMode)}>
+          {Object.entries(PATCH_DISPLAY_MODES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
         <button
           type="button"
           disabled={!!picking}
@@ -709,6 +709,7 @@ export function ClimoptixViewer({
         >
           View properties
         </button>
+        {onReturnToSetup && <button className="cfx-return-to-setup" type="button" autoFocus onClick={onReturnToSetup} title="Return to simulation setup (Escape)">Return to setup</button>}
       </div>
       {viewTarget &&
         createPortal(

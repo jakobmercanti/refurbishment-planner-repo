@@ -176,11 +176,11 @@ const replaceAt = <T,>(values: T[], index: number, value: T) => values.map((old,
 const numeric = (value: unknown): value is number[] => Array.isArray(value) && value.every(item => typeof item === "number");
 
 /** One vector control keeps axis labels, units and immutable updates consistent. */
-export function CFDVector({ label, value, onChange, unit, axes = ["X", "Y", "Z"] }: {
-  label: string; value: number[]; onChange: (value: number[]) => void; unit?: string; axes?: string[];
+export function CFDVector({ label, value, onChange, unit, axes = ["X", "Y", "Z"], min, max }: {
+  label: string; value: number[]; onChange: (value: number[]) => void; unit?: string; axes?: string[]; min?: number; max?: number;
 }) {
   return <div className="cfx-grid cfx-three">{value.map((number, index) =>
-    <CFDNumber key={index} label={`${label} ${axes[index] ?? index + 1}${unit ? ` (${unit})` : ""}`} value={number}
+    <CFDNumber key={index} label={`${label} ${axes[index] ?? index + 1}${unit ? ` (${unit})` : ""}`} value={number} min={min} max={max}
       onChange={next => onChange(replaceAt(value, index, next))} />)}</div>;
 }
 

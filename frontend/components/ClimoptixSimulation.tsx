@@ -59,8 +59,8 @@ function RunPanel({
         {connection.onAirflowCopy && <button type="button" onClick={connection.onAirflowCopy}>Create airflow copy</button>}
       </p>}
       </details>
-      {workerControls&&<details open><summary>Worker connection &amp; limits</summary>{workerControls}</details>}
       <details open><summary>Simulation &amp; resources</summary>
+      {workerControls}
       <div className="cfx-grid">
         <label>
           Simulation type
@@ -176,6 +176,8 @@ function PostPanel({
   onResults,
   selected,
   onSelect,
+  samplingPreview,
+  onSamplingPreview,
 }: {
   scenario: CFDScenario;
   report: CFDReport | null;
@@ -184,6 +186,8 @@ function PostPanel({
   onResults?: () => void;
   selected:string|null;
   onSelect:(id:string|null)=>void;
+  samplingPreview: boolean;
+  onSamplingPreview: (show: boolean) => void;
 }) {
   const post = scenario.postProcessing,
     planes = samplingPlanes(report?.domain.boundsMm ?? null, post);
@@ -193,6 +197,7 @@ function PostPanel({
       <div className="cfx-inline-toolbar"><h3>Post-processing</h3><CFDCollapseAll/></div>
       <CFDProbes scenario={scenario} onChange={onChange} selected={selected} onSelect={onSelect}/>
       <details open><summary>Sampling planes</summary>
+      <label className="cfx-check"><input type="checkbox" checked={samplingPreview} onChange={event => onSamplingPreview(event.target.checked)} />Preview sampling planes in 3D</label>
       <p className="cfx-caption">Equally spaced interior slices. The normal is perpendicular to the named plane; positions use the checked domain in millimetres.</p>
       <p className="cfx-caption">Execution limit: {MAX_SAMPLING_PLANES} enabled planes in total across X/Y/Z. Existing memory and storage budgets still apply.</p>
       <div className="cfx-post-planes" role="group" aria-label="Sampling plane directions">
@@ -323,6 +328,8 @@ function PostPanel({
 export function ClimoptixSimulation({
   tab,
   onTab,
+  samplingPreview,
+  onSamplingPreview,
   scenario,
   report,
   selected,
@@ -343,6 +350,8 @@ export function ClimoptixSimulation({
 }: {
   tab: SimulationTab;
   onTab: (t: SimulationTab) => void;
+  samplingPreview: boolean;
+  onSamplingPreview: (show: boolean) => void;
   scenario: CFDScenario;
   report: CFDReport | null;
   selected: string | null;
@@ -466,6 +475,8 @@ export function ClimoptixSimulation({
           onResults={onResults}
           selected={selected}
           onSelect={onSelect}
+          samplingPreview={samplingPreview}
+          onSamplingPreview={onSamplingPreview}
         />
       </section>
     </>

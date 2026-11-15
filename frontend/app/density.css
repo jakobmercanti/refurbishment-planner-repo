@@ -159,7 +159,7 @@ body .floating-toolbar[hidden] { display: none !important; }
 body .cfx-workspace .cfx-study-group > .cfx-reorder-list > .cfx-reorder-item,
 body .cfx-workspace .cfx-object-group > .cfx-reorder-list > .cfx-reorder-item { margin-left: 28px; }
 body .cfx-workspace :is(.cfx-study-group, .cfx-object-group) .cfx-list-header { margin-bottom: 5px; }
-body .cfx-workspace :is(.cfx-study-group, .cfx-object-group) .cfx-group-actions {
+body .cfx-workspace .cfx-object-group .cfx-group-actions {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   width: clamp(210px, 25cqw, 270px); margin-right: calc(33px + var(--density-row-padding) + var(--density-field-gap)); gap: 6px;
 }
@@ -198,12 +198,8 @@ body .cfx-workspace .cfx-placement-actions { display: grid; flex: 0 0 auto; grid
 body .cfx-workspace .cfx-placement-actions > button { width: 100%; }
 .compact-workspace .floating-toolbar.cfx-placement-editor { top: auto !important; bottom: 8px !important; height: min(45dvh, 420px) !important; max-height: 45dvh !important; }
 @container cfx-setup (max-width: 540px) {
-  body .cfx-workspace .cfx-study-group { container-type: inline-size; --cfx-list-action-width: min(270px, calc(100cqw - 70px - 2 * var(--density-row-padding))); }
-  body .cfx-workspace .cfx-study-group .cfx-group-actions {
-    flex: 0 0 auto; width: var(--cfx-list-action-width); margin-left: auto; margin-right: calc(1px + var(--density-row-padding));
-  }
   body .cfx-workspace .cfx-device-actions {
-    grid-column: 1 / -1; grid-row: 2; justify-self: end; width: var(--cfx-list-action-width, 100%);
+    grid-column: 1 / -1; grid-row: 2; justify-self: end; width: 100%;
   }
   body .cfx-workspace .cfx-setup-window .floating-toolbar-content :is(.cfx-group-actions, .cfx-device-actions) > button {
     font-size: 11px; padding-inline: 2px; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap:anywhere;
@@ -380,6 +376,9 @@ body .cfx-workspace .cfx-thermal-inline .thermal-footer .cfx-actions { display:f
 body .cfx-workspace .cfx-thermal-inline .thermal-footer button { min-width:100px; min-height:var(--density-control-min-height); height:auto; flex:1; margin:0; }
 body .cfx-workspace .cfx-adjoint h2 { font-size:15px; margin:0; }
 body .cfx-workspace .cfx-adjoint > details { margin:0; }
+body :is(.cfx-workspace, .cfx-setup-window) details:not(.cfx-row-menu) + details:not(.cfx-row-menu) {
+  margin-block-start: calc(var(--density-section-gap) + 6px);
+}
 body .cfx-workspace .cfx-adjoint-actions { display:flex; gap:8px; flex-wrap:nowrap; overflow-x:auto; }
 body .cfx-workspace .cfx-adjoint-actions > button { flex:1 0 140px; }
 body .cfx-workspace .cfx-viewer-frame { position:relative; gap:var(--density-section-gap); padding:0; }

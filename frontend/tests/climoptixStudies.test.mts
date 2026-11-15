@@ -283,9 +283,8 @@ test("study rows show only the worker's current-phase progress, never a syntheti
   props.entries = {};
   props.worker = null;
   const draft = renderToStaticMarkup(createElement(ClimoptixStudies, props));
-  assert.match(draft, /role="progressbar"/);
-  assert.match(draft, /aria-valuenow="0"/);
-  assert.match(draft, /Not submitted · 0%/);
+  assert.doesNotMatch(draft, /role="progressbar"|aria-valuenow=|Not submitted · 0%/);
+  assert.match(draft, /Not submitted/);
   assert.doesNotMatch(draft, /indeterminate|cfx-batch|cfx-study-heading/);
   assert.doesNotMatch(draft, /Preparation only|Select for batch/);
   assert.match(draft, /<button(?=[^>]*aria-label="Mesh Office airflow")(?=[^>]*disabled="")[^>]*>/);

@@ -55,3 +55,25 @@ test('slice inventory and bounded numerical comparison use only exact authentica
   assert.equal((await cfdWorkerProxy(get,'/climoptix/worker/slice-data','https://worker.example')).status,403);
   assert.equal((await cfdWorkerProxy(post,'/climoptix/worker/slice-data/execute','https://worker.example')).status,403);
 });
+
+test('result deletion uses the exact authenticated same-origin POST route',async t=>{
+  const original=globalThis.fetch;t.after(()=>{globalThis.fetch=original;});
+  const endpoint='/climoptix/worker/results/clear', url='https://planner.example'+endpoint, origin='https://worker.example';
+  const headers={Authorization:'Bearer test-token','Content-Type':'application/json',Origin:'https://planner.example'};
+  const body=JSON.stringify({projectId:'11111111-1111-4111-8111-111111111111',studyIds:['study-1']});
+  let forwarded=0;
+  globalThis.fetch=async(target,options)=>{
+    forwarded++;
+    assert.equal(target.href,origin+endpoint);
+    assert.equal(options.headers.Authorization,'Bearer test-token');
+    assert.equal(new TextDecoder().decode(options.body),body);
+    return Response.json({cleared:true});
+  };
+  const post=(source=headers)=>new Request(url,{method:'POST',headers:source,body});
+  assert.equal((await cfdWorkerProxy(post(),endpoint,origin)).status,200);
+  assert.equal((await cfdWorkerProxy(post({...headers,Origin:'https://other.example'}),endpoint,origin)).status,403);
+  assert.equal((await cfdWorkerProxy(post({...headers,Authorization:''}),endpoint,origin)).status,401);
+  assert.equal((await cfdWorkerProxy(new Request(url,{headers}),endpoint,origin)).status,403);
+  assert.equal((await cfdWorkerProxy(post(),endpoint+'/anything',origin)).status,403);
+  assert.equal(forwarded,1);
+});

@@ -1,8 +1,222 @@
 import type { CFDWindowId } from "@/components/ClimoptixWindowMenu";
+import type { WindowHelpStep } from "./windowHelp";
 
 import { THERMAL_HELP } from "./thermalHelp";
 
 type HelpStep = { heading: string; text: string };
+
+const OPENFOAM = "https://doc.openfoam.com/2306/";
+const meshDocs = { label: "OpenFOAM v2306 · snappyHexMesh", url: OPENFOAM + "tools/pre-processing/mesh/generation/snappyhexmesh/" };
+const numericsDocs = { label: "OpenFOAM v2306 · numerics and schemes", url: OPENFOAM + "tools/processing/numerics/" };
+const fluidDocs = { label: "OpenFOAM v2306 · thermophysical models", url: OPENFOAM + "tools/processing/models/thermophysical/" };
+
+export const CFD_SECTION_HELP: Record<string, WindowHelpStep[]> = {
+  "Mesh origin & alignment": [{
+    heading: "Background grid placement",
+    text: "The native worker uses blockMesh to create a Cartesian grid of hexahedral cells around the checked domain. snappyHexMesh refines the grid near surfaces, removes cells outside the air volume and snaps the boundary to the geometry. Origin is the grid anchor and rotation pivot. Alignment rotates the grid about the fixed building axes in X, Y, Z order. The interior point locationInMesh separately identifies cells to keep.",
+    links: [meshDocs, { label: "OpenFOAM v2306 · castellation and cell retention", url: meshDocs.url + "castellation/" }],
+  }],
+  "Fluid properties": [{
+    heading: "Air model",
+    text: "Use a consistent set of properties at the study's operating temperature and pressure. The native isothermal worker uses density and dynamic viscosity to calculate kinematic viscosity. Heat capacity, thermal conductivity, Prandtl number and expansion are inputs for thermal-capable solvers. In OpenFOAM’s constant transport model, thermal conductivity follows k = cp × μ / Pr, so these inputs should agree for the same air state.",
+    links: [fluidDocs, { label: "OpenFOAM v2306 · constant transport model", url: fluidDocs.url + "transport/rtm/const/" }],
+  }],
+  "Reference & ambient conditions": [{
+    heading: "Reference state and outdoor air",
+    text: "Reference values define the design state used by the chosen physical model. Outdoor values describe air outside the study domain. Setting an outdoor value does not assign it to an individual vent or wall. Set imported or explicit surface conditions in Bounds. Gravity uses the building's axes with Z up.",
+    links: [fluidDocs],
+  }],
+  "Initial fields": [{
+    heading: "Start values in the air volume",
+    text: "OpenFOAM uses initial fields in its zero-time directory to start the calculation. Boundary conditions are specified separately. Temperature and CO₂ apply when their transport equations are enabled. Only quantities used by the selected turbulence model need initial turbulence values.",
+    links: [{ label: "OpenFOAM v2306 · case structure and fields", url: OPENFOAM + "quickstart/" }, { label: "OpenFOAM v2306 · turbulence models", url: OPENFOAM + "tools/processing/models/turbulence/" }],
+  }],
+  "Simulation & resources": [{
+    heading: "Worker eligibility and run limits",
+    text: "This section combines the current worker connection, its simulation allowance and the resources requested by this study. A mesh-only job checks the grid. Running the solver also requires a supported physics setup and an available solve allowance. Refresh connection retrieves the worker's current capabilities. Use worker resource limits clamps this study to the published limits.",
+    links: [{ label: "OpenFOAM v2306 · case and solver setup", url: OPENFOAM + "quickstart/" }],
+  }],
+  "Iterations & convergence targets": [{
+    heading: "What controls a steady solve",
+    text: "OpenFOAM reads discretisation from fvSchemes and pressure–velocity coupling and convergence controls from fvSolution. The native worker uses steady SIMPLE. Monitor residuals and inlet/outlet balance together, and compare the results on a refined mesh when accuracy matters. A run can reach its iteration limit before meeting the residual target.",
+    links: [numericsDocs, { label: "OpenFOAM v2306 · SIMPLE and residual control", url: OPENFOAM + "quickstart/" }],
+  }],
+  "Time stepping & output intervals": [{
+    heading: "Transient solver settings",
+    text: "Transient controls describe how a supported solver advances physical time and saves field states. The native worker solves steady isothermal airflow. These settings are available for configuration handoff.",
+    links: [numericsDocs],
+  }],
+  "Sampling planes": [{
+    heading: "Plan where to sample",
+    text: "Choose how many equally spaced slices to request in each direction. Preview shows the intended positions within checked bounds. Computed field values become available for verified solver outputs in Results.",
+  }],
+  "Local refinement regions": [{
+    heading: "Refine where the flow changes",
+    text: "Use a box, sphere or measured object to put finer cells around a jet, wake or opening. Each level halves the nominal edge length. The final cell count depends on the region, the transition between levels and the removal of cells outside the measured volume.",
+    links: [{ label: "OpenFOAM v2306 · castellation", url: meshDocs.url + "castellation/" }],
+  }],
+  "Refinements, layers, tolerances & quality intent": [{
+    heading: "Mesh resolution and quality",
+    text: "Surface and volume refinements control where cells are split. Snap iterations guide the boundary towards the source surfaces. Mesh quality checks detect distorted or invalid cells before solving. Layer settings describe near-wall prism layers for a compatible mesher. The native worker currently creates no added layers.",
+    links: [{ label: "OpenFOAM v2306 · mesh quality controls", url: meshDocs.url + "meshquality/" }],
+  }],
+  "Flow & thermal conditions": [{
+    heading: "Conditions at the face",
+    text: "Choose how momentum crosses this surface and how heat would cross it in a thermal solve. A no-slip wall has zero relative velocity at the face. A pressure opening uses a pressure reference and can admit backflow. Define dedicated supply and extract flows in Objects. The native solver uses smooth, adiabatic boundaries for isothermal airflow.",
+    links: [{ label: "OpenFOAM v2306 · boundary conditions", url: OPENFOAM + "tools/processing/boundary-conditions/" }],
+  }],
+  "Additional boundary fields": [{
+    heading: "Properties of an advanced boundary",
+    text: "Set roughness, incoming turbulence and scalar conditions where the selected boundary type and solver use them. Scalar flux and concentration describe different physical inputs. Review the worker compatibility checks before submitting a case that uses them.",
+  }],
+  "Requested outputs": [{
+    heading: "Fields to save",
+    text: "Choose the fields the solver should write. Native runs can save velocity and kinematic pressure. Temperature, CO₂, age of air and thermal comfort need solver support for the corresponding equations or derived quantities.",
+  }],
+  "Monitoring probe positions": [{
+    heading: "Sample at fixed points",
+    text: "Probes record field values at points in the air volume on each configured write. Enter building X, Y and Z coordinates in millimetres. A probe should be inside the fluid and clear of solid objects.",
+  }],
+  "Sampled fields & output cadence": [{
+    heading: "Decide what to extract and when",
+    text: "Choose which saved fields to extract on the requested planes. A cadence of 1 samples every field write. Solver write frequency controls which iterations reach disk. Sampling more often or on more planes increases result storage.",
+  }],
+  "Convergence & residuals": [{
+    heading: "Track iterative convergence",
+    text: "Residuals measure the remaining equation imbalance as the solver iterates. Use these trends together with the flow balance and stable values at probes. A run can reach its iteration limit before converging.",
+    links: [numericsDocs],
+  }],
+  "Resources & retention": [{
+    heading: "Storage, scheduling and expiry",
+    text: "Storage limits the generated files the worker may keep for this job. Retention expresses how many days they should remain available within the worker’s maximum. Queue is a configuration handoff field. The native service manages its own queue.",
+  }],
+  "Preflight diagnostics": [{
+    heading: "Find and repair preparation issues",
+    text: "Blocking errors prevent submission. Warnings identify assumptions or settings to inspect. Filter by severity and choose Inspect to open the associated setting or highlight its geometry. Repeat Refresh checks after editing.",
+  }],
+  "Cached result layers": [{
+    heading: "Manage local files displayed in the viewer",
+    text: "Load a field layer from a verified run or import a supported external file. Unloading removes the displayed copy. Restore default and New simulation can permanently delete saved worker files after confirmation. Files you previously downloaded remain on your computer.",
+  }],
+};
+CFD_SECTION_HELP["Advanced numerics & convergence targets"] = CFD_SECTION_HELP["Iterations & convergence targets"];
+
+export function climoptixSectionHelp(title: string) {
+  const key = title.split(" · ")[0].replace(/\s*\(\d+\)$/, "");
+  return Object.hasOwn(CFD_SECTION_HELP, key) ? CFD_SECTION_HELP[key] : undefined;
+}
+
+const CFD_CONTROL_HELP: Record<string, string> = {
+  "seed floor": "Choose the building level containing the first room of the CFD air domain. Physical openings can connect that room to other levels.",
+  "seed room": "Choose where connected air-volume discovery starts. Permanent open passages and physical slab voids can extend the calculation into adjoining rooms.",
+  "mesh intent preset": "Apply a starter set of base and local cell sizes and cell budgets. Changing an individual mesh size selects Custom.",
+  "base cell": "Approximate edge length of a blockMesh background cell. Smaller cells increase the starting cell count in all three directions.",
+  "min cell": "Smallest permitted nominal cell size. Each snappyHexMesh refinement level halves the edge length. Choose compatible values if a requested local size rounds to a level below this limit.",
+  "max cell": "Upper cell-size setting retained with the mesh recipe. The native worker builds its uniform background block from Base Cell.",
+  "target cell count": "Planning target used to assess the mesh recipe. Actual cell count depends on the domain, refinement and discarded cells.",
+  "maximum cell budget": "Hard cell-count ceiling for the native mesh. Increase the base cell size or reduce local refinement if the mesh would exceed this limit.",
+  "predicted cells before refinement": "Estimate using the last checked domain bounds and the current base size, origin and alignment. The native block is rounded out to grid lines with two extra cells on each side.",
+  "mesh origin & alignment": "Place and rotate the background mesh grid relative to the measured building.",
+  "air density": "Mass per cubic metre at the design air state. Converts prescribed mass flow to volume flow and combines with dynamic viscosity to give kinematic viscosity, ν = μ/ρ.",
+  "dynamic viscosity": "The fluid’s resistance to shear. Enter μ in Pa·s. The native incompressible worker uses ν = μ/ρ in m²/s.",
+  "heat capacity": "Specific heat at constant pressure, cp. It is the heat needed to raise one kilogram of air by one kelvin at constant pressure and controls how strongly temperature responds to heat input.",
+  "thermal conductivity": "How readily heat diffuses through air. A larger value increases conductive heat transfer for a given temperature gradient.",
+  "prandtl number": "Momentum diffusivity divided by thermal diffusivity. For consistent constant air properties, Pr = μ × cp / k. The thermal transport model determines how it is used.",
+  "thermal expansion": "Fractional volume change per kelvin at constant pressure. A Boussinesq model uses it to relate a small temperature change to buoyancy. For ideal air it is approximately 1 divided by the reference temperature in kelvin.",
+  "reference temperature": "Reference air temperature for the study’s thermophysical model, including the temperature difference used for Boussinesq buoyancy.",
+  "reference pressure": "Absolute pressure of the reference air state. Initial relative pressure and vent pressure offsets use a gauge reference instead.",
+  "outdoor temperature": "Design temperature outside the building. Check the outdoor or adjacent-air condition assigned to each thermal boundary in Bounds.",
+  "relative humidity": "Water vapour content as a fraction of saturation at the specified air temperature. Enter 0.5 for 50% relative humidity. The isothermal worker does not solve humidity transport.",
+  "outdoor co2": "Background outdoor CO₂ concentration by volume, in parts per million. Use an appropriate measured or design value when the scalar transport model is enabled.",
+  "initial relative pressure": "Gauge pressure used to initialise the air volume. The native worker divides the entered Pa by air density to initialise OpenFOAM’s kinematic pressure field.",
+  "initial temperature": "Starting temperature of the air volume for an energy solve. Vent inlet temperatures and wall temperatures are boundary settings.",
+  "initial co2": "Starting CO₂ concentration by volume in the air volume, in ppm, for a solver that transports CO₂.",
+  "initial turbulent k": "Initial turbulent kinetic energy per unit mass. Use a positive value representative of the flow when using a RANS model.",
+  "initial ε": "Initial dissipation rate of turbulent kinetic energy for k–ε. Specify it in m²/s³.",
+  "initial ω": "Initial specific dissipation rate for k–ω SST. Specify it in inverse seconds.",
+  "physics preset": "Apply a matching set of airflow, thermal and scalar equations. Choose isothermal ventilation to run with the native velocity and pressure worker.",
+  "turbulence": "Choose Laminar to solve without a turbulence model, k–ε for a two-equation RANS model, or k–ω SST for a RANS model that blends near-wall k–ω and outer-flow behaviour.",
+  "simulation type": "Steady SIMPLE iterates toward a time-independent flow. Transient PIMPLE advances time and requires a compatible solver. The native worker runs steady SIMPLE.",
+  "cpu cores": "Number of processing cores requested for the run. The worker enforces the core limit for the current service.",
+  "memory limit": "Maximum memory requested for the job. Refined meshes and extra result data can exceed it.",
+  "time limit": "Maximum elapsed time allowed for the worker job, including case execution. The service enforces its own upper limit.",
+  "coupling": "Pressure–velocity algorithm. SIMPLE uses successive pressure corrections for steady flow. PIMPLE combines PISO and SIMPLE corrections for transient flow and needs a compatible solver.",
+  "gradient": "Approximates spatial derivatives of cell values. Linear uses Gauss with linear interpolation. Limited Linear limits the extrapolated face values to neighbouring cell bounds to reduce overshoots.",
+  "convection": "Approximates transport through cell faces. Upwind uses the upstream cell for robustness. Linear Upwind adds a gradient correction. Limited Linear blends toward upwind where limiting is needed.",
+  "non orthogonal corrections": "Additional pressure corrections per SIMPLE iteration to account for cell faces whose normals are misaligned with the line between neighbouring cell centres. More corrections increase work per iteration.",
+  "relaxation": "Under-relaxation factor for equation updates. Values closer to one allow larger changes per iteration. Smaller values can stabilise the solve but usually slow convergence. Native pressure relaxation is set separately.",
+  "residual target": "Initial residual threshold applied by SIMPLE residualControl to pressure, velocity and the active turbulence equations. Also inspect continuity and physical quantities before accepting a solution.",
+  "max iterations": "Upper bound on steady SIMPLE iterations. The solver can stop earlier when residual controls are met.",
+  "write fields every n iterations": "Save the flow fields every N steady iterations. Smaller intervals provide more checkpoints for sampling and consume more storage.",
+  "balance tolerance": "Maximum relative mismatch allowed between total incoming and outgoing flow for the conservation check. Enter a fraction, such as 0.05 for 5%. This is separate from numerical residuals.",
+  "monitor": "Choose the quantity to track alongside residuals. The native worker supports flow balance. Temperature and CO₂ monitors require an adapter that computes those fields.",
+  "start": "Physical start time of the transient calculation in seconds.",
+  "end": "Physical time in seconds at which the transient calculation stops.",
+  "step": "Time increment for a fixed-step solve, or the initial increment when time-step adjustment is enabled.",
+  "adjustable": "Allow a compatible transient solver to adjust the time step to control the Courant number.",
+  "maximum courant intent": "Upper target for the ratio of the distance transported in one time step to the cell size. A compatible adaptive solver can reduce the time step to stay within it.",
+  "write interval": "Physical time between saved fields for a transient study. Smaller intervals increase data volume.",
+  "statistics start": "Time from which statistics can be accumulated, typically after the starting flow has settled.",
+  "storage": "Disk-space allowance requested for saved fields, sampled planes and the run archive.",
+  "retention days": "Requested lifetime of the stored job outputs. The service may enforce a shorter maximum.",
+  "queue": "Requested scheduling destination retained in the study. The native service uses its own runner queue.",
+  "preview sampling planes in 3d": "Show planned sampling positions as translucent planes in the checked air domain. Computed results are loaded separately from Results.",
+  "yz slices (normal x)": "Request slices parallel to the YZ plane, distributed along the building X axis.",
+  "xz slices (normal y)": "Request slices parallel to the XZ plane, distributed along the building Y axis.",
+  "xy slices (normal z)": "Request horizontal slices parallel to the XY plane, distributed over the checked height.",
+  "add probe": "Add a monitoring point inside the checked air volume. Move it in the viewer or enter building coordinates to set the location for field sampling.",
+  "velocity": "Velocity U is a vector in m/s. Results can display its speed or a signed component along a building axis.",
+  "pressure": "Pressure describes the force per unit area. The native incompressible worker writes kinematic pressure in m²/s², which is gauge pressure divided by density.",
+  "age of air": "Request a residence-time field describing how long air takes to reach each point from supply. This requires a compatible scalar solver.",
+  "comfort": "Request supported thermal comfort outputs derived from solved airflow and thermal fields. These require a compatible solver and suitable comfort inputs.",
+  "cfd view scope": "Show the whole building, one measured room or a connected air volume without changing which rooms are included in the simulation.",
+  "cfd patch display": "Colour the checked surface patches by their default appearance, boundary condition type or value, or their requested mesh refinement level.",
+  "refinement shape": "Choose a box, sphere or checked object to define where to request finer cells.",
+  "refinement level": "Number of times snappyHexMesh divides the base cell size by two in each direction. One level can replace one cell with eight.",
+  "refinement object": "Choose a checked CFD object as the source of this region’s measured bounds.",
+  "feature angle": "Angle threshold for identifying changes in surface orientation that may need extra feature refinement.",
+  "snap iterations": "Maximum iterations for pulling background mesh points toward the input surface during snapping.",
+  "maximum non-orthogonality": "Mesh quality limit in degrees for the angle between a cell-to-cell direction and the shared face normal.",
+  "max skewness": "Limit mesh distortion from the offset between a face centre and the intersection of the line connecting its adjacent cell centres.",
+  "max aspect ratio": "Limit how elongated a cell can be. Large ratios can reduce accuracy and stability, depending on the flow direction and discretisation.",
+  "minimum cell volume intent": "Smallest intended valid cell volume in cubic metres. Very small cells can cause poor conditioning or time-step restrictions.",
+  "cleanup tolerance intent": "Distance tolerance for geometry cleanup. Use a small value relative to measured openings and clearances so they survive preparation.",
+  "snap tolerance intent": "Distance tolerance recorded for snapping the mesh to its source surfaces. The native worker chooses its snappyHexMesh controls from its supported recipe.",
+  "small feature": "Scale for judging which geometric details need attention. Keep it below the width of any gap or opening the mesh must preserve.",
+  "load imbalance": "Requested tolerance for the difference in cell count between processors during parallel refinement.",
+  "vent cell": "Nominal size of cells at a vent face. A compatible refinement level must resolve the opening across multiple cells.",
+  "jet cell": "Requested cell size in the volume near an inlet where the air jet develops.",
+  "opening cell": "Requested cell size around windows, doors and other openings recognised by the mesh recipe.",
+  "object cell": "Requested cell size near the geometry of a CFD obstacle.",
+  "wake cell": "Requested cell size in the refinement volume around a CFD obstacle where separated flow can develop.",
+  "wall cell": "Requested cell size on the envelope surfaces. Smaller cells can represent wall features more closely.",
+  "minimum layer coverage": "Fraction of the requested surface intended to retain prism layers. The connected native worker does not generate added layers.",
+  "boundary condition type": "Colour each domain patch by its assigned boundary type so that you can check walls, inlets, outlets and open boundaries.",
+  "flow condition": "Choose the momentum boundary applied to this surface. Use Objects to configure dedicated supply and extract vents.",
+  "thermal condition": "Choose how a thermal-capable solver exchanges heat across the surface, such as insulating it or prescribing a temperature.",
+  "clear override · inherit group": "Remove the explicit setting for this surface so that it uses the condition assigned to its boundary group.",
+  "surface type defaults": "Define fallback conditions for walls, floors, ceilings and other surface types when they have no explicit override.",
+  "find surface · room, surface or source": "Filter the list by room, measured surface name or its source. This only changes which entries are listed.",
+  "refresh connection": "Fetch the worker’s current connectivity, capabilities, resource caps and remaining solver allowance.",
+  "use worker resource limits": "Bring the study’s resource requests within the limits published by the connected worker. Review mesh resolution separately if the cell budget changes.",
+  "review issues": "Open the current study’s geometry checks, worker readiness and submission diagnostics. Select a different study first to inspect its issues.",
+};
+
+export function climoptixFieldDescription(label: string) {
+  const full = label.toLowerCase().replaceAll("₂", "2");
+  const key = full.replace(/\s*\([^)]*\)\s*$/, "");
+  const axis = key.match(/ ([xyz])$/)?.[1].toUpperCase();
+  if (/^[xyz] plane count$/.test(key)) return "Number of equally spaced interior slices normal to this building axis. Increasing the count improves spatial coverage and uses more result storage.";
+  if (/^probe \d+ [xyz]$/.test(key)) return `Coordinate of this monitor along building ${axis}, relative to the building origin. Z is elevation above the origin.`;
+  if (axis) {
+    if (/^origin(?: \(mm\))? [xyz]$/.test(key)) return `Offset of the background grid along building ${axis}. Grid lines repeat every Base Cell increment from this coordinate. Measured geometry stays in place.`;
+    if (key.startsWith("rotation about ")) return `Right-hand rotation about the fixed building ${axis} axis through the grid origin, in degrees. Rotations apply in X, Y, Z order.`;
+    if (key.startsWith("gravity")) return `Gravity acceleration along building ${axis}. With Z up, standard downward gravity is about −9.81 m/s² along Z and zero on X and Y.`;
+    if (key.startsWith("initial velocity")) return `Starting velocity component along building ${axis} in m/s inside the domain. Prescribed vent flow is applied separately at its boundary.`;
+  }
+  if (Object.hasOwn(CFD_CONTROL_HELP, full)) return CFD_CONTROL_HELP[full];
+  return Object.hasOwn(CFD_CONTROL_HELP, key) ? CFD_CONTROL_HELP[key] : undefined;
+}
 
 /** Contextual guidance lives in the native help window, not above editable data. */
 export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
@@ -21,7 +235,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   domain: [
     {
       heading: "Choose the simulation volume",
-      text: "Choose a seed floor and room. Checks refresh automatically after committed changes; Toolbar → Refresh checks can retry manually. Only permanent doorless passages and physical slab voids expand the connected air volume. Doors and windows stop discovery at every open state. Their virtual caps may use an opening/pressure boundary; they are not automatically solid walls. The viewer's inspection scope does not change this seed. Checks are preparation only, never a mesh or solve.",
+      text: "Choose a seed floor and room. Checks refresh automatically after committed changes. Use Refresh checks in the Simulation setup title bar to retry. Only permanent doorless passages and physical slab voids expand the connected air volume. Doors and windows stop discovery at every open state. Their virtual caps may use an opening or pressure boundary. Viewer scope is independent of the seed.",
     },
     {
       heading: "Global mesh settings",
@@ -132,7 +346,7 @@ export const CFD_WORKBENCH_HELP = [
   },
   {
     heading: "Prepare, inspect, export",
-    text: "Choose global mesh settings in Domain, add Equipment, organize coloured surface groups in Bounds and review Physics. Solver contains Mesh, Run, Monitor and Post. Checks refresh automatically; Toolbar → Refresh checks is the manual retry. Preparation and Foamlib settings exports are handoffs, not runnable solver cases. Worker submission still performs its own fresh preflight.",
+    text: "Choose global mesh settings in Domain, add equipment in Objects, organize coloured surface groups in Bounds and review Physics. Solver contains Mesh, Run, Monitor and Post. Use Refresh checks in the Simulation setup title bar to retry preparation. Preparation and Foamlib settings exports contain configuration for solver handoff. Worker submission performs its own preflight.",
   },
   {
     heading: "No simulated results",

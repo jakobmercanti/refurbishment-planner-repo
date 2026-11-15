@@ -2,9 +2,10 @@
 
 import { meshPreset, type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
+import { backgroundCellCount } from "@/lib/climoptixWorkflow";
 import { projectFloors } from "@/lib/buildingDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
-import { CFDNumber, Parameters, labelFor } from "./CFDFields";
+import { CFDNumber, CFDVector, labelFor } from "./CFDFields";
 
 export function DomainPanel({
   project,
@@ -19,6 +20,9 @@ export function DomainPanel({
 }) {
   const floors = projectFloors(project),
     floor = floors.find((f) => f.id === scenario.seed?.floorId) ?? floors[0];
+  const mesh = scenario.mesh;
+  const bounds = report?.domain.boundsMm;
+  const baseCells = bounds ? backgroundCellCount(bounds, mesh) : null;
   return (
     <section data-cfx-collapse-root className="cfx-domain-panel">
       <details open><summary>Seed &amp; connected domain</summary>
@@ -73,12 +77,24 @@ export function DomainPanel({
       )}
       </details><details open><summary>Mesh settings</summary>
       <MeshSettings scenario={scenario} onChange={onChange} />
-      <details>
+      <details data-section-help>
         <summary>Mesh origin &amp; alignment</summary>
-        <Parameters value={scenario.mesh} omit={Object.keys(scenario.mesh).filter(k => !["originMm", "alignmentDeg"].includes(k))}
-          onChange={mesh => onChange({ ...scenario, mesh: mesh as typeof scenario.mesh })} />
-        <p className="cfx-caption">Domain extents follow the measured, connected rooms. Origin and alignment position the mesh grid; they do not resize the building.</p>
+        <fieldset><legend>Origin (mm)</legend>
+          <CFDVector label="Origin" unit="mm" value={mesh.originMm}
+            onChange={([x, y, z]) => onChange({ ...scenario, mesh: { ...mesh, originMm: [x, y, z] } })} />
+        </fieldset>
+        <fieldset><legend>Alignment (°)</legend>
+          <CFDVector label="Rotation about" unit="°" value={[...(mesh.alignmentXYDeg ?? [0, 0]), mesh.alignmentDeg]}
+            min={-360} max={360}
+            onChange={([x, y, z]) => onChange({ ...scenario, mesh: { ...mesh, alignmentXYDeg: x || y ? [x, y] : undefined, alignmentDeg: z } })} />
+        </fieldset>
+        <p className="cfx-caption">The background grid rotates about the origin in X, Y, Z order. Measured rooms and boundary conditions keep their building coordinates.</p>
       </details>
+      <div className="cfx-metrics">
+        <div><small>Predicted cells before refinement</small>
+          <strong>{baseCells?.toLocaleString() ?? "Check domain first"}</strong></div>
+      </div>
+      {baseCells !== null && baseCells > mesh.maxCells && <p className="cfx-error" role="status">The background grid exceeds the cell budget. Increase Base Cell or adjust the origin and alignment.</p>}
       </details>
       {report && (
         <details open><summary>Connectivity &amp; passages</summary>
@@ -178,6 +194,7 @@ function MeshSettings({
                       refinements: scenario.mesh.refinements,
                       originMm: scenario.mesh.originMm,
                       alignmentDeg: scenario.mesh.alignmentDeg,
+                      alignmentXYDeg: scenario.mesh.alignmentXYDeg,
                     },
             })
           }

@@ -34,7 +34,10 @@ test("real captured mouse gestures reorder groups and simulations, cancel safely
   await page.getByRole("combobox", { name: "Workspace", exact: true }).selectOption("CLIMOPTIX");
   const ui = page.locator(".cfx-workspace"); await cfdWindow(ui, "Simulations");
   await layout(page, frame(page), "Maximise window");
-  await button(ui, "New simulation").click(); await button(ui, "New simulation").click();
+  for (let index = 0; index < 2; index++) {
+    await button(ui, "New simulation").click();
+    await button(page.getByRole("dialog", { name: "Create a new simulation?", exact: true }), "Create simulation").click();
+  }
   await eventually(saved,p=>p.cfdScenarios.length===3);
   await button(ui, "Add group").click();
   await eventually(saved,p=>p.cfdSimulationGroups?.some(group=>group.name==='Group'));
@@ -103,6 +106,7 @@ test("boundary folders edit only on request, drafts remain grouped, responsive s
   await button(ui, "View refinements in 3D").click(); await button(ui, "Return to setup").click();
   assert.ok(await frame(page).isVisible());
   await cfdWindow(ui, "Simulations"); await button(ui, "New simulation").click();
+  await button(page.getByRole("dialog", { name: "Create a new simulation?", exact: true }), "Create simulation").click();
   await eventually(saved,p=>p.cfdScenarios.length===2);
   const initialProject = await saved();
   const simulationId = initialProject.cfdScenarios.at(-1).id;

@@ -170,18 +170,17 @@ export async function cfdWindow(ui, name) {
     await page.locator(".cfx-view-window").getByLabel("Move View properties", { exact: true }).focus();
     return;
   }
-  if (await page.locator(".cfx-setup-window[data-window-maximized]:visible").count()) {
-    const phases = { Simulations: ["studies", "Simulations"], Domain: ["domain", "Domain"], Equipment: ["equipment", "Objects"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], Optimisation: ["adjoint", "Optimisation"], "Review & export": ["results", "Results"], "Imported results": ["results", "Results"] };
-    const [id, text] = phases[aliases[name] ?? name];
-    const select = ui.getByRole("combobox", { name: "CFD phase", exact: true });
-    if (await select.isVisible()) await select.selectOption(id);
-    else await ui.getByRole("tablist", { name: "Climoptix setup", exact: true }).getByRole("tab", { name: text, exact: true }).click();
-  } else {
+  const phases = { Simulations: ["studies", "Simulations"], Domain: ["domain", "Domain"], Equipment: ["equipment", "Objects"], Boundaries: ["boundaries", "Bounds"], Physics: ["physics", "Physics"], Solver: ["mesh", "Solver"], Optimisation: ["adjoint", "Optimisation"], "Review & export": ["results", "Results"], "Imported results": ["results", "Results"] };
+  const [id, text] = phases[aliases[name] ?? name];
+  const select = ui.getByRole("combobox", { name: "CFD phase", exact: true });
+  const tab = ui.getByRole("tablist", { name: "Climoptix setup", exact: true }).getByRole("tab", { name: text, exact: true });
+  if (!await select.isVisible() && !await tab.isVisible()) {
     const toolbar = page.getByRole("button", { name: "Toolbar", exact: true });
     if (await toolbar.getAttribute("aria-expanded") !== "true") await toolbar.click();
-    const menuName = name === "Review & export" ? "Imported results" : aliases[name] ?? name;
-    await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitem", { name: menuName, exact: true }).click();
+    await page.getByRole("menu", { name: "Climoptix windows", exact: true }).getByRole("menuitem", { name: "Show setup window", exact: true }).click();
   }
+  if (await select.isVisible()) await select.selectOption(id);
+  else await tab.click();
   if (name === "Review & export") await ui.getByRole("tab", { name: "Review & files", exact: true }).click();
   if (name === "Thermal Envelope & Solar Conditions") await ui.getByRole("tab", { name: "Thermal", exact: true }).click();
   if (name === "Convergence monitor") await ui.getByRole("tab", { name: "Monitor", exact: true }).click();
@@ -191,9 +190,7 @@ export async function cfdWindow(ui, name) {
 
 export async function cfdRefresh(ui, wait = true) {
   const page = typeof ui.page === "function" ? ui.page() : ui;
-  const toolbar = page.getByRole("button", { name: "Toolbar", exact: true });
-  if (await toolbar.getAttribute("aria-expanded") !== "true") await toolbar.click();
-  const refresh = page.getByRole("menuitem", { name: "Refresh checks", exact: true });
+  const refresh = ui.locator(".cfx-setup-window .cfx-header-simulation").getByRole("button", { name: "Refresh checks", exact: true });
   await eventually(() => refresh.isEnabled(), Boolean);
   const before = await ui.getAttribute("data-preparation-stamp");
   const response = wait ? page.waitForResponse(r => new URL(r.url()).pathname.endsWith("/climoptix/prepare")) : null;
