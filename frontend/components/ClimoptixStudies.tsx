@@ -77,9 +77,9 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
       <button className="cfx-danger" disabled={resetting || (!scenarios.length && !groups.length) || scenarios.some(s => busy(s) || entries[s.id]?.dispatched)}
         title={scenarios.some(s => busy(s) || entries[s.id]?.dispatched) ? "Resolve active or unknown worker submissions before clearing simulations" : undefined}
         onClick={e => onClear(e.currentTarget)}>Clear all</button>
-      <CFDConfirmAction label={resetting ? "Preparing defaults…" : "Restore default"} title="Restore the default workbench?" confirmLabel="Restore default"
+      <CFDConfirmAction label={resetting ? "Preparing defaults…" : "Restore default"} title="Restore CFD defaults?" confirmLabel="Restore default"
         disabled={resetting || scenarios.some(s => busy(s) || entries[s.id]?.dispatched)}
-        description="Back up the workbench, then replace its simulations with one starter case. This clears loaded results and permanently deletes their saved worker files, including archived simulations’ results. The starter inlet and outlet replace shared vents in the checked rooms. Undo restores simulation settings and vents. Deleted result files cannot be recovered."
+        description="Back up the project and restore the selected scenario’s CFD settings. Existing shared vents are reused. Saved worker files for this scenario are permanently deleted. Undo restores the CFD settings."
         onConfirm={onReset} />
       </div>
       <label className="cfx-check"><input type="checkbox" checked={showArchived} onChange={e => onShowArchived(e.target.checked)} />Archived</label>

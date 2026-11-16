@@ -3,7 +3,6 @@
 import type { ReactNode } from "react";
 import { MAX_SAMPLING_PLANES, MIN_SAMPLING_PLANES, type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
-import { samplingPlanes } from "@/lib/climoptixWorkflow";
 import { CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
 import { CFDNumber, Parameters } from "./CFDFields";
 import { MeshPanel } from "./ClimoptixMesh";
@@ -168,36 +167,26 @@ function RunPanel({
 
 function PostPanel({
   scenario,
-  report,
   onChange,
-  onVTK,
-  onResults,
   selected,
   onSelect,
   samplingPreview,
   onSamplingPreview,
 }: {
   scenario: CFDScenario;
-  report: CFDReport | null;
   onChange: (s: CFDScenario) => void;
-  onVTK: (f: File) => void;
-  onResults?: () => void;
   selected:string|null;
   onSelect:(id:string|null)=>void;
   samplingPreview: boolean;
   onSamplingPreview: (show: boolean) => void;
 }) {
-  const post = scenario.postProcessing,
-    planes = samplingPlanes(report?.domain.boundsMm ?? null, post);
-  const requested = (["x", "y", "z"] as const).reduce((count, axis) => count + (post[axis].enabled ? post[axis].count : 0), 0);
+  const post = scenario.postProcessing;
   return (
     <section className="cfx-post-panel" data-cfx-collapse-root>
       <div className="cfx-inline-toolbar"><h3>Post-processing</h3><CFDCollapseAll/></div>
       <CFDProbes scenario={scenario} onChange={onChange} selected={selected} onSelect={onSelect}/>
       <details open><summary>Sampling planes</summary>
       <label className="cfx-check"><input type="checkbox" checked={samplingPreview} onChange={event => onSamplingPreview(event.target.checked)} />Preview sampling planes in 3D</label>
-      <p className="cfx-caption">Equally spaced interior slices. The normal is perpendicular to the named plane; positions use the checked domain in millimetres.</p>
-      <p className="cfx-caption">Execution limit: {MAX_SAMPLING_PLANES} enabled planes in total across X/Y/Z. Existing memory and storage budgets still apply.</p>
       <div className="cfx-post-planes" role="group" aria-label="Sampling plane directions">
       {(["x", "y", "z"] as const).map((axis) => (
         <div className="cfx-slice-row" key={axis}>
@@ -282,47 +271,6 @@ function PostPanel({
       </div>
       <small className="cfx-caption">One means every saved field set, not every solver iteration.</small>
       </details>
-      <details>
-        <summary>Plane positions · {report?.domain.boundsMm ? planes.length : `${requested} requested · domain pending`}</summary>
-        {!report?.domain.boundsMm ? (
-          <p>Choose a seed room in Domain and resolve preparation checks to calculate plane positions.</p>
-        ) : !planes.length ? (
-          <p>No sampling planes selected.</p>
-        ) : (
-          <ul className="cfx-inspector-list">
-            {planes.map((p) => (
-              <li key={p.id}>
-                <strong>{p.id}</strong>
-                <small>
-                  {p.axis} ={" "}
-                  {p.pointMm[["X", "Y", "Z"].indexOf(p.axis)].toLocaleString()}{" "}
-                  mm · checked domain
-                </small>
-              </li>
-            ))}
-          </ul>
-        )}
-      </details>
-      <details open><summary>Results &amp; imported files</summary>
-      <div className="cfx-equal-actions">{onResults&&<button className="cfx-primary" onClick={onResults}>Open online results &amp; downloads</button>}
-      <label className="cfx-file">
-        Import VTK/VTI result
-        <input
-          type="file"
-          aria-label="Open VTK result"
-          accept=".vtp,.vtk,.vti"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (f) onVTK(f);
-          }}
-        />
-      </label>
-      </div>
-      <small className="cfx-caption">
-        ASCII .vtp / .vtk / .vti · 25 MB · external, unverified. Use Online results above for the connected job.
-      </small>
-      </details>
     </section>
   );
 }
@@ -340,8 +288,6 @@ export function ClimoptixSimulation({
   onExport,
   exporting,
   exportDisabled,
-  onVTK,
-  onResults,
   convergence,
   jobProgress,
   onShowRefinements,
@@ -369,8 +315,6 @@ export function ClimoptixSimulation({
   connection?: RunConnection;
   domain: ReactNode;
   optimisation: ReactNode;
-  onVTK: (f: File) => void;
-  onResults?: () => void;
 }) {
   return (
     <>
@@ -463,10 +407,7 @@ export function ClimoptixSimulation({
       >
         <PostPanel
           scenario={scenario}
-          report={report}
           onChange={onChange}
-          onVTK={onVTK}
-          onResults={onResults}
           selected={selected}
           onSelect={onSelect}
           samplingPreview={samplingPreview}

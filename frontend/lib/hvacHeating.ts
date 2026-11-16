@@ -60,7 +60,9 @@ function heatingSources(project: ProjectDocument, operating?: HvacOperatingScena
         designIndoorTemperatureC: operating.conditions.roomC, designTemperatureOverride: true,
       }],
     };
-    heating = withEnergyFabric(heating, data.energyLayout ?? newEnergyProject(), data.rooms);
+    const energy = data.energyLayout ?? newEnergyProject();
+    const constructionId = energy.scenarios.some(s => s.scenarioId === operating?.id) ? operating!.id : energy.activeScenarioId;
+    heating = withEnergyFabric(heating, energy, data.rooms, constructionId);
     return heatingResults(data.rooms, heating).rooms.map(row => ({ floorId: floor.id, row, heating }));
   });
 }

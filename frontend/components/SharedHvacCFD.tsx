@@ -17,12 +17,10 @@ export function SharedHvacCFD({ scenario, onEditSource }: { scenario: CFDScenari
 
   const operating = hvac.scenarios.find(s => s.id === link.operatingScenarioId);
   const room = scenario.seed ?? operating;
-  const roomScenarios = hvac.scenarios.filter(s => s.id === operating?.id || s.floorId === room?.floorId && s.roomId === room?.roomId);
-  const selectScenario = (id: string | null, scenarios = hvac.scenarios) => {
+  const selectScenario = (id: string, scenarios = hvac.scenarios) => {
     try {
       ctx.commit({
-        ...hvac, scenarios, activeScenarioId: id ?? hvac.activeScenarioId,
-        bindings: { ...hvac.bindings, [scenario.id]: { ...link, operatingScenarioId: id, editMode: id ? "override" : "design", overrides: {} } },
+        ...hvac, scenarios, activeScenarioId: id,
       });
       setNewName(null);
       setError("");
@@ -55,12 +53,11 @@ export function SharedHvacCFD({ scenario, onEditSource }: { scenario: CFDScenari
   return <details open className="cfx-card" aria-label="Shared HVAC devices">
     <summary>Shared HVAC design &amp; operation</summary>
     <label>Shared operating scenario
-      <select aria-label="CFD shared operating scenario" value={newName === null ? link.operatingScenarioId ?? "" : NEW_SCENARIO} onChange={event => {
+      <select aria-label="CFD shared operating scenario" value={newName === null ? hvac.activeScenarioId ?? scenario.id : NEW_SCENARIO} onChange={event => {
         if (event.target.value === NEW_SCENARIO) { setNewName(""); setError(""); }
-        else selectScenario(event.target.value || null);
+        else selectScenario(event.target.value);
       }}>
-        <option value="">Case air settings · shared design</option>
-        {roomScenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        {hvac.scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         <option value={NEW_SCENARIO} disabled={!room || hvac.scenarios.length >= 100}>New scenario...</option>
       </select>
     </label>

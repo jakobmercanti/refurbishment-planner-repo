@@ -18,10 +18,10 @@ export function CFDProbes({scenario,onChange,selected,onSelect}:{scenario:CFDSce
     {probes.map((point,index)=><div key={index} className={`cfx-probe-row cfx-probe-entry ${selected===`probe:${index}`?"selected":""}`} role="group" aria-label={`Probe ${index+1}`} onFocus={()=>onSelect(`probe:${index}`)}>
       <button className="cfx-probe-name" aria-pressed={selected===`probe:${index}`} onClick={()=>onSelect(`probe:${index}`)}>Probe {index+1}</button>
       {point.map((value,axis)=><CFDNumber key={axis} label={`Probe ${index+1} ${["X","Y","Z"][axis]} (mm)`} value={value} onChange={next=>commit(probes.map((old,at)=>at===index?old.map((v,a)=>a===axis?next:v) as typeof point:old))}/>)}
-      <details className="cfx-row-menu"><summary aria-label={`Probe ${index+1} actions`}>⋯</summary><div>
-        <button disabled={probes.length>=1000} onClick={()=>{commit([...probes,[...point]]);onSelect(`probe:${probes.length}`);}}>Duplicate probe {index+1}</button>
-        <button onClick={()=>{commit(probes.filter((_,at)=>at!==index));onSelect(null);}}>Remove probe {index+1}</button>
-      </div></details>
+      <div className="cfx-equal-actions cfx-probe-actions">
+        <button aria-label={`Duplicate probe ${index+1}`} disabled={probes.length>=1000} onClick={()=>{commit([...probes,[...point]]);onSelect(`probe:${probes.length}`);}}>Duplicate</button>
+        <button aria-label={`Delete probe ${index+1}`} className="cfx-danger" onClick={()=>{commit(probes.filter((_,at)=>at!==index));onSelect(null);}}>Delete</button>
+      </div>
     </div>)}
     {!probes.length&&<p>No probes. Add one to request point monitoring in the next run.</p>}
     </fieldset>

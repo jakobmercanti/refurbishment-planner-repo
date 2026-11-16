@@ -31,7 +31,7 @@ const ventOperation = z.object({
 }).strict();
 const heaterOperation = z.object({ enabled: z.boolean().default(true), actualW: finite.nonnegative().max(1e9).nullable().default(null) }).strict();
 const operatingScenario = z.object({
-  id, name: z.string().trim().min(1).max(100), floorId: id, roomId: id,
+  id, name: z.string().trim().min(1).max(120), floorId: id, roomId: id,
   conditions: hvacConditionsSchema,
   ventOverrides: z.record(id, ventOperation).default({}),
   heaterOverrides: z.record(id, heaterOperation).default({}),
@@ -155,14 +155,16 @@ export function operatingVents(hvac: HvacProject, operating?: HvacOperatingScena
   });
 }
 
-export function resolveHvacVents(project: ProjectDocument, scenario: CFDScenario): CFDVent[] {
+export function resolveHvacVents(project: ProjectDocument, scenario: CFDScenario, includeExcluded = false): CFDVent[] {
+  const excluded = new Set(includeExcluded ? [] : scenario.hiddenObjectIds);
   const hvac = project.hvac, link = hvac?.bindings[scenario.id];
-  if (!hvac || !link) return scenario.vents;
+  if (!hvac || !link) return scenario.vents.filter(vent => !excluded.has(`vent:${vent.id}`));
   const operating = hvac.scenarios.find(s => s.id === link.operatingScenarioId);
   const designs = operatingVents(hvac, operating);
   const rooms = sharedCaseRooms(project, scenario);
   return designs.flatMap(d => {
     const id = d.vent.id, override = link.overrides[id];
+    if (excluded.has(`vent:${id}`)) return [];
     if (!link.deviceIds.includes(id) && !rooms.some(r => r.floorId === d.floorId && r.roomId === d.roomId)) return [];
     if (!(override?.enabled ?? d.enabled)) return [];
     return [ventSchema.parse({ ...d.vent, valueSI: override?.valueSI ?? d.vent.valueSI, temperatureK: override?.temperatureK ?? d.vent.temperatureK })];
@@ -188,7 +190,7 @@ export function commitHvacCFD(project: ProjectDocument, scenarios: CFDScenario[]
       if (hvac.scenarios.length >= 100) throw new Error("The 100-scenario HVAC limit is reached. The case was not duplicated.");
       const overrides = structuredClone(operation.ventOverrides);
       for (const [id, override] of Object.entries(copy.overrides)) overrides[id] = { ...overrides[id], ...override };
-      const cloned = { ...structuredClone(operation), id: crypto.randomUUID(), name: `${operation.name.slice(0, 95)} copy`, ventOverrides: overrides };
+      const cloned = { ...structuredClone(operation), id: copyId, name: scenarios.find(s => s.id === copyId)!.name, ventOverrides: overrides };
       hvac.scenarios.push(cloned); copy.operatingScenarioId = cloned.id; copy.overrides = {};
     }
     hvac.bindings[copyId] = copy;
@@ -319,6 +321,6 @@ export function reorderHvacRoomVents(project: ProjectDocument, floorId: string, 
   return { ...project, hvac: hvacSchema.parse({ ...hvac, devices }), ...(scenarios ? { cfdScenarios: scenarios } : {}) };
 }
 export function roomOperatingScenario(hvac: HvacProject, floorId: string, roomId: string) {
-  const scenarios = hvac.scenarios.filter(scenario => scenario.floorId === floorId && scenario.roomId === roomId);
-  return scenarios.find(scenario => scenario.id === hvac.activeScenarioId) ?? scenarios[0];
+  return hvac.scenarios.find(scenario => scenario.id === hvac.activeScenarioId)
+    ?? hvac.scenarios.find(scenario => scenario.floorId === floorId && scenario.roomId === roomId);
 }

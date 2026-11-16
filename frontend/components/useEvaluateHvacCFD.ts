@@ -18,7 +18,7 @@ export function useEvaluateHvacCFD(floorId: string, roomId: string | undefined, 
   async function evaluate(analysisMode: HvacAnalysisMode = "airflow") {
     if (!ctx || !project || !roomId || request.current && !request.current.signal.aborted) return;
     const { apiUrl } = ctx;
-    if ((project.cfdScenarios?.length ?? 0) >= 100) {
+    if ((project.cfdScenarios?.length ?? 0) >= 100 && !project.cfdScenarios?.some(s => s.id === project.hvac?.activeScenarioId)) {
       setError("Remove an existing simulation before creating another CFD case.");
       return;
     }
@@ -34,11 +34,12 @@ export function useEvaluateHvacCFD(floorId: string, roomId: string | undefined, 
       const operating = roomOperatingScenario(hvac, floorId, roomId) ?? {
         ...seed, id: crypto.randomUUID(), name: "Nominal operation", conditions: hvacConditionsSchema.parse(defaults), ventOverrides: {}, heaterOverrides: {},
       };
-      const scenario = { ...newCFDScenario(project.projectId, `${operating.name} · ${analysisMode === "airflow" ? "Airflow" : "HVAC"}`), seed };
+      const saved = project.cfdScenarios?.find(s => s.id === operating.id);
+      const scenario = { ...(saved ?? newCFDScenario(project.projectId, operating.name)), id: operating.id, seed };
       const deviceIds = hvac.devices.filter(d => d.floorId === floorId && d.roomId === roomId).map(d => d.vent.id);
       const nextHvac = hvacSchema.parse({ ...hvac, activeScenarioId: operating.id,
         scenarios: [...hvac.scenarios.filter(s => s.id !== operating.id), operating],
-        bindings: { ...hvac.bindings, [scenario.id]: { analysisMode, operatingScenarioId: operating.id, deviceIds, editMode: "design", overrides: {} } },
+        bindings: { ...hvac.bindings, [scenario.id]: { analysisMode, operatingScenarioId: operating.id, deviceIds, editMode: "override", overrides: {} } },
       });
       const nextProject = { ...project, hvac: nextHvac };
       async function prepare() {
@@ -59,7 +60,7 @@ export function useEvaluateHvacCFD(floorId: string, roomId: string | undefined, 
       const inputHash = await preparationRevision(boundary.sourceInput);
       signal.throwIfAborted();
       nextHvac.snapshots = [{ caseId: scenario.id, operatingScenarioId: operating.id, createdAt: new Date().toISOString(), inputHash, boundaryJson: JSON.stringify(boundary) }, ...nextHvac.snapshots].slice(0, 5);
-      ctx.commit(nextHvac, [...(project.cfdScenarios ?? []), scenario]);
+      ctx.commit(nextHvac, saved ? project.cfdScenarios!.map(s => s.id === scenario.id ? scenario : s) : [...(project.cfdScenarios ?? []), scenario]);
       ctx.navigateCFD(scenario.id);
     } catch (cause) {
       if (!signal.aborted) setError(cause instanceof Error ? cause.message : "CFD preflight unavailable.");

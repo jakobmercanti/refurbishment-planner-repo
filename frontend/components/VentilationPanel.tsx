@@ -41,10 +41,16 @@ export function HeatingVentilationTabs({ children }: { children: ReactNode }) {
 }
 function HeatingOperatingStatus() {
   const ctx = useHvac(), hvac = ctx?.project.hvac, operating = hvac?.scenarios.find(s => s.id === hvac.activeScenarioId);
-  if (!ctx || !hvac || !operating || !Object.keys(operating.heaterOverrides).length) return null;
-  return <details><summary>HVAC operating overrides · {operating.name}</summary><p>Design ratings and geometry below are retained. Conventional Ventilation and its linked CFD case use these operating overrides.</p>
-    {Object.entries(operating.heaterOverrides).map(([id, op]) => <p key={id}>{id}: {op.enabled ? op.actualW === null ? "Heating output model" : `${op.actualW} W effective room input` : "Off"}</p>)}
-    <button onClick={() => ctx.commit({ ...hvac, scenarios: hvac.scenarios.map(s => s.id === operating.id ? { ...s, heaterOverrides: {} } : s) })}>Reset heater scenario overrides</button>
+  if (!ctx || !hvac?.scenarios.length) return null;
+  return <details><summary>Shared operating scenario</summary>
+    <label>Operating scenario<select value={operating?.id ?? ""} onChange={e => ctx.commit({ ...hvac, activeScenarioId: e.target.value || null })}>
+      <option value="">Design values</option>
+      {hvac.scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+    </select></label>
+    {operating && Object.keys(operating.heaterOverrides).length > 0 && <>
+      {Object.entries(operating.heaterOverrides).map(([id, op]) => <p key={id}>{id}: {op.enabled ? op.actualW === null ? "Heating output model" : `${op.actualW} W effective room input` : "Off"}</p>)}
+      <button onClick={() => ctx.commit({ ...hvac, scenarios: hvac.scenarios.map(s => s.id === operating.id ? { ...s, heaterOverrides: {} } : s) })}>Reset heater scenario overrides</button>
+    </>}
   </details>;
 }
 const show = (n: number | null, digits = 2) => n === null ? "Unknown" : n.toFixed(digits);
@@ -77,7 +83,11 @@ export function VentilationPanel() {
   const currentFaces = checked?.geometryKey === ctx.geometryKey && checked.apiUrl === ctx.apiUrl && checked.input === input;
   const report = currentFaces ? checked.report : hosts.report;
   function commit(next: HvacProject) { try { ctx.commit(hvacSchema.parse(next)); setError(""); } catch (e) { setError(hvacErrorMessage(e)); } }
-  function saveScenario(next: HvacOperatingScenario) { commit({ ...hvac, activeScenarioId: next.id, scenarios: [...hvac.scenarios.filter(s => s.id !== next.id), next] }); }
+  function saveScenario(next: HvacOperatingScenario) {
+    const scenarios = hvac.scenarios.some(s => s.id === next.id)
+      ? hvac.scenarios.map(s => s.id === next.id ? next : s) : [...hvac.scenarios, next];
+    commit({ ...hvac, activeScenarioId: next.id, scenarios });
+  }
   function conditions(patch: Partial<HvacConditions>) { saveScenario({ ...operating, conditions: { ...operating.conditions, ...patch } }); }
   async function checkGeometry() {
     request.current?.abort(); const abort = new AbortController(); request.current = abort; setBusy(true); setError("");
@@ -111,7 +121,7 @@ export function VentilationPanel() {
     return { ...entry, detail: `${entry.detail}${!device.enabled ? " · Off" : device.extractKind === "return" ? " · Return" : ""}${operating.ventOverrides[entry.sourceId] ? " · Scenario override" : ""}` };
   });
   let result: ReturnType<typeof conventionalHvac> | null = null, calculationError = "";
-  try { if (room) result = conventionalHvac({ ...project, hvac }, operating); } catch (e) { calculationError = e instanceof Error ? e.message : "Calculation unavailable."; }
+  try { if (room) result = conventionalHvac({ ...project, hvac }, { ...operating, floorId: floor.id, roomId: room.id }); } catch (e) { calculationError = e instanceof Error ? e.message : "Calculation unavailable."; }
   const snapshot = hvac.snapshots.find(s => s.operatingScenarioId === operating.id);
   const snapshotCurrent = snapshot ? (() => { try { const old = project.cfdScenarios?.find(s => s.id === snapshot.caseId); return !!old && JSON.parse(snapshot.boundaryJson).sourceInput === hvacBoundaryPackage(project, old).sourceInput; } catch { return false; } })() : false;
   return <section className={styles.panel} aria-label="Ventilation controls">
@@ -119,7 +129,7 @@ export function VentilationPanel() {
     <div className={styles.roomPickerHeading}><strong>Room ventilation</strong><WindowHelpButton title="Conventional HVAC" steps={[{ heading: "Shared devices", text: "Vents use one project identity in Heating/Ventilation and CFD. Permanent edits update both immediately. Scenario overrides retain design values. Face placement, dragging and obstruction checks use the existing CFD geometry editor." }, { heading: "Sensible zone balance", text: "Steady, well-mixed zone approximation: ACH = flow × 3600 / volume. Sensible gain = density × cp × flow × (supply − room). Envelope U×A, infiltration, gains and room-effective heating are counted once. Radiant exchange is lumped over the room, not instantly resolved in local air. Humidity, latent load, diffuser throw and compliance are outside this model." }]} /></div>
     <div className={`${styles.grid} ${styles.hvacContext}`}>
       <label>Measured room · {floor.name}<select aria-label="Ventilation room" value={room?.id ?? ""} onChange={e => { request.current?.abort(); setBusy(false); setRoomId(e.target.value); setSelected(null); }}>{floor.content.rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
-      <label>Operating scenario<select aria-label="HVAC operating scenario" value={operating.id} onChange={e => commit({ ...hvac, activeScenarioId: e.target.value })}>{!hvac.scenarios.some(s => s.id === operating.id) && <option value={operating.id}>{operating.name}</option>}{hvac.scenarios.filter(s => s.floorId === floor.id && s.roomId === room?.id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+      <label>Operating scenario<select aria-label="HVAC operating scenario" value={operating.id} onChange={e => commit({ ...hvac, activeScenarioId: e.target.value })}>{!hvac.scenarios.some(s => s.id === operating.id) && <option value={operating.id}>{operating.name}</option>}{hvac.scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
     </div>
     {!room && <p role="status">Draw a closed measured room first.</p>}
     <p className={styles.note}>{devices.filter(d => d.vent.role === "supply").length} supply · {devices.filter(d => d.vent.role === "extract" && d.extractKind === "exhaust").length} extract · {devices.filter(d => d.extractKind === "return").length} return · {hvac.devices.length} in project. Other rooms remain saved.</p>

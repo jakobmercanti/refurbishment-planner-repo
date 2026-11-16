@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { physicsPreset, type CFDScenario } from "@/lib/climoptixDocument";
 import { Parameters } from "./CFDFields";
@@ -10,9 +9,7 @@ import { requiresHvacThermalExecution } from "@/lib/hvacBridge";
 export function PhysicsPanel({
   scenario,
   onChange,
-  actions,
 }: {
-  actions?:ReactNode;
   scenario: CFDScenario;
   onChange: (s: CFDScenario) => void;
 }) {
@@ -27,9 +24,16 @@ export function PhysicsPanel({
     onChange={value => onChange({ ...scenario, physics: { ...p, ...value, preset: markCustom ? "custom" : p.preset } })} />;
   return (
     <section data-cfx-collapse-root className="cfx-physics-panel">
-      <div className="cfx-inline-toolbar">{actions}<CFDCollapseAll /></div>
+      <CFDCollapseAll />
       <details open><summary>Models &amp; equations</summary>
       <div className="cfx-grid cfx-physics-primary">
+      {ctx && ctx.project.hvac && binding && <label>Analysis mode
+        <select value={binding.analysisMode ?? (p.energy ? "thermal" : "airflow")} onChange={event => {
+          const hvac = ctx.project.hvac!;
+          const analysisMode = event.target.value === "thermal" ? "thermal" : "airflow";
+          ctx.commit({ ...hvac, bindings: { ...hvac.bindings, [scenario.id]: { ...binding, analysisMode } } });
+        }}><option value="airflow">Isothermal airflow</option><option value="thermal">Thermal airflow</option></select>
+      </label>}
       <label>
         Physics preset
         <select

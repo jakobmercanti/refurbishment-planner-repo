@@ -253,7 +253,11 @@ body .cfx-workspace .cfx-equal-actions { display:grid; grid-template-columns:rep
 body .cfx-workspace .cfx-equal-actions > :is(button,label) { width:100%; min-width:0; margin:0; text-align:center; display:flex; align-items:center; justify-content:center; }
 body .cfx-workspace .cfx-job-progress { height:auto; min-height:32px; padding:5px 8px; text-align:center; overflow-wrap:anywhere; }
 body .cfx-workspace .cfx-job-progress .cfx-progress-label { font:600 12px/1.4 var(--font-sans,Arial,sans-serif); }
-body .cfx-workspace .cfx-probe-entry { display:grid; grid-template-columns:90px repeat(3,minmax(0,1fr)) 40px; gap:6px; align-items:end; padding:8px; margin-block:8px; border:1px solid var(--line); border-radius:12px; }
+body .cfx-workspace .cfx-probe-entry { display:grid; grid-template-columns:90px repeat(3,minmax(0,1fr)) minmax(140px,auto); gap:6px; align-items:end; padding:8px; margin-block:8px; border:1px solid var(--line); border-radius:12px; }
+body .cfx-workspace .cfx-probe-entry > .cfx-probe-actions { margin:0; }
+body .cfx-workspace .cfx-removed-device-list { display:grid; gap:var(--density-field-gap); }
+body .cfx-workspace .cfx-live-thermal { overflow-y:auto; scrollbar-gutter:stable; }
+body .cfx-workspace .cfx-live-thermal > details { flex:none; border:1px solid var(--line); border-radius:var(--radius-panel); padding:var(--density-window-padding); }
 body .cfx-workspace .cfx-probe-entry.selected { border-color:#e97700; background:#ff950012; }
 body .cfx-workspace button.cfx-probe-marker { min-width:26px; min-height:26px; width:26px; height:26px; padding:1px; border:1px solid white; border-radius:50%; color:white; font:600 10px/1 Arial,sans-serif; box-shadow:0 1px 5px #0004; }
 body .cfx-workspace .cfx-file-explorer { width:100%; border-collapse:collapse; text-align:left; font-size:13px; }
@@ -305,6 +309,10 @@ body .cfx-setup-window .floating-toolbar-header-content select { min-height:30px
   body .cfx-workspace .cfx-probe-entry { grid-template-columns:repeat(3,minmax(0,1fr)); }
   body .cfx-workspace .cfx-probe-entry > .cfx-probe-name { grid-column:1/-1; }
   body .settings-dialog .settings-engineering-units { grid-template-columns:1fr; }
+}
+@container cfx-setup (max-width:640px) {
+  body .cfx-workspace .cfx-probe-entry { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  body .cfx-workspace .cfx-probe-entry > :is(.cfx-probe-name,.cfx-probe-actions) { grid-column:1/-1; }
 }
 body .cfx-workspace .cfx-view-checks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; align-items:start; }
 body .cfx-workspace .cfx-view-checks .cfx-check { min-width:0; margin:0; }

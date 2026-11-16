@@ -20,6 +20,7 @@ import { ProjectHistory } from "./projectHistory";
 import { matchesProjectScope } from "./projectScope";
 import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
 import { commitHvacCFD, hvacSchema, migrateHvac, type HvacProject, type HvacDomainScope } from "./hvacDocument";
+import { syncSharedScenarios, type ScenarioEditor } from "./sharedScenarios";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
@@ -34,7 +35,11 @@ export function useLocalProject() {
   const history = useRef(new ProjectHistory());
   const [historyStatus,setHistoryStatus]=useState({canUndo:false,canRedo:false});
   const refreshHistory=useCallback(()=>{const canUndo=history.current.past.length>0,canRedo=history.current.future.length>0;setHistoryStatus(s=>s.canUndo===canUndo&&s.canRedo===canRedo?s:{canUndo,canRedo});},[]);
-  const replace = useCallback((p: ProjectDocument) => { resetSession();history.current.clear();refreshHistory(); current.current = p; lastSaved.current = JSON.stringify(p); setProject(p); setRestore(p); setRevision(r => r + 1); }, [refreshHistory,resetSession]);
+  const replace = useCallback((p: ProjectDocument) => {
+    const shared = syncSharedScenarios(p);
+    resetSession(); history.current.clear(); refreshHistory();
+    current.current = shared; lastSaved.current = JSON.stringify(p); setProject(shared); setRestore(shared); setRevision(r => r + 1);
+  }, [refreshHistory,resetSession]);
   useEffect(() => {
     let cancelled = false;
     void projectRepository.currentProject().then(p => { if (!cancelled && p) { replace(p); setStatus("Saved locally"); } }).catch(() => {
@@ -42,12 +47,17 @@ export function useLocalProject() {
     });
     return () => { cancelled = true; };
   }, [replace]);
-  const update = useCallback((changes: Partial<ProjectDocument>, forceHistory = false, recordHistory = true) => {
+  const update = useCallback((changes: Partial<ProjectDocument>, forceHistory = false, recordHistory = true, scenarioEditor?: ScenarioEditor) => {
     const p = current.current; if (!p) return;
     // An empty floor publishes a fresh [] when the editor is restored. Avoid
     // feeding an unchanged snapshot back into the editor and starving autosave.
     if (Object.entries(changes).every(([key,value]) => JSON.stringify(p[key as keyof ProjectDocument]) === JSON.stringify(value))) return;
     let next = migrateHvac({ ...p, ...changes, updatedAt: new Date().toISOString() });
+    if (scenarioEditor) {
+      next = syncSharedScenarios(next, p, scenarioEditor);
+      if (new TextEncoder().encode(JSON.stringify(next)).byteLength > 8 * 1024 * 1024)
+        throw new Error("The shared scenario update would exceed the 8 MB project limit.");
+    }
     if (changes.rooms && next.heatingLayout) next = { ...next, heatingLayout: queueHeatingRoomResize(p.rooms, next.rooms, next.heatingLayout) };
     if(changes.rooms&&next.building?.roof.roomOverrides){const ids=new Set(projectFloors(next).flatMap(f=>f.content.rooms.map(room=>room.id)));next={...next,building:{...next.building,roof:{...next.building.roof,roomOverrides:next.building.roof.roomOverrides.filter(item=>ids.has(item.roomId))}}};}
     if (recordHistory) history.current.record(p,next,forceHistory);
@@ -123,14 +133,14 @@ export function useLocalProject() {
     const p = current.current; if (!p) return;
     const next = commitHeatingElements(heatingLayout, p.rooms); update(next, false, !refreshedResize); return next.rooms;
   }, [update]);
-  const setEnergyLayout = useCallback((energyLayout: EnergyProject) => update({ energyLayout }), [update]);
+  const setEnergyLayout = useCallback((energyLayout: EnergyProject) => update({ energyLayout }, false, true, "energy"), [update]);
   const setHvac = useCallback((hvac: HvacProject, scenarios?: CFDScenario[], scope?: string) => {
     const p = current.current;
     if (!p || !matchesProjectScope(p, scope, sessionRef.current)) return;
     const changes = { hvac: hvacSchema.parse(hvac), ...(scenarios ? { cfdScenarios: cfdScenariosSchema.parse(scenarios) } : {}) };
     if (new TextEncoder().encode(JSON.stringify({ ...p, ...changes })).byteLength > 8 * 1024 * 1024) throw new Error("This HVAC handoff would exceed the 8 MB project limit. Export the boundary package and remove an older saved handoff before retrying.");
     parseProject({ ...p, ...changes });
-    update(changes, true);
+    update(changes, true, true, "hvac");
   }, [update]);
   const setCFDScenarios = useCallback((scenarios: CFDScenario[],scope?:string,checkpoint=false,groups?:CFDSimulationGroup[],domain?:HvacDomainScope,copiedFrom?:Record<string,string>) => {
     const p=current.current;
@@ -138,10 +148,28 @@ export function useLocalProject() {
     const next=cfdScenariosSchema.parse(scenarios);
     if(next.some(s=>s.sourceBuildingId!==p.projectId))throw new Error("Scenario source does not match this project.");
     const shared = commitHvacCFD(p, next, domain, copiedFrom);
-    update({hvac:shared.hvac,cfdScenarios:shared.cfdScenarios,...(groups ? {cfdSimulationGroups:simulationGroupsSchema.parse(groups)} : {})},checkpoint);
+    update({hvac:shared.hvac,cfdScenarios:shared.cfdScenarios,...(groups ? {cfdSimulationGroups:simulationGroupsSchema.parse(groups)} : {})},checkpoint,true,"cfd");
   },[update]);
+  const selectSharedScenario = useCallback((id: string, scope?: string) => {
+    const p = current.current;
+    if (!p?.hvac || !matchesProjectScope(p,scope,sessionRef.current) ||
+        !p.hvac.scenarios.some(s => s.id === id) || p.hvac.activeScenarioId === id) return;
+    update({ hvac: { ...p.hvac, activeScenarioId: id } }, false, false, "hvac");
+  }, [update]);
   const restoreEdit = useCallback((p: ProjectDocument | null) => { if(!p)return null;refreshHistory(); const next={...p,updatedAt:new Date().toISOString()};current.current=next;setProject(next);setRestore(next);setRevision(r=>r+1);return next; },[refreshHistory]);
-  const editBuilding = useCallback((operation:(p:ProjectDocument)=>ProjectDocument,resetDocument=false) => { const before=current.current;if(!before)return null;const result=operation(before);if(result===before)return before;const next=parseProject(result);if(JSON.stringify(before.building?.floors.map(f=>f.id))!==JSON.stringify(next.building?.floors.map(f=>f.id)))validateFloorSupports(projectFloors(next));history.current.record(before,next,true);if(resetDocument)resetSession();return restoreEdit(next); },[restoreEdit,resetSession]);
+  const editBuilding = useCallback((operation:(p:ProjectDocument)=>ProjectDocument,resetDocument=false) => {
+    const before = current.current;
+    if (!before) return null;
+    const result = operation(before);
+    if (result === before) return before;
+    const parsed = parseProject(result);
+    const floorsChanged = JSON.stringify(before.building?.floors.map(f=>f.id)) !== JSON.stringify(parsed.building?.floors.map(f=>f.id));
+    const next = floorsChanged ? syncSharedScenarios(parsed, before) : parsed;
+    if (floorsChanged) validateFloorSupports(projectFloors(next));
+    history.current.record(before,next,true);
+    if(resetDocument) resetSession();
+    return restoreEdit(next);
+  },[restoreEdit,resetSession]);
   const undo = useCallback(()=>current.current ? restoreEdit(history.current.undo(current.current)) : null,[restoreEdit]);
   const redo = useCallback(()=>current.current ? restoreEdit(history.current.redo(current.current)) : null,[restoreEdit]);
   const carryGuestDraft = useCallback(async (account: string, isCurrent: () => boolean) => {
@@ -153,5 +181,5 @@ export function useLocalProject() {
       if (draft === snapshot) return;
     }
   }, []);
-  return { project, restore, revision, documentSession, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, setHvac, setCFDScenarios, editBuilding, undo, redo, isScopeCurrent, carryGuestDraft, ...historyStatus };
+  return { project, restore, revision, documentSession, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, setHvac, setCFDScenarios, selectSharedScenario, editBuilding, undo, redo, isScopeCurrent, carryGuestDraft, ...historyStatus };
 }

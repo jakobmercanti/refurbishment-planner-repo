@@ -6,7 +6,7 @@ import { insertAtBoundary } from "@/lib/climoptixStudies";
 import { type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
 import { refinementLevel, refinementColour, refinementCell } from "@/lib/climoptixWorkflow";
-import { CFDNumber, CFDText, CFDVector, Parameters } from "./CFDFields";
+import { CFDNumber, CFDText, CFDVector } from "./CFDFields";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 
 export function MeshPanel({
@@ -31,7 +31,6 @@ export function MeshPanel({
       regions.find((r) => `refinement:${r.id}` === selected);
   return (
     <section className="cfx-mesh-panel" data-cfx-collapse-root>
-      <header className="cfx-inline-toolbar"><h3>Mesh refinement</h3><CFDCollapseAll/></header>
       <details open><summary>Local refinement regions</summary>
       <header className="cfx-inline-toolbar cfx-refinement-toolbar">
         <button
@@ -187,27 +186,6 @@ export function MeshPanel({
       {!regions.length && (
         <p className="cfx-caption">No local refinement regions.</p>
       )}
-      </details>
-      <details>
-        <summary>Refinements, layers, tolerances &amp; quality intent</summary>
-        <Parameters
-          value={scenario.mesh}
-          omit={[
-            "preset",
-            "baseCellMm",
-            "minCellMm",
-            "maxCellMm",
-            "targetCells",
-            "maxCells",
-            "refinements",
-          ]}
-          onChange={(v) =>
-            onChange({
-              ...scenario,
-              mesh: { ...v, preset: "Custom" } as typeof scenario.mesh,
-            })
-          }
-        />
       </details>
     </section>
   );

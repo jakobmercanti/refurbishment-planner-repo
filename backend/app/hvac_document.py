@@ -48,7 +48,7 @@ class HeaterOperation(Contract):
 
 class OperatingScenario(Contract):
     id: Identifier
-    name: Annotated[str, Field(min_length=1, max_length=100)]
+    name: Annotated[str, Field(min_length=1, max_length=120)]
     floorId: Identifier
     roomId: Identifier
     conditions: Conditions

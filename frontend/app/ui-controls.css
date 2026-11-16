@@ -11,7 +11,7 @@ body .cfx-setup-window > .floating-toolbar-content { padding: 0; }
 :root body :is(.settings-dialog, .save-as-dialog, .floorplan-export-dialog, .catalogue-manager-modal, .catalogue-detail-dialog) { padding-inline: var(--window-side-padding); width: min(calc(var(--window-dialog-width, 470px) * var(--window-density-width)), calc(100vw - 32px)); }
 body .settings-dialog.account-dialog {
   --window-dialog-width: 720px;
-  --account-gutter: clamp(16px, 3vw, 32px);
+  --account-gutter: clamp(20px, 4vw, 48px);
   --window-side-padding: 0px;
 }
 body .settings-dialog.preferences-dialog { --window-dialog-width: 740px; --window-side-padding: clamp(14px, 3vw, 26px); }
@@ -22,16 +22,17 @@ body .catalogue-detail-dialog { --window-dialog-width: 720px; }
 body .catalogue-detail-dialog.catalogue-object-dialog { --window-dialog-width: 1440px; }
 :root body[data-ui-style="modern"] :is(.settings-dialog, .save-as-dialog, .floorplan-export-dialog, .catalogue-manager-modal) > header,
 :root body[data-ui-style="modern"] .catalogue-detail-dialog > .catalogue-form-heading { margin-inline: calc(-1 * var(--window-side-padding)); padding-inline: var(--window-side-padding); }
-:root body .account-dialog > .account-dialog-header { padding-inline: var(--account-gutter); }
+:root body .settings-dialog.account-dialog > .account-dialog-header { margin-inline: 0; padding-inline: var(--account-gutter); }
 :root body .account-dialog-content { padding-inline: var(--account-gutter); }
 :root body .account-dialog > .commercial-status { margin-inline: var(--account-gutter); }
 :root body .account-dialog-content :is(.account-ready-actions, .account-form-actions, .account-utility-actions, .commercial-actions) {
   gap: 10px;
   box-sizing: border-box;
-  padding-inline: clamp(4px, 1vw, 12px);
+  padding-inline: 0;
 }
 :root body .account-dialog-content :is(.account-auth-tabs, .commercial-stack > .commercial-secondary) {
-  margin-inline: clamp(4px, 1vw, 12px);
+  margin-inline: 0;
+  padding-inline: 0;
 }
 :root[data-density="compact"] .floating-toolbar.full-plan-build-toolbar { min-width: min(290px, calc(100vw - 16px)); }
 :root[data-density="compact"] .popup:not(.floating-toolbar, .appearance-popup, .electrical-bom-editor, .planner-confirmation) { width: min(360px, calc(100vw - 32px)); }
@@ -152,7 +153,7 @@ body .new-outline-popup :is(.popup-content, .popup-actions) { padding:16px 20px;
 .cfx-window-disclosure-bar { display:flex; justify-content:flex-end; padding:6px 10px; }
 .cfx-setup-status-row { display:flex; flex-wrap:wrap; align-items:center; gap:var(--density-field-gap) var(--density-section-gap); padding:var(--density-field-gap) var(--window-side-padding); }
 .cfx-setup-status-row > h2 { flex:1 1 145px; min-width:0; margin:0; font:650 calc(12px * var(--density-font-scale,1))/1.4 var(--font-sans); overflow-wrap:anywhere; }
-.cfx-setup-status-row .cfx-workbench-status { flex:0 1 auto; min-width:0; margin:0; padding:var(--density-field-gap) var(--density-section-gap); }
+.cfx-setup-status-row .cfx-workbench-status { order:-1; flex:0 0 calc(50% - var(--density-section-gap) / 2); box-sizing:border-box; min-width:0; margin:0; padding:var(--density-field-gap) var(--density-section-gap); }
 .cfx-setup-status-row .cfx-window-disclosure-bar { margin-inline-start:auto; padding:0; }
 @container cfx-setup (max-width: 540px) {
   .cfx-setup-status-row .cfx-workbench-status { flex:1 1 100%; }

@@ -104,7 +104,9 @@ export function selectFloor(p: ProjectDocument, floorId: string): ProjectDocumen
 }
 function copyContent(content: FloorContent, includeAssets: boolean): FloorContent {
   const copy = structuredClone(content), ids = new Map<string, string>();
-  const identity = new Set(["id", "instanceId", "radiatorId", "pipeId", "circuitId", "zoneId", "manifoldId", "exclusionId", "scenarioId", "assemblyId", "layerId"]);
+  // Construction scenarios are project-wide. A copied floor receives its own
+  // assemblies and element assignments under the existing scenario IDs.
+  const identity = new Set(["id", "instanceId", "radiatorId", "pipeId", "circuitId", "zoneId", "manifoldId", "exclusionId", "assemblyId", "layerId"]);
   const collect = (v: unknown) => { if (!v || typeof v !== "object") return; for (const [k, x] of Object.entries(v)) { if (identity.has(k) && typeof x === "string") ids.set(x, crypto.randomUUID()); else collect(x); } };
   collect(copy);
   const remapString = (s: string) => ids.get(s) ?? [...ids].reduce((v, [old, next]) => v.startsWith(old + "|") || v.startsWith(old + ":") ? next + v.slice(old.length) : v, s);

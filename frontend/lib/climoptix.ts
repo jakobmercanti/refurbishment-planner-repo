@@ -20,8 +20,16 @@ import {
 } from "./climoptixWorkflow";
 
 
-function thermalInsulation(content: FloorContent) {
+function insulationForStudy(content: FloorContent, studyId: string) {
   const e = content.energyLayout;
+  if (!e) return undefined;
+  return {
+    ...e,
+    activeScenarioId: e.scenarios.some(s => s.scenarioId === studyId) ? studyId : e.activeScenarioId,
+  };
+}
+function thermalInsulation(content: FloorContent, studyId: string) {
+  const e = insulationForStudy(content, studyId);
   return e
     ? {
         materials: e.materials,
@@ -65,7 +73,7 @@ export function preparationInput(
       sourceWallHeightMm: f.content.floorplan?.wallHeight,
       sourceWallThicknessMm: f.content.floorplan?.wallThickness,
       insulation: scenario.thermalEnvelope || scenario.sharedBoundaries
-        ? thermalInsulation(f.content)
+        ? thermalInsulation(f.content, scenario.id)
         : undefined,
       rooms: f.content.rooms.map((r) => ({
         id: r.id,
@@ -141,7 +149,7 @@ export function preparationRequestBody(
         }
       : null,
     assetInstances: content.assetInstances,
-    energyLayout: scenario.thermalEnvelope || scenario.sharedBoundaries ? content.energyLayout : undefined,
+    energyLayout: scenario.thermalEnvelope || scenario.sharedBoundaries ? insulationForStudy(content, scenario.id) : undefined,
   });
   const b = buildingOf(project),
     source = {
@@ -162,7 +170,7 @@ export function preparationRequestBody(
       renderCamera: undefined,
       electricalLayout: undefined,
       heatingLayout: undefined,
-      energyLayout: scenario.thermalEnvelope || scenario.sharedBoundaries ? project.energyLayout : undefined,
+      energyLayout: scenario.thermalEnvelope || scenario.sharedBoundaries ? insulationForStudy(project, scenario.id) : undefined,
     };
   const body = JSON.stringify({
     project: source,

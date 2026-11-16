@@ -18,7 +18,7 @@ export function DeleteConstructionScenario({ data, label = "Delete selected scen
   return <>
     <button type="button" disabled={!active || !onChange} onClick={() => setTargetId(active?.scenarioId ?? null)}>{label}</button>
     {target && createPortal(<Popup open title="Delete construction scenario?" confirmLabel="Delete scenario"
-      message={`Delete “${target.name}”? Existing Building and your other scenarios are kept.`}
+      message={`Delete “${target.name}” and its settings from Insulation, Heating, Ventilation and CFD? Existing Building and other scenarios are kept.`}
       onCancel={close} onConfirm={() => { onChange?.(removeEnergyScenario(data, target.scenarioId)); close(); }} />, document.body)}
   </>;
 }

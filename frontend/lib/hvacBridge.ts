@@ -12,7 +12,7 @@ function operatingAirProperties(operating: HvacOperatingScenario | undefined) {
   if (!operating) return {};
   const { densityKgM3, cpJKgK, roomC, outdoorC } = operating.conditions;
   return { densityKgM3, heatCapacityJKgK: cpJKgK, referenceTemperatureK: roomC + 273.15,
-    initialTemperatureK: roomC + 273.15, outdoorTemperatureK: outdoorC + 273.15 };
+    outdoorTemperatureK: outdoorC + 273.15 };
 }
 
 function hvacCaseSettings(scenario: CFDScenario, operating: HvacOperatingScenario | undefined, heaters: HvacCfdBoundaryPackage["heaters"], envelopeActive: boolean) {
@@ -58,7 +58,9 @@ function sharedCaseInputs(project: ProjectDocument, scenario: CFDScenario, repor
     { kind: "solar" as const, name: "Zone-average solar gain", valueSI: operating.conditions.solarW, units: "W" as const },
     { kind: "infiltration" as const, name: "Diffuse infiltration", valueSI: operating.conditions.infiltrationM3S, units: "m³/s" as const },
   ].filter(v => v.valueSI > 0).map(v => ({ ...v, id: `unlocated:${operating.id.slice(0, 120)}:${v.kind}`, floorId: operating.floorId, roomId: operating.roomId }))) : [];
-  const boundaryInputs: SharedBoundaryInputs = { version: 1, captureEnvelope: true, sources, unlocated,
+  const excluded = new Set(scenario.hiddenObjectIds);
+  const boundaryInputs: SharedBoundaryInputs = { version: 1, captureEnvelope: true,
+    sources: sources.map(source => excluded.has(source.id) ? { ...source, enabled: false } : source), unlocated,
     inventory: projectFloors(project).flatMap(f => { const h = f.content.heatingLayout; return [
       { floorId: f.id, kind: "boiler" as const, count: f.content.rooms.flatMap(r => r.obstacles).filter(o => o.heating_spec?.category === "Boiler").length },
       { floorId: f.id, kind: "pipe" as const, count: h?.pipes.length ?? 0 }, { floorId: f.id, kind: "manifold" as const, count: h?.manifolds.length ?? 0 }, { floorId: f.id, kind: "exclusion" as const, count: h?.exclusions.length ?? 0 },
@@ -114,8 +116,14 @@ export function resolveHvacScenario(project: ProjectDocument, scenario: CFDScena
   const hvac = project.hvac, binding = hvac?.bindings[scenario.id];
   if (!hvac || !binding) return scenario;
   const order = new Map(hvac.devices.map((d, i) => [`vent:${d.vent.id}`, i]));
+  const thermalEnvelope = scenario.thermalEnvelope && {
+    ...scenario.thermalEnvelope,
+    insulationScenarios: Object.fromEntries(projectFloors(project).map(floor =>
+      [floor.id, floor.content.energyLayout?.scenarios.some(s => s.scenarioId === scenario.id)
+        ? scenario.id : floor.content.energyLayout?.activeScenarioId ?? null])),
+  };
   const linked = {
-    ...scenario, vents: resolveHvacVents(project, scenario),
+    ...scenario, thermalEnvelope, vents: resolveHvacVents(project, scenario),
     objectGroups: scenario.objectGroups?.map(g => {
       const vents = g.memberIds.filter(id => id.startsWith("vent:")).sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity));
       let i = 0;
@@ -124,9 +132,15 @@ export function resolveHvacScenario(project: ProjectDocument, scenario: CFDScena
   };
   if (binding.analysisMode === "airflow") {
     const operating = hvac.scenarios.find(s => s.id === binding.operatingScenarioId);
-    return { ...linked, sharedBoundaries: undefined, physics: { ...linked.physics, ...operatingAirProperties(operating) } };
+    const fields = linked.postProcessing.fields.filter(field => field !== "T");
+    return { ...linked, sharedBoundaries: undefined,
+      physics: { ...linked.physics, ...operatingAirProperties(operating), energy: false, boussinesq: false,
+        preset: linked.physics.energy ? "isothermal" : linked.physics.preset },
+      outputs: { ...linked.outputs, temperature: false },
+      postProcessing: { ...linked.postProcessing, fields: fields.length ? fields : ["U", "p"] },
+    };
   }
-  const source = sharedCaseInputs(project, scenario);
+  const source = sharedCaseInputs(project, linked);
   return { ...linked, sharedBoundaries: source.boundaryInputs,
     assetOverrides: source.caseSettings.assetOverrides, physics: source.caseSettings.physics, outputs: source.caseSettings.outputs, postProcessing: source.caseSettings.postProcessing,
   };
