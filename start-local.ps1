@@ -94,7 +94,7 @@ function Get-NetstatListener {
       }
     }
   }
-  return @($listeners | Sort-Object OwningProcess -Unique)
+  return @($listeners | Sort-Object LocalPort, OwningProcess -Unique)
 }
 
 function Get-ProcessDescription {
@@ -183,6 +183,65 @@ function Test-ManagedServiceProcess {
   return $true
 }
 
+function Get-ServiceProcessTree {
+  param(
+    [int]$ProcessId,
+    [ValidateSet("backend", "frontend")]
+    [string]$Service
+  )
+  $processTable = @{}
+  try {
+    foreach ($entry in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
+      $processTable[[int]$entry.ProcessId] = $entry
+    }
+  } catch {
+    # taskkill /T remains available when Windows restricts process enumeration.
+  }
+
+  # The listener may be a spawned worker. Stop its managed reloader as well
+  # so it cannot replace that worker while the port is being released.
+  $rootId = $ProcessId
+  $visited = @{}
+  while ($processTable.ContainsKey($rootId) -and !$visited.ContainsKey($rootId)) {
+    $visited[$rootId] = $true
+    $parentId = [int]$processTable[$rootId].ParentProcessId
+    if (!$processTable.ContainsKey($parentId)) { break }
+    if (!(Test-ManagedServiceProcess -ProcessId $parentId -Service $Service)) { break }
+    # Windows can reuse a PID after the original parent has exited.
+    if ($processTable[$parentId].CreationDate -gt $processTable[$rootId].CreationDate) { break }
+    $rootId = $parentId
+  }
+  if (!(Test-ManagedServiceProcess -ProcessId $rootId -Service $Service)) {
+    $owner = Get-ProcessDescription $ProcessId
+    throw "Cannot refresh the ${Service}: the listener is $owner, which is not a Renovation Fit process."
+  }
+
+  # Capture descendants BEFORE terminating the reloader. Its socket can stay
+  # open in an orphaned multiprocessing worker, even after taskkill succeeds.
+  $processIds = [Collections.Generic.List[int]]::new()
+  $processIds.Add($rootId)
+  for ($index = 0; $index -lt $processIds.Count; $index += 1) {
+    $parentId = $processIds[$index]
+    foreach ($entry in $processTable.Values) {
+      $childId = [int]$entry.ProcessId
+      if ([int]$entry.ParentProcessId -eq $parentId -and !$processIds.Contains($childId) -and
+          $entry.CreationDate -ge $processTable[$parentId].CreationDate) {
+        $processIds.Add($childId)
+      }
+    }
+  }
+  foreach ($childId in $processIds) {
+    try {
+      $process = Get-Process -Id $childId -ErrorAction Stop
+      # Hold the process handle so cleanup cannot target a reused PID.
+      $null = $process.Handle
+      $process
+    } catch {
+      if (Get-Process -Id $childId -ErrorAction SilentlyContinue) { throw }
+    }
+  }
+}
+
 function Stop-ExistingService {
   param(
     [int]$Port,
@@ -204,30 +263,36 @@ function Stop-ExistingService {
   if (!$listeners.Count) { return }
   $processIds = @($listeners | Select-Object -ExpandProperty OwningProcess -Unique)
   foreach ($processId in $processIds) {
-    if (!(Test-ManagedServiceProcess -ProcessId $processId -Service $Service)) {
-      $owner = Get-ProcessDescription $processId
-      throw "Cannot refresh the ${Service}: port $Port is owned by $owner, which is not a Renovation Fit process. Close it, then run this launcher again."
-    }
-    Write-Host "Stopping existing $Service ($((Get-ProcessDescription $processId)))"
-    # taskkill can terminate the complete process tree even when WMI process
-    # enumeration is unavailable to the current Windows account.
-    $taskkillSucceeded = $false
+    if (!(Get-Process -Id $processId -ErrorAction SilentlyContinue)) { continue }
+    $processTree = @(Get-ServiceProcessTree -ProcessId $processId -Service $Service)
+    if (!$processTree.Count) { continue }
+    $rootProcess = $processTree[0]
+    Write-Host "Stopping existing $Service ($($rootProcess.ProcessName) (PID $($rootProcess.Id)))"
     try {
-      & taskkill.exe /PID $processId /T /F 2>&1 | Out-Null
-      $taskkillSucceeded = $LASTEXITCODE -eq 0
-    } catch {
-      $taskkillSucceeded = $false
-    }
-    if (!$taskkillSucceeded) {
-      Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+      try {
+        if (!$rootProcess.HasExited) { & taskkill.exe /PID $rootProcess.Id /T /F 2>&1 | Out-Null }
+      } catch {
+        # Cleanup below also covers partially terminated process trees.
+      }
+      foreach ($process in $processTree) {
+        if (!$process.HasExited) {
+          Stop-Process -InputObject $process -Force -ErrorAction SilentlyContinue
+        }
+      }
+      foreach ($process in $processTree) {
+        if (!$process.HasExited) { $null = $process.WaitForExit(1000) }
+      }
+    } finally {
+      foreach ($process in $processTree) { $process.Dispose() }
     }
   }
-  for ($attempt = 0; $attempt -lt 20; $attempt += 1) {
+  for ($attempt = 0; $attempt -lt 40; $attempt += 1) {
     $remainingListeners = @(Get-PortListener $Port)
     if ($remainingListeners.Count -eq 0) { return }
     Start-Sleep -Milliseconds 250
   }
-  throw "The existing $Service did not release port $Port."
+  $owners = @($remainingListeners | ForEach-Object { Get-ProcessDescription $_.OwningProcess }) -join ", "
+  throw "The existing $Service did not release port $Port. Remaining listener: $owners."
 }
 
 function Start-LoggedProcess {
