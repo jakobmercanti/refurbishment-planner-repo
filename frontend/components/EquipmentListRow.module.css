@@ -9,6 +9,7 @@
 :global(body) .row.row.row .actions.actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:1fr; align-items:stretch; width:198px; max-width:100%; gap:6px; grid-column:auto; grid-row:auto; }
 :global(body) .row.row.row .actions.actions > button { width:100%; min-width:0; height:100%; min-height:var(--density-control-min-height); padding:var(--density-control-padding-y) 4px; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--ui-button-background,var(--surface-muted)); color:var(--ui-button-text,var(--ink)); font:650 calc(12px * var(--density-font-scale,1))/1.3 var(--font-sans); white-space:normal; overflow-wrap:anywhere; }
 :global(body) .row.row.row .actions.actions > :global(.cfx-danger) { color:var(--fail); }
+:global(body) .row.row.row .restoreActions.restoreActions { grid-template-columns:repeat(2,minmax(0,1fr)); width:132px; }
 :global(body) .row.row.row .actions.actions > button:hover:not(:disabled), :global(body) .collection.collection :global(.cfx-grip:hover:not(:disabled)) { background:var(--ui-button-hoverBackground); }
 :global(body) .row.row.row .name:hover { background:var(--surface-muted); }
 :global(body) .row.row.row button:disabled { opacity:.5; cursor:not-allowed; }

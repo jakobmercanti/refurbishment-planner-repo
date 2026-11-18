@@ -258,7 +258,33 @@ export function BoundariesPanel({
     <section className="cfx-boundaries-panel" data-cfx-collapse-root>
       <header className="cfx-inline-toolbar">{navigation}{actions}<CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:collections.map(group=>group.id)))}/></header>
       {sharedCapture}
-      <details open><summary>Boundary groups &amp; surfaces</summary>
+      <details>
+        <summary>Defaults</summary>
+        <label>
+          Patch group
+          <select
+            aria-label="Boundary patch group"
+            value={group}
+            onChange={(e) => setGroup(e.target.value as PatchKind | "heater")}
+          >
+            {PATCH_KINDS.filter((k) => k !== "supply" && k !== "extract" &&
+              (k !== "object" || group === "object" || !heaterAreas.size || allPatches.some(p => p.kind === "object" && !heaterAreas.has(p.sourceId)))).map(
+              (k) => (
+                <option key={k} value={k}>
+                  {labelFor(k)}
+                </option>
+              ),
+            )}
+            {(heaterAreas.size > 0 || group === "heater") && <option value="heater">Heater</option>}
+          </select>
+        </label>
+        {group === "heater" ? <p className="cfx-caption">Heater surfaces use the shared Heating output and their checked exposed area. Edit the heater in Heating or its operating scenario.</p> : <>
+        <BoundaryEditor solid={["wall", "floor", "ceiling", "slabSide", "object"].includes(group)} value={groupValue} onChange={updateGroup} />
+        <button onClick={() => updateGroup(groupValue)}>
+          Assign this group preset
+        </button></>}
+      </details>
+      <details open><summary>Boundary groups</summary>
       <div className="cfx-inline-toolbar cfx-boundary-tools">
         <button disabled={collections.length >= 100} onClick={() => newGroup()}>Add boundary group</button>
         <CFDConfirmAction title="Clear all boundary customizations?"
@@ -423,32 +449,6 @@ export function BoundariesPanel({
         }}>Clear surface overrides in group</button>}
       </section>
       </CFDEditorWindow>}
-      <details>
-        <summary>Surface type defaults</summary>
-        <label>
-          Patch group
-          <select
-            aria-label="Boundary patch group"
-            value={group}
-            onChange={(e) => setGroup(e.target.value as PatchKind | "heater")}
-          >
-            {PATCH_KINDS.filter((k) => k !== "supply" && k !== "extract" &&
-              (k !== "object" || group === "object" || !heaterAreas.size || allPatches.some(p => p.kind === "object" && !heaterAreas.has(p.sourceId)))).map(
-              (k) => (
-                <option key={k} value={k}>
-                  {labelFor(k)}
-                </option>
-              ),
-            )}
-            {(heaterAreas.size > 0 || group === "heater") && <option value="heater">Heater</option>}
-          </select>
-        </label>
-        {group === "heater" ? <p className="cfx-caption">Heater surfaces use the shared Heating output and their checked exposed area. Edit the heater in Heating or its operating scenario.</p> : <>
-        <BoundaryEditor solid={["wall", "floor", "ceiling", "slabSide", "object"].includes(group)} value={groupValue} onChange={updateGroup} />
-        <button onClick={() => updateGroup(groupValue)}>
-          Assign this group preset
-        </button></>}
-      </details>
       {report && !rows.length && (
         <p role="status" className="cfx-caption">
           No matching patches.

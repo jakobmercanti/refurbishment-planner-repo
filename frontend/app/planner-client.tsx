@@ -59,6 +59,7 @@ import { newEnergyProject } from "@/lib/energyDocument";
 // their own `localhost:8000`.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/engineering-api";
 const HVAC_CFD_HANDOFF = "planner:pending-hvac-cfd";
+const PENDING_WORKSPACE = "planner:pending-workspace";
 const FULL_FLOORPLAN_SELECTION = "__FULL_FLOORPLAN__";
 // Catalogue administration changes the software's master configuration and is
 // intentionally available only while an administrator runs a development build.
@@ -111,6 +112,11 @@ export default function Home() {
   const [mode, setMode] = useState<"EDITOR" | "ANALYSIS">("EDITOR");
   const [workspaceMode, setWorkspaceModeState] = useState<"FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX">("FLOORPLAN");
   const workspaceRequest = useRef(0);
+  const pendingClimoptix = useRef(false);
+  const clearWorkspaceIntent = useCallback(() => {
+    pendingClimoptix.current = false;
+    try { sessionStorage.removeItem(PENDING_WORKSPACE); sessionStorage.removeItem(HVAC_CFD_HANDOFF); } catch { /* Storage unavailable. */ }
+  }, []);
   const closePrivateWorkspace = useCallback(() => {
     setWorkspaceModeState(current => current === "CLIMOPTIX" ? "FLOORPLAN" : current);
   }, []);
@@ -118,6 +124,7 @@ export default function Home() {
   function setWorkspaceMode(nextMode: typeof workspaceMode) {
     workspaceRequest.current++;
     if (nextMode === "CLIMOPTIX" && !climoptixEnabled) return;
+    clearWorkspaceIntent();
     setWorkspaceModeState(nextMode);
   }
   const [hvacCFDRequest, setHvacCFDRequest] = useState<{id:string;nonce:string}|null>(null);
@@ -138,19 +145,23 @@ export default function Home() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [climoptixAccountPrompt, setClimoptixAccountPrompt] = useState(false);
   const [accountInitialSection, setAccountInitialSection] = useState<"account" | "plans">("account");
-  const closeAccountDialog = useCallback(() => { setAccountOpen(false); setClimoptixAccountPrompt(false); }, []);
+  const closeAccountDialog = useCallback(() => {
+    clearWorkspaceIntent(); setAccountOpen(false); setClimoptixAccountPrompt(false);
+  }, [clearWorkspaceIntent]);
   useEffect(() => {
     if (!climoptixEnabled || !local.project) return;
-    let id: string | null;
-    try { id = sessionStorage.getItem(HVAC_CFD_HANDOFF); } catch { return; }
-    if (!id) return;
-    try { sessionStorage.removeItem(HVAC_CFD_HANDOFF); } catch { /* Storage unavailable. */ }
-    // Account binding reloads the app. Resume only a case that travelled with the draft.
-    if (!local.project.hvac?.bindings[id] || !local.project.cfdScenarios?.some(study => study.id === id && !study.archived)) return;
+    let id: string | null = null;
+    let requested = pendingClimoptix.current;
+    try {
+      id = sessionStorage.getItem(HVAC_CFD_HANDOFF);
+      requested ||= sessionStorage.getItem(PENDING_WORKSPACE) === "CLIMOPTIX";
+    } catch { /* The in-memory choice still works when session storage is unavailable. */ }
+    if (!requested && !id) return;
+    const handoffId = id && local.project.hvac?.bindings[id] && local.project.cfdScenarios?.some(study => study.id === id && !study.archived) ? id : null;
     const request = ++workspaceRequest.current;
     queueMicrotask(() => {
       if (workspaceRequest.current !== request) return;
-      setHvacCFDRequest({ id, nonce: crypto.randomUUID() });
+      if (handoffId) setHvacCFDRequest({ id: handoffId, nonce: crypto.randomUUID() });
       setPlacement(null);
       closeAccountDialog();
       setWorkspaceModeState("CLIMOPTIX");
@@ -326,10 +337,13 @@ export default function Home() {
   }
 
   async function changeWorkspaceMode(nextMode: "FLOORPLAN" | "PLANNERBUILD" | "CLIMOPTIX") {
+    const request = ++workspaceRequest.current;
     if (nextMode === "CLIMOPTIX" && !climoptixEnabled) {
+      pendingClimoptix.current = true;
+      try { sessionStorage.setItem(PENDING_WORKSPACE, "CLIMOPTIX"); } catch { /* Keep the choice in this page. */ }
       setClimoptixAccountPrompt(true); setAccountInitialSection("account"); setAccountOpen(true); return;
     }
-    const request = ++workspaceRequest.current;
+    clearWorkspaceIntent();
     let demoMode = false;
     if (nextMode === "PLANNERBUILD") {
       let available = false;
@@ -762,7 +776,7 @@ export default function Home() {
 {placement && <div className="placement-status" role="status"><strong>Placing {placement.obstacle.name}</strong><span><span className="placement-hint-desktop">Click to place · Esc or right-click to cancel{!placement.opening && (requiresWallMount(placement.obstacle) ? " · Snaps and aligns to a wall" : " · R to rotate")}</span><span className="placement-hint-touch">Tap to place</span></span><button type="button" className="review-style-button" onClick={() => setPlacement(null)}>Cancel</button></div>}
       {assetsOpen && local.project && <LocalAssetLibrary assets={local.project.assets} instances={local.project.assetInstances} apiUrl={API_URL} onImport={asset=>{if(local.isScopeCurrent(scopeToken))local.addAsset(asset);}} onChange={next=>{if(local.isScopeCurrent(scopeToken))local.setInstances(next);}} onClose={() => setAssetsOpen(false)} />}
       {privacyOpen && <PlannerPrivacyDialog onClose={() => setPrivacyOpen(false)} />}
-      {accountOpen && <AccountDialog onClose={closeAccountDialog} initialSection={accountInitialSection} beforeSignIn={local.carryGuestDraft}
+      {accountOpen && <AccountDialog onClose={closeAccountDialog} onSignedIn={() => { setAccountOpen(false); setClimoptixAccountPrompt(false); }} initialSection={accountInitialSection} beforeSignIn={local.carryGuestDraft}
         notice={climoptixAccountPrompt ? "Climoptix free tier: five completed simulations per verified account (lifetime), up to 500,000 cells, 2 processors and 4 GB RAM. Sign in or create an account and verify your email. If already signed in, retry after the worker connection recovers." : undefined} />}
       <CatalogueBrowser apiUrl={API_URL} open={catalogueOpen} displayUnits={preferences.units} onClose={() => setCatalogueOpen(false)} onInsert={insertCatalogueItem} />
       {CATALOGUE_MANAGER_AVAILABLE && <CatalogueManager apiUrl={API_URL} open={catalogueManagerOpen} opener={catalogueManagerOpener} layoutAnalysisToolbarVisible={toolbarAvailability["viewer-layout-analysis"]} onLayoutAnalysisToolbarVisibleChange={setLayoutAnalysisToolbarVisible} humanMockupToolbarVisible={toolbarAvailability["viewer-person"]} onHumanMockupToolbarVisibleChange={setHumanMockupToolbarVisible} uiSettings={uiSettings} onUiSettingsChange={setUiSettings} tierPreview={tierPreview} onTierPreviewChange={setTierPreview} onClose={() => setCatalogueManagerOpen(false)} />}

@@ -57,7 +57,7 @@ function taskWindowHelpSteps(title: string): WindowHelpStep[] {
     if (section === "Manage simulations") return CFD_PHASE_HELP.studies;
     if (section === "Seed & connected domain" || section === "Connectivity & passages") return CFD_PHASE_HELP.domain.slice(0, 1);
     if (section === "Mesh settings") return CFD_PHASE_HELP.domain.slice(1);
-    if (section === "Boundary groups & surfaces") return CFD_PHASE_HELP.boundaries;
+    if (section === "Boundary groups" || section === "Defaults") return CFD_PHASE_HELP.boundaries;
     if (section === "Models & equations") return CFD_PHASE_HELP.physics;
     if (section === "Solver actions") return [{ heading: "Run, export and monitor", text: "Play submits the current simulation to the connected worker after preparation checks. Export OpenFOAM settings downloads configuration for review. Open monitor shows the job and its solver log or lets you import a local log." }];
   }

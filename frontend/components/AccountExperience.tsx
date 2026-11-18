@@ -10,7 +10,7 @@ type Mode = "signin" | "signup" | "reset";
 type AccountSection = "account" | "plans";
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-export function AccountExperience({ embedded = false, onClose, embeddedSection, onEmbeddedSectionChange, beforeSignIn }: { embedded?: boolean; onClose?: () => void; embeddedSection?: AccountSection; onEmbeddedSectionChange?: (section: AccountSection) => void; beforeSignIn?: BeforeLocalSignIn }) {
+export function AccountExperience({ embedded = false, onClose, onSignedIn, embeddedSection, onEmbeddedSectionChange, beforeSignIn }: { embedded?: boolean; onClose?: () => void; onSignedIn?: () => void; embeddedSection?: AccountSection; onEmbeddedSectionChange?: (section: AccountSection) => void; beforeSignIn?: BeforeLocalSignIn }) {
   const [mode, setMode] = useState<Mode>("signin");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [email, setEmail] = useState("");
@@ -36,6 +36,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
     if (embedded) onClose?.();
     else window.location.assign(base + "/");
   }, [embedded, onClose]);
+  const finishSignIn = () => { if (embedded && onSignedIn) onSignedIn(); else returnToPlanner(); };
 
   useEffect(() => {
     if (embedded) return; // The planner already owns the theme in a dialog.
@@ -118,7 +119,7 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
       if (accountLink.kind === "recovery") {
         setRecovery(confirmed.user); setNotice("Reset link verified.");
       } else if (pendingPlanKey) selectSection("plans");
-      else returnToPlanner();
+      else finishSignIn();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Request a new email link.");
       setMode("reset");
@@ -144,11 +145,11 @@ export function AccountExperience({ embedded = false, onClose, embeddedSection, 
         const signedIn = await signIn(email, password, beforeSignIn);
         setSession(signedIn);
         if (pendingPlanKey) selectSection("plans");
-        else returnToPlanner();
+        else finishSignIn();
       } else if (mode === "signup") {
         const registered = await signUp(email, password, beforeSignIn);
         setSession(registered);
-        if (registered) { if (pendingPlanKey) selectSection("plans"); else returnToPlanner(); }
+        if (registered) { if (pendingPlanKey) selectSection("plans"); else finishSignIn(); }
         setPassword("");
         setVerificationNeeded(!registered);
         if (!registered) setResendReadyAt(Date.now() + 60_000);

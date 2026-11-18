@@ -82,6 +82,12 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
       setError("");
     } catch (cause) { setError(hvacErrorMessage(cause)); }
   };
+  const restoreEntry = (entry: CFDObjectEntry) => {
+    onChange({ ...scenario, hiddenObjectIds: [...hidden].filter(value => value !== hiddenKey(entry)) });
+    if (groupList.current) groupList.current.open = true;
+    const group = groups.find(candidate => candidate.memberIds.includes(entry.id));
+    if (group) setCollapsed(previous => new Set([...previous].filter(id => id !== group.id)));
+  };
   const currentGroup = groups.find(g => g.id === selectedGroup) ?? groups[0];
   const addVent = (role: "supply" | "extract") => {
     const groupId = currentGroup?.id ?? DEFAULT_OBJECT_GROUP;
@@ -105,6 +111,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     <div className="cfx-inline-toolbar">
       <h3>Objects &amp; occupants</h3>
       <CFDCollapseAll onToggle={open=>setCollapsed(new Set(open?[]:groups.map(group=>group.id)))}/>
+      <div className="cfx-object-tools">
       <button disabled={!canAdd} onClick={() => addVent("supply")}>+ Supply</button>
       <button disabled={!canAdd} onClick={() => addVent("extract")}>+ Extract</button>
       <button disabled={!canPlace} title={!canPlace ? "Choose a seed room in Domain and resolve preparation checks to obtain validated host faces" : undefined} onClick={onPick}>Place on face…</button>
@@ -119,6 +126,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
           onChange({ ...scenario, vents: [], assetOverrides: [], objectCopies: [], objectGroups: [], hiddenObjectIds: [...new Set([...scenario.hiddenObjectIds ?? [], ...originals])] });
           setEditing(null); setSelectedGroup(DEFAULT_OBJECT_GROUP); setCollapsed(new Set());
         }} />
+      </div>
     </div>
     {!canPlace && canAdd && <p className="cfx-caption" role="status">Supply / Extract can be added as drafts now. Face placement needs a seed room in Domain and validated host geometry; assign a host in Edit before running.</p>}
     {error && <p className="cfx-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></p>}
@@ -179,12 +187,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     {!!removed.length && <details><summary>Removed from this simulation ({removed.length})</summary>
       <div className="cfx-removed-device-list">
         {removed.map(entry => <EquipmentListRow key={entry.id} name={entry.name} detail={entry.detail} selected={false} selectLabel={`Restore ${entry.name} to this simulation`}
-          onSelect={() => {
-            onChange({ ...scenario, hiddenObjectIds: [...hidden].filter(value => value !== hiddenKey(entry)) });
-            if (groupList.current) groupList.current.open = true;
-            const group = groups.find(candidate => candidate.memberIds.includes(entry.id));
-            if (group) setCollapsed(previous => new Set([...previous].filter(id => id !== group.id)));
-          }} />)}
+          onSelect={() => restoreEntry(entry)} onRestore={() => restoreEntry(entry)} onDelete={() => deleteEntry(entry)} />)}
       </div>
     </details>}
     {checked && (scenario.assetOverrides.some(o => !objects.some(obj => obj.id === o.objectId)) || scenario.objectCopies?.some(o => !objects.some(obj => obj.id === o.id))) &&

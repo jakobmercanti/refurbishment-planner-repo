@@ -9,7 +9,7 @@ import { diagnosticCopy, diagnosticTarget } from "@/lib/climoptixDiagnostics";
 
 const TABS = [["warnings", "Review & warnings"], ["transfer", "Import / export"]] as const;
 
-export function ClimoptixReview({ scenario, report, revision, stale, blocked, onChange, onImport, onExport, onError, onRefresh, onInspect, onHighlight, openingNames, issuesRequest = 0, submissionError, configurationIssue, workerIssue, onAirflowCopy, workerConnected=false }: {
+export function ClimoptixReview({ scenario, report, revision, stale, blocked, onChange, onImport, onExport, onError, onRefresh, onInspect, onHighlight, openingNames, issuesRequest = 0, preparationIssue, submissionError, configurationIssue, workerIssue, onAirflowCopy, workerConnected=false }: {
   scenario: CFDScenario; report: CFDReport | null; revision: string; stale: boolean; blocked: boolean;
   openingNames: ReadonlyMap<string, string>;
   onChange: (scenario: CFDScenario) => void; onImport: (file: File) => void; onExport: () => void;
@@ -17,6 +17,7 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, on
   onHighlight: (id: string | null) => void;
   issuesRequest?: number;
   submissionError?: string;
+  preparationIssue?: string;
   configurationIssue?: string;
   workerIssue?: string;
   onAirflowCopy?: () => void;
@@ -60,6 +61,8 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, on
       <CFDCollapseAll/>
     </header>
     <section role="tabpanel" id={`${prefix}-panel-warnings`} aria-labelledby={`${prefix}-warnings`} hidden={tab !== "warnings"}>
+      {preparationIssue && <article className="cfx-diagnostic error" role="alert"><strong>Setup needs attention</strong><p>{preparationIssue}</p>
+        <div className="cfx-equal-actions"><button onClick={() => onInspect("domain", "domain")}>Open domain &amp; geometry</button><button onClick={onRefresh}>Refresh checks</button></div></article>}
       <details open><summary>Notes &amp; preparation outcome</summary>
       <label>Simulation notes<textarea rows={2} value={scenario.description} maxLength={2000} onChange={e => onChange({ ...scenario, description: e.target.value })} /></label>
       {report && !stale && <div className="cfx-review-outcome" role="status">

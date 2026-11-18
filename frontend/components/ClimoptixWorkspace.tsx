@@ -679,7 +679,7 @@ export function ClimoptixWorkspace({
     if (id !== scenario?.id) { setError(""); setMessage(""); }
     setSelectedId(id); setSelected(null); setPicking(null);
     setIssuesRequest(value => value + 1);
-    refreshPreparation();
+    if (!error && !preparationError) refreshPreparation();
     openPhase("review");
   };
   const available = (id: CFDWindowId) =>
@@ -1260,7 +1260,7 @@ export function ClimoptixWorkspace({
                     <ClimoptixResults
                       view={resultsView} onViewChange={setResultsView}
                       review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
-                      onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
+                      preparationIssue={error || preparationError} onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}
                       onRefresh={() => refreshPreparation()} onInspect={jump} onHighlight={setHighlightedDiagnostic} />}
                       key={`${scenario.id}:${jobs[scenario.id]?.job?.id??"external"}:${currentVTKFile?.token??"none"}`}
                       adapter={remoteWorker.adapter} job={jobs[scenario.id]?.job} report={activeReport}

@@ -1065,18 +1065,18 @@
 }
 .cfx-study-phases {
   display: grid;
-  grid-template-columns: repeat(3, minmax(38px, 1fr));
+  grid-template-columns: repeat(3, minmax(46px, 1fr));
   flex: none;
   gap: 3px;
   font-size: .85em;
   font-weight: 700;
   white-space: nowrap;
 }
-.cfx-study-phases > span { padding: 1px 4px; border-radius: 3px; background: var(--panel); text-align: center; }
-.cfx-study-phases [data-state="pending"] { color: #b42318; }
+.cfx-study-phases > span { padding: 3px 6px; border-radius: 3px; background: var(--panel); text-align: center; }
+.cfx-study-phases [data-state="pending"] { color: #b42318; background: #ffe7e4; }
 .cfx-study-phases [data-state="running"] { color: #b65406; background: #ffdfb0; }
 .cfx-study-phases [data-state="completed"] { color: #16734b; background: #d8f2e1; }
-:root[data-theme="dark"] .cfx-study-phases [data-state="pending"] { color: #ff938a; }
+:root[data-theme="dark"] .cfx-study-phases [data-state="pending"] { color: #ff938a; background: #4a2020; }
 :root[data-theme="dark"] .cfx-study-phases [data-state="running"] { color: #ffc27d; background: #4a2a12; }
 :root[data-theme="dark"] .cfx-study-phases [data-state="completed"] { color: #145b3d; background: #a7e5be; }
 .cfx-study-actions {

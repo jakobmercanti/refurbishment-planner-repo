@@ -5,7 +5,7 @@ import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { AccountExperience } from "@/components/AccountExperience";
 import type { BeforeLocalSignIn } from "@/lib/commercialAuth";
 
-export function AccountDialog({ onClose, initialSection = "account", notice, beforeSignIn }: { onClose: () => void; initialSection?: "account" | "plans"; notice?: string; beforeSignIn?: BeforeLocalSignIn }) {
+export function AccountDialog({ onClose, onSignedIn, initialSection = "account", notice, beforeSignIn }: { onClose: () => void; onSignedIn?: () => void; initialSection?: "account" | "plans"; notice?: string; beforeSignIn?: BeforeLocalSignIn }) {
   const dialog = useRef<HTMLElement>(null);
   const [section, setSection] = useState<"account" | "plans">(initialSection);
 
@@ -34,7 +34,7 @@ export function AccountDialog({ onClose, initialSection = "account", notice, bef
         <div className="window-header-actions"><WindowHelpButton title="Account & plans" /><button type="button" className="modal-close" onClick={onClose} aria-label="Close account window">×</button></div>
       </header>
       {notice && <p className="commercial-status" role="status">{notice}</p>}
-      <AccountExperience embedded onClose={onClose} embeddedSection={section} onEmbeddedSectionChange={setSection} beforeSignIn={beforeSignIn} />
+      <AccountExperience embedded onClose={onClose} onSignedIn={onSignedIn} embeddedSection={section} onEmbeddedSectionChange={setSection} beforeSignIn={beforeSignIn} />
     </section>
   </div>;
 }
