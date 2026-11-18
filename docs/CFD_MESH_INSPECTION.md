@@ -59,13 +59,25 @@ passed
 
 FastAPI tests required execution outside the Windows sandbox because its loopback socket-pair creation was blocked. Temporary audit scripts, fixture UI and native cases were kept out of the commit.
 
-## Visual audit and remaining verification
+## Initial visual audit and remaining verification
 
 The browser visibly rendered the native boundary mesh, transparent mesh and filled internal sections with cell partitions. Entering inspection removed the architectural scene, probe marker, normal viewer controls and legends. Functional measurements confirmed the SI position controls and responsive widths above.
 
 Screenshot capture later timed out after viewport changes. Computer Use then stopped because it could not establish the current browser URL confidently. No screenshot artifact is claimed. Live exit/restoration, dark-theme rendering and touch interaction could not be completed in that browser pass. Exact camera restoration is covered by the automated Three.js test; full normal-scene restoration has been reviewed in code.
 
 To finish those visual checks manually: load a checked mesh with building/results/probes already visible; record the current camera; inspect and orbit the mesh; exit and compare the camera and all layers; repeat by leaving the Mesh tab and closing setup. Repeat at narrow width and in dark theme, including an aborted request and worker error. These checks do not require a new CFD solve.
+
+## Follow-up polish audit, 18 November 2026
+
+This follow-up follows the user's instruction not to run tests. The test counts above belong to the initial implementation; no tests, benchmarks, mesh generation or solver runs were repeated. Frontend lint and TypeScript are the static validation for this change.
+
+The panel now follows the other workbench menus: compact spacing, equal-width aligned actions, smaller regular-weight number/select text, two-column fields with a narrow single-column layout, and explicit help for every collapsible section. Readiness and errors stay brief; worker details, units, limits and restoration guidance are in `?`. Without real metadata, the panel has only its readiness card and Mesh setup action, with no invented section coordinate. The Results tab has no redundant outer card. Interactive Mesh phase badges retain the same rectangular size and semantic colours as Run/Post, even under the global button theme.
+
+Progress polling no longer reloads an unchanged mesh source. A section update retains only the previous cut on the same mesh and axis, and states its actual displayed coordinate until the replacement arrives. Changes and exits abort pending requests immediately. Failed requests exit inspection explicitly; changing a control cannot silently reactivate it. Camera fitting/restoration flushes pending OrbitControls motion before applying the retained pose. Mesh materials use the current theme colours so edges remain visible in dark mode.
+
+Manual browser review used the actual panel, hook, floating toolbar and central viewer with the existing 16,000-cell native mesh served by a temporary loopback-only preview. It covered solid/transparent display, full-opacity reset, section axis and movement, numeric bounds errors, help content, 720/360-pixel panel widths, dark/light materials, orbit then exit, leaving the tab, and an unavailable geometry request followed by explicit recovery. The normal building view, controls and legend returned after exit and failure. DOM measurements showed no horizontal overflow at the narrow width; paired controls had equal widths/aligned bottoms, and number/select fields used the same regular font. Desktop screenshots were saved locally, resolving the initial capture limitation above. The preview route/helper were removed/stopped before committing.
+
+The live workbench was also reviewed at Results → Mesh with no checked job: it shows the concise empty state, preserves the normal building/probe view, and Mesh setup opens Solver → Mesh without submitting anything. This follow-up did not exercise a new authenticated production mesh, touch interaction or a separate multi-floor fixture. It does not claim new automated regression coverage.
 
 ## Measured performance and supported limits
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CFDJobEntry } from "./useCFDJobs";
 import { jobHasCheckedMesh } from "./useCFDJobs";
 import { CFDWorkerError, type RailwayCFDWorker } from "@/lib/railwayCFDWorker";
@@ -11,10 +11,16 @@ export function useCFDMeshInspection({adapter, projectId, studyId, input, entry,
   adapter: RailwayCFDWorker | null; projectId: string; studyId?: string; input: string;
   entry?: CFDJobEntry; active: boolean; hasDomain: boolean;
 }) {
-  const job = entry?.job;
+  const selectedJob = entry?.job;
+  const jobId = selectedJob?.id, jobRevision = selectedJob?.clientRevision, jobPhase = selectedJob?.phase;
+  const jobStudy = selectedJob?.studyId;
+  // Progress polling does not change the immutable mesh source.
+  const job = useMemo<CFDWorkerJob | undefined>(() => jobId && jobRevision && jobPhase && jobStudy
+    ? {id: jobId, clientRevision: jobRevision, phase: jobPhase, studyId: jobStudy, progress: null, message: ""} : undefined,
+  [jobId, jobRevision, jobPhase, jobStudy]);
   const current = !!entry && entry.input === input;
   const checked = current && !!(entry?.meshChecked || jobHasCheckedMesh(job));
-  const identity = JSON.stringify([adapter?.namespace, projectId, studyId, job?.id, current]);
+  const identity = JSON.stringify([adapter?.namespace, projectId, studyId, jobId, jobRevision, current]);
   const [source, setSource] = useState<{identity: string; metadata?: MeshMetadata; job?: CFDWorkerJob; error?: string}>();
   const [retry, setRetry] = useState(0);
   const [inspecting, setInspecting] = useState(false);
@@ -24,9 +30,10 @@ export function useCFDMeshInspection({adapter, projectId, studyId, input, entry,
   const [axis, setAxis] = useState<MeshAxis>("Z");
   const [fraction, setFraction] = useState(.5);
   const [fitRequest, setFitRequest] = useState(0);
-  const [view, setView] = useState<{key: string; geometry?: MeshGeometry; error?: string}>();
+  const [view, setView] = useState<{identity: string; key: string; geometry?: MeshGeometry; error?: string}>();
+  const request = useRef<AbortController | null>(null);
   const cache = useRef(new Map<string, MeshGeometry>());
-  const metadata = source?.identity === identity ? source.metadata : undefined;
+  const metadata = current && hasDomain && checked && source?.identity === identity ? source.metadata : undefined;
   const sourceJob = source?.identity === identity ? source.job : undefined;
   const error = source?.identity === identity ? source.error : undefined;
   const index = "XYZ".indexOf(axis);
@@ -34,16 +41,21 @@ export function useCFDMeshInspection({adapter, projectId, studyId, input, entry,
   const coordinateMm = min + (max - min) * fraction;
   const section = sectioning ? {axis, coordinateMm} : undefined;
   const key = JSON.stringify([identity, metadata?.meshId, section?.axis, section?.coordinateMm]);
-  const geometry = view?.key === key ? view.geometry : undefined;
+  // Keep the last section on the SAME axis visible while its replacement loads.
+  // A different mesh, source, axis or full/section mode can never reuse it.
+  const geometry = view?.identity === identity && view.geometry?.meshId === metadata?.meshId
+    && view.geometry?.axis === (sectioning ? axis : null) ? view.geometry : undefined;
   const viewError = view?.key === key ? view.error : undefined;
+  const connected = !!adapter?.capabilities.connected;
+  const canInspect = connected && !!metadata && !error;
 
   useEffect(() => {
     const buffers = cache.current;
-    return () => { setInspecting(false); setView(undefined); buffers.clear(); };
+    return () => { request.current?.abort(); setInspecting(false); setView(undefined); buffers.clear(); };
   }, [identity, active]);
 
   useEffect(() => {
-    if (!active || !adapter || !job || !hasDomain || !checked) return;
+    if (!active || !connected || !adapter || !job || !hasDomain || !checked) return;
     const controller = new AbortController();
     const find = async () => {
       try {
@@ -67,19 +79,26 @@ export function useCFDMeshInspection({adapter, projectId, studyId, input, entry,
         }
         throw new Error("The checked mesh is not retained on this worker. Generate a mesh to inspect it.");
       } catch (cause) {
-        if (!controller.signal.aborted) setSource({identity, error: cause instanceof Error ? cause.message : "Mesh inspection is unavailable."});
+        if (!controller.signal.aborted) {
+          request.current?.abort(); cache.current.clear(); setInspecting(false); setView(undefined);
+          setSource({identity, error: cause instanceof Error ? cause.message : "Mesh inspection is unavailable."});
+        }
       }
     };
     void find();
     return () => controller.abort();
-  }, [active, adapter, projectId, studyId, job, identity, hasDomain, checked, retry]);
+  }, [active, connected, adapter, projectId, studyId, job, identity, hasDomain, checked, retry]);
 
   useEffect(() => {
-    if (!active || !inspecting || !adapter || !metadata || !sourceJob || !current) return;
+    if (!active || !canInspect || !inspecting || !adapter || !metadata || !sourceJob) return;
     const controller = new AbortController();
+    request.current = controller;
     const timer = setTimeout(() => {
       const cached = cache.current.get(key);
-      if (cached) { setView({key, geometry: cached}); return; }
+      if (cached) {
+        cache.current.delete(key); cache.current.set(key, cached);
+        setView({identity, key, geometry: cached}); return;
+      }
       void adapter.meshGeometry(sourceJob, projectId, metadata.meshId, section, controller.signal).then(geometry => {
         if (controller.signal.aborted) return;
         const bytes = (item: MeshGeometry) => item.pointsMm.byteLength + item.triangles.byteLength + item.edges.byteLength;
@@ -89,33 +108,51 @@ export function useCFDMeshInspection({adapter, projectId, studyId, input, entry,
           const first = cache.current.keys().next().value!;
           size -= bytes(cache.current.get(first)!); cache.current.delete(first);
         }
-        setView({key, geometry});
+        setView({identity, key, geometry});
       }).catch(cause => {
-        if (!controller.signal.aborted) setView({key, error: cause instanceof Error ? cause.message : "Mesh view failed."});
+        if (!controller.signal.aborted) {
+          cache.current.clear(); setInspecting(false);
+          setView({identity, key, error: cause instanceof Error ? cause.message : "Mesh view failed."});
+        }
       });
     }, sectioning ? 100 : 0);
     return () => { clearTimeout(timer); controller.abort(); };
     // The key includes every physical section input. Material changes stay local.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, inspecting, adapter, metadata, sourceJob, current, projectId, key]);
+  }, [active, canInspect, inspecting, adapter, metadata, sourceJob, projectId, identity, key]);
 
-  const enabled = active && inspecting && current && !!metadata && !error && !viewError;
+  const enabled = active && inspecting && canInspect && !viewError;
   const scene: MeshInspectionScene | null = enabled ? {metadata, geometry: geometry ?? null, display, opacity, fitRequest} : null;
-  const status = !hasDomain ? "Choose a CFD domain before inspecting a mesh." : !adapter?.capabilities.connected ? "Connect the CFD worker to load a retained mesh."
-    : job && !current ? "This mesh belongs to an older setup. Generate a mesh for the current domain."
-    : !checked && job?.phase === "Failed" ? "Meshing did not complete successfully. Review the worker log and generate a checked mesh."
-    : !checked ? entry?.submitting || job && ["Queued", "Meshing", "MeshCheck"].includes(job.phase)
-      ? "Meshing is in progress. Inspection becomes available after the mesh checks pass." : "Generate and check a mesh to inspect it."
-    : !metadata && !error ? "Loading the checked mesh…" : enabled ? "Mesh inspection active" : "Checked mesh ready";
-  return {metadata, geometry, scene, status, error: error || viewError, inspecting: enabled,
-    loading: enabled && !geometry, display, setDisplay, opacity, setOpacity, sectioning, setSectioning, axis,
-    setAxis: (value: MeshAxis) => { setAxis(value); setFraction(.5); }, min, max, coordinateMm,
-    setCoordinate: (value: number) => setFraction(Math.max(0, Math.min(1, (value - min) / (max - min)))),
-    step: (direction: number) => setFraction(value => Math.max(0, Math.min(1, value + direction / 100))),
-    center: () => setFraction(.5), fit: () => setFitRequest(value => value + 1),
-    toggle: () => { cache.current.clear(); setView(undefined); setInspecting(value => !value || !!viewError); },
-    fail: (message: string) => { cache.current.clear(); setView({key, error: message}); },
-    exit: () => { cache.current.clear(); setView(undefined); setInspecting(false); },
-    retry: () => { cache.current.clear(); setSource(undefined); setView(undefined); setRetry(value => value + 1); },
+  const meshing = !!entry?.submitting || !!job && ["Queued", "Meshing", "MeshCheck"].includes(job.phase);
+  const status = !hasDomain ? "Choose a CFD domain." : !connected ? "CFD worker unavailable."
+    : job && !current ? "Mesh is out of date." : !checked && job?.phase === "Failed" ? "Meshing failed."
+    : !checked ? meshing ? "Meshing in progress…" : "No checked mesh available."
+    : error || viewError ? "Mesh inspection unavailable." : !metadata ? "Loading checked mesh…"
+    : enabled ? "Mesh inspection active" : "Checked mesh ready";
+  const guidance = !hasDomain ? "Open Mesh setup and choose the domain to mesh."
+    : !connected ? "The CFD worker cannot currently be reached. Reconnect and retry; opening inspection never submits a job."
+    : job && !current ? "The retained mesh belongs to an older setup. Open Mesh setup and generate a mesh for the current domain."
+    : !checked ? meshing ? "Inspection becomes available when the current mesh checks pass."
+      : "Open Mesh setup to generate and check the volume mesh. If meshing failed, review its worker log before retrying."
+    : "Inspect mesh opens a temporary mesh-only view. Exit inspection restores the previous scene and camera. Escape also exits.";
+  return {metadata, geometry, scene, status, guidance, canInspect, error: error || viewError, inspecting: enabled,
+    loading: enabled && view?.key !== key, display, setDisplay, opacity, setOpacity, sectioning,
+    setSectioning: (value: boolean) => { if (value !== sectioning) { request.current?.abort(); setSectioning(value); } }, axis,
+    setAxis: (value: MeshAxis) => { if (value !== axis) { request.current?.abort(); setAxis(value); setFraction(.5); } }, min, max, coordinateMm,
+    setCoordinate: (value: number) => {
+      if (!Number.isFinite(value)) return;
+      const next = Math.max(0, Math.min(1, (value - min) / (max - min)));
+      if (next !== fraction) { request.current?.abort(); setFraction(next); }
+    },
+    step: (direction: number) => {
+      if (direction < 0 && fraction <= 0 || direction > 0 && fraction >= 1) return;
+      request.current?.abort(); setFraction(value => Math.max(0, Math.min(1, value + direction / 100)));
+    },
+    center: () => { if (fraction !== .5) { request.current?.abort(); setFraction(.5); } },
+    fit: () => setFitRequest(value => value + 1),
+    toggle: () => { request.current?.abort(); cache.current.clear(); setView(undefined); setInspecting(value => !value); },
+    fail: (message: string) => { request.current?.abort(); cache.current.clear(); setInspecting(false); setView({identity, key, error: message}); },
+    exit: () => { request.current?.abort(); cache.current.clear(); setView(undefined); setInspecting(false); },
+    retry: () => { request.current?.abort(); cache.current.clear(); setInspecting(false); setSource(undefined); setView(undefined); setRetry(value => value + 1); },
   };
 }

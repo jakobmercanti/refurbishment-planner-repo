@@ -1273,7 +1273,7 @@ export function ClimoptixWorkspace({
                 >
                   {active && (
                     <ClimoptixResults
-                      mesh={<CFDMeshInspectionPanel inspection={meshInspection}/>}
+                      mesh={<CFDMeshInspectionPanel inspection={meshInspection} onOpenMeshSetup={() => { meshInspection.exit(); openPhase("mesh"); setSimulationTab("mesh"); }}/>}
                       view={resultsView} onViewChange={setResultsView}
                       review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
                       preparationIssue={error || preparationError} onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}

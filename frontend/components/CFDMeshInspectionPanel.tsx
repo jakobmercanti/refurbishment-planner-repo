@@ -5,56 +5,85 @@ import { CFDNumber } from "./CFDFields";
 import { WindowHelpButton } from "./WindowHelpButton";
 import type { MeshAxis, MeshDisplay } from "@/lib/cfdMeshInspection";
 
-export function CFDMeshInspectionPanel({inspection}: {inspection: ReturnType<typeof useCFDMeshInspection>}) {
+export function CFDMeshInspectionPanel({inspection, onOpenMeshSetup}: {
+  inspection: ReturnType<typeof useCFDMeshInspection>; onOpenMeshSetup: () => void;
+}) {
   const mesh = inspection.metadata;
+  const metres = (mm: number) => Number((mm / 1000).toPrecision(12));
   return <section className="cfx-mesh-inspection" aria-label="Mesh inspection" data-cfx-collapse-root>
     <details open><summary>Mesh inspection<WindowHelpButton section title="Mesh inspection" steps={[
-      {heading: "Actual solver mesh", text: "This view reads the final checked OpenFOAM points, faces, owner, neighbour and boundary files. Full mesh displays boundary faces and their original polygon edges. Sections intersect the actual volume cells, including internal partitions. Native metres are normalized to millimetres internally. The position control displays global solver metres."},
-      {heading: "Temporary isolated view", text: "Inspect Mesh temporarily isolates the mesh in the main 3D view. Orbit, pan and zoom remain available. Exit Inspection or leave this tab to restore the previous camera and visible scene. Display and section controls change this view only."},
-      {heading: "Topology and display limits", text: "Native ASCII single-fluid polyMesh is supported, including disconnected fluid regions and polyhedral cells. Warped faces use constrained triangulation through their original vertices. Binary polyMesh requires ASCII conversion. Detailed display is bounded to 48 MB per response. Transparent faces use standard depth-sorted WebGL transparency."},
+      {heading: "Current status", text: inspection.guidance},
+      ...(inspection.error ? [{heading: "Worker details", text: inspection.error}] : []),
+      {heading: "Checked mesh", text: "Inspection reads the final volume mesh after its meshing checks pass. Opening this view does not generate a mesh or start a solve. Mesh setup opens the source settings without changing them."},
+      {heading: "Temporary view", text: "Inspect mesh temporarily isolates the mesh in the existing 3D view. Orbit, pan and zoom remain available. Exit inspection, Escape or leaving this tab restores the previous camera and scene. Display controls never change project or simulation inputs."},
     ]} /></summary>
-      <p className="cfx-caption" role="status">{inspection.status}</p>
-      {inspection.error && <p className="cfx-error" role="alert">{inspection.error}</p>}
+      <p id="cfx-mesh-status" className={inspection.error ? "cfx-error" : "cfx-caption"} role={inspection.error ? "alert" : "status"}>{inspection.status}</p>
       <div className="cfx-equal-actions">
-        <button className={inspection.inspecting ? "cfx-primary" : undefined} aria-pressed={inspection.inspecting} disabled={!mesh}
-          onClick={inspection.toggle}>{inspection.inspecting ? "Exit Inspection" : "Inspect Mesh"}</button>
-        <button disabled={!inspection.inspecting} onClick={inspection.fit}>Fit mesh</button>
+        {inspection.error ? <button type="button" onClick={inspection.retry}>Retry mesh</button> :
+          <button type="button" className={inspection.inspecting ? "cfx-primary" : undefined} aria-pressed={inspection.inspecting}
+            aria-describedby="cfx-mesh-status" disabled={!inspection.canInspect} onClick={inspection.toggle}>
+            {inspection.inspecting ? "Exit inspection" : "Inspect mesh"}</button>}
+        {mesh ? <button type="button" disabled={!inspection.inspecting} onClick={inspection.fit}>Fit view</button> :
+          <button type="button" onClick={onOpenMeshSetup}>Mesh setup</button>}
       </div>
-      {inspection.error && <button onClick={inspection.retry}>Reload mesh</button>}
-      {inspection.loading && <p role="status">{inspection.sectioning ? "Calculating volume-cell section…" : "Loading final mesh boundary…"}</p>}
-      {inspection.geometry && inspection.sectioning && <p className="cfx-caption" role="status">{inspection.geometry.sectionCells
-        ? inspection.geometry.sectionCells.toLocaleString() + " intersected volume cells" : "Empty section · no volume cells intersect this plane"}</p>}
+      {inspection.loading && <p className="cfx-caption" role="status">{inspection.geometry?.axis
+        ? `Showing ${inspection.geometry.axis} = ${metres(inspection.geometry.coordinateMm!)} m · updating…`
+        : inspection.sectioning ? "Updating section…" : "Loading mesh…"}</p>}
+      {!inspection.loading && inspection.inspecting && inspection.geometry?.axis && <p className="cfx-caption" role="status">{inspection.geometry.sectionCells
+        ? inspection.geometry.sectionCells.toLocaleString() + " intersected cells" : "Empty section"}</p>}
     </details>
-    <details open><summary>Display</summary><fieldset disabled={!mesh} className="cfx-mesh-inspection-fields">
-      <label>Display mode<select aria-label="Mesh display mode" value={inspection.display} onChange={event => inspection.setDisplay(event.target.value as MeshDisplay)}>
-        <option value="solid">Solid boundary</option><option value="wireframe">Boundary edges</option><option value="transparent">Transparent</option>
-      </select></label>
-      <label>Opacity · {inspection.display === "transparent" ? inspection.opacity : 100}%<input type="range" aria-label="Mesh opacity" min={5} max={100} step={1}
-        disabled={inspection.display !== "transparent"} value={inspection.display === "transparent" ? inspection.opacity : 100} onChange={event => inspection.setOpacity(Number(event.target.value))} /></label>
-      <button onClick={() => { inspection.setDisplay("solid"); inspection.setOpacity(100); }}>Full opacity</button>
-    </fieldset></details>
-    <details open><summary>Sectioning</summary><fieldset disabled={!mesh} className="cfx-mesh-inspection-fields">
-      <label className="cfx-check"><input type="checkbox" checked={inspection.sectioning} onChange={event => inspection.setSectioning(event.target.checked)} />Section only</label>
-      <fieldset disabled={!inspection.sectioning} className="cfx-mesh-inspection-fields">
-        <label>Global axis<select aria-label="Mesh section axis" value={inspection.axis} onChange={event => inspection.setAxis(event.target.value as MeshAxis)}>
-          {["X", "Y", "Z"].map(axis => <option key={axis} value={axis}>{axis}</option>)}
+    {mesh && <>
+    <details open><summary>Mesh appearance<WindowHelpButton section title="Mesh appearance" steps={[
+      {heading: "Display mode", text: "Solid boundary shows the actual boundary faces and their original edges. Boundary edges shows those edges alone, without triangulation diagonals. Transparent shows the same mesh with adjustable face opacity. Section view uses the same appearance settings."},
+      {heading: "Opacity", text: "Opacity is active in Transparent mode. Full opacity returns to solid faces immediately. Edges remain visible against both light and dark backgrounds. Transparency uses standard WebGL depth sorting."},
+    ]}/></summary><fieldset disabled={!inspection.canInspect} className="cfx-mesh-inspection-fields">
+      <div className="cfx-mesh-form">
+        <label>Display mode<select aria-label="Mesh display mode" value={inspection.display} onChange={event => inspection.setDisplay(event.target.value as MeshDisplay)}>
+          <option value="solid">Solid boundary</option><option value="wireframe">Boundary edges</option><option value="transparent">Transparent</option>
         </select></label>
-        <label>Section position · {(inspection.coordinateMm / 1000).toFixed(4)} m<input type="range" aria-label="Mesh section position"
-          min={inspection.min} max={inspection.max} step={(inspection.max - inspection.min) / 500} value={inspection.coordinateMm}
-          onChange={event => inspection.setCoordinate(Number(event.target.value))} /></label>
-        <CFDNumber convert={false} label="Section position (m)" min={inspection.min / 1000} max={inspection.max / 1000} value={inspection.coordinateMm / 1000}
-          onChange={value => inspection.setCoordinate(value * 1000)} />
-        <div className="cfx-equal-actions"><button disabled={inspection.coordinateMm <= inspection.min} onClick={() => inspection.step(-1)} aria-label="Previous mesh section">Previous section</button>
-          <button disabled={inspection.coordinateMm >= inspection.max} onClick={() => inspection.step(1)} aria-label="Next mesh section">Next section</button>
-          <button onClick={inspection.center}>Center section</button><button onClick={() => { inspection.setAxis("Z"); inspection.center(); }}>Reset section</button></div>
-        {mesh && <small className="cfx-caption">{inspection.axis} bounds · {(inspection.min / 1000).toFixed(4)} to {(inspection.max / 1000).toFixed(4)} m</small>}
-      </fieldset>
+        <button type="button" disabled={inspection.display === "solid"} onClick={() => { inspection.setDisplay("solid"); inspection.setOpacity(100); }}>Full opacity</button>
+      </div>
+      <label>Opacity · {inspection.display === "transparent" ? inspection.opacity : 100}%<input type="range" aria-label="Mesh opacity" min={5} max={100} step={1}
+        aria-valuetext={`${inspection.display === "transparent" ? inspection.opacity : 100} percent`}
+        disabled={inspection.display !== "transparent"} value={inspection.display === "transparent" ? inspection.opacity : 100} onChange={event => inspection.setOpacity(Number(event.target.value))} /></label>
     </fieldset></details>
-    {mesh && <details><summary>Mesh information</summary><dl className="cfx-grid cfx-mesh-information">
+    <details open><summary>Section<WindowHelpButton section title="Mesh section" steps={[
+      {heading: "Section only", text: "Replace the full boundary view with a genuine cut through the volume cells, including their internal partitions. X, Y and Z are the solver's global axes; the selected axis is perpendicular to the section. This is independent of result sampling planes."},
+      {heading: "Position and movement", text: "Position is in metres in solver coordinates. The slider, numeric entry and previous/next buttons stay synchronized within the mesh bounds. Steps move by one percent of the selected axis span. Center section uses its midpoint; Reset section restores Z and its midpoint. Section movement preserves the camera."},
+      {heading: "Pending sections", text: "During an update, the previous section on the same axis can stay visible. The status states its actual displayed position until the new cut arrives. Switching axis or mesh never reuses another axis or revision."},
+      {heading: "Supported topology", text: "Sections use native ASCII single-fluid polyMesh, including polyhedral and concave cells and disconnected fluid parts. Warped faces are triangulated through source vertices. Binary meshes need ASCII conversion. Detailed geometry responses are bounded to 48 MB."},
+      {heading: "Current bounds", text: [0, 1, 2].map(index => `${"XYZ"[index]}: ${metres(mesh.boundsMm[0][index])} to ${metres(mesh.boundsMm[1][index])} m`).join("; ")},
+    ]}/></summary><fieldset disabled={!inspection.canInspect} className="cfx-mesh-inspection-fields">
+      <label className="cfx-check"><input type="checkbox" checked={inspection.sectioning} onChange={event => inspection.setSectioning(event.target.checked)} />Section only</label>
+      {inspection.sectioning && <>
+        <div className="cfx-mesh-form">
+          <label>Normal axis<select aria-label="Mesh section axis" value={inspection.axis} onChange={event => inspection.setAxis(event.target.value as MeshAxis)}>
+            {["X", "Y", "Z"].map(axis => <option key={axis} value={axis}>{axis}</option>)}
+          </select></label>
+          <CFDNumber convert={false} label="Section position (m)" min={metres(inspection.min)} max={metres(inspection.max)} value={metres(inspection.coordinateMm)}
+            validate={value => value < metres(inspection.min) || value > metres(inspection.max) ? `Use ${metres(inspection.min)} to ${metres(inspection.max)} m.` : undefined}
+            onChange={value => inspection.setCoordinate(value * 1000)} />
+        </div>
+        <label>Position · {metres(inspection.coordinateMm)} m<input type="range" aria-label="Mesh section position"
+          min={inspection.min} max={inspection.max} step={(inspection.max - inspection.min) / 500} value={inspection.coordinateMm}
+          aria-valuetext={`${inspection.axis} = ${metres(inspection.coordinateMm)} metres`}
+          onChange={event => inspection.setCoordinate(Number(event.target.value))} /></label>
+        <div className="cfx-equal-actions"><button type="button" disabled={inspection.coordinateMm <= inspection.min} onClick={() => inspection.step(-1)} aria-label="Previous mesh section">Previous section</button>
+          <button type="button" disabled={inspection.coordinateMm >= inspection.max} onClick={() => inspection.step(1)} aria-label="Next mesh section">Next section</button>
+          <button type="button" onClick={inspection.center}>Center section</button><button type="button" onClick={() => { inspection.setAxis("Z"); inspection.center(); }}>Reset section</button></div>
+      </>}
+    </fieldset></details>
+    <details><summary>Mesh information<WindowHelpButton section title="Mesh information" steps={[
+      {heading: "Source and revision", text: "Counts, patches and bounds come from the final checked volume mesh. The revision is a checksum of its native topology files. The defaultRegion name denotes the single fluid region; disconnected fluid parts can share that region."},
+      {heading: "Read-only inspection", text: "These values describe the retained mesh. Mesh setup opens the source domain and meshing settings. Viewing, fitting or sectioning cannot modify those inputs, boundary conditions or shared Heating and Ventilation data."},
+    ]}/></summary><dl className="cfx-mesh-information">
       <div><dt>Cells</dt><dd>{mesh.cells.toLocaleString()}</dd></div><div><dt>Faces</dt><dd>{mesh.faces.toLocaleString()}</dd></div>
       <div><dt>Points</dt><dd>{mesh.points.toLocaleString()}</dd></div><div><dt>Mesh revision</dt><dd title={mesh.meshId}>{mesh.meshId.slice(0, 16)}</dd></div>
       <div><dt>Source</dt><dd>Final checked polyMesh</dd></div><div><dt>Regions</dt><dd>{mesh.regions.join(", ")}</dd></div>
-      {mesh.boundsMm[0].map((value, index) => <div key={index}><dt>{"XYZ"[index]} bounds (m)</dt><dd>{(value / 1000).toFixed(4)} to {(mesh.boundsMm[1][index] / 1000).toFixed(4)}</dd></div>)}
-    </dl><ul>{mesh.patches.map(patch => <li key={patch.name}>{patch.name} · {patch.faces.toLocaleString()} faces</li>)}</ul></details>}
+      {mesh.boundsMm[0].map((value, index) => <div key={index}><dt>{"XYZ"[index]} bounds (m)</dt><dd>{metres(value)} to {metres(mesh.boundsMm[1][index])}</dd></div>)}
+    </dl><ul className="cfx-mesh-patches" aria-label="Mesh boundary patches">{mesh.patches.map(patch => <li key={patch.name}><span>{patch.name}</span><span>{patch.faces.toLocaleString()} faces</span></li>)}</ul>
+      <div className="cfx-equal-actions"><button type="button" onClick={onOpenMeshSetup}>Mesh setup</button></div>
+    </details>
+    </>}
   </section>;
 }

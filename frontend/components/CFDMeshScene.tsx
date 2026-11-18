@@ -1,12 +1,38 @@
 "use client";
 
-import { Component, useEffect, useLayoutEffect, useMemo, type ReactNode } from "react";
+import { Component, useEffect, useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useThree } from "@react-three/fiber";
 import { BufferAttribute, BufferGeometry, DoubleSide, PerspectiveCamera, Vector3 } from "three";
 import type { MeshInspectionScene } from "@/lib/cfdMeshInspection";
 
 type MeshOrbit = {target: Vector3; update: () => void; minDistance?: number; maxDistance?: number;
-  dispatchEvent?: (event: {type: "start"}) => void};
+  enableDamping?: boolean; autoRotate?: boolean; dispatchEvent?: (event: {type: "start"}) => void};
+
+function settleMeshOrbit(orbit: MeshOrbit, apply: () => void) {
+  const damping = orbit.enableDamping, autoRotate = orbit.autoRotate;
+  if (damping !== undefined) orbit.enableDamping = false;
+  if (autoRotate !== undefined) orbit.autoRotate = false;
+  try {
+    // Consume residual pan/rotation before applying the retained camera. An
+    // update with damping still enabled would move the restored position.
+    orbit.update(); apply(); orbit.update();
+  } finally {
+    if (damping !== undefined) orbit.enableDamping = damping;
+    if (autoRotate !== undefined) orbit.autoRotate = autoRotate;
+  }
+}
+
+const defaultMeshColours = JSON.stringify({face: "#b8c6d1", edge: "#17334c"});
+function meshThemeSnapshot() {
+  const styles = getComputedStyle(document.documentElement);
+  return JSON.stringify({face: styles.getPropertyValue("--surface-muted").trim() || "#b8c6d1",
+    edge: styles.getPropertyValue("--ink").trim() || "#17334c"});
+}
+function subscribeMeshTheme(notify: () => void) {
+  const observer = new MutationObserver(notify);
+  observer.observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme", "class", "style"]});
+  return () => observer.disconnect();
+}
 export class CFDMeshGuard extends Component<{children: ReactNode; onError?: (message: string) => void}, {failed: boolean}> {
   state = {failed: false};
   static getDerivedStateFromError() { return {failed: true}; }
@@ -18,11 +44,14 @@ export function preserveMeshCamera(camera: PerspectiveCamera, orbit: MeshOrbit) 
     zoom: camera.zoom, near: camera.near, far: camera.far, target: orbit.target.clone(),
     minDistance: orbit.minDistance, maxDistance: orbit.maxDistance};
   return () => {
-    camera.position.copy(saved.position); camera.up.copy(saved.up);
-    camera.zoom = saved.zoom; camera.near = saved.near; camera.far = saved.far;
-    if (saved.minDistance !== undefined) orbit.minDistance = saved.minDistance;
-    if (saved.maxDistance !== undefined) orbit.maxDistance = saved.maxDistance;
-    orbit.target.copy(saved.target); orbit.update(); camera.quaternion.copy(saved.quaternion);
+    settleMeshOrbit(orbit, () => {
+      camera.position.copy(saved.position); camera.up.copy(saved.up);
+      camera.zoom = saved.zoom; camera.near = saved.near; camera.far = saved.far;
+      if (saved.minDistance !== undefined) orbit.minDistance = saved.minDistance;
+      if (saved.maxDistance !== undefined) orbit.maxDistance = saved.maxDistance;
+      orbit.target.copy(saved.target);
+    });
+    camera.quaternion.copy(saved.quaternion);
     camera.updateProjectionMatrix(); camera.updateMatrixWorld();
   };
 }
@@ -58,20 +87,25 @@ function MeshCamera({metadata, fitRequest}: Pick<MeshInspectionScene, "metadata"
     const [min, max] = JSON.parse(bounds) as [number[], number[]];
     const center = new Vector3((min[0] + max[0]) * .0005, (min[2] + max[2]) * .0005, -(min[1] + max[1]) * .0005);
     const span = new Vector3(...max.map((value, i) => (value - min[i]) * .001)).length();
-    const direction = camera.position.clone().sub(orbit.target).normalize();
-    if (direction.lengthSq() === 0) direction.set(1, .8, 1).normalize();
-    const fov = Math.min(camera.fov, camera.fov * camera.aspect) * Math.PI / 180;
-    camera.position.copy(center).addScaledVector(direction, span * .65 / Math.tan(fov / 2));
-    camera.zoom = 1; camera.near = Math.max(.0001, span / 10000); camera.far = Math.max(100, span * 100);
-    if (orbit.minDistance !== undefined) orbit.minDistance = Math.max(.0001, span / 10000);
-    if (orbit.maxDistance !== undefined) orbit.maxDistance = Math.max(1000, span * 100);
-    orbit.target.copy(center); orbit.update(); camera.updateProjectionMatrix(); invalidate();
+    settleMeshOrbit(orbit, () => {
+      const direction = camera.position.clone().sub(orbit.target).normalize();
+      if (direction.lengthSq() === 0) direction.set(1, .8, 1).normalize();
+      const fov = Math.min(camera.fov, camera.fov * camera.aspect) * Math.PI / 180;
+      camera.position.copy(center).addScaledVector(direction, span * .65 / Math.tan(fov / 2));
+      camera.zoom = 1; camera.near = Math.max(.0001, span / 10000); camera.far = Math.max(100, span * 100);
+      if (orbit.minDistance !== undefined) orbit.minDistance = Math.max(.0001, span / 10000);
+      if (orbit.maxDistance !== undefined) orbit.maxDistance = Math.max(1000, span * 100);
+      orbit.target.copy(center);
+    });
+    camera.updateProjectionMatrix(); invalidate();
   }, [get, controls, invalidate, bounds, fitRequest]);
   return null;
 }
 
 export function CFDMeshScene({inspection}: {inspection: MeshInspectionScene}) {
   const {geometry, display, opacity} = inspection;
+  const theme = useSyncExternalStore(subscribeMeshTheme, meshThemeSnapshot, () => defaultMeshColours);
+  const colours = JSON.parse(theme) as {face: string; edge: string};
   const {invalidate} = useThree();
   const buffers = useMemo(() => {
     if (!geometry) return null;
@@ -87,12 +121,12 @@ export function CFDMeshScene({inspection}: {inspection: MeshInspectionScene}) {
     <MeshCamera metadata={inspection.metadata} fitRequest={inspection.fitRequest}/>
     {buffers && <>
       {display !== "wireframe" && <mesh geometry={buffers.faces} raycast={() => {}}>
-        <meshStandardMaterial color="#b8c6d1" roughness={.85} side={DoubleSide} flatShading
+        <meshStandardMaterial color={colours.face} roughness={.85} side={DoubleSide} flatShading
           transparent={display === "transparent"} opacity={display === "transparent" ? opacity / 100 : 1}
           depthWrite={display !== "transparent"} polygonOffset polygonOffsetFactor={1} polygonOffsetUnits={1}/>
       </mesh>}
       <lineSegments geometry={buffers.edges} raycast={() => {}} renderOrder={1}>
-        <lineBasicMaterial color="#17334c" transparent={display === "transparent"} opacity={display === "transparent" ? .75 : 1}/>
+        <lineBasicMaterial color={colours.edge} transparent={display === "transparent"} opacity={display === "transparent" ? .75 : 1}/>
       </lineSegments>
     </>}
   </group>;
