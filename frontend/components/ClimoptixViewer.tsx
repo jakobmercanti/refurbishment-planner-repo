@@ -17,6 +17,8 @@ import { events, useThree, type ThreeEvent } from "@react-three/fiber";
 import { StableCanvas } from "./StableCanvas";
 import { CFDSceneProbeReading, CFDSceneResult, RESULT_PLANE_MESH, type CFDSceneResultProps } from "./CFDSceneResult";
 import { CFDOrientation } from "./CFDOrientation";
+import { CFDMeshGuard, CFDMeshScene } from "./CFDMeshScene";
+import type { MeshInspectionScene } from "@/lib/cfdMeshInspection";
 import type { ResultPointValue } from "@/lib/cfdPointProbe";
 import { CFDProbeMarker } from "./CFDProbeMarker";
 import { CFDPlaneContextMenu, type PlaneMenu } from "./CFDPlaneContextMenu";
@@ -126,6 +128,8 @@ function Frame({ request, target, ready = true }: { request: string; target?: Re
   return null;
 }
 interface Props {
+  meshInspection?: MeshInspectionScene | null;
+  onMeshInspectionError?: (message: string) => void;
   resultLegend?: ReactNode;
   resultOverlay?:CFDSceneResultProps;
   additionalResultOverlays?:CFDSceneResultProps[];
@@ -404,7 +408,10 @@ export function ClimoptixViewer({
   onClearResultSample,
   resultFitRequest = 0,
   resultReady = false,
+  meshInspection,
+  onMeshInspectionError,
 }: Props) {
+  const inspectingMesh = !!meshInspection;
   const mouseButtons = useViewerNavigation();
   const [planeMenu,setPlaneMenu]=useState<PlaneMenu|null>(null);
   const thermalPatchIds = useMemo(
@@ -525,7 +532,7 @@ export function ClimoptixViewer({
     // Release the interaction immediately; clear the rendered handle next frame.
     const frame = requestAnimationFrame(() => setDrag(null));
     return () => cancelAnimationFrame(frame);
-  }, [scenario.id, source, viewScope.id]);
+  }, [scenario.id, source, viewScope.id, inspectingMesh]);
   const prepared =
     buildingScene && report?.validation.sourceHash === buildingScene.sourceHash
       ? report
@@ -686,7 +693,7 @@ export function ClimoptixViewer({
   };
   return (
     <section className="cfx-viewer" aria-label="Climoptix geometry viewer">
-      <div className="cfx-view-tools">
+      <div className="cfx-view-tools" hidden={!!meshInspection}>
         <div className="cfx-view-selector">
           <label htmlFor="cfx-view-scope">View</label>
           <select
@@ -750,7 +757,7 @@ export function ClimoptixViewer({
         )}
         {stale && report && <p className="cfx-stale" role="status">Setup changed. Overlays await updated checks.</p>}
       </div>
-      {viewTarget &&
+      {viewTarget && !meshInspection &&
         createPortal(
           <div aria-label="CFD view properties">
           <div className="cfx-view-visibility-actions">
@@ -814,12 +821,14 @@ export function ClimoptixViewer({
         tabIndex={0}
         data-cfx-probe-surface
         onPointerDownCapture={event => {
+          if (meshInspection) return;
           if (event.button !== 0) return;
           if (event.target instanceof Element && event.target.closest(".stable-canvas-host") && !event.target.closest("button"))
             event.currentTarget.focus({preventScroll:true});
           else onClearResultSample?.();
         }}
-        data-point-probing={resultOverlay?.probing||undefined}
+        data-mesh-inspection={!!meshInspection || undefined}
+        data-point-probing={!meshInspection && resultOverlay?.probing||undefined}
         data-patch-display={patchMode}
         data-view="3D"
         data-visible-rooms={viewScope.rooms.join(",")}
@@ -828,7 +837,7 @@ export function ClimoptixViewer({
         data-diagnostic-highlight={issuePositions.length || issueVentPoints.length || issueRefinement ? diagnosticHighlight?.label : undefined}
         data-boundary-groups={JSON.stringify(boundaryGroups.map(g => ({ id: g.id, colour: g.colour, patchIds: g.patchIds })))}
       >
-        {rooms.length > 0 || hasVisibleResults ? (
+        {rooms.length > 0 || hasVisibleResults || meshInspection ? (
           <StableCanvas
             frameloop="demand"
             dpr={[1, 1.5]}
@@ -836,22 +845,24 @@ export function ClimoptixViewer({
             events={state => ({
               ...events(state),
               filter: hits => {
-                const plane = hits.find(hit => hit.object.name === RESULT_PLANE_MESH);
-                // A transparent boundary can be nearer the camera than the visible plane.
-                return plane ? [plane] : hits.filter(hit => {
+                const visible = hits.filter(hit => {
                   for (let node: typeof hit.object | null = hit.object; node; node = node.parent)
                     if (!node.visible) return false;
                   return true;
                 });
+                const plane = visible.find(hit => hit.object.name === RESULT_PLANE_MESH);
+                // A transparent boundary can be nearer the camera than the visible plane.
+                return plane ? [plane] : visible;
               },
             })}
             onPointerMissed={event => {
-              if (event.button === 0) { onClearResultSample?.(); onSelect(null); }
+              if (!meshInspection && event.button === 0) { onClearResultSample?.(); onSelect(null); }
             }}
           >
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
             <Bounds margin={1.15} maxDuration={0.25}>
+              <group name="cfd-normal-scene" visible={!meshInspection}>
               <group name="cfd-building-context" visible={!resultsOnly}>
               {!buildingScene && (
                 <ReadOnlyBuildingScene
@@ -862,7 +873,7 @@ export function ClimoptixViewer({
                   wallMode={wallOutlines && patchMode === "geometry" ? "CUTAWAY_2D" : "TRANSPARENT"}
                 />
               )}
-              {!resultsOnly && scenario.outputs.probesMm.map((point,index)=><CFDProbeMarker key={`probe:${index}`} point={point} index={index} selected={selected===`probe:${index}`} onSelect={()=>onSelect(`probe:${index}`)} onMove={next=>onMoveProbe?.(index,next)}/>)}
+              {!meshInspection && !resultsOnly && scenario.outputs.probesMm.map((point,index)=><CFDProbeMarker key={`probe:${index}`} point={point} index={index} selected={selected===`probe:${index}`} onSelect={()=>onSelect(`probe:${index}`)} onMove={next=>onMoveProbe?.(index,next)}/>)}
               {project.hvac?.bindings[scenario.id] && projectFloors(project).flatMap(floor => (floor.content.heatingLayout?.ufhZones ?? []).filter(zone => report?.domain.regions.some(r => r.included && r.floorId === floor.id && r.id === zone.roomId)).flatMap(zone => (floor.content.heatingLayout?.ufhCircuits ?? []).filter(c => c.zoneId === zone.zoneId).map(circuit => <Line key={`hvac:${floor.id}:${circuit.circuitId}`} name={`UFH loop intent: ${zone.name}`} points={circuit.pathMm.map(p => scene([p.x, p.y, floor.elevationMm + 5]))} color={COLORS.object} lineWidth={2} raycast={() => {}} />)))}
               {displayPatches
                 .filter(
@@ -1065,25 +1076,27 @@ export function ClimoptixViewer({
                   <boxGeometry args={[issueRefinement.sizeMm[0] * .001, issueRefinement.sizeMm[2] * .001, issueRefinement.sizeMm[1] * .001]} />}
                 <meshBasicMaterial color={ISSUE_COLOUR} wireframe depthTest={false} depthWrite={false} />
               </mesh>}
-              {resultSample&&hasVisibleResults&&<CFDSceneProbeReading sample={resultSample}/>}
+              {!meshInspection&&resultSample&&hasVisibleResults&&<CFDSceneProbeReading sample={resultSample}/>}
               <group ref={resultGroup}>
-              {[...resultLayers.values()].map(overlay=><CFDSceneResult key={overlay.file.name} {...overlay}
+              {[...resultLayers.values()].map(overlay=><CFDSceneResult key={overlay.file.name} {...overlay} visible={!meshInspection && overlay.visible !== false}
                 onSelect={()=>onSelectResultFile?.(overlay.file)}
                 onContextMenu={onRemoveResultFile?(x,y)=>{onResultContextMenuOpen?.();setPlaneMenu({file:overlay.file,x,y});}:undefined}/>)}
               </group>
               <Frame
                 request={`${source}:${buildingScene?.sourceHash ?? "local"}:${viewScope.id}:${resultsOnly}:${fit + resultFitRequest}`}
                 target={resultsOnly ? resultGroup : undefined}
-                ready={!resultsOnly || resultReady}
+                ready={!meshInspection && (!resultsOnly || resultReady)}
               />
+              </group>
             </Bounds>
             <OrbitControls
               makeDefault
               mouseButtons={mouseButtons}
-              enabled={!drag}
+              enabled={!!meshInspection || !drag}
               minDistance={0.2}
               maxDistance={1000}
             />
+            {meshInspection && <CFDMeshGuard onError={onMeshInspectionError}><CFDMeshScene inspection={meshInspection}/></CFDMeshGuard>}
             <CFDOrientation target={orientation} />
           </StableCanvas>
         ) : (
@@ -1108,9 +1121,9 @@ export function ClimoptixViewer({
         )}
         {(rooms.length > 0 || hasVisibleResults) && <canvas ref={orientation} className="cfx-orientation"
           width={192} height={192} role="img" aria-label="Orientation of the positive CFD X, Y and Z axes" />}
-        {resultLegend}
+        {!meshInspection && resultLegend}
       </div>
-      {!resultsOnly && <footer>
+      {!meshInspection && !resultsOnly && <footer>
         {patchMode !== "geometry" && <ul className="cfx-refinement-legend cfx-patch-legend" tabIndex={0} aria-label={PATCH_DISPLAY_MODES[patchMode]}>
           {[...patchLegend].map(([label, colour]) => <li key={label}><i style={{ background: colour }} aria-hidden="true" />{label}</li>)}
           {(!prepared || displayPatches.some(p => !patchStyles.has(p.id) && p.kind !== "object")) &&
@@ -1153,7 +1166,7 @@ export function ClimoptixViewer({
           <li><i style={{ background: COLORS.cap }} />Boundary cap</li>
         </ul>}
       </footer>}
-      <CFDPlaneContextMenu menu={planeMenu} onClose={()=>setPlaneMenu(null)} onDelete={file=>onRemoveResultFile?.(file)}/>
+      {!meshInspection && <CFDPlaneContextMenu menu={planeMenu} onClose={()=>setPlaneMenu(null)} onDelete={file=>onRemoveResultFile?.(file)}/>}
     </section>
   );
 }

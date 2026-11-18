@@ -13,16 +13,18 @@ import { CFD2DSlices } from "./CFD2DSlices";
 const RESULT_VIEWS = [
   ["summary", "Summary & 3D"],
   ["slices", "2D Slices"],
+  ["mesh", "Mesh"],
   ["review", "Review & files"],
 ] as const;
-type ResultsView = (typeof RESULT_VIEWS)[number][0];
+export type ResultsView = (typeof RESULT_VIEWS)[number][0];
 
-export function ClimoptixResults({adapter,job,older,report,initialFile,initialProvenance,onClose,onScene,sceneFiles=[],sceneError,onUnloadScene,active=true,projectId,review,view:subview,onViewChange:setSubview,defaultPlaneRequest,onDefaultPlaneHandled}:{
+export function ClimoptixResults({adapter,job,older,report,initialFile,initialProvenance,onClose,onScene,sceneFiles=[],sceneError,onUnloadScene,active=true,projectId,review,mesh,view:subview,onViewChange:setSubview,defaultPlaneRequest,onDefaultPlaneHandled}:{
   adapter:RailwayCFDWorker|null;job?:CFDWorkerJob;older:boolean;report:CFDReport|null;initialFile?:File;initialProvenance?:string;onClose:()=>void;onScene?:(file:File,historical:boolean)=>void;sceneFiles?:File[];sceneError?:string;onUnloadScene?:(file?:File)=>void;active?:boolean;projectId:string;review:ReactNode;view:ResultsView;onViewChange:(view:ResultsView)=>void;
   defaultPlaneRequest?: string;
   onDefaultPlaneHandled?: () => void;
+  mesh?: ReactNode;
 }){
-  const {result,error,missing,retry}=useCFDResult(adapter,job,active);
+  const {result,error,missing,retry}=useCFDResult(adapter,job,active && subview !== "mesh");
   const [files,setFiles]=useState<{file:File;verified:boolean}[]>(()=>initialFile?[{file:initialFile,verified:!!initialProvenance?.startsWith("Authenticated worker job")}]:[]);
   // Downloads may finish after a layer was removed or imported. Always merge
   // with the latest layer collection, never the render that started the request.
@@ -82,11 +84,11 @@ export function ClimoptixResults({adapter,job,older,report,initialFile,initialPr
     return () => { clearTimeout(timer); controller.abort(); };
   }, [active, defaultPlaneRequest, result]);
   useEffect(()=>{
-    if(!active||defaultPlaneRequest||planeBusy||autoOpened.current||initialFile||!result)return;
+    if(!active||subview==="mesh"||defaultPlaneRequest||planeBusy||autoOpened.current||initialFile||!result)return;
     const first=result.artifacts.find(item=>item.kind==="vtk");if(!first)return;
     const timer=setTimeout(()=>{autoOpened.current=true;if(!currentFiles.current.length)loadPlane(first.id,true);},0);
     return()=>clearTimeout(timer);
-  },[active,defaultPlaneRequest,planeBusy,initialFile,result,loadPlane]);
+  },[active,subview,defaultPlaneRequest,planeBusy,initialFile,result,loadPlane]);
   const primary=files.find(item=>item.file.name===plane)??files[0];
   const stack=useCFDPlaneStepper(adapter,job,primary?.verified?primary.file:undefined,file=>{replaceFiles(currentFiles.current.filter(item=>item!==primary));add([file],true);});
   const canViewIn3D=!!(primary?.verified&&result);
@@ -117,6 +119,7 @@ export function ClimoptixResults({adapter,job,older,report,initialFile,initialPr
       event.currentTarget.querySelector<HTMLButtonElement>(`[data-view=${next}]`)?.focus();
     }}>{RESULT_VIEWS.map(([id,label])=><button key={id} id={`results-tab-${id}`} data-view={id} type="button" role="tab" aria-controls={`results-panel-${id}`} tabIndex={subview===id?0:-1} aria-selected={subview===id} onClick={()=>setSubview(id)}>{label}</button>)}</div>
     {subview==="review"&&<div id="results-panel-review" role="tabpanel" aria-labelledby="results-tab-review">{review}</div>}
+    {subview==="mesh"&&<div id="results-panel-mesh" role="tabpanel" aria-labelledby="results-tab-mesh">{mesh}</div>}
     {subview==="slices"&&error&&<details open><summary>Result retrieval status</summary><div role="alert" className="cfx-error">Native result retrieval failed: {error}<button onClick={retry}>Retry loading results</button></div></details>}
     {subview==="slices"&&<div id="results-panel-slices" role="tabpanel" aria-labelledby="results-tab-slices"><CFD2DSlices key={`${adapter?.namespace}:${projectId}:${job?.id??"none"}`} adapter={adapter} projectId={projectId} currentJob={job} active={active} legacyViewer={planeViewer} forceNative={!!primary&&!primary.verified}/></div>}
     <div id="results-panel-summary" role="tabpanel" aria-labelledby="results-tab-summary" hidden={subview!=="summary"}>

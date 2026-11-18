@@ -67,7 +67,9 @@ import { DomainPanel } from "./ClimoptixDomain";
 import { EquipmentPanel } from "./ClimoptixEquipment";
 import { PhysicsPanel } from "./ClimoptixPhysics";
 import { ClimoptixSimulation, type SimulationTab } from "./ClimoptixSimulation";
-import { ClimoptixResults } from "./ClimoptixResults";
+import { ClimoptixResults, type ResultsView } from "./ClimoptixResults";
+import { useCFDMeshInspection } from "./useCFDMeshInspection";
+import { CFDMeshInspectionPanel } from "./CFDMeshInspectionPanel";
 import { ClimoptixAdjoint } from "./ClimoptixAdjoint";
 import {
   ClimoptixConvergence,
@@ -126,7 +128,7 @@ export function ClimoptixWorkspace({
   const [setupFocus, setSetupFocus] = useState(0);
   const [viewTarget, setViewTarget] = useState<HTMLDivElement | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
-  const [resultsView,setResultsView] = useState<"summary"|"slices"|"review">("summary");
+  const [resultsView,setResultsView] = useState<ResultsView>("summary");
   const [boundsTab, setBoundsTab] = useState<typeof BOUNDS_TABS[number][0]>("conditions");
   useEffect(() => { if (openRequest) queueMicrotask(() => { setLocalSelectedId(openRequest.id); setActiveTab("boundaries"); setBoundsTab("equipment"); setSetupOpen(true); setSetupFocus(n => n + 1); }); }, [openRequest]);
   const [defaultPlaneRequest, setDefaultPlaneRequest] = useState<{ jobId: string; nonce: string }>();
@@ -244,6 +246,9 @@ export function ClimoptixWorkspace({
   }, [project, selectedId, showArchived]);
   const currentWorkerInput = useMemo(() => scenario ? workerInput(project, scenario) : "", [project, scenario]);
   const currentJob = scenario ? jobs[scenario.id] : undefined;
+  const meshInspection = useCFDMeshInspection({adapter: remoteWorker.adapter, projectId: project.projectId,
+    studyId: scenario?.id, input: currentWorkerInput, entry: currentJob, hasDomain: !!scenario?.seed,
+    active: active && setupOpen && activeTab === "results" && resultsView === "mesh"});
   const recoveringRun = currentJob?.dispatched && currentJob.operation === "run";
   const runConfigurationIssue = scenario && !currentJob?.dispatched ? workerConfigurationIssue(project, scenario, workerAdapter) : undefined;
   const runWorkerIssue = !recoveringRun && workerAdapter?.capabilities.connected && !workerAdapter.capabilities.run
@@ -259,7 +264,7 @@ export function ClimoptixWorkspace({
   const resultField = mainResultMetadata.fields.find(field => field.key === mainResultField) ?? mainResultMetadata.fields[0];
   const validManualRange = scaleMin.trim() !== "" && scaleMax.trim() !== ""
     && Number.isFinite(Number(scaleMin)) && Number.isFinite(Number(scaleMax)) && Number(scaleMin) < Number(scaleMax);
-  const mainProbe=useCFDPointProbe(active&&!!currentPlane&&mainResultVisible, [mainResultField,currentWorkerInput,mainResultVisible]);
+  const mainProbe=useCFDPointProbe(active&&!!currentPlane&&mainResultVisible&&!meshInspection.scene, [mainResultField,currentWorkerInput,mainResultVisible]);
   const placement = picking?.studyId === scenario?.id ? picking : null;
   const placementScenario = scenario && placement ? { ...scenario, vents: scenario.vents.some(v => v.id === placement.ventId)
     ? scenario.vents.map(v => v.id === placement.ventId ? placement.draft : v) : [...scenario.vents, placement.draft] } : scenario;
@@ -578,7 +583,7 @@ export function ClimoptixWorkspace({
     if (historical && !replace) setResultFitRequest(value => value + 1);
   };
   const mainStack=useCFDPlaneStepper(remoteWorker.adapter,currentJob?.job,currentPlane?.file,
-    file=>showScenePlane(file,{replace:true,historical:currentPlane?.historical}),true);
+    file=>showScenePlane(file,{replace:true,historical:currentPlane?.historical}),!meshInspection.scene);
   const useManualRange = manualResultScale && validManualRange;
   const planeRanges = useCFDPlaneRanges(remoteWorker.adapter, currentJob?.job, mainStack.result,
     [...currentSceneLayers.map(item => item.file), ...mainStack.buffered],
@@ -740,13 +745,17 @@ export function ClimoptixWorkspace({
             event.target.closest(".cfx-setup-window") && !event.target.closest(".cfx-refinement-row,input,select,textarea"))
           setSelected(null);
         const target = event.target as Node;
-        if (event.button === 0 && mainProbe.reading?.sample && target instanceof Element && !target.closest(".cfx-viewport"))
+        if (!meshInspection.scene && event.button === 0 && mainProbe.reading?.sample && target instanceof Element && !target.closest(".cfx-viewport"))
           mainProbe.pick(null);
         event.currentTarget.querySelectorAll<HTMLDetailsElement>(".cfx-row-menu[open]").forEach(menu => {
           if (!menu.contains(target)) menu.open = false;
         });
       }}
       onKeyDown={(event) => {
+        if (meshInspection.scene && event.key === "Escape" && !(event.target instanceof Element && event.target.closest("input,select,textarea,dialog"))) {
+          event.preventDefault(); event.stopPropagation(); meshInspection.exit(); return;
+        }
+        if (meshInspection.scene) return;
         if((event.key==="ArrowUp"||event.key==="ArrowDown")&&currentPlane&&mainResultVisible&&!event.altKey&&!event.ctrlKey&&!event.metaKey&&event.target instanceof Element&&event.target.closest(".cfx-viewport,.cfx-building-results")&&!event.target.closest("input,select,textarea,button,[contenteditable=true]")){
           event.preventDefault();event.stopPropagation();void mainStack.step(event.key==="ArrowUp"?1:-1);return;
         }
@@ -802,6 +811,8 @@ export function ClimoptixWorkspace({
       )}
       {active && (
         <ClimoptixViewer
+          meshInspection={meshInspection.scene}
+          onMeshInspectionError={meshInspection.fail}
           key={project.projectId}
           project={project}
           scenario={placementScenario ?? previewScenario}
@@ -1057,6 +1068,10 @@ export function ClimoptixWorkspace({
                   setDefaultPlaneRequest(jobId ? {jobId,nonce:crypto.randomUUID()} : undefined);
                   openPhase("results");
                 }}
+                onOpenMesh={id => {
+                  setSelectedId(id); setPicking(null); setDefaultPlaneRequest(undefined);
+                  openPhase("results"); setResultsView("mesh");
+                }}
                 worker={workerAdapter}
                 onSubmit={(op, studies) => { if (!defaultAbort.current) void submitJobs(op, studies); }}
                 onUndo={onUndo}
@@ -1258,6 +1273,7 @@ export function ClimoptixWorkspace({
                 >
                   {active && (
                     <ClimoptixResults
+                      mesh={<CFDMeshInspectionPanel inspection={meshInspection}/>}
                       view={resultsView} onViewChange={setResultsView}
                       review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
                       preparationIssue={error || preparationError} onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}

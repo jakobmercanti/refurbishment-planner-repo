@@ -3,8 +3,8 @@ export async function cfdWorkerProxy(request, endpoint, workerOrigin) {
   const url = new URL(request.url);
   const id = '[a-f0-9-]{36}';
   const allowed = request.method === 'GET'
-    ? new RegExp(`^/climoptix/worker/(capabilities|jobs(?:/${id}(?:/(?:logs|result|slices|artifacts/(?:native-case|postprocessing|slice-\\d+)))?)?)$`).test(endpoint)
-    : request.method === 'POST' && new RegExp(`^/climoptix/worker/(slice-data|results/clear|jobs(?:/${id}/cancel)?)$`).test(endpoint);
+    ? new RegExp(`^/climoptix/worker/(capabilities|jobs(?:/${id}(?:/(?:logs|result|slices|mesh|mesh-geometry|artifacts/(?:native-case|postprocessing|slice-\\d+)))?)?)$`).test(endpoint)
+    : request.method === 'POST' && new RegExp(`^/climoptix/worker/(slice-data|mesh-section|results/clear|jobs(?:/${id}/cancel)?)$`).test(endpoint);
   if (!allowed) return new Response('Forbidden', {status: 403});
   const authorization = request.headers.get('Authorization') || '';
   if (authorization.length > 8200 || !/^Bearer\s+\S+$/i.test(authorization)) return new Response('Authentication required', {status: 401});
@@ -25,9 +25,11 @@ export async function cfdWorkerProxy(request, endpoint, workerOrigin) {
       body = new Uint8Array(size); let at = 0;
       for (const chunk of chunks) {body.set(chunk, at); at += chunk.byteLength;}
     }
+    const meshView = /\/(mesh-geometry|mesh-section)$/.test(endpoint);
+    const timeout = AbortSignal.timeout(endpoint.includes('/artifacts/') || meshView ? 120000 : 25000);
     const result = await fetch(new URL(endpoint + url.search, upstream), {method: request.method,
       headers: {'Content-Type': 'application/json', Authorization: authorization}, body,
-      redirect: 'manual', signal: AbortSignal.timeout(endpoint.includes('/artifacts/') ? 120000 : 25000)});
+      redirect: 'manual', signal: meshView ? AbortSignal.any([request.signal, timeout]) : timeout});
     if (result.status >= 300 && result.status < 400) throw new Error('Unexpected worker redirect');
     const headers = new Headers({'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'});
     for (const key of ['Content-Type', 'Content-Disposition', 'Content-Length']) if (result.headers.has(key)) headers.set(key, result.headers.get(key));

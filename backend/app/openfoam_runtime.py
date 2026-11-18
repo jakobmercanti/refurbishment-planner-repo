@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from backend.app.cfd_mesh_inspection import retain_mesh
 from backend.app.openfoam_case import Submission, compile_case
 from backend.app.openfoam_telemetry import latest_time_file, read_complete_lines
 
@@ -255,6 +256,12 @@ def execute(
             set(manifest["patches"].values()),
             request.scenario,
         )
+    try:
+        retain_mesh(root, manifest)
+    except (ValueError, OSError) as error:
+        # Inspection is optional and must never invalidate successful meshing
+        # or prevent the existing solve/packaging workflow from continuing.
+        manifest["meshInspectionUnavailable"] = str(error)[:400]
     if request.operation == "run":
         cpu = request.scenario.resources.cpu
         if cpu > 1:

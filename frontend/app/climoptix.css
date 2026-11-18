@@ -1072,10 +1072,15 @@
   font-weight: 700;
   white-space: nowrap;
 }
-.cfx-study-phases > span { padding: 3px 6px; border-radius: 3px; background: var(--panel); text-align: center; }
-.cfx-study-phases [data-state="pending"] { color: #b42318; background: #ffe7e4; }
-.cfx-study-phases [data-state="running"] { color: #b65406; background: #ffdfb0; }
-.cfx-study-phases [data-state="completed"] { color: #16734b; background: #d8f2e1; }
+.cfx-workspace .cfx-study-phases > :is(span, button) { padding: 3px 6px; border: 0; min-height: 0; border-radius: 3px; text-align: center; font: inherit; }
+.cfx-workspace .cfx-study-phases > button:disabled { opacity: 1; }
+.cfx-workspace .cfx-study-phases > button:enabled { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.cfx-workspace .cfx-study-name[data-selected="true"] { background: var(--deep); color: var(--primary-action-text); border-radius: var(--radius-control); }
+.cfx-workspace .cfx-study-name > button.cfx-study-description { flex: 1; justify-content: start; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.cfx-workspace .cfx-study-name > button.cfx-study-description small { max-width: 55%; }
+.cfx-workspace .cfx-study-phases [data-state="pending"] { color: #b42318; background: #ffe7e4; }
+.cfx-workspace .cfx-study-phases [data-state="running"] { color: #b65406; background: #ffdfb0; }
+.cfx-workspace .cfx-study-phases [data-state="completed"] { color: #16734b; background: #d8f2e1; }
 :root[data-theme="dark"] .cfx-study-phases [data-state="pending"] { color: #ff938a; background: #4a2020; }
 :root[data-theme="dark"] .cfx-study-phases [data-state="running"] { color: #ffc27d; background: #4a2a12; }
 :root[data-theme="dark"] .cfx-study-phases [data-state="completed"] { color: #145b3d; background: #a7e5be; }
@@ -1280,3 +1285,18 @@
   .cfx-return-icon { display: inline; }
   .cfx-return-label { display: none; }
 }
+.cfx-mesh-inspection { display:grid; gap:var(--density-section-gap); min-width:0; }
+.cfx-mesh-inspection > details { border:1px solid var(--line); border-radius:var(--radius-panel); padding:var(--density-window-padding); min-width:0; }
+body .cfx-workspace .cfx-mesh-inspection > details + details { margin-block-start:0; }
+body .cfx-workspace .cfx-mesh-inspection .cfx-mesh-inspection-fields { display:grid; gap:var(--density-field-gap); min-width:0; margin:0; padding:0; border:0; }
+.cfx-mesh-inspection label { min-width:0; font-weight:400; }
+.cfx-mesh-inspection label:not(.cfx-check) { display:grid; gap:6px; }
+.cfx-mesh-inspection :is(input:not([type=checkbox]), select) { width:100%; min-width:0; font:inherit; }
+.cfx-mesh-inspection p { margin-block:var(--density-field-gap); }
+.cfx-mesh-information { margin-block:var(--density-field-gap); }
+.cfx-mesh-information :is(dt,dd) { margin:0; overflow-wrap:anywhere; }
+.cfx-mesh-information dt { color:var(--muted); }
+body .cfx-workspace .cfx-mesh-inspection > details > summary { padding-right:76px !important; }
+body .cfx-workspace .floating-toolbar .cfx-mesh-inspection > details > summary > .window-help-button { position:absolute; right:29px; top:50%; transform:translateY(-50%); display:grid; }
+.cfx-view-tools[hidden] { display:none; }
+.cfx-mesh-inspection input[type="range"] { margin-inline:0; }

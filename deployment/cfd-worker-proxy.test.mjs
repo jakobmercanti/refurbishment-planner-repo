@@ -2,6 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cfdWorkerProxy} from './cfd-worker-proxy.mjs';
 
+test('mesh inspection keeps authenticated exact routes and forwards cancellation', async t => {
+  const original = globalThis.fetch; t.after(() => {globalThis.fetch = original;});
+  const id = '11111111-1111-4111-8111-111111111111', controller = new AbortController();
+  const headers = {Authorization:'Bearer mesh-token','Content-Type':'application/json',Origin:'https://planner.example'};
+  let upstreamSignal;
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.headers.Authorization, 'Bearer mesh-token');
+    upstreamSignal = options.signal;
+    return new Response(new Uint8Array([67,77,73,49]), {headers:{'Content-Type':'application/octet-stream'}});
+  };
+  for (const suffix of ['mesh', 'mesh-geometry']) {
+    const path = `/climoptix/worker/jobs/${id}/${suffix}`;
+    const response = await cfdWorkerProxy(new Request('https://planner.example'+path, {headers,signal:controller.signal}), path, 'https://worker.example');
+    assert.equal(response.status,200); assert.equal(response.headers.get('Cache-Control'),'no-store');
+    assert.equal((await cfdWorkerProxy(new Request('https://planner.example'+path, {headers}),path+'/execute','https://worker.example')).status,403);
+  }
+  controller.abort(); assert.equal(upstreamSignal.aborted,true);
+  const path = '/climoptix/worker/mesh-section';
+  assert.equal((await cfdWorkerProxy(new Request('https://planner.example'+path,{headers,method:'POST',body:'{}'}),path,'https://worker.example')).status,200);
+  assert.equal((await cfdWorkerProxy(new Request('https://planner.example'+path,{headers}),path,'https://worker.example')).status,403);
+});
+
 test('CFD proxy requires a bearer token, exact routes and same-origin writes', async () => {
   const origin = 'https://worker.example';
   const read = new Request('https://planner.example/planner/engineering-api/climoptix/worker/capabilities');

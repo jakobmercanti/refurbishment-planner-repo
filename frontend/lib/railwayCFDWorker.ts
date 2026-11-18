@@ -9,6 +9,7 @@ import { currentSession, storedAccountId } from "./commercialAuth";
 import { matchesLocalStorageAccount } from "./localDatabase";
 import { workerTelemetrySchema } from "./cfdWorkerTelemetry";
 import { sliceDataSchema, sliceManifestSchema, type SliceRequest } from "./cfdSlices";
+import { meshMetadataSchema, readMeshGeometry, type MeshSection } from "./cfdMeshInspection";
 import { checkedWorkerJob, workerJobSchema, type CFDSubmission, type CFDWorkerAdapter, type CFDWorkerJob } from "./climoptixJobs";
 
 export const workerCapabilitiesSchema = z.object({
@@ -119,6 +120,21 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
     },
     async cancel(job: CFDWorkerJob, signal: AbortSignal) {
       return checkedWorkerJob(await workerJSON(base, `${jobPath(job.id)}/cancel`, signal, {}), job);
+    },
+    async mesh(job: CFDWorkerJob, projectId: string, signal: AbortSignal) {
+      const data = meshMetadataSchema.parse(await workerJSON(base, `${jobPath(job.id)}/mesh?projectId=${z.uuid().parse(projectId)}`, signal));
+      if (data.jobId !== job.id || data.studyId !== job.studyId || data.clientRevision !== job.clientRevision || data.projectId !== projectId)
+        throw new Error("Mesh provenance does not match this simulation.");
+      return data;
+    },
+    async meshGeometry(job: CFDWorkerJob, projectId: string, meshId: string, section: MeshSection | undefined, signal: AbortSignal) {
+      const project = z.uuid().parse(projectId);
+      z.string().regex(/^[a-f0-9]{64}$/).parse(meshId);
+      const path = section ? "/mesh-section" : `${jobPath(job.id)}/mesh-geometry?projectId=${project}&meshId=${meshId}`;
+      const body = section ? {projectId: project, jobId: job.id, meshId, ...section} : undefined;
+      const bytes = await workerRequest(base, path, signal, body, 48 * 1024**2);
+      signal.throwIfAborted();
+      return readMeshGeometry(bytes, meshId, section);
     },
     async logs(job: CFDWorkerJob, cursor: number, signal: AbortSignal) {
       const data = z.object({cursor: z.number().int().min(0), nextCursor: z.number().int().min(0).max(8*1024**2), text: z.string().max(128*1024),

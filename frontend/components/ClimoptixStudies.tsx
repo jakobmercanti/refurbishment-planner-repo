@@ -28,7 +28,7 @@ function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
 }
 
 export function ClimoptixStudies({ project, scenarios, scenario, showArchived, onShowArchived, onSelect,
-  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onOpenResults, onUndo, onRedo, canUndo, canRedo,
+  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onOpenResults, onOpenMesh, onUndo, onRedo, canUndo, canRedo,
 }: {
   project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
   onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
@@ -42,6 +42,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   entries: Record<string, CFDJobEntry>; worker: CFDWorkerAdapter | null;
   onSubmit: (operation: CFDOperation, studies: CFDScenario[]) => void;
   onOpenResults: (studyId: string, jobId?: string) => void;
+  onOpenMesh?: (studyId: string) => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
 }) {
   const visible = scenarios.filter(s => showArchived || !s.archived);
@@ -153,15 +154,20 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 const blocked = nextOperation ? reason(nextOperation) : undefined;
                 return <article className={`cfx-study-row${s.id === scenario?.id ? " selected" : ""}`}>
                   {renaming === s.id ? <InlineName key={s.id} value={s.name} label="Simulation name" onCommit={name => onChange({ ...s, name }, true)} onDone={() => setRenaming(null)} /> :
-                    <button className="cfx-study-name" aria-label={`Select ${s.name}`} aria-pressed={s.id === scenario?.id}
-                      aria-describedby={`cfx-study-status-${s.id} cfx-study-phases-${s.id}`} title={`${s.name} · ${phase}`} onClick={() => onSelect(s.id)} onDoubleClick={() => setRenaming(s.id)}>
-                      <span className="cfx-study-description">
+                    <div className="cfx-study-name" data-selected={s.id === scenario?.id}>
+                      <button className="cfx-study-description" aria-label={`Select ${s.name}`} aria-pressed={s.id === scenario?.id}
+                        aria-describedby={`cfx-study-status-${s.id} cfx-study-phases-${s.id}`} title={`${s.name} · ${phase}`}
+                        onClick={() => onSelect(s.id)} onDoubleClick={() => setRenaming(s.id)}>
                         <strong>{s.name}</strong><small id={`cfx-study-status-${s.id}`}>{s.archived ? "Archived · " : ""}{hasIssues ? "Issues · see top panel" : phase}</small>
-                      </span>
+                      </button>
                       <span className="cfx-study-phases" id={`cfx-study-phases-${s.id}`}>
-                        {stages.map(stage => <span key={stage.label} data-state={stage.state} aria-label={`${stage.label}: ${stage.state}`}>{stage.label}</span>)}
+                        {stages.map(stage => stage.label === "Mesh" ? <button key={stage.label} data-state={stage.state}
+                          aria-label={`Mesh: ${stage.state} · ${s.name}`} disabled={stage.state !== "completed" || !onOpenMesh}
+                          title={stage.state === "completed" ? "Inspect the checked mesh" : "Available after mesh checks pass"}
+                          onClick={() => onOpenMesh?.(s.id)}>{stage.label}</button>
+                          : <span key={stage.label} data-state={stage.state} aria-label={`${stage.label}: ${stage.state}`}>{stage.label}</span>)}
                       </span>
-                    </button>}
+                    </div>}
                   <div className="cfx-study-actions">
                     {nextOperation && <button
                       aria-label={`${nextOperation === "mesh" ? "Mesh" : "Run"} ${s.name}`}

@@ -16,10 +16,11 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import Field
 from starlette.requests import Request
 
+from backend.app.cfd_mesh_inspection import MeshSectionRequest, inspection, inspection_response
 from backend.app.cfd_slice_service import SliceRequest, inventory, remove_result_files, slice_data
 from backend.app.openfoam_case import LIMITS, Submission, validate_submission
 from backend.app.openfoam_runtime import JobCancelled, execute, runtime_available
@@ -516,6 +517,23 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
     @app.post(prefix + "/slice-data")
     def sample_slices(body: SliceRequest, user: WorkerUser):
         return slice_data(store, str(user.id), body)
+
+    @app.get(prefix + "/jobs/{job_id}/mesh")
+    def mesh_metadata(job_id: UUID, projectId: UUID, user: WorkerUser):
+        return inspection(store, str(user.id), str(job_id), str(projectId), metadata_only=True)
+
+    @app.get(prefix + "/jobs/{job_id}/mesh-geometry")
+    async def mesh_geometry(job_id: UUID, projectId: UUID, meshId: str, user: WorkerUser, request: Request):
+        data = await inspection_response(request, lambda cancelled:
+            inspection(store, str(user.id), str(job_id), str(projectId), mesh_id=meshId, cancelled=cancelled))
+        return Response(data, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
+
+    @app.post(prefix + "/mesh-section")
+    async def mesh_section(body: MeshSectionRequest, user: WorkerUser, request: Request):
+        data = await inspection_response(request, lambda cancelled:
+            inspection(store, str(user.id), str(body.jobId), str(body.projectId), mesh_id=body.meshId,
+                       axis=body.axis, coordinate=body.coordinateMm, cancelled=cancelled))
+        return Response(data, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
 
     @app.get(prefix + "/jobs/{job_id}/artifacts/{artifact_id}")
     def artifact(job_id: UUID, artifact_id: str, user: WorkerUser):
