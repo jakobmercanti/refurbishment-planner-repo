@@ -1,9 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { MAX_SAMPLING_PLANES, MIN_SAMPLING_PLANES, type CFDScenario } from "@/lib/climoptixDocument";
 import type { CFDReport } from "@/lib/climoptix";
-import { CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
+import { CFD_SECTION_HELP, CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
 import { CFDNumber, Parameters } from "./CFDFields";
 import { MeshPanel } from "./ClimoptixMesh";
 import { WindowHelpButton } from "./WindowHelpButton";
@@ -11,7 +11,7 @@ import { CFDCollapseAll } from "./CFDCollapseAll";
 import { CFDProbes } from "./CFDProbes";
 
 const SOLVER_TABS = [
-  ["mesh", "Mesh"], ["run", "Run"], ["monitor", "Monitor"],
+  ["mesh", "Mesh"], ["run", "Compute"],
   ["post", "Post-processing"], ["adjoint", "Optimisation"],
 ] as const;
 export type SimulationTab = typeof SOLVER_TABS[number][0];
@@ -30,33 +30,21 @@ function RunPanel({
   scenario,
   onChange,
   onExport,
+  onImport,
   exporting,
   exportDisabled,
-  connection,
 }: {
   scenario: CFDScenario;
   onChange: (s: CFDScenario) => void;
   onExport: () => void;
+  onImport: (file: File) => void;
   exporting: boolean;
   exportDisabled: boolean;
-  connection?: RunConnection;
 }) {
   const physics = scenario.physics;
+  const importInput = useRef<HTMLInputElement>(null);
   return (
     <div data-cfx-collapse-root className="cfx-run-panel">
-      <details open><summary>Solver actions</summary>
-      <div className="cfx-panel-actions">
-        <button className="cfx-primary" aria-label="Run solver"
-          disabled={!connection?.canRun || connection.busy || scenario.archived}
-          title={connection?.blockedReason || (!connection?.connected ? "Sign in and connect the OpenFOAM worker" : undefined)}
-          onClick={() => connection?.onRun()}>▶ Play</button>
-        <button disabled={exportDisabled || exporting} onClick={onExport}>{exporting ? "Exporting…" : "Export OpenFOAM settings"}</button>
-      </div>
-      {connection?.blockedReason && <p className="cfx-notice" role="status">
-        {connection.blockedReason} <button onClick={connection.onIssues}>Review submission issues</button>
-        {connection.onAirflowCopy && <button type="button" onClick={connection.onAirflowCopy}>Create airflow copy</button>}
-      </p>}
-      </details>
       <details open><summary>Simulation &amp; resources</summary>
       <div className="cfx-grid">
         <label>
@@ -152,7 +140,14 @@ function RunPanel({
         </details>
       )}
       <details>
-        <summary>Resources & retention</summary>
+        <summary>Resources & retention<WindowHelpButton section title="Resources & retention" steps={[...CFD_SECTION_HELP["Resources & retention"], {heading:"OpenFOAM settings", text:"Export and import Climoptix settings ZIPs. Import reads the typed scenario.json configuration for mesh, physics, numerics, resources and outputs, retaining this simulation's identity, domain and shared HVAC design. Raw dictionary edits and executable templates are not imported. Review geometry and worker support before computing."}]}/></summary>
+        <div className="cfx-equal-actions">
+          <button type="button" disabled={exportDisabled || exporting} onClick={onExport}>{exporting ? "Exporting…" : "Export OpenFOAM settings"}</button>
+          <button type="button" disabled={scenario.archived || exporting} onClick={() => importInput.current?.click()}>Import OpenFOAM settings</button>
+        </div>
+        <input ref={importInput} type="file" hidden accept=".zip,application/zip" aria-label="OpenFOAM settings ZIP" onChange={event => {
+          const file = event.target.files?.[0]; event.target.value = ""; if (file) onImport(file);
+        }}/>
         <Parameters
           value={scenario.resources}
           omit={["cpu", "memoryGb", "wallTimeMinutes"]}
@@ -286,13 +281,12 @@ export function ClimoptixSimulation({
   onSelect,
   onChange,
   onExport,
+  onImport,
   exporting,
   exportDisabled,
-  convergence,
   jobProgress,
   onShowRefinements,
   onEditRefinement,
-  connection,
   domain,
   optimisation,
 }: {
@@ -306,9 +300,9 @@ export function ClimoptixSimulation({
   onSelect: (id: string | null) => void;
   onChange: (s: CFDScenario) => void;
   onExport: () => void;
+  onImport: (file: File) => void;
   exporting: boolean;
   exportDisabled: boolean;
-  convergence: ReactNode;
   jobProgress?: ReactNode;
   onShowRefinements: () => void;
   onEditRefinement: (id: string) => void;
@@ -356,7 +350,7 @@ export function ClimoptixSimulation({
           </button>
         ))}
       </div>
-      <WindowHelpButton title="Mesh, Run & Post-processing" steps={CFD_SIMULATION_HELP} />
+      <WindowHelpButton title="Mesh, Compute & Post-processing" steps={CFD_SIMULATION_HELP} />
       </div>
       {tab !== "adjoint" && jobProgress}
       <section
@@ -389,14 +383,10 @@ export function ClimoptixSimulation({
           scenario={scenario}
           onChange={onChange}
           onExport={onExport}
+          onImport={onImport}
           exporting={exporting}
           exportDisabled={exportDisabled}
-          connection={connection}
         />
-      </section>
-      <section role="tabpanel" id="cfx-panel-monitor" aria-labelledby="cfx-tab-monitor"
-        className="cfx-simulation-panel" hidden={tab !== "monitor"}>
-        <section aria-label="Convergence monitor">{convergence}</section>
       </section>
       <section
         role="tabpanel"

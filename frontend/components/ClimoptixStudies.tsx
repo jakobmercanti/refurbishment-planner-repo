@@ -131,13 +131,14 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 const currentJob = currentInput ? job : undefined;
                 const showResults = job?.phase === "Completed" && operation !== "mesh";
                 const checkedMesh = showResults || currentInput && (entry.meshChecked || jobHasCheckedMesh(currentJob));
+                const retainedMeshAvailable = !!(entry?.meshChecked || jobHasCheckedMesh(job));
                 const solved = showResults || operation === "run" && currentJob?.phase === "Postprocess";
                 const working = currentInput && busy(s);
                 const running = currentJob?.phase === "Running" || (working && operation === "run" && checkedMesh);
                 const nextOperation = entry?.dispatched ? entry.operation
                   : showResults ? undefined : checkedMesh || currentInput && operation === "run" ? "run" : "mesh";
                 const stages = [
-                  { label: "Mesh", state: checkedMesh ? "completed" : working ? "running" : "pending" },
+                  { label: "Mesh", state: retainedMeshAvailable ? "completed" : working ? "running" : "pending" },
                   { label: "Run", state: solved ? "completed" : running ? "running" : "pending" },
                   { label: "Post", state: showResults ? "completed" : currentJob?.phase === "Postprocess" ? "running" : "pending" },
                 ];
@@ -163,7 +164,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       <span className="cfx-study-phases" id={`cfx-study-phases-${s.id}`}>
                         {stages.map(stage => stage.label === "Mesh" ? <button key={stage.label} data-state={stage.state}
                           aria-label={`Mesh: ${stage.state} · ${s.name}`} disabled={stage.state !== "completed" || !onOpenMesh}
-                          title={stage.state === "completed" ? "Inspect the checked mesh" : "Available after mesh checks pass"}
+                          title={stage.state === "completed" ? stale ? "Inspect the checked mesh from the submitted setup" : "Inspect the checked mesh" : "Available after mesh checks pass"}
                           onClick={() => onOpenMesh?.(s.id)}>{stage.label}</button>
                           : <span key={stage.label} data-state={stage.state} aria-label={`${stage.label}: ${stage.state}`}>{stage.label}</span>)}
                       </span>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CFDScenario } from "@/lib/climoptixDocument";
-import { thermalSetupSchema, type ThermalMetric, type ThermalPackage, type ThermalSetup } from "@/lib/thermalDocument";
+import { defaultThermalSetup, type ThermalMetric, type ThermalPackage, type ThermalSetup } from "@/lib/thermalDocument";
 import { importEPW, type EPWData } from "@/lib/thermalClient";
 import { ThermalNumber, ThermalText } from "./ThermalFields";
 
@@ -25,7 +25,7 @@ export function ThermalEnvelopeWindow({ scenario, apiUrl, report, busy, error, m
   const latest = useRef({ scenario, onChange });
   useEffect(() => { latest.current = {scenario, onChange}; }, [scenario, onChange]);
   useEffect(() => () => importAbort.current?.abort(), []);
-  const setup = scenario.thermalEnvelope ?? thermalSetupSchema.parse({});
+  const setup = scenario.thermalEnvelope ?? defaultThermalSetup();
   const update = (patch: Partial<ThermalSetup>) => onChange({...scenario, thermalEnvelope: {...setup, ...patch}});
   const location = (patch: Partial<ThermalSetup["location"]>) => update({location: {...setup.location, ...patch}});
   const weather = (patch: Partial<ThermalSetup["weather"]>) => update({weather: {...setup.weather, ...patch}});
@@ -37,7 +37,7 @@ export function ThermalEnvelopeWindow({ scenario, apiUrl, report, busy, error, m
     if (!row || !data) return;
     // Merge the imported hour into the latest version of this scenario.
     const { scenario: live, onChange: commit } = latest.current;
-    const liveSetup = live.thermalEnvelope ?? thermalSetupSchema.parse({});
+    const liveSetup = live.thermalEnvelope ?? defaultThermalSetup();
     commit({
       ...live,
       thermalEnvelope: {
@@ -115,6 +115,10 @@ export function ThermalEnvelopeWindow({ scenario, apiUrl, report, busy, error, m
         value={setup.location.source}
         onChange={(source) => location({ source })}
       />
+      <label className="cfx-check" data-field-help="Accept the editable reference weather, elevation and screening assumptions after reviewing them. This enables thermal preparation; the native CFD worker still requires an energy solver for thermal execution.">
+        <input type="checkbox" checked={setup.assumptionsAccepted} onChange={event => update({assumptionsAccepted:event.target.checked})}/>
+        Accept reference assumptions for thermal calculation
+      </label>
       <label>
         Ambiguous DST time
         <select

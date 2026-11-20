@@ -37,7 +37,7 @@ import {
 } from "./ClimoptixWindowMenu";
 import { projectFloors } from "@/lib/buildingDocument";
 import {
-  thermalSetupSchema,
+  defaultThermalSetup, initializeThermalSetup,
   type ThermalMetric,
 } from "@/lib/thermalDocument";
 import { ThermalEnvelopeWindow } from "./ThermalEnvelopeWindow";
@@ -70,6 +70,7 @@ import { ClimoptixSimulation, type SimulationTab } from "./ClimoptixSimulation";
 import { ClimoptixResults, type ResultsView } from "./ClimoptixResults";
 import { useCFDMeshInspection } from "./useCFDMeshInspection";
 import { CFDMeshInspectionPanel } from "./CFDMeshInspectionPanel";
+import { readOpenFOAMSettings } from "@/lib/cfdSettingsImport";
 import { ClimoptixAdjoint } from "./ClimoptixAdjoint";
 import {
   ClimoptixConvergence,
@@ -157,11 +158,11 @@ export function ClimoptixWorkspace({
     if (id === "view") { setViewOpen(true); return; }
     if (id === "thermal" || id === "equipment" || id === "boundaries")
       setBoundsTab(id === "boundaries" ? "conditions" : id);
-    if (id === "convergence") setSimulationTab("monitor");
+    if (id === "convergence") setResultsView("monitor");
     if (id === "domain" || id === "adjoint") setSimulationTab(id === "domain" ? "mesh" : "adjoint");
     if (id === "review" || id === "results") setResultsView(id === "review" ? "review" : "summary");
     setActiveTab(id === "thermal" || id === "equipment" ? "boundaries"
-      : id === "convergence" || id === "domain" || id === "adjoint" ? "mesh" : id === "review" ? "results" : id);
+      : id === "domain" || id === "adjoint" ? "mesh" : id === "review" || id === "convergence" ? "results" : id);
     setSetupOpen(true);
     setSetupFocus((value) => value + 1);
   };
@@ -246,7 +247,7 @@ export function ClimoptixWorkspace({
   }, [project, selectedId, showArchived]);
   const currentWorkerInput = useMemo(() => scenario ? workerInput(project, scenario) : "", [project, scenario]);
   const currentJob = scenario ? jobs[scenario.id] : undefined;
-  const meshInspection = useCFDMeshInspection({adapter: remoteWorker.adapter, projectId: project.projectId,
+  const meshInspection = useCFDMeshInspection({adapter: remoteWorker.adapter, apiUrl, projectId: project.projectId,
     studyId: scenario?.id, input: currentWorkerInput, entry: currentJob, hasDomain: !!scenario?.seed,
     active: active && setupOpen && activeTab === "results" && resultsView === "mesh"});
   const recoveringRun = currentJob?.dispatched && currentJob.operation === "run";
@@ -287,10 +288,10 @@ export function ClimoptixWorkspace({
   }, [scenario, activeReport]);
   const setHvacGeometry = hvacContext?.setGeometryReport;
   useEffect(() => { if (active && activeReport && !stale) queueMicrotask(() => setHvacGeometry?.(activeReport)); }, [active, activeReport, stale, setHvacGeometry]);
-  const current = useRef({ project, scenarios, jobs });
+  const current = useRef({ project, scenarios, jobs, onChange });
   useEffect(() => {
-    current.current = { project, scenarios, jobs };
-  }, [project, scenarios, jobs]);
+    current.current = { project, scenarios, jobs, onChange };
+  }, [project, scenarios, jobs, onChange]);
   const exportAbort = useRef<AbortController | null>(null);
   const importRead = useRef(0);
   useEffect(
@@ -346,8 +347,8 @@ export function ClimoptixWorkspace({
   };
   const openThermal = () => {
     if (!scenario) return;
-    const setup = scenario.thermalEnvelope ?? thermalSetupSchema.parse({});
-    const target = !scenario.thermalEnvelope ? { ...scenario, thermalEnvelope: setup } : scenario;
+    const setup = initializeThermalSetup(scenario.thermalEnvelope);
+    const target = setup !== scenario.thermalEnvelope ? { ...scenario, thermalEnvelope: setup } : scenario;
     if (target !== scenario) change(target, true);
     setThermalOpen(true);
     openPhase("thermal");
@@ -390,6 +391,7 @@ export function ClimoptixWorkspace({
       const hasDesign = now.project.hvac?.devices.some(device => rooms.some(room => room.floorId === device.floorId && room.roomId === device.roomId));
       const retainedPhysics = restoring ? resolveHvacScenario(now.project, restoring).physics : next.physics;
       const starter = { ...next, id: restoring?.id ?? next.id, name: restoring?.name ?? next.name,
+        thermalEnvelope: restoring?.thermalEnvelope ? defaultThermalSetup() : next.thermalEnvelope,
         group: restoring?.group ?? next.group,
         physics: { ...next.physics, densityKgM3: retainedPhysics.densityKgM3, heatCapacityJKgK: retainedPhysics.heatCapacityJKgK,
           referenceTemperatureK: retainedPhysics.referenceTemperatureK, outdoorTemperatureK: retainedPhysics.outdoorTemperatureK },
@@ -491,6 +493,28 @@ export function ClimoptixWorkspace({
         );
     } finally {
       if (!controller.signal.aborted) setExporting(false);
+    }
+  };
+  const importOpenFOAM = async (file: File) => {
+    if (!scenario || scenario.archived || resetting) return;
+    const request = ++importRead.current, source = workerInput(project, scenario), studyId = scenario.id;
+    setError(""); setMessage("Reading OpenFOAM settings…");
+    try {
+      const imported = await readOpenFOAMSettings(file, scenario);
+      if (request !== importRead.current) return;
+      const now = current.current, live = now.scenarios.find(item => item.id === studyId);
+      if (now.project.projectId !== project.projectId || !live || workerInput(now.project, live) !== source)
+        throw new Error("The simulation changed while reading settings. Retry the import.");
+      const entry = now.jobs[studyId];
+      if (entry?.submitting || entry?.dispatched || entry?.job && !terminalJob(entry.job))
+        throw new Error("Wait for the active worker job before importing settings.");
+      const incoming = cfdScenarioSchema.parse({...live, mesh:imported.mesh, physics:imported.physics, resources:imported.resources,
+        outputs:imported.outputs, postProcessing:imported.postProcessing, thermalEnvelope:imported.thermalEnvelope,
+        thermalSnapshots:undefined, validation:null, updatedAt:new Date().toISOString()});
+      now.onChange(now.scenarios.map(item => item.id === studyId ? incoming : item), true);
+      setMessage("OpenFOAM settings imported. Review checks before computing.");
+    } catch (cause) {
+      if (request === importRead.current) { setError(cause instanceof Error ? cause.message : "Invalid settings ZIP."); setMessage(""); }
     }
   };
   const importScenario = async (file: File) => {
@@ -1199,6 +1223,7 @@ export function ClimoptixWorkspace({
                         selected={selected}
                         onSelect={selectObject}
                         onExport={() => void exportOpenFOAM()}
+                        onImport={file => void importOpenFOAM(file)}
                         exporting={exporting}
                         exportDisabled={
                           stale || !!activeReport?.validation.errors || !!error
@@ -1215,31 +1240,7 @@ export function ClimoptixWorkspace({
                             value?.startsWith("refinement:") ? value : null,
                           );
                         }}
-                        convergence={
-                          shownTab === "mesh" &&
-                          simulationTab === "monitor" && (
-                            remoteWorker.adapter && jobs[scenario.id]?.job ? <ClimoptixWorkerMonitor
-                              key={`${remoteWorker.adapter.namespace}:${jobs[scenario.id].job!.id}`} adapter={remoteWorker.adapter} job={jobs[scenario.id].job!}
-                              name={scenario.name} older={jobs[scenario.id].input !== currentWorkerInput}
-                              onVTK={(file, buildingPlane) => {
-                                const entry = jobs[scenario.id];
-                                const job = entry?.job;
-                                if (!job) return;
-                                const older = entry.input !== currentWorkerInput;
-                                setVTKFile({ studyId: scenario.id, file, token: crypto.randomUUID(), jobId: job.id,
-                                  provenance: "Authenticated worker job " + job.id + " · pinned revision " + job.clientRevision.slice(0,12) + " · p in m²/s²" + (older ? " · older setup" : "") });
-                                if (!buildingPlane) openPhase("results");
-                                else showScenePlane(file, {historical:older});
-                              }} /> : <ClimoptixConvergence
-                              name={scenario.name}
-                              state={logs.get(scenario.id)}
-                              onImport={(file) =>
-                                void importLog(scenario.id, file)
-                              }
-                              onClear={() => clearLog(scenario.id)}
-                            />
-                          )
-                        }
+
                         jobProgress={<CFDJobProgress name={scenario.name} job={jobs[scenario.id]?.job} operation={jobs[scenario.id]?.operation}
                           pending={jobs[scenario.id]?.submitting?"Checking & submitting…":jobs[scenario.id]?.dispatched?"Submission status unknown":undefined}/>}
                       />
@@ -1273,6 +1274,31 @@ export function ClimoptixWorkspace({
                 >
                   {active && (
                     <ClimoptixResults
+                        monitor={
+                          shownTab === "results" && setupOpen &&
+                          resultsView === "monitor" && (
+                            remoteWorker.adapter && jobs[scenario.id]?.job ? <ClimoptixWorkerMonitor
+                              key={`${remoteWorker.adapter.namespace}:${jobs[scenario.id].job!.id}`} adapter={remoteWorker.adapter} job={jobs[scenario.id].job!}
+                              name={scenario.name} older={jobs[scenario.id].input !== currentWorkerInput}
+                              onVTK={(file, buildingPlane) => {
+                                const entry = jobs[scenario.id];
+                                const job = entry?.job;
+                                if (!job) return;
+                                const older = entry.input !== currentWorkerInput;
+                                setVTKFile({ studyId: scenario.id, file, token: crypto.randomUUID(), jobId: job.id,
+                                  provenance: "Authenticated worker job " + job.id + " · pinned revision " + job.clientRevision.slice(0,12) + " · p in m²/s²" + (older ? " · older setup" : "") });
+                                if (!buildingPlane) openPhase("results");
+                                else showScenePlane(file, {historical:older});
+                              }} /> : <ClimoptixConvergence
+                              name={scenario.name}
+                              state={logs.get(scenario.id)}
+                              onImport={(file) =>
+                                void importLog(scenario.id, file)
+                              }
+                              onClear={() => clearLog(scenario.id)}
+                            />
+                          )
+                        }
                       mesh={<CFDMeshInspectionPanel inspection={meshInspection} onOpenMeshSetup={() => { meshInspection.exit(); openPhase("mesh"); setSimulationTab("mesh"); }}/>}
                       view={resultsView} onViewChange={setResultsView}
                       review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}

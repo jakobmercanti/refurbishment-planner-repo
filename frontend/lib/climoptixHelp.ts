@@ -286,13 +286,13 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
     },
     {
       heading: "Physics and units",
-      text: "Presets are starting intentions, not certified engineering settings. Physics uses SI units: temperatures in kelvin and CO₂ in ppm by volume (1 ppm = 10⁻⁶ volume fraction). Numerical controls and time stepping are in Solver → Run. Age of air and comfort are requested future outputs, not computed metrics. A worker must explicitly support the selected solver, turbulence, energy and scalar models before execution.",
+      text: "Presets are starting intentions, not certified engineering settings. Physics uses SI units: temperatures in kelvin and CO₂ in ppm by volume (1 ppm = 10⁻⁶ volume fraction). Numerical controls and time stepping are in Solver → Compute. Age of air and comfort are requested future outputs, not computed metrics. A worker must explicitly support the selected solver, turbulence, energy and scalar models before execution.",
     },
   ],
   mesh: [
     {
-      heading: "Mesh, Run and Post-processing",
-      text: "Domain defines global mesh preset, cell sizes and budgets. Solver → Mesh defines local refinements, layers, tolerances and quality intent; Run defines numerics, cores and resource limits; Monitor imports real residual logs; Post defines named X/Y/Z slices and fields before execution. Checks refresh automatically after committed changes. Intent and estimates are not a generated mesh or solved result. Play remains unavailable until a trusted OpenFOAM worker is connected.",
+      heading: "Mesh, Compute and Post-processing",
+      text: "Domain defines global mesh preset, cell sizes and budgets. Solver → Mesh defines local refinements, layers, tolerances and quality intent; Compute defines numerics, cores and resource limits; Results → Monitor shows live worker convergence and imported residual logs; Post defines named X/Y/Z slices and fields before execution. Checks refresh automatically after committed changes. Intent and estimates are not a generated mesh or solved result. Computation remains unavailable until a trusted OpenFOAM worker is connected.",
     },
   ],
   review: [
@@ -317,7 +317,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   convergence: [
     {
       heading: "Convergence monitor",
-      text: "Solver → Monitor imports a real OpenFOAM log and plots initial residuals. Histories are session-only for the latest three simulations, not saved with the project. Imported logs are external, not live or verified results for the current simulation. Repeated pressure corrections are retained. Plots are clipped to 10⁻¹²–1 and decimated for readability; download preserves the original file. Residuals alone do not establish convergence or conservation.",
+      text: "Results → Monitor imports a real OpenFOAM log and plots initial residuals. Histories are session-only for the latest three simulations, not saved with the project. Imported logs are external, not live or verified results for the current simulation. Repeated pressure corrections are retained. Plots are clipped to 10⁻¹²–1 and decimated for readability; download preserves the original file. Residuals alone do not establish convergence or conservation.",
     },
   ],
   results: [
@@ -361,7 +361,7 @@ export const CFD_WORKBENCH_HELP = [
   },
   {
     heading: "One shared building",
-    text: "Create a simulation and choose its seed room; preparation checks refresh automatically after committed changes. On phones and tablets, choose Simulations from Phase to create, group or select a simulation. On wider screens, use the Simulation selector and phase tabs. Thermal is inside Bounds; convergence is inside Solver → Monitor. Geometry, furniture and people come from the shared measured building in millimetres. File → Save includes simulations and their folders.",
+    text: "Create a simulation and choose its seed room; preparation checks refresh automatically after committed changes. On phones and tablets, choose Simulations from Phase to create, group or select a simulation. On wider screens, use the Simulation selector and phase tabs. Thermal is inside Bounds; convergence is inside Results → Monitor. Geometry, furniture and people come from the shared measured building in millimetres. File → Save includes simulations and their folders.",
   },
   {
     heading: "Connectivity is explicit",
@@ -369,7 +369,7 @@ export const CFD_WORKBENCH_HELP = [
   },
   {
     heading: "Prepare, inspect, export",
-    text: "Open Domain in Solver → Mesh to choose the connected air volume. Add equipment under Bounds → Objects and group surfaces under Bounds → Conditions. Solver contains Mesh, Run, Monitor, Post and Optimisation. Refresh checks in the title bar retries geometry preparation. Worker submission performs its own preflight.",
+    text: "Open Domain in Solver → Mesh to choose the connected air volume. Add equipment under Bounds → Objects and group surfaces under Bounds → Conditions. Solver contains Mesh, Compute, Post and Optimisation. Refresh checks in the title bar retries geometry preparation. Worker submission performs its own preflight.",
   },
   {
     heading: "No simulated results",

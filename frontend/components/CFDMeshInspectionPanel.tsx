@@ -18,6 +18,7 @@ export function CFDMeshInspectionPanel({inspection, onOpenMeshSetup}: {
       {heading: "Temporary view", text: "Inspect mesh temporarily isolates the mesh in the existing 3D view. Orbit, pan and zoom remain available. Exit inspection, Escape or leaving this tab restores the previous camera and scene. Display controls never change project or simulation inputs."},
     ]} /></summary>
       <p id="cfx-mesh-status" className={inspection.error ? "cfx-error" : "cfx-caption"} role={inspection.error ? "alert" : "status"}>{inspection.status}</p>
+      {inspection.inspecting && inspection.historical && <p className="cfx-caption">Submitted mesh · earlier setup</p>}
       <div className="cfx-equal-actions">
         {inspection.error ? <button type="button" onClick={inspection.retry}>Retry mesh</button> :
           <button type="button" className={inspection.inspecting ? "cfx-primary" : undefined} aria-pressed={inspection.inspecting}

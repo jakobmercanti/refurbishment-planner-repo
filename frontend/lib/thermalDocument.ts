@@ -132,6 +132,46 @@ export const thermalSetupSchema = z
       .default({}),
   })
   .strict();
+/** Editable London reference assumptions; activation persists these actual inputs. */
+export function defaultThermalSetup(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {timeZone:"Europe/London",year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now);
+  const part = (name:string) => parts.find(item => item.type === name)!.value;
+  return thermalSetupSchema.parse({
+    location:{name:"London",latitude:51.5074,longitude:-0.1278,timezone:"Europe/London",elevationM:11,
+      source:"London city-centre reference (51.5074° N, 0.1278° W); elevation 11 m is an editable assumption, not a surveyed site."},
+    localDateTime:`${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`,
+    weather:{source:"Editable reference assumptions, not a London weather observation or design standard.",
+      temperatureC:10,relativeHumidity:0.7,windMS:3,externalH:25,solarMode:"none",dniWm2:0,dhiWm2:0,ghiWm2:0},
+    airExchange:{mode:"none",source:"Reference screening assumption: no infiltration. Reconcile shared vent flows before CFD thermal application."},
+    groundTemperatureC:10,opaqueAbsorptance:0.6,groundAlbedo:0.2,
+  });
+}
+
+export function initializeThermalSetup(setup?: ReturnType<typeof thermalSetupSchema.parse> | null) {
+  const defaults = defaultThermalSetup();
+  if (!setup) return defaults;
+  const london = !setup.location.name.trim() || setup.location.name.trim().toLowerCase() === "london";
+  if (!london) return setup;
+  const initialized = {...setup, location:{...defaults.location,...setup.location,
+    name:setup.location.name || defaults.location.name, latitude:setup.location.latitude ?? defaults.location.latitude,
+    longitude:setup.location.longitude ?? defaults.location.longitude, timezone:setup.location.timezone || defaults.location.timezone,
+    elevationM:setup.location.latitude === null && setup.location.longitude === null && setup.location.elevationM === 0
+      ? defaults.location.elevationM : setup.location.elevationM,
+    source:setup.location.source || defaults.location.source},
+    localDateTime:setup.localDateTime || defaults.localDateTime,
+    weather:{...setup.weather, temperatureC:setup.weather.temperatureC ?? defaults.weather.temperatureC,
+      externalH:setup.weather.externalH ?? defaults.weather.externalH, source:setup.weather.source || defaults.weather.source,
+      relativeHumidity:setup.weather.relativeHumidity ?? defaults.weather.relativeHumidity,
+      windMS:setup.weather.windMS ?? defaults.weather.windMS,
+      dniWm2:setup.weather.dniWm2 ?? defaults.weather.dniWm2, dhiWm2:setup.weather.dhiWm2 ?? defaults.weather.dhiWm2,
+      ghiWm2:setup.weather.ghiWm2 ?? defaults.weather.ghiWm2},
+    groundTemperatureC:setup.groundTemperatureC ?? defaults.groundTemperatureC,
+    airExchange:setup.airExchange.mode === "unspecified" ? defaults.airExchange : setup.airExchange,
+    opaqueAbsorptance:setup.opaqueAbsorptance ?? defaults.opaqueAbsorptance,
+    groundAlbedo:setup.groundAlbedo ?? defaults.groundAlbedo};
+  return JSON.stringify(initialized) === JSON.stringify(setup) ? setup : initialized;
+}
 const bcSchema = z
   .object({
     model: z.enum([

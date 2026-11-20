@@ -14,7 +14,7 @@ Full display shows actual boundary polygons and their original edges. Section On
 
 ## View lifecycle
 
-`useCFDMeshInspection` binds the current study, project, worker and input revision. A pending solver run can fall back to its earlier matching checked mesh. Stale inputs, missing domains, expiry and unsupported data fail closed with guidance.
+`useCFDMeshInspection` binds the selected study, project, worker and submitted input revision. A pending solver run can fall back to its earlier matching checked mesh. A retained checked mesh from an earlier setup remains inspectable in isolation with an explicit label; it is never represented as the mesh for later edits. Expiry and unsupported data fail closed with guidance.
 
 Inspection scopes the normal scene under one invisible parent and separately suppresses HTML probe labels, result overlays, legends and editing controls. Existing scene components and their preferences stay mounted. Hidden objects cannot intercept picking. The camera snapshot retains position, quaternion, up vector, zoom, target and clipping distances. An in-flight Bounds fit is stopped. Section movement changes geometry without refitting the camera.
 
@@ -78,6 +78,14 @@ Progress polling no longer reloads an unchanged mesh source. A section update re
 Manual browser review used the actual panel, hook, floating toolbar and central viewer with the existing 16,000-cell native mesh served by a temporary loopback-only preview. It covered solid/transparent display, full-opacity reset, section axis and movement, numeric bounds errors, help content, 720/360-pixel panel widths, dark/light materials, orbit then exit, leaving the tab, and an unavailable geometry request followed by explicit recovery. The normal building view, controls and legend returned after exit and failure. DOM measurements showed no horizontal overflow at the narrow width; paired controls had equal widths/aligned bottoms, and number/select fields used the same regular font. Desktop screenshots were saved locally, resolving the initial capture limitation above. The preview route/helper were removed/stopped before committing.
 
 The live workbench was also reviewed at Results → Mesh with no checked job: it shows the concise empty state, preserves the normal building/probe view, and Mesh setup opens Solver → Mesh without submitting anything. This follow-up did not exercise a new authenticated production mesh, touch interaction or a separate multi-floor fixture. It does not claim new automated regression coverage.
+
+## Retained-job compatibility, 20 November 2026
+
+Completed jobs from workers without the mesh-inspection endpoints can now use their authenticated, SHA-256-verified native-case download. The local engineering service reads only `result.json` and the five final polyMesh files, verifies the submitted hashes and checked cell count, and reuses the existing volume parser and section algorithm. It executes no archive content. Uploads are limited to 32 MiB compressed / 192 MiB selected source; opaque temporary handles expire after ten minutes, with at most two parsed meshes and one computation at a time. Obsolete section calculations cooperate with disconnect cancellation. Cloud account/project checks remain in the authenticated download path; the temporary local handle does not create a new cloud mesh or job. Direct worker inspection remains the preferred path.
+
+The reported job's downloaded archive was inspected directly: 108,240 checked cells, 332,518 faces and 116,200 points. The repaired local API loaded that archive and returned a Z section with 4,688 intersected cells. No tests, solver jobs or remeshing were run. The local backend was restarted to expose the compatibility route. Browser inspection established the earlier-setup gate and retained native artifact; subsequent browser verification was unavailable after Computer Use stopped because it could not verify the browser URL.
+
+Related workbench changes move Monitor to Results, rename the Solver Run tab to Compute, move OpenFOAM import/export to Resources & retention, and place probe actions beside their names above the coordinates. Settings import reads validated `scenario.json` from a Climoptix settings ZIP, retains the current simulation/domain/shared HVAC identity and never executes raw dictionaries. Thermal activation and restoring active defaults now persist editable London reference inputs, including coordinates and Europe/London timezone. These feed the existing thermal calculation/export path; they do not add an energy solver to the isothermal native worker. Assumed weather/elevation remain labelled as assumptions.
 
 ## Measured performance and supported limits
 

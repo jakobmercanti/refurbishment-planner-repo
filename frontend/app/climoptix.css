@@ -1322,6 +1322,15 @@ body .cfx-workspace .cfx-mesh-inspection button.cfx-primary:hover:not(:disabled)
 body .cfx-workspace .cfx-mesh-inspection > details > summary { padding-right:76px !important; }
 body .cfx-workspace .floating-toolbar .cfx-mesh-inspection > details > summary > .window-help-button { position:absolute; right:29px; top:50%; transform:translateY(-50%); display:grid; }
 .cfx-view-tools[hidden] { display:none; }
+body .cfx-workspace .cfx-probe-row.cfx-probe-entry { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--density-field-gap); }
+.cfx-probe-heading { display:grid; grid-template-columns:minmax(0,1fr) minmax(160px,40%); gap:var(--density-field-gap); align-items:stretch; }
+body .cfx-workspace .cfx-probe-heading .cfx-probe-actions { margin:0; }
+.cfx-probe-heading > .cfx-probe-name { width:100%; min-width:0; }
+.cfx-probe-coordinates { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--density-field-gap); min-width:0; }
+.cfx-probe-coordinates label { min-width:0; }
+body .cfx-workspace .cfx-probe-coordinates input { font:400 calc(11.5px * var(--density-font-scale,1)) var(--font-sans); }
+body .cfx-workspace .cfx-results > .cfx-monitor-tab[role="tabpanel"] { border:0; padding:0; }
+@container cfx-setup (max-width:300px) { .cfx-probe-heading { grid-template-columns:minmax(0,1fr); } }
 .cfx-mesh-inspection input[type="range"] { margin-inline:0; }
 @container cfx-setup (max-width:360px) {
   .cfx-mesh-form, .cfx-mesh-information { grid-template-columns:minmax(0,1fr); }

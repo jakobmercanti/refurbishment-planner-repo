@@ -21,7 +21,7 @@ export const THERMAL_HELP = [
   },
   {
     heading: "Location, weather and sun",
-    text: "No location is detected or fetched. At 0°, plan +X is east and +Y north; the north angle is the clockwise true-north bearing of plan +Y, without moving geometry. Preset names are labels, not regulatory design conditions. Representative means one selected hour, not a full-day or peak prediction. A saved EPW record retains the selected hour; reimport the file to choose another after reopening. EPW uses a fixed standard-time offset without DST; editing IANA timezone returns to timezone rules. For manual per-surface solar, use Envelope → Advanced surface override to enter irradiance on every outdoor face, including zero on unlit faces; the multiplier is applied once.",
+    text: "London city-centre coordinates and Europe/London timezone are the editable defaults when thermal inputs are activated. Elevation and reference weather are labelled assumptions, not detected conditions. Restore defaults reinstates these values for an activated thermal study. At 0°, plan +X is east and +Y north; the north angle is the clockwise true-north bearing of plan +Y, without moving geometry. Preset names are labels, not regulatory design conditions. Representative means one selected hour, not a full-day or peak prediction. A saved EPW record retains the selected hour; reimport the file to choose another after reopening. EPW uses a fixed standard-time offset without DST; editing IANA timezone returns to timezone rules. For manual per-surface solar, use Envelope → Advanced surface override to enter irradiance on every outdoor face, including zero on unlit faces; the multiplier is applied once.",
   },
   {
     heading: "Gains and balance",

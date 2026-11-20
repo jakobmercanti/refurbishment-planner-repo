@@ -8,6 +8,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from shapely.errors import GEOSException
 
+from backend.app.cfd_mesh_archive import router as mesh_archive_router
 from backend.app.climoptix_provider import PreparationOnlyProvider
 from backend.app.commercial_api import _validate_project
 from geometry.climoptix_adjoint import AdjointStudy
@@ -15,6 +16,7 @@ from geometry.climoptix_models import ProviderCapabilities, Scenario
 from geometry.thermal_models import ThermalPackage
 
 router = APIRouter(prefix="/climoptix", tags=["Climoptix preparation"])
+router.include_router(mesh_archive_router, prefix="")
 provider = PreparationOnlyProvider()
 
 
