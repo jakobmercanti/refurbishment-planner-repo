@@ -121,7 +121,7 @@ class Store:
             "completed": completed, "remaining": max(0, FREE_COMPLETED_SIMULATIONS - completed),
         }
 
-    def submit(self, owner: str, request: Submission, *, max_cpu: int | None = None):
+    def submit(self, owner: str, request: Submission, *, max_cpu: int | None = None, testing: bool = False):
         payload = request.model_dump_json()
         digest = hashlib.sha256(
             json.dumps(json.loads(payload), sort_keys=True, separators=(",", ":")).encode()
@@ -137,17 +137,16 @@ class Store:
                 return existing
             # Admission and completion accounting share SQLite's write lock.
             # One active job per owner reserves the final remaining completion.
-            if request.operation == "run" and db.execute(
+            if not testing and db.execute(
                 "SELECT count(*) FROM simulation_completions WHERE owner=?", (owner,)
             ).fetchone()[0] >= FREE_COMPLETED_SIMULATIONS:
-                raise HTTPException(429, "Free tier limit reached: five completed simulations per account (lifetime). "
-                                    "Existing results and setup remain available; failed/cancelled runs do not count.")
+                raise HTTPException(429, "Free tier limit reached: five completed simulations per account (lifetime).")
             if db.execute(f"SELECT count(*) FROM jobs WHERE owner=? AND phase IN {ACTIVE_SQL}", (owner,)).fetchone()[0]:
                 raise HTTPException(409, "This account already has an active job. Wait or cancel it first.")
             if db.execute(f"SELECT count(*) FROM jobs WHERE phase IN {ACTIVE_SQL}").fetchone()[0] >= 4:
                 raise HTTPException(429, "The bounded worker queue is full.")
             if (
-                db.execute(
+                not testing and db.execute(
                     "SELECT count(*) FROM jobs WHERE owner=? AND created>?", (owner, time.time() - 86400)
                 ).fetchone()[0]
                 >= 20
@@ -279,8 +278,12 @@ WorkerUser = Annotated[VerifiedUser, Depends(authenticate)]
 
 def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAPI:
     store = Store(root or Path(os.environ.get("CFD_DATA_ROOT", "/data/cfd")))
+    testing_email = os.environ.get("CFD_TEST_ACCOUNT_EMAIL", "").strip().casefold()
     stop = threading.Event()
     state = {"ready": False, "reason": "OpenFOAM runtime acceptance is pending.", "processors": 1}
+
+    def is_testing_account(user: VerifiedUser) -> bool:
+        return bool(testing_email and user.email_confirmed and user.email and user.email.casefold() == testing_email)
 
     def run_queue():
         try:
@@ -296,7 +299,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
                 processors=processors,
                 reason=(
                     f"OpenCFD v2312: steady isothermal SIMPLE; one job, up to {processors} processor(s), "
-                    "500,000 cells, 4 GB RAM and 15 minutes. Free tier: five completed simulations per account."
+                    "500,000 cells, 4 GB RAM and 15 minutes."
                     + (" Two-processor MPI is unavailable on this deployment; serial execution is validated."
                        if processors < 2 else "")
                 ),
@@ -416,18 +419,20 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
     def capabilities(user: WorkerUser):
         from backend.app.climoptix_adjoint import CAPABILITY
 
-        quota = store.quota(str(user.id))
-        reason = state["reason"] if quota["remaining"] else (
+        testing = is_testing_account(user)
+        quota = None if testing else store.quota(str(user.id))
+        can_submit = testing or bool(quota and quota["remaining"])
+        reason = state["reason"] if can_submit else (
             "Free tier: all five completed simulations have been used. Setup and existing results remain available."
         )
         return {
             "connected": True,
-            "mesh": state["ready"],
-            "run": state["ready"] and quota["remaining"] > 0,
+            "mesh": state["ready"] and can_submit,
+            "run": state["ready"] and can_submit,
             "reason": reason,
             "namespace": str(user.id),
             "limits": {**LIMITS, "cpu": state["processors"]},
-            "simulationQuota": quota,
+            **({"testingMode": True} if testing else {"simulationQuota": quota}),
             "clearResults": True,
             "rotatedGrid": True,
             "optimisation": CAPABILITY,
@@ -438,7 +443,7 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
         if not state["ready"]:
             raise HTTPException(503, state["reason"])
         try:
-            row = store.submit(str(user.id), body, max_cpu=state["processors"])
+            row = store.submit(str(user.id), body, max_cpu=state["processors"], testing=is_testing_account(user))
             return public_job(row, store.path(row["id"]))
         except ValueError as error:
             raise HTTPException(422, str(error)[:2000]) from None

@@ -65,6 +65,7 @@ export interface CFDWorkerAdapter {
     mesh: boolean;
     run: boolean;
     reason: string;
+    simulationQuota?: { remaining: number };
   };
   configurationIssue?(scenario: CFDScenario): string | undefined;
   reportIssue?(report: CFDReport): string | undefined;
@@ -72,6 +73,10 @@ export interface CFDWorkerAdapter {
   status(jobId: string, signal: AbortSignal): Promise<unknown>;
   list?(projectId: string, signal: AbortSignal): Promise<CFDWorkerJob[]>;
   clearResults?(projectId: string, studyIds: string[], signal: AbortSignal): Promise<void>;
+}
+
+export function simulationLimitReached(adapter: CFDWorkerAdapter | null): boolean {
+  return adapter?.capabilities.simulationQuota?.remaining === 0;
 }
 
 export function workerConfigurationIssue(project: ProjectDocument, scenario: CFDScenario, adapter: CFDWorkerAdapter | null, operation: CFDOperation = "run") {

@@ -109,25 +109,39 @@ test("a delayed allow response cannot restore access after logout", async t => {
   assert.equal(await workspace(s.page).inputValue(), "FLOORPLAN");
 });
 
-test("exhausted free allowance blocks new runs but keeps the public workbench and results available", async t => {
+test("exhausted free allowance opens the commercial message before Mesh or Run", async t => {
   const s = await harness.session(cfdProject()); t.after(() => s.close());
-  await s.context.route("**/climoptix/worker/capabilities", route => route.fulfill({json:{...capabilities,mesh:true,
+  await s.context.route("**/climoptix/worker/capabilities", route => route.fulfill({json:{...capabilities,mesh:false,run:false,
     reason:"Free tier: all five completed simulations have been used. Setup and existing results remain available.",
     simulationQuota:{tier:"free",period:"lifetime",limit:5,completed:5,remaining:0}}}));
   await s.context.route("**/climoptix/worker/jobs?*", route=>route.fulfill({json:[]}));
+  let submissions = 0;
+  await s.context.route("**/climoptix/worker/jobs", route => {
+    if (route.request().method() === "POST") submissions++;
+    return route.fulfill({json:[]});
+  });
   await account(s.page,"exhausted-public-account");
   await eventually(() => privateOption(s.page).textContent(), text=>text === "Climoptix CFD");
   await workspace(s.page).selectOption("CLIMOPTIX");
   const ui=s.page.locator(".cfx-workspace");
   await cfdWindow(ui,"Simulations");
-  assert.equal(await ui.getByRole("button",{name:"Run Office airflow",exact:true}).isDisabled(),true);
-  assert.equal(await ui.getByRole("button",{name:"Mesh Office airflow",exact:true}).isEnabled(),true);
+  const popup = s.page.getByRole("dialog",{name:"Simulation limit reached",exact:true});
+  const mesh = ui.getByRole("button",{name:"Mesh Office airflow",exact:true});
+  await mesh.click();
+  await popup.getByText(/You reached your limit of a total of 5 simulations/).waitFor();
+  assert.equal(await popup.getByRole("link",{name:"info@climoptix.com"}).getAttribute("href"), "mailto:info@climoptix.com");
+  await popup.getByRole("button",{name:"Close",exact:true}).click();
+  assert.ok(await mesh.evaluate(element => element === document.activeElement));
+  await ui.getByRole("button",{name:"Run Office airflow",exact:true}).click();
+  await popup.getByRole("button",{name:"Close",exact:true}).click();
   await cfdWindow(ui,"Solver");
   await ui.getByRole("tab",{name:"Run",exact:true}).click();
   assert.match(await ui.getByLabel("Free simulation allowance").textContent(),/5 of 5 completed simulations used/);
-  assert.equal(await ui.getByRole("button",{name:"Run solver",exact:true}).isDisabled(),true);
+  await ui.getByRole("button",{name:"Run solver",exact:true}).click();
+  await popup.getByRole("button",{name:"Close",exact:true}).click();
   await cfdWindow(ui,"Imported results");
   assert.equal(await workspace(s.page).inputValue(),"CLIMOPTIX");
+  assert.equal(submissions, 0);
 });
 
 test("a quota race rejected with 429 is not retained as an unknown dispatched simulation", async t => {
@@ -145,7 +159,9 @@ test("a quota race rejected with 429 is not retained as an unknown dispatched si
   const ui=s.page.locator(".cfx-workspace"); await cfdWindow(ui,"Simulations");
   await ui.getByRole("button",{name:"Run Office airflow",exact:true}).click();
   await eventually(()=>submissions,count=>count===1);
-  await eventually(()=>ui.locator('.cfx-error').allTextContents(),messages=>messages.some(message=>message.includes("Free tier limit reached")));
+  const popup = s.page.getByRole("dialog",{name:"Simulation limit reached",exact:true});
+  await popup.getByRole("link",{name:"info@climoptix.com"}).waitFor();
+  await popup.getByRole("button",{name:"Close",exact:true}).click();
   assert.equal(await ui.getByText("Submission status unknown",{exact:true}).count(),0);
   assert.equal(await ui.getByRole("button",{name:"Mesh Office airflow",exact:true}).isEnabled(),true);
 });

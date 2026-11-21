@@ -188,6 +188,7 @@ export function useCFDJobs(
       });
     }
     // Sequential preparation bounds resource use; worker jobs can run independently.
+    let limitReached = false;
     for (const { study, input, submissionId, recovery } of queue) {
       if (controller.signal.aborted) return;
       try {
@@ -240,6 +241,9 @@ export function useCFDJobs(
         // should leave a permanent "unknown submission" recovery journal.
         // A proxy timeout (503), however, can still hide an accepted job.
         const rejected = error instanceof CFDWorkerError && [422, 429].includes(error.status);
+        if (error instanceof CFDWorkerError && error.status === 429 && error.message.startsWith("Free tier limit reached:")) {
+          limitReached = true;
+        }
         if (rejected) {
           if (unresolved.current.get(study.id)?.submissionId === submissionId) unresolved.current.delete(study.id);
           removePendingCFD(adapter.namespace, project.projectId, study.id, submissionId);
@@ -260,6 +264,7 @@ export function useCFDJobs(
           pending.current.delete(study.id);
       }
     }
+    return limitReached;
   };
   // One bounded polling loop, not one interval per study. Failures retain the job ID for retry.
   useEffect(() => {

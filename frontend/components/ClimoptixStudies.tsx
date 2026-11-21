@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { duplicateCFDScenario, type CFDScenario, type CFDSimulationGroup } from "@/lib/climoptixDocument";
 import type { ProjectDocument } from "@/lib/projectDocument";
 import type { CFDOperation, CFDWorkerAdapter } from "@/lib/climoptixJobs";
-import { terminalJob, workerConfigurationIssue, workerInput } from "@/lib/climoptixJobs";
+import { simulationLimitReached, terminalJob, workerConfigurationIssue, workerInput } from "@/lib/climoptixJobs";
 import { insertAtBoundary, moveStudy } from "@/lib/climoptixStudies";
 import { duplicateSimulationGroup, sameGroup, simulationGroups, uniqueGroupName } from "@/lib/climoptixGroups";
 import { jobHasCheckedMesh, type CFDJobEntry } from "./useCFDJobs";
@@ -40,7 +40,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   onReset: () => void; resetting: boolean;
   onImport: (f: File) => void;
   entries: Record<string, CFDJobEntry>; worker: CFDWorkerAdapter | null;
-  onSubmit: (operation: CFDOperation, studies: CFDScenario[]) => void;
+  onSubmit: (operation: CFDOperation, studies: CFDScenario[], opener: HTMLButtonElement) => void;
   onOpenResults: (studyId: string, jobId?: string) => void;
   onOpenMesh?: (studyId: string) => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
@@ -147,10 +147,11 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                 const configurationIssue = checkConfiguration("run");
                 const hasIssues = !!(entry?.error || configurationIssue || s.validation?.errors ||
                   (!entry?.dispatched && worker?.capabilities.connected && !worker.capabilities.run));
+                const limitReached = !entry?.dispatched && simulationLimitReached(worker);
                 const reason = (operation: CFDOperation) => resetting ? "Wait for default setup to finish" : s.archived ? "Unarchive this simulation before submitting" : busy(s) ? "Wait for this job to finish" :
                   entry?.dispatched && entry.operation !== operation ? `Recover the previous ${entry.operation} submission first` :
                   !worker?.capabilities.connected ? worker?.capabilities.reason || "Connect an OpenFOAM worker to submit this simulation" :
-                  entry?.dispatched ? undefined :
+                  entry?.dispatched || limitReached ? undefined :
                   !worker.capabilities[operation] ? worker.capabilities.reason || `This worker does not support ${operation}` : operation === "run" ? configurationIssue : checkConfiguration(operation);
                 const blocked = nextOperation ? reason(nextOperation) : undefined;
                 return <article className={`cfx-study-row${s.id === scenario?.id ? " selected" : ""}`}>
@@ -172,10 +173,10 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                   <div className="cfx-study-actions">
                     {nextOperation && <button
                       aria-label={`${nextOperation === "mesh" ? "Mesh" : "Run"} ${s.name}`}
-                      data-field-help={blocked ?? (nextOperation === "mesh"
+                      data-field-help={blocked ?? (limitReached ? "Open the simulation limit message." : nextOperation === "mesh"
                         ? "Generate and check the mesh for this study."
                         : "Run the solver and generate the configured post-processing results in one submission.")}
-                      disabled={!!blocked} title={blocked} onClick={() => onSubmit(nextOperation, [s])}>
+                      disabled={!!blocked} title={blocked} onClick={event => onSubmit(nextOperation, [s], event.currentTarget)}>
                       {nextOperation === "mesh" ? "Mesh" : "Run"}</button>}
                     {!nextOperation && showResults && <button aria-label={`Results for ${s.name}`} onClick={() => onOpenResults(s.id)}>Results</button>}
                     <button aria-label={`Delete ${s.name}`} className="cfx-danger" disabled={busy(s) || entry?.dispatched}
@@ -186,7 +187,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       <button onClick={event => { event.currentTarget.closest("details")!.open = false; onOpenResults(s.id,job.id); }}>Load post-processing plane in 3D</button>
                     }
                     {showResults && stale && <button disabled={!!reason("mesh")} title={reason("mesh")}
-                      onClick={event => { event.currentTarget.closest("details")!.open = false; onSubmit("mesh", [s]); }}>Mesh current setup</button>}
+                      onClick={event => { event.currentTarget.closest("details")!.open = false; onSubmit("mesh", [s], event.currentTarget); }}>Mesh current setup</button>}
                     <button onClick={e => { e.currentTarget.closest("details")!.open = false; setRenaming(s.id); }}>Rename</button>
                     <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups, { [copy.id]: s.id }); onSelect(copy.id); }}>Duplicate simulation</button>
                     <button disabled={busy(s) || entry?.dispatched} onClick={() => onChange({ ...s, archived: !s.archived }, true)}>{s.archived ? "Unarchive" : "Archive"}</button>

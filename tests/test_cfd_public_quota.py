@@ -37,7 +37,7 @@ def test_public_health_identifies_release_and_limits_without_exposing_account_us
         assert client.get("/health").json()["validatedProcessors"] == 1
 
 
-def test_five_completed_runs_reject_sixth_but_not_idempotent_retry_or_mesh(tmp_path):
+def test_five_completed_runs_reject_new_run_and_mesh_but_allow_idempotent_retry(tmp_path):
     store, owner = Store(tmp_path), str(uuid4())
     for _ in range(5):
         request, row = complete(store, owner)
@@ -45,10 +45,12 @@ def test_five_completed_runs_reject_sixth_but_not_idempotent_retry_or_mesh(tmp_p
     assert store.submit(owner, request)["id"] == row["id"]
     store.update(row["id"], "Completed", "Repeated completion is not a new charge")
     assert store.quota(owner)["completed"] == 5
-    with pytest.raises(HTTPException) as failure:
-        store.submit(owner, fixture())
-    assert failure.value.status_code == 429 and "five completed" in failure.value.detail
-    complete(store, owner, operation="mesh")
+    for operation in ("run", "mesh"):
+        new = fixture()
+        new.operation = operation
+        with pytest.raises(HTTPException) as failure:
+            store.submit(owner, new)
+        assert failure.value.status_code == 429 and "five completed" in failure.value.detail
     assert store.quota(owner)["completed"] == 5
     assert store.submit(str(uuid4()), fixture())["phase"] == "Queued"
 
@@ -125,13 +127,47 @@ def test_exhausted_user_keeps_capabilities_and_owned_results_but_cannot_run(tmp_
         response = client.get("/climoptix/worker/capabilities")
         assert response.status_code == 200
         caps = response.json()
-        assert caps["connected"] and caps["mesh"] and not caps["run"]
+        assert caps["connected"] and not caps["mesh"] and not caps["run"]
         assert caps["namespace"] == str(owner.id) and caps["simulationQuota"]["remaining"] == 0
         assert client.get(f"/climoptix/worker/jobs/{row['id']}").status_code == 200
         assert client.post("/climoptix/worker/jobs", json=fixture().model_dump(mode="json")).status_code == 429
         app.dependency_overrides[authenticate] = lambda: VerifiedUser(uuid4(), "other@example.com", True)
         assert client.get("/climoptix/worker/capabilities").json()["simulationQuota"]["completed"] == 0
         assert client.get(f"/climoptix/worker/jobs/{row['id']}").status_code == 404
+
+
+def test_only_the_configured_verified_account_can_submit_beyond_test_quotas(tmp_path, monkeypatch):
+    monkeypatch.setenv("CFD_TEST_ACCOUNT_EMAIL", "Tester@example.com")
+    monkeypatch.setattr("backend.app.openfoam_service.validate_submission", lambda *args, **kwargs: None)
+    app = create_app(tmp_path, start_runner=False)
+    app.state.worker.update(ready=True)
+    store = app.state.store
+    tester = VerifiedUser(uuid4(), "tester@example.com", True)
+    ordinary = VerifiedUser(uuid4(), "tester+other@example.com", True)
+    for _ in range(15):
+        complete(store, str(tester.id), operation="mesh")
+    for _ in range(5):
+        complete(store, str(tester.id))
+        complete(store, str(ordinary.id))
+    with TestClient(app) as client:
+        app.dependency_overrides[authenticate] = lambda: tester
+        caps = client.get("/climoptix/worker/capabilities").json()
+        assert caps["testingMode"] and caps["mesh"] and caps["run"]
+        assert "simulationQuota" not in caps
+        job = client.post("/climoptix/worker/jobs", json=fixture().model_dump(mode="json"))
+        assert job.status_code == 200
+        assert client.post("/climoptix/worker/jobs", json=fixture().model_dump(mode="json")).status_code == 409
+        store.update(job.json()["id"], "Completed", "Testing run")
+        mesh = fixture()
+        mesh.operation = "mesh"
+        assert client.post("/climoptix/worker/jobs", json=mesh.model_dump(mode="json")).status_code == 200
+        assert store.quota(str(tester.id))["completed"] == 6
+
+        for account in (ordinary, VerifiedUser(tester.id, tester.email, False)):
+            app.dependency_overrides[authenticate] = lambda account=account: account
+            caps = client.get("/climoptix/worker/capabilities").json()
+            assert "testingMode" not in caps and not caps["run"] and not caps["mesh"]
+            assert client.post("/climoptix/worker/jobs", json=fixture().model_dump(mode="json")).status_code == 429
 
 
 def test_runtime_cpu_gate_rejects_unvalidated_parallel_but_preserves_accepted_retries(tmp_path):

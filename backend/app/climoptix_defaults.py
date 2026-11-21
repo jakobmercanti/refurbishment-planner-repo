@@ -27,7 +27,7 @@ def default_setup(project: dict, original: Scenario, revision: str) -> Scenario:
         id=original.id, name=original.name, group=original.group,
         sourceBuildingId=project["projectId"], createdAt=original.createdAt, updatedAt=datetime.now(UTC),
         seed={"floorId": floor_id, "roomId": room_id},
-        description="Starter ventilation: opposing inlet/outlet, adiabatic no-slip walls, laminar steady isothermal flow. Source furniture is excluded; add it back deliberately after the baseline run.",
+        description="Starter ventilation with an inlet and a pressure outlet on separate walls. Uses adiabatic no-slip walls and steady laminar airflow. Add source objects deliberately after the baseline run.",
         physics={"turbulence": "laminar", "numerics": {"maxIterations": 2000, "residualTarget": 1e-4, "writeEveryIterations": 50}},
         postProcessing={axis: {"enabled": True, "count": 15} for axis in ("x", "y", "z")},
         resources={"cpu": 1, "memoryGb": 4, "wallTimeMinutes": 15, "storageGb": 1, "retentionDays": 3},
@@ -58,12 +58,20 @@ def default_setup(project: dict, original: Scenario, revision: str) -> Scenario:
                 if polygon.covers(box(center.x - half, center.y - half, center.x + half, center.y + half).buffer(10)):
                     candidates.append((patch, center.x / host["widthMm"], center.y / host["heightMm"], size))
                     break
+    def alignment(a, b):
+        return sum(x * y for x, y in zip(a[0]["normal"], b[0]["normal"], strict=True))
+
     pairs = [(a, b) for a, b in combinations(candidates, 2)
-             if a[0]["roomId"] == b[0]["roomId"] and a[0]["id"] != b[0]["id"]
-             and sum(x * y for x, y in zip(a[0]["normal"], b[0]["normal"], strict=True)) < -.999]
+             if a[0]["roomId"] == b[0]["roomId"] and a[0]["id"] != b[0]["id"]]
     if not pairs:
-        raise ValueError("No opposing planar walls have enough clear space for the default vents. Keep the measured room and place Supply/Extract manually.")
-    inlet, outlet = max(pairs, key=lambda pair: min(pair[0][3], pair[1][3]))
+        raise ValueError("The measured room needs two clear wall faces for the starter inlet and outlet. Check the openings or place the vents manually.")
+    opposing = [pair for pair in pairs if alignment(*pair) < -.999]
+    if opposing:
+        inlet, outlet = max(opposing, key=lambda pair: min(pair[0][3], pair[1][3]))
+    else:
+        inlet, outlet = max(pairs, key=lambda pair: (
+            pair[0][0]["roomId"] == room_id, -alignment(*pair), min(pair[0][3], pair[1][3]),
+        ))
     size = min(inlet[3], outlet[3])
     scenario.vents = [Vent(id=f"default-{role}", name="Default inlet" if role == "supply" else "Default outlet", role=role,
                            host={"patchId": placement[0]["id"], "u": placement[1], "v": placement[2]},

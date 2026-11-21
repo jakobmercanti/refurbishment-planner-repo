@@ -19,6 +19,7 @@ export const workerCapabilitiesSchema = z.object({
   simulationQuota: z.object({tier:z.literal("free"),period:z.literal("lifetime"),limit:z.literal(5),
     completed:z.number().int().nonnegative(),remaining:z.number().int().min(0).max(5)})
     .refine(q=>q.remaining===Math.max(0,q.limit-q.completed),"Inconsistent simulation quota").optional(),
+  testingMode: z.literal(true).optional(),
   clearResults: z.boolean().optional(),
   rotatedGrid: z.boolean().optional(),
 });

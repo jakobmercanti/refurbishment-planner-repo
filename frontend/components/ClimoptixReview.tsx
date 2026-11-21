@@ -35,7 +35,8 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, on
     if (!issuesRequest) return;
     document.getElementById(`${prefix}-warnings`)?.focus({ preventScroll: true });
   }, [issuesRequest, prefix]);
-  const diagnostics = report?.diagnostics.filter(d => severity === "all" || d.severity === severity) ?? [];
+  const diagnostics = report?.diagnostics.filter(d =>
+    !(workerConnected && d.code === "preparation-only") && (severity === "all" || d.severity === severity)) ?? [];
   const save = (kind: "zip" | "summary") => {
     if (!report || stale || blocked) return;
     try {
@@ -87,10 +88,9 @@ export function ClimoptixReview({ scenario, report, revision, stale, blocked, on
       {stale && <p className="cfx-stale">Checks out of date</p>}
       {diagnostics.map((d, index) => {
         const target = diagnosticTarget(d.objectId, scenario, report);
-        const connected = workerConnected && d.message.includes("No CFD mesher");
         const copy = diagnosticCopy(d, target, scenario, report, openingNames);
-        const message = connected ? "Geometry preparation only. Native results appear in Solver → Monitor after the worker finishes." : copy.message;
-        const nextStep = connected ? "Use the connected worker controls to submit a job." : copy.repair;
+        const message = copy.message;
+        const nextStep = copy.repair;
         const nextStepId = d.objectId ? undefined : `${prefix}-diagnostic-${index}`;
         return <article className={`cfx-diagnostic cfx-diagnostic-row ${d.severity}`} key={`${d.code}:${d.objectId}:${index}`}
           onPointerEnter={() => setHovered(target ? d.objectId : null)} onPointerLeave={() => setHovered(null)}

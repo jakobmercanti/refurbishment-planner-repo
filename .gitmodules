@@ -1,0 +1,8 @@
+[submodule "freefloorplan3d-website"]
+	path = freefloorplan3d-website
+	url = https://github.com/jakobmercanti/freefloorplan3d-website.git
+	branch = master
+[submodule "climoptix_website"]
+	path = climoptix_website
+	url = https://github.com/jakobmercanti/climoptix_website.git
+	branch = master

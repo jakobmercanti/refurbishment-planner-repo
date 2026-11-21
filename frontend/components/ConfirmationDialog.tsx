@@ -9,13 +9,13 @@ export function ConfirmationDialog({ title, label, message, confirmLabel, disabl
   title: string;
   label?: string;
   message: ReactNode;
-  confirmLabel: string;
+  confirmLabel?: string;
   disabled?: boolean;
   opener: HTMLButtonElement | null;
   fallbackFocus?: string;
   help?: WindowHelpStep[];
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
@@ -43,8 +43,8 @@ export function ConfirmationDialog({ title, label, message, confirmLabel, disabl
     </header>
     <div className="popup-content planner-window-body"><p id={id + "-message"}>{message}</p></div>
     <footer className="popup-actions planner-window-footer">
-      <button type="button" ref={cancel} onClick={onCancel}>Cancel</button>
-      <button type="button" className="planner-danger-action" disabled={disabled} onClick={onConfirm}>{confirmLabel}</button>
+      <button type="button" ref={cancel} onClick={onCancel}>{onConfirm ? "Cancel" : "Close"}</button>
+      {onConfirm && <button type="button" className="planner-danger-action" disabled={disabled} onClick={onConfirm}>{confirmLabel}</button>}
     </footer>
   </dialog>;
 }

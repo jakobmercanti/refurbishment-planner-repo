@@ -20,12 +20,12 @@ import { CFDResultLegend, DEFAULT_RESULT_APPEARANCE, type SceneResultMetadata } 
 import { RESULT_PALETTES, type ResultPalette } from "@/lib/cfdResultPalette";
 import { CFDLegendStyleSelect, type CFDLegendStyle } from "./CFDLegendStyle";
 import { copyHvacAsAirflow, requiresHvacThermalExecution, resolveHvacScenario } from "@/lib/hvacBridge";
-import { hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
+import { commitHvacCFD, hvacErrorMessage, type HvacDomainScope } from "@/lib/hvacDocument";
 import { SharedHvacCFD } from "./SharedHvacCFD";
 import { SharedBoundaryCapture } from "./SharedBoundaryCapture";
 import { useHvac } from "./HvacContext";
 import { CFDPointProbeControls, useCFDPointProbe } from "./CFDPointProbeControls";
-import { completedRunReference, terminalJob, workerConfigurationIssue, workerInput } from "@/lib/climoptixJobs";
+import { completedRunReference, prepareWorkerSubmission, simulationLimitReached, terminalJob, workerConfigurationIssue, workerInput, type CFDOperation } from "@/lib/climoptixJobs";
 import type { CFDWorkerAdapter } from "@/lib/climoptixJobs";
 import { CFD_PHASE_HELP, CFD_REFINEMENT_HELP, CFD_SETUP_HELP } from "@/lib/climoptixHelp";
 import { FloatingToolbar } from "./FloatingToolbar";
@@ -179,6 +179,7 @@ export function ClimoptixWorkspace({
   const [editorReset, setEditorReset] = useState(0);
   const [clearing, setClearing] = useState<HTMLButtonElement | null>(null);
   const [creating, setCreating] = useState<{ group?: string; studyId: string; opener: HTMLButtonElement } | null>(null);
+  const [limitDialog, setLimitDialog] = useState<HTMLButtonElement | null>(null);
   const [resetting, setResetting] = useState(false);
   const defaultAbort = useRef<AbortController | null>(null);
   const [simulationTab, setSimulationTab] = useState<SimulationTab>("mesh");
@@ -251,9 +252,10 @@ export function ClimoptixWorkspace({
     studyId: scenario?.id, input: currentWorkerInput, entry: currentJob, hasDomain: !!scenario?.seed,
     active: active && setupOpen && activeTab === "results" && resultsView === "mesh"});
   const recoveringRun = currentJob?.dispatched && currentJob.operation === "run";
+  const runShowsLimit = !currentJob?.dispatched && simulationLimitReached(workerAdapter);
   const runConfigurationIssue = scenario && !currentJob?.dispatched ? workerConfigurationIssue(project, scenario, workerAdapter) : undefined;
   const runWorkerIssue = !recoveringRun && workerAdapter?.capabilities.connected && !workerAdapter.capabilities.run
-    ? workerAdapter.capabilities.reason : undefined;
+    ? runShowsLimit ? "You’ve used all five simulations. Select Mesh or Run for details." : workerAdapter.capabilities.reason : undefined;
   const currentVTKFile=vtkFile&&scenario&&vtkFile.studyId===scenario.id&&vtkFile.jobId===jobs[scenario.id]?.job?.id?vtkFile:null;
   const currentSceneLayers = mainResultLayers.filter(item => item.studyId === scenario?.id
     && item.jobId === currentJob?.job?.id && item.input === currentWorkerInput && !!item.historical === !!mainResult?.historical);
@@ -364,6 +366,18 @@ export function ClimoptixWorkspace({
     setMainResultVisible(true);
     setSamplingPreviewStudy(null);
   };
+  const submitFromWorkspace = async (operation: CFDOperation, studies: CFDScenario[], opener: HTMLButtonElement) => {
+    if (defaultAbort.current) return;
+    const recovery = studies.some(study => jobs[study.id]?.dispatched && jobs[study.id]?.operation === operation);
+    if (!recovery && simulationLimitReached(workerAdapter)) {
+      setLimitDialog(opener);
+      return;
+    }
+    if (await submitJobs(operation, studies)) {
+      setLimitDialog(opener);
+      remoteWorker.refresh();
+    }
+  };
   const applyDefaults = async (original: CFDScenario, adding = false, previousStudyId?: string) => {
     if (defaultAbort.current || resetting) return;
     const controller = new AbortController(); defaultAbort.current = controller;
@@ -371,13 +385,14 @@ export function ClimoptixWorkspace({
     const restoring = !adding ? scenario : undefined;
     const stamp = (p: ProjectDocument) => JSON.stringify([preparationInput(p, original),
       p.cfdScenarios?.map(s => ({ ...s, validation: undefined, updatedAt: undefined })), p.cfdSimulationGroups,
-      p.hvac?.devices, p.hvac?.scenarios, p.hvac?.bindings]);
-    const captured = adding ? preparationInput(project, original) : stamp(project);
+      p.hvac?.devices, p.hvac?.scenarios,
+      Object.entries(p.hvac?.bindings ?? {}).map(([id, binding]) => [id, { ...binding, scopeRooms: undefined, scopeSeed: undefined }])]);
+    const captured = stamp(project);
     const checkedCurrent = () => {
       const now = current.current;
-      if (now.project.projectId !== project.projectId || (adding ? preparationInput(now.project, original) : stamp(now.project)) !== captured)
-        throw new Error("The building or simulation changed during setup. Retry with the current settings.");
       if (now.scenarios.length >= 100 && adding) throw new Error("The project already has 100 simulations.");
+      if (now.project.projectId !== project.projectId || stamp(now.project) !== captured)
+        throw new Error("The building or simulation changed during setup. Retry with the current settings.");
       return now;
     };
     try {
@@ -386,7 +401,10 @@ export function ClimoptixWorkspace({
       const report = adding && !hasRoom ? null : await prepareCFD(apiUrl, project, next,
         await preparationRevision(preparationInput(project, next)), controller.signal);
       const rooms = report?.domain.regions.filter(region => region.included).map(region => ({ floorId: region.floorId, roomId: region.id })) ?? [];
-      if (report && (!rooms.length || report.validation.errors)) throw new Error("The starter setup failed its geometry checks. The shared vents were kept.");
+      if (report && (!rooms.length || report.validation.errors || !report.surface.exportable)) {
+        const issue = report.diagnostics.find(diagnostic => diagnostic.severity === "error");
+        throw new Error(issue?.message ?? "The measured building does not have a closed air volume. Review the domain in Setup.");
+      }
       let now = checkedCurrent();
       const scope = report ? { scenarioId: restoring?.id ?? next.id, rooms, analysisMode: "airflow" as const } : undefined;
       const hasDesign = now.project.hvac?.devices.some(device => rooms.some(room => room.floorId === device.floorId && room.roomId === device.roomId));
@@ -400,6 +418,13 @@ export function ClimoptixWorkspace({
       const nextStudies = (all: CFDScenario[]) => restoring
         ? all.map(study => study.id === restoring.id ? starter : study)
         : [...all, starter];
+      if (scope && !hasDesign) {
+        const candidate = commitHvacCFD(now.project, nextStudies(now.scenarios), scope);
+        const stored = candidate.cfdScenarios?.find(study => study.id === starter.id);
+        if (!stored) throw new Error("The starter simulation could not be prepared.");
+        await prepareWorkerSubmission(apiUrl, candidate, stored, "run", controller.signal, undefined, workerAdapter);
+        now = checkedCurrent();
+      }
       const affected = adding ? (previousStudyId ? [previousStudyId] : []) : restoring ? [restoring.id] : [];
       if (affected.some(id => { const entry = now.jobs[id]; return entry?.submitting || entry?.dispatched || (entry?.job && !terminalJob(entry.job)); }))
         throw new Error("Resolve the active or unknown worker submission before deleting results.");
@@ -1052,6 +1077,7 @@ export function ClimoptixWorkspace({
             <CFDWindowControls>
               {shownTab === "results" && scenario && <h2>{`Results · ${scenario.name}`}</h2>}
               {scenario ? <CFDWorkbenchStatus checking={busy} stale={stale} report={activeReport} failure={error || preparationError}
+                limitReached={runShowsLimit}
                 runIssue={currentJob?.error || runWorkerIssue || runConfigurationIssue}
                 showFailure onIssues={() => reviewIssues()}
                 onDismissFailure={() => { setError(""); setEditorReset(v => v + 1); }} /> :
@@ -1102,7 +1128,7 @@ export function ClimoptixWorkspace({
                   openPhase("results"); setResultsView("mesh");
                 }}
                 worker={workerAdapter}
-                onSubmit={(op, studies) => { if (!defaultAbort.current) void submitJobs(op, studies); }}
+                onSubmit={(op, studies, opener) => void submitFromWorkspace(op, studies, opener)}
                 onUndo={onUndo}
                 onRedo={onRedo}
                 canUndo={canUndo}
@@ -1194,9 +1220,8 @@ export function ClimoptixWorkspace({
                           connected:
                             workerAdapter?.capabilities.connected ?? false,
                           canRun:
-                            !runConfigurationIssue &&
                             !!workerAdapter?.capabilities.connected &&
-                            (workerAdapter.capabilities.run || !!recoveringRun) &&
+                            (runShowsLimit || !runConfigurationIssue && (workerAdapter.capabilities.run || !!recoveringRun)) &&
                             !(
                               jobs[scenario.id]?.dispatched &&
                               jobs[scenario.id].operation !== "run"
@@ -1212,10 +1237,10 @@ export function ClimoptixWorkspace({
                               !terminalJob(jobs[scenario.id].job!)),
                           onIssues: () => reviewIssues(),
                           onAirflowCopy: canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined,
-                          onRun: () => {
+                          onRun: (opener) => {
                             if (defaultAbort.current) return;
-                            void submitJobs("run", [scenario]);
-                            openPhase("studies");
+                            void submitFromWorkspace("run", [scenario], opener);
+                            if (!runShowsLimit) openPhase("studies");
                           },
                         }}
                         tab={simulationTab}
@@ -1475,6 +1500,10 @@ export function ClimoptixWorkspace({
           }}
         />
       )}
+      {limitDialog && <ConfirmationDialog title="Simulation limit reached" opener={limitDialog}
+        fallbackFocus=".cfx-study-actions button"
+        message={<>You reached your limit of a total of 5 simulations, send us a message at <a href="mailto:info@climoptix.com">info@climoptix.com</a> to get a quote for the commercial version</>}
+        onCancel={() => setLimitDialog(null)} />}
       {creating && <ConfirmationDialog title="Create a new simulation?" confirmLabel="Create simulation" opener={creating.opener}
         message={`This clears the loaded results and permanently deletes saved results for “${scenarios.find(study => study.id === creating.studyId)?.name ?? "the current simulation"}”. Undo can restore setup edits. Deleted result files cannot be recovered.`}
         onCancel={() => setCreating(null)} onConfirm={() => { add(creating.group, creating.studyId); setCreating(null); }} />}

@@ -97,9 +97,17 @@ New-run admission checks the ledger under the same write lock as submission
 deduplication. The one-active-job-per-owner rule reserves the remaining slot,
 including simultaneous requests to different projects. Identical immutable
 retries remain valid even after the allowance is exhausted. A sixth new run
-receives HTTP 429. Capabilities expose the authoritative completed/remaining
-count, keep access and mesh availability, and disable Run when exhausted.
-Users retain access to setup and unexpired owned results.
+receives HTTP 429. Once the allowance is used, the worker rejects new Mesh and
+Run jobs. The workbench opens the commercial enquiry message on either action.
+Capabilities expose the authoritative completed/remaining count. Users retain
+access to setup and unexpired owned results.
+
+For an administrator testing CFD, set `CFD_TEST_ACCOUNT_EMAIL` on the worker to
+the email of one verified sign-in account and restart the worker. That account
+uses the normal sign-in flow and can submit repeated Mesh and Run jobs without
+the lifetime or daily submission quota. The one-active-job rule, shared queue
+and per-job resources still apply. Clear the worker setting and restart to
+restore standard admission for the account.
 
 CPU/memory/cell limits are validated server-side, not trusted from the browser.
 MPI's child address-space budget is divided by the requested processor count;

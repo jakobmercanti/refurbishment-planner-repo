@@ -21,7 +21,7 @@ interface RunConnection {
   canRun: boolean;
   busy: boolean;
   blockedReason?: string;
-  onRun: () => void;
+  onRun: (opener: HTMLButtonElement) => void;
   onIssues: () => void;
   onAirflowCopy?: () => void;
 }

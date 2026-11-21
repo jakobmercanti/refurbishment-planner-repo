@@ -56,19 +56,29 @@ def test_default_selects_first_measured_room_and_repeats_safely():
     assert [v.model_dump() for v in first.vents] == [v.model_dump() for v in second.vents]
 
 
-def test_default_does_not_invent_a_room_or_opposing_walls():
+def test_default_requires_a_measured_room():
     request = fixture()
     request.project["rooms"] = []
     with pytest.raises(ValueError, match="enclosed measured room"):
         default_setup(request.project, request.scenario, request.clientRevision)
+
+
+def test_default_uses_distinct_clear_faces_in_a_room_without_parallel_walls():
     request = fixture()
     request.project["rooms"][0]["vertices"] = [{"x": 0, "y": 0}, {"x": 2000, "y": 0}, {"x": 1000, "y": 2000}]
-    with pytest.raises(ValueError, match="opposing planar walls"):
-        default_setup(request.project, request.scenario, request.clientRevision)
+    scenario = default_setup(request.project, request.scenario, request.clientRevision)
+    assert len({vent.host.patchId for vent in scenario.vents}) == 2
+    report = PreparationOnlyProvider().validate_scenario(request.project, scenario, request.clientRevision)
+    assert report["validation"]["warnings"] == 0
+    request.scenario = scenario
+    request.sourceHash = report["validation"]["sourceHash"]
+    request.configurationHash = report["validation"]["configurationHash"]
+    validate_submission(request)
 
 
 def test_default_endpoint_uses_project_guards_and_returns_an_editable_scenario():
     from fastapi.testclient import TestClient
+
     from backend.app.main import app
 
     request = fixture()

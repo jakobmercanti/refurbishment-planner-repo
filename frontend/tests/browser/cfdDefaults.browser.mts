@@ -95,7 +95,7 @@ test('a completed mesh permits Run when the account has allowance and explains a
   let remaining=1;
   const operations=[];
   await context.route('**/climoptix/worker/capabilities',route=>route.fulfill({json:{
-    connected:true,mesh:true,run:remaining>0,clearResults:true,reason:remaining ? 'Native test worker' : 'Free tier: all five completed simulations have been used.',
+    connected:true,mesh:remaining>0,run:remaining>0,clearResults:true,reason:remaining ? 'Native test worker' : 'Free tier: all five completed simulations have been used.',
     namespace:'11111111-1111-4111-8111-111111111111',
     limits:{cpu:1,memoryGb:4,wallTimeMinutes:15,storageGb:1,retentionDays:3,maxCells:500000,concurrentJobs:1},
     simulationQuota:{tier:'free',period:'lifetime',limit:5,completed:5-remaining,remaining},
@@ -120,13 +120,14 @@ test('a completed mesh permits Run when the account has allowance and explains a
   remaining=0;
   const refresh=button(ui.locator('.cfx-header-simulation'),'Refresh checks');
   await refresh.click();
-  await eventually(()=>run.isDisabled(),Boolean);
-  await ui.locator('.cfx-workbench-status').getByText(/all five completed simulations/).waitFor();
-  assert.ok(await button(ui,'Mesh Simulation 1').isEnabled());
+  await ui.locator('.cfx-workbench-status').getByText('Simulation limit reached',{exact:true}).waitFor();
+  await button(ui,'Mesh Simulation 1').click();
+  const quota = page.getByRole('dialog',{name:'Simulation limit reached',exact:true});
+  await button(quota,'Close').click();
   assert.deepEqual(operations,['mesh']);
   remaining=1;
   await refresh.click();
-  await eventually(()=>run.isEnabled(),Boolean);
+  await ui.locator('.cfx-workbench-status').getByText('Simulation limit reached',{exact:true}).waitFor({state:'hidden'});
   await run.click();
   await eventually(()=>operations.length,count=>count===2);
   assert.deepEqual(operations,['mesh','run']);
