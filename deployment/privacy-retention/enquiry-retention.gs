@@ -75,7 +75,7 @@ function retention_(erase) {
         const supplied = Date.parse(headers['x-freefloorplan3d-delete-after'] || '');
         // A malformed or forward-dated header can never extend retention.
         const deadline = Number.isFinite(supplied) && supplied >= received ? Math.min(maximum, supplied) : maximum;
-        messages.push({id: message.id, rfcId: headers['message-id'], refs: (headers.references || '') + ' ' + (headers['in-reply-to'] || ''),
+        messages.push({id: message.id, threadId, rfcId: headers['message-id'], refs: (headers.references || '') + ' ' + (headers['in-reply-to'] || ''),
           selected, deadline, received, held: !!holdLabel && (message.labelIds || []).includes(holdLabel)});
       }
     }
@@ -84,7 +84,7 @@ function retention_(erase) {
     for (const message of messages) {
       for (const ref of message.refs.match(/<[^>]+>/g) || []) {
         const parent = ancestors.get(ref);
-        if (parent?.selected) { message.selected = true; message.deadline = Math.min(message.deadline, parent.deadline); message.held ||= parent.held; }
+        if (parent?.selected) { message.selected = true; message.deadline = Math.min(message.deadline, parent.deadline); message.held = message.held || parent.held; }
       }
       if (message.rfcId) ancestors.set(message.rfcId, message);
     }
@@ -101,7 +101,7 @@ function retention_(erase) {
     }
     const report = {mode: erase ? 'enforce' : 'preview', checked: messages.length,
       selected: messages.filter(m => m.selected).length, held: messages.filter(m => m.selected && m.held).length,
-      due: due.length, deleted, completedAt: new Date().toISOString()};
+      due: due.length, dueThreads: new Set(due.map(m => m.threadId)).size, deleted, completedAt: new Date().toISOString()};
     console.log(JSON.stringify(report)); // Counts only; no names, addresses, subjects, IDs or bodies.
     if (erase) PropertiesService.getScriptProperties().setProperty('lastSuccessfulRun', report.completedAt);
     return report;

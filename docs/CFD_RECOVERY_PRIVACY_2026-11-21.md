@@ -3,7 +3,7 @@
 ## Implemented
 
 - IndexedDB remains the first save destination, scoped to the signed-in account. Pending local edits are flushed before explicit sign-out. A stale guest draft no longer displaces newer account work.
-- A single optional account recovery document stores the latest project containing CFD studies, including geometry, scenarios, HVAC/insulation inputs, electrical layouts, quotes, work programmes and notes. It is separate from paid cloud project storage. No model binaries, electrical image binaries, CFD result files, passwords or session tokens are uploaded through this feature.
+- A single optional account recovery document stores the latest project containing CFD studies, including geometry, scenarios and current technical HVAC/insulation inputs. Cloud minimisation excludes electrical layouts, quotes, work programmes, notes, annotations and historical HVAC packages. Those stay local. Recovery is separate from paid cloud projects and does not upload model/image binaries, CFD result files, passwords or session tokens.
 - The browser reads recovery before writing and compares project timestamps. Recovered documents are schema-validated; the prior local project is retained. Serialized writes use server revisions, pause on conflict, and preserve local edits on network/authentication/storage errors. Account changes are checked before and after authenticated requests.
 - `/commercial/resume` accepts only a server-verified account. Identity comes from the bearer token, never a request-supplied user ID. Existing bounded project validation applies; requests are capped at 9 MiB and documents at 8 MiB. Responses are private/no-store. SQL tables/functions are denied to anonymous/authenticated direct clients; only the server service role can use them.
 - Privacy and local saving provides a recovery switch, document download and deletion. Deletion erases the document immediately and keeps only a revision tombstone to reject stale writes. The record cascades on account deletion. Recovery expires after 180 days without a save; a daily database cron purges expired rows, including tombstones.
@@ -13,7 +13,14 @@
 
 Apply `database/migrations/202611210001_planner_resume.sql` to the intended Supabase database with a migration administrator, then deploy the backend and frontend together. The migration enables `pg_cron` and schedules `purge-planner-resume` at 03:17 UTC daily. Confirm the job succeeds and alert on failures. Until the migration/backend rollout is complete, local saving remains available and the UI reports that cloud recovery is unavailable.
 
-The current execution environment has no database administrator connection or Supabase management credential. This migration, production RLS state, hosting region, backup retention and the cron execution have **not** been verified or applied to the live database. The local backend health endpoint responds, but the browser's account/worker entitlement check was unavailable, preventing inspection inside the signed-in CFD workbench.
+The subsequent authorised release applied migrations 001–004 in production,
+verified private grants/RLS, sanitising triggers and the active GMT cron schedule,
+and published the browser/API/website changes. The project is in Frankfurt and
+its Free Plan has no scheduled project backups. See the current
+[deployment evidence and remaining owner checks](PRIVACY_DEPLOYMENT_2026-11-21.md)
+and [operating procedures](PRIVACY_OPERATIONS.md). This supersedes the earlier
+pre-deployment limitation; scheduled cron success and provider-internal copies
+are distinct from configuration verification.
 
 Document downloads contain the project JSON, not its separately stored binaries. Full `.floorplan3d` packages remain available from File. On another device, recover model/image assets separately; account recovery is not a replacement for a complete package backup.
 
@@ -40,4 +47,8 @@ Do not advertise the service as fully compliant until the controller has verifie
 
 ## Validation
 
-No tests, new mesh jobs or solver runs were executed, as requested. Validation is limited to source review, TypeScript, frontend lint/source checks and Python lint/syntax checks. Deployment and signed-in visual verification remain outstanding as described above.
+No tests, new mesh jobs or solver runs were executed, as requested. Validation
+included source review, TypeScript/static build, frontend lint/source checks,
+Python lint/syntax checks, live health/authentication headers and authenticated
+database/account metadata. Scope and remaining limitations are recorded in the
+deployment evidence linked above.

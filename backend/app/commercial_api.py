@@ -863,13 +863,31 @@ def delete_asset(asset_id: UUID, authorization: str | None = Header(default=None
             detail="This upload link is still active. Try deleting the asset after the 15-minute upload link expires.",
         )
     keys = result.get("object_keys", [])
+    pending_cleanup = False
     for key in keys:
+        if key is None:
+            continue
         if not isinstance(key, str) or not key_in_namespace(key, f"users/{user.id}/assets/{asset_id}/"):
+            pending_cleanup = True
             continue
         try:
             storage.delete(key)
         except R2Unavailable:
-            continue
+            pending_cleanup = True
+    if pending_cleanup:
+        # Keep the database keys/cleanup marker intact for the worker's retry.
+        # Hiding an asset is not evidence that its private files were erased.
+        raise HTTPException(
+            status_code=503,
+            detail="Model hidden, but file deletion is still pending. Contact support if this persists.",
+        )
+    _db_call(
+        lambda: db.service_request(
+            "asset_definitions", method="PATCH",
+            query={"asset_id": f"eq.{asset_id}", "user_id": f"eq.{user.id}", "processing_status": "eq.deleted"},
+            body={"objects_deleted_at": datetime.now(UTC).isoformat()}, prefer="return=minimal",
+        )
+    )
     return {"status": "deleted"}
 
 
