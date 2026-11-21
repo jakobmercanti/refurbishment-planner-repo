@@ -7,6 +7,7 @@ import type { FormEvent } from "react";
 import { CommercialApiError, commercialRequest, uploadSignedFile } from "@/lib/commercialApi";
 import { currentSession, signOut, type AuthSession } from "@/lib/commercialAuth";
 import { projectRepository } from "@/lib/projectRepository";
+import { cloudProjectDocument, mergeCloudProject } from "@/lib/cloudProjectPrivacy";
 import { assetRepository } from "@/lib/assetRepository";
 import { parseProject, type AssetClassification, type ProjectDocument } from "@/lib/projectDocument";
 import { LocalAccountBoundary } from "@/components/LocalAccountBoundary";
@@ -108,8 +109,8 @@ function Workspace() {
         return;
       }
       const existing = projects.find((project) => project.project_id === local.projectId);
-      await commercialRequest(`/projects/${local.projectId}`, { method: "PUT", body: JSON.stringify({ document: local, expected_revision: existing?.revision ?? null }) });
-      setNotice(`“${local.name}” was backed up to your private cloud workspace. The browser copy remains available.`);
+      await commercialRequest(`/projects/${local.projectId}`, { method: "PUT", body: JSON.stringify({ document: cloudProjectDocument(local), expected_revision: existing?.revision ?? null }) });
+      setNotice(`“${local.name}” planning inputs were backed up privately. Customer records, notes and schedules remain on this device.`);
       await refresh();
     } catch (cause) {
       if (cause instanceof CommercialApiError && cause.status === 409 && typeof cause.detail === "object" && cause.detail) {
@@ -129,7 +130,7 @@ function Workspace() {
     if (!conflict) return;
     setBusy(true); setError("");
     try {
-      await commercialRequest(`/projects/${conflict.local.projectId}`, { method: "PUT", body: JSON.stringify({ document: conflict.local, expected_revision: conflict.revision }) });
+      await commercialRequest(`/projects/${conflict.local.projectId}`, { method: "PUT", body: JSON.stringify({ document: cloudProjectDocument(conflict.local), expected_revision: conflict.revision }) });
       setNotice("The cloud copy was replaced with your browser copy."); setConflict(null); await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The cloud copy was not replaced."); }
     finally { setBusy(false); }
@@ -139,7 +140,9 @@ function Workspace() {
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await commercialRequest<CloudProject>(`/projects/${id}`);
-      const document = parseProject(result.project_json);
+      const remote = parseProject(result.project_json);
+      const local = await projectRepository.getProject(id);
+      const document = local ? mergeCloudProject(local,remote) : remote;
       await restoreProjectAssets(document);
       await projectRepository.saveProject(document);
       setNotice(`“${document.name}” is now the browser's current project. Its cloud copy is unchanged.`);
@@ -150,7 +153,7 @@ function Workspace() {
   async function loadConflictingCloud() {
     if (!conflict) return;
     setBusy(true);
-    try { await restoreProjectAssets(conflict.remote); await projectRepository.saveProject(conflict.remote); setNotice("The newer cloud version is now the browser's current project."); setConflict(null); }
+    try { const local = await projectRepository.getProject(conflict.remote.projectId); const document = local ? mergeCloudProject(local,conflict.remote) : conflict.remote; await restoreProjectAssets(document); await projectRepository.saveProject(document); setNotice("The newer cloud version is now the browser's current project."); setConflict(null); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "The cloud project could not be restored."); }
     finally { setBusy(false); }
   }
@@ -189,7 +192,7 @@ function Workspace() {
       {error && <p className="commercial-error" role="alert">{error}</p>}{notice && <p className="commercial-status" role="status">{notice}</p>}
       {summary && <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>{summary.name} plan</h2><p>{summary.status === "free" ? "Free local planning, electrical, heating and energy tools" : `${summary.status} · £${(summary.monthly_price_pence / 100).toFixed(2)} per month`}</p></div><a href={`${base}/account/?tab=plans`}>{summary.status === "free" ? "Compare plans" : "Manage plan"}</a></div><div className="commercial-metrics"><div><span>Cloud projects</span><strong>{summary.usage.projects} / {summary.project_limit || "—"}</strong></div><div><span>Assets</span><strong>{summary.usage.assets} / {summary.asset_limit || "—"}</strong></div><div><span>Storage used</span><strong>{(summary.usage.storage_bytes / 1024 ** 3).toFixed(2)} GB / {(summary.storage_limit_bytes / 1024 ** 3).toFixed(0)} GB</strong></div></div></section>}
       {conflict && <section className="commercial-panel conflict-panel"><h2>Choose which project copy to keep</h2><p>Both copies are preserved until you choose. Cloud revision {conflict.revision} is newer than this browser’s version.</p><div className="commercial-actions"><button className="commercial-primary" disabled={busy} onClick={() => void loadConflictingCloud()}>Use cloud copy on this device</button><button className="commercial-secondary" disabled={busy} onClick={() => void replaceCloudCopy()}>Replace cloud with browser copy</button></div></section>}
-      <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>Cloud projects</h2><p>Back up this browser’s current project when you choose. Downloads do not change the cloud copy.</p></div><button className="commercial-primary compact-button" disabled={busy || summary?.status === "free"} onClick={() => void saveLocalProject()}>{busy ? "Working…" : "Back up current local project"}</button></div>
+      <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>Cloud projects</h2><p>Back up planning inputs when you choose. Quotes, customer records, notes, annotations and work/electrical schedules remain local. Download a full project file to keep those too.</p></div><button className="commercial-primary compact-button" disabled={busy || summary?.status === "free"} onClick={() => void saveLocalProject()}>{busy ? "Working…" : "Back up planning inputs"}</button></div>
         {projects.length ? <ul className="commercial-list">{projects.map((project) => <li key={project.project_id}><div><strong>{project.title}</strong><small>Revision {project.revision} · {(project.byte_size / 1024).toFixed(1)} KB · {new Date(project.updated_at).toLocaleString()}</small></div><div className="commercial-actions"><button className="commercial-secondary" disabled={busy} onClick={() => void openCloudProject(project.project_id)}>Open in this browser</button><button className="commercial-danger" onClick={() => void removeCloudProject(project)}>Delete cloud copy</button></div></li>)}</ul> : <p className="commercial-empty">No cloud projects yet.</p>}
       </section>
       <section className="commercial-panel"><div className="commercial-panel-heading"><div><h2>Private model assets</h2><p>GLB and STL uploads are stored privately. STL source units are converted to millimetres for bounds; those bounds remain visual-only.</p></div></div>

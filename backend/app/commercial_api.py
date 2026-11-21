@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from backend.app.commercial_entitlements import can_use_electrical_layout, can_use_planner_build
+from backend.app.project_privacy import cloud_project_document
 from backend.app.r2_storage import R2Unavailable, key_in_namespace, r2_storage
 from backend.app.stripe_gateway import PACK_KEYS, PLAN_KEYS, StripeUnavailable, stripe_gateway
 from backend.app.supabase_rest import InvalidAccessToken, SupabaseREST, SupabaseUnavailable, VerifiedUser, supabase_rest
@@ -65,6 +66,11 @@ class ProjectSyncBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     document: dict[str, Any]
     expected_revision: int | None = Field(default=None, ge=1)
+
+
+class RecoveryPreferenceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    enabled: bool
 
 
 class UploadBody(BaseModel):
@@ -559,11 +565,22 @@ def get_planner_resume(response: Response, authorization: str | None = Header(de
     response.headers["Cache-Control"] = "private, no-store"
     db = supabase_rest()
     user = _auth_user(authorization, db)
-    rows = _db_call(lambda: db.select("planner_resume", {
-        "select": "document,revision,updated_at", "user_id": f"eq.{user.id}",
-        "expires_at": f"gt.{datetime.now(UTC).isoformat()}", "limit": "1",
-    }, max_bytes=10 * 1024 * 1024))
-    return {"resume": rows[0] if isinstance(rows, list) and rows else None}
+    result = _db_call(lambda: db.rpc("get_planner_resume", {"p_user_id":str(user.id)}, max_bytes=10 * 1024 * 1024))
+    if not isinstance(result, dict):
+        raise HTTPException(503, "Cloud recovery is unavailable; your local copy is kept.")
+    if isinstance(result.get("resume"), dict) and isinstance(result["resume"].get("document"), dict):
+        result["resume"]["document"] = cloud_project_document(result["resume"]["document"])
+    return result
+
+
+@router.put("/resume/preference")
+def set_recovery_preference(payload: RecoveryPreferenceBody, response: Response,
+                            authorization: str | None = Header(default=None)) -> dict[str, bool]:
+    response.headers["Cache-Control"] = "private, no-store"
+    db = supabase_rest()
+    user = _auth_user(authorization, db)
+    _db_call(lambda: db.rpc("set_planner_resume_preference", {"p_user_id":str(user.id), "p_enabled":payload.enabled}))
+    return {"enabled":payload.enabled}
 
 
 @router.put("/resume")
@@ -576,15 +593,18 @@ def save_planner_resume(payload: ProjectSyncBody, response: Response,
         project_id = UUID(str(payload.document.get("projectId", "")))
     except ValueError:
         raise HTTPException(422, "Invalid project identifier.") from None
-    _validate_project(payload.document, project_id)
+    document = cloud_project_document(payload.document)
+    _validate_project(document, project_id)
     result = _db_call(lambda: db.rpc("save_planner_resume", {
-        "p_user_id": str(user.id), "p_document": payload.document,
+        "p_user_id": str(user.id), "p_document": document,
         "p_expected_revision": payload.expected_revision,
     }))
     if not isinstance(result, dict):
         raise HTTPException(503, "Cloud recovery is unavailable; your local copy is kept.")
     if result.get("status") == "conflict":
         raise HTTPException(409, "A newer cloud setup exists. Your local changes are kept. Reopen to recover it.")
+    if result.get("status") == "disabled":
+        raise HTTPException(409, {"code":"recovery_disabled", "message":"Account recovery is disabled."})
     return result
 
 
@@ -634,7 +654,10 @@ def get_cloud_project(project_id: UUID, authorization: str | None = Header(defau
     )
     if not isinstance(rows, list) or not rows:
         raise HTTPException(status_code=404, detail="The cloud project could not be found.")
-    return dict(rows[0])
+    result = dict(rows[0])
+    if isinstance(result.get("project_json"), dict):
+        result["project_json"] = cloud_project_document(result["project_json"])
+    return result
 
 
 @router.put("/projects/{project_id}")
@@ -643,7 +666,8 @@ def save_cloud_project(
 ) -> dict[str, Any]:
     db = supabase_rest()
     user = _auth_user(authorization, db)
-    schema_version, title = _validate_project(payload.document, project_id)
+    document = cloud_project_document(payload.document)
+    schema_version, title = _validate_project(document, project_id)
     result = _db_call(
         lambda: db.rpc(
             "save_cloud_project",
@@ -652,7 +676,7 @@ def save_cloud_project(
                 "p_project_id": str(project_id),
                 "p_schema_version": schema_version,
                 "p_title": title,
-                "p_project_json": payload.document,
+                "p_project_json": document,
                 "p_expected_revision": payload.expected_revision,
             },
         )
@@ -666,7 +690,10 @@ def save_cloud_project(
                 "code": "revision_conflict",
                 "message": "A newer cloud copy exists. Choose which copy to keep.",
                 "serverRevision": result.get("revision"),
-                "serverProject": result.get("project_json"),
+                "serverProject": (
+                    cloud_project_document(result["project_json"])
+                    if isinstance(result.get("project_json"), dict) else None
+                ),
             },
         )
     return result

@@ -263,6 +263,7 @@ export function AccountExperience({ embedded = false, onClose, onSignedIn, embed
     )}
     <p className="commercial-footnote">{recovery || mode === "reset" ? "Use only the newest reset email. If a link has expired or was already used, request a new one. Your saved floorplans are not changed by resetting your password."
       : "Email verification is required for CFD simulations and paid workspace features. Sign-in and sign-out are shared between open tabs on this site; your planner stays open."}</p>
+    <p className="commercial-footnote">Signed-in CFD setups can be saved privately for account recovery. Manage recovery, download or deletion in Settings → Privacy and local saving. Read <a href="/privacy/#account-recovery" target="_blank" rel="noopener noreferrer">account data and recovery information</a> before continuing.</p>
   </section>;
 
   const content = <>

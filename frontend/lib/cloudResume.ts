@@ -2,15 +2,24 @@ import { commercialRequest, CommercialApiError } from "./commercialApi";
 import { storedAccountId } from "./commercialAuth";
 import { matchesLocalStorageAccount } from "./localDatabase";
 import { parseProject, type ProjectDocument } from "./projectDocument";
+import { cloudProjectDocument, mergeCloudProject } from "./cloudProjectPrivacy";
 
 export const CLOUD_RECOVERY_CHANGED = "freefloorplan3d:cloud-recovery-changed";
 const key = () => `freefloorplan3d:cloud-recovery:${storedAccountId() ?? "guest"}`;
+let serverAllowsRecovery = true;
 export function cloudRecoveryEnabled() {
-  try { return !!storedAccountId() && localStorage.getItem(key()) !== "off"; } catch { return false; }
+  try { return serverAllowsRecovery && !!storedAccountId() && localStorage.getItem(key()) !== "off"; } catch { return false; }
 }
-export function setCloudRecoveryEnabled(enabled: boolean) {
+function storeChoice(enabled: boolean) {
   localStorage.setItem(key(), enabled ? "on" : "off");
   window.dispatchEvent(new Event(CLOUD_RECOVERY_CHANGED));
+}
+export async function setCloudRecoveryEnabled(enabled: boolean) {
+  if (!enabled) storeChoice(false);
+  await queue;
+  await commercialRequest("/resume/preference", {method:"PUT",body:JSON.stringify({enabled})});
+  serverAllowsRecovery = enabled; ready = false; stopped = false; initialRead = null;
+  storeChoice(enabled);
 }
 type Recovery = {document:ProjectDocument | null; revision:number; updated_at:string};
 let revision: number | null = null;
@@ -22,7 +31,9 @@ let initialRead: Promise<Recovery | null> | null = null;
 export function pauseCloudRecovery() { stopped = true; }
 
 export async function readCloudRecovery(): Promise<Recovery | null> {
-  const {resume} = await commercialRequest<{resume:Recovery | null}>("/resume", {signal:AbortSignal.timeout(6000)});
+  const {resume, enabled} = await commercialRequest<{resume:Recovery | null;enabled:boolean}>("/resume", {signal:AbortSignal.timeout(15000)});
+  serverAllowsRecovery = enabled === true;
+  if (!serverAllowsRecovery) window.dispatchEvent(new Event(CLOUD_RECOVERY_CHANGED));
   if (!resume) return null;
   if (!Number.isSafeInteger(resume.revision) || resume.revision < 1) throw new Error("Invalid cloud recovery revision.");
   return {...resume, document:resume.document ? parseProject(resume.document) : null};
@@ -35,7 +46,7 @@ export async function recoverCloudProject(local: ProjectDocument): Promise<Proje
   saved = resume?.document ? JSON.stringify(resume.document) : "";
   // The previous project remains in IndexedDB when the current pointer changes.
   const empty = !local.cfdScenarios?.length && !local.rooms.length && !local.floorplan?.walls.length && !local.assets.length && !local.building?.floors.some(f => f.content?.rooms.length);
-  if (resume?.document && (empty || resume.document.updatedAt > local.updatedAt)) return resume.document;
+  if (serverAllowsRecovery && resume?.document && (empty || resume.document.updatedAt > local.updatedAt)) return mergeCloudProject(local, resume.document);
   return local;
 }
 
@@ -48,14 +59,19 @@ export function syncCloudRecovery(project: ProjectDocument): Promise<boolean> {
       stopped = true;
       throw new Error("A newer cloud setup is available. Download it in Privacy and local saving; your local changes are kept.");
     }
-    const content = JSON.stringify(project);
+    if (!cloudRecoveryEnabled()) return false;
+    const document = cloudProjectDocument(project);
+    const content = JSON.stringify(document);
     if (content === saved) return true;
     try {
-      const result = await commercialRequest<{revision:number}>("/resume", {method:"PUT",body:JSON.stringify({document:project,expected_revision:revision})});
+      const result = await commercialRequest<{revision:number}>("/resume", {method:"PUT",body:JSON.stringify({document,expected_revision:revision})});
       if (!Number.isSafeInteger(result.revision) || result.revision <= (revision ?? 0)) throw new Error("Cloud recovery was not acknowledged.");
       revision = result.revision; saved = content;
       return true;
     } catch (error) {
+      if (error instanceof CommercialApiError && typeof error.detail === "object" && error.detail !== null && "code" in error.detail && error.detail.code === "recovery_disabled") {
+        serverAllowsRecovery = false; storeChoice(false); return false;
+      }
       if (error instanceof CommercialApiError && error.status === 409) stopped = true;
       throw error;
     }
@@ -65,8 +81,9 @@ export function syncCloudRecovery(project: ProjectDocument): Promise<boolean> {
 }
 
 export async function deleteCloudRecovery() {
-  setCloudRecoveryEnabled(false);
+  storeChoice(false);
   await queue;
   await commercialRequest("/resume", {method:"DELETE"});
+  serverAllowsRecovery = false;
   revision = null; ready = false; saved = ""; initialRead = null; stopped = false;
 }

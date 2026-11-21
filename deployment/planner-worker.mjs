@@ -5,15 +5,12 @@ import { authProxy } from './auth-proxy.mjs';
 export { PasswordAttempts } from './password-attempts.mjs';
 
 const BASE = '/planner';
-const googleDomainSources = 'com ad ae com.af com.ag al am co.ao com.ar as at com.au az ba com.bd be bf bg com.bh bi bj co.bw by com.bz ca cd cf cg ci co.ck cl cm cn com.co co.cr com.cy cz de dj dk dm com.do dz com.ec ee com.eg es com.et fi com.fj fm fr ga ge gg com.gh com.gi gl gm gr com.gt gy com.hk hn hr ht hu co.id ie co.il im co.in iq is it je com.jm jo co.jp co.ke com.kh ki kg co.kr com.kw kz la com.lb li lk co.ls lt lu lv com.ly co.ma md me mg mk ml com.mm mn com.mt mu mv mw com.mx com.my co.mz com.na com.ng ni ne nl no com.np nr nu co.nz com.om com.pa com.pe com.pg com.ph com.pk pl pn com.pr ps pt com.py com.qa ro ru rw com.sa com.sb sc se com.sg sh si sk com.sl sn so sm sr st com.sv td tg co.th com.tj tl tm tn to com.tr tt com.tw co.tz com.ua co.ug co.uk com.uy com.uz com.vc com.ve co.vi com.vn vu ws rs co.za co.zm co.zw cat'.split(' ').map(suffix => `https://www.google.${suffix}`).join(' ');
-const googleAdsSources = 'https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com https://www.google.com';
-const googleAdsScriptSources = 'https://www.googletagmanager.com https://www.googleadservices.com https://www.google.com';
 const headers = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'Strict-Transport-Security': 'max-age=31536000',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-  'Content-Security-Policy': `default-src 'self'; script-src 'self' 'unsafe-inline' ${googleAdsScriptSources}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${googleAdsSources} ${googleDomainSources}; connect-src 'self' blob: ${googleAdsSources} https://ad.doubleclick.net ${googleDomainSources}; worker-src 'self' blob:; font-src 'self' data:; frame-src https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`,
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
 };
 function respond(response) { const out = new Response(response.body, response); for (const [k, v] of Object.entries(headers)) out.headers.set(k, v); return out; }
 export default {
@@ -68,28 +65,33 @@ export default {
       const endpoint = path.slice('/engineering-api'.length);
       if (endpoint.startsWith('/climoptix/worker/')) return secureRespond(await cfdWorkerProxy(request, endpoint, env.CFD_WORKER_ORIGIN));
       if (endpoint.startsWith('/commercial/')) {
+        const privateRespond = response => {
+          const out = secureRespond(response);
+          out.headers.set('Cache-Control', 'private, no-store');
+          return out;
+        };
         const resource = endpoint.slice('/commercial'.length);
         const id = '[A-Za-z0-9_-]+';
         const routes = {
-          GET: new RegExp(`^/(catalogue|summary|projects(?:/${id})?|assets|assets/${id}/download|assets/local/${id}/download|ai-3d/status|ai-3d/jobs(?:/${id})?|renders(?:/${id})?)$`),
+          GET: new RegExp(`^/(catalogue|summary|resume|projects(?:/${id})?|assets|assets/${id}/download|assets/local/${id}/download|ai-3d/status|ai-3d/jobs(?:/${id})?|renders(?:/${id})?)$`),
           POST: new RegExp(`^/(assets/upload|assets/${id}/finalize|ai-3d/references/upload|ai-3d/jobs|render-references/upload|renders|billing/checkout|billing/portal|billing/sync|stripe/webhook)$`),
-          PUT: new RegExp(`^/projects/${id}$`),
-          DELETE: new RegExp(`^/(projects|assets)/${id}$`),
+          PUT: new RegExp(`^/(resume(?:/preference)?|projects/${id})$`),
+          DELETE: new RegExp(`^/(resume|(?:projects|assets)/${id})$`),
         };
-        if (!routes[request.method]?.test(resource)) return secureRespond(new Response('Forbidden', { status: 403 }));
+        if (!routes[request.method]?.test(resource)) return privateRespond(new Response('Forbidden', { status: 403 }));
         const webhook = resource === '/stripe/webhook';
         const publicCatalogue = resource === '/catalogue';
         if (!['GET', 'HEAD'].includes(request.method) && !webhook && request.headers.get('Origin') !== url.origin)
-          return secureRespond(new Response('Forbidden', { status: 403 }));
+          return privateRespond(new Response('Forbidden', { status: 403 }));
         const authorization = request.headers.get('Authorization');
         if (!webhook && !publicCatalogue && !/^Bearer\s+\S+$/i.test(authorization || ''))
-          return secureRespond(new Response('Authentication required', { status: 401 }));
-        if (webhook && !request.headers.get('Stripe-Signature')) return secureRespond(new Response('Signature required', { status: 400 }));
+          return privateRespond(new Response('Authentication required', { status: 401 }));
+        if (webhook && !request.headers.get('Stripe-Signature')) return privateRespond(new Response('Signature required', { status: 400 }));
         try {
           const upstream = new URL(env.ENGINEERING_API_ORIGIN);
           if (upstream.protocol !== 'https:') throw new Error('Invalid API origin');
-          const limit = webhook ? 1_000_000 : 34_000_000;
-          if (Number(request.headers.get('Content-Length') || 0) > limit) return secureRespond(new Response('Request too large', { status: 413 }));
+          const limit = webhook ? 1_000_000 : resource === '/resume/preference' ? 1024 : resource === '/resume' ? 9 * 1024 * 1024 : 34_000_000;
+          if (Number(request.headers.get('Content-Length') || 0) > limit) return privateRespond(new Response('Request too large', { status: 413 }));
           let body;
           if (request.body) {
             const reader = request.body.getReader();
@@ -99,7 +101,7 @@ export default {
               const { done, value } = await reader.read();
               if (done) break;
               length += value.byteLength;
-              if (length > limit) { await reader.cancel(); return secureRespond(new Response('Request too large', { status: 413 })); }
+              if (length > limit) { await reader.cancel(); return privateRespond(new Response('Request too large', { status: 413 })); }
               chunks.push(value);
             }
             body = new Uint8Array(length);
@@ -113,10 +115,8 @@ export default {
           if (!webhook && idempotency) forwarded['Idempotency-Key'] = idempotency.slice(0, 200);
           const result = await fetch(new URL(endpoint + url.search, upstream), { method: request.method, headers: forwarded, body, redirect: 'manual', signal: AbortSignal.timeout(25000) });
           if (result.status >= 300 && result.status < 400) throw new Error('Unexpected redirect');
-          const out = secureRespond(result);
-          out.headers.set('Cache-Control', 'no-store');
-          return out;
-        } catch { return secureRespond(Response.json({ detail: 'Account services are temporarily unavailable.' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })); }
+          return privateRespond(result);
+        } catch { return privateRespond(Response.json({ detail: 'Account services are temporarily unavailable.' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })); }
       }
       if (endpoint === '/analytics/event') {
         if (request.method !== 'POST') return respond(new Response('Method not allowed', { status: 405 }));

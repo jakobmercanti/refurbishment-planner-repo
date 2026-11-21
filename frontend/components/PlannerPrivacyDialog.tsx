@@ -2,14 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { WindowHelpButton } from "@/components/WindowHelpButton";
 import { analyticsEnabled, setAnalyticsEnabled } from "@/lib/analyticsConsent";
-import { cloudRecoveryEnabled, setCloudRecoveryEnabled, deleteCloudRecovery, readCloudRecovery } from "@/lib/cloudResume";
+import { CLOUD_RECOVERY_CHANGED, cloudRecoveryEnabled, setCloudRecoveryEnabled, deleteCloudRecovery, readCloudRecovery } from "@/lib/cloudResume";
 import { storedAccountId } from "@/lib/commercialAuth";
 
 export function PlannerPrivacyDialog({ onClose }: { onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState("");
   const [allowed, setAllowed] = useState(false);
-  const [googleAdsChoice, setGoogleAdsChoice] = useState("unset");
   const [recoveryEnabled, setRecoveryEnabled] = useState(() => cloudRecoveryEnabled());
   const [signedIn] = useState(() => !!storedAccountId());
   const [cloudBusy, setCloudBusy] = useState(false);
@@ -17,18 +16,12 @@ export function PlannerPrivacyDialog({ onClose }: { onClose: () => void }) {
     const element = dialog.current;
     element?.showModal();
     const refresh = () => setAllowed(analyticsEnabled());
-    const refreshGoogleAds = () => {
-      try {
-        const choice = localStorage.getItem("ffp3d_google_ads_consent");
-        setGoogleAdsChoice(choice === "accepted" || choice === "rejected" ? choice : "unset");
-      } catch { setGoogleAdsChoice("unavailable"); }
-    };
+    const refreshRecovery = () => setRecoveryEnabled(cloudRecoveryEnabled());
     refresh();
-    refreshGoogleAds();
     window.addEventListener("storage", refresh);
-    window.addEventListener("storage", refreshGoogleAds);
-    window.addEventListener("freefloorplan3d:google-ads-consent-change", refreshGoogleAds);
-    return () => { window.removeEventListener("storage", refresh); window.removeEventListener("storage", refreshGoogleAds); window.removeEventListener("freefloorplan3d:google-ads-consent-change", refreshGoogleAds); element?.close(); };
+    window.addEventListener("storage", refreshRecovery);
+    window.addEventListener(CLOUD_RECOVERY_CHANGED, refreshRecovery);
+    return () => { window.removeEventListener("storage", refresh); window.removeEventListener("storage", refreshRecovery); window.removeEventListener(CLOUD_RECOVERY_CHANGED, refreshRecovery); element?.close(); };
   }, []);
   function choose(value: boolean) {
     if (!setAnalyticsEnabled(value)) { setError("Your browser could not save this choice. Usage counts remain off; check your site storage settings."); return; }
@@ -38,10 +31,13 @@ export function PlannerPrivacyDialog({ onClose }: { onClose: () => void }) {
     <h2 id="planner-privacy-title">Privacy and local saving <WindowHelpButton title="Privacy and local saving" /></h2>
     <p>Your project is saved in this browser. Download a .floorplan3d backup before clearing browser data. Room geometry is sent to our calculation service when validation or layout checks run.</p>
     {signedIn && <section><h3>CFD setup recovery</h3>
-      <p>While signed in, the latest project containing CFD studies is automatically saved privately to your account. It includes drawings, dimensions, shared scenarios, layouts, notes, quotes and work programmes; imported model files and result files stay separate. Recovery expires after 180 days without a save. Keep a downloaded project backup too.</p>
-      <label><input type="checkbox" checked={recoveryEnabled} disabled={cloudBusy} onChange={event => {
-        try { setCloudRecoveryEnabled(event.target.checked); setRecoveryEnabled(event.target.checked); setError(""); } catch { setError("This browser could not save your recovery preference."); }
-      }}/> Save my CFD setup to my account</label>
+      <p>While signed in, the latest project containing CFD studies is automatically saved privately to your account. Cloud copies contain geometry, shared scenarios and technical heating/ventilation/insulation inputs. Quotes, customer/contact fields, free-text notes and annotations, electrical records, work programmes and historical HVAC packages stay local; downloaded full project packages can include them. Imported model files and result files stay separate. Recovery expires after 180 days without a save. Keep a downloaded project backup too.</p>
+      <label><input type="checkbox" checked={recoveryEnabled} disabled={cloudBusy} onChange={async event => {
+        const enabled = event.target.checked;
+        setCloudBusy(true); setError("");
+        try { await setCloudRecoveryEnabled(enabled); } catch { setError("Your account recovery preference could not be updated. Local saving continues."); }
+        finally { setRecoveryEnabled(cloudRecoveryEnabled()); setCloudBusy(false); }
+      }}/> Save my CFD setup to my account · all devices</label>
       <div className="planner-privacy-actions">
         <button type="button" disabled={cloudBusy} onClick={async () => {
           setCloudBusy(true); setError("");
@@ -57,9 +53,8 @@ export function PlannerPrivacyDialog({ onClose }: { onClose: () => void }) {
         }}>Delete cloud recovery</button>
       </div>
     </section>}
-    <p>Aggregate action counts are <strong>{allowed ? "on" : "off"}</strong> in this browser. We count the first validated floorplan for a local project and each completed export or download (including its format). We do not count visitors, page views or editing activity. We send no drawings, dimensions, filenames or visitor identifier. Our server relays the event to PostHog US without forwarding your IP address or browser headers; Cloudflare and our hosting provider still process technical request data.</p>
-    <p>We do not use action counts to build advertising profiles or record sessions. The separate Google Ads tag is off unless you accept optional advertising cookies; it may process page and ad-interaction signals as explained in the cookie notice.</p>
-    <section aria-labelledby="planner-google-ads-choice"><h3 id="planner-google-ads-choice">Optional Google Ads cookies</h3><p data-google-ads-status role="status">Choice: {googleAdsChoice === "accepted" ? "accepted" : googleAdsChoice === "rejected" ? "rejected" : googleAdsChoice === "unavailable" ? "could not be read" : "not set; the tag is off"}.</p><div className="planner-privacy-actions"><button type="button" data-google-ads-reject>Reject Google Ads cookies</button><button type="button" data-google-ads-accept>Accept Google Ads cookies</button></div></section>
+    <p>Aggregate action counts are <strong>{allowed ? "on" : "off"}</strong> in this browser. Counts are off unless you opt in; permission lasts 180 days and can be withdrawn here. We count the first validated floorplan for a local project and each completed export or download (including its format). We do not count visitors, page views or editing activity. We send no drawings, dimensions, filenames or visitor identifier. Our server relays the event to PostHog US without forwarding your IP address or browser headers; Cloudflare and our hosting provider still process technical request data.</p>
+    <p>We do not use action counts to build advertising profiles or record sessions. Advertising tags do not load inside the planner. You can manage optional advertising on the public website from its <a href="/cookies/#marketing-cookies" target="_blank" rel="noopener noreferrer">cookie controls</a>.</p>
     <p><a href="/privacy/#analytics" target="_blank" rel="noopener noreferrer">Read the privacy policy</a> · <a href="/cookies/#marketing-cookies" target="_blank" rel="noopener noreferrer">Cookies and Google Ads choices</a></p>
     {error && <p role="alert">{error}</p>}
     <div className="planner-privacy-actions"><button type="button" onClick={() => choose(false)}>Turn counts off</button><button type="button" onClick={() => choose(true)}>Turn counts on</button><button type="button" onClick={onClose}>Close</button></div>
