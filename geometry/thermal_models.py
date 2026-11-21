@@ -32,7 +32,7 @@ class ThermalWeather(ThermalContract):
     relativeHumidity: Fraction | None = None
     windMS: Annotated[float, Field(ge=0, le=150)] | None = None
     externalH: Annotated[float, Field(gt=0, le=1000)] | None = None
-    solarMode: Literal["none", "components", "perSurface"] = "none"
+    solarMode: Literal["none", "clearSky", "components", "perSurface"] = "none"
     forcingBasis: Literal["instant", "hourlyMean"] = "instant"
     dniWm2: Annotated[float, Field(ge=0, le=2000)] | None = None
     dhiWm2: Annotated[float, Field(ge=0, le=2000)] | None = None
@@ -89,6 +89,7 @@ class ThermalOverride(ThermalContract):
 class ThermalSetup(ThermalContract):
     schemaVersion: Literal[1] = 1
     thermalMode: Literal["steady_no_hvac"] = "steady_no_hvac"
+    sunEnabled: bool = False
     insulationScenarios: dict[Key, str | None] = Field(default_factory=dict, max_length=20)
     location: ThermalLocation = Field(default_factory=ThermalLocation)
     northDeg: Annotated[float, Field(ge=0, le=360)] = 0

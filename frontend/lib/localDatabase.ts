@@ -1,5 +1,11 @@
 let connection: Promise<IDBDatabase> | undefined;
 let storageAccount: string | null | undefined;
+let workspaceFlush: (() => Promise<void>) | undefined;
+export function registerWorkspaceFlush(flush: () => Promise<void>) {
+  workspaceFlush = flush;
+  return () => { if (workspaceFlush === flush) workspaceFlush = undefined; };
+}
+export async function flushWorkspace() { await workspaceFlush?.(); }
 
 export function bindLocalStorageAccount(account: string | null): boolean {
   if (storageAccount === undefined) storageAccount = account;

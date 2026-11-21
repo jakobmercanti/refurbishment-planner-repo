@@ -15,7 +15,7 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
@@ -368,7 +368,9 @@ def _validate_project(document: dict[str, Any], project_id: UUID) -> tuple[int, 
     group_names = {g["name"].strip().lower() for g in document.get("cfdSimulationGroups", [])}
     group_names.update(s.get("group", "General").strip().lower() for s in document.get("cfdScenarios", []))
     if len(group_names) > 100:
-        raise HTTPException(status_code=422, detail="A project supports up to 100 simulation groups, including empty folders.")
+        raise HTTPException(
+            status_code=422, detail="A project supports up to 100 simulation groups, including empty folders."
+        )
     if "building" in document:
         from backend.app.building_document import validate_building
 
@@ -550,6 +552,49 @@ def _account_summary(db: SupabaseREST, user: VerifiedUser) -> dict[str, Any]:
         "canUsePlannerBuild": can_use_planner_build(plan_key, status),
     }
     return result
+
+
+@router.get("/resume")
+def get_planner_resume(response: Response, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "private, no-store"
+    db = supabase_rest()
+    user = _auth_user(authorization, db)
+    rows = _db_call(lambda: db.select("planner_resume", {
+        "select": "document,revision,updated_at", "user_id": f"eq.{user.id}",
+        "expires_at": f"gt.{datetime.now(UTC).isoformat()}", "limit": "1",
+    }, max_bytes=10 * 1024 * 1024))
+    return {"resume": rows[0] if isinstance(rows, list) and rows else None}
+
+
+@router.put("/resume")
+def save_planner_resume(payload: ProjectSyncBody, response: Response,
+                        authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    response.headers["Cache-Control"] = "private, no-store"
+    db = supabase_rest()
+    user = _auth_user(authorization, db)
+    try:
+        project_id = UUID(str(payload.document.get("projectId", "")))
+    except ValueError:
+        raise HTTPException(422, "Invalid project identifier.") from None
+    _validate_project(payload.document, project_id)
+    result = _db_call(lambda: db.rpc("save_planner_resume", {
+        "p_user_id": str(user.id), "p_document": payload.document,
+        "p_expected_revision": payload.expected_revision,
+    }))
+    if not isinstance(result, dict):
+        raise HTTPException(503, "Cloud recovery is unavailable; your local copy is kept.")
+    if result.get("status") == "conflict":
+        raise HTTPException(409, "A newer cloud setup exists. Your local changes are kept. Reopen to recover it.")
+    return result
+
+
+@router.delete("/resume")
+def delete_planner_resume(response: Response, authorization: str | None = Header(default=None)) -> dict[str, str]:
+    response.headers["Cache-Control"] = "private, no-store"
+    db = supabase_rest()
+    user = _auth_user(authorization, db)
+    _db_call(lambda: db.rpc("delete_planner_resume", {"p_user_id":str(user.id)}))
+    return {"status": "deleted"}
 
 
 @router.get("/projects")

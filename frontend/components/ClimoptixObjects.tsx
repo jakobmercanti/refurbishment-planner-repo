@@ -46,6 +46,8 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
   const groupList = useRef<HTMLDetailsElement>(null);
   const [editing, setEditing] = useState<{ type: "object" | "group"; id: string } | null>(null);
   const [error, setError] = useState("");
+  const [restoring, setRestoring] = useState<CFDObjectEntry | null>(null);
+  const [restoreGroup, setRestoreGroup] = useState(DEFAULT_OBJECT_GROUP);
   const excludeEntry = (entry: CFDObjectEntry) => {
     const key = hiddenKey(entry);
     if (hidden.size >= 2000 || key.length > 150) {
@@ -82,11 +84,21 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
       setError("");
     } catch (cause) { setError(hvacErrorMessage(cause)); }
   };
-  const restoreEntry = (entry: CFDObjectEntry) => {
-    onChange({ ...scenario, hiddenObjectIds: [...hidden].filter(value => value !== hiddenKey(entry)) });
+  const restoreEntry = (entry: CFDObjectEntry, groupId?: string) => {
+    if (!groupId && groups.length > 1) {
+      setRestoreGroup(groups.find(group => group.memberIds.includes(entry.id))?.id ?? groups[0].id);
+      setRestoring(entry); return;
+    }
+    const destination = groups.find(group => group.id === groupId) ?? groups[0] ?? {id:DEFAULT_OBJECT_GROUP,name:"General",memberIds:[]};
+    const next = { ...scenario, hiddenObjectIds: [...hidden].filter(value => value !== hiddenKey(entry)) };
+    // Shared vents may reappear only after HVAC resolution. Assign membership
+    // directly so restoration does not depend on the filtered prepared list.
+    onChange({...next, objectGroups:(groups.length ? groups : [destination]).map(group => ({...group,
+      memberIds:[...group.memberIds.filter(id => id !== entry.id), ...(group.id === destination.id ? [entry.id] : [])],
+    }))});
+    setRestoring(null); setSelectedGroup(destination.id);
     if (groupList.current) groupList.current.open = true;
-    const group = groups.find(candidate => candidate.memberIds.includes(entry.id));
-    if (group) setCollapsed(previous => new Set([...previous].filter(id => id !== group.id)));
+    setCollapsed(previous => new Set([...previous].filter(id => id !== destination.id)));
   };
   const currentGroup = groups.find(g => g.id === selectedGroup) ?? groups[0];
   const addVent = (role: "supply" | "extract") => {
@@ -105,6 +117,23 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
     const nextGroups = objectGroups(copy.scenario).map(g => g.id === groupId ? { ...g, memberIds: [...g.memberIds, copy.id] } : g);
     onChange({ ...copy.scenario, objectGroups: nextGroups });
     edit({ ...entry, id: copy.id, sourceId: copy.id.slice(copy.id.indexOf(":") + 1) });
+  };
+  const canDuplicateGroup = (members: CFDObjectEntry[]) => groups.length < 100 && !members.some(entry =>
+    sharedHeaters.has(entry.sourceId) || entry.type === "object" && objects.find(object => object.id === entry.sourceId)?.roomId === "unresolved");
+  const duplicateGroup = (group: typeof groups[number], members: CFDObjectEntry[]) => {
+    if (!canDuplicateGroup(members)) return;
+    const copy = {id:crypto.randomUUID(), name:uniqueGroupName(groups.map(item => item.name), group.name.slice(0,70) + " copy"), memberIds:[] as string[]};
+    let next = scenario;
+    for (const entry of members) {
+      const result = duplicateObjectEntry(next, entry, objects);
+      if (!result) { setError("The group could not be copied. Nothing was changed."); return; }
+      next = result.scenario; copy.memberIds.push(result.id);
+    }
+    onChange({...next,objectGroups:[...groups,copy]}); setSelectedGroup(copy.id);
+  };
+  const deleteGroup = (id:string) => {
+    if (id === DEFAULT_OBJECT_GROUP) return;
+    onChange({...scenario,objectGroups:groups.filter(group => group.id !== id)}); setSelectedGroup(DEFAULT_OBJECT_GROUP);
   };
   const editingGroup = groups.find(g => editing?.type === "group" && g.id === editing.id);
   return <div className={`cfx-objects ${equipmentListStyles.collection}`} data-cfx-collapse-root>
@@ -134,7 +163,7 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
       <CFDReorderList items={groups} label="Object groups" scope={`object-groups:${scenario.id}`} onMove={(id, at) => onChange({ ...scenario, objectGroups: insertAtBoundary(groups, id, at) })}>
         {group => {
           const members = objectMembers(group, groups, entries);
-          return <section className={`cfx-study-group${currentGroup?.id === group.id ? " selected-group" : ""}`} aria-label={`Object group ${group.name}`} onClickCapture={() => setSelectedGroup(group.id)}>
+          return <section className={`cfx-study-group cfx-object-group${currentGroup?.id === group.id ? " selected-group" : ""}`} aria-label={`Object group ${group.name}`} onClickCapture={() => setSelectedGroup(group.id)}>
             <CFDReorderList items={members} label={`${group.name} objects`} scope={`objects:${scenario.id}`} collapsed={collapsed.has(group.id)}
               onMove={(id, at) => { onChange(moveObject(scenario, id, group.id, at, objects)); setSelectedGroup(group.id); }}
               header={<header className="cfx-group-heading">
@@ -144,21 +173,14 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
                 <button className="cfx-group-select" aria-pressed={currentGroup?.id === group.id} onClick={() => setSelectedGroup(group.id)}>{group.name}</button>
                 <div className="cfx-group-actions">
                   <button aria-label={`Edit object group ${group.name}`} onClick={() => setEditing({ type: "group", id: group.id })}>Edit</button>
-                  <button disabled={groups.length >= 100 || members.some(e => sharedHeaters.has(e.sourceId) || e.type === "object" && objects.find(o => o.id === e.sourceId)?.roomId === "unresolved")}
-                    aria-label={`Duplicate object group ${group.name}`} onClick={() => {
-                      const copy = { id: crypto.randomUUID(), name: uniqueGroupName(groups.map(g => g.name), group.name.slice(0, 70) + " copy"), memberIds: [] as string[] };
-                      let next = scenario;
-                      for (const entry of members) {
-                        const result = duplicateObjectEntry(next, entry, objects);
-                        if (!result) { setError("The whole group could not be copied within the measured-object limits. Nothing was changed."); return; }
-                        next = result.scenario; copy.memberIds.push(result.id);
-                      }
-                      onChange({ ...next, objectGroups: [...groups, copy] }); setSelectedGroup(copy.id);
-                    }}>Duplicate</button>
-                  <button className="cfx-danger" disabled={group.id === DEFAULT_OBJECT_GROUP} aria-label={`Delete object group ${group.name}`} title="Keep the objects in General" onClick={() => {
-                    onChange({ ...scenario, objectGroups: groups.filter(g => g.id !== group.id) }); setSelectedGroup(DEFAULT_OBJECT_GROUP);
-                  }}>Delete</button>
+                  <button disabled={!canDuplicateGroup(members)} aria-label={`Duplicate object group ${group.name}`} onClick={() => duplicateGroup(group,members)}>Duplicate</button>
+                  <button className="cfx-danger" disabled={group.id === DEFAULT_OBJECT_GROUP} aria-label={`Delete object group ${group.name}`} title="Keep the objects in General" onClick={() => deleteGroup(group.id)}>Delete</button>
                 </div>
+                <CFDRowMenu label={`Actions for object group ${group.name}`}>
+                  <button onClick={event => { event.currentTarget.closest("details")!.open = false; setEditing({type:"group", id:group.id}); }}>Edit</button>
+                  <button disabled={!canDuplicateGroup(members)} onClick={event => { event.currentTarget.closest("details")!.open = false; duplicateGroup(group,members); }}>Duplicate</button>
+                  <button className="cfx-danger" disabled={group.id === DEFAULT_OBJECT_GROUP} onClick={() => deleteGroup(group.id)}>Delete</button>
+                </CFDRowMenu>
               </header>}>
               {entry => <EquipmentListRow name={entry.name} detail={entry.detail} selected={selected === (entry.type === "vent" ? entry.id : entry.sourceId)}
                 onSelect={() => onSelect(entry.type === "vent" ? entry.id : entry.sourceId)} onEdit={() => edit(entry)} onDuplicate={() => duplicate(entry, group.id)}
@@ -184,6 +206,10 @@ export function ClimoptixObjects({ scenario, objects, selected, onSelect, onChan
       </CFDReorderList>
     </div>
     </details>
+    {restoring && <CFDEditorWindow title={`Restore ${restoring.name}`} dialog initialSize={{width:380}} defaultPosition={{x:270,y:150}} bringToFront onClose={() => setRestoring(null)}>
+      <label>Destination group<select value={restoreGroup} onChange={event => setRestoreGroup(event.target.value)}>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
+      <div className="cfx-actions"><button onClick={() => setRestoring(null)}>Cancel</button><button className="primary" disabled={!groups.some(group => group.id === restoreGroup)} onClick={() => restoreEntry(restoring, restoreGroup)}>Restore</button></div>
+    </CFDEditorWindow>}
     {!!removed.length && <details><summary>Removed from this simulation ({removed.length})</summary>
       <div className="cfx-removed-device-list">
         {removed.map(entry => <EquipmentListRow key={entry.id} name={entry.name} detail={entry.detail} selected={false} selectLabel={`Restore ${entry.name} to this simulation`}

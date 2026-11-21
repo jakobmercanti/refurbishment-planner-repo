@@ -68,6 +68,7 @@ export const thermalSetupSchema = z
   .object({
     schemaVersion: z.literal(1).default(1),
     thermalMode: z.literal("steady_no_hvac").default("steady_no_hvac"),
+    sunEnabled: z.boolean().default(false),
     insulationScenarios: z
       .record(key, z.string().max(150).nullable())
       .refine((v) => Object.keys(v).length <= 20)
@@ -92,7 +93,7 @@ export const thermalSetupSchema = z
         relativeHumidity: fraction.nullable().default(null),
         windMS: n.min(0).max(150).nullable().default(null),
         externalH: n.positive().max(1000).nullable().default(null),
-        solarMode: z.enum(["none", "components", "perSurface"]).default("none"),
+        solarMode: z.enum(["none", "clearSky", "components", "perSurface"]).default("none"),
         forcingBasis: z.enum(["instant", "hourlyMean"]).default("instant"),
         dniWm2: n.min(0).max(2000).nullable().default(null),
         dhiWm2: n.min(0).max(2000).nullable().default(null),
@@ -358,11 +359,16 @@ export type ThermalSetup = z.infer<typeof thermalSetupSchema>;
 export type ThermalOverride = z.infer<typeof thermalOverrideSchema>;
 export type ThermalSurface = z.infer<typeof thermalSurfaceSchema>;
 export type ThermalPackage = z.infer<typeof thermalPackageSchema>;
-export type ThermalMetric = "off" | "u" | "missing" | "exposure" | "heat";
+export type ThermalMetric = "off" | "u" | "missing" | "exposure" | "heat" | "solar";
 export function thermalColour(
   face: ThermalSurface,
   metric: ThermalMetric,
 ): string {
+  if (metric === "solar") {
+    if (face.exposure !== "outdoors") return "#a4afbb";
+    if (face.incidentWm2 === null) return "#8995a5";
+    return `hsl(${220 - Math.min(1, Math.max(0, face.incidentWm2) / 1000) * 220} 78% 52%)`;
+  }
   if (metric === "missing")
     return face.status === "incomplete" || face.status === "stale"
       ? "#cf6262"

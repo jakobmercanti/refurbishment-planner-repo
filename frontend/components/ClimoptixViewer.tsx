@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bounds, Line, OrbitControls, useBounds } from "@react-three/drei";
+import { Bounds, Html, Line, OrbitControls, useBounds } from "@react-three/drei";
 import { useViewerNavigation } from "@/lib/viewerNavigation";
 import {
   BufferGeometry,
@@ -41,6 +41,7 @@ import {
   thermalColour,
   type ThermalMetric,
   type ThermalSurface,
+  type ThermalPackage,
 } from "@/lib/thermalDocument";
 import { labelFor } from "./CFDFields";
 import { isVisibleCFDObject } from "@/lib/climoptixObjectGroups";
@@ -170,7 +171,8 @@ interface Props {
   thermalSurfaces?: ThermalSurface[];
   thermalMetric?: ThermalMetric;
   thermalSelected?: string | null;
-  onThermalSelect?: (id: string) => void;
+  thermalSun?: ThermalPackage["sun"];
+  onThermalSelect?: (id: string | null) => void;
   boundaryGroups?: BoundaryDisplayGroup[];
   boundarySelection?: string;
 }
@@ -196,6 +198,7 @@ function ThermalFaceMesh({
   }, [face]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   return (
+    <group>
     <mesh
       name={face.surfaceId}
       geometry={geometry}
@@ -213,6 +216,11 @@ function ThermalFaceMesh({
         roughness={0.9}
       />
     </mesh>
+    {metric === "solar" && face.exposure === "outdoors" && face.kind === "wall" && face.incidentWm2 !== null && face.verticesMm.length > 0 &&
+      <Html center occlude position={scene(face.verticesMm.reduce<Vec3>((sum, point) => sum.map((value, index) => value + point[index] / face.verticesMm.length) as Vec3, [0,0,0]))} style={{pointerEvents:"none"}}>
+        <span className="cfx-solar-reading">{Math.round(face.incidentWm2)} W/m²</span>
+      </Html>}
+    </group>
   );
 }
 function PatchMesh({
@@ -364,6 +372,22 @@ function VentIntent({
     </group>
   );
 }
+function SunExposureMarker({sun, scenario, report}: {sun:NonNullable<ThermalPackage["sun"]>; scenario:CFDScenario; report:CFDReport | null}) {
+  const bounds = report?.domain.boundsMm;
+  if (!bounds) return null;
+  const centre = scene(bounds[0].map((low, index) => (low + bounds[1][index]) / 2) as Vec3);
+  const radius = Math.max(2, ...bounds[0].map((low, index) => (bounds[1][index] - low) * 0.0008));
+  const azimuth = (sun.azimuthDeg - (scenario.thermalEnvelope?.northDeg ?? 0)) * Math.PI / 180;
+  const elevation = sun.elevationDeg * Math.PI / 180;
+  const direction = new Vector3(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation), -Math.cos(azimuth) * Math.cos(elevation));
+  const position = new Vector3(...centre).addScaledVector(direction, radius);
+  return <group>
+    <Line points={[centre, position.toArray()]} color="#e5ad2e" dashed dashSize={0.15} gapSize={0.1} raycast={() => {}} />
+    <mesh position={position} raycast={() => {}}><sphereGeometry args={[radius * 0.035,20,12]}/><meshBasicMaterial color={sun.elevationDeg > 0 ? "#ffbd30" : "#727b89"}/></mesh>
+    <Html position={position} center style={{pointerEvents:"none"}}><span className="cfx-solar-reading">Sun · {sun.elevationDeg.toFixed(1)}°{sun.elevationDeg <= 0 ? " · below horizon" : ""}</span></Html>
+  </group>;
+}
+
 export function ClimoptixViewer({
   project,
   scenario,
@@ -397,6 +421,7 @@ export function ClimoptixViewer({
   thermalSurfaces = [],
   thermalMetric = "off",
   thermalSelected = null,
+  thermalSun = null,
   onThermalSelect,
   boundaryGroups = [],
   boundarySelection,
@@ -856,11 +881,12 @@ export function ClimoptixViewer({
               },
             })}
             onPointerMissed={event => {
-              if (!meshInspection && event.button === 0) { onClearResultSample?.(); onSelect(null); }
+              if (!meshInspection && event.button === 0) { onClearResultSample?.(); onThermalSelect?.(null); onSelect(null); }
             }}
           >
             <ambientLight intensity={1.6} />
             <directionalLight position={[5, 10, 7]} intensity={2.5} />
+            {!meshInspection && thermalSun && thermalMetric !== "off" && <SunExposureMarker sun={thermalSun} scenario={scenario} report={report} />}
             <Bounds margin={1.15} maxDuration={0.25}>
               <group name="cfd-normal-scene" visible={!meshInspection}>
               <group name="cfd-building-context" visible={!resultsOnly}>
@@ -1135,7 +1161,9 @@ export function ClimoptixViewer({
         {thermalVisible && (
           <p className="cfx-caption" aria-label="Thermal overlay legend">
             Thermal {thermalMetric} · estimate, not CFD.{" "}
-            {thermalMetric === "heat"
+            {thermalMetric === "solar"
+              ? "Irradiance · blue 0 → red 1,000+ W/m² · grey: unavailable. Clear-sky or selected weather forcing."
+              : thermalMetric === "heat"
               ? "Orange: gain · blue: loss · green: balanced · grey: unavailable"
               : thermalMetric === "u"
                 ? "Green ≤0.3 · amber ≤0.7 · orange >0.7 W/m²K · red: missing"

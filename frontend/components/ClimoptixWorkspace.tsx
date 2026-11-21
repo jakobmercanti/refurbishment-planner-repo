@@ -276,7 +276,7 @@ export function ClimoptixWorkspace({
     ),
   });
   const { report: activeReport, revision, busy, stale, error: preparationError, refresh: refreshPreparation } = preparation;
-  const thermal = useCFDThermal({ active, open: thermalOpen && activeTab === "boundaries" && boundsTab === "thermal",
+  const thermal = useCFDThermal({ active, open: thermalOpen && !!scenario?.thermalEnvelope?.sunEnabled && activeTab === "boundaries" && boundsTab === "thermal",
     apiUrl, project, scenario, scenarios, input, revision });
   const { report: thermalReport, busy: thermalBusy, error: thermalError, stale: thermalStale } = thermal;
   const boundaryDisplay = useMemo(() => {
@@ -351,6 +351,7 @@ export function ClimoptixWorkspace({
     const target = setup !== scenario.thermalEnvelope ? { ...scenario, thermalEnvelope: setup } : scenario;
     if (target !== scenario) change(target, true);
     setThermalOpen(true);
+    setThermalMetric(setup.sunEnabled ? "solar" : "off");
     openPhase("thermal");
   };
   const clearLoadedResults = () => {
@@ -861,6 +862,9 @@ export function ClimoptixWorkspace({
           onSelect={(id) => {
             mainProbe.pick(null);
             setSelectedResultPlane(null);
+            setThermalSelected(null);
+            setHighlightedDiagnostic(null);
+            if (!id) setBoundaryGroup("");
             selectObject(id);
             if (!id || !scenario) return;
             if (id.startsWith("refinement:")) {
@@ -904,13 +908,14 @@ export function ClimoptixWorkspace({
           onShowRefinements={setShowRefinements}
           onReturnToSetup={inspection ? returnToSetup : undefined}
           thermalSurfaces={thermalStale ? [] : (thermalReport?.surfaces ?? [])}
-          thermalMetric={thermalMetric}
+          thermalMetric={scenario?.thermalEnvelope?.sunEnabled ? thermalMetric : "off"}
+          thermalSun={scenario?.thermalEnvelope?.sunEnabled && thermalOpen && activeTab === "boundaries" && boundsTab === "thermal" && !thermalStale ? thermalReport?.sun : null}
           thermalSelected={thermalSelected}
           boundaryGroups={setupOpen && shownTab === "boundaries" && boundsTab === "conditions" ? boundaryDisplay : []}
-          boundarySelection={boundaryDisplay.some(g => g.id === boundaryGroup) ? boundaryGroup : "all-surfaces"}
+          boundarySelection={boundaryGroup}
           onThermalSelect={(id) => {
             setThermalSelected(id);
-            openThermal();
+            if (id && (!thermalOpen || activeTab !== "boundaries" || boundsTab !== "thermal")) openThermal();
           }}
         />
       )}

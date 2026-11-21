@@ -1,4 +1,4 @@
-"""pvlib NREL SPA and explicit isotropic sky transposition; no network or invented weather."""
+"""pvlib solar position and transposition, with explicit clear-sky or supplied weather forcing."""
 
 import math
 from datetime import UTC, datetime, timedelta, timezone
@@ -68,11 +68,29 @@ def sun_position(setup: ThermalSetup) -> dict[str, Any]:
     return dict(_position(time, location.latitude, location.longitude, location.elevationM, setup.weather.temperatureC))
 
 
+@lru_cache(maxsize=128)
+def _clear_sky(instant: str, elevation: float, altitude: float) -> tuple[float, float, float]:
+    """Modelled clear sky, using explicit reference aerosol/water assumptions, not observed weather."""
+    import pvlib
+
+    if elevation <= 0:
+        return 0.0, 0.0, 0.0
+    extra = pvlib.irradiance.get_extra_radiation(datetime.fromisoformat(instant).timetuple().tm_yday)
+    values = pvlib.clearsky.simplified_solis(
+        elevation, aod700=0.1, precipitable_water=1.0,
+        pressure=pvlib.atmosphere.alt2pres(altitude), dni_extra=extra,
+    )
+    return float(values["dni"]), float(values["dhi"]), float(values["ghi"])
+
+
 def irradiance(tilt: float, azimuth: float, setup: ThermalSetup, sun: dict[str, Any]) -> dict[str, float]:
-    if setup.weather.solarMode == "none":
+    if not setup.sunEnabled or setup.weather.solarMode == "none":
         return {"beamWm2": 0.0, "skyWm2": 0.0, "groundWm2": 0.0, "totalWm2": 0.0}
     weather = setup.weather
-    if weather.solarMode != "components":
+    if weather.solarMode == "clearSky":
+        dni, dhi, ghi = _clear_sky(sun["instantUtc"], sun["elevationDeg"], setup.location.elevationM)
+        weather = weather.model_copy(update={"dniWm2": dni, "dhiWm2": dhi, "ghiWm2": ghi, "forcingBasis": "hourlyMean"})
+    elif weather.solarMode != "components":
         raise ValueError("Set incident irradiance on each outdoor face in per-surface mode.")
     if weather.dniWm2 is None or weather.dhiWm2 is None:
         raise ValueError("Enter both DNI and DHI; missing solar components are not inferred.")

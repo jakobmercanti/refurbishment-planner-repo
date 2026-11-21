@@ -1,4 +1,5 @@
 "use client";
+import { flushWorkspace } from "./localDatabase";
 
 export interface AuthSession {
   access_token: string;
@@ -261,6 +262,8 @@ export async function updatePassword(password: string, expectedUserId?: string):
 export async function signOut(expectedUserId?: string): Promise<void> {
   const session = readStoredSession();
   if (expectedUserId && session?.user.id !== expectedUserId) return;
+  // Finish the account-bound local save before the boundary reloads the editor.
+  await flushWorkspace().catch(() => undefined); // Storage failure must never prevent secure sign-out.
   saveSession(null);
   if (!session) return;
   try { await authRequest("logout", {}, session.access_token); } catch { /* local sign-out must still complete */ }

@@ -235,13 +235,31 @@ def thermal_package(
         for face in records:
             label = f"{face['roomName']} · {face['elementId']}"
             override = setup.overrides.get(face["surfaceId"])
+            # Irradiance depends on location/time/orientation, not verified U-values.
+            # Preserve it even when a separate heat-balance validation fails.
+            incident = 0.0
+            try:
+                if setup.sunEnabled and face["exposure"] == "outdoors":
+                    if setup.weather.solarMode == "perSurface":
+                        if not override or override.incidentWm2 is None:
+                            raise ValueError("enter per-face incident irradiance explicitly")
+                        incident = override.incidentWm2
+                    elif sun:
+                        incident = irradiance(face["tiltDeg"], face["azimuthDeg"], setup, sun)["totalWm2"]
+                    elif setup.weather.solarMode != "none":
+                        raise ValueError("valid sun position is required for solar transposition")
+                incident *= face["shadingFactor"]
+                face["incidentWm2"] = incident
+            except ValueError as error:
+                face["incidentWm2"] = None
+                errors.append(f"{label}: {error}")
             if face["status"] == "stale":
                 errors.append(f"{label}: review stale geometry/override and confirm its current construction.")
             if override and not override.reason.strip():
                 errors.append(f"{label}: record a reason/source for the override.")
             if face["exposure"] in ("internal", "adiabatic") or face["method"] == "adiabatic":
                 face.update(
-                    incidentWm2=0,
+                    incidentWm2=face["incidentWm2"],
                     absorbedWm2=0,
                     transmittedW=0,
                     conductanceWK=0,
@@ -254,26 +272,18 @@ def thermal_package(
                 u = face["uWm2K"]
                 if u is None or u <= 0 or face["source"] == "heatingEstimate":
                     raise ValueError("verified overall U is missing; no Heating fallback is permitted")
-                incident = 0.0
                 if face["exposure"] == "outdoors":
                     ambient = setup.weather.temperatureC
                     if ambient is None:
                         raise ValueError("outdoor temperature is missing")
-                    if setup.weather.solarMode == "perSurface":
-                        if not override or override.incidentWm2 is None:
-                            raise ValueError("enter per-face incident irradiance explicitly")
-                        incident = override.incidentWm2
-                    elif sun:
-                        incident = irradiance(face["tiltDeg"], face["azimuthDeg"], setup, sun)["totalWm2"]
-                    elif setup.weather.solarMode != "none":
-                        raise ValueError("valid sun position is required for solar transposition")
+                    if face["incidentWm2"] is None:
+                        raise ValueError("valid solar forcing is required")
                 else:
                     ambient = face["ambientC"]
                     if ambient is None and face["exposure"] == "ground":
                         ambient = setup.groundTemperatureC
                     if ambient is None:
                         raise ValueError("enter an explicit ground/adjacent-zone temperature")
-                incident *= face["shadingFactor"]
                 equivalent, absorbed, solar = ambient, 0.0, 0.0
                 if face["kind"] == "window":
                     g = face["gValue"]

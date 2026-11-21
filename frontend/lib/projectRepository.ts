@@ -18,7 +18,7 @@ export class LocalProjectRepository implements ProjectRepository {
   async getBackup(id: string) { const db = await localDatabase(); const value = await requestValue(db.transaction("backups").objectStore("backups").get(id)); return value ? migrateProject(value) : null; }
   async currentProject() {
     const db = await localDatabase(); const id = await requestValue(db.transaction("meta").objectStore("meta").get("current"));
-    if (id) { try { return await this.getProject(id); } catch { const backup = await this.getBackup(id); if (backup) return backup; throw new Error("Saved project is damaged; original records have been preserved."); } }
+    if (id) { try { const project = await this.getProject(id); if (project) return project; const backup = await this.getBackup(id); if (backup) return backup; throw new Error("Saved project is missing."); } catch { const backup = await this.getBackup(id); if (backup) return backup; throw new Error("Saved project is damaged; original records have been preserved."); } }
     const project = newProject();
     // Explicit import of the historical v2 browser draft. Keep the original for recovery.
     const legacy = usesGuestLocalStorage() ? localStorage.getItem("renovation-fit:complete-floorplan:v2") : null;
@@ -73,7 +73,10 @@ export class LocalProjectRepository implements ProjectRepository {
             });
             for (const file of files) if (file.exists === undefined) tx.objectStore(file.table).add(file.value, file.key);
             projects.add(next, projectId);
-            meta.put(projectId, "current");
+            // An old guest draft must not displace newer work saved after sign-in.
+            const currentId = await requestValue(meta.get("current"));
+            const current = currentId ? await requestValue(projects.get(currentId)) as ProjectDocument | undefined : undefined;
+            if (!current || current.updatedAt < draft.updatedAt) meta.put(projectId, "current");
             meta.put(draft.updatedAt, receipt);
           }
         }

@@ -21,10 +21,13 @@ import { matchesProjectScope } from "./projectScope";
 import { cfdScenariosSchema, simulationGroupsSchema, type CFDScenario, type CFDSimulationGroup } from "./climoptixDocument";
 import { commitHvacCFD, hvacSchema, migrateHvac, type HvacProject, type HvacDomainScope } from "./hvacDocument";
 import { syncSharedScenarios, type ScenarioEditor } from "./sharedScenarios";
+import { CLOUD_RECOVERY_CHANGED, recoverCloudProject, syncCloudRecovery, pauseCloudRecovery } from "./cloudResume";
+import { registerWorkspaceFlush } from "./localDatabase";
 
 export function useLocalProject() {
   const [project, setProject] = useState<ProjectDocument | null>(null);
   const [status, setStatus] = useState("Opening local project…");
+  const [cloudStatus, setCloudStatus] = useState("");
   const [revision, setRevision] = useState(0);
   const [restore, setRestore] = useState<ProjectDocument | null>(null);
   const [documentSession,setDocumentSession]=useState(0);
@@ -42,7 +45,18 @@ export function useLocalProject() {
   }, [refreshHistory,resetSession]);
   useEffect(() => {
     let cancelled = false;
-    void projectRepository.currentProject().then(p => { if (!cancelled && p) { replace(p); setStatus("Saved locally"); } }).catch(() => {
+    void projectRepository.currentProject().then(async p => {
+      if (!p) return;
+      let recovered = p;
+      let cloudError = false;
+      try { recovered = await recoverCloudProject(p); } catch { cloudError = true; }
+      if (cancelled) return;
+      if (recovered !== p) {
+        try { await projectRepository.saveProject(recovered); }
+        catch { pauseCloudRecovery(); recovered = p; cloudError = true; }
+      }
+      if (!cancelled) { replace(recovered); setStatus("Saved locally"); setCloudStatus(cloudError ? "Cloud recovery unavailable" : ""); }
+    }).catch(() => {
       if (!cancelled) { replace(newProject()); setStatus("Could not recover local data. Your previous records have been kept; export a backup before leaving."); }
     });
     return () => { cancelled = true; };
@@ -76,16 +90,45 @@ export function useLocalProject() {
     if (!project || JSON.stringify(project) === lastSaved.current) return;
     const timer = setTimeout(() => {
       setStatus("Saving locally…");
-      void projectRepository.saveProject(project).then(() => { lastSaved.current = JSON.stringify(project); setStatus("Saved locally"); }).catch(e => setStatus(e instanceof Error ? e.message : "Local save failed. Download a backup."));
-    }, 900);
+      void projectRepository.saveProject(project).then(() => {
+        if (current.current === project) { lastSaved.current = JSON.stringify(project); setStatus("Saved locally"); }
+      }).catch(e => setStatus(e instanceof Error ? e.message : "Local save failed. Download a backup."));
+    }, 150);
     return () => clearTimeout(timer);
   }, [project]);
   useEffect(() => {
+    if (!project) return;
+    let cancelled = false;
+    const sync = () => {
+      const snapshot = current.current;
+      if (snapshot) void syncCloudRecovery(snapshot).then(saved => {
+        if (!cancelled && current.current === snapshot) setCloudStatus(saved ? "Cloud recovery saved" : "");
+      }).catch(error => {
+        if (!cancelled && current.current === snapshot) setCloudStatus(error instanceof Error && /newer cloud|newer setup/i.test(error.message)
+          ? "Cloud conflict · open Privacy and local saving" : "Cloud recovery unavailable");
+      });
+    };
+    const timer = setTimeout(sync, 1500);
+    window.addEventListener(CLOUD_RECOVERY_CHANGED, sync);
+    window.addEventListener("online", sync);
+    const visibility = () => { if (document.visibilityState === "hidden") sync(); };
+    document.addEventListener("visibilitychange", visibility);
+    return () => { cancelled = true; clearTimeout(timer); window.removeEventListener(CLOUD_RECOVERY_CHANGED, sync); window.removeEventListener("online", sync); document.removeEventListener("visibilitychange", visibility); };
+  }, [project]);
+  useEffect(() => {
     const flush = () => { if (current.current && JSON.stringify(current.current) !== lastSaved.current) void projectRepository.saveProject(current.current).catch(() => undefined); };
+    const unregister = registerWorkspaceFlush(async () => {
+      // Capture/repeat if the user edits while the save is in flight.
+      while (current.current) {
+        const snapshot = current.current;
+        await projectRepository.saveProject(snapshot);
+        if (snapshot === current.current) { lastSaved.current = JSON.stringify(snapshot); break; }
+      }
+    });
     const visibility = () => { if (document.visibilityState === "hidden") flush(); };
     const leave = (event: BeforeUnloadEvent) => { if (current.current && JSON.stringify(current.current) !== lastSaved.current) { flush(); event.preventDefault(); } };
     document.addEventListener("visibilitychange", visibility); window.addEventListener("beforeunload", leave);
-    return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("beforeunload", leave); flush(); };
+    return () => { unregister(); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("beforeunload", leave); flush(); };
   }, []);
   const generated = useCallback(async () => {
     const p = current.current; if (!p || p.generated) return;
@@ -181,5 +224,5 @@ export function useLocalProject() {
       if (draft === snapshot) return;
     }
   }, []);
-  return { project, restore, revision, documentSession, status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, setHvac, setCFDScenarios, selectSharedScenario, editBuilding, undo, redo, isScopeCurrent, carryGuestDraft, ...historyStatus };
+  return { project, restore, revision, documentSession, status:cloudStatus ? `${status} · ${cloudStatus}` : status, changeFloorplan, generated, saveFile, prepareFile, openFile, addAsset, setInstances, setRenderCamera, setElectricalLayout, setElectricalProjectData, setPlannerBuild, setQuotes, saveQuotes, setHeatingLayout, setEnergyLayout, setHvac, setCFDScenarios, selectSharedScenario, editBuilding, undo, redo, isScopeCurrent, carryGuestDraft, ...historyStatus };
 }

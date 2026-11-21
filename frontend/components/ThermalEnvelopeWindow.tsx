@@ -63,6 +63,12 @@ export function ThermalEnvelopeWindow({ scenario, apiUrl, report, busy, error, m
   };
 
   return <div className="thermal-content cfx-live-thermal" aria-busy={busy}>
+    <button type="button" className={setup.sunEnabled ? "primary" : ""} aria-pressed={setup.sunEnabled} onClick={() => {
+      const enabled = !setup.sunEnabled;
+      update({sunEnabled:enabled, ...(enabled && setup.weather.solarMode === "none" ? {weather:{...setup.weather, solarMode:"clearSky"}} : {})});
+      onMetric(enabled ? "solar" : "off");
+    }}>{setup.sunEnabled ? "Disable sun exposure" : "Enable sun exposure"}</button>
+    {setup.sunEnabled && <>
     {error && <p className="cfx-error" role="alert">{error}</p>}
     <details open><summary>Location &amp; sun</summary>
       <ThermalText
@@ -170,6 +176,7 @@ export function ThermalEnvelopeWindow({ scenario, apiUrl, report, busy, error, m
         </section>
       )}
       <label>Viewer overlay<select value={metric} onChange={event => onMetric(event.target.value as ThermalMetric)}>
+        <option value="solar">Sun &amp; wall irradiance (W/m²)</option>
         <option value="off">Off</option><option value="u">U-values</option>
         <option value="exposure">Surface exposure</option><option value="heat">Sensible heat flow</option>
         <option value="missing">Missing / stale data</option>
@@ -252,6 +259,7 @@ export function ThermalEnvelopeWindow({ scenario, apiUrl, report, busy, error, m
           }
         >
           <option value="none">Explicitly no solar</option>
+          <option value="clearSky">Clear-sky estimate · reference atmosphere</option>
           <option value="components">
             DNI / DHI · isotropic sky
           </option>
@@ -260,6 +268,7 @@ export function ThermalEnvelopeWindow({ scenario, apiUrl, report, busy, error, m
           </option>}
         </select>
       </label>
+      {setup.weather.solarMode === "clearSky" && <p className="cfx-caption">Modelled clear sky, not observed weather. Simplified Solis · aerosol optical depth 0.1 · precipitable water 1 cm. Night-time irradiance is zero. Import EPW or enter DNI/DHI for weather-specific forcing.</p>}
       <label>
         Radiation time basis
         <select
@@ -370,5 +379,6 @@ export function ThermalEnvelopeWindow({ scenario, apiUrl, report, busy, error, m
         )}
       </details>
     </details>
+    </>}
   </div>;
 }

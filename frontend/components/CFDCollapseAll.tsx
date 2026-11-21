@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 export function CFDWindowControls({ children }: { children?: ReactNode }) {
   return <div className="cfx-setup-status-row">
@@ -10,8 +10,19 @@ export function CFDWindowControls({ children }: { children?: ReactNode }) {
 }
 
 export function CFDWindowSections({ children, sectionTitle }: { children: ReactNode; sectionTitle?: string }) {
-  return <div className="cfx-window-sections" data-cfx-collapse-root>
-    <CFDWindowControls />
+  const root = useRef<HTMLDivElement>(null);
+  const [multiple, setMultiple] = useState(false);
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    const update = () => setMultiple(element.querySelectorAll("details:not(.cfx-row-menu)").length > 1);
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(element, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={root} className="cfx-window-sections" data-cfx-collapse-root>
+    {multiple && <CFDWindowControls />}
     {sectionTitle ? <details open><summary>{sectionTitle}</summary>{children}</details> : children}
   </div>;
 }

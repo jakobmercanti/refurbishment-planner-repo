@@ -1335,3 +1335,16 @@ body .cfx-workspace .cfx-results > .cfx-monitor-tab[role="tabpanel"] { border:0;
 @container cfx-setup (max-width:360px) {
   .cfx-mesh-form, .cfx-mesh-information { grid-template-columns:minmax(0,1fr); }
 }
+
+/* Object group commands share the same action columns as their member rows. */
+.cfx-workspace .cfx-object-group .cfx-list-header > .cfx-group-heading { padding-right:var(--density-row-padding); gap:var(--density-field-gap); }
+.cfx-workspace .cfx-object-group .cfx-group-actions { flex:0 0 198px; gap:6px; }
+.cfx-workspace .cfx-object-group .cfx-group-heading > .cfx-row-menu { flex:0 0 34px; }
+.cfx-workspace .cfx-boundary-group .cfx-list-header > .cfx-group-heading { padding-right:12px; }
+.cfx-solar-reading { display:block; white-space:nowrap; padding:4px 7px; border:1px solid var(--line); border-radius:var(--radius-control); background:var(--panel); color:var(--ink); font-size:11px; font-weight:400; box-shadow:0 2px 6px #0002; }
+
+@container equipment-list (max-width:390px) {
+  .cfx-workspace .cfx-object-group .cfx-list-header > .cfx-group-heading { display:grid; grid-template-columns:32px minmax(0,1fr) 34px; }
+  .cfx-workspace .cfx-object-group .cfx-group-actions { grid-column:1/-1; grid-row:2; justify-self:end; width:min(198px,100%); }
+  .cfx-workspace .cfx-object-group .cfx-group-heading > .cfx-row-menu { grid-column:3; grid-row:1; }
+}

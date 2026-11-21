@@ -3195,6 +3195,7 @@ export function FullFloorplanEditor({ buildingOpeningNames, initialFloorplan, on
     if (energy.windowOpen) {
       if (target?.closest("[data-energy-interactive]") || beginTouchNavigation(event)) return;
       event.preventDefault(); event.stopPropagation();
+      if (event.button === 0) { setEnergySelection([]); clearActiveDrawingSelection(); }
       if (event.button === 1) beginPan(event);
       return;
     }

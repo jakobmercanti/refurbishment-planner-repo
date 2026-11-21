@@ -107,6 +107,8 @@ class RequestBodyLimitMiddleware:
             limit = 256
         elif path == "/commercial/stripe/webhook":
             limit = 1_000_000
+        elif path == "/commercial/resume":
+            limit = 9 * 1024 * 1024
         elif path in CFD_JSON_ENDPOINTS:
             limit = 4 * 1024 * 1024
         else:
