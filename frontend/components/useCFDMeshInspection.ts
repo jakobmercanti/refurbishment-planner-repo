@@ -6,7 +6,26 @@ import { jobHasCheckedMesh } from "./useCFDJobs";
 import { CFDWorkerError, type RailwayCFDWorker } from "@/lib/railwayCFDWorker";
 import type { CFDWorkerJob } from "@/lib/climoptixJobs";
 import type { MeshAxis, MeshDisplay, MeshGeometry, MeshInspectionScene, MeshMetadata } from "@/lib/cfdMeshInspection";
+import { createMeshPosition, meshSectionContains } from "@/lib/cfdMeshInspection";
 import { retainedMesh } from "@/lib/cfdMeshArchive";
+
+async function readMeshWhenReady(read: () => Promise<MeshGeometry>, signal: AbortSignal) {
+  for (let attempt = 0; ; attempt++) {
+    signal.throwIfAborted();
+    try { return await read(); }
+    catch (cause) {
+      if (!(cause instanceof CFDWorkerError) || cause.status !== 429 || attempt >= 4) throw cause;
+      // An abandoned cut can briefly occupy a worker slot while it cancels.
+      // Preserve the visible section, then retry this read (never a submission).
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => { clearTimeout(timer); reject(signal.reason); };
+        const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, 250 * (attempt + 1));
+        signal.addEventListener("abort", abort, {once: true});
+        if (signal.aborted) abort();
+      });
+    }
+  }
+}
 
 export function useCFDMeshInspection({adapter, apiUrl, projectId, studyId, input, entry, active, hasDomain}: {
   apiUrl: string;
@@ -30,8 +49,12 @@ export function useCFDMeshInspection({adapter, apiUrl, projectId, studyId, input
   const [display, setDisplay] = useState<MeshDisplay>("solid");
   const [opacity, setOpacity] = useState(35);
   const [sectioning, setSectioning] = useState(false);
+  const [showRear, setShowRear] = useState(false);
+  const [boundary, setBoundary] = useState<{identity: string; geometry: MeshGeometry}>();
+  const [rearError, setRearError] = useState("");
   const [axis, setAxis] = useState<MeshAxis>("Z");
   const [fraction, setFraction] = useState(.5);
+  const [position] = useState(createMeshPosition);
   const [fitRequest, setFitRequest] = useState(0);
   const [view, setView] = useState<{identity: string; key: string; geometry?: MeshGeometry; error?: string}>();
   const request = useRef<AbortController | null>(null);
@@ -47,16 +70,32 @@ export function useCFDMeshInspection({adapter, apiUrl, projectId, studyId, input
   const key = JSON.stringify([identity, metadata?.meshId, section?.axis, section?.coordinateMm]);
   // Keep the last section on the SAME axis visible while its replacement loads.
   // A different mesh, source, axis or full/section mode can never reuse it.
+  const matchesView = (item: MeshGeometry) => item.meshId === metadata?.meshId && (sectioning
+    ? meshSectionContains(item, axis, coordinateMm) : item.axis === null);
   const geometry = view?.identity === identity && view.geometry?.meshId === metadata?.meshId
     && view.geometry?.axis === (sectioning ? axis : null) ? view.geometry : undefined;
+  const ready = !!geometry && matchesView(geometry);
+  const displayedCoordinate = ready ? coordinateMm : geometry?.coordinateMm ?? coordinateMm;
   const viewError = view?.key === key ? view.error : undefined;
   const connected = !!adapter?.capabilities.connected;
   const canInspect = connected && !!metadata && !error;
 
   useEffect(() => {
     const buffers = cache.current;
-    return () => { request.current?.abort(); setInspecting(false); setView(undefined); buffers.clear(); };
+    return () => { request.current?.abort(); request.current = null; setInspecting(false); setView(undefined); buffers.clear(); };
   }, [identity, active]);
+  useEffect(() => () => { request.current?.abort(); request.current = null; }, [axis, sectioning, inspecting]);
+  useEffect(() => {
+    const update = () => {
+      const next = position.getSnapshot();
+      if (request.current || !sectioning || geometry && meshSectionContains(geometry, axis, min + (max - min) * next)) return;
+      setFraction(next);
+    };
+    // Slider updates stay inside the controls and mesh renderer. The workspace
+    // only receives a new position when another exact topology interval is needed.
+    update();
+    return position.subscribe(update);
+  }, [position, geometry, axis, min, max, sectioning, view]);
 
   useEffect(() => {
     if (!active || !connected || !adapter || !job || !checked) return;
@@ -102,40 +141,59 @@ export function useCFDMeshInspection({adapter, apiUrl, projectId, studyId, input
   }, [active, connected, adapter, apiUrl, projectId, studyId, job, identity, checked, retry]);
 
   useEffect(() => {
-    if (!active || !canInspect || !inspecting || !adapter || !metadata || !sourceJob) return;
+    if (!active || !canInspect || !inspecting || !adapter || !metadata || !sourceJob || ready || request.current) return;
     const controller = new AbortController();
     request.current = controller;
-    const timer = setTimeout(() => {
-      const cached = cache.current.get(key);
+    // One request in flight. A drag replaces the next requested cut rather than
+    // repeatedly aborting CPU work before ANY new section can finish.
+    setTimeout(() => {
+      if (controller.signal.aborted) return;
+      const cached = cache.current.get(key) ?? [...cache.current.values()].find(matchesView);
       if (cached) {
         cache.current.delete(key); cache.current.set(key, cached);
-        setView({identity, key, geometry: cached}); return;
+        request.current = null; setView({identity, key, geometry: cached}); return;
       }
-      void (archive ? archive.geometry(section, controller.signal)
-        : adapter.meshGeometry(sourceJob, projectId, metadata.meshId, section, controller.signal)).then(geometry => {
+      void readMeshWhenReady(() => archive ? archive.geometry(section, controller.signal)
+        : adapter.meshGeometry(sourceJob, projectId, metadata.meshId, section, controller.signal), controller.signal).then(geometry => {
         if (controller.signal.aborted) return;
-        const bytes = (item: MeshGeometry) => item.pointsMm.byteLength + item.triangles.byteLength + item.edges.byteLength;
+        const bytes = (item: MeshGeometry) => item.pointsMm.byteLength + item.triangles.byteLength + item.edges.byteLength + (item.motion?.derivatives.byteLength ?? 0);
         cache.current.set(key, geometry);
         let size = [...cache.current.values()].reduce((sum, item) => sum + bytes(item), 0);
         while (cache.current.size > 12 || size > 64 * 1024**2) {
           const first = cache.current.keys().next().value!;
           size -= bytes(cache.current.get(first)!); cache.current.delete(first);
         }
-        setView({identity, key, geometry});
+        request.current = null; setView({identity, key, geometry});
       }).catch(cause => {
         if (!controller.signal.aborted) {
+          request.current = null;
           cache.current.clear(); setInspecting(false);
           setView({identity, key, error: cause instanceof Error ? cause.message : "Mesh view failed."});
         }
       });
-    }, sectioning ? 100 : 0);
-    return () => { clearTimeout(timer); controller.abort(); };
+    }, sectioning ? 16 : 0);
     // The key includes every physical section input. Material changes stay local.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, canInspect, inspecting, adapter, metadata, sourceJob, projectId, identity, key, archive]);
+  }, [active, canInspect, inspecting, adapter, metadata, sourceJob, projectId, identity, key, archive, ready, view]);
+
+  useEffect(() => {
+    if (!active || !inspecting || !sectioning || !showRear || !adapter || !metadata || !sourceJob) return;
+    if (boundary?.identity === identity && boundary.geometry.meshId === metadata.meshId) return;
+    const controller = new AbortController();
+    void readMeshWhenReady(() => archive ? archive.geometry(undefined, controller.signal)
+      : adapter.meshGeometry(sourceJob, projectId, metadata.meshId, undefined, controller.signal), controller.signal).then(geometry => {
+      if (!controller.signal.aborted) { setRearError(""); setBoundary({identity, geometry}); }
+    }).catch(cause => {
+      if (!controller.signal.aborted) setRearError(cause instanceof Error ? cause.message : "Rear mesh unavailable.");
+    });
+    return () => controller.abort();
+  }, [active, inspecting, sectioning, showRear, adapter, metadata, sourceJob, projectId, identity, archive, boundary]);
 
   const enabled = active && inspecting && canInspect && !viewError;
-  const scene: MeshInspectionScene | null = enabled ? {metadata, geometry: geometry ?? null, display, opacity, fitRequest} : null;
+  const scene: MeshInspectionScene | null = enabled ? {metadata, geometry: geometry ?? null, display, opacity, fitRequest,
+    position, section: sectioning ? {axis, min, max} : null,
+    coordinateMm: displayedCoordinate, rearGeometry: sectioning && showRear && boundary?.identity === identity
+      && boundary.geometry.meshId === metadata.meshId ? boundary.geometry : null} : null;
   const meshing = !!entry?.submitting || !!job && ["Queued", "Meshing", "MeshCheck"].includes(job.phase);
   const status = !hasDomain && !checked ? "Choose a CFD domain." : !connected ? "CFD worker unavailable."
     : !checked && job?.phase === "Failed" ? "Meshing failed."
@@ -149,19 +207,19 @@ export function useCFDMeshInspection({adapter, apiUrl, projectId, studyId, input
       : "Open Mesh setup to generate and check the volume mesh. If meshing failed, review its worker log before retrying."
     : "Inspect mesh opens a temporary mesh-only view. Exit inspection restores the previous scene and camera. Escape also exits.";
   return {metadata, geometry, scene, status, guidance, historical:!!job && !current, canInspect, error: error || viewError, inspecting: enabled,
-    loading: enabled && view?.key !== key, display, setDisplay, opacity, setOpacity, sectioning,
+    loading: enabled && !ready, displayedCoordinate, display, setDisplay, opacity, setOpacity, sectioning,
+    position, showRear, setShowRear: (value: boolean) => { setRearError(""); setShowRear(value); }, rearError,
     setSectioning: (value: boolean) => { if (value !== sectioning) { request.current?.abort(); setSectioning(value); } }, axis,
-    setAxis: (value: MeshAxis) => { if (value !== axis) { request.current?.abort(); setAxis(value); setFraction(.5); } }, min, max, coordinateMm,
+    setAxis: (value: MeshAxis) => { if (value !== axis) { request.current?.abort(); setAxis(value); position.set(.5); setFraction(.5); } }, min, max, coordinateMm,
     setCoordinate: (value: number) => {
       if (!Number.isFinite(value)) return;
       const next = Math.max(0, Math.min(1, (value - min) / (max - min)));
-      if (next !== fraction) { request.current?.abort(); setFraction(next); }
+      position.set(next);
     },
     step: (direction: number) => {
-      if (direction < 0 && fraction <= 0 || direction > 0 && fraction >= 1) return;
-      request.current?.abort(); setFraction(value => Math.max(0, Math.min(1, value + direction / 100)));
+      position.set(position.getSnapshot() + direction / 100);
     },
-    center: () => { if (fraction !== .5) { request.current?.abort(); setFraction(.5); } },
+    center: () => position.set(.5),
     fit: () => setFitRequest(value => value + 1),
     toggle: () => { request.current?.abort(); cache.current.clear(); setView(undefined); setInspecting(value => !value); },
     fail: (message: string) => { request.current?.abort(); cache.current.clear(); setInspecting(false); setView({identity, key, error: message}); },

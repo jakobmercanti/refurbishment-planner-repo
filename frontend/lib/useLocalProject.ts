@@ -35,6 +35,38 @@ export function useLocalProject() {
   const resetSession=useCallback(()=>setDocumentSession(++sessionRef.current),[]);
   const current = useRef<ProjectDocument | null>(null);
   const lastSaved = useRef<string>("");
+  const localTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cloudTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saving = useRef<Promise<void> | null>(null);
+  const saveLatest = useCallback((): Promise<void> => {
+    if (localTimer.current) { clearTimeout(localTimer.current); localTimer.current = null; }
+    if (saving.current) return saving.current;
+    const operation = async () => {
+      while (current.current && JSON.stringify(current.current) !== lastSaved.current) {
+        const snapshot = current.current;
+        setStatus("Saving locally…");
+        await projectRepository.saveProject(snapshot);
+        lastSaved.current = JSON.stringify(snapshot);
+      }
+      setStatus("Saved locally");
+    };
+    saving.current = operation().finally(() => { saving.current = null; });
+    return saving.current;
+  }, []);
+  const syncCloudLatest = useCallback(() => {
+    if (cloudTimer.current) { clearTimeout(cloudTimer.current); cloudTimer.current = null; }
+    void saveLatest().then(async () => {
+      const snapshot = current.current;
+      if (!snapshot) return;
+      try {
+        const saved = await syncCloudRecovery(snapshot);
+        if (current.current === snapshot) setCloudStatus(saved ? "Cloud recovery saved" : "");
+      } catch (error) {
+        if (current.current === snapshot) setCloudStatus(error instanceof Error && /newer cloud|newer setup/i.test(error.message)
+          ? "Cloud conflict · open Privacy and local saving" : "Cloud recovery unavailable");
+      }
+    }).catch(e => setStatus(e instanceof Error ? e.message : "Local save failed. Download a backup."));
+  }, [saveLatest]);
   const history = useRef(new ProjectHistory());
   const [historyStatus,setHistoryStatus]=useState({canUndo:false,canRedo:false});
   const refreshHistory=useCallback(()=>{const canUndo=history.current.past.length>0,canRedo=history.current.future.length>0;setHistoryStatus(s=>s.canUndo===canUndo&&s.canRedo===canRedo?s:{canUndo,canRedo});},[]);
@@ -88,48 +120,38 @@ export function useLocalProject() {
   }, [update]);
   useEffect(() => {
     if (!project || JSON.stringify(project) === lastSaved.current) return;
-    const timer = setTimeout(() => {
-      setStatus("Saving locally…");
-      void projectRepository.saveProject(project).then(() => {
-        if (current.current === project) { lastSaved.current = JSON.stringify(project); setStatus("Saved locally"); }
-      }).catch(e => setStatus(e instanceof Error ? e.message : "Local save failed. Download a backup."));
+    setStatus("Saving locally…");
+    // Bound the wait from the FIRST edit. Continuous validation/camera updates
+    // must never keep cancelling the only durable save of simulation settings.
+    localTimer.current ??= setTimeout(() => {
+      localTimer.current = null;
+      void saveLatest().catch(e => setStatus(e instanceof Error ? e.message : "Local save failed. Download a backup."));
     }, 150);
-    return () => clearTimeout(timer);
-  }, [project]);
+  }, [project, saveLatest]);
   useEffect(() => {
     if (!project) return;
-    let cancelled = false;
-    const sync = () => {
-      const snapshot = current.current;
-      if (snapshot) void syncCloudRecovery(snapshot).then(saved => {
-        if (!cancelled && current.current === snapshot) setCloudStatus(saved ? "Cloud recovery saved" : "");
-      }).catch(error => {
-        if (!cancelled && current.current === snapshot) setCloudStatus(error instanceof Error && /newer cloud|newer setup/i.test(error.message)
-          ? "Cloud conflict · open Privacy and local saving" : "Cloud recovery unavailable");
-      });
-    };
-    const timer = setTimeout(sync, 1500);
-    window.addEventListener(CLOUD_RECOVERY_CHANGED, sync);
-    window.addEventListener("online", sync);
-    const visibility = () => { if (document.visibilityState === "hidden") sync(); };
-    document.addEventListener("visibilitychange", visibility);
-    return () => { cancelled = true; clearTimeout(timer); window.removeEventListener(CLOUD_RECOVERY_CHANGED, sync); window.removeEventListener("online", sync); document.removeEventListener("visibilitychange", visibility); };
-  }, [project]);
+    cloudTimer.current ??= setTimeout(syncCloudLatest, 1500);
+  }, [project, syncCloudLatest]);
   useEffect(() => {
-    const flush = () => { if (current.current && JSON.stringify(current.current) !== lastSaved.current) void projectRepository.saveProject(current.current).catch(() => undefined); };
-    const unregister = registerWorkspaceFlush(async () => {
-      // Capture/repeat if the user edits while the save is in flight.
-      while (current.current) {
-        const snapshot = current.current;
-        await projectRepository.saveProject(snapshot);
-        if (snapshot === current.current) { lastSaved.current = JSON.stringify(snapshot); break; }
-      }
-    });
+    window.addEventListener(CLOUD_RECOVERY_CHANGED, syncCloudLatest);
+    window.addEventListener("online", syncCloudLatest);
+    const visibility = () => { if (document.visibilityState === "hidden") syncCloudLatest(); };
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      if (cloudTimer.current) clearTimeout(cloudTimer.current);
+      cloudTimer.current = null;
+      window.removeEventListener(CLOUD_RECOVERY_CHANGED, syncCloudLatest); window.removeEventListener("online", syncCloudLatest);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [syncCloudLatest]);
+  useEffect(() => {
+    const flush = () => { void saveLatest().catch(e => setStatus(e instanceof Error ? e.message : "Local save failed. Download a backup.")); };
+    const unregister = registerWorkspaceFlush(saveLatest);
     const visibility = () => { if (document.visibilityState === "hidden") flush(); };
     const leave = (event: BeforeUnloadEvent) => { if (current.current && JSON.stringify(current.current) !== lastSaved.current) { flush(); event.preventDefault(); } };
-    document.addEventListener("visibilitychange", visibility); window.addEventListener("beforeunload", leave);
-    return () => { unregister(); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("beforeunload", leave); flush(); };
-  }, []);
+    document.addEventListener("visibilitychange", visibility); window.addEventListener("beforeunload", leave); window.addEventListener("pagehide", flush);
+    return () => { unregister(); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("beforeunload", leave); window.removeEventListener("pagehide", flush); flush(); };
+  }, [saveLatest]);
   const generated = useCallback(async () => {
     const p = current.current; if (!p || p.generated) return;
     update({ generated: true });
@@ -147,7 +169,12 @@ export function useLocalProject() {
     const a = document.createElement("a"); a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000); exported("floorplan3d");
   }, [prepareFile]);
-  const openFile = useCallback(async (file: File) => { const p = await importProject(file); replace(p); setStatus("Saved locally"); }, [replace]);
+  const openFile = useCallback(async (file: File) => {
+    const p = await importProject(file);
+    await saveLatest();
+    await projectRepository.saveProject(p);
+    replace(p); setStatus("Saved locally");
+  }, [replace, saveLatest]);
   const addAsset = useCallback((asset: AssetDefinition) => { const p = current.current; if (p && !p.assets.some(a => a.assetId === asset.assetId)) update({ assets: [...p.assets, asset] }); }, [update]);
   const setInstances = useCallback((assetInstances: AssetInstance[]) => update({ assetInstances }), [update]);
   const setRenderCamera = useCallback((renderCamera: RenderCameraState) => update({ renderCamera }), [update]);

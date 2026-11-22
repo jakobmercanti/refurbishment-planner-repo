@@ -2,8 +2,9 @@
 
 import { Component, useEffect, useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useThree } from "@react-three/fiber";
-import { BufferAttribute, BufferGeometry, DoubleSide, PerspectiveCamera, Vector3 } from "three";
-import type { MeshInspectionScene } from "@/lib/cfdMeshInspection";
+import { BufferAttribute, BufferGeometry, DoubleSide, DynamicDrawUsage, PerspectiveCamera, Plane, Vector3 } from "three";
+import type { MeshAxis, MeshDisplay, MeshGeometry, MeshInspectionScene } from "@/lib/cfdMeshInspection";
+import { meshSectionContains } from "@/lib/cfdMeshInspection";
 
 type MeshOrbit = {target: Vector3; update: () => void; minDistance?: number; maxDistance?: number;
   enableDamping?: boolean; autoRotate?: boolean; dispatchEvent?: (event: {type: "start"}) => void};
@@ -102,32 +103,86 @@ function MeshCamera({metadata, fitRequest}: Pick<MeshInspectionScene, "metadata"
   return null;
 }
 
-export function CFDMeshScene({inspection}: {inspection: MeshInspectionScene}) {
-  const {geometry, display, opacity} = inspection;
-  const theme = useSyncExternalStore(subscribeMeshTheme, meshThemeSnapshot, () => defaultMeshColours);
-  const colours = JSON.parse(theme) as {face: string; edge: string};
+function MeshGeometryView({geometry, display, opacity, coordinateMm, colours, clippingPlanes}: {
+  geometry: MeshGeometry; display: MeshDisplay; opacity: number; coordinateMm: number;
+  colours: {face: string; edge: string}; clippingPlanes?: Plane[];
+}) {
   const {invalidate} = useThree();
   const buffers = useMemo(() => {
-    if (!geometry) return null;
-    const position = new BufferAttribute(meshScenePositions(geometry.pointsMm), 3);
+    const position = new BufferAttribute(meshScenePositions(geometry.pointsMm), 3).setUsage(DynamicDrawUsage);
     const faces = new BufferGeometry(), edges = new BufferGeometry();
     faces.setAttribute("position", position); faces.setIndex(new BufferAttribute(geometry.triangles, 1));
-    faces.computeVertexNormals(); faces.computeBoundingSphere();
-    edges.setAttribute("position", position); edges.setIndex(new BufferAttribute(geometry.edges, 1)); edges.computeBoundingSphere();
-    return {faces, edges};
+    if (geometry.axis) {
+      const normal = geometry.axis === "X" ? [1,0,0] : geometry.axis === "Y" ? [0,0,-1] : [0,1,0];
+      const normals = new Float32Array(geometry.pointsMm.length);
+      for (let i = 0; i < normals.length; i += 3) normals.set(normal, i);
+      faces.setAttribute("normal", new BufferAttribute(normals, 3));
+    } else faces.computeVertexNormals();
+    edges.setAttribute("position", position); edges.setIndex(new BufferAttribute(geometry.edges, 1));
+    return {faces, edges, update: (coordinate: number) => {
+      if (!geometry.motion || geometry.coordinateMm === null) return;
+      const delta = coordinate - geometry.coordinateMm;
+      const points = geometry.pointsMm, slopes = geometry.motion.derivatives;
+      for (let i = 0; i < points.length; i += 3) position.setXYZ(i / 3,
+        (points[i] + slopes[i] * delta) * .001,
+        (points[i + 2] + slopes[i + 2] * delta) * .001,
+        -(points[i + 1] + slopes[i + 1] * delta) * .001);
+      position.needsUpdate = true;
+    }};
   }, [geometry]);
-  useEffect(() => { invalidate(); return () => { buffers?.faces.dispose(); buffers?.edges.dispose(); }; }, [buffers, invalidate]);
-  return <group name="cfd-mesh-inspection">
-    <MeshCamera metadata={inspection.metadata} fitRequest={inspection.fitRequest}/>
-    {buffers && <>
-      {display !== "wireframe" && <mesh geometry={buffers.faces} raycast={() => {}}>
+  useLayoutEffect(() => {
+    buffers.update(coordinateMm);
+    invalidate();
+  }, [coordinateMm, buffers, invalidate]);
+  useEffect(() => () => { buffers.faces.dispose(); buffers.edges.dispose(); }, [buffers]);
+  return <>
+      {display !== "wireframe" && <mesh geometry={buffers.faces} frustumCulled={false} raycast={() => {}}>
         <meshStandardMaterial color={colours.face} roughness={.85} side={DoubleSide} flatShading
+          clippingPlanes={clippingPlanes}
           transparent={display === "transparent"} opacity={display === "transparent" ? opacity / 100 : 1}
           depthWrite={display !== "transparent"} polygonOffset polygonOffsetFactor={1} polygonOffsetUnits={1}/>
       </mesh>}
-      <lineSegments geometry={buffers.edges} raycast={() => {}} renderOrder={1}>
-        <lineBasicMaterial color={colours.edge} transparent={display === "transparent"} opacity={display === "transparent" ? .75 : 1}/>
+      <lineSegments geometry={buffers.edges} frustumCulled={false} raycast={() => {}} renderOrder={1}>
+        <lineBasicMaterial color={colours.edge} clippingPlanes={clippingPlanes} transparent={display === "transparent"} opacity={display === "transparent" ? .75 : 1}/>
       </lineSegments>
-    </>}
+    </>;
+}
+
+function RearMesh({axis, coordinateMm, ...props}: Omit<Parameters<typeof MeshGeometryView>[0], "clippingPlanes"> & {axis: MeshAxis}) {
+  const {get, invalidate} = useThree();
+  const planes = useMemo(() => [new Plane()], []);
+  const normal = useMemo(() => axis === "X" ? new Vector3(1,0,0) : axis === "Y" ? new Vector3(0,0,-1) : new Vector3(0,1,0), [axis]);
+  useLayoutEffect(() => {
+    const side = get().camera.position.dot(normal) - coordinateMm * .001;
+    planes[0].normal.copy(normal).multiplyScalar(side >= 0 ? -1 : 1);
+    // Retain this side while orbiting; changing position must not flip the cut.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normal, planes, get]);
+  useLayoutEffect(() => {
+    const plane = planes[0];
+    plane.setComponents(plane.normal.x, plane.normal.y, plane.normal.z, -coordinateMm * .001 * plane.normal.dot(normal));
+    invalidate();
+  }, [coordinateMm, normal, planes, invalidate]);
+  useEffect(() => {
+    const gl = get().gl;
+    const previous = gl.localClippingEnabled;
+    gl.localClippingEnabled = true; invalidate();
+    return () => { gl.localClippingEnabled = previous; invalidate(); };
+  }, [get, invalidate]);
+  return <MeshGeometryView {...props} coordinateMm={coordinateMm} clippingPlanes={planes}/>;
+}
+
+export function CFDMeshScene({inspection}: {inspection: MeshInspectionScene}) {
+  const {geometry, rearGeometry, display, opacity, section} = inspection;
+  const fraction = useSyncExternalStore(inspection.position.subscribe, inspection.position.getSnapshot, inspection.position.getSnapshot);
+  const desired = section ? section.min + (section.max - section.min) * fraction : inspection.coordinateMm;
+  const coordinateMm = geometry && section && meshSectionContains(geometry, section.axis, desired) ? desired
+    : geometry?.coordinateMm ?? desired;
+  const theme = useSyncExternalStore(subscribeMeshTheme, meshThemeSnapshot, () => defaultMeshColours);
+  const colours = useMemo(() => JSON.parse(theme) as {face: string; edge: string}, [theme]);
+  return <group name="cfd-mesh-inspection">
+    <MeshCamera metadata={inspection.metadata} fitRequest={inspection.fitRequest}/>
+    {rearGeometry && geometry?.axis && <RearMesh geometry={rearGeometry} axis={geometry.axis} coordinateMm={coordinateMm} display={display} opacity={opacity} colours={colours}/>}
+    {geometry && <MeshGeometryView geometry={geometry} coordinateMm={coordinateMm} display={display} opacity={opacity} colours={colours}/>}
   </group>;
 }

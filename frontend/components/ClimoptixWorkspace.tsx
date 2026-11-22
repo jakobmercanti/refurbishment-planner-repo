@@ -141,7 +141,7 @@ export function ClimoptixWorkspace({
   } | null>(null);
   const [boundarySurfaceRequest, setBoundarySurfaceRequest] = useState<{ studyId: string; id: string; nonce: string } | null>(null);
   const [ventEditor, setVentEditor] = useState<{ studyId: string; id: string } | null>(null);
-  const { entries: jobs, submit: submitJobs, forgetResults } = useCFDJobs(
+  const { entries: jobs, submit: submitJobs, forgetResults, validated: validatedJob } = useCFDJobs(
     project,
     apiUrl,
     workerAdapter,
@@ -272,10 +272,15 @@ export function ClimoptixWorkspace({
   const placementScenario = scenario && placement ? { ...scenario, vents: scenario.vents.some(v => v.id === placement.ventId)
     ? scenario.vents.map(v => v.id === placement.ventId ? placement.draft : v) : [...scenario.vents, placement.draft] } : scenario;
   const preparation = useCFDPreparation({ active, apiUrl, input, project, scenario, scenarios,
-    onValidated: (report, scenarioId) => onChange(
-      scenarios.map(s => s.id === scenarioId ? { ...s, validation: report.validation } : s),
-      false, undefined, { scenarioId, rooms: report.domain.regions.filter(r => r.included).map(r => ({ floorId: r.floorId, roomId: r.id })) },
-    ),
+    onValidated: (report, scenarioId) => {
+      const checkedScenario = scenarios.find(s => s.id === scenarioId);
+      if (checkedScenario && !report.validation.errors && report.surface.exportable)
+        validatedJob(scenarioId, workerInput(project, checkedScenario));
+      onChange(
+        scenarios.map(s => s.id === scenarioId ? { ...s, validation: report.validation } : s),
+        false, undefined, { scenarioId, rooms: report.domain.regions.filter(r => r.included).map(r => ({ floorId: r.floorId, roomId: r.id })) },
+      );
+    },
   });
   const { report: activeReport, revision, busy, stale, error: preparationError, refresh: refreshPreparation } = preparation;
   const thermal = useCFDThermal({ active, open: thermalOpen && !!scenario?.thermalEnvelope?.sunEnabled && activeTab === "boundaries" && boundsTab === "thermal",
@@ -734,7 +739,7 @@ export function ClimoptixWorkspace({
     if (id !== scenario?.id) { setError(""); setMessage(""); }
     setSelectedId(id); setSelected(null); setPicking(null);
     setIssuesRequest(value => value + 1);
-    if (!error && !preparationError) refreshPreparation();
+    refreshPreparation();
     openPhase("review");
   };
   const available = (id: CFDWindowId) =>

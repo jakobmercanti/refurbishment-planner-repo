@@ -1,13 +1,20 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import type { useCFDMeshInspection } from "./useCFDMeshInspection";
 import { CFDNumber } from "./CFDFields";
 import { WindowHelpButton } from "./WindowHelpButton";
 import type { MeshAxis, MeshDisplay } from "@/lib/cfdMeshInspection";
+import { meshSectionContains } from "@/lib/cfdMeshInspection";
 
-export function CFDMeshInspectionPanel({inspection, onOpenMeshSetup}: {
+export function CFDMeshInspectionPanel({inspection: state, onOpenMeshSetup}: {
   inspection: ReturnType<typeof useCFDMeshInspection>; onOpenMeshSetup: () => void;
 }) {
+  const fraction = useSyncExternalStore(state.position.subscribe, state.position.getSnapshot, state.position.getSnapshot);
+  const coordinateMm = state.min + (state.max - state.min) * fraction;
+  const ready = !!state.geometry && (!state.sectioning || meshSectionContains(state.geometry, state.axis, coordinateMm));
+  const inspection = {...state, coordinateMm, loading: state.inspecting && !ready,
+    displayedCoordinate: ready ? coordinateMm : state.geometry?.coordinateMm ?? coordinateMm};
   const mesh = inspection.metadata;
   const metres = (mm: number) => Number((mm / 1000).toPrecision(12));
   return <section className="cfx-mesh-inspection" aria-label="Mesh inspection" data-cfx-collapse-root>
@@ -28,7 +35,7 @@ export function CFDMeshInspectionPanel({inspection, onOpenMeshSetup}: {
           <button type="button" onClick={onOpenMeshSetup}>Mesh setup</button>}
       </div>
       {inspection.loading && <p className="cfx-caption" role="status">{inspection.geometry?.axis
-        ? `Showing ${inspection.geometry.axis} = ${metres(inspection.geometry.coordinateMm!)} m · updating…`
+        ? `Showing ${inspection.geometry.axis} = ${metres(inspection.displayedCoordinate)} m · updating…`
         : inspection.sectioning ? "Updating section…" : "Loading mesh…"}</p>}
       {!inspection.loading && inspection.inspecting && inspection.geometry?.axis && <p className="cfx-caption" role="status">{inspection.geometry.sectionCells
         ? inspection.geometry.sectionCells.toLocaleString() + " intersected cells" : "Empty section"}</p>}
@@ -49,13 +56,17 @@ export function CFDMeshInspectionPanel({inspection, onOpenMeshSetup}: {
         disabled={inspection.display !== "transparent"} value={inspection.display === "transparent" ? inspection.opacity : 100} onChange={event => inspection.setOpacity(Number(event.target.value))} /></label>
     </fieldset></details>
     <details open><summary>Section<WindowHelpButton section title="Mesh section" steps={[
-      {heading: "Section only", text: "Replace the full boundary view with a genuine cut through the volume cells, including their internal partitions. X, Y and Z are the solver's global axes; the selected axis is perpendicular to the section. This is independent of result sampling planes."},
+      {heading: "Section", text: "Show a genuine cut through the volume cells, including their internal partitions. X, Y and Z are the solver's global axes; the selected axis is perpendicular to the section. Keep rear mesh retains the boundary behind the cut, away from the current camera when the axis is selected. Only its clipping plane moves; the boundary is loaded once."},
       {heading: "Position and movement", text: "Position is in metres in solver coordinates. The slider, numeric entry and previous/next buttons stay synchronized within the mesh bounds. Steps move by one percent of the selected axis span. Center section uses its midpoint; Reset section restores Z and its midpoint. Section movement preserves the camera."},
-      {heading: "Pending sections", text: "During an update, the previous section on the same axis can stay visible. The status states its actual displayed position until the new cut arrives. Switching axis or mesh never reuses another axis or revision."},
+      {heading: "Smooth movement", text: "Within a checked topology interval, only section vertex positions update locally. Crossing an interval requests the next exact cut. During that update, the previous section and rear cut remain at their actual displayed position. Switching axis or mesh never reuses another axis or revision."},
       {heading: "Supported topology", text: "Sections use native ASCII single-fluid polyMesh, including polyhedral and concave cells and disconnected fluid parts. Warped faces are triangulated through source vertices. Binary meshes need ASCII conversion. Detailed geometry responses are bounded to 48 MB."},
       {heading: "Current bounds", text: [0, 1, 2].map(index => `${"XYZ"[index]}: ${metres(mesh.boundsMm[0][index])} to ${metres(mesh.boundsMm[1][index])} m`).join("; ")},
     ]}/></summary><fieldset disabled={!inspection.canInspect} className="cfx-mesh-inspection-fields">
-      <label className="cfx-check"><input type="checkbox" checked={inspection.sectioning} onChange={event => inspection.setSectioning(event.target.checked)} />Section only</label>
+      <div className="cfx-mesh-toggles">
+        <label className="cfx-check"><input type="checkbox" checked={inspection.sectioning} onChange={event => inspection.setSectioning(event.target.checked)} />Show section</label>
+        <label className="cfx-check"><input type="checkbox" disabled={!inspection.sectioning} checked={inspection.showRear} onChange={event => inspection.setShowRear(event.target.checked)} />Keep rear mesh</label>
+      </div>
+      {inspection.sectioning && inspection.showRear && inspection.rearError && <p className="cfx-error" role="alert">{inspection.rearError}</p>}
       {inspection.sectioning && <>
         <div className="cfx-mesh-form">
           <label>Normal axis<select aria-label="Mesh section axis" value={inspection.axis} onChange={event => inspection.setAxis(event.target.value as MeshAxis)}>
@@ -75,14 +86,14 @@ export function CFDMeshInspectionPanel({inspection, onOpenMeshSetup}: {
       </>}
     </fieldset></details>
     <details><summary>Mesh information<WindowHelpButton section title="Mesh information" steps={[
-      {heading: "Source and revision", text: "Counts, patches and bounds come from the final checked volume mesh. The revision is a checksum of its native topology files. The defaultRegion name denotes the single fluid region; disconnected fluid parts can share that region."},
+      {heading: "Source", text: "Counts and bounds come from the final checked volume mesh. The defaultRegion name denotes the single fluid region; disconnected fluid parts can share that region."},
       {heading: "Read-only inspection", text: "These values describe the retained mesh. Mesh setup opens the source domain and meshing settings. Viewing, fitting or sectioning cannot modify those inputs, boundary conditions or shared Heating and Ventilation data."},
     ]}/></summary><dl className="cfx-mesh-information">
       <div><dt>Cells</dt><dd>{mesh.cells.toLocaleString()}</dd></div><div><dt>Faces</dt><dd>{mesh.faces.toLocaleString()}</dd></div>
-      <div><dt>Points</dt><dd>{mesh.points.toLocaleString()}</dd></div><div><dt>Mesh revision</dt><dd title={mesh.meshId}>{mesh.meshId.slice(0, 16)}</dd></div>
+      <div><dt>Points</dt><dd>{mesh.points.toLocaleString()}</dd></div>
       <div><dt>Source</dt><dd>Final checked polyMesh</dd></div><div><dt>Regions</dt><dd>{mesh.regions.join(", ")}</dd></div>
       {mesh.boundsMm[0].map((value, index) => <div key={index}><dt>{"XYZ"[index]} bounds (m)</dt><dd>{metres(value)} to {metres(mesh.boundsMm[1][index])}</dd></div>)}
-    </dl><ul className="cfx-mesh-patches" aria-label="Mesh boundary patches">{mesh.patches.map(patch => <li key={patch.name}><span>{patch.name}</span><span>{patch.faces.toLocaleString()} faces</span></li>)}</ul>
+    </dl>
       <div className="cfx-equal-actions"><button type="button" onClick={onOpenMeshSetup}>Mesh setup</button></div>
     </details>
     </>}

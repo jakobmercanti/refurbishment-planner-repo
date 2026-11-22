@@ -131,7 +131,7 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
     async meshGeometry(job: CFDWorkerJob, projectId: string, meshId: string, section: MeshSection | undefined, signal: AbortSignal) {
       const project = z.uuid().parse(projectId);
       z.string().regex(/^[a-f0-9]{64}$/).parse(meshId);
-      const path = section ? "/mesh-section" : `${jobPath(job.id)}/mesh-geometry?projectId=${project}&meshId=${meshId}`;
+      const path = section ? "/mesh-section?motion=true" : `${jobPath(job.id)}/mesh-geometry?projectId=${project}&meshId=${meshId}`;
       const body = section ? {projectId: project, jobId: job.id, meshId, ...section} : undefined;
       const bytes = await workerRequest(base, path, signal, body, 48 * 1024**2);
       signal.throwIfAborted();

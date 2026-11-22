@@ -18,14 +18,39 @@ export interface MeshSection {axis: MeshAxis; coordinateMm: number}
 export interface MeshGeometry {
   meshId: string; pointsMm: Float64Array; triangles: Uint32Array; edges: Uint32Array;
   sectionCells: number; axis: MeshAxis | null; coordinateMm: number | null;
+  motion?: {min: number; max: number; derivatives: Float64Array};
+}
+export function createMeshPosition() {
+  let fraction = .5;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => fraction,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    set: (value: number) => {
+      const next = Math.max(0, Math.min(1, value));
+      if (!Number.isFinite(next) || next === fraction) return;
+      fraction = next; listeners.forEach(listener => listener());
+    },
+  };
 }
 export interface MeshInspectionScene {
   metadata: MeshMetadata; geometry: MeshGeometry | null; display: MeshDisplay; opacity: number; fitRequest: number;
+  coordinateMm: number;
+  rearGeometry: MeshGeometry | null;
+  position: ReturnType<typeof createMeshPosition>;
+  section: {axis: MeshAxis; min: number; max: number} | null;
+}
+
+/** A server-proven affine interval never crosses a topology/triangle event. */
+export function meshSectionContains(geometry: MeshGeometry, axis: MeshAxis, coordinateMm: number) {
+  return geometry.axis === axis && (geometry.coordinateMm === coordinateMm || !!geometry.motion
+    && coordinateMm > geometry.motion.min && coordinateMm < geometry.motion.max);
 }
 
 const headerSchema = z.object({schemaVersion: z.literal(1), meshId: hash, units: z.literal("mm"),
   points: z.int().min(0).max(2000000), triangles: z.int().min(0).max(1000000), edges: z.int().min(0).max(2000000),
   sectionCells: z.int().min(0).max(500000), axis: z.enum(["X", "Y", "Z"]).nullable(), coordinateMm: coordinate.nullable(),
+  motionBoundsMm: z.tuple([coordinate, coordinate]).optional(),
 });
 
 /** Versioned, bounded binary buffers. Native solver files stay on the worker. */
@@ -38,7 +63,7 @@ export function readMeshGeometry(bytes: Uint8Array, meshId: string, section?: Me
   const header = headerSchema.parse(JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + size))));
   if (header.meshId !== meshId || header.axis !== (section?.axis ?? null) || header.coordinateMm !== (section?.coordinateMm ?? null))
     throw new Error("Mesh geometry belongs to another revision or section.");
-  const expected = 8 + size + header.points * 24 + header.triangles * 12 + header.edges * 8;
+  const expected = 8 + size + header.points * 24 + header.triangles * 12 + header.edges * 8 + (header.motionBoundsMm ? header.points * 24 : 0);
   if (expected !== bytes.byteLength) throw new Error("Truncated mesh geometry.");
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const pointsMm = new Float64Array(buffer, 8 + size, header.points * 3);
@@ -47,5 +72,22 @@ export function readMeshGeometry(bytes: Uint8Array, meshId: string, section?: Me
   for (const value of pointsMm) if (!Number.isFinite(value) || Math.abs(value) > 1e9) throw new Error("Non-finite or out-of-range mesh point.");
   for (const values of [triangles, edges]) for (const value of values)
     if (value >= header.points) throw new Error("Mesh geometry references an unavailable point.");
-  return {meshId, pointsMm, triangles, edges, sectionCells: header.sectionCells, axis: header.axis, coordinateMm: header.coordinateMm};
+  let motion: MeshGeometry["motion"];
+  if (header.motionBoundsMm) {
+    const [min, max] = header.motionBoundsMm;
+    if (!header.axis || header.coordinateMm === null || !(min < header.coordinateMm && header.coordinateMm < max))
+      throw new Error("Invalid mesh section motion bounds.");
+    // Triangle indices can leave a four-byte offset; copy to an aligned buffer.
+    const derivatives = new Float64Array(buffer.slice(expected - header.points * 24));
+    const axis = "XYZ".indexOf(header.axis);
+    for (let i = 0; i < derivatives.length; i++) {
+      if (!Number.isFinite(derivatives[i]) || Math.abs(derivatives[i]) > 1e12
+        || i % 3 === axis && Math.abs(derivatives[i] - 1) > 1e-9)
+        throw new Error("Invalid mesh section motion.");
+      for (const bound of [min, max]) if (Math.abs(pointsMm[i] + derivatives[i] * (bound - header.coordinateMm)) > 1e9)
+        throw new Error("Mesh section motion exceeds its coordinate limits.");
+    }
+    motion = {min, max, derivatives};
+  }
+  return {meshId, pointsMm, triangles, edges, motion, sectionCells: header.sectionCells, axis: header.axis, coordinateMm: header.coordinateMm};
 }

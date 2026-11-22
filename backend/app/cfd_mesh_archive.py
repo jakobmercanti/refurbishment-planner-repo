@@ -116,7 +116,7 @@ async def upload(request: Request) -> dict:
 
 @router.get("/{token}")
 async def geometry(request: Request, token: str, meshId: str, axis: str | None = None,
-                   coordinateMm: float | None = None) -> Response:
+                   coordinateMm: float | None = None, motion: bool = False) -> Response:
     with _lock:
         entry = _meshes.get(token)
         if entry is None or entry[0] <= time.time():
@@ -137,7 +137,8 @@ async def geometry(request: Request, token: str, meshId: str, axis: str | None =
             mesh = entry[2]
             value = (mesh.surface(cancelled) if axis is None
                      else mesh.section("XYZ".index(axis), coordinateMm, cancelled))
-            return geometry_bytes(meshId, value, axis=axis, coordinate=coordinateMm)
+            sweep = mesh.section_motion(value, "XYZ".index(axis), coordinateMm, cancelled) if axis and motion else None
+            return geometry_bytes(meshId, value, axis=axis, coordinate=coordinateMm, motion=sweep)
         except ValueError as error:
             raise HTTPException(422, str(error)[:300]) from None
         finally:

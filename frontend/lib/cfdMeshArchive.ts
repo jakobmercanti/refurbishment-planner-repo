@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { meshMetadataSchema, readMeshGeometry, type MeshSection } from "./cfdMeshInspection";
 import type { CFDWorkerJob } from "./climoptixJobs";
-import type { RailwayCFDWorker } from "./railwayCFDWorker";
+import { CFDWorkerError, type RailwayCFDWorker } from "./railwayCFDWorker";
 
 async function checked(response: Response) {
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(typeof body?.detail === "string" ? body.detail : "Retained mesh inspection is unavailable.");
+    throw new CFDWorkerError(typeof body?.detail === "string" ? body.detail : "Retained mesh inspection is unavailable.", response.status);
   }
   return response;
 }
@@ -29,7 +29,7 @@ export async function retainedMesh(apiUrl: string, adapter: RailwayCFDWorker, jo
     || source.metadata.clientRevision !== job.clientRevision) throw new Error("Retained mesh provenance does not match this job.");
   return {metadata:source.metadata, geometry:async (section:MeshSection|undefined, signal:AbortSignal) => {
     const params = new URLSearchParams({meshId:source.metadata.meshId,
-      ...(section ? {axis:section.axis, coordinateMm:String(section.coordinateMm)} : {})});
+      ...(section ? {axis:section.axis, coordinateMm:String(section.coordinateMm), motion:"true"} : {})});
     const response = await checked(await fetch(`${apiUrl}/climoptix/mesh-archives/${source.token}?${params}`, {signal}));
     const length = Number(response.headers.get("Content-Length"));
     if (length > 48 * 1024**2) throw new Error("Mesh geometry exceeds 48 MB.");

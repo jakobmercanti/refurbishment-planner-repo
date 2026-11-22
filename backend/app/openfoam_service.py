@@ -534,10 +534,10 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
         return Response(data, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
 
     @app.post(prefix + "/mesh-section")
-    async def mesh_section(body: MeshSectionRequest, user: WorkerUser, request: Request):
+    async def mesh_section(body: MeshSectionRequest, user: WorkerUser, request: Request, motion: bool = False):
         data = await inspection_response(request, lambda cancelled:
             inspection(store, str(user.id), str(body.jobId), str(body.projectId), mesh_id=body.meshId,
-                       axis=body.axis, coordinate=body.coordinateMm, cancelled=cancelled))
+                       axis=body.axis, coordinate=body.coordinateMm, with_motion=motion, cancelled=cancelled))
         return Response(data, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
 
     @app.get(prefix + "/jobs/{job_id}/artifacts/{artifact_id}")

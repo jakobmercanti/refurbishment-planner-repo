@@ -65,6 +65,13 @@ export function useCFDJobs(
     entriesRef.current = next;
     setEntries(next);
   }, []);
+  const validated = useCallback((id: string, input: string) => {
+    const entry = entriesRef.current[id];
+    // Only clear a geometry preflight rejection proven obsolete by a fresh
+    // successful check. Accepted jobs and uncertain dispatches stay recoverable.
+    if (entry?.error?.startsWith("Preflight blocked this submission.") && !entry.dispatched && !entry.submitting && !entry.job)
+      update(id, {...entry, input, error: undefined});
+  }, [update]);
   const projectId = useRef(project.projectId);
   const namespace = useRef(adapter?.namespace);
   const restorePending = useCallback(() => {
@@ -302,5 +309,5 @@ export function useCFDJobs(
       clearTimeout(timer);
     };
   }, [adapter, project.projectId, update]);
-  return { entries, submit, forgetResults };
+  return { entries, submit, forgetResults, validated };
 }

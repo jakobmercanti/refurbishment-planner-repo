@@ -243,6 +243,7 @@ class VolumeMesh:
         if len(self.patches) != patch_count or expected_start != face_count:
             raise ValueError("Boundary patch addressing is incomplete.")
         self.internal_count = internal_count
+        self.section_levels = tuple(np.unique(self.points[:, axis]) for axis in range(3))
 
     @staticmethod
     def addressing(path: Path, expected: int) -> np.ndarray:
@@ -420,6 +421,85 @@ class VolumeMesh:
                 raise ValueError("This detailed section exceeds its rendering limit.")
         return compact_geometry(np.array(positions).reshape((-1, 3)), triangles, sorted(edges), selected_cells)
 
+    def section_motion(self, geometry: tuple, axis: int, coordinate: float,
+                       cancelled: Callable[[], bool] = lambda: False) -> tuple | None:
+        """Exact affine cut motion until the next topology/triangulation event.
+
+        Cut vertices are intersections with fixed native face-triangle edges.
+        Reuse is permitted only when every output vertex has an unambiguous
+        derivative, no source vertex is crossed and no triangle can invert.
+        Difficult coincidences retain the ordinary exact section path.
+        """
+        points, triangles, _, _ = geometry
+        if not len(points) or not len(triangles):
+            return None
+        tolerance = self.tolerance * 16
+        levels = self.section_levels[axis]
+        index = int(np.searchsorted(levels, coordinate))
+        if not 0 < index < len(levels):
+            return None
+        lower, upper = float(levels[index - 1]), float(levels[index])
+        if min(coordinate - lower, upper - coordinate) <= tolerance:
+            return None
+        candidates = np.flatnonzero((self.face_min[:, axis] < coordinate)
+                                   & (self.face_max[:, axis] > coordinate))
+        slopes: dict[tuple, list] = {}
+        for face_id in candidates:
+            if face_id % 32 == 0:
+                check_cancelled(cancelled)
+            for triangle in self.face_triangles(int(face_id)):
+                vertices = self.points[triangle]
+                for a, b in zip(vertices, np.roll(vertices, -1, axis=0), strict=True):
+                    if (a[axis] - coordinate) * (b[axis] - coordinate) >= 0:
+                        continue
+                    slope = (b - a) / (b[axis] - a[axis])
+                    point = a + slope * (coordinate - a[axis])
+                    key = tuple(np.rint(point / tolerance).astype(np.int64))
+                    slopes.setdefault(key, []).append((point, slope))
+        motion = np.empty_like(points)
+        offsets = [(x, y, z) for x in (-1, 0, 1) for y in (-1, 0, 1) for z in (-1, 0, 1)]
+        for row, point in enumerate(points):
+            if row % 64 == 0:
+                check_cancelled(cancelled)
+            key = np.rint(point / tolerance).astype(np.int64)
+            matches = [slope for offset in offsets for original, slope in slopes.get(tuple(key + offset), [])
+                       if np.max(np.abs(original - point)) <= tolerance]
+            if not matches or any(np.max(np.abs(slope - matches[0])) > 1e-9 for slope in matches[1:]):
+                return None
+            motion[row] = matches[0]
+        # A moving concave cut can need a different triangulation before the
+        # next source vertex. Stop reuse at the first zero of ANY signed area.
+        uv = [value for value in range(3) if value != axis]
+        corners, velocity = points[triangles][:, :, uv], motion[triangles][:, :, uv]
+        a, b = corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]
+        da, db = velocity[:, 1] - velocity[:, 0], velocity[:, 2] - velocity[:, 0]
+
+        def cross(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+            return first[:, 0] * second[:, 1] - first[:, 1] * second[:, 0]
+
+        c0, c1, c2 = cross(a, b), cross(da, b) + cross(a, db), cross(da, db)
+        if np.any(np.abs(c0) <= tolerance**2) or not np.isfinite(motion).all():
+            return None
+        roots = []
+        linear = (c2 == 0) & (c1 != 0)
+        roots.extend((-c0[linear] / c1[linear]).tolist())
+        discriminant = c1**2 - 4 * c2 * c0
+        quadratic = (c2 != 0) & (discriminant >= 0)
+        # Stable quadratic formula retains roots very close to a cut event.
+        q = -.5 * (c1[quadratic] + np.copysign(np.sqrt(discriminant[quadratic]), c1[quadratic]))
+        nonzero = q != 0
+        roots.extend((q[nonzero] / c2[quadratic][nonzero]).tolist())
+        roots.extend((c0[quadratic][nonzero] / q[nonzero]).tolist())
+        for delta in roots:
+            event = coordinate + delta
+            if lower < event < coordinate:
+                lower = event
+            elif coordinate < event < upper:
+                upper = event
+        margin = max(tolerance, (upper - lower) * 1e-9)
+        lower, upper = lower + margin, upper - margin
+        return (lower, upper, motion) if lower < coordinate < upper else None
+
 
 def compact_geometry(points: np.ndarray, triangles: list, edges: list,
                      cells: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
@@ -433,19 +513,25 @@ def compact_geometry(points: np.ndarray, triangles: list, edges: list,
     return points[used], mapping[faces], mapping[lines], cells
 
 
-def geometry_bytes(mesh_id: str, geometry: tuple, *, axis: str | None = None, coordinate: float | None = None) -> bytes:
+def geometry_bytes(mesh_id: str, geometry: tuple, *, axis: str | None = None, coordinate: float | None = None,
+                   motion: tuple | None = None) -> bytes:
     points, triangles, edges, cells = geometry
     header = json.dumps({"schemaVersion": 1, "meshId": mesh_id, "units": "mm", "points": len(points),
                          "triangles": len(triangles), "edges": len(edges), "sectionCells": cells,
-                         "axis": axis, "coordinateMm": coordinate}, separators=(",", ":")).encode()
+                         "axis": axis, "coordinateMm": coordinate,
+                         **({"motionBoundsMm": list(motion[:2])} if motion is not None else {})}, separators=(",", ":")).encode()
     header += b" " * (-len(header) % 8)
-    expected = 8 + len(header) + points.size * 8 + (triangles.size + edges.size) * 4
+    expected = 8 + len(header) + points.size * 8 + (triangles.size + edges.size) * 4 + (points.size * 8 if motion is not None else 0)
     if expected > MAX_BUFFER:
+        if motion is not None:
+            return geometry_bytes(mesh_id, geometry, axis=axis, coordinate=coordinate)
         raise ValueError("Detailed mesh view exceeds its 48 MB rendering-buffer limit.")
     output = io.BytesIO()
     output.write(b"CMI1" + struct.pack("<I", len(header)) + header)
     for data, dtype in ((points, "<f8"), (triangles, "<u4"), (edges, "<u4")):
         output.write(np.asarray(data, dtype=dtype).tobytes())
+    if motion is not None:
+        output.write(np.asarray(motion[2], dtype="<f8").tobytes())
     return output.getvalue()
 
 
@@ -485,6 +571,7 @@ def source_metadata(root: Path, row: sqlite3.Row) -> tuple[dict, VolumeMesh]:
 
 def inspection(store: Any, owner: str, job_id: str, project_id: str, *, mesh_id: str | None = None,
                axis: str | None = None, coordinate: float | None = None, metadata_only: bool = False,
+               with_motion: bool = False,
                cancelled: Callable[[], bool] = lambda: False) -> dict | bytes:
     row = store.get(owner, job_id)
     if row["project"] != project_id:
@@ -498,7 +585,7 @@ def inspection(store: Any, owner: str, job_id: str, project_id: str, *, mesh_id:
             raise HTTPException(409, "The mesh revision changed. Reload its metadata.")
         if metadata_only:
             return metadata
-        key = (metadata["meshId"], axis, coordinate)
+        key = (metadata["meshId"], axis, coordinate, with_motion)
         with _buffer_lock:
             if key in _buffers:
                 _buffers.move_to_end(key)
@@ -507,7 +594,8 @@ def inspection(store: Any, owner: str, job_id: str, project_id: str, *, mesh_id:
         geometry = (mesh.surface(cancelled) if axis is None
                     else mesh.section("XYZ".index(axis), float(coordinate), cancelled))
         check_cancelled(cancelled)
-        data = geometry_bytes(metadata["meshId"], geometry, axis=axis, coordinate=coordinate)
+        motion = mesh.section_motion(geometry, "XYZ".index(axis), float(coordinate), cancelled) if axis and with_motion else None
+        data = geometry_bytes(metadata["meshId"], geometry, axis=axis, coordinate=coordinate, motion=motion)
         with _buffer_lock:
             _buffers[key] = data
             while len(_buffers) > 12 or sum(map(len, _buffers.values())) > 64 * 1024**2:
