@@ -81,16 +81,17 @@ def default_setup(project: dict, original: Scenario, revision: str) -> Scenario:
     bounds = report["domain"]["boundsMm"]
     if not bounds:
         raise ValueError("The measured air volume has no usable bounds.")
-    # ~10k base cells, one uniform split (~80k), preserving a visible vent hole.
+    # ~2.5k base cells, one uniform split (~20k), retaining at least four
+    # cells across the starter vent in the final mesh.
     volume_mm3 = max(1, report["domain"]["volumeM3"] * 1e9)
-    base = max(25, min(size / 4, ceil((volume_mm3 / 10000) ** (1 / 3) / 5) * 5))
+    base = max(25, min(size / 2, ceil((volume_mm3 / 2500) ** (1 / 3) / 5) * 5))
     mesh = scenario.mesh
     mesh.preset = "Draft"
     mesh.baseCellMm, mesh.minCellMm, mesh.maxCellMm = base, base / 4, base * 2
     mesh.wallCellMm = mesh.jetCellMm = mesh.objectCellMm = mesh.wakeCellMm = base
     mesh.ventCellMm = mesh.openingCellMm = base / 2
     mesh.snapToleranceMm = min(50, base / 2)
-    mesh.targetCells, mesh.maxCells = 100000, 500000
+    mesh.targetCells, mesh.maxCells = 30000, 500000
     mesh.refinements = [Refinement.model_validate({"id": "default-uniform", "name": "Starter uniform mesh", "shape": "box",
                          "centerMm": [(a + b) / 2 for a, b in zip(*bounds, strict=True)],
                          "sizeMm": [b - a + base * 4 for a, b in zip(*bounds, strict=True)], "cellMm": base / 2, "level": 1})]

@@ -53,7 +53,7 @@ export class LocalProjectRepository implements ProjectRepository {
     const destination = await openGuestHandoffDestination(account);
     try {
       if (!isCurrent()) return;
-      const tx = destination.transaction(["projects", "meta", ...tables], "readwrite");
+      const tx = destination.transaction(["projects", "meta", ...tables], "readwrite", {durability: "strict"});
       const done = completed(tx);
       const projects = tx.objectStore("projects"), meta = tx.objectStore("meta");
       const receipt = `guest-draft:${draft.projectId}`;
@@ -73,10 +73,12 @@ export class LocalProjectRepository implements ProjectRepository {
             });
             for (const file of files) if (file.exists === undefined) tx.objectStore(file.table).add(file.value, file.key);
             projects.add(next, projectId);
-            // An old guest draft must not displace newer work saved after sign-in.
+            // Background guest validation can refresh updatedAt without a user
+            // edit. Account sign-in must reopen that account's chosen workspace,
+            // never select a guest copy merely because its timestamp is newer.
             const currentId = await requestValue(meta.get("current"));
             const current = currentId ? await requestValue(projects.get(currentId)) as ProjectDocument | undefined : undefined;
-            if (!current || current.updatedAt < draft.updatedAt) meta.put(projectId, "current");
+            if (!current) meta.put(projectId, "current");
             meta.put(draft.updatedAt, receipt);
           }
         }
@@ -91,7 +93,7 @@ export class LocalProjectRepository implements ProjectRepository {
 
   async saveProject(project: ProjectDocument) {
     const p = parseProject(project), db = await localDatabase();
-    const tx = db.transaction(["projects", "backups", "meta"], "readwrite"); const done = completed(tx);
+    const tx = db.transaction(["projects", "backups", "meta"], "readwrite", {durability: "strict"}); const done = completed(tx);
     const store = tx.objectStore("projects"); const previous = store.get(p.projectId);
     previous.onsuccess = () => { if (previous.result) { try { tx.objectStore("backups").put(parseProject(previous.result), p.projectId); } catch { /* retain the existing valid backup */ } } store.put(p, p.projectId); tx.objectStore("meta").put(p.projectId, "current"); };
     await done;

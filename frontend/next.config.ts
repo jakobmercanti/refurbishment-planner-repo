@@ -16,9 +16,9 @@ const authOrigin = (() => {
   } catch { return null; }
 })();
 
-// Local geometry does not need a privileged account database key. Read only
-// plan status from the existing hosted account service. Do not route catalogue
-// flags or writes that could enable billing on an unconfigured local backend.
+// Local geometry does not need a privileged account database key. Route only
+// plan status and private account recovery through the existing hosted account
+// service. Billing/catalogue writes remain on the configured backend.
 const accountReadOrigin = (() => {
   const url = new URL(process.env.COMMERCIAL_READ_API_ORIGIN ?? "https://freefloorplan3d-api-production.up.railway.app");
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
@@ -44,6 +44,14 @@ const nextConfig: NextConfig = {
       {
         source: "/engineering-api/commercial/summary",
         destination: `${accountReadOrigin}/commercial/summary`,
+      },
+      {
+        source: "/engineering-api/commercial/resume",
+        destination: `${accountReadOrigin}/commercial/resume`,
+      },
+      {
+        source: "/engineering-api/commercial/resume/preference",
+        destination: `${accountReadOrigin}/commercial/resume/preference`,
       },
       // The private worker is a separate Railway service; it validates every
       // bearer token and enabled account itself, including in local development.

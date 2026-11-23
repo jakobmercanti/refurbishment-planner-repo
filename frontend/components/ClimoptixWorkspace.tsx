@@ -141,7 +141,7 @@ export function ClimoptixWorkspace({
   } | null>(null);
   const [boundarySurfaceRequest, setBoundarySurfaceRequest] = useState<{ studyId: string; id: string; nonce: string } | null>(null);
   const [ventEditor, setVentEditor] = useState<{ studyId: string; id: string } | null>(null);
-  const { entries: jobs, submit: submitJobs, forgetResults, validated: validatedJob } = useCFDJobs(
+  const { entries: jobs, submit: submitJobs, forgetResults, validated: validatedJob, cancel: cancelJob, clean: cleanJob } = useCFDJobs(
     project,
     apiUrl,
     workerAdapter,
@@ -178,6 +178,8 @@ export function ClimoptixWorkspace({
   const [picking, setPicking] = useState<{ role: "supply" | "extract"; ventId: string; studyId: string; draft: CFDVent; returnEditor: boolean } | null>(null);
   const [editorReset, setEditorReset] = useState(0);
   const [clearing, setClearing] = useState<HTMLButtonElement | null>(null);
+  const [cleaning, setCleaning] = useState<{id: string; opener: HTMLButtonElement} | null>(null);
+  const [cleanBusy, setCleanBusy] = useState(false);
   const [creating, setCreating] = useState<{ group?: string; studyId: string; opener: HTMLButtonElement } | null>(null);
   const [limitDialog, setLimitDialog] = useState<HTMLButtonElement | null>(null);
   const [resetting, setResetting] = useState(false);
@@ -1115,6 +1117,9 @@ export function ClimoptixWorkspace({
                   else add(group);
                 }}
                 onDelete={(id, opener) => setDeleting({ id, opener })}
+                onCancel={id => void cancelJob(id)}
+                onClean={(id, opener) => setCleaning({id, opener})}
+                onOpenMonitor={id => { setSelectedId(id); setPicking(null); openPhase("results"); setResultsView("monitor"); }}
                 onClear={setClearing}
                 onReset={() => { const starter = newCFDScenario(project.projectId, "Simulation 1"); starter.seed = scenario?.seed ?? null; void applyDefaults(starter); }}
                 resetting={resetting}
@@ -1127,6 +1132,7 @@ export function ClimoptixWorkspace({
                   setError("");
                   setDefaultPlaneRequest(jobId ? {jobId,nonce:crypto.randomUUID()} : undefined);
                   openPhase("results");
+                  setResultsView("summary");
                 }}
                 onOpenMesh={id => {
                   setSelectedId(id); setPicking(null); setDefaultPlaneRequest(undefined);
@@ -1505,6 +1511,24 @@ export function ClimoptixWorkspace({
           }}
         />
       )}
+      {cleaning && <ConfirmationDialog title="Clean simulation?" confirmLabel={cleanBusy ? "Cleaning…" : "Clean simulation"} disabled={cleanBusy}
+        opener={cleaning.opener} fallbackFocus=".cfx-study-actions button"
+        message="Permanently delete this simulation’s checked mesh, solver files, logs and results? Its inputs stay available, and Mesh, Run and Post will start again from pending. Deleted results cannot be recovered."
+        onCancel={() => { if (!cleanBusy) setCleaning(null); }} onConfirm={() => {
+          const id = cleaning.id;
+          setCleanBusy(true);
+          void cleanJob(id).then(() => {
+            const now = current.current;
+            now.onChange(now.scenarios.map(study => study.id === id ? {...study, validation: null, thermalSnapshots: undefined, adjointStudies: undefined} : study), true);
+            clearLog(id); preparation.remove(id); thermal.remove(id);
+            setMainResultLayers(layers => layers.filter(layer => layer.studyId !== id));
+            setMainResult(layer => layer?.studyId === id ? null : layer);
+            setVTKFile(file => file?.studyId === id ? null : file);
+            if (now.project.hvac?.activeScenarioId === id || scenario?.id === id) { meshInspection.exit(); clearLoadedResults(); }
+            setCleaning(null); setError(""); setMessage("Simulation cleaned. Generate a new mesh when ready.");
+          }).catch(cause => { setCleaning(null); setError(cause instanceof Error ? cause.message : "Could not clean the simulation."); })
+            .finally(() => setCleanBusy(false));
+        }} />}
       {limitDialog && <ConfirmationDialog title="Simulation limit reached" opener={limitDialog}
         fallbackFocus=".cfx-study-actions button"
         message={<>You reached your limit of a total of 5 simulations, send us a message at <a href="mailto:info@climoptix.com">info@climoptix.com</a> to get a quote for the commercial version</>}

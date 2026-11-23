@@ -135,13 +135,12 @@ export const thermalSetupSchema = z
   .strict();
 /** Editable London reference assumptions; activation persists these actual inputs. */
 export function defaultThermalSetup(now = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-CA", {timeZone:"Europe/London",year:"numeric",month:"2-digit",day:"2-digit",
-    hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now);
+  const parts = new Intl.DateTimeFormat("en-CA", {timeZone:"Europe/London",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(now);
   const part = (name:string) => parts.find(item => item.type === name)!.value;
   return thermalSetupSchema.parse({
     location:{name:"London",latitude:51.5074,longitude:-0.1278,timezone:"Europe/London",elevationM:11,
       source:"London city-centre reference (51.5074° N, 0.1278° W); elevation 11 m is an editable assumption, not a surveyed site."},
-    localDateTime:`${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`,
+    localDateTime:`${part("year")}-${part("month")}-${part("day")}T12:00`,
     weather:{source:"Editable reference assumptions, not a London weather observation or design standard.",
       temperatureC:10,relativeHumidity:0.7,windMS:3,externalH:25,solarMode:"none",dniWm2:0,dhiWm2:0,ghiWm2:0},
     airExchange:{mode:"none",source:"Reference screening assumption: no infiltration. Reconcile shared vent flows before CFD thermal application."},

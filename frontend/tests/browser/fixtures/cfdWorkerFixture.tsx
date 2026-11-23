@@ -129,6 +129,9 @@ function Fixture() {
       worker={adapter}
       onSubmit={(op, studies) => void submit(op, studies)}
       onOpenResults={() => {}}
+      onOpenMonitor={() => {}}
+      onCancel={() => {}}
+      onClean={() => {}}
       onUndo={() => {}}
       onRedo={() => {}}
       canUndo={false}

@@ -244,6 +244,7 @@ class VolumeMesh:
             raise ValueError("Boundary patch addressing is incomplete.")
         self.internal_count = internal_count
         self.section_levels = tuple(np.unique(self.points[:, axis]) for axis in range(3))
+        self._section_source_buffer: tuple[str, bytes] | None = None
 
     @staticmethod
     def addressing(path: Path, expected: int) -> np.ndarray:
@@ -291,6 +292,42 @@ class VolumeMesh:
             if len(triangles) > 1_000_000 or len(edges) > 2_000_000:
                 raise ValueError("Boundary display exceeds its detailed rendering limit. Use a volume section.")
         return compact_geometry(self.points, triangles, sorted(edges), 0)
+
+    def section_source(self, mesh_id: str, cancelled: Callable[[], bool]) -> bytes:
+        """Bounded native face topology for cuts in an isolated browser worker.
+
+        Native triangulation is performed once. Owner/neighbour addressing keeps
+        internal cell partitions, including non-hexahedral and concave cells.
+        """
+        if self._section_source_buffer and self._section_source_buffer[0] == mesh_id:
+            return self._section_source_buffer[1]
+        triangles, face_ids = [], []
+        for index in range(len(self.owner)):
+            if index % 64 == 0:
+                check_cancelled(cancelled)
+            pieces = self.face_triangles(index)
+            triangles.extend(pieces)
+            face_ids.extend([index] * len(pieces))
+            if len(triangles) > 3_000_000:
+                raise ValueError("This mesh needs server-side sectioning.")
+        faces = np.asarray(triangles, dtype="<u4").reshape((-1, 3))
+        neighbour = np.full(len(self.owner), -1, dtype="<i4")
+        neighbour[:self.internal_count] = self.neighbour
+        header = json.dumps({"schemaVersion": 1, "meshId": mesh_id, "units": "mm", "cells": self.cells,
+                             "points": len(self.points), "triangles": len(faces), "faces": len(self.owner)},
+                            separators=(",", ":")).encode()
+        header += b" " * (-len(header) % 8)
+        expected = 8 + len(header) + self.points.size * 8 + faces.size * 4 + len(face_ids) * 4 + len(self.owner) * 8
+        if expected > 64 * 1024**2:
+            raise ValueError("This mesh needs server-side sectioning.")
+        output = io.BytesIO()
+        output.write(b"CMS1" + struct.pack("<I", len(header)) + header)
+        for data, dtype in ((self.points, "<f8"), (faces, "<u4"), (face_ids, "<u4"),
+                            (self.owner, "<i4"), (neighbour, "<i4")):
+            output.write(np.asarray(data, dtype=dtype).tobytes())
+        result = output.getvalue()
+        self._section_source_buffer = (mesh_id, result)
+        return result
 
     def face_sections(self, candidates: np.ndarray, axis: int, coordinate: float) -> dict:
         """Vectorized cuts of convex source faces; GEOS handles concave faces."""
@@ -572,6 +609,7 @@ def source_metadata(root: Path, row: sqlite3.Row) -> tuple[dict, VolumeMesh]:
 def inspection(store: Any, owner: str, job_id: str, project_id: str, *, mesh_id: str | None = None,
                axis: str | None = None, coordinate: float | None = None, metadata_only: bool = False,
                with_motion: bool = False,
+               section_source: bool = False,
                cancelled: Callable[[], bool] = lambda: False) -> dict | bytes:
     row = store.get(owner, job_id)
     if row["project"] != project_id:
@@ -585,11 +623,18 @@ def inspection(store: Any, owner: str, job_id: str, project_id: str, *, mesh_id:
             raise HTTPException(409, "The mesh revision changed. Reload its metadata.")
         if metadata_only:
             return metadata
-        key = (metadata["meshId"], axis, coordinate, with_motion)
+        key = (metadata["meshId"], axis, coordinate, with_motion, section_source)
         with _buffer_lock:
             if key in _buffers:
                 _buffers.move_to_end(key)
                 return _buffers[key]
+        if section_source:
+            data = mesh.section_source(metadata["meshId"], cancelled)
+            with _buffer_lock:
+                _buffers[key] = data
+                while len(_buffers) > 12 or sum(map(len, _buffers.values())) > 64 * 1024**2:
+                    _buffers.popitem(last=False)
+            return data
         check_cancelled(cancelled)
         geometry = (mesh.surface(cancelled) if axis is None
                     else mesh.section("XYZ".index(axis), float(coordinate), cancelled))

@@ -27,7 +27,13 @@ export async function retainedMesh(apiUrl: string, adapter: RailwayCFDWorker, jo
   const source = z.object({token:z.string().regex(/^[\w-]{40,100}$/), metadata:meshMetadataSchema}).parse(await response.json());
   if (source.metadata.jobId !== job.id || source.metadata.projectId !== projectId || source.metadata.studyId !== job.studyId
     || source.metadata.clientRevision !== job.clientRevision) throw new Error("Retained mesh provenance does not match this job.");
-  return {metadata:source.metadata, geometry:async (section:MeshSection|undefined, signal:AbortSignal) => {
+  return {metadata:source.metadata, sectionSource:async (signal: AbortSignal) => {
+    const response = await checked(await fetch(`${apiUrl}/climoptix/mesh-archives/${source.token}?meshId=${source.metadata.meshId}&source=true`, {signal}));
+    if (Number(response.headers.get("Content-Length")) > 64 * 1024**2) throw new Error("Mesh section source exceeds 64 MB.");
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > 64 * 1024**2) throw new Error("Mesh section source exceeds 64 MB.");
+    return bytes;
+  }, geometry:async (section:MeshSection|undefined, signal:AbortSignal) => {
     const params = new URLSearchParams({meshId:source.metadata.meshId,
       ...(section ? {axis:section.axis, coordinateMm:String(section.coordinateMm), motion:"true"} : {})});
     const response = await checked(await fetch(`${apiUrl}/climoptix/mesh-archives/${source.token}?${params}`, {signal}));

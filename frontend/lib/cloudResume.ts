@@ -53,7 +53,10 @@ export async function recoverCloudProject(local: ProjectDocument): Promise<Proje
 export function syncCloudRecovery(project: ProjectDocument): Promise<boolean> {
   const account = storedAccountId();
   const operation = queue.then(async () => {
-    if (!account || !matchesLocalStorageAccount(account) || storedAccountId() !== account || !cloudRecoveryEnabled() || !project.cfdScenarios?.length) return false;
+    if (!account || !matchesLocalStorageAccount(account) || storedAccountId() !== account || !cloudRecoveryEnabled()) return false;
+    // Once a CFD project is in recovery, clearing its LAST study is still a
+    // change to save. Otherwise an older cloud copy resurrects deleted studies.
+    if (project.cfdScenarios === undefined) return false;
     if (stopped) throw new Error("A newer cloud setup exists. Open Privacy and local saving to download it.");
     if (!ready && await recoverCloudProject(project) !== project) {
       stopped = true;

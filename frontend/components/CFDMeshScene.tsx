@@ -163,17 +163,19 @@ function RearMesh({axis, coordinateMm, ...props}: Omit<Parameters<typeof MeshGeo
     plane.setComponents(plane.normal.x, plane.normal.y, plane.normal.z, -coordinateMm * .001 * plane.normal.dot(normal));
     invalidate();
   }, [coordinateMm, normal, planes, invalidate]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const gl = get().gl;
     const previous = gl.localClippingEnabled;
-    gl.localClippingEnabled = true; invalidate();
-    return () => { gl.localClippingEnabled = previous; invalidate(); };
+    gl.localClippingEnabled = true; invalidate(2);
+    return () => { gl.localClippingEnabled = previous; invalidate(2); };
   }, [get, invalidate]);
   return <MeshGeometryView {...props} coordinateMm={coordinateMm} clippingPlanes={planes}/>;
 }
 
 export function CFDMeshScene({inspection}: {inspection: MeshInspectionScene}) {
-  const {geometry, rearGeometry, display, opacity, section} = inspection;
+  const {rearGeometry, display, opacity, section} = inspection;
+  const local = useSyncExternalStore(inspection.live.subscribe, inspection.live.getSnapshot, inspection.live.getSnapshot);
+  const geometry = section && local?.meshId === inspection.metadata.meshId && local?.axis === section.axis ? local : inspection.geometry;
   const fraction = useSyncExternalStore(inspection.position.subscribe, inspection.position.getSnapshot, inspection.position.getSnapshot);
   const desired = section ? section.min + (section.max - section.min) * fraction : inspection.coordinateMm;
   const coordinateMm = geometry && section && meshSectionContains(geometry, section.axis, desired) ? desired
@@ -182,7 +184,8 @@ export function CFDMeshScene({inspection}: {inspection: MeshInspectionScene}) {
   const colours = useMemo(() => JSON.parse(theme) as {face: string; edge: string}, [theme]);
   return <group name="cfd-mesh-inspection">
     <MeshCamera metadata={inspection.metadata} fitRequest={inspection.fitRequest}/>
-    {rearGeometry && geometry?.axis && <RearMesh geometry={rearGeometry} axis={geometry.axis} coordinateMm={coordinateMm} display={display} opacity={opacity} colours={colours}/>}
-    {geometry && <MeshGeometryView geometry={geometry} coordinateMm={coordinateMm} display={display} opacity={opacity} colours={colours}/>}
+    {rearGeometry && section && <RearMesh geometry={rearGeometry} axis={section.axis} coordinateMm={desired} display={display} opacity={opacity} colours={colours}/>}
+    {geometry && (!rearGeometry || !section || meshSectionContains(geometry, section.axis, desired)) &&
+      <MeshGeometryView geometry={geometry} coordinateMm={coordinateMm} display={display} opacity={opacity} colours={colours}/>}
   </group>;
 }

@@ -137,6 +137,11 @@ export function railwayCFDWorker(base: string, capabilities: WorkerCapabilities)
       signal.throwIfAborted();
       return readMeshGeometry(bytes, meshId, section);
     },
+    async meshSource(job: CFDWorkerJob, projectId: string, meshId: string, signal: AbortSignal) {
+      z.string().regex(/^[a-f0-9]{64}$/).parse(meshId);
+      const bytes = await workerRequest(base, `${jobPath(job.id)}/mesh-geometry?projectId=${z.uuid().parse(projectId)}&meshId=${meshId}&source=true`, signal, undefined, 64 * 1024**2);
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
     async logs(job: CFDWorkerJob, cursor: number, signal: AbortSignal) {
       const data = z.object({cursor: z.number().int().min(0), nextCursor: z.number().int().min(0).max(8*1024**2), text: z.string().max(128*1024),
         telemetry:workerTelemetrySchema.optional()})

@@ -22,15 +22,33 @@ export interface MeshGeometry {
 }
 export function createMeshPosition() {
   let fraction = .5;
+  let frame = 0, lastPaint = 0;
   const listeners = new Set<() => void>();
+  const notify = (now: number) => {
+    if (now - lastPaint < 32) { frame = requestAnimationFrame(notify); return; }
+    frame = 0; lastPaint = now; listeners.forEach(listener => listener());
+  };
   return {
     getSnapshot: () => fraction,
-    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => {
+      listeners.delete(listener);
+      if (!listeners.size && frame) { cancelAnimationFrame(frame); frame = 0; }
+    }; },
     set: (value: number) => {
       const next = Math.max(0, Math.min(1, value));
       if (!Number.isFinite(next) || next === fraction) return;
-      fraction = next; listeners.forEach(listener => listener());
+      fraction = next;
+      if (!frame && listeners.size) frame = requestAnimationFrame(notify);
     },
+  };
+}
+export function createMeshSectionView() {
+  let geometry: MeshGeometry | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => geometry,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    set: (value: MeshGeometry | null) => { geometry = value; listeners.forEach(listener => listener()); },
   };
 }
 export interface MeshInspectionScene {
@@ -38,6 +56,7 @@ export interface MeshInspectionScene {
   coordinateMm: number;
   rearGeometry: MeshGeometry | null;
   position: ReturnType<typeof createMeshPosition>;
+  live: ReturnType<typeof createMeshSectionView>;
   section: {axis: MeshAxis; min: number; max: number} | null;
 }
 

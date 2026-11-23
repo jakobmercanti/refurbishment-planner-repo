@@ -28,7 +28,7 @@ function InlineName({ value, label, maxLength = 120, onCommit, onDone }: {
 }
 
 export function ClimoptixStudies({ project, scenarios, scenario, showArchived, onShowArchived, onSelect,
-  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onOpenResults, onOpenMesh, onUndo, onRedo, canUndo, canRedo,
+  onChange, onOrder, onAdd, onDelete, onClear, onReset, resetting, onImport, entries, worker, onSubmit, onCancel, onClean, onOpenMonitor, onOpenResults, onOpenMesh, onUndo, onRedo, canUndo, canRedo,
 }: {
   project: ProjectDocument; scenarios: CFDScenario[]; scenario?: CFDScenario; showArchived: boolean;
   onShowArchived: (show: boolean) => void; onSelect: (id: string) => void;
@@ -43,6 +43,9 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   onSubmit: (operation: CFDOperation, studies: CFDScenario[], opener: HTMLButtonElement) => void;
   onOpenResults: (studyId: string, jobId?: string) => void;
   onOpenMesh?: (studyId: string) => void;
+  onOpenMonitor: (studyId: string) => void;
+  onCancel: (studyId: string) => void;
+  onClean: (studyId: string, opener: HTMLButtonElement) => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
 }) {
   const visible = scenarios.filter(s => showArchived || !s.archived);
@@ -52,7 +55,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const targetGroup = groups.find(g => g.id === selectedGroup) ?? groups.find(g => sameGroup(g.name, scenario?.group ?? "")) ?? groups[0];
-  const busy = (s: CFDScenario) => !!entries[s.id]?.submitting || !!(entries[s.id]?.job && !terminalJob(entries[s.id].job!));
+  const busy = (s: CFDScenario) => !!(entries[s.id]?.submitting || entries[s.id]?.cleaning) || !!(entries[s.id]?.job && !terminalJob(entries[s.id].job!));
   const renameGroup = (group: CFDSimulationGroup, name: string) => {
     if (groups.some(g => g.id !== group.id && sameGroup(g.name, name))) { setError("A group already has that name."); return false; }
     setError("");
@@ -154,6 +157,7 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                   entry?.dispatched || limitReached ? undefined :
                   !worker.capabilities[operation] ? worker.capabilities.reason || `This worker does not support ${operation}` : operation === "run" ? configurationIssue : checkConfiguration(operation);
                 const blocked = nextOperation ? reason(nextOperation) : undefined;
+                const cancellable = !!job && !terminalJob(job);
                 return <article className={`cfx-study-row${s.id === scenario?.id ? " selected" : ""}`}>
                   {renaming === s.id ? <InlineName key={s.id} value={s.name} label="Simulation name" onCommit={name => onChange({ ...s, name }, true)} onDone={() => setRenaming(null)} /> :
                     <div className="cfx-study-name" data-selected={s.id === scenario?.id}>
@@ -167,11 +171,15 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                           aria-label={`Mesh: ${stage.state} · ${s.name}`} disabled={stage.state !== "completed" || !onOpenMesh}
                           title={stage.state === "completed" ? stale ? "Inspect the checked mesh from the submitted setup" : "Inspect the checked mesh" : "Available after mesh checks pass"}
                           onClick={() => onOpenMesh?.(s.id)}>{stage.label}</button>
-                          : <span key={stage.label} data-state={stage.state} aria-label={`${stage.label}: ${stage.state}`}>{stage.label}</span>)}
+                          : <button key={stage.label} data-state={stage.state} aria-label={`${stage.label}: ${stage.state} · ${s.name}`}
+                            disabled={stage.label === "Run" ? !job || operation === "mesh" : !showResults && job?.phase !== "Postprocess"}
+                            title={stage.label === "Run" ? "Open simulation monitor" : "Open 3D result planes"}
+                            onClick={() => stage.label === "Run" ? onOpenMonitor(s.id) : onOpenResults(s.id, job?.id)}>{stage.label}</button>)}
                       </span>
                     </div>}
                   <div className="cfx-study-actions">
-                    {nextOperation && <button
+                    {cancellable ? <button aria-label={`Cancel ${s.name}`} disabled={!worker?.cancel || !worker.capabilities.connected || entry?.cancelling || entry?.cancelRequested}
+                      onClick={() => onCancel(s.id)}>{entry?.cancelling || entry?.cancelRequested ? "Stopping…" : "Cancel"}</button> : nextOperation && <button
                       aria-label={`${nextOperation === "mesh" ? "Mesh" : "Run"} ${s.name}`}
                       data-field-help={blocked ?? (limitReached ? "Open the simulation limit message." : nextOperation === "mesh"
                         ? "Generate and check the mesh for this study."
@@ -190,6 +198,12 @@ export function ClimoptixStudies({ project, scenarios, scenario, showArchived, o
                       onClick={event => { event.currentTarget.closest("details")!.open = false; onSubmit("mesh", [s], event.currentTarget); }}>Mesh current setup</button>}
                     <button onClick={e => { e.currentTarget.closest("details")!.open = false; setRenaming(s.id); }}>Rename</button>
                     <button disabled={scenarios.length >= 100} onClick={() => { const copy = duplicateCFDScenario(s); onOrder([...scenarios, copy], groups, { [copy.id]: s.id }); onSelect(copy.id); }}>Duplicate simulation</button>
+                    <button disabled={busy(s) || entry?.dispatched || !worker?.clearResults || !worker.capabilities.connected}
+                      title={busy(s) ? "Cancel the simulation and wait for it to stop before cleaning" : "Delete all checked mesh, solver and result data; keep the simulation inputs"}
+                      onClick={event => {
+                        const opener = event.currentTarget.closest(".cfx-study-row")?.querySelector<HTMLButtonElement>(".cfx-study-actions > button") ?? event.currentTarget;
+                        event.currentTarget.closest("details")!.open = false; onClean(s.id, opener);
+                      }}>Clean simulation</button>
                     <button disabled={busy(s) || entry?.dispatched} onClick={() => onChange({ ...s, archived: !s.archived }, true)}>{s.archived ? "Unarchive" : "Archive"}</button>
                     <label>Move to group<select aria-label={`Move ${s.name} to group`} value={group.id} onChange={e => {
                       const target = groups.find(g => g.id === e.target.value)!;

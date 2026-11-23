@@ -27,6 +27,9 @@ export type CFDJobEntry = {
   meshChecked?: boolean;
   /** Dispatch may have succeeded even if its response was lost. */
   dispatched?: boolean;
+  cancelling?: boolean;
+  cancelRequested?: boolean;
+  cleaning?: boolean;
 };
 
 export function jobHasCheckedMesh(job?: CFDWorkerJob) {
@@ -72,6 +75,39 @@ export function useCFDJobs(
     if (entry?.error?.startsWith("Preflight blocked this submission.") && !entry.dispatched && !entry.submitting && !entry.job)
       update(id, {...entry, input, error: undefined});
   }, [update]);
+  const cancel = async (id: string) => {
+    const entry = entriesRef.current[id], worker = latest.current.adapter;
+    if (!entry?.job || terminalJob(entry.job) || entry.cancelling || entry.cancelRequested || !worker?.cancel) return;
+    const job = entry.job;
+    update(id, {...entry, cancelling: true, error: undefined});
+    try {
+      const stopped = checkedWorkerJob(await worker.cancel(job, AbortSignal.any([submitAbort.current.signal, AbortSignal.timeout(25000)])), job);
+      const live = entriesRef.current[id];
+      if (live?.job?.id === job.id) update(id, {...live, job: stopped, cancelling: false, cancelRequested: !terminalJob(stopped)});
+    } catch (cause) {
+      const live = entriesRef.current[id];
+      if (live?.job?.id === job.id) update(id, {...live, cancelling: false, error: cause instanceof Error ? cause.message : "Could not stop this simulation. Retry Cancel."});
+    }
+  };
+  const clean = async (id: string) => {
+    const entry = entriesRef.current[id], worker = latest.current.adapter;
+    if (entry?.submitting || entry?.dispatched || entry?.cleaning || entry?.job && !terminalJob(entry.job))
+      throw new Error("Cancel this simulation and wait for it to stop before cleaning it.");
+    if (!worker?.capabilities.connected || !worker.clearResults)
+      throw new Error("Connect the CFD worker to clean all saved mesh and simulation data.");
+    update(id, {...entry, input: entry?.input ?? "", cleaning: true, error: undefined});
+    resultGeneration.current++;
+    try {
+      await worker.clearResults(project.projectId, [id], AbortSignal.any([submitAbort.current.signal, AbortSignal.timeout(60000)]));
+      for (const record of readPendingCFD(worker.namespace, project.projectId)) if (record.request.studyId === id)
+        removePendingCFD(worker.namespace, project.projectId, id, record.request.submissionId);
+      unresolved.current.delete(id);
+      forgetResults([id]);
+    } catch (cause) {
+      if (entriesRef.current[id]?.cleaning) update(id, {...entriesRef.current[id], cleaning: false});
+      throw cause;
+    }
+  };
   const projectId = useRef(project.projectId);
   const namespace = useRef(adapter?.namespace);
   const restorePending = useCallback(() => {
@@ -160,6 +196,7 @@ export function useCFDJobs(
       )
         continue;
       const existing = entriesRef.current[study.id];
+      if (existing?.cleaning) continue;
       if (existing?.job && !terminalJob(existing.job)) continue;
       const recovery = unresolved.current.get(study.id);
       if (recovery && recovery.operation !== operation) {
@@ -287,12 +324,12 @@ export function useCFDJobs(
             await adapter.status(entry.job.id, controller.signal),
             entry.job,
           );
-          if (!controller.signal.aborted)
-            update(id, { ...entry, job, error: undefined });
+          if (!controller.signal.aborted && entriesRef.current[id]?.job?.id === entry.job.id && !entriesRef.current[id]?.cleaning)
+            update(id, { ...entriesRef.current[id], job, error: undefined });
         } catch (error) {
-          if (!controller.signal.aborted)
+          if (!controller.signal.aborted && entriesRef.current[id]?.job?.id === entry.job.id && !entriesRef.current[id]?.cleaning)
             update(id, {
-              ...entry,
+              ...entriesRef.current[id],
               error:
                 error instanceof Error
                   ? error.message
@@ -309,5 +346,5 @@ export function useCFDJobs(
       clearTimeout(timer);
     };
   }, [adapter, project.projectId, update]);
-  return { entries, submit, forgetResults, validated };
+  return { entries, submit, forgetResults, validated, cancel, clean };
 }

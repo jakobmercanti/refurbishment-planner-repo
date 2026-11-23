@@ -528,9 +528,9 @@ def create_app(root: Path | None = None, *, start_runner: bool = True) -> FastAP
         return inspection(store, str(user.id), str(job_id), str(projectId), metadata_only=True)
 
     @app.get(prefix + "/jobs/{job_id}/mesh-geometry")
-    async def mesh_geometry(job_id: UUID, projectId: UUID, meshId: str, user: WorkerUser, request: Request):
+    async def mesh_geometry(job_id: UUID, projectId: UUID, meshId: str, user: WorkerUser, request: Request, source: bool = False):
         data = await inspection_response(request, lambda cancelled:
-            inspection(store, str(user.id), str(job_id), str(projectId), mesh_id=meshId, cancelled=cancelled))
+            inspection(store, str(user.id), str(job_id), str(projectId), mesh_id=meshId, section_source=source, cancelled=cancelled))
         return Response(data, media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
 
     @app.post(prefix + "/mesh-section")

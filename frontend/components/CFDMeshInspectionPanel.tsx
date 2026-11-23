@@ -11,10 +11,12 @@ export function CFDMeshInspectionPanel({inspection: state, onOpenMeshSetup}: {
   inspection: ReturnType<typeof useCFDMeshInspection>; onOpenMeshSetup: () => void;
 }) {
   const fraction = useSyncExternalStore(state.position.subscribe, state.position.getSnapshot, state.position.getSnapshot);
+  const local = useSyncExternalStore(state.live.subscribe, state.live.getSnapshot, state.live.getSnapshot);
+  const geometry = state.sectioning && local?.meshId === state.metadata?.meshId && local?.axis === state.axis ? local : state.geometry;
   const coordinateMm = state.min + (state.max - state.min) * fraction;
-  const ready = !!state.geometry && (!state.sectioning || meshSectionContains(state.geometry, state.axis, coordinateMm));
-  const inspection = {...state, coordinateMm, loading: state.inspecting && !ready,
-    displayedCoordinate: ready ? coordinateMm : state.geometry?.coordinateMm ?? coordinateMm};
+  const ready = !!geometry && (!state.sectioning || meshSectionContains(geometry, state.axis, coordinateMm));
+  const inspection = {...state, geometry, coordinateMm, loading: state.inspecting && !ready,
+    displayedCoordinate: ready ? coordinateMm : geometry?.coordinateMm ?? coordinateMm};
   const mesh = inspection.metadata;
   const metres = (mm: number) => Number((mm / 1000).toPrecision(12));
   return <section className="cfx-mesh-inspection" aria-label="Mesh inspection" data-cfx-collapse-root>
@@ -58,7 +60,7 @@ export function CFDMeshInspectionPanel({inspection: state, onOpenMeshSetup}: {
     <details open><summary>Section<WindowHelpButton section title="Mesh section" steps={[
       {heading: "Section", text: "Show a genuine cut through the volume cells, including their internal partitions. X, Y and Z are the solver's global axes; the selected axis is perpendicular to the section. Keep rear mesh retains the boundary behind the cut, away from the current camera when the axis is selected. Only its clipping plane moves; the boundary is loaded once."},
       {heading: "Position and movement", text: "Position is in metres in solver coordinates. The slider, numeric entry and previous/next buttons stay synchronized within the mesh bounds. Steps move by one percent of the selected axis span. Center section uses its midpoint; Reset section restores Z and its midpoint. Section movement preserves the camera."},
-      {heading: "Smooth movement", text: "Within a checked topology interval, only section vertex positions update locally. Crossing an interval requests the next exact cut. During that update, the previous section and rear cut remain at their actual displayed position. Switching axis or mesh never reuses another axis or revision."},
+      {heading: "Smooth movement", text: "The checked topology is prepared once for local section calculation. Movement is coalesced to about 30 updates a second, with only the newest position queued. Coincident or unusually complex cuts use the exact server cutter. The rear boundary clips immediately while a cut is pending. Switching axis or mesh never reuses another axis or revision."},
       {heading: "Supported topology", text: "Sections use native ASCII single-fluid polyMesh, including polyhedral and concave cells and disconnected fluid parts. Warped faces are triangulated through source vertices. Binary meshes need ASCII conversion. Detailed geometry responses are bounded to 48 MB."},
       {heading: "Current bounds", text: [0, 1, 2].map(index => `${"XYZ"[index]}: ${metres(mesh.boundsMm[0][index])} to ${metres(mesh.boundsMm[1][index])} m`).join("; ")},
     ]}/></summary><fieldset disabled={!inspection.canInspect} className="cfx-mesh-inspection-fields">

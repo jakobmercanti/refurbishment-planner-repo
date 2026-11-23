@@ -116,7 +116,7 @@ async def upload(request: Request) -> dict:
 
 @router.get("/{token}")
 async def geometry(request: Request, token: str, meshId: str, axis: str | None = None,
-                   coordinateMm: float | None = None, motion: bool = False) -> Response:
+                   coordinateMm: float | None = None, motion: bool = False, source: bool = False) -> Response:
     with _lock:
         entry = _meshes.get(token)
         if entry is None or entry[0] <= time.time():
@@ -135,6 +135,8 @@ async def geometry(request: Request, token: str, meshId: str, axis: str | None =
             raise HTTPException(429, "Mesh inspection is busy. Retry shortly.")
         try:
             mesh = entry[2]
+            if source:
+                return mesh.section_source(meshId, cancelled)
             value = (mesh.surface(cancelled) if axis is None
                      else mesh.section("XYZ".index(axis), coordinateMm, cancelled))
             sweep = mesh.section_motion(value, "XYZ".index(axis), coordinateMm, cancelled) if axis and motion else None
