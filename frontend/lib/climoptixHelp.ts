@@ -258,7 +258,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
     },
     {
       heading: "Global mesh settings",
-      text: "Choose the mesh intent preset, base/minimum/maximum cell sizes in millimetres, target cell count and maximum cell budget here in Domain. Custom preserves your current values; changing a numeric setting selects Custom. Presets retain existing refinement regions, mesh origin and alignment. These settings express mesh intent, not achieved resolution or cell count. Local refinement regions, layers, tolerances and quality controls are in Solver → Mesh. Validate after changing global or local settings.",
+      text: "Choose the mesh intent preset, base/minimum/maximum cell sizes in millimetres, target cell count and maximum cell budget here in Domain. Custom preserves your current values; changing a numeric setting selects Custom. Presets retain existing refinement regions, mesh origin and alignment. These settings express mesh intent, not achieved resolution or cell count. Local refinement regions, layers, tolerances and quality controls are in the Mesh tab. Validate after changing global or local settings.",
     },
   ],
   equipment: [
@@ -291,8 +291,14 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
   ],
   mesh: [
     {
-      heading: "Mesh, Compute and Post-processing",
-      text: "Domain defines global mesh preset, cell sizes and budgets. Solver → Mesh defines local refinements, layers, tolerances and quality intent; Compute defines numerics, cores and resource limits; Results → Monitor shows live worker convergence and imported residual logs; Post defines named X/Y/Z slices and fields before execution. Checks refresh automatically after committed changes. Intent and estimates are not a generated mesh or solved result. Computation remains unavailable until a trusted OpenFOAM worker is connected.",
+      heading: "Domain and mesh setup",
+      text: "Choose the seed room and global cell sizes in Domain. Add local refinement regions when needed. Restore default removes explicit refinement regions. Mesh in the simulation list submits the checked recipe; Results → Mesh inspects the generated grid. Geometry checks and estimates do not represent a completed mesh.",
+    },
+  ],
+  solver: [
+    {
+      heading: "Compute and Post-processing",
+      text: "Mesh defines the connected domain, global cell sizes and local refinements. Solver → Compute defines numerics, cores and resource limits; Results → Monitor shows live worker convergence and imported residual logs; Post defines named X/Y/Z slices and fields before execution. Checks refresh automatically after committed changes. Intent and estimates are not a generated mesh or solved result. Computation remains unavailable until a trusted OpenFOAM worker is connected.",
     },
   ],
   review: [
@@ -331,7 +337,7 @@ export const CFD_PHASE_HELP: Record<CFDWindowId, HelpStep[]> = {
 export const CFD_REFINEMENT_HELP: HelpStep[] = [
   {
     heading: "Refinement region",
-    text: "Changes save to this simulation as you edit. Centres and dimensions are millimetres. Cuboids and spheres use explicit bounds; object extents follow the last checked solid proxy and need refresh after source placement changes. Regions are wireframe intent, not cells or achieved resolution. Duplicate, delete and reorder regions in Solver → Mesh. The highest overlapping level wins; list order is only organisational.",
+    text: "Changes save to this simulation as you edit. Centres and dimensions are millimetres. Cuboids and spheres use explicit bounds; object extents follow the last checked solid proxy and need refresh after source placement changes. Regions are wireframe intent, not cells or achieved resolution. Duplicate, delete and reorder regions in Mesh. The highest overlapping level wins; list order is only organisational.",
   },
   {
     heading: "Level and nominal size",
@@ -340,7 +346,7 @@ export const CFD_REFINEMENT_HELP: HelpStep[] = [
 ];
 
 export const CFD_SIMULATION_HELP: HelpStep[] = [
-  ...CFD_PHASE_HELP.mesh,
+  ...CFD_PHASE_HELP.solver,
   ...CFD_REFINEMENT_HELP,
   {
     heading: "Run and export",
@@ -369,7 +375,7 @@ export const CFD_WORKBENCH_HELP = [
   },
   {
     heading: "Prepare, inspect, export",
-    text: "Open Domain in Solver → Mesh to choose the connected air volume. Add equipment under Bounds → Objects and group surfaces under Bounds → Conditions. Solver contains Mesh, Compute, Post and Optimisation. Refresh checks in the title bar retries geometry preparation. Worker submission performs its own preflight.",
+    text: "Open the Mesh tab beside Bounds to choose the connected air volume, cell sizes and local refinements. Add equipment under Bounds → Objects and group surfaces under Bounds → Conditions. Solver contains Compute, Post and Optimisation. Refresh checks in the title bar retries geometry preparation. Worker submission performs its own preflight.",
   },
   {
     heading: "No simulated results",

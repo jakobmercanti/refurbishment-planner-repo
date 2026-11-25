@@ -2,16 +2,14 @@
 
 import { useRef, type ReactNode } from "react";
 import { MAX_SAMPLING_PLANES, MIN_SAMPLING_PLANES, type CFDScenario } from "@/lib/climoptixDocument";
-import type { CFDReport } from "@/lib/climoptix";
 import { CFD_SECTION_HELP, CFD_SIMULATION_HELP } from "@/lib/climoptixHelp";
 import { CFDNumber, Parameters } from "./CFDFields";
-import { MeshPanel } from "./ClimoptixMesh";
 import { WindowHelpButton } from "./WindowHelpButton";
 import { CFDCollapseAll } from "./CFDCollapseAll";
 import { CFDProbes } from "./CFDProbes";
 
 const SOLVER_TABS = [
-  ["mesh", "Mesh"], ["run", "Compute"],
+  ["run", "Compute"],
   ["post", "Post-processing"], ["adjoint", "Optimisation"],
 ] as const;
 export type SimulationTab = typeof SOLVER_TABS[number][0];
@@ -276,7 +274,6 @@ export function ClimoptixSimulation({
   samplingPreview,
   onSamplingPreview,
   scenario,
-  report,
   selected,
   onSelect,
   onChange,
@@ -285,9 +282,6 @@ export function ClimoptixSimulation({
   exporting,
   exportDisabled,
   jobProgress,
-  onShowRefinements,
-  onEditRefinement,
-  domain,
   optimisation,
 }: {
   tab: SimulationTab;
@@ -295,7 +289,6 @@ export function ClimoptixSimulation({
   samplingPreview: boolean;
   onSamplingPreview: (show: boolean) => void;
   scenario: CFDScenario;
-  report: CFDReport | null;
   selected: string | null;
   onSelect: (id: string | null) => void;
   onChange: (s: CFDScenario) => void;
@@ -304,10 +297,7 @@ export function ClimoptixSimulation({
   exporting: boolean;
   exportDisabled: boolean;
   jobProgress?: ReactNode;
-  onShowRefinements: () => void;
-  onEditRefinement: (id: string) => void;
   connection?: RunConnection;
-  domain: ReactNode;
   optimisation: ReactNode;
 }) {
   return (
@@ -350,27 +340,9 @@ export function ClimoptixSimulation({
           </button>
         ))}
       </div>
-      <WindowHelpButton title="Mesh, Compute & Post-processing" steps={CFD_SIMULATION_HELP} />
+      <WindowHelpButton title="Compute & Post-processing" steps={CFD_SIMULATION_HELP} />
       </div>
       {tab !== "adjoint" && jobProgress}
-      <section
-        role="tabpanel"
-        id="cfx-panel-mesh"
-        aria-labelledby="cfx-tab-mesh"
-        className="cfx-simulation-panel"
-        hidden={tab !== "mesh"}
-      >
-        <details id="cfx-setup-panel-domain" open><summary>Domain</summary>{domain}</details>
-        <MeshPanel
-          scenario={scenario}
-          report={report}
-          selected={selected}
-          onSelect={onSelect}
-          onChange={onChange}
-          onShowRefinements={onShowRefinements}
-          onEditRefinement={onEditRefinement}
-        />
-      </section>
       <section
         role="tabpanel"
         id="cfx-panel-run"

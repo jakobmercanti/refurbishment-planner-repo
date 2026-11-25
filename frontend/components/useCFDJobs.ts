@@ -21,6 +21,8 @@ export type CFDJobEntry = {
   input: string;
   job?: CFDWorkerJob;
   error?: string;
+  /** A definite schema/configuration rejection, never an uncertain dispatch. */
+  validationRejected?: boolean;
   submitting?: boolean;
   submissionId?: string;
   operation?: CFDOperation;
@@ -70,10 +72,13 @@ export function useCFDJobs(
   }, []);
   const validated = useCallback((id: string, input: string) => {
     const entry = entriesRef.current[id];
-    // Only clear a geometry preflight rejection proven obsolete by a fresh
-    // successful check. Accepted jobs and uncertain dispatches stay recoverable.
-    if (entry?.error?.startsWith("Preflight blocked this submission.") && !entry.dispatched && !entry.submitting && !entry.job)
-      update(id, {...entry, input, error: undefined});
+    // Fresh geometry checks supersede geometry failures. A changed setup also
+    // supersedes definite worker validation rejections; submission still runs
+    // the full worker preflight. Never clear accepted/uncertain dispatches.
+    if (entry?.error && (entry.error.startsWith("Preflight blocked this submission.")
+        || entry.validationRejected && entry.input !== input)
+        && !entry.dispatched && !entry.submitting && !entry.job)
+      update(id, {...entry, input, error: undefined, validationRejected: undefined});
   }, [update]);
   const cancel = async (id: string) => {
     const entry = entriesRef.current[id], worker = latest.current.adapter;
@@ -298,6 +303,7 @@ export function useCFDJobs(
             submissionId: rejected ? undefined : submissionId,
             operation,
             dispatched: unresolved.current.has(study.id),
+            validationRejected: error instanceof CFDWorkerError && error.status === 422,
             error:
               error instanceof Error
                 ? error.message

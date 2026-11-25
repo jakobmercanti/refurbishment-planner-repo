@@ -23,7 +23,7 @@ export function workerProfileIssues(scenario: CFDScenario, limits: Limits, rotat
     issues.push("Applied thermal conditions and fixed-temperature objects require a thermal solver.");
   if (scenario.vents.some(vent => vent.openAreaFraction !== 1 || vent.dischargeCoefficient !== 1 || vent.yawDeg || vent.pitchDeg || vent.recirculationPair))
     issues.push("Objects: use full open area, unit discharge, normal flow and no recirculation pairing for this worker.");
-  if (scenario.mesh.layers.enabled) issues.push("Boundary layers require a compatible worker. Turn them off in Solver → Mesh to use this worker.");
+  if (scenario.mesh.layers.enabled) issues.push("Boundary layers require a compatible worker. Turn them off in Mesh to use this worker.");
   if (!rotatedGrid && (scenario.mesh.alignmentDeg !== 0 || scenario.mesh.alignmentXYDeg?.some(angle => angle !== 0))) {
     issues.push("This worker requires an axis-aligned background grid. Set all three alignment angles to 0° in Domain → Mesh settings.");
   }

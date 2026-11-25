@@ -105,6 +105,11 @@ function nativeWorkerSource(project: ProjectDocument, scenario: CFDScenario) {
   const { boundaries } = scenario;
   const detached = structuredClone({
     ...scenario,
+    // Sun exposure is a separate thermal preview, not a native airflow input.
+    // Omit the whole optional preview contract so older strict workers accept
+    // the same bounded source used for preflight and provenance hashes.
+    // Applied thermal intent and actual thermal boundaries remain guarded.
+    thermalEnvelope: undefined,
     thermalSnapshots: undefined,
     adjointStudies: undefined,
     sharedBoundaries: scenario.sharedBoundaries ?? undefined,

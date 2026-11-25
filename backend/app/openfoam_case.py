@@ -89,7 +89,7 @@ def validate_submission(request: Submission, *, max_cpu: int | None = None) -> d
             conflicts.append(f"convergence monitor is {p.numerics.monitor}, not flowBalance")
         raise ValueError("This worker supports steady isothermal SIMPLE ventilation only. "
                          "Conflicting settings: " + "; ".join(conflicts) +
-                         ". Open Physics to review these equations and Solver > Run for steady/SIMPLE settings. "
+                         ". Open Physics to review these equations and Solver > Compute for steady/SIMPLE settings. "
                          "Keep thermal studies for export or use a thermal-capable worker; "
                          "no settings were changed automatically.")
     if request.thermalApplication or s.thermalSnapshots:

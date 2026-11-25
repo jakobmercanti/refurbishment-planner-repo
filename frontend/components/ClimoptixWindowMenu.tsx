@@ -6,8 +6,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 export const CFD_WINDOWS = [
   { id: "studies", name: "Simulations", tab: "Simulations" },
   { id: "boundaries", name: "Boundaries", tab: "Bounds" },
+  { id: "mesh", name: "Mesh", tab: "Mesh" },
   { id: "physics", name: "Physics", tab: "Physics" },
-  { id: "mesh", name: "Solver", tab: "Solver" },
+  { id: "solver", name: "Solver", tab: "Solver" },
   { id: "results", name: "Imported results", tab: "Results" },
 ] as const;
 export type CFDWindowId = (typeof CFD_WINDOWS)[number]["id"] | "domain" | "equipment" | "adjoint" | "view" | "thermal" | "convergence" | "review";

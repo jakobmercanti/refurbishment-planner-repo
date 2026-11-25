@@ -1193,7 +1193,7 @@ body .cfx-workspace .cfx-study-phases > button[data-state] {
 .cfx-workspace .thermal-step-select {
   display: none;
 }
-@container cfx-setup (max-width: 390px) {
+@container cfx-setup (max-width: 460px) {
   .cfx-setup-heading > .cfx-phase-select {
     display: grid;
   }

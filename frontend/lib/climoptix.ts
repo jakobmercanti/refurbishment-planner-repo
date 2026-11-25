@@ -265,7 +265,10 @@ export async function defaultCFDSetup(apiUrl: string, project: ProjectDocument, 
   }
   const result = cfdScenarioSchema.parse(await response.json());
   if (result.id !== scenario.id || result.sourceBuildingId !== project.projectId) throw new Error("Default setup returned a different simulation. Nothing was changed.");
-  return { ...result, group: scenario.group, postProcessing: { ...result.postProcessing, ...defaultSamplingPlanes() } };
+  // Older API deployments still return a starter refinement box. Defaults have
+  // no explicit regions; applyDefaults revalidates this recipe before saving it.
+  return { ...result, validation: null, mesh: { ...result.mesh, refinements: [] },
+    group: scenario.group, postProcessing: { ...result.postProcessing, ...defaultSamplingPlanes() } };
 }
 export function boundarySurfaceSTL(
   report: CFDReport,

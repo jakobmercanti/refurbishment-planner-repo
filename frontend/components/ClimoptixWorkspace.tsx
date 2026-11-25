@@ -62,7 +62,7 @@ import type { ProjectDocument } from "@/lib/projectDocument";
 import { boundaryGroups, boundaryMembership, BOUNDARY_COLOURS, sameGroup, simulationGroups } from "@/lib/climoptixGroups";
 import { ClimoptixViewer } from "./ClimoptixViewer";
 import { BoundariesPanel } from "./ClimoptixBoundaries";
-import { RefinementEditor } from "./ClimoptixMesh";
+import { MeshPanel, RefinementEditor } from "./ClimoptixMesh";
 import { DomainPanel } from "./ClimoptixDomain";
 import { EquipmentPanel } from "./ClimoptixEquipment";
 import { PhysicsPanel } from "./ClimoptixPhysics";
@@ -81,7 +81,8 @@ const PHASES = [
   { id: "equipment", label: "Equipment" },
   { id: "boundaries", label: "Boundaries" },
   { id: "physics", label: "Physics" },
-  { id: "mesh", label: "Simulation" },
+  { id: "mesh", label: "Mesh" },
+  { id: "solver", label: "Solver" },
 ] as const;
 const BOUNDS_TABS = [["equipment", "Objects"], ["conditions", "Conditions"], ["thermal", "Thermal"]] as const;
 const EMPTY_SCENARIOS: CFDScenario[] = [];
@@ -159,10 +160,10 @@ export function ClimoptixWorkspace({
     if (id === "thermal" || id === "equipment" || id === "boundaries")
       setBoundsTab(id === "boundaries" ? "conditions" : id);
     if (id === "convergence") setResultsView("monitor");
-    if (id === "domain" || id === "adjoint") setSimulationTab(id === "domain" ? "mesh" : "adjoint");
+    if (id === "adjoint") setSimulationTab("adjoint");
     if (id === "review" || id === "results") setResultsView(id === "review" ? "review" : "summary");
     setActiveTab(id === "thermal" || id === "equipment" ? "boundaries"
-      : id === "domain" || id === "adjoint" ? "mesh" : id === "review" || id === "convergence" ? "results" : id);
+      : id === "domain" ? "mesh" : id === "adjoint" ? "solver" : id === "review" || id === "convergence" ? "results" : id);
     setSetupOpen(true);
     setSetupFocus((value) => value + 1);
   };
@@ -184,7 +185,7 @@ export function ClimoptixWorkspace({
   const [limitDialog, setLimitDialog] = useState<HTMLButtonElement | null>(null);
   const [resetting, setResetting] = useState(false);
   const defaultAbort = useRef<AbortController | null>(null);
-  const [simulationTab, setSimulationTab] = useState<SimulationTab>("mesh");
+  const [simulationTab, setSimulationTab] = useState<SimulationTab>("run");
   const [showRefinements, setShowRefinements] = useState(true);
   const [inspection, setInspection] = useState<{ showRefinements: boolean; selected: string | null } | null>(null);
   const returnToSetup = () => {
@@ -699,7 +700,7 @@ export function ClimoptixWorkspace({
       return;
     }
     if (group === "solver") {
-      openPhase("mesh");
+      openPhase("solver");
       setSimulationTab("run");
       return;
     }
@@ -710,8 +711,8 @@ export function ClimoptixWorkspace({
           ? "boundaries"
           : group === "physics" || group === "outputs"
             ? "physics"
-            : group === "mesh" || group === "resources"
-              ? "mesh"
+            : group === "resources" ? "solver"
+            : group === "mesh" ? "mesh"
               : "domain",
     );
   };
@@ -900,11 +901,11 @@ export function ClimoptixWorkspace({
             selectObject(id);
             if (!id || !scenario) return;
             if (id.startsWith("refinement:")) {
-              if (setupOpen) { openPhase("mesh"); setSimulationTab("mesh"); }
+              if (setupOpen) openPhase("mesh");
               return;
             }
             if (id.startsWith("probe:")) {
-              if (setupOpen && shownTab === "mesh") setSimulationTab("post");
+              if (setupOpen && shownTab === "solver") setSimulationTab("post");
               return;
             }
             if (setupOpen && (id.startsWith("vent:") || activeReport?.objects.some(object => object.id === id))) openPhase("equipment");
@@ -934,7 +935,7 @@ export function ClimoptixWorkspace({
           onResultContextMenuOpen={()=>setContextMenu(null)}
           canMoveVents={true}
           showSamplingPlanes={
-            setupOpen && shownTab === "mesh" && simulationTab === "post" && !stale && samplingPreviewStudy === scenario?.id
+            setupOpen && shownTab === "solver" && simulationTab === "post" && !stale && samplingPreviewStudy === scenario?.id
           }
           showRefinements={showRefinements}
           onShowRefinements={setShowRefinements}
@@ -1222,10 +1223,25 @@ export function ClimoptixWorkspace({
                       <div className="cfx-physics-fields"><PhysicsPanel scenario={scenario} onChange={change} /></div>
                     )}
                     {panel.id === "mesh" && (
+                      <>
+                        <CFDJobProgress name={scenario.name} job={jobs[scenario.id]?.job} operation={jobs[scenario.id]?.operation}
+                          pending={jobs[scenario.id]?.submitting ? "Checking & submitting…" : jobs[scenario.id]?.dispatched ? "Submission status unknown" : undefined}/>
+                        <details id="cfx-setup-panel-domain" open><summary>Domain</summary>
+                          <DomainPanel project={project} scenario={scenario} report={activeReport} onChange={change}/>
+                        </details>
+                        <MeshPanel scenario={scenario} report={activeReport} selected={selected} onSelect={selectObject} onChange={change}
+                          onEditRefinement={id => setRefinementEditor({ studyId: scenario.id, id })}
+                          onShowRefinements={() => {
+                            setInspection({ showRefinements, selected });
+                            setShowRefinements(true); setSetupOpen(false); setRefinementEditor(null);
+                            setSelected(value => value?.startsWith("refinement:") ? value : null);
+                          }}/>
+                      </>
+                    )}
+                    {panel.id === "solver" && (
                       <ClimoptixSimulation
-                        domain={<DomainPanel project={project} scenario={scenario} report={activeReport} onChange={change}/>}
                         optimisation={<ClimoptixAdjoint key={scenario.id} project={project} scenario={scenario} report={activeReport} revision={revision} checked={!stale&&!busy&&!preparationError}
-                apiUrl={apiUrl} active={setupOpen&&shownTab==="mesh"&&simulationTab==="adjoint"} selected={selected} onSelect={selectObject} onChange={change} onNavigate={openPhase}
+                apiUrl={apiUrl} active={setupOpen&&shownTab==="solver"&&simulationTab==="adjoint"} selected={selected} onSelect={selectObject} onChange={change} onNavigate={openPhase}
                 workerConnected={!!workerAdapter?.capabilities.connected} baselineRunId={completedRunReference(jobs[scenario.id],currentWorkerInput)}/>}
                         connection={{
                           connected:
@@ -1259,7 +1275,6 @@ export function ClimoptixWorkspace({
                         samplingPreview={samplingPreviewStudy === scenario.id}
                         onSamplingPreview={show => setSamplingPreviewStudy(show ? scenario.id : null)}
                         scenario={scenario}
-                        report={activeReport}
                         onChange={change}
                         selected={selected}
                         onSelect={selectObject}
@@ -1269,19 +1284,6 @@ export function ClimoptixWorkspace({
                         exportDisabled={
                           stale || !!activeReport?.validation.errors || !!error
                         }
-                        onEditRefinement={(id) =>
-                          setRefinementEditor({ studyId: scenario.id, id })
-                        }
-                        onShowRefinements={() => {
-                          setInspection({ showRefinements, selected });
-                          setShowRefinements(true);
-                          setSetupOpen(false);
-                          setRefinementEditor(null);
-                          setSelected((value) =>
-                            value?.startsWith("refinement:") ? value : null,
-                          );
-                        }}
-
                         jobProgress={<CFDJobProgress name={scenario.name} job={jobs[scenario.id]?.job} operation={jobs[scenario.id]?.operation}
                           pending={jobs[scenario.id]?.submitting?"Checking & submitting…":jobs[scenario.id]?.dispatched?"Submission status unknown":undefined}/>}
                       />
@@ -1340,7 +1342,7 @@ export function ClimoptixWorkspace({
                             />
                           )
                         }
-                      mesh={<CFDMeshInspectionPanel inspection={meshInspection} onOpenMeshSetup={() => { meshInspection.exit(); openPhase("mesh"); setSimulationTab("mesh"); }}/>}
+                      mesh={<CFDMeshInspectionPanel inspection={meshInspection} onOpenMeshSetup={() => { meshInspection.exit(); openPhase("mesh"); }}/>}
                       view={resultsView} onViewChange={setResultsView}
                       review={<ClimoptixReview openingNames={openingNames} key={`${scenario.id}:${issuesRequest}`} workerConnected={!!workerAdapter?.capabilities.connected} scenario={scenario} report={activeReport} revision={revision} stale={stale} blocked={!!error} issuesRequest={issuesRequest} submissionError={shownTab === "results" && resultsView === "review" ? currentJob?.error : undefined} configurationIssue={runConfigurationIssue} workerIssue={runWorkerIssue} onAirflowCopy={runConfigurationIssue && canCopyToAirflow(scenario) ? () => createAirflowCopy(scenario) : undefined}
                       preparationIssue={error || preparationError} onChange={change} onImport={file => void importScenario(file)} onExport={exportScenario} onError={setError}

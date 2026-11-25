@@ -13,7 +13,7 @@ from shapely.ops import polylabel
 
 from backend.app.climoptix_provider import PreparationOnlyProvider
 from geometry.climoptix_domain import source_geometry
-from geometry.climoptix_models import Boundary, Refinement, Scenario, Vent
+from geometry.climoptix_models import Boundary, Scenario, Vent
 
 
 def default_setup(project: dict, original: Scenario, revision: str) -> Scenario:
@@ -81,8 +81,8 @@ def default_setup(project: dict, original: Scenario, revision: str) -> Scenario:
     bounds = report["domain"]["boundsMm"]
     if not bounds:
         raise ValueError("The measured air volume has no usable bounds.")
-    # ~2.5k base cells, one uniform split (~20k), retaining at least four
-    # cells across the starter vent in the final mesh.
+    # A small background grid with local surface/vent refinement. Defaults do
+    # not add an all-domain refinement box; regions are an explicit user choice.
     volume_mm3 = max(1, report["domain"]["volumeM3"] * 1e9)
     base = max(25, min(size / 2, ceil((volume_mm3 / 2500) ** (1 / 3) / 5) * 5))
     mesh = scenario.mesh
@@ -92,9 +92,7 @@ def default_setup(project: dict, original: Scenario, revision: str) -> Scenario:
     mesh.ventCellMm = mesh.openingCellMm = base / 2
     mesh.snapToleranceMm = min(50, base / 2)
     mesh.targetCells, mesh.maxCells = 30000, 500000
-    mesh.refinements = [Refinement.model_validate({"id": "default-uniform", "name": "Starter uniform mesh", "shape": "box",
-                         "centerMm": [(a + b) / 2 for a, b in zip(*bounds, strict=True)],
-                         "sizeMm": [b - a + base * 4 for a, b in zip(*bounds, strict=True)], "cellMm": base / 2, "level": 1})]
+    mesh.refinements = []
     # Revalidate assignment types and the SAME geometry path used by Play.
     scenario = Scenario.model_validate(scenario.model_dump())
     final = provider.validate_scenario(project, scenario, revision)
